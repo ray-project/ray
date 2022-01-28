@@ -132,19 +132,25 @@ class ReplayBuffer:
 
     @DeveloperAPI
     def sample(self, num_items: int, beta: float = 0.0) -> SampleBatchType:
-        """Sample a batch of experiences.
+        """Sample a batch of size `num_items` from this buffer.
+
+        If less than `num_items` records are in this buffer, some samples in
+        the results may be repeated to fulfil the batch size (`num_items`)
+        request.
 
         Args:
             num_items: Number of items to sample from this buffer.
-            beta: This is ignored (only used by prioritized replay buffers).
+            beta: The prioritized replay beta value. Only relevant if this
+                ReplayBuffer is a PrioritizedReplayBuffer.
 
         Returns:
             Concatenated batch of items.
         """
-        idxes = [
-            random.randint(0,
-                           len(self._storage) - 1) for _ in range(num_items)
-        ]
+        # If we don't have any samples yet in this buffer, return None.
+        if len(self) == 0:
+            return None
+
+        idxes = [random.randint(0, len(self) - 1) for _ in range(num_items)]
         sample = self._encode_sample(idxes)
         # Update our timesteps counters.
         self._num_timesteps_sampled += len(sample)
@@ -282,6 +288,10 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             "batch_indexes" fields denoting IS of each sampled
             transition and original idxes in buffer of sampled experiences.
         """
+        # If we don't have any samples yet in this buffer, return None.
+        if len(self) == 0:
+            return None
+
         assert beta >= 0.0
 
         idxes = self._sample_proportional(num_items)

@@ -55,7 +55,7 @@ from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import AgentID, EnvCreator, EnvInfoDict, EnvType, \
     EpisodeID, PartialTrainerConfigDict, PolicyID, PolicyState, ResultDict, \
-    TensorStructType, TensorType, TrainerConfigDict
+    SampleBatchType, TensorStructType, TensorType, TrainerConfigDict
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.resources import Resources
@@ -441,6 +441,23 @@ COMMON_CONFIG: TrainerConfigDict = {
     # "STRICT_SPREAD": Packs bundles across distinct nodes.
     "placement_strategy": "PACK",
 
+    # TODO(jungong, sven): we can potentially unify all input types
+    #     under input and input_config keys. E.g.
+    #     input: sample
+    #     input_config {
+    #         env: Cartpole-v0
+    #     }
+    #     or:
+    #     input: json_reader
+    #     input_config {
+    #         path: /tmp/
+    #     }
+    #     or:
+    #     input: dataset
+    #     input_config {
+    #         format: parquet
+    #         path: /tmp/
+    #     }
     # === Offline Datasets ===
     # Specify how to generate experiences:
     #  - "sampler": Generate experiences via online (env) simulation (default).
@@ -483,6 +500,8 @@ COMMON_CONFIG: TrainerConfigDict = {
     #  - a path/URI to save to a custom output directory (e.g., "s3://bucket/")
     #  - a function that returns a rllib.offline.OutputWriter
     "output": None,
+    # Arguments accessible from the IOContext for configuring custom output
+    "output_config": {},
     # What sample batch columns to LZ4 compress in the output data.
     "output_compress_columns": ["obs", "new_obs"],
     # Max output file size before rolling over to a new file.
@@ -503,7 +522,15 @@ COMMON_CONFIG: TrainerConfigDict = {
         "policy_map_cache": None,
         # Function mapping agent ids to policy ids.
         "policy_mapping_fn": None,
-        # Optional list of policies to train, or None for all policies.
+        # Determines those policies that should be updated.
+        # Options are:
+        # - None, for all policies.
+        # - An iterable of PolicyIDs that should be updated.
+        # - A callable, taking a PolicyID and a SampleBatch or MultiAgentBatch
+        #   and returning a bool (indicating whether the given policy is trainable
+        #   or not, given the particular batch). This allows you to have a policy
+        #   trained only on certain data (e.g. when playing against a certain
+        #   opponent).
         "policies_to_train": None,
         # Optional function that can be used to enhance the local agent
         # observations to include more state.
@@ -639,7 +666,7 @@ class Trainer(Trainable):
         "optimizer", "multiagent", "custom_resources_per_worker",
         "evaluation_config", "exploration_config",
         "extra_python_environs_for_driver", "extra_python_environs_for_worker",
-        "input_config"
+        "input_config", "output_config"
     ]
 
     # List of top level keys with value=dict, for which we always override the
@@ -1674,7 +1701,8 @@ class Trainer(Trainable):
             policy_state: Optional[PolicyState] = None,
             policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID],
                                                  PolicyID]] = None,
-            policies_to_train: Optional[Container[PolicyID]] = None,
+            policies_to_train: Optional[Union[Container[PolicyID], Callable[
+                [PolicyID, Optional[SampleBatchType]], bool]]] = None,
             evaluation_workers: bool = True,
             workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = None,
     ) -> Policy:
@@ -1695,9 +1723,12 @@ class Trainer(Trainable):
                 to use from here on. Note that already ongoing episodes will
                 not change their mapping but will use the old mapping till
                 the end of the episode.
-            policies_to_train: An optional list/set of policy IDs to be
-                trained. If None, will keep the existing list in place.
-                Policies, whose IDs are not in the list will not be updated.
+            policies_to_train: An optional list of policy IDs to be trained
+                or a callable taking PolicyID and SampleBatchType and
+                returning a bool (trainable or not?).
+                If None, will keep the existing setup in place. Policies,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
             evaluation_workers: Whether to add the new policy also
                 to the evaluation WorkerSet.
             workers: A list of RolloutWorker/ActorHandles (remote
@@ -1750,7 +1781,8 @@ class Trainer(Trainable):
             policy_id: PolicyID = DEFAULT_POLICY_ID,
             *,
             policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
-            policies_to_train: Optional[List[PolicyID]] = None,
+            policies_to_train: Optional[Union[Set[PolicyID], Callable[
+                [PolicyID, Optional[SampleBatchType]], bool]]] = None,
             evaluation_workers: bool = True,
     ) -> None:
         """Removes a new policy from this Trainer.
@@ -1761,9 +1793,12 @@ class Trainer(Trainable):
                 to use from here on. Note that already ongoing episodes will
                 not change their mapping but will use the old mapping till
                 the end of the episode.
-            policies_to_train: An optional list of policy IDs to be trained.
-                If None, will keep the existing list in place. Policies,
-                whose IDs are not in the list will not be updated.
+            policies_to_train: An optional list of policy IDs to be trained
+                or a callable taking PolicyID and SampleBatchType and
+                returning a bool (trainable or not?).
+                If None, will keep the existing setup in place. Policies,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
             evaluation_workers: Whether to also remove the policy from the
                 evaluation WorkerSet.
         """

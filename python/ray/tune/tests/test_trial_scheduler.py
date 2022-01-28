@@ -2091,7 +2091,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testAsyncHBSaveRestore(self):
-        tmpfile = tempfile.mktemp()
+        _, tmpfile = tempfile.mkstemp()
 
         scheduler = AsyncHyperBandScheduler(
             metric="episode_reward_mean",

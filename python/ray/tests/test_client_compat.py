@@ -8,7 +8,6 @@ except ImportError:
     pyspark = None
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.skipif(pyspark is None, reason="PySpark dependency not found")
 @pytest.mark.parametrize(
     "call_ray_start", [

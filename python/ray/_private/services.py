@@ -1185,32 +1185,30 @@ def _start_redis_instance(executable,
 def start_log_monitor(redis_address,
                       gcs_address,
                       logs_dir,
-                      stdout_file=None,
-                      stderr_file=None,
                       redis_password=None,
                       fate_share=None,
                       max_bytes=0,
-                      backup_count=0):
+                      backup_count=0,
+                      redirect_logging=True):
     """Start a log monitor process.
 
     Args:
         redis_address (str): The address of the Redis instance.
         logs_dir (str): The directory of logging files.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
         max_bytes (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
+        redirect_logging (bool): Whether we should redirect logging to
+            the provided log directory.
 
     Returns:
         ProcessInfo for the process that was started.
     """
     log_monitor_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR,
                                         "log_monitor.py")
+
     command = [
         sys.executable, "-u", log_monitor_filepath,
         f"--redis-address={redis_address}", f"--logs-dir={logs_dir}",
@@ -1218,8 +1216,23 @@ def start_log_monitor(redis_address,
         f"--logging-rotate-backup-count={backup_count}",
         f"--gcs-address={gcs_address}"
     ]
+    if redirect_logging:
+        # Avoid hanging due to fd inheritance.
+        stdout_file = subprocess.DEVNULL
+        stderr_file = subprocess.DEVNULL
+    else:
+        # If not redirecting logging to files, unset log filename.
+        # This will cause log records to go to stderr.
+        command.append("--logging-filename=")
+        # Use stderr log format with the component name as a message prefix.
+        logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
+            component=ray_constants.PROCESS_TYPE_LOG_MONITOR)
+        command.append(f"--logging-format={logging_format}")
+        # Inherit stdout/stderr streams.
+        stdout_file = None
+        stderr_file = None
     if redis_password:
-        command += ["--redis-password", redis_password]
+        command.append(f"--redis-password={redis_password}")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_LOG_MONITOR,
@@ -1236,12 +1249,11 @@ def start_dashboard(require_dashboard,
                     temp_dir,
                     logdir,
                     port=None,
-                    stdout_file=None,
-                    stderr_file=None,
                     redis_password=None,
                     fate_share=None,
                     max_bytes=0,
-                    backup_count=0):
+                    backup_count=0,
+                    redirect_logging=True):
     """Start a dashboard process.
 
     Args:
@@ -1256,15 +1268,13 @@ def start_dashboard(require_dashboard,
         logdir (str): The log directory used to generate dashboard log.
         port (str): The port to bind the dashboard web server to.
             Defaults to 8265.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
         max_bytes (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
+        redirect_logging (bool): Whether we should redirect logging to
+            the provided log directory.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1299,9 +1309,7 @@ def start_dashboard(require_dashboard,
                     raise e
 
         # Make sure the process can start.
-        try:
-            import ray.dashboard.optional_deps  # noqa: F401
-        except ImportError:
+        if not ray._private.utils.check_dashboard_dependencies_installed():
             if require_dashboard:
                 logger.exception("dashboard dependency error")
                 raise ImportError(DASHBOARD_DEPENDENCY_ERROR_MESSAGE)
@@ -1312,6 +1320,7 @@ def start_dashboard(require_dashboard,
         dashboard_dir = "dashboard"
         dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir,
                                           "dashboard.py")
+
         command = [
             sys.executable, "-u", dashboard_filepath, f"--host={host}",
             f"--port={port}", f"--port-retries={port_retries}",
@@ -1320,8 +1329,24 @@ def start_dashboard(require_dashboard,
             f"--logging-rotate-backup-count={backup_count}",
             f"--gcs-address={gcs_address}"
         ]
+
+        if redirect_logging:
+            # Avoid hanging due to fd inheritance.
+            stdout_file = subprocess.DEVNULL
+            stderr_file = subprocess.DEVNULL
+        else:
+            # If not redirecting logging to files, unset log filename.
+            # This will cause log records to go to stderr.
+            command.append("--logging-filename=")
+            # Use stderr log format with the component name as a message prefix.
+            logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
+                component=ray_constants.PROCESS_TYPE_DASHBOARD)
+            command.append(f"--logging-format={logging_format}")
+            # Inherit stdout/stderr streams.
+            stdout_file = None
+            stderr_file = None
         if redis_password is not None:
-            command += ["--redis-password", redis_password]
+            command.append(f"--redis-password={redis_password}")
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_DASHBOARD,
@@ -1353,30 +1378,34 @@ def start_dashboard(require_dashboard,
             # so we need to poll often.
             time.sleep(0.1)
         if dashboard_url is None:
-            dashboard_log = os.path.join(logdir, "dashboard.log")
             returncode_str = (f", return code {dashboard_returncode}"
                               if dashboard_returncode is not None else "")
-            # Read last n lines of dashboard log. The log file may be large.
-            n = 10
-            lines = []
-            try:
-                with open(dashboard_log, "rb") as f:
-                    with mmap.mmap(
-                            f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
-                        end = mm.size()
-                        for _ in range(n):
-                            sep = mm.rfind(b"\n", 0, end - 1)
-                            if sep == -1:
-                                break
-                            lines.append(mm[sep + 1:end].decode("utf-8"))
-                            end = sep
-                lines.append(f" The last {n} lines of {dashboard_log}:")
-            except Exception as e:
-                raise Exception(f"Failed to read dashbord log: {e}")
+            err_msg = "Failed to start the dashboard" + returncode_str
+            if logdir:
+                dashboard_log = os.path.join(logdir, "dashboard.log")
+                # Read last n lines of dashboard log. The log file may be large.
+                n = 10
+                lines = []
+                try:
+                    with open(dashboard_log, "rb") as f:
+                        with mmap.mmap(
+                                f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                            end = mm.size()
+                            for _ in range(n):
+                                sep = mm.rfind(b"\n", 0, end - 1)
+                                if sep == -1:
+                                    break
+                                lines.append(mm[sep + 1:end].decode("utf-8"))
+                                end = sep
+                    lines.append(f" The last {n} lines of {dashboard_log}:")
+                except Exception as e:
+                    raise Exception(err_msg +
+                                    f"\nFailed to read dashboard log: {e}")
 
-            last_log_str = "\n".join(reversed(lines[-n:]))
-            raise Exception("Failed to start the dashboard"
-                            f"{returncode_str}.{last_log_str}")
+                last_log_str = "\n" + "\n".join(reversed(lines[-n:]))
+                raise Exception(err_msg + last_log_str)
+            else:
+                raise Exception(err_msg)
 
         logger.info("View the Ray dashboard at %s%shttp://%s%s%s",
                     colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
@@ -1619,33 +1648,43 @@ def start_raylet(redis_address,
     if max_worker_port is None:
         max_worker_port = 0
 
-    if not ray._private.utils.check_dashboard_dependencies_installed():
-        # An empty agent command will cause the raylet not to start it.
-        agent_command = []
-    else:
-        agent_command = [
-            sys.executable,
-            "-u",
-            os.path.join(RAY_PATH, "dashboard", "agent.py"),
-            f"--node-ip-address={node_ip_address}",
-            f"--redis-address={redis_address}",
-            f"--metrics-export-port={metrics_export_port}",
-            f"--dashboard-agent-port={metrics_agent_port}",
-            f"--listen-port={dashboard_agent_listen_port}",
-            "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-            f"--object-store-name={plasma_store_name}",
-            f"--raylet-name={raylet_name}",
-            f"--temp-dir={temp_dir}",
-            f"--session-dir={session_dir}",
-            f"--runtime-env-dir={resource_dir}",
-            f"--log-dir={log_dir}",
-            f"--logging-rotate-bytes={max_bytes}",
-            f"--logging-rotate-backup-count={backup_count}",
-            f"--gcs-address={gcs_address}",
-        ]
+    agent_command = [
+        sys.executable,
+        "-u",
+        os.path.join(RAY_PATH, "dashboard", "agent.py"),
+        f"--node-ip-address={node_ip_address}",
+        f"--redis-address={redis_address}",
+        f"--metrics-export-port={metrics_export_port}",
+        f"--dashboard-agent-port={metrics_agent_port}",
+        f"--listen-port={dashboard_agent_listen_port}",
+        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--object-store-name={plasma_store_name}",
+        f"--raylet-name={raylet_name}",
+        f"--temp-dir={temp_dir}",
+        f"--session-dir={session_dir}",
+        f"--runtime-env-dir={resource_dir}",
+        f"--log-dir={log_dir}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}",
+        f"--gcs-address={gcs_address}",
+    ]
+    if stdout_file is None and stderr_file is None:
+        # If not redirecting logging to files, unset log filename.
+        # This will cause log records to go to stderr.
+        agent_command.append("--logging-filename=")
+        # Use stderr log format with the component name as a message prefix.
+        logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
+            component=ray_constants.PROCESS_TYPE_DASHBOARD_AGENT)
+        agent_command.append(f"--logging-format={logging_format}")
 
-        if redis_password is not None and len(redis_password) != 0:
-            agent_command.append("--redis-password={}".format(redis_password))
+    if redis_password is not None and len(redis_password) != 0:
+        agent_command.append("--redis-password={}".format(redis_password))
+
+    if not ray._private.utils.check_dashboard_dependencies_installed():
+        # If dependencies are not installed, it is the minimally packaged
+        # ray. We should restrict the features within dashboard agent
+        # that requires additional dependencies to be downloaded.
+        agent_command.append("--minimal")
 
     command = [
         RAYLET_EXECUTABLE,
@@ -2017,6 +2056,7 @@ def start_monitor(redis_address,
         ProcessInfo for the process that was started.
     """
     monitor_path = os.path.join(RAY_PATH, AUTOSCALER_PRIVATE_DIR, "monitor.py")
+
     command = [
         sys.executable,
         "-u",
@@ -2027,6 +2067,15 @@ def start_monitor(redis_address,
         f"--logging-rotate-backup-count={backup_count}",
         f"--gcs-address={gcs_address}",
     ]
+
+    if stdout_file is None and stderr_file is None:
+        # If not redirecting logging to files, unset log filename.
+        # This will cause log records to go to stderr.
+        command.append("--logging-filename=")
+        # Use stderr log format with the component name as a message prefix.
+        logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
+            component=ray_constants.PROCESS_TYPE_MONITOR)
+        command.append(f"--logging-format={logging_format}")
     if autoscaling_config:
         command.append("--autoscaling-config=" + str(autoscaling_config))
     if redis_password:

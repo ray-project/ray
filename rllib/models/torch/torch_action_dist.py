@@ -187,6 +187,7 @@ class TorchDiagGaussian(TorchDistributionWrapper):
                  action_space: Optional[gym.spaces.Space] = None):
         super().__init__(inputs, model)
         mean, log_std = torch.chunk(self.inputs, 2, dim=1)
+        self.log_std = log_std
         self.dist = torch.distributions.normal.Normal(mean, torch.exp(log_std))
         # Remember to squeeze action samples in case action space is Box(shape)
         self.zero_action_dim = action_space and action_space.shape == ()

@@ -13,12 +13,14 @@
 // limitations under the License.
 
 #include "ray/util/event.h"
+
 #include <boost/filesystem.hpp>
 #include <boost/range.hpp>
 #include <csignal>
 #include <fstream>
 #include <set>
 #include <thread>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/util/event_label.h"
@@ -161,10 +163,21 @@ std::string GenerateLogDir() {
   return log_dir;
 }
 
-TEST(EVENT_TEST, TEST_BASIC) {
-  TestEventReporter::event_list.clear();
-  EventManager::Instance().ClearReporters();
+class EventTest : public ::testing::Test {
+ public:
+  virtual void SetUp() { log_dir = GenerateLogDir(); }
 
+  virtual void TearDown() {
+    TestEventReporter::event_list.clear();
+    boost::filesystem::remove_all(log_dir.c_str());
+    EventManager::Instance().ClearReporters();
+    ray::RayEventContext::Instance().ResetEventContext();
+  }
+
+  std::string log_dir;
+};
+
+TEST_F(EventTest, TestBasic) {
   RAY_EVENT(WARNING, "label") << "test for empty reporters";
 
   // If there are no reporters, it would not Publish event
@@ -181,12 +194,16 @@ TEST(EVENT_TEST, TEST_BASIC) {
 
   RAY_EVENT(INFO, "label 1") << "send message 1";
 
+  RayEventContext::Instance().ResetEventContext();
+
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET,
       std::unordered_map<std::string, std::string>(
           {{"node_id", "node 2"}, {"job_id", "job 2"}}));
   RAY_EVENT(ERROR, "label 2") << "send message 2 "
                               << "send message again";
+
+  RayEventContext::Instance().ResetEventContext();
 
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_GCS);
@@ -208,10 +225,36 @@ TEST(EVENT_TEST, TEST_BASIC) {
   CheckEventDetail(result[3], "", "", "", "GCS", "FATAL", "", "");
 }
 
-TEST(EVENT_TEST, LOG_ONE_THREAD) {
-  std::string log_dir = GenerateLogDir();
+TEST_F(EventTest, TestUpdateCustomFields) {
+  EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
 
-  EventManager::Instance().ClearReporters();
+  RayEventContext::Instance().SetEventContext(
+      rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
+      std::unordered_map<std::string, std::string>(
+          {{"node_id", "node 1"}, {"job_id", "job 1"}}));
+
+  RAY_EVENT(INFO, "label 1") << "send message 1";
+
+  // Replace the value of existing key: "job_id"
+  // Insert new item of key: "task_id"
+  RayEventContext::Instance().UpdateCustomFields(
+      std::unordered_map<std::string, std::string>(
+          {{"node_id", "node 1"}, {"job_id", "job 2"}, {"task_id", "task 2"}}));
+  RAY_EVENT(ERROR, "label 2") << "send message 2 "
+                              << "send message again";
+
+  std::vector<rpc::Event> &result = TestEventReporter::event_list;
+
+  EXPECT_EQ(result.size(), 2);
+
+  CheckEventDetail(result[0], "job 1", "node 1", "", "CORE_WORKER", "INFO", "label 1",
+                   "send message 1");
+
+  CheckEventDetail(result[1], "job 2", "node 1", "task 2", "CORE_WORKER", "ERROR",
+                   "label 2", "send message 2 send message again");
+}
+
+TEST_F(EventTest, TestLogOneThread) {
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET,
       std::unordered_map<std::string, std::string>(
@@ -237,14 +280,10 @@ TEST(EVENT_TEST, LOG_ONE_THREAD) {
                      "label " + std::to_string(i + 1),
                      "send message " + std::to_string(i + 1));
   }
-
-  boost::filesystem::remove_all(log_dir.c_str());
 }
 
-TEST(EVENT_TEST, MULTI_THREAD_CONTEXT_COPY) {
+TEST_F(EventTest, TestMultiThreadContextCopy) {
   ray::RayEventContext::Instance().ResetEventContext();
-  TestEventReporter::event_list.clear();
-  ray::EventManager::Instance().ClearReporters();
   ray::EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
   RAY_EVENT(INFO, "label 0") << "send message 0";
 
@@ -276,7 +315,7 @@ TEST(EVENT_TEST, MULTI_THREAD_CONTEXT_COPY) {
   std::thread private_thread_2 = std::thread(std::bind([&]() {
     ray::RayEventContext::Instance().SetSourceType(
         rpc::Event_SourceType::Event_SourceType_RAYLET);
-    ray::RayEventContext::Instance().SetCustomField("job_id", "job 1");
+    ray::RayEventContext::Instance().UpdateCustomField("job_id", "job 1");
     RAY_EVENT(INFO, "label 2") << "send message 2";
   }));
 
@@ -290,11 +329,7 @@ TEST(EVENT_TEST, MULTI_THREAD_CONTEXT_COPY) {
   CheckEventDetail(result[1], "", "", "", "COMMON", "INFO", "label 3", "send message 3");
 }
 
-TEST(EVENT_TEST, LOG_MULTI_THREAD) {
-  std::string log_dir = GenerateLogDir();
-
-  EventManager::Instance().ClearReporters();
-
+TEST_F(EventTest, TestLogMultiThread) {
   EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
       rpc::Event_SourceType::Event_SourceType_GCS, log_dir));
   int nthreads = 80;
@@ -333,14 +368,9 @@ TEST(EVENT_TEST, LOG_MULTI_THREAD) {
   EXPECT_EQ(label_set.size(), print_times);
   EXPECT_EQ(*(label_set.begin()), "label 0");
   EXPECT_EQ(*(--label_set.end()), "label " + std::to_string(print_times - 1));
-
-  boost::filesystem::remove_all(log_dir.c_str());
 }
 
-TEST(EVENT_TEST, LOG_ROTATE) {
-  std::string log_dir = GenerateLogDir();
-
-  EventManager::Instance().ClearReporters();
+TEST_F(EventTest, TestLogRotate) {
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET,
       std::unordered_map<std::string, std::string>(
@@ -365,10 +395,7 @@ TEST(EVENT_TEST, LOG_ROTATE) {
   EXPECT_EQ(cnt, 21);
 }
 
-TEST(EVENT_TEST, WITH_FIELD) {
-  std::string log_dir = GenerateLogDir();
-
-  EventManager::Instance().ClearReporters();
+TEST_F(EventTest, TestWithField) {
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET,
       std::unordered_map<std::string, std::string>(
@@ -401,13 +428,9 @@ TEST(EVENT_TEST, WITH_FIELD) {
   EXPECT_EQ(double_value, 0.123);
   auto bool_value = custom_fields["bool"].get<bool>();
   EXPECT_EQ(bool_value, true);
-  boost::filesystem::remove_all(log_dir.c_str());
 }
 
-TEST(EVENT_TEST, TEST_RAY_CHECK_ABORT) {
-  std::string log_dir = GenerateLogDir();
-
-  ray::EventManager::Instance().ClearReporters();
+TEST_F(EventTest, TestRayCheckAbort) {
   auto custom_fields = std::unordered_map<std::string, std::string>();
   custom_fields.emplace("node_id", "node 1");
   custom_fields.emplace("job_id", "job 1");
@@ -432,14 +455,9 @@ TEST(EVENT_TEST, TEST_RAY_CHECK_ABORT) {
               testing::HasSubstr("Check failed: 1 < 0 incorrect test case"));
   EXPECT_THAT(ele_1.message(), testing::HasSubstr("*** StackTrace Information ***"));
   EXPECT_THAT(ele_1.message(), testing::HasSubstr("ray::RayLog::~RayLog()"));
-
-  boost::filesystem::remove_all(log_dir.c_str());
 }
 
-TEST(EVENT_TEST, TEST_RAY_EVENT_INIT) {
-  std::string log_dir = GenerateLogDir();
-
-  ray::EventManager::Instance().ClearReporters();
+TEST_F(EventTest, TestRayEventInit) {
   auto custom_fields = std::unordered_map<std::string, std::string>();
   custom_fields.emplace("node_id", "node 1");
   custom_fields.emplace("job_id", "job 1");
@@ -456,13 +474,9 @@ TEST(EVENT_TEST, TEST_RAY_EVENT_INIT) {
 
   CheckEventDetail(ele_1, "job 1", "node 1", "task 1", "RAYLET", "FATAL", "label",
                    "NULL");
-
-  boost::filesystem::remove_all(log_dir.c_str());
 }
 
-TEST(EVENT_TEST, TEST_LOG_LEVEL) {
-  TestEventReporter::event_list.clear();
-  EventManager::Instance().ClearReporters();
+TEST_F(EventTest, TestLogLevel) {
   EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_CORE_WORKER, {});
@@ -522,13 +536,9 @@ TEST(EVENT_TEST, TEST_LOG_LEVEL) {
   result.clear();
 }
 
-TEST(EVENT_TEST, TEST_LOG_EVENT) {
-  std::string log_dir = GenerateLogDir();
+TEST_F(EventTest, TestLogEvent) {
   // Initialize log level to error
   ray::RayLog::StartRayLog("event_test", ray::RayLogLevel::ERROR, log_dir);
-
-  TestEventReporter::event_list.clear();
-  EventManager::Instance().ClearReporters();
   EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_CORE_WORKER, {});
@@ -585,8 +595,6 @@ TEST(EVENT_TEST, TEST_LOG_EVENT) {
   EXPECT_THAT(vc[3], testing::HasSubstr(" E "));
   EXPECT_THAT(vc[3], testing::HasSubstr("Event"));
   EXPECT_THAT(vc[3], testing::HasSubstr("test fatal 2"));
-
-  boost::filesystem::remove_all(log_dir.c_str());
 }
 
 }  // namespace ray

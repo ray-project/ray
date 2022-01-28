@@ -110,10 +110,9 @@ def check_call_module(main, argv, capture_stdout=False, capture_stderr=False):
     return stream.buffer.getvalue()
 
 
-def check_call_ray(args, capture_stdout=False, capture_stderr=False):
+def check_call_subprocess(argv, capture_stdout=False, capture_stderr=False):
     # We use this function instead of calling the "ray" command to work around
     # some deadlocks that occur when piping ray's output on Windows
-    argv = ["ray"] + args
     if sys.platform == "win32":
         result = check_call_module(
             ray_main,
@@ -136,6 +135,10 @@ def check_call_ray(args, capture_stdout=False, capture_stderr=False):
                                                 stderr)
         result = b"".join([s for s in [stdout, stderr] if s is not None])
     return result
+
+
+def check_call_ray(args, capture_stdout=False, capture_stderr=False):
+    check_call_subprocess(["ray"] + args, capture_stdout, capture_stderr)
 
 
 def wait_for_pid_to_exit(pid, timeout=20):

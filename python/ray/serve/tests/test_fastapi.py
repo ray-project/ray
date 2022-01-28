@@ -172,7 +172,7 @@ def test_fastapi_features(serve_instance):
             })
 
     def run_background(background_tasks: BackgroundTasks):
-        path = tempfile.mktemp()
+        _, path = tempfile.mkstemp()
 
         def write_to_file(p):
             with open(p, "w") as f:
