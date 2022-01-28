@@ -210,6 +210,7 @@ class JobSupervisor:
             # job submission. In case of local development, prevent user from
             # re-using http://{address}:{dashboard_port} to interact with
             # jobs SDK.
+            # TODO:(mwtian) Check why "auto" does not work in entrypoint script
             os.environ[
                 ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE] = \
                 ray._private.services.find_bootstrap_address().pop()
