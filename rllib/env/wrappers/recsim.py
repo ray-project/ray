@@ -175,7 +175,7 @@ def make_recsim_env(
     """
 
     class _RecSimEnv(gym.Env):
-        def __init__(self, env_ctx: Optional[EnvContext] = None):
+        def __init__(self, config: Optional[EnvContext] = None):
             # Override with default values, in case they are not set by the user.
             default_config = {
                 "num_candidates": 10,
@@ -184,22 +184,22 @@ def make_recsim_env(
                 "seed": 0,
                 "convert_to_discrete_action_space": False,
             }
-            if env_ctx is None or isinstance(env_ctx, dict):
-                env_ctx = EnvContext(env_ctx or default_config, worker_index=0)
-            env_ctx.set_defaults(default_config)
+            if config is None or isinstance(config, dict):
+                config = EnvContext(config or default_config, worker_index=0)
+            config.set_defaults(default_config)
 
             # Create the RecSim user model instance.
-            recsim_user_model = recsim_user_model_creator(env_ctx)
+            recsim_user_model = recsim_user_model_creator(config)
             # Create the RecSim document sampler instance.
-            recsim_document_sampler = recsim_document_sampler_creator(env_ctx)
+            recsim_document_sampler = recsim_document_sampler_creator(config)
 
             # Create a raw RecSim environment (not yet a gym.Env!).
             raw_recsim_env = environment.SingleUserEnvironment(
                 recsim_user_model,
                 recsim_document_sampler,
-                env_ctx["num_candidates"],
-                env_ctx["slate_size"],
-                resample_documents=env_ctx["resample_documents"],
+                config["num_candidates"],
+                config["slate_size"],
+                resample_documents=config["resample_documents"],
             )
             # Convert raw RecSim env to a gym.Env.
             gym_env = recsim_gym.RecSimGymEnv(raw_recsim_env,
@@ -208,7 +208,7 @@ def make_recsim_env(
             # Fix observation space and - if necessary - convert to discrete
             # action space (from multi-discrete).
             self.env = recsim_gym_wrapper(
-                gym_env, env_ctx["convert_to_discrete_action_space"])
+                gym_env, config["convert_to_discrete_action_space"])
             self.observation_space = self.env.observation_space
             self.action_space = self.env.action_space
 

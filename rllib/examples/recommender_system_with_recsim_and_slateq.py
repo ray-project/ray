@@ -107,6 +107,7 @@ def main():
                 else InterestExplorationRecSimEnv
                 if args.env == "interest-exploration" else
                 LongTermSatisfactionRecSimEnv),
+        "hiddens": [256, 256],#TEST
         "num_gpus": args.num_gpus,
         "num_workers": args.num_workers,
         "env_config": env_config,
@@ -114,9 +115,9 @@ def main():
         "lr_q_model": 0.003,
         "rollout_fragment_length": 4,
         "exploration_config": {
-            "epsilon_timesteps": 500000,
+            "epsilon_timesteps": 10000,#500000,#TODO
         },
-        "target_network_update_freq": 5000,
+        "target_network_update_freq": 800,#5000,TODO
     }
 
     if args.use_tune:

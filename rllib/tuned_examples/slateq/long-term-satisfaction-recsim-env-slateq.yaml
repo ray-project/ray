@@ -1,9 +1,9 @@
-interest-evolution-recsim-env-slateq:
-    env: ray.rllib.examples.env.recsim_recommender_system_envs.InterestEvolutionRecSimEnv
+long-term-satisfaction-recsim-env-slateq:
+    env: ray.rllib.examples.env.recsim_recommender_system_envs.LongTermSatisfactionRecSimEnv
     run: SlateQ
     stop:
-        episode_reward_mean: 200.0
-        timesteps_total: 60000
+        episode_reward_mean: 2000.0
+        timesteps_total: 100000
     config:
         # SlateQ only supported for torch so far.
         framework: torch
@@ -15,10 +15,10 @@ interest-evolution-recsim-env-slateq:
                 # document sampler model (a logic that creates n documents to select
                 # the slate from).
                 resample_documents: false
-                num_candidates: 10
+                num_candidates: 100
                 # How many documents to recommend (out of `num_candidates`) each
                 # timestep?
-                slate_size: 2
+                slate_size: 4
                 # Should the action space be purely Discrete? Useful for algos that
                 # don't support MultiDiscrete (e.g. DQN).
                 # SlateQ handles MultiDiscrete action spaces.
@@ -33,6 +33,7 @@ interest-evolution-recsim-env-slateq:
         lr_choice_model: 0.003
         lr_q_model: 0.003
         rollout_fragment_length: 4
+        #batch_mode: complete_episodes
         exploration_config:
             epsilon_timesteps: 50000
 
