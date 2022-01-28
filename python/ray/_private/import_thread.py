@@ -142,7 +142,7 @@ class ImportThread:
                         "more discussion.", import_type, name,
                         ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD)
 
-        if key.startswith(b"RemoteFunction"):
+        if key.startswith(b"RemoteFunction:"):
             # TODO (Alex): There's a race condition here if the worker is
             # shutdown before the function finished registering (because core
             # worker's global worker is unset before shutdown and is needed
@@ -150,10 +150,10 @@ class ImportThread:
             # with profiling.profile("register_remote_function"):
             (self.worker.function_actor_manager.
              fetch_and_register_remote_function(key))
-        elif key.startswith(b"FunctionsToRun"):
+        elif key.startswith(b"FunctionsToRun:"):
             with profiling.profile("fetch_and_run_function"):
                 self.fetch_and_execute_function_to_run(key)
-        elif key.startswith(b"ActorClass"):
+        elif key.startswith(b"ActorClass:"):
             # Keep track of the fact that this actor class has been
             # exported so that we know it is safe to turn this worker
             # into an actor of that class.
@@ -172,7 +172,6 @@ class ImportThread:
         """Run on arbitrary function on the worker."""
         (job_id, serialized_function) = self._internal_kv_multiget(
             key, ["job_id", "function"])
-
         if self.worker.mode == ray.SCRIPT_MODE:
             return
 

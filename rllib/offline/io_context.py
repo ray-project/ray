@@ -55,3 +55,8 @@ class IOContext:
     @property
     def input_config(self):
         return self.config.get("input_config", {})
+
+    @PublicAPI
+    @property
+    def output_config(self):
+        return self.config.get("output_config", {})

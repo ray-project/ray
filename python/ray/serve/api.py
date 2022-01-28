@@ -432,6 +432,9 @@ def start(
               "127.0.0.1". To expose Serve publicly, you probably want to set
               this to "0.0.0.0".
             - port(int): Port for HTTP server. Defaults to 8000.
+            - root_path(str): Root path to mount the serve application
+              (for example, "/serve"). All deployment routes will be prefixed
+              with this path. Defaults to "".
             - middlewares(list): A list of Starlette middlewares that will be
               applied to the HTTP servers in the cluster. Defaults to [].
             - location(str, serve.config.DeploymentMode): The deployment
@@ -657,7 +660,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
                     request._receive,
                     sender,
                 )
-                return sender.build_starlette_response()
+                return sender.build_asgi_response()
 
             # NOTE: __del__ must be async so that we can run asgi shutdown
             # in the same event loop.
