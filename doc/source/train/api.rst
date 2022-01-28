@@ -174,3 +174,8 @@ train.torch.get_device
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.get_device
+
+TensorFlow Training Function Utilities
+-----------------------------------
+
+.. autofunction:: ray.train.tensorflow.prepare_dataset_shard

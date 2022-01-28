@@ -951,7 +951,7 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
 
         def train_func():
             ...
-            tf_dataset = ray.train.get_dataset_shard().to_tf("your dataset config")
+            tf_dataset = ray.train.get_dataset_shard().to_tf(...)
             tf_dataset = prepare_dataset_shard(tf_dataset)
 
 
