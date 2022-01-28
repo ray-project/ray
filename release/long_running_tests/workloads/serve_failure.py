@@ -24,7 +24,7 @@ NUM_NODES = 4
 # RandomTest setup constants
 CPUS_PER_NODE = 10
 
-IS_SMOKE_TEST = "IS_SMOKE_TEST" in os.environ
+RAY_UNIT_TEST = "RAY_UNIT_TEST" in os.environ
 
 
 def update_progress(result):
@@ -149,7 +149,7 @@ class RandomTest:
             previous_time = new_time
             iteration += 1
 
-            if IS_SMOKE_TEST:
+            if RAY_UNIT_TEST:
                 break
 
 
