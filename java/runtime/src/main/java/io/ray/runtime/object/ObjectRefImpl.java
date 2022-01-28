@@ -35,7 +35,11 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   public ObjectRefImpl(ObjectId id, Class<T> type, boolean skipAddingLocalRef) {
     this.id = id;
     this.type = type;
-    if (!skipAddingLocalRef) {
+    if (skipAddingLocalRef) {
+      // We still add the reference so that the local ref count will be
+      // properly decremented once this object is GCed.
+      new ObjectRefImplReference(this);
+    } else {
       addLocalReference();
     }
   }
