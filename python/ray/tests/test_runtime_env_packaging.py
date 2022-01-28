@@ -13,8 +13,8 @@ from ray.ray_constants import KV_NAMESPACE_PACKAGE
 from ray.experimental.internal_kv import (_internal_kv_del,
                                           _internal_kv_exists)
 from ray._private.runtime_env.packaging import (
-    _dir_travel, get_destination_dir_from_uri, get_uri_for_directory,
-    _get_excludes, upload_package_if_needed, parse_uri, Protocol,
+    _dir_travel, get_local_dir_from_uri, get_uri_for_directory, _get_excludes,
+    upload_package_if_needed, parse_uri, Protocol,
     get_top_level_dir_from_compressed_package, remove_dir_from_filepaths,
     unzip_package)
 
@@ -335,9 +335,9 @@ def test_parsing(parsing_tuple):
     assert package_name == parsed_package_name
 
 
-def test_get_destination_dir_from_uri():
+def test_get_local_dir_from_uri():
     uri = "gcs://<working_dir_content_hash>.zip"
-    assert get_destination_dir_from_uri(
+    assert get_local_dir_from_uri(
         uri, "base_dir") == Path("base_dir/<working_dir_content_hash>")
 
 

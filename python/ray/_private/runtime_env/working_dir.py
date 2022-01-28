@@ -7,7 +7,7 @@ from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
-    download_and_unpack_package, delete_package, get_destination_dir_from_uri,
+    download_and_unpack_package, delete_package, get_local_dir_from_uri,
     get_uri_for_directory, get_uri_for_package, upload_package_to_gcs,
     parse_uri, Protocol, upload_package_if_needed)
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
@@ -80,12 +80,16 @@ class WorkingDirManager:
 
     def delete_uri(self,
                    uri: str,
-                   logger: Optional[logging.Logger] = default_logger) -> bool:
+                   logger: Optional[logging.Logger] = default_logger) -> int:
+        local_dir = get_local_dir_from_uri(uri, self._resources_dir)
+        local_dir_size = get_directory_size_bytes(local_dir)
+
         deleted = delete_package(uri, self._resources_dir)
         if not deleted:
             logger.warning(f"Tried to delete nonexistent URI: {uri}.")
+            return 0
 
-        return deleted
+        return local_dir_size
 
     def get_uri(self, runtime_env: RuntimeEnv) -> Optional[str]:
         working_dir_uri = runtime_env.working_dir()
@@ -107,7 +111,7 @@ class WorkingDirManager:
         if uri is None:
             return
 
-        local_dir = get_destination_dir_from_uri(uri, self._resources_dir)
+        local_dir = get_local_dir_from_uri(uri, self._resources_dir)
         if not local_dir.exists():
             raise ValueError(f"Local directory {local_dir} for URI {uri} does "
                              "not exist. Something may have gone wrong while "
