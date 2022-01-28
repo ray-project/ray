@@ -11,7 +11,7 @@ parser.add_argument(
     help="Total number of tasks sending logs",
     required=True)
 parser.add_argument(
-    "--total-logs-lines",
+    "--log-lines-per-task",
     type=int,
     help="Total lines of logs to be sent",
     required=True)
@@ -36,4 +36,4 @@ def gen_logs(log_size, log_num):
         log_line = ''.join(random.choice(letters) for _ in range(log_size))
         logger.error(log_line)
 
-ray.get([gen_logs.remote(args.log_line_size, args.total_logs_lines) for _ in range(args.total_num_tasks)])
+ray.get([gen_logs.remote(args.log_line_size, args.log_lines_per_task) for _ in range(args.total_num_tasks)])

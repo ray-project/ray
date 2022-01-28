@@ -242,6 +242,16 @@
       timeout: 3600
       script: python stress_tests/test_many_tasks.py --num-nodes=4 --smoke-test
 
+- name: stress_test_many_logs
+  team: core
+  cluster:
+    app_config: stress_tests/stress_tests_app_config.yaml
+    compute_template: stress_tests/stress_tests_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python stress_tests/test_logging.py --total-num-tasks=4 --log-lines-per-task=134217728 --log-line-size=512
+
 # Stress tests with dead actors
 - name: stress_test_dead_actors
   team: core
