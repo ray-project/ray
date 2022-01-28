@@ -22,8 +22,17 @@ class DistributeResources:
     Args:
         add_bundles (bool): If True, create new bundles from free resources.
             Otherwise, spread them among base_trial_resource bundles.
-        increase_by (Optional[Dict[str, float]]): A dictionary of resource-value
-            pairs
+        increase_by (Optional[Dict[str, float]]): A dict with key-value
+            pairs representing an atomic unit of resources (name-amount)
+            the trial will be increased by. If not set, the trial will
+            increase by 1 CPU/GPU.
+        increase_by_times (int): If set to >=1 and ``increase_by`` is set,
+            the trial will increase by maximum of
+            ``increase_by_times * increase_by`` resources. If set to <1,
+            no upper limit is set. Ignored if ``increase_by`` is not set.
+        reserve_resources (Optional[Dict[str, float]]): A dict of
+            resource_name-amount pairs representing the resources
+            that will not be allocated to resized trials.
     """
 
     def __init__(
@@ -139,8 +148,6 @@ class DistributeResources:
         free_cpus = total_available_cpus - used_cpus
         free_gpus = total_available_gpus - used_gpus
 
-        print(f"{trial.trial_id} free_cpus {free_cpus}")
-
         if self.increase_by:
             required_cpus = self.increase_by.get("CPU", 0)
             required_gpus = self.increase_by.get("GPU", 0)
@@ -157,11 +164,6 @@ class DistributeResources:
             free_cpus = multiplier * required_cpus
             free_gpus = multiplier * required_gpus
 
-            print(
-                f"{trial.trial_id} after increase by free_cpus {free_cpus} multiplier {multiplier} required_cpus {required_cpus} required_gpus {required_gpus}"
-            )
-
-        print(f"upper_cpu_limit {upper_cpu_limit}")
         # Add free CPUs and GPUs enforcing upper and lower limits
         new_cpu = min(upper_cpu_limit, max(trial_used_cpus + free_cpus,
                                            min_cpu))
