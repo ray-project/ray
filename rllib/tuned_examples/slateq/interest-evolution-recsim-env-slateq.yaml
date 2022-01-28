@@ -25,7 +25,7 @@ interest-evolution-recsim-env-slateq:
                 convert_to_discrete_action_space: false
                 seed: 42
 
-        hiddens: [256, 256, 256]
+        hiddens: [256, 256]
 
         num_workers: 0
         num_gpus: 0

@@ -1,9 +1,9 @@
 """PyTorch policy class used for SlateQ."""
 
-from typing import Dict, List, Tuple, Type
-
 import gym
 import numpy as np
+import time
+from typing import Dict, List, Tuple, Type
 
 import ray
 from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
@@ -73,6 +73,7 @@ def build_slateq_losses(policy: Policy, model: ModelV2,
     Returns:
         TensorType: A single loss tensor.
     """
+    start = time.time()
     obs = restore_original_dimensions(
         train_batch[SampleBatch.OBS],
         policy.observation_space,
@@ -186,6 +187,7 @@ def build_slateq_losses(policy: Policy, model: ModelV2,
     model.tower_stats["target_q_values"] = target_q_values
     model.tower_stats["raw_scores"] = raw_scores
 
+    print(f"loss calculation took {time.time()-start}s")
     return [choice_loss, q_value_loss]
 
 
@@ -228,6 +230,7 @@ def action_sampler_fn(policy: Policy, model: SlateQModel, input_dict, state,
                       explore, timestep):
     """Determine which action to take"""
     # First, we transform the observation into its unflattened form.
+    start = time.time()
     obs = restore_original_dimensions(
         input_dict[SampleBatch.CUR_OBS],
         policy.observation_space,
@@ -243,6 +246,9 @@ def action_sampler_fn(policy: Policy, model: SlateQModel, input_dict, state,
     action = selected_slates
     logp = None
     state_out = []
+
+    print(f"action calculation took {time.time()-start}s")
+
     return action, logp, state_out
 
 
