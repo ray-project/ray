@@ -82,6 +82,7 @@ class DistributeResources:
                 upper_gpu_limit = math.ceil(
                     upper_gpu_limit / min_gpu_bundle) * min_gpu_bundle
             upper_gpu_limit = max(min_gpu, upper_gpu_limit)
+
         return upper_cpu_limit, upper_gpu_limit
 
     def _get_used_cpus_and_gpus(self, t: Trial):
@@ -132,6 +133,16 @@ class DistributeResources:
             min_cpu, min_gpu, total_available_cpus, total_available_gpus,
             min_cpu_bundle, min_gpu_bundle, trial, trial_runner)
 
+        if self.increase_by and self.increase_by_times > 0:
+            required_cpus = self.increase_by.get("CPU", 0)
+            required_gpus = self.increase_by.get("GPU", 0)
+            upper_cpu_limit = min(
+                upper_cpu_limit,
+                min_cpu + required_cpus * self.increase_by_times)
+            upper_gpu_limit = min(
+                upper_gpu_limit,
+                min_gpu + required_gpus * self.increase_by_times)
+
         # Check how many CPUs and GPUs are currently being used by this trial
         trial_used_cpus, trial_used_gpus = self._get_used_cpus_and_gpus(trial)
 
@@ -158,8 +169,6 @@ class DistributeResources:
                 multiplier = free_gpus // required_gpus
             else:
                 multiplier = free_cpus // required_cpus
-            if self.increase_by_times > 0:
-                multiplier = min(multiplier, self.increase_by_times)
             multiplier = max(multiplier, 0)
             free_cpus = multiplier * required_cpus
             free_gpus = multiplier * required_gpus
