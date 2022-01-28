@@ -251,6 +251,7 @@
   run:
     timeout: 3600
     script: python stress_tests/test_logging.py --total-num-tasks=4 --log-lines-per-task=134217728 --log-line-size=512
+  stable: false
 
 # Stress tests with dead actors
 - name: stress_test_dead_actors
