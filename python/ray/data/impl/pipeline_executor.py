@@ -24,7 +24,7 @@ def pipeline_stage(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
 class PipelineExecutor:
     def __init__(self, pipeline: "DatasetPipeline[T]"):
         self._pipeline: "DatasetPipeline[T]" = pipeline
-        self._stages: List[concurrent.futures.Futre[Dataset[
+        self._stages: List[concurrent.futures.Future[Dataset[
             Any]]] = [None] * (len(self._pipeline._stages) + 1)
         self._iter = iter(self._pipeline._base_iterable)
         self._pool = concurrent.futures.ThreadPoolExecutor(
