@@ -125,7 +125,7 @@ def main():
             "epsilon_timesteps": 500000,#TODO
         },
         "target_network_update_freq": 5000,#TODO
-        "evaluation_iteration": 1,
+        "evaluation_interval": 1,
         "evaluation_num_workers": 2,
         "evaluation_num_episodes": 10,
         "evaluation_parallel_to_training": True,
