@@ -41,13 +41,13 @@ if __name__ == "__main__":
 
     # Create a ray actor that will serve as a central parameter server
     # (for the CartPole mass) for the different vectorized env clones.
-    param_storage = ParameterStorage.options(name="param-server").remote()
+    #param_storage = ParameterStorage.options(name="param-server").remote()
 
     config = {
-        "env": CartPoleWithRemoteParamServer,
-        "env_config": {
-            "param_server": "param-server",
-        },
+        "env": "CartPole-v1",#CartPoleWithRemoteParamServer,
+        #"env_config": {
+        #    "param_server": "param-server",
+        #},
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": args.num_gpus_trainer,
         "num_workers": args.num_workers,
