@@ -982,6 +982,55 @@ def test_get_concurrent_resource_demand_to_launch():
     assert updated_to_launch == {"m4.large": 13}
 
 
+def test_get_concurrent_resource_demand_to_launch_with_upscaling_speed():
+    node_types = copy.deepcopy(TYPES_A)
+    node_types["p2.8xlarge"]["min_workers"] = 1
+    node_types["p2.8xlarge"]["max_workers"] = 10
+    node_types["m4.large"]["min_workers"] = 2
+    node_types["m4.large"]["max_workers"] = 100
+
+    def create_provider():
+        provider = MockProvider()
+        provider.create_node({}, {
+            TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+        }, 0)
+        provider.create_node({}, {
+            TAG_RAY_USER_NODE_TYPE: "m4.large",
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+        }, 0)
+        return provider
+
+    # Test default behaviour limits to 5 inital nodes
+    slow_scheduler = ResourceDemandScheduler(
+        create_provider(), node_types, 200, head_node_type="empty_node")
+
+    to_launch = slow_scheduler._get_concurrent_resource_demand_to_launch(
+        {"m4.large": 50}, [], slow_scheduler.provider.non_terminated_nodes({}),
+        {}, {}, {})
+    assert to_launch == {"m4.large": 5}
+
+    # Test upscaling_speed is respected
+    mid_scheduler = ResourceDemandScheduler(
+        create_provider(), node_types, 200, head_node_type="empty_node",
+        upscaling_speed=25)
+
+    to_launch = mid_scheduler._get_concurrent_resource_demand_to_launch(
+        {"m4.large": 50}, [], mid_scheduler.provider.non_terminated_nodes({}),
+        {}, {}, {})
+    assert to_launch == {"m4.large": 25}
+
+    # Test high upscaling_speed
+    fast_scheduler = ResourceDemandScheduler(
+        create_provider(), node_types, 200, head_node_type="empty_node",
+        upscaling_speed=9999)
+
+    to_launch = fast_scheduler._get_concurrent_resource_demand_to_launch(
+        {"m4.large": 50}, [], fast_scheduler.provider.non_terminated_nodes({}),
+        {}, {}, {})
+    assert to_launch == {"m4.large": 50}
+
+
 def test_get_nodes_to_launch_max_launch_concurrency_placement_groups():
     provider = MockProvider()
     new_types = copy.deepcopy(TYPES_A)
