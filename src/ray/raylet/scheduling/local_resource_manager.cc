@@ -358,8 +358,6 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
       return false;
     }
   }
-
-  OnResourceChanged();
   return true;
 }
 
@@ -378,7 +376,6 @@ void LocalResourceManager::FreeTaskResourceInstances(
       AddAvailableResourceInstances(task_allocation_custom_resource.second, &it->second);
     }
   }
-  OnResourceChanged();
 }
 
 std::vector<double> LocalResourceManager::AddCPUResourceInstances(
@@ -656,11 +653,12 @@ std::string LocalResourceManager::SerializedTaskResourceInstances(
   return buffer.str();
 }
 
-void LocalResourceManager::UpdateLastResourceUsage(
-    std::shared_ptr<SchedulingResources> gcs_resources) {
+void LocalResourceManager::ResetLastReportResourceUsage(
+    std::shared_ptr<SchedulingResources> replacement) {
   last_report_resources_ = std::make_unique<NodeResources>(ResourceMapToNodeResources(
-      resource_name_to_id_, gcs_resources->GetTotalResources().GetResourceMap(),
-      gcs_resources->GetAvailableResources().GetResourceMap()));
+      resource_name_to_id_, replacement->GetTotalResources().GetResourceMap(),
+      replacement->GetAvailableResources().GetResourceMap()));
+  OnResourceChanged();
 }
 
 bool LocalResourceManager::ResourcesExist(const std::string &resource_name) {

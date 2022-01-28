@@ -1442,7 +1442,8 @@ TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) 
   // Check failed as the worker has no allocated resource instances.
   ASSERT_FALSE(task_manager_.ReleaseCpuResourcesFromUnblockedWorker(worker));
 
-  auto node_resource_instances = scheduler_->GetLocalResources();
+  auto node_resource_instances =
+      scheduler_->GetLocalResourceManager().GetLocalResources();
   auto available_resource_instances =
       node_resource_instances.GetAvailableResourceInstances();
 

@@ -286,7 +286,7 @@ if __name__ == "__main__":
 
     if args.debug:
         tasks = [
-            consume.options(num_gpus=1).remote(
+            consume.options(num_gpus=1, num_cpus=0).remote(
                 split, rank=idx, batch_size=args.batch_size)
             for idx, split in enumerate(splits)
         ]
