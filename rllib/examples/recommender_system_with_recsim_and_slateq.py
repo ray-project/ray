@@ -114,12 +114,12 @@ def main():
                 else InterestExplorationRecSimEnv
                 if args.env == "interest-exploration" else
                 LongTermSatisfactionRecSimEnv),
-        "hiddens": [256, 256, 256],#TEST
+        "hiddens": tune.grid_search([[256, 256, 256], [256, 256]]),#TEST
         "num_gpus": args.num_gpus,
         "num_workers": args.num_workers,
         "env_config": env_config,
         "lr_choice_model": 0.003,
-        "lr_q_model": 0.003,
+        "lr_q_model": tune.grid_search([0.003, 0.01]),
         "rollout_fragment_length": 4,
         "exploration_config": {
             "epsilon_timesteps": 500000,#TODO
