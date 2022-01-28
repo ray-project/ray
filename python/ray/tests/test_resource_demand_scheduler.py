@@ -1005,29 +1005,35 @@ def test_get_concurrent_resource_demand_to_launch_with_upscaling_speed():
     slow_scheduler = ResourceDemandScheduler(
         create_provider(), node_types, 200, head_node_type="empty_node")
 
-    to_launch = slow_scheduler._get_concurrent_resource_demand_to_launch(
-        {"m4.large": 50}, [], slow_scheduler.provider.non_terminated_nodes({}),
-        {}, {}, {})
+    to_launch = slow_scheduler._get_concurrent_resource_demand_to_launch({
+        "m4.large": 50
+    }, [], slow_scheduler.provider.non_terminated_nodes({}), {}, {}, {})
     assert to_launch == {"m4.large": 5}
 
     # Test upscaling_speed is respected
     mid_scheduler = ResourceDemandScheduler(
-        create_provider(), node_types, 200, head_node_type="empty_node",
+        create_provider(),
+        node_types,
+        200,
+        head_node_type="empty_node",
         upscaling_speed=25)
 
-    to_launch = mid_scheduler._get_concurrent_resource_demand_to_launch(
-        {"m4.large": 50}, [], mid_scheduler.provider.non_terminated_nodes({}),
-        {}, {}, {})
+    to_launch = mid_scheduler._get_concurrent_resource_demand_to_launch({
+        "m4.large": 50
+    }, [], mid_scheduler.provider.non_terminated_nodes({}), {}, {}, {})
     assert to_launch == {"m4.large": 25}
 
     # Test high upscaling_speed
     fast_scheduler = ResourceDemandScheduler(
-        create_provider(), node_types, 200, head_node_type="empty_node",
+        create_provider(),
+        node_types,
+        200,
+        head_node_type="empty_node",
         upscaling_speed=9999)
 
-    to_launch = fast_scheduler._get_concurrent_resource_demand_to_launch(
-        {"m4.large": 50}, [], fast_scheduler.provider.non_terminated_nodes({}),
-        {}, {}, {})
+    to_launch = fast_scheduler._get_concurrent_resource_demand_to_launch({
+        "m4.large": 50
+    }, [], fast_scheduler.provider.non_terminated_nodes({}), {}, {}, {})
     assert to_launch == {"m4.large": 50}
 
 
