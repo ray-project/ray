@@ -192,7 +192,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
                 break
             else:
                 logger.info(
-                    "Waiting for reconciler, number of replicas is {}, expected {}.".format(
+                    "Waiting for reconciler, number of replicas is {}, expected {}.".format(  # noqa: E501
                         len(pods["items"]), replicas
                     )
                 )

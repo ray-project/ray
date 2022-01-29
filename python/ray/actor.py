@@ -1219,7 +1219,7 @@ class ActorHandle:
                     "method_signatures": self._ray_method_signatures,
                     "method_num_returns": self._ray_method_num_returns,
                     "actor_method_cpus": self._ray_actor_method_cpus,
-                    "actor_creation_function_descriptor": self._ray_actor_creation_function_descriptor,
+                    "actor_creation_function_descriptor": self._ray_actor_creation_function_descriptor,  # noqa: E501
                 },
                 None,
             )

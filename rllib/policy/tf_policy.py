@@ -561,7 +561,7 @@ class TFPolicy(Policy):
                 signature_def_map = self._build_signature_def()
 
                 sd = signature_def_map[
-                    tf1.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+                    tf1.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY  # noqa: E501
                 ]
                 inputs = [v.name for k, v in sd.inputs.items()]
                 outputs = [v.name for k, v in sd.outputs.items()]

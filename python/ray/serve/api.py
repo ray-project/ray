@@ -257,7 +257,7 @@ class Client:
         if (
             deployment_config.autoscaling_config is not None
             and deployment_config.max_concurrent_queries
-            < deployment_config.autoscaling_config.target_num_ongoing_requests_per_replica
+            < deployment_config.autoscaling_config.target_num_ongoing_requests_per_replica  # noqa: E501
         ):
             logger.warning(
                 "Autoscaling will never happen, "

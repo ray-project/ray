@@ -222,7 +222,7 @@ class FunctionActorManager:
         val = pickle.dumps(
             {
                 "job_id": self._worker.current_job_id.binary(),
-                "function_id": remote_function._function_descriptor.function_id.binary(),
+                "function_id": remote_function._function_descriptor.function_id.binary(),  # noqa: E501
                 "function_name": remote_function._function_name,
                 "module": function.__module__,
                 "function": pickled_function,

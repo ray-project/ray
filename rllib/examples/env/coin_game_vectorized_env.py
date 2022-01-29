@@ -173,7 +173,7 @@ class VectorizedCoinGame(CoinGame):
             "red_pick_own": self.red_pick_own,
             "blue_pick": self.blue_pick,
             "blue_pick_own": self.blue_pick_own,
-            "both_players_can_pick_the_same_coin": self.both_players_can_pick_the_same_coin,
+            "both_players_can_pick_the_same_coin": self.both_players_can_pick_the_same_coin,  # noqa: E501
         }
         return copy.deepcopy(env_save_state)
 

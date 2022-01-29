@@ -415,7 +415,7 @@ class NodeUpdater:
                                     # Run outside docker.
                                     self.cmd_runner.run(
                                         cmd,
-                                        ssh_options_override_ssh_key=self.auth_config.get(
+                                        ssh_options_override_ssh_key=self.auth_config.get(  # noqa: E501
                                             "ssh_private_key"
                                         ),
                                         run_env="host",

@@ -494,7 +494,7 @@ class AutoscalingConfigTest(unittest.TestCase):
         azure_config_path = os.path.join(RAY_PATH, "autoscaler/azure/example-full.yaml")
         azure_config = yaml.safe_load(open(azure_config_path))
         azure_config["auth"]["ssh_user"] = "default_user"
-        with tempfile.NamedTemporaryFile() as pub_key, tempfile.NamedTemporaryFile() as priv_key:
+        with tempfile.NamedTemporaryFile() as pub_key, tempfile.NamedTemporaryFile() as priv_key:  # noqa: E501
             pub_key.write(b"PUBLICKEY")
             pub_key.flush()
             priv_key.write(b"PRIVATEKEY")

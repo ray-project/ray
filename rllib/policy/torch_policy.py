@@ -1033,7 +1033,7 @@ class TorchPolicy(Policy):
         def _worker(shard_idx, model, sample_batch, device):
             torch.set_grad_enabled(grad_enabled)
             try:
-                with NullContextManager() if device.type == "cpu" else torch.cuda.device(
+                with NullContextManager() if device.type == "cpu" else torch.cuda.device(  # noqa: E501
                     device
                 ):
                     loss_out = force_list(
