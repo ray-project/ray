@@ -431,12 +431,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] debugger_breakpoint breakpoint to drop into for the debugger after this
   /// task starts executing, or "" if we do not want to drop into the debugger.
   /// should capture parent's placement group implicilty.
+  /// \param[out] returned_refs ObjectRefs returned by this task.
   /// \return Status.
-  std::vector<rpc::ObjectReference> SubmitTask(
+  Status SubmitTask(
       const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
       const TaskOptions &task_options, int max_retries, bool retry_exceptions,
       const rpc::SchedulingStrategy &scheduling_strategy,
-      const std::string &debugger_breakpoint);
+      const std::string &debugger_breakpoint, std::vector<rpc::ObjectReference> *returned_refs);
 
   /// Create an actor.
   ///
