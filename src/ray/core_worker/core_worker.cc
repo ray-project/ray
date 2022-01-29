@@ -1347,9 +1347,10 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
       });
 }
 
-std::unordered_map<std::string, double> AddPlacementGroupConstraint(
+Status CoreWorker::AddPlacementGroupConstraint(
     const std::unordered_map<std::string, double> &resources,
-    const rpc::SchedulingStrategy &scheduling_strategy) {
+    const rpc::SchedulingStrategy &scheduling_strategy,
+    std::unordered_map<std::string, double> &constrained_resources) {
   auto placement_group_id = PlacementGroupID::Nil();
   auto bundle_index = -1;
   if (scheduling_strategy.scheduling_strategy_case() ==
@@ -1360,23 +1361,25 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
     bundle_index = scheduling_strategy.placement_group_scheduling_strategy()
                        .placement_group_bundle_index();
   }
-  if (bundle_index < 0) {
-    RAY_CHECK(bundle_index == -1) << "Invalid bundle index " << bundle_index;
-  }
-  std::unordered_map<std::string, double> new_resources;
   if (placement_group_id != PlacementGroupID::Nil()) {
+    // Validate the bundle index.
+    const auto &status = ValidatePlacementGroupBundleIndex(placement_group_id, bundle_index);
+    if (!status.ok()) {
+      return status;
+    }
     for (auto iter = resources.begin(); iter != resources.end(); iter++) {
       auto new_name = FormatPlacementGroupResource(iter->first, placement_group_id, -1);
-      new_resources[new_name] = iter->second;
+      constrained_resources[new_name] = iter->second;
       if (bundle_index >= 0) {
         auto index_name =
             FormatPlacementGroupResource(iter->first, placement_group_id, bundle_index);
-        new_resources[index_name] = iter->second;
+        constrained_resources[index_name] = iter->second;
       }
     }
-    return new_resources;
+  } else {
+    constrained_resources = resources;
   }
-  return resources;
+  return Status::OK();
 }
 
 rpc::RuntimeEnv CoreWorker::OverrideRuntimeEnv(
@@ -1540,8 +1543,12 @@ Status CoreWorker::SubmitTask(
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentInternalTaskId(), next_task_index);
-  auto constrained_resources =
-      AddPlacementGroupConstraint(task_options.resources, scheduling_strategy);
+
+  std::unordered_map<std::string, double> constrained_resources;
+  const auto &status = AddPlacementGroupConstraint(task_options.resources, scheduling_strategy, constrained_resources);
+  if (!status.ok()) {
+    return status;
+  }
 
   const std::unordered_map<std::string, double> required_resources;
   auto task_name = task_options.name.empty()
@@ -1605,11 +1612,21 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   // ones
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
-  auto new_placement_resources =
+  std::unordered_map<std::string, double> new_placement_resources;
+  const auto &add_for_placement_resource_status =
       AddPlacementGroupConstraint(actor_creation_options.placement_resources,
-                                  actor_creation_options.scheduling_strategy);
-  auto new_resource = AddPlacementGroupConstraint(
-      actor_creation_options.resources, actor_creation_options.scheduling_strategy);
+                                  actor_creation_options.scheduling_strategy, new_placement_resources);
+  if (!add_for_placement_resource_status.ok()) {
+    return add_for_placement_resource_status;
+  }
+  
+  std::unordered_map<std::string, double> new_resource;
+  const auto &add_for_resource_status = AddPlacementGroupConstraint(
+      actor_creation_options.resources, actor_creation_options.scheduling_strategy, new_resource);
+  if (!add_for_resource_status.ok()) {
+    return add_for_resource_status;
+  }
+
   const auto actor_name = actor_creation_options.name;
   const auto task_name =
       actor_name.empty()

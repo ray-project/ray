@@ -479,7 +479,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::vector<std::unordered_map<std::string, double>> &bundles);
 
   /// Check whether the placement group bundle index is valid or not.
-  /// It will throw a runtime exception if the bundle index is not valid.
   ///
   /// \param[in] placement_group_id The id of the placement group that is being used.
   /// \param[in] bundle_index The bundle index that is being referenced by the actor or
@@ -1007,6 +1006,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the primary copy to spill.
   void SpillOwnedObject(const ObjectID &object_id, const std::shared_ptr<RayObject> &obj,
                         std::function<void()> callback);
+
+  /// Convert the required resource to placement group resource.
+  ///
+  /// \param[in] resources The original resource that the task required.
+  /// \param[in] scheduling_strategy The scheduling strategy that the task specified.
+  /// \param[out] constrained_resources The placement group resource converted from original resource.
+  /// \return Status error if the bundle index is invalid.
+  Status AddPlacementGroupConstraint(
+    const std::unordered_map<std::string, double> &resources,
+    const rpc::SchedulingStrategy &scheduling_strategy,
+    std::unordered_map<std::string, double> &constrained_resources);
 
   const CoreWorkerOptions options_;
 
