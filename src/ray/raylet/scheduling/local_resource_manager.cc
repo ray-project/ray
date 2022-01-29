@@ -654,11 +654,10 @@ std::string LocalResourceManager::SerializedTaskResourceInstances(
 }
 
 void LocalResourceManager::ResetLastReportResourceUsage(
-    std::shared_ptr<SchedulingResources> replacement) {
+    const SchedulingResources &replacement) {
   last_report_resources_ = std::make_unique<NodeResources>(ResourceMapToNodeResources(
-      resource_name_to_id_, replacement->GetTotalResources().GetResourceMap(),
-      replacement->GetAvailableResources().GetResourceMap()));
-  OnResourceChanged();
+      resource_name_to_id_, replacement.GetTotalResources().GetResourceMap(),
+      replacement.GetAvailableResources().GetResourceMap()));
 }
 
 bool LocalResourceManager::ResourcesExist(const std::string &resource_name) {
