@@ -12,19 +12,23 @@ See `simple_q_[tf|torch]_policy.py` for the definition of the policy loss.
 import logging
 from typing import Optional, Type
 
+from ray.rllib import SampleBatch
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
-from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.execution.rollout_ops import ParallelRollouts, \
+    synchronous_parallel_sample
 from ray.rllib.execution.train_ops import MultiGPUTrainOneStep, TrainOneStep, \
     UpdateTargetNetwork
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, \
+    NUM_AGENT_STEPS_SAMPLED
+from ray.rllib.utils.typing import TrainerConfigDict, ResultDict
 
 logger = logging.getLogger(__name__)
 
@@ -199,3 +203,29 @@ class SimpleQTrainer(Trainer):
             [store_op, replay_op], mode="round_robin", output_indexes=[1])
 
         return StandardMetricsReporting(train_op, workers, config)
+
+
+    def training_iteration(self) -> ResultDict:
+        """Runs one iteration of training."""
+        # Some shortcuts.
+        batch_size = self.config["train_batch_size"]
+
+        # Collects SampleBatches in parallel and synchronously
+        # from the Trainer's RolloutWorkers until we hit the
+        # configured `train_batch_size`.
+        sample_batches = []
+        num_env_steps = 0
+        num_agent_steps = 0
+        while (not self._by_agent_steps and num_env_steps < batch_size) or \
+            (self._by_agent_steps and num_agent_steps < batch_size):
+            new_sample_batches = synchronous_parallel_sample(self.workers)
+            sample_batches.extend(new_sample_batches)
+            num_env_steps += sum(len(s) for s in new_sample_batches)
+            num_agent_steps += sum(
+                len(s) if isinstance(s, SampleBatch) else s.agent_steps()
+                for s in new_sample_batches)
+        self._counters[NUM_ENV_STEPS_SAMPLED] += num_env_steps
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += num_agent_steps
+
+        # Combine all batches at once
+        train_batch = SampleBatch.concat_samples(sample_batches)

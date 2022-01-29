@@ -2,6 +2,7 @@ from typing import List, Any, Optional
 import random
 
 from ray.actor import ActorHandle
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.util.iter import from_actors, LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import SharedMetrics
 from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
@@ -42,25 +43,80 @@ class StoreToReplayBuffer:
             actors: An optional list of replay actors to use instead of
                 `local_buffer`.
         """
-        if local_buffer is not None and actors is not None:
-            raise ValueError(
-                "Either `local_buffer` or `replay_actors` must be given, "
-                "not both!")
-
-        if local_buffer is not None:
-            self.local_actor = local_buffer
-            self.replay_actors = None
-        else:
-            self.local_actor = None
-            self.replay_actors = actors
+        self.local_buffer = local_buffer
+        self.actors = actors
 
     def __call__(self, batch: SampleBatchType):
-        if self.local_actor is not None:
-            self.local_actor.add_batch(batch)
-        else:
-            actor = random.choice(self.replay_actors)
-            actor.add_batch.remote(batch)
+        return store_to_replay_buffer(self.local_buffer, self.actors, batch)
+
+
+@ExperimentalAPI
+def store_to_replay_buffer(local_buffer: Optional[MultiAgentReplayBuffer]
+                           = None,
+                           actors: Optional[List[ActorHandle]] = None,
+                           batch: SampleBatchType = None):
+    """Store a batch into the given local buffer or one of the actors randomly.
+
+    Args:
+        local_buffer: The local replay buffer to store the data into.
+        actors: An optional list of replay actors to use instead of
+            `local_buffer`.
+        batch: The batch to store.
+
+    Raises:
+        ValueError: If both or neither `local_buffer` and `actors` is provided.
+
+    Returns:
+        SampleBatchType: The batch that was stored.
+    """
+    if local_buffer is not None and actors is not None:
+        raise ValueError(
+            "Either `local_buffer` or `replay_actors` must be given, "
+            "not both!")
+
+    if local_buffer is not None:
+        local_actor = local_buffer
+        replay_actors = None
+    else:
+        local_actor = None
+        replay_actors = actors
+    if local_actor is not None:
+        local_actor.add_batch(batch)
+    else:
+        actor = random.choice(replay_actors)
+        actor.add_batch.remote(batch)
         return batch
+
+
+@ExperimentalAPI
+def sample_from_buffer(*,
+                       local_buffer: Optional[MultiAgentReplayBuffer] = None,
+                       actors: Optional[List[ActorHandle]] = None,
+                       num_async: int = 4) -> SampleBatchType:
+    """Replay experiences from the given buffer or actors.
+
+        This should be combined with a call to `store_to_replay_buffer`
+
+        Args:
+            local_buffer: Local buffer to use. Only one of this and replay_actors
+                can be specified.
+            actors: List of replay actors. Only one of this and local_buffer
+                can be specified.
+            num_async: In async mode, the max number of async requests in flight
+                per actor.
+    """
+    if local_buffer is not None and actors is not None:
+        raise ValueError(
+            "Exactly one of local_buffer and replay_actors must be given.")
+
+    if local_buffer:
+        item = local_buffer.replay()
+        return item or _NextValueNotReady()
+    else:
+        replay = from_actors(actors)
+        replay_op = replay.gather_async(
+            num_async=num_async).filter(lambda x: x is not None)
+        return next(replay_op)
 
 
 def Replay(*,
