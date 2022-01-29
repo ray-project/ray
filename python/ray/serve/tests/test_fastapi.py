@@ -578,8 +578,8 @@ def test_fastapi_method_redefinition(serve_instance):
         def method(self):
             return "hi get"
 
-        @app.post("/")
-        def method(self):  # noqa: F811 method redefinition
+        @app.post("/")  # noqa: F811 method redefinition
+        def method(self):
             return "hi post"
 
     A.deploy()
