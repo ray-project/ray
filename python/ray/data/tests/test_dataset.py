@@ -76,7 +76,7 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_basic_actors(shutdown_only, pipelined):
     ray.init(num_cpus=2)
-    n = 8
+    n = 5
     ds = ray.data.range(n)
     ds = maybe_pipeline(ds, pipelined)
     assert sorted(ds.map(lambda x: x + 1, compute="actors").take()) == list(
