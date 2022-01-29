@@ -2289,7 +2289,7 @@ Dict[str, List[str]]]): The names of the columns
                     raise StopIteration
                 self._ds._set_epoch(self._i)
                 self._i += 1
-                return lambda: self._ds.force_reads()
+                return lambda: self._ds
 
         class Iterable:
             def __init__(self, ds: "Dataset[T]"):
@@ -2367,7 +2367,7 @@ Dict[str, List[str]]]): The names of the columns
 
                 def gen():
                     ds = Dataset(blocks, self._epoch, outer_stats)
-                    return ds.force_reads()
+                    return ds
 
                 return gen
 
@@ -2403,7 +2403,9 @@ Dict[str, List[str]]]): The names of the columns
         This can be used to read all blocks into memory. By default, Datasets
         doesn't read blocks from the datasource until the first transform.
         """
-        self.get_internal_block_refs()
+        blocks = self.get_internal_block_refs()
+        bar = ProgressBar("Force reads", len(blocks))
+        bar.block_until_complete(blocks)
         return self
 
     @DeveloperAPI
