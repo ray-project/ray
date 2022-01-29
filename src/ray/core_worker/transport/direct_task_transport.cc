@@ -515,8 +515,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           // Decrement the total number of tasks in flight to any worker with the current
           // scheduling_key.
           auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-          RAY_CHECK_GE(scheduling_key_entry.active_workers.size(), 1);
-          RAY_CHECK_GE(scheduling_key_entry.num_busy_workers, 1);
+          RAY_CHECK_GE(scheduling_key_entry.active_workers.size(), 1u);
+          RAY_CHECK_GE(scheduling_key_entry.num_busy_workers, 1u);
           scheduling_key_entry.num_busy_workers--;
 
           if (reply.worker_exiting()) {
