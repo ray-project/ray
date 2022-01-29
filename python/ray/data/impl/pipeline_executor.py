@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from ray.data.dataset_pipeline import DatasetPipeline
 
 
+# Temporarily use an actor here to avoid ownership issues with tasks:
+# https://github.com/ray-project/ray/issues/20554
 @ray.remote(num_cpus=0, placement_group=None)
 class _StageRunner:
     def run(self, fn: Callable[[], Dataset[T]],
