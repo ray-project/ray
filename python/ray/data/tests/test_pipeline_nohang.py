@@ -3,16 +3,20 @@ import pytest
 import ray
 from ray.tests.conftest import *  # noqa
 
+NUM_REPEATS = 10
+NUM_TASKS = 20
 
+
+# This test can be flaky if there is resource deadlock between the pipeline
+# stages. Run it a lot to ensure no regressions.
 def test_basic_actors(shutdown_only):
-    for _ in range(10):
-        ray.init(num_cpus=2)
-        n = 10
-        ds = ray.data.range(n)
+    ray.init(num_cpus=2)
+    for _ in range(NUM_REPEATS):
+        ds = ray.data.range(NUM_TASKS)
         ds = ds.window(blocks_per_window=1)
         assert sorted(ds.map(lambda x: x + 1,
                              compute="actors").take()) == list(
-                                 range(1, n + 1))
+                                 range(1, NUM_TASKS + 1))
 
 
 if __name__ == "__main__":
