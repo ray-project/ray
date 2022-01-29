@@ -30,8 +30,7 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.tls_utils import add_port_to_grpc_server
 from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
-from ray._private.utils import (detect_fate_sharing_support,
-                                check_dashboard_dependencies_installed)
+from ray._private.utils import (detect_fate_sharing_support)
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -212,12 +211,6 @@ class ProxyManager():
             Includes retry logic to handle the case when the agent is
             temporarily unreachable (e.g., hasn't been started up yet).
         """
-        if not check_dashboard_dependencies_installed():
-            raise RuntimeError("Not all required Ray dependencies for the "
-                               "runtime_env feature were found on the "
-                               "cluster. To install the required "
-                               "dependencies, please run `pip install "
-                               "\"ray[default]\"` on all cluster nodes.")
         create_env_request = runtime_env_agent_pb2.CreateRuntimeEnvRequest(
             serialized_runtime_env=serialized_runtime_env,
             job_id=f"ray_client_server_{specific_server.port}".encode("utf-8"))

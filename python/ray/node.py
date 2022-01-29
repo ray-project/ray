@@ -366,11 +366,11 @@ class Node:
             try:
                 return get_gcs_address_from_redis(redis_cli)
             except Exception as e:
-                logger.debug("Fetch gcs address from redis failed {e}")
+                logger.debug(f"Fetch gcs address from redis failed {e}")
                 error = e
                 time.sleep(1)
         assert error is not None
-        logger.error("Fetch gcs address from redis failed {error}")
+        logger.error(f"Fetch gcs address from redis failed {error}")
 
     def _init_temp(self):
         # Create a dictionary to store temp file index.
@@ -649,6 +649,15 @@ class Node:
         raise FileExistsError(errno.EEXIST,
                               "No usable temporary filename found")
 
+    def should_redirect_logs(self):
+        redirect_output = self._ray_params.redirect_output
+        if redirect_output is None:
+            # Fall back to stderr redirect environment variable.
+            redirect_output = os.environ.get(
+                ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE
+            ) != "1"
+        return redirect_output
+
     def get_log_file_handles(self, name, unique=False):
         """Open log files with partially randomized filenames, returning the
         file handles. If output redirection has been disabled, no files will
@@ -663,13 +672,7 @@ class Node:
             A tuple of two file handles for redirecting (stdout, stderr), or
             `(None, None)` if output redirection is disabled.
         """
-        redirect_output = self._ray_params.redirect_output
-
-        if redirect_output is None:
-            # Make the default behavior match that of glog.
-            redirect_output = os.getenv("GLOG_logtostderr") != "1"
-
-        if not redirect_output:
+        if not self.should_redirect_logs():
             return None, None
 
         log_stdout, log_stderr = self._get_log_file_names(name, unique=unique)
@@ -854,12 +857,11 @@ class Node:
             self.redis_address,
             self.gcs_address,
             self._logs_dir,
-            stdout_file=subprocess.DEVNULL,
-            stderr_file=subprocess.DEVNULL,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
-            backup_count=self.backup_count)
+            backup_count=self.backup_count,
+            redirect_logging=self.should_redirect_logs())
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
             process_info,
@@ -880,13 +882,12 @@ class Node:
             self.gcs_address,
             self._temp_dir,
             self._logs_dir,
-            stdout_file=subprocess.DEVNULL,  # Avoid hang(fd inherit)
-            stderr_file=subprocess.DEVNULL,  # Avoid hang(fd inherit)
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
-            port=self._ray_params.dashboard_port)
+            port=self._ray_params.dashboard_port,
+            redirect_logging=self.should_redirect_logs())
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [

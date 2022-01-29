@@ -13,9 +13,9 @@ from ray._private.gcs_pubsub import gcs_pubsub_enabled, \
     GcsAioResourceUsageSubscriber
 import ray._private.services
 import ray._private.utils
-from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
-                                          DEBUG_AUTOSCALING_STATUS_LEGACY,
-                                          DEBUG_AUTOSCALING_ERROR)
+from ray.ray_constants import (DEBUG_AUTOSCALING_STATUS,
+                               DEBUG_AUTOSCALING_STATUS_LEGACY,
+                               DEBUG_AUTOSCALING_ERROR)
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 import ray.experimental.internal_kv as internal_kv
@@ -167,3 +167,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 except Exception:
                     logger.exception("Error receiving node physical stats "
                                      "from reporter agent.")
+
+    @staticmethod
+    def is_minimal_module():
+        return False

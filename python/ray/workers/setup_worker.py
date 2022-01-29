@@ -1,6 +1,5 @@
 import argparse
 import logging
-import os
 
 from ray._private.ray_logging import setup_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -24,8 +23,6 @@ parser.add_argument(
 if __name__ == "__main__":
     setup_logger(LOGGER_LEVEL, LOGGER_FORMAT)
     args, remaining_args = parser.parse_known_args()
-    # NOTE(chenk008): we still need it to start worker in container.
-    remaining_args.append("--worker-shim-pid={}".format(os.getpid()))
     # NOTE(edoakes): args.serialized_runtime_env_context is only None when
     # we're starting the main Ray client proxy server. That case should
     # probably not even go through this codepath.

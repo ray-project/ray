@@ -310,6 +310,32 @@ def test_http_root_url(ray_shutdown):
     ray.shutdown()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+def test_http_root_path(ray_shutdown):
+    @serve.deployment
+    def hello():
+        return "hello"
+
+    port = new_port()
+    root_path = "/serve"
+    serve.start(http_options=dict(root_path=root_path, port=port))
+    hello.deploy()
+
+    # check whether url is prefixed correctly
+    assert hello.url == f"http://127.0.0.1:{port}{root_path}/hello"
+
+    # check routing works as expected
+    resp = requests.get(hello.url)
+    assert resp.status_code == 200
+    assert resp.text == "hello"
+
+    # check advertized routes are prefixed correctly
+    resp = requests.get(f"http://127.0.0.1:{port}{root_path}/-/routes")
+    assert resp.status_code == 200
+    assert resp.json() == {"/hello": "hello"}
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_proxy_fail_loudly(ray_shutdown):
     # Test that if the http server fail to start, serve.start should fail.
     with pytest.raises(ValueError):

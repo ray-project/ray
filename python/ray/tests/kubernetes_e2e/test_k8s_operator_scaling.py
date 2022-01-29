@@ -29,24 +29,28 @@ from test_k8s_operator_basic import PULL_POLICY
 from test_k8s_operator_basic import NAMESPACE
 
 
-def submit_scaling_job(num_tasks):
+def submit_scaling_job(num_actors):
     @ray.remote(num_cpus=1)
-    def f(i):
-        time.sleep(60)
-        return i
+    class A:
+        def __init__(self, index):
+            self.index = index
 
-    print(">>>Submitting tasks with Ray client.")
-    futures = [f.remote(i) for i in range(num_tasks)]
+        def report_index(self):
+            return self.index
+
+    print(">>>Scheduling actors with Ray client.")
+    actors = [A.remote(i) for i in range(num_actors)]
+    futures = [actor.report_index.remote() for actor in actors]
 
     print(">>>Verifying scale-up.")
-    # Expect as many pods as tasks.
+    # Expect as many pods as actors.
     # (each Ray pod has 1 CPU)
-    wait_for_pods(num_tasks)
+    wait_for_pods(num_actors)
 
     print(">>>Waiting for task output.")
     task_output = ray.get(futures, timeout=360)
 
-    assert task_output == list(range(num_tasks)), "Tasks did not"\
+    assert task_output == list(range(num_actors)), "Tasks did not"\
         "complete with expected output."
 
 
@@ -162,7 +166,7 @@ class KubernetesScaleTest(unittest.TestCase):
 
             with client_connect_to_k8s(port="10002"):
                 # Test scale up and scale down after task submission.
-                submit_scaling_job(num_tasks=15)
+                submit_scaling_job(num_actors=15)
 
             print(">>>Sleeping for a minute while workers time-out.")
             time.sleep(60)

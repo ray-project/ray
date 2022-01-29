@@ -41,7 +41,7 @@ void AddActorInfo(const ray::gcs::GcsActor *actor,
   mutable_actor_died_error_ctx->set_actor_id(actor->GetActorID().Binary());
 }
 
-const ray::rpc::ActorDeathCause GenRuntimeEnvFailedCause(const std::string &error_msg) {
+const ray::rpc::ActorDeathCause GenActorDeathCause(const std::string &error_msg) {
   ray::rpc::ActorDeathCause death_cause;
   death_cause.mutable_runtime_env_failed_context()->set_error_message(error_msg);
   return death_cause;
@@ -1023,20 +1023,40 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   }
 }
 
-void GcsActorManager::OnActorSchedulingFailed(std::shared_ptr<GcsActor> actor,
-                                              bool runtime_env_setup_failed) {
-  if (!runtime_env_setup_failed) {
+void GcsActorManager::OnActorSchedulingFailed(
+    std::shared_ptr<GcsActor> actor,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type) {
+  if (failure_type == rpc::RequestWorkerLeaseReply::SCHEDULING_FAILED) {
     // We will attempt to schedule this actor once an eligible node is
     // registered.
     pending_actors_.emplace_back(std::move(actor));
     return;
   }
+  if (failure_type == rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED) {
+    // Return directly if the actor was canceled actively as we've already done the
+    // recreate and destroy operation when we killed the actor.
+    return;
+  }
 
-  // If there is runtime env failure, mark this actor as dead immediately.
-  DestroyActor(
-      actor->GetActorID(),
-      GenRuntimeEnvFailedCause("Could not create the actor because its associated "
-                               "runtime env failed to be created."));
+  std::string error_msg;
+  switch (failure_type) {
+  case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED:
+    error_msg =
+        "Could not create the actor because its associated placement group was removed.";
+    break;
+  case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED:
+    error_msg =
+        "Could not create the actor because its associated runtime env failed to be "
+        "created..";
+    break;
+  default:
+    RAY_LOG(FATAL) << "Unknown error, failure type "
+                   << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(
+                          failure_type);
+    break;
+  }
+
+  DestroyActor(actor->GetActorID(), GenActorDeathCause(error_msg));
 }
 
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,

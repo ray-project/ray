@@ -587,9 +587,10 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   resources_data.set_node_manager_address(initial_config_.node_manager_address);
   // Update local cache from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
-  cluster_resource_scheduler_->UpdateLastResourceUsage(
-      gcs_client_->NodeResources().GetLastResourceUsage());
-  cluster_resource_scheduler_->FillResourceUsage(resources_data);
+  cluster_resource_scheduler_->GetLocalResourceManager().ResetLastReportResourceUsage(
+      *(gcs_client_->NodeResources().GetLastResourceUsage()));
+  cluster_resource_scheduler_->GetLocalResourceManager().FillResourceUsage(
+      resources_data);
   cluster_task_manager_->FillResourceUsage(
       resources_data, gcs_client_->NodeResources().GetLastResourceUsage());
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
@@ -1080,7 +1081,6 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   const int runtime_env_hash = static_cast<int>(message->runtime_env_hash());
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
   pid_t pid = message->worker_pid();
-  pid_t worker_shim_pid = message->worker_shim_pid();
   StartupToken worker_startup_token = message->startup_token();
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
@@ -1120,8 +1120,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       worker_type == rpc::WorkerType::SPILL_WORKER ||
       worker_type == rpc::WorkerType::RESTORE_WORKER) {
     // Register the new worker.
-    auto status = worker_pool_.RegisterWorker(worker, pid, worker_shim_pid,
-                                              worker_startup_token, send_reply_callback);
+    auto status = worker_pool_.RegisterWorker(worker, pid, worker_startup_token,
+                                              send_reply_callback);
     if (!status.ok()) {
       // If the worker failed to register to Raylet, trigger task dispatching here to
       // allow new worker processes to be started (if capped by
@@ -1131,7 +1131,6 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   } else {
     // Register the new driver.
     RAY_CHECK(pid >= 0);
-    // Don't need to set shim pid for driver
     worker->SetProcess(Process::FromPid(pid));
     // Compute a dummy driver task id from a given driver.
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
@@ -1572,8 +1571,8 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     // up repeatedly starting the worker, then killing it because it idles for
     // too long. The downside is that we will be slower to schedule tasks that
     // could use a fraction of a CPU.
-    int64_t available_cpus =
-        static_cast<int64_t>(cluster_resource_scheduler_->GetLocalAvailableCpus());
+    int64_t available_cpus = static_cast<int64_t>(
+        cluster_resource_scheduler_->GetLocalResourceManager().GetLocalAvailableCpus());
     worker_pool_.PrestartWorkers(task_spec, request.backlog_size(), available_cpus);
   }
 

@@ -22,8 +22,8 @@ from ray._private.test_utils import (
     format_web_url, wait_for_condition, wait_until_server_available,
     run_string_as_driver, wait_until_succeeded_without_exception)
 from ray._private.gcs_pubsub import gcs_pubsub_enabled
-from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS_LEGACY,
-                                          DEBUG_AUTOSCALING_ERROR)
+from ray.ray_constants import (DEBUG_AUTOSCALING_STATUS_LEGACY,
+                               DEBUG_AUTOSCALING_ERROR)
 from ray.dashboard import dashboard
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
@@ -477,8 +477,8 @@ def test_get_cluster_status(ray_start_with_dashboard):
         assert "clusterStatus" in response.json()["data"]
         assert "loadMetricsReport" in response.json()["data"]["clusterStatus"]
 
-    wait_until_succeeded_without_exception(get_cluster_status,
-                                           (requests.RequestException, ))
+    assert wait_until_succeeded_without_exception(
+        get_cluster_status, (requests.RequestException, ))
 
     gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)

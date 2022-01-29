@@ -776,12 +776,6 @@ def main():
         type=str,
         help="Password for connecting to Redis")
     parser.add_argument(
-        "--worker-shim-pid",
-        required=False,
-        type=int,
-        default=0,
-        help="The PID of the process for setup worker runtime env.")
-    parser.add_argument(
         "--metrics-agent-port",
         required=False,
         type=int,

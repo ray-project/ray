@@ -94,3 +94,7 @@ class LogHead(dashboard_utils.DashboardHeadModule):
 
     async def run(self, server):
         pass
+
+    @staticmethod
+    def is_minimal_module():
+        return False
