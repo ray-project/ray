@@ -78,7 +78,7 @@ class PipProcessor:
     def _check_ray(python: str, cwd: str, logger: logging.Logger):
         """A context manager to check ray is not overwritten.
 
-        Currently, we only check ray version and path. It is works for virtualenv,
+        Currently, we only check ray version and path. It works for virtualenv,
           - ray is in Python's site-packages.
           - ray is overwritten during yield.
           - ray is in virtualenv's site-packages.
@@ -117,10 +117,37 @@ class PipProcessor:
         """
         if cls._is_in_virtualenv():
             # TODO(fyrestone): Handle create virtualenv from virtualenv.
+            #
+            # Currently, create a virtualenv from virtualenv will get an
+            # unexpected result. The new created virtualenv only inherits
+            # the site packages from the real Python, not current
+            # virtualenv.
+            #
+            # It's possible to copy the virtualenv to create a new
+            # virtualenv, but copying the entire Python is very slow.
+            #
+            # So, we decide to raise an exception until creating virtualenv
+            # from virtualenv is fully supported.
             raise RuntimeError("Can't create virtualenv from virtualenv.")
         python = cls._get_current_python()
         virtualenv_path = os.path.join(path, "virtualenv")
         virtualenv_app_data_path = os.path.join(path, "virtualenv_app_data")
+        # virtualenv options:
+        # https://virtualenv.pypa.io/en/latest/cli_interface.html
+        #
+        # --app-data
+        # --reset-app-data
+        #   Set an empty seperated app data folder for current virtualenv.
+        #
+        # --no-periodic-update
+        #   Disable the periodic (once every 14 days) update of the embedded
+        #   wheels.
+        #
+        # --system-site-packages
+        #   Inherit site packages.
+        #
+        # --no-download
+        #   Never download the latest pip/setuptools/wheel from PyPI.
         create_venv_cmd = [
             python, "-m", "virtualenv", "--app-data", virtualenv_app_data_path,
             "--reset-app-data", "--no-periodic-update",
@@ -162,7 +189,7 @@ class PipProcessor:
                                    _get_pip_hash(pip_packages))
         # We create an empty directory for exec cmd so that the cmd will
         # run more stable. e.g. if cwd has ray, then checking ray will
-        # lookup ray in cwd instead of site packages.
+        # look up ray in cwd instead of site packages.
         exec_cwd = os.path.join(path, "exec_cwd")
         os.makedirs(exec_cwd, exist_ok=True)
         try:
