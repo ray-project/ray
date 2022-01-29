@@ -54,7 +54,8 @@ from ray.exceptions import (
     RayTaskError,
     ObjectStoreFullError,
 )
-from ray._private.function_manager import FunctionActorManager
+from ray._private.function_manager import FunctionActorManager, \
+    make_function_table_key
 from ray._private.ray_logging import setup_logger
 from ray._private.ray_logging import global_worker_stdstream_dispatcher
 from ray._private.utils import check_oversized_function
@@ -388,31 +389,24 @@ class Worker:
 
             function_to_run_id = hashlib.shake_128(pickled_function).digest(
                 ray_constants.ID_SIZE)
-            key = b"FunctionsToRun:" + function_to_run_id
+            key = make_function_table_key(
+                b"FunctionsToRun", self.current_job_id, function_to_run_id)
             # First run the function on the driver.
             # We always run the task locally.
             function({"worker": self})
-            # Check if the function has already been put into redis.
-            function_exported = self.gcs_client.internal_kv_put(
-                b"Lock:" + key, b"1", False,
-                ray_constants.KV_NAMESPACE_FUNCTION_TABLE) == 0
-            if function_exported is True:
-                # In this case, the function has already been exported, so
-                # we don't need to export it again.
-                return
 
             check_oversized_function(pickled_function, function.__name__,
                                      "function", self)
 
             # Run the function on all workers.
-            self.gcs_client.internal_kv_put(
-                key,
-                pickle.dumps({
-                    "job_id": self.current_job_id.binary(),
-                    "function_id": function_to_run_id,
-                    "function": pickled_function,
-                }), True, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
-            self.function_actor_manager.export_key(key)
+            if self.gcs_client.internal_kv_put(
+                    key,
+                    pickle.dumps({
+                        "job_id": self.current_job_id.binary(),
+                        "function_id": function_to_run_id,
+                        "function": pickled_function,
+                    }), True, ray_constants.KV_NAMESPACE_FUNCTION_TABLE) != 0:
+                self.function_actor_manager.export_key(key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
             # successfully completes the hset and rpush, then the program will
             # most likely hang. This could be fixed by making these three
@@ -1348,7 +1342,6 @@ def connect(node,
             namespace=None,
             job_config=None,
             runtime_env_hash=0,
-            worker_shim_pid=0,
             startup_token=0,
             ray_debugger_external=False):
     """Connect this worker to the raylet, to Plasma, and to Redis.
@@ -1364,8 +1357,6 @@ def connect(node,
         job_id: The ID of job. If it's None, then we will generate one.
         job_config (ray.job_config.JobConfig): The job configuration.
         runtime_env_hash (int): The hash of the runtime env for this worker.
-        worker_shim_pid (int): The PID of the process for setup worker
-            runtime env.
         startup_token (int): The startup token of the process assigned to
             it during startup as a command line argument.
         ray_debugger_host (bool): The host to bind a Ray debugger to on
@@ -1531,8 +1522,7 @@ def connect(node,
         gcs_options, logs_dir, node.node_ip_address, node.node_manager_port,
         node.raylet_ip_address, (mode == LOCAL_MODE), driver_name,
         log_stdout_file_path, log_stderr_file_path, serialized_job_config,
-        node.metrics_agent_port, runtime_env_hash, worker_shim_pid,
-        startup_token)
+        node.metrics_agent_port, runtime_env_hash, startup_token)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()

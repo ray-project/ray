@@ -401,7 +401,10 @@ class ResourceDemandScheduler:
             2) Calculates the pending nodes and gets the launching nodes.
             3) Limits the total number of pending + currently-launching +
                to-be-launched nodes to:
-               max(5, self.upscaling_speed * running_nodes[node_type]).
+                   max(
+                       5,
+                       self.upscaling_speed * max(running_nodes[node_type], 1)
+                   ).
 
         Args:
             to_launch: List of number of nodes to launch based on resource
@@ -429,7 +432,7 @@ class ResourceDemandScheduler:
             # running nodes.
             max_allowed_pending_nodes = max(
                 UPSCALING_INITIAL_NUM_NODES,
-                int(self.upscaling_speed * running_nodes[node_type]))
+                int(self.upscaling_speed * max(running_nodes[node_type], 1)))
             total_pending_nodes = pending_launches_nodes.get(
                 node_type, 0) + pending_nodes[node_type]
 

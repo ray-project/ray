@@ -241,7 +241,7 @@ class ApexTrainer(DQNTrainer):
         def add_apex_metrics(result: dict) -> dict:
             replay_stats = ray.get(replay_actors[0].stats.remote(
                 config["optimizer"].get("debug")))
-            exploration_infos = workers.foreach_trainable_policy(
+            exploration_infos = workers.foreach_policy_to_train(
                 lambda p, _: p.get_exploration_state())
             result["info"].update({
                 "exploration_infos": exploration_infos,

@@ -72,6 +72,22 @@ extensions = [
     "sphinx_external_toc",
 ]
 
+myst_enable_extensions = [
+    # "dollarmath",
+    # "amsmath",
+    # "deflist",
+    # "fieldlist",
+    "html_admonition",
+    "html_image",
+    # "colon_fence",
+    # "smartquotes",
+    # "replacements",
+    # "linkify",
+    # "strikethrough",
+    # "substitution",
+    # "tasklist",
+]
+
 external_toc_exclude_missing = False
 external_toc_path = '_toc.yml'
 
@@ -390,7 +406,7 @@ def setup(app):
     app.add_js_file(
         "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js",
         defer="defer")
-    app.add_js_file("docsearch.sbt.js", defer="defer")
+    app.add_js_file("js/docsearch.js", defer="defer")
     # Custom Sphinx directives
     app.add_directive("customgalleryitem", CustomGalleryItemDirective)
     # Custom docstring processor

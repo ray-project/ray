@@ -588,6 +588,38 @@ py_test(
     srcs = ["agents/ars/tests/test_ars.py"]
 )
 
+# Bandits
+py_test(
+    name = "test_bandits",
+    tags = ["team:ml", "trainers_dir"],
+    size = "small",
+    srcs = ["agents/bandit/tests/test_bandits.py"],
+)
+
+py_test(
+    name = "agents/bandit/tests/lin_ts_train_wheel_env",
+    main = "agents/bandit/tests/LinTS_train_wheel_env.py",
+    tags = ["team:ml", "trainers_dir"],
+    size = "small",
+    srcs = ["agents/bandit/tests/LinTS_train_wheel_env.py"],
+)
+
+py_test(
+    name = "bandit/tune_lin_ts_train_wheel_env",
+    main = "agents/bandit/tests/tune_LinTS_train_wheel_env.py",
+    tags = ["team:ml", "trainers_dir"],
+    size = "small",
+    srcs = ["agents/bandit/tests/tune_LinTS_train_wheel_env.py"],
+)
+
+py_test(
+    name = "bandit/tune_lin_ucb_train_recommendation",
+    main = "agents/bandit/tests/tune_LinUCB_train_recommendation.py",
+    tags = ["team:ml", "trainers_dir"],
+    size = "small",
+    srcs = ["agents/bandit/tests/tune_LinUCB_train_recommendation.py"],
+)
+
 # CQLTrainer
 py_test(
     name = "test_cql",
@@ -2732,48 +2764,6 @@ py_test(
     size = "medium",
     srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=PG"]
-)
-
-py_test(
-    name = "contrib/bandits/examples/lin_ts",
-    main = "contrib/bandits/examples/simple_context_bandit.py",
-    tags = ["team:ml", "examples", "examples_T"],
-    size = "small",
-    srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
-    args = ["--as-test", "--stop-reward=10", "--run=contrib/LinTS"],
-)
-
-py_test(
-    name = "contrib/bandits/examples/lin_ucb",
-    main = "contrib/bandits/examples/simple_context_bandit.py",
-    tags = ["team:ml", "examples", "examples_U"],
-    size = "small",
-    srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
-    args = ["--as-test", "--stop-reward=10", "--run=contrib/LinUCB"],
-)
-
-py_test(
-    name = "contrib/bandits/examples/lin_ts_train_wheel_env",
-    main = "contrib/bandits/examples/LinTS_train_wheel_env.py",
-    tags = ["team:ml", "examples", "examples_U"],
-    size = "small",
-    srcs = ["contrib/bandits/examples/LinTS_train_wheel_env.py"],
-)
-
-py_test(
-    name = "contrib/bandits/examples/tune_lin_ts_train_wheel_env",
-    main = "contrib/bandits/examples/tune_LinTS_train_wheel_env.py",
-    tags = ["team:ml", "examples", "examples_U"],
-    size = "small",
-    srcs = ["contrib/bandits/examples/tune_LinTS_train_wheel_env.py"],
-)
-
-py_test(
-    name = "contrib/bandits/examples/tune_lin_ucb_train_recommendation",
-    main = "contrib/bandits/examples/tune_LinUCB_train_recommendation.py",
-    tags = ["team:ml", "examples", "examples_U"],
-    size = "small",
-    srcs = ["contrib/bandits/examples/tune_LinUCB_train_recommendation.py"],
 )
 
 # --------------------------------------------------------------------
