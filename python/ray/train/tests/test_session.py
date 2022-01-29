@@ -23,31 +23,30 @@ def test_init_fail(session):
         init_session(lambda: 1, 0)
 
 
-def test_get_fail(session):
+def test_shutdown(session):
     shutdown_session()
-    with pytest.raises(ValueError):
-        get_session()
+    assert not get_session
 
 
 def test_world_rank(session):
     assert world_rank() == 0
     shutdown_session()
-    with pytest.raises(ValueError):
-        world_rank()
+    # Make sure default to 0.
+    assert world_rank() == 0
 
 
 def test_local_rank(session):
     assert local_rank() == 0
     shutdown_session()
-    with pytest.raises(ValueError):
-        local_rank()
+    # Make sure default to 0.
+    assert local_rank() == 0
 
 
 def test_world_size(session):
     assert world_size() == 1
     shutdown_session()
-    with pytest.raises(ValueError):
-        world_size()
+    # Make sure default to 1.
+    assert world_size() == 1
 
 
 def test_train(session):
@@ -81,8 +80,8 @@ def test_report():
     assert session.get_next().data["loss"] == 1
     shutdown_session()
 
-    with pytest.raises(ValueError):
-        report(loss=2)
+    # Should not raise error outside of session.
+    report(loss=2)
 
 
 def test_report_fail():
@@ -150,8 +149,8 @@ def test_checkpoint():
     session.finish()
     shutdown_session()
 
-    with pytest.raises(ValueError):
-        save_checkpoint(epoch=2)
+    # Should not raise error outside of session.
+    save_checkpoint(epoch=2)
 
 
 def test_encode_data():

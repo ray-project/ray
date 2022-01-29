@@ -236,11 +236,6 @@ def init_session(*args, **kwargs) -> None:
 
 def get_session() -> Session:
     global _session
-    if _session is None or not isinstance(_session, Session):
-        raise ValueError("Trying to access a Train session that has not been "
-                         "initialized yet. Train functions like "
-                         "`train.report()` should only be called from inside "
-                         "the training function.")
     return _session
 
 
@@ -289,6 +284,11 @@ def get_dataset_shard(
         If no dataset is passed into Trainer, then return None.
     """
     session = get_session()
+    if session is None:
+        warnings.warn("`train.get_dataset_shard()` is meant to only be called "
+                      "inside a training function that is executed by "
+                      "`Trainer.run`.")
+        return
     shard = session.dataset_shard
     if shard is None:
         warnings.warn("No dataset passed in. Returning None. Make sure to "
@@ -330,6 +330,11 @@ def report(**kwargs) -> None:
             intermediate results.
     """
     session = get_session()
+    if session is None:
+        warnings.warn("`train.report()` is meant to only be called "
+                      "inside a training function that is executed by "
+                      "`Trainer.run`.")
+        return
     session.report(**kwargs)
 
 
@@ -355,6 +360,8 @@ def world_rank() -> int:
 
     """
     session = get_session()
+    if session is None:
+        return 0
     return session.world_rank
 
 
@@ -379,6 +386,8 @@ def local_rank() -> int:
 
     """
     session = get_session()
+    if session is None:
+        return 0
     return session.local_rank
 
 
@@ -410,6 +419,11 @@ def load_checkpoint() -> Optional[Dict]:
         originally initialized with. ``None`` if neither exist.
     """
     session = get_session()
+    if session is None:
+        warnings.warn("`train.load_checkpoint()` is meant to only be called "
+                      "inside a training function that is executed by "
+                      "`Trainer.run`.")
+        return
     return session.loaded_checkpoint
 
 
@@ -436,6 +450,11 @@ def save_checkpoint(**kwargs) -> None:
         **kwargs: Any key value pair to be checkpointed by Train.
     """
     session = get_session()
+    if session is None:
+        warnings.warn("`train.save_checkpoint()` is meant to only be called "
+                      "inside a training function that is executed by "
+                      "`Trainer.run`.")
+        return
     session.checkpoint(**kwargs)
 
 
@@ -457,4 +476,6 @@ def world_size() -> int:
         trainer.shutdown()
     """
     session = get_session()
+    if session is None:
+        return 1
     return session.world_size
