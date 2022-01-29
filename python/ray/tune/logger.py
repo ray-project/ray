@@ -736,9 +736,9 @@ class TBXLoggerCallback(LoggerCallback):
 
 
 # Maintain backwards compatibility.
-from ray.tune.integration.mlflow import (
+from ray.tune.integration.mlflow import (  # noqa: E402
     MLflowLogger as _MLflowLogger,
-)  # noqa: E402, E501
+)
 
 MLflowLogger = _MLflowLogger
 # The capital L is a typo, but needs to remain for backwards compatibility.
