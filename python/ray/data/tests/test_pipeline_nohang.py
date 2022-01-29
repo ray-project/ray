@@ -4,7 +4,7 @@ import ray
 from ray.tests.conftest import *  # noqa
 
 NUM_REPEATS = 10
-NUM_TASKS = 20
+NUM_TASKS = 10
 
 
 # This test can be flaky if there is resource deadlock between the pipeline
