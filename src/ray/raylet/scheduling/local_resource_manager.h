@@ -157,8 +157,7 @@ class LocalResourceManager {
   /// Replace the local resources by the provided value.
   ///
   /// \param replacement: the new value.
-  void ResetLastReportResourceUsage(
-      const std::shared_ptr<SchedulingResources> replacement);
+  void ResetLastReportResourceUsage(const SchedulingResources &replacement);
 
   /// Check whether the specific resource exists or not in local node.
   ///
