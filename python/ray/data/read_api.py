@@ -1,4 +1,5 @@
 import itertools
+import os
 import logging
 from typing import List, Any, Dict, Union, Optional, Tuple, Callable, \
     TypeVar, TYPE_CHECKING
@@ -166,14 +167,18 @@ def read_datasource(datasource: Datasource[T],
         Dataset holding the data read from the datasource.
     """
 
-    # Prepare read in a remote task so that in Ray client mode, we aren't
-    # attempting metadata resolution from the client machine.
-    ctx = DatasetContext.get_current()
-    prepare_read = cached_remote_fn(
-        _prepare_read, retry_exceptions=False, num_cpus=0)
-    read_tasks = ray.get(
-        prepare_read.remote(datasource, ctx, parallelism,
-                            _wrap_s3_filesystem_workaround(read_args)))
+    # TODO(ekl) remove this feature flag.
+    if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
+        read_tasks = datasource.prepare_read(parallelism, **read_args)
+    else:
+        # Prepare read in a remote task so that in Ray client mode, we aren't
+        # attempting metadata resolution from the client machine.
+        ctx = DatasetContext.get_current()
+        prepare_read = cached_remote_fn(
+            _prepare_read, retry_exceptions=False, num_cpus=0)
+        read_tasks = ray.get(
+            prepare_read.remote(datasource, ctx, parallelism,
+                                _wrap_s3_filesystem_workaround(read_args)))
 
     context = DatasetContext.get_current()
     stats_actor = get_or_create_stats_actor()

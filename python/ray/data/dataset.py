@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from typing import List, Any, Callable, Iterator, Iterable, Generic, \
     Dict, Optional, Union, TYPE_CHECKING, Tuple
@@ -1700,13 +1701,18 @@ class Dataset(Generic[T]):
         ctx = DatasetContext.get_current()
         blocks, metadata = zip(*self._blocks.get_blocks_with_metadata())
 
-        # Prepare write in a remote task so that in Ray client mode, we aren't
-        # attempting metadata resolution from the client machine.
-        do_write = cached_remote_fn(
-            _do_write, retry_exceptions=False, num_cpus=0)
-        write_results: List[ObjectRef[WriteResult]] = ray.get(
-            do_write.remote(datasource, ctx, blocks, metadata,
-                            _wrap_s3_filesystem_workaround(write_args)))
+        # TODO(ekl) remove this feature flag.
+        if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
+            write_results: List[ObjectRef[WriteResult]] = \
+                datasource.do_write(blocks, metadata, **write_args)
+        else:
+            # Prepare write in a remote task so that in Ray client mode, we
+            # don't do metadata resolution from the client machine.
+            do_write = cached_remote_fn(
+                _do_write, retry_exceptions=False, num_cpus=0)
+            write_results: List[ObjectRef[WriteResult]] = ray.get(
+                do_write.remote(datasource, ctx, blocks, metadata,
+                                _wrap_s3_filesystem_workaround(write_args)))
 
         progress = ProgressBar("Write Progress", len(write_results))
         try:
