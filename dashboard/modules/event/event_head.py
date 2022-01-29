@@ -24,8 +24,9 @@ JobEvents = OrderedDict
 dashboard_utils._json_compatible_types.add(JobEvents)
 
 
-class EventHead(dashboard_utils.DashboardHeadModule,
-                event_pb2_grpc.ReportEventServiceServicer):
+class EventHead(
+    dashboard_utils.DashboardHeadModule, event_pb2_grpc.ReportEventServiceServicer
+):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._event_dir = os.path.join(self._dashboard_head.log_dir, "events")
@@ -70,21 +71,24 @@ class EventHead(dashboard_utils.DashboardHeadModule,
                 for job_id, job_events in DataSource.events.items()
             }
             return dashboard_optional_utils.rest_response(
-                success=True, message="All events fetched.", events=all_events)
+                success=True, message="All events fetched.", events=all_events
+            )
 
         job_events = DataSource.events.get(job_id, {})
         return dashboard_optional_utils.rest_response(
             success=True,
             message="Job events fetched.",
             job_id=job_id,
-            events=list(job_events.values()))
+            events=list(job_events.values()),
+        )
 
     async def run(self, server):
         event_pb2_grpc.add_ReportEventServiceServicer_to_server(self, server)
         self._monitor = monitor_events(
             self._event_dir,
             lambda data: self._update_events(parse_event_strings(data)),
-            source_types=event_consts.EVENT_HEAD_MONITOR_SOURCE_TYPES)
+            source_types=event_consts.EVENT_HEAD_MONITOR_SOURCE_TYPES,
+        )
 
     @staticmethod
     def is_minimal_module():

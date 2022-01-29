@@ -3,10 +3,12 @@ import unittest
 import ray
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
-    LEARNER_STATS_KEY
-from ray.rllib.utils.test_utils import check_compute_single_action, \
-    check_train_results, framework_iterator
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.rllib.utils.test_utils import (
+    check_compute_single_action,
+    check_train_results,
+    framework_iterator,
+)
 
 
 class TestAPPO(unittest.TestCase):
@@ -114,8 +116,9 @@ class TestAPPO(unittest.TestCase):
             """
             for _ in range(n):
                 results = trainer.train()
-            return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
-                LEARNER_STATS_KEY]["entropy_coeff"]
+            return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
+                "entropy_coeff"
+            ]
 
         for _ in framework_iterator(config):
             trainer = ppo.APPOTrainer(config=config, env="CartPole-v0")
@@ -134,4 +137,5 @@ class TestAPPO(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

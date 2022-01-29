@@ -17,8 +17,7 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
             "retry_exceptions": True,
             "placement_group": None,
         }
-        CACHED_FUNCTIONS[fn] = ray.remote(**{
-            **default_ray_remote_args,
-            **ray_remote_args
-        })(fn)
+        CACHED_FUNCTIONS[fn] = ray.remote(
+            **{**default_ray_remote_args, **ray_remote_args}
+        )(fn)
     return CACHED_FUNCTIONS[fn]
