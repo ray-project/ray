@@ -4,7 +4,7 @@ from ray.rllib.utils.typing import Dict, SampleBatchType
 from ray.util.iter_metrics import MetricsContext
 
 # Backward compatibility.
-from ray.rllib.utils.metrics import (
+from ray.rllib.utils.metrics import (  # noqa: F401
     LAST_TARGET_UPDATE_TS,
     NUM_TARGET_UPDATES,
     APPLY_GRADS_TIMER,
@@ -14,7 +14,7 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
     LEARN_ON_BATCH_TIMER,
     LOAD_BATCH_TIMER,
-)  # noqa
+)
 
 STEPS_SAMPLED_COUNTER = "num_steps_sampled"
 AGENT_STEPS_SAMPLED_COUNTER = "num_agent_steps_sampled"

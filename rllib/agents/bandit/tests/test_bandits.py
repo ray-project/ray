@@ -75,9 +75,9 @@ class TestBandits(unittest.TestCase):
         )
 
         def try_import_anything():
-            from ray.rllib.contrib.bandits.some_crazy_module import (
+            from ray.rllib.contrib.bandits.some_crazy_module import (  # noqa: F401
                 SomeCrazyClass,
-            )  # noqa
+            )
 
         self.assertRaisesRegex(
             DeprecationWarning, "has been deprecated. Use", try_import_anything
