@@ -23,6 +23,8 @@ from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource, RangeDatasource, \
     JSONDatasource, CSVDatasource, ParquetDatasource, BinaryDatasource, \
     NumpyDatasource, ReadTask
+from ray.data.datasource.file_based_datasource import \
+    _wrap_s3_filesystem_workaround, _unwrap_s3_filesystem_workaround
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_list import BlockList
@@ -170,7 +172,8 @@ def read_datasource(datasource: Datasource[T],
     prepare_read = cached_remote_fn(
         _prepare_read, retry_exceptions=False, num_cpus=0)
     read_tasks = ray.get(
-        prepare_read.remote(datasource, ctx, parallelism, **read_args))
+        prepare_read.remote(datasource, ctx, parallelism,
+                            _wrap_s3_filesystem_workaround(read_args)))
 
     context = DatasetContext.get_current()
     stats_actor = get_or_create_stats_actor()
@@ -721,6 +724,7 @@ def _get_metadata(table: "pyarrow.Table") -> BlockMetadata:
 
 
 def _prepare_read(ds: Datasource, ctx: DatasetContext, parallelism: int,
-                  **kwargs) -> List[ReadTask]:
+                  kwargs: dict) -> List[ReadTask]:
+    kwargs = _unwrap_s3_filesystem_workaround(kwargs)
     DatasetContext._set_current(ctx)
     return ds.prepare_read(parallelism, **kwargs)
