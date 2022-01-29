@@ -2289,7 +2289,7 @@ Dict[str, List[str]]]): The names of the columns
                     raise StopIteration
                 self._ds._set_epoch(self._i)
                 self._i += 1
-                return lambda: self._ds.force_reads()
+                return lambda: self._ds
 
         class Iterable:
             def __init__(self, ds: "Dataset[T]"):
@@ -2366,8 +2366,7 @@ Dict[str, List[str]]]): The names of the columns
                 blocks = self._splits.pop(0)
 
                 def gen():
-                    ds = Dataset(blocks, self._epoch, outer_stats)
-                    return ds
+                    return Dataset(blocks, self._epoch, outer_stats)
 
                 return gen
 
