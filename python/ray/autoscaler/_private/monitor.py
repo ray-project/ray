@@ -251,6 +251,9 @@ class Monitor:
         request = gcs_service_pb2.GetAllResourceUsageRequest()
         response = self.gcs_node_resources_stub.GetAllResourceUsage(
             request, timeout=60)
+        logger.debug(">>>>>Logging detailed resource usage.")
+        logger.debug(response)
+        logger.debug(">>>>>Done logging detailed resource usage.")
         resources_batch_data = response.resource_usage_data
 
         # Tell the readonly node provider what nodes to report.
