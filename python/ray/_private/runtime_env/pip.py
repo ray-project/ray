@@ -53,6 +53,12 @@ class PipProcessor:
                  runtime_env: RuntimeEnv,
                  context: RuntimeEnvContext,
                  logger: Optional[logging.Logger] = default_logger):
+        try:
+            import virtualenv  # noqa: F401 ensure virtualenv exits.
+        except ImportError:
+            raise RuntimeError(f"Please install virtualenv "
+                               f"`{sys.executable} -m pip install virtualenv`"
+                               f"to enable pip runtime env.")
         logger.debug("Setting up pip for runtime_env: %s", runtime_env)
         self._pip_resources_dir = pip_resources_dir
         self._runtime_env = runtime_env
