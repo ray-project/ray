@@ -209,8 +209,7 @@ if setup_spec.type == SetupType.RAY:
             "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
             "prometheus_client >= 0.7.1",
-            "smart_open",
-            "virtualenv",  # For pip runtime env.
+            "smart_open"
         ],
         "serve": [
             "uvicorn==0.16.0", "requests", "starlette", "fastapi", "aiorwlock"
@@ -271,6 +270,7 @@ if setup_spec.type == SetupType.RAY:
         "protobuf >= 3.15.3",
         "pyyaml",
         "redis >= 3.5.0",
+        "virtualenv",  # For pip runtime env.
     ]
 
 
