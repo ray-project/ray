@@ -463,13 +463,12 @@ class GCPCompute(GCPResource):
         for accelerator in configuration_dict.get("guestAccelerators", []):
             gpu_type = accelerator["acceleratorType"]
             if not re.search(".*/acceleratorTypes/.*", gpu_type):
-                accelerator["acceleratorType"] = (
-                    "projects/{project}/zones/{zone}/"
-                    "acceleratorTypes/{accelerator}".format(
-                        project=self.project_id,
-                        zone=self.availability_zone,
-                        accelerator=gpu_type,
-                    )
+                accelerator[
+                    "acceleratorType"
+                ] = "projects/{project}/zones/{zone}/" "acceleratorTypes/{accelerator}".format(
+                    project=self.project_id,
+                    zone=self.availability_zone,
+                    accelerator=gpu_type,
                 )
 
         return configuration_dict

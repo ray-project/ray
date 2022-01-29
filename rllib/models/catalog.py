@@ -264,11 +264,14 @@ class ModelCatalog:
                     TorchMultiCategorical if framework == "torch" else MultiCategorical
                 )
                 num_cats = int(np.product(action_space.shape))
-                return partial(
-                    dist_cls,
-                    input_lens=[high_ - low_ + 1 for _ in range(num_cats)],
-                    action_space=action_space,
-                ), num_cats * (high_ - low_ + 1)
+                return (
+                    partial(
+                        dist_cls,
+                        input_lens=[high_ - low_ + 1 for _ in range(num_cats)],
+                        action_space=action_space,
+                    ),
+                    num_cats * (high_ - low_ + 1),
+                )
             else:
                 if len(action_space.shape) > 1:
                     raise UnsupportedSpaceException(
@@ -280,10 +283,13 @@ class ModelCatalog:
                     )
                 # TODO(sven): Check for bounds and return SquashedNormal, etc..
                 if dist_type is None:
-                    return partial(
-                        TorchDiagGaussian if framework == "torch" else DiagGaussian,
-                        action_space=action_space,
-                    ), DiagGaussian.required_model_output_shape(action_space, config)
+                    return (
+                        partial(
+                            TorchDiagGaussian if framework == "torch" else DiagGaussian,
+                            action_space=action_space,
+                        ),
+                        DiagGaussian.required_model_output_shape(action_space, config),
+                    )
                 elif dist_type == "deterministic":
                     dist_cls = (
                         TorchDeterministic if framework == "torch" else Deterministic
@@ -298,10 +304,14 @@ class ModelCatalog:
                 else Categorical
             )
         # Tuple/Dict Spaces -> MultiAction.
-        elif dist_type in (
-            MultiActionDistribution,
-            TorchMultiActionDistribution,
-        ) or isinstance(action_space, (Tuple, Dict)):
+        elif (
+            dist_type
+            in (
+                MultiActionDistribution,
+                TorchMultiActionDistribution,
+            )
+            or isinstance(action_space, (Tuple, Dict))
+        ):
             return ModelCatalog._get_multi_action_distribution(
                 (
                     MultiActionDistribution
@@ -957,12 +967,15 @@ class ModelCatalog:
             )
             child_dists = [e[0] for e in child_dists_and_in_lens]
             input_lens = [int(e[1]) for e in child_dists_and_in_lens]
-            return partial(
-                dist_class,
-                action_space=action_space,
-                child_distributions=child_dists,
-                input_lens=input_lens,
-            ), int(sum(input_lens))
+            return (
+                partial(
+                    dist_class,
+                    action_space=action_space,
+                    child_distributions=child_dists,
+                    input_lens=input_lens,
+                ),
+                int(sum(input_lens)),
+            )
         return dist_class, dist_class.required_model_output_shape(action_space, config)
 
     @staticmethod
