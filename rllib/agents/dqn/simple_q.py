@@ -204,7 +204,6 @@ class SimpleQTrainer(Trainer):
 
         return StandardMetricsReporting(train_op, workers, config)
 
-
     def training_iteration(self) -> ResultDict:
         """Runs one iteration of training."""
         # Some shortcuts.

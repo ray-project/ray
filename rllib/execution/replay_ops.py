@@ -51,10 +51,10 @@ class StoreToReplayBuffer:
 
 
 @ExperimentalAPI
-def store_to_replay_buffer(local_buffer: Optional[MultiAgentReplayBuffer]
-                           = None,
-                           actors: Optional[List[ActorHandle]] = None,
-                           batch: SampleBatchType = None):
+def store_to_replay_buffer(
+        local_buffer: Optional[MultiAgentReplayBuffer] = None,
+        actors: Optional[List[ActorHandle]] = None,
+        batch: SampleBatchType = None):
     """Store a batch into the given local buffer or one of the actors randomly.
 
     Args:
