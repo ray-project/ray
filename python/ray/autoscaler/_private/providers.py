@@ -102,8 +102,8 @@ def _import_aliyun(provider_config):
 
 
 def _import_gen2(provider_config):
-    from ray.autoscaler._private.gen2.node_provider import \
-        Gen2NodeProvider
+    from ray.autoscaler._private.gen2.node_provider import Gen2NodeProvider
+
     return Gen2NodeProvider
 
 
@@ -159,6 +159,7 @@ def _load_aliyun_defaults_config():
 
 def _load_gen2_defaults_config():
     import ray.autoscaler.gen2 as gen2
+
     return os.path.join(os.path.dirname(gen2.__file__), "defaults.yaml")
 
 

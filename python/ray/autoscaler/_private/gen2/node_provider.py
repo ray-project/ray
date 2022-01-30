@@ -31,9 +31,13 @@ from ibm_vpc import VpcV1
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler._private.util import hash_runtime_conf
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (NODE_KIND_HEAD, NODE_KIND_WORKER,
-                                 TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_KIND,
-                                 TAG_RAY_NODE_NAME)
+from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
+    NODE_KIND_WORKER,
+    TAG_RAY_CLUSTER_NAME,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_NODE_NAME,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +79,7 @@ class Gen2NodeProvider(NodeProvider):
     with floating (external) ip and the rest of worker nodes will be allocated
     only private ips.
     """
+
     """
     Decorator to wrap a function to reinit clients and retry on except.
     """
@@ -98,8 +103,8 @@ class Gen2NodeProvider(NodeProvider):
                     _self = args[0]
                     with _self.lock:
                         _self.ibm_vpc_client = _get_vpc_client(
-                            _self.endpoint,
-                            IAMAuthenticator(_self.iam_api_key))
+                            _self.endpoint, IAMAuthenticator(_self.iam_api_key)
+                        )
 
                     time.sleep(1)
 
@@ -118,12 +123,14 @@ class Gen2NodeProvider(NodeProvider):
             logger.info(
                 f"Enter {name} from {inspect.stack()[0][3]} "
                 f"{inspect.stack()[1][3]} {inspect.stack()[2][3]} with args: "
-                f"{args} and kwargs {kwargs}")
+                f"{args} and kwargs {kwargs}"
+            )
             try:
                 result = func(*args, **kwargs)
                 logger.info(
                     f"Leave {name} from {inspect.stack()[1][3]} with result "
-                    f"{result}, entered with args: {args}")
+                    f"{result}, entered with args: {args}"
+                )
             except Exception:
                 cli_logger.error(f"Error in {name}")
                 raise
@@ -156,7 +163,8 @@ class Gen2NodeProvider(NodeProvider):
                     if e.message == "Instance not found":
                         logger.error(
                             f"cached instance {instance_id} not found, \
-                                will be removed from cache")
+                                will be removed from cache"
+                        )
             self.set_node_tags(None, None)
         else:
             # check if the current node is a head node
@@ -166,16 +174,19 @@ class Gen2NodeProvider(NodeProvider):
             if self._get_node_type(name) == NODE_KIND_HEAD:
 
                 logger.info(f"{name} is HEAD")
-                node = self.ibm_vpc_client.list_instances(
-                    name=name).get_result()["instances"]
+                node = self.ibm_vpc_client.list_instances(name=name).get_result()[
+                    "instances"
+                ]
                 if node:
                     logger.info(f"{name} is node {node} in vpc")
 
                     ray_bootstrap_config = Path(
-                        Path.home(), Path("ray_bootstrap_config.yaml"))
+                        Path.home(), Path("ray_bootstrap_config.yaml")
+                    )
                     config = json.loads(ray_bootstrap_config.read_text())
                     (runtime_hash, mounts_contents_hash) = hash_runtime_conf(
-                        config["file_mounts"], None, config)
+                        config["file_mounts"], None, config
+                    )
 
                     head_tags = {
                         TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
@@ -184,7 +195,7 @@ class Gen2NodeProvider(NodeProvider):
                         "ray-cluster-name": self.cluster_name,
                         "ray-user-node-type": config["head_node_type"],
                         "ray-runtime-config": runtime_hash,
-                        "ray-file-mounts-contents": mounts_contents_hash
+                        "ray-file-mounts-contents": mounts_contents_hash,
                     }
 
                     logger.info(f"Setting HEAD node tags {head_tags}")
@@ -198,7 +209,8 @@ class Gen2NodeProvider(NodeProvider):
         self.iam_api_key = self.provider_config["iam_api_key"]
 
         self.ibm_vpc_client = _get_vpc_client(
-            self.endpoint, IAMAuthenticator(self.iam_api_key))
+            self.endpoint, IAMAuthenticator(self.iam_api_key)
+        )
 
         self._load_tags()
 
@@ -209,8 +221,7 @@ class Gen2NodeProvider(NodeProvider):
         self.pending_nodes = {}
         self.deleted_nodes = []
 
-        self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes",
-                                                       True)
+        self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes", True)
 
     def _get_node_type(self, name):
         if f"{self.cluster_name}-{NODE_KIND_WORKER}" in name:
@@ -231,8 +242,7 @@ class Gen2NodeProvider(NodeProvider):
             instances = result["instances"]
             while result["next"]:
                 start = result["next"]["href"].split("start=")[1]
-                result = self.ibm_vpc_client.list_instances(
-                    start=start).get_result()
+                result = self.ibm_vpc_client.list_instances(start=start).get_result()
                 instances.append(result["instances"])
 
             for instance in instances:
@@ -241,12 +251,13 @@ class Gen2NodeProvider(NodeProvider):
                     if not filters or kind == filters[TAG_RAY_NODE_KIND]:
                         nodes.append(instance)
                         with self.lock:
-                            node_cache = self.nodes_tags.setdefault(
-                                instance["id"], {})
-                            node_cache.update({
-                                TAG_RAY_CLUSTER_NAME: self.cluster_name,
-                                TAG_RAY_NODE_KIND: kind
-                            })
+                            node_cache = self.nodes_tags.setdefault(instance["id"], {})
+                            node_cache.update(
+                                {
+                                    TAG_RAY_CLUSTER_NAME: self.cluster_name,
+                                    TAG_RAY_NODE_KIND: kind,
+                                }
+                            )
         else:
             with self.lock:
                 tags = self.nodes_tags.copy()
@@ -254,23 +265,20 @@ class Gen2NodeProvider(NodeProvider):
                 for node_id, node_tags in tags.items():
 
                     # filter by tags
-                    if not all(item in node_tags.items()
-                               for item in filters.items()):
+                    if not all(item in node_tags.items() for item in filters.items()):
                         logger.debug(
                             f"specified filter {filters} doesn't match node"
-                            f"tags {node_tags}")
+                            f"tags {node_tags}"
+                        )
                         continue
                     try:
-                        nodes.append(
-                            self.ibm_vpc_client.get_instance(node_id).result)
+                        nodes.append(self.ibm_vpc_client.get_instance(node_id).result)
                     except Exception as e:
                         cli_logger.warning(node_id)
                         if e.message == "Instance not found":
-                            logger.error(
-                                f"failed to find vsi {node_id}, skipping")
+                            logger.error(f"failed to find vsi {node_id}, skipping")
                             continue
-                        logger.error(
-                            f"failed to find instance {node_id}, raising")
+                        logger.error(f"failed to find instance {node_id}, raising")
                         raise e
 
         return nodes
@@ -297,8 +305,10 @@ class Gen2NodeProvider(NodeProvider):
             # validate instance in correct state
             valid_statuses = ["pending", "starting", "running"]
             if node["status"] not in valid_statuses:
-                logger.info(f"{node['id']} status {node['status']}"
-                            f" not in {valid_statuses}, skipping")
+                logger.info(
+                    f"{node['id']} status {node['status']}"
+                    f" not in {valid_statuses}, skipping"
+                )
                 continue
 
             # validate instance not hanging in pending state
@@ -310,7 +320,8 @@ class Gen2NodeProvider(NodeProvider):
                         if p_time > PENDING_TIMEOUT:
                             logger.error(
                                 f"pending timeout {PENDING_TIMEOUT} reached, "
-                                f"deleting instance {node['id']}")
+                                f"deleting instance {node['id']}"
+                            )
                             self._delete_node(node["id"])
                     else:
                         self.pending_nodes.pop(node["id"], None)
@@ -319,9 +330,9 @@ class Gen2NodeProvider(NodeProvider):
                 nic_id = node["network_interfaces"][0]["id"]
 
                 # find head node external ip
-                res = self.ibm_vpc_client.\
-                    list_instance_network_interface_floating_ips(
-                        node["id"], nic_id).get_result()
+                res = self.ibm_vpc_client.list_instance_network_interface_floating_ips(
+                    node["id"], nic_id
+                ).get_result()
 
                 floating_ips = res["floating_ips"]
                 if len(floating_ips) == 0:
@@ -398,7 +409,8 @@ class Gen2NodeProvider(NodeProvider):
 
         try:
             primary_ipv4_address = node["network_interfaces"][0].get(
-                "primary_ipv4_address")
+                "primary_ipv4_address"
+            )
             if primary_ipv4_address is None:
                 node = self._get_node(node_id)
         except Exception:
@@ -430,8 +442,7 @@ class Gen2NodeProvider(NodeProvider):
         """
         Returns the instance information
         """
-        instances_data = self.ibm_vpc_client.list_instances(
-            name=name).get_result()
+        instances_data = self.ibm_vpc_client.list_instances(name=name).get_result()
         if len(instances_data["instances"]) > 0:
             return instances_data["instances"][0]
         return None
@@ -442,50 +453,41 @@ class Gen2NodeProvider(NodeProvider):
         """
         logger.info("Creating new VM instance {}".format(name))
 
-        security_group_identity_model = {
-            "id": base_config["security_group_id"]
-        }
+        security_group_identity_model = {"id": base_config["security_group_id"]}
         subnet_identity_model = {"id": base_config["subnet_id"]}
         primary_network_interface = {
             "name": "eth0",
             "subnet": subnet_identity_model,
-            "security_groups": [security_group_identity_model]
+            "security_groups": [security_group_identity_model],
         }
 
         boot_volume_profile = {
             "capacity": base_config.get("boot_volume_capacity", 100),
             "name": "{}-boot".format(name),
             "profile": {
-                "name": base_config.get("volume_tier_name",
-                                        VOLUME_TIER_NAME_DEFAULT)
-            }
+                "name": base_config.get("volume_tier_name", VOLUME_TIER_NAME_DEFAULT)
+            },
         }
 
         boot_volume_attachment = {
             "delete_volume_on_instance_delete": True,
-            "volume": boot_volume_profile
+            "volume": boot_volume_profile,
         }
 
         key_identity_model = {"id": base_config["key_id"]}
-        profile_name = base_config.get("instance_profile_name",
-                                       PROFILE_NAME_DEFAULT)
+        profile_name = base_config.get("instance_profile_name", PROFILE_NAME_DEFAULT)
 
         instance_prototype = {}
         instance_prototype["name"] = name
         instance_prototype["keys"] = [key_identity_model]
         instance_prototype["profile"] = {"name": profile_name}
-        instance_prototype["resource_group"] = {
-            "id": base_config["resource_group_id"]
-        }
+        instance_prototype["resource_group"] = {"id": base_config["resource_group_id"]}
         instance_prototype["vpc"] = {"id": base_config["vpc_id"]}
         instance_prototype["image"] = {"id": base_config["image_id"]}
 
-        instance_prototype["zone"] = {
-            "name": self.provider_config["zone_name"]
-        }
+        instance_prototype["zone"] = {"name": self.provider_config["zone_name"]}
         instance_prototype["boot_volume_attachment"] = boot_volume_attachment
-        instance_prototype[
-            "primary_network_interface"] = primary_network_interface
+        instance_prototype["primary_network_interface"] = primary_network_interface
 
         try:
             with self.lock:
@@ -495,12 +497,14 @@ class Gen2NodeProvider(NodeProvider):
                 return self._get_instance_data(name)
             elif e.code == 400 and "over quota" in e.message:
                 cli_logger.error(
-                    "Create VM instance {} failed due to quota limit"
-                    .format(name))
+                    "Create VM instance {} failed due to quota limit".format(name)
+                )
             else:
                 cli_logger.error(
                     "Create VM instance {} failed with status code {}".format(
-                        name, str(e.code)))
+                        name, str(e.code)
+                    )
+                )
             raise e
 
         logger.info("VM instance {} created successfully ".format(name))
@@ -512,7 +516,8 @@ class Gen2NodeProvider(NodeProvider):
         """
         if base_config.get("head_ip"):
             for ip in self.ibm_vpc_client.list_floating_ips().get_result()[
-                    "floating_ips"]:
+                "floating_ips"
+            ]:
                 if ip["address"] == base_config["head_ip"]:
                     return ip
 
@@ -521,14 +526,11 @@ class Gen2NodeProvider(NodeProvider):
         logger.info("Creating floating IP {}".format(floating_ip_name))
         floating_ip_prototype = {}
         floating_ip_prototype["name"] = floating_ip_name
-        floating_ip_prototype["zone"] = {
-            "name": self.provider_config["zone_name"]
-        }
+        floating_ip_prototype["zone"] = {"name": self.provider_config["zone_name"]}
         floating_ip_prototype["resource_group"] = {
             "id": base_config["resource_group_id"]
         }
-        response = self.ibm_vpc_client.create_floating_ip(
-            floating_ip_prototype)
+        response = self.ibm_vpc_client.create_floating_ip(floating_ip_prototype)
         floating_ip_data = response.result
 
         return floating_ip_data
@@ -537,8 +539,9 @@ class Gen2NodeProvider(NodeProvider):
         fip = fip_data["address"]
         fip_id = fip_data["id"]
 
-        logger.info("Attaching floating IP {} to VM instance {}".format(
-            fip, instance["id"]))
+        logger.info(
+            "Attaching floating IP {} to VM instance {}".format(fip, instance["id"])
+        )
 
         # check if floating ip is not attached yet
         inst_p_nic = instance["primary_network_interface"]
@@ -549,14 +552,14 @@ class Gen2NodeProvider(NodeProvider):
         else:
             # attach floating ip
             self.ibm_vpc_client.add_instance_network_interface_floating_ip(
-                instance["id"], instance["network_interfaces"][0]["id"],
-                fip_id)
+                instance["id"], instance["network_interfaces"][0]["id"], fip_id
+            )
 
     def _stopped_nodes(self, tags):
 
         filter = {
             TAG_RAY_CLUSTER_NAME: self.cluster_name,
-            TAG_RAY_NODE_KIND: tags[TAG_RAY_NODE_KIND]
+            TAG_RAY_NODE_KIND: tags[TAG_RAY_NODE_KIND],
         }
 
         nodes = []
@@ -577,14 +580,14 @@ class Gen2NodeProvider(NodeProvider):
 
     def _create_node(self, base_config, tags):
         name_tag = tags[TAG_RAY_NODE_NAME]
-        assert (len(name_tag) <=
-                (INSTANCE_NAME_MAX_LEN - INSTANCE_NAME_UUID_LEN - 1)
-                ) and re.match("^[a-z0-9-:-]*$", name_tag), (name_tag,
-                                                             len(name_tag))
+        assert (
+            len(name_tag) <= (INSTANCE_NAME_MAX_LEN - INSTANCE_NAME_UUID_LEN - 1)
+        ) and re.match("^[a-z0-9-:-]*$", name_tag), (name_tag, len(name_tag))
 
         # append instance name with uuid
         name = "{name_tag}-{uuid}".format(
-            name_tag=name_tag, uuid=uuid4().hex[:INSTANCE_NAME_UUID_LEN])
+            name_tag=name_tag, uuid=uuid4().hex[:INSTANCE_NAME_UUID_LEN]
+        )
 
         # create instance in vpc
         instance = self._create_instance(name, base_config)
@@ -619,7 +622,8 @@ class Gen2NodeProvider(NodeProvider):
                 cli_logger.print(
                     f"Reusing nodes {stopped_nodes_ids}. "
                     "To disable reuse, set `cache_stopped_nodes: False` "
-                    "under `provider` in the cluster configuration.")
+                    "under `provider` in the cluster configuration."
+                )
 
             for node in stopped_nodes:
                 logger.info(f"Starting instance {node['id']}")
@@ -641,8 +645,7 @@ class Gen2NodeProvider(NodeProvider):
         if count:
             with cf.ThreadPoolExecutor(count) as ex:
                 for i in range(count):
-                    futures.append(
-                        ex.submit(self._create_node, base_config, tags))
+                    futures.append(ex.submit(self._create_node, base_config, tags))
 
             for future in cf.as_completed(futures):
                 created_node = future.result()
@@ -693,8 +696,7 @@ class Gen2NodeProvider(NodeProvider):
         futures = []
         with cf.ThreadPoolExecutor(len(node_ids)) as ex:
             for node_id in node_ids:
-                logger.info(
-                    "NodeProvider: {}: Terminating node".format(node_id))
+                logger.info("NodeProvider: {}: Terminating node".format(node_id))
                 futures.append(ex.submit(self.terminate_node, node_id))
 
         for future in cf.as_completed(futures):
@@ -712,7 +714,8 @@ class Gen2NodeProvider(NodeProvider):
                 cli_logger.print(
                     f"Stopping instance {node_id}. To terminate instead, "
                     "set `cache_stopped_nodes: False` "
-                    "under `provider` in the cluster configuration")
+                    "under `provider` in the cluster configuration"
+                )
 
                 self.ibm_vpc_client.create_instance_action(node_id, "stop")
             else:
