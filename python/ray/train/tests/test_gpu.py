@@ -8,12 +8,15 @@ from torch.utils.data import DataLoader, DistributedSampler
 import ray
 import ray.train as train
 from ray.train import Trainer, TrainingCallback
-from ray.train.examples.horovod.horovod_example import train_func as \
-    horovod_torch_train_func
-from ray.train.examples.tensorflow_mnist_example import train_func as \
-    tensorflow_mnist_train_func
-from ray.train.examples.train_fashion_mnist_example import train_func \
-    as fashion_mnist_train_func
+from ray.train.examples.horovod.horovod_example import (
+    train_func as horovod_torch_train_func,
+)
+from ray.train.examples.tensorflow_mnist_example import (
+    train_func as tensorflow_mnist_train_func,
+)
+from ray.train.examples.train_fashion_mnist_example import (
+    train_func as fashion_mnist_train_func,
+)
 from ray.train.examples.train_linear_example import LinearDataset
 from test_tune import torch_fashion_mnist, tune_tensorflow_mnist
 
@@ -185,11 +188,8 @@ def test_horovod_torch_mnist_gpu(ray_start_4_cpus_2_gpus):
     trainer = Trainer("horovod", num_workers, use_gpu=True)
     trainer.start()
     results = trainer.run(
-        horovod_torch_train_func,
-        config={
-            "num_epochs": num_epochs,
-            "lr": 1e-3
-        })
+        horovod_torch_train_func, config={"num_epochs": num_epochs, "lr": 1e-3}
+    )
     trainer.shutdown()
 
     assert len(results) == num_workers
@@ -207,8 +207,7 @@ def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
 
 
 def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
-    from ray.train.examples.train_linear_dataset_example import \
-        train_linear
+    from ray.train.examples.train_linear_dataset_example import train_linear
 
     results = train_linear(num_workers=2, use_gpu=True)
     for result in results:
@@ -216,8 +215,9 @@ def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
 
 
 def test_tensorflow_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
-    from ray.train.examples.tensorflow_linear_dataset_example import \
-        train_tensorflow_linear
+    from ray.train.examples.tensorflow_linear_dataset_example import (
+        train_tensorflow_linear,
+    )
 
     results = train_tensorflow_linear(num_workers=2, use_gpu=True)
     for result in results:

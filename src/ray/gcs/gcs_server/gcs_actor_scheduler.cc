@@ -26,7 +26,9 @@ namespace gcs {
 GcsActorScheduler::GcsActorScheduler(
     instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
     const GcsNodeManager &gcs_node_manager,
-    std::function<void(std::shared_ptr<GcsActor>, bool)> schedule_failure_handler,
+    std::function<void(std::shared_ptr<GcsActor>,
+                       rpc::RequestWorkerLeaseReply::SchedulingFailureType)>
+        schedule_failure_handler,
     std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
         schedule_success_handler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
@@ -51,7 +53,8 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   if (!node.has_value()) {
     // There are no available nodes to schedule the actor, so just trigger the failed
     // handler.
-    schedule_failure_handler_(std::move(actor), /*runtime_env_setup_failed=*/false);
+    schedule_failure_handler_(std::move(actor),
+                              rpc::RequestWorkerLeaseReply::SCHEDULING_FAILED);
     return;
   }
 
@@ -311,15 +314,18 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
   }
 }
 
-void GcsActorScheduler::OnRuntimeEnvSetupFailure(std::shared_ptr<GcsActor> actor,
-                                                 const NodeID &node_id) {
+void GcsActorScheduler::HandleRequestWorkerLeaseCanceled(
+    std::shared_ptr<GcsActor> actor, const NodeID &node_id,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type) {
   RAY_LOG(ERROR)
-      << "Failed to lease worker from node " << node_id << " for actor "
+      << "The lease worker request from node " << node_id << " for actor "
       << actor->GetActorID() << "("
       << actor->GetCreationTaskSpecification().FunctionDescriptor()->CallString() << ")"
-      << " as the runtime environment setup failed, job id = "
-      << actor->GetActorID().JobId();
-  schedule_failure_handler_(actor, /*runtime_env_setup_failed=*/true);
+      << " has been canceled, job id = " << actor->GetActorID().JobId()
+      << ", cancel type: "
+      << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(failure_type);
+
+  schedule_failure_handler_(actor, failure_type);
 }
 
 void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
@@ -510,10 +516,8 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
     }
 
     if (status.ok()) {
-      // The runtime environment has failed by an unrecoverable error.
-      // We cannot create this actor anymore.
-      if (reply.runtime_env_setup_failed()) {
-        OnRuntimeEnvSetupFailure(actor, node_id);
+      if (reply.canceled()) {
+        HandleRequestWorkerLeaseCanceled(actor, node_id, reply.failure_type());
         return;
       }
 

@@ -1044,7 +1044,7 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  worker_shim_pid, startup_token):
+                  startup_token):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -1094,7 +1094,6 @@ cdef class CoreWorker:
         options.metrics_agent_port = metrics_agent_port
         options.connect_on_start = False
         options.runtime_env_hash = runtime_env_hash
-        options.worker_shim_pid = worker_shim_pid
         options.startup_token = startup_token
         CCoreWorkerProcess.Initialize(options)
 
@@ -2148,8 +2147,8 @@ cdef class CoreWorker:
     def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
         check_status(CCoreWorkerProcess.GetCoreWorker().PushError(
-            job_id.native(), error_type.encode("ascii"),
-            error_message.encode("ascii"), timestamp))
+            job_id.native(), error_type.encode("utf-8"),
+            error_message.encode("utf-8"), timestamp))
 
     def get_job_config(self):
         cdef CJobConfig c_job_config
