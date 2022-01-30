@@ -65,8 +65,6 @@ class CoreWorkerDirectTaskSubmitter {
       std::shared_ptr<TaskFinisherInterface> task_finisher, NodeID local_raylet_id,
       WorkerType worker_type, int64_t lease_timeout_ms,
       std::shared_ptr<ActorCreatorInterface> actor_creator, const JobID &job_id,
-      uint32_t max_tasks_in_flight_per_worker =
-          ::RayConfig::instance().max_tasks_in_flight_per_worker(),
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt,
       uint64_t max_pending_lease_requests_per_scheduling_category =
           ::RayConfig::instance().max_pending_lease_requests_per_scheduling_category())
@@ -82,7 +80,6 @@ class CoreWorkerDirectTaskSubmitter {
         actor_creator_(actor_creator),
         client_cache_(core_worker_client_pool),
         job_id_(job_id),
-        max_tasks_in_flight_per_worker_(max_tasks_in_flight_per_worker),
         max_pending_lease_requests_per_scheduling_category_(
             max_pending_lease_requests_per_scheduling_category),
         cancel_retry_timer_(std::move(cancel_timer)) {}
@@ -233,23 +230,19 @@ class CoreWorkerDirectTaskSubmitter {
   /// The ID of the job.
   const JobID job_id_;
 
-  // max_tasks_in_flight_per_worker_ limits the number of tasks that can be pipelined to a
-  // worker using a single lease.
-  const uint32_t max_tasks_in_flight_per_worker_;
-
   // Max number of pending lease requests per SchedulingKey.
   const uint64_t max_pending_lease_requests_per_scheduling_category_;
 
   /// A LeaseEntry struct is used to condense the metadata about a single executor:
   /// (1) The lease client through which the worker should be returned
   /// (2) The expiration time of a worker's lease.
-  /// (3) The number of tasks that are currently in flight to the worker
+  /// (3) Whether the worker has assigned task to do.
   /// (5) The resources assigned to the worker
   /// (6) The SchedulingKey assigned to tasks that will be sent to the worker
   struct LeaseEntry {
     std::shared_ptr<WorkerLeaseInterface> lease_client;
     int64_t lease_expiration_time;
-    uint32_t tasks_in_flight = 0;
+    bool is_busy = false;
     google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources;
     SchedulingKey scheduling_key;
 
@@ -264,11 +257,6 @@ class CoreWorkerDirectTaskSubmitter {
           lease_expiration_time(lease_expiration_time),
           assigned_resources(assigned_resources),
           scheduling_key(scheduling_key) {}
-
-    // Check whether the pipeline to the worker associated with a LeaseEntry is full.
-    inline bool PipelineToWorkerFull(uint32_t max_tasks_in_flight_per_worker) const {
-      return tasks_in_flight == max_tasks_in_flight_per_worker;
-    }
   };
 
   // Map from worker address to a LeaseEntry struct containing the lease's metadata.
@@ -286,26 +274,25 @@ class CoreWorkerDirectTaskSubmitter {
     // room for more tasks in flight
     absl::flat_hash_set<rpc::WorkerAddress> active_workers =
         absl::flat_hash_set<rpc::WorkerAddress>();
-    // Keep track of how many tasks with this SchedulingKey are in flight, in total
-    uint32_t total_tasks_in_flight = 0;
+    // Keep track of how many workers have tasks to do.
+    uint32_t num_busy_workers = 0;
     int64_t last_reported_backlog_size = 0;
 
     // Check whether it's safe to delete this SchedulingKeyEntry from the
     // scheduling_key_entries_ hashmap.
     inline bool CanDelete() const {
       if (pending_lease_requests.empty() && task_queue.empty() &&
-          active_workers.size() == 0 && total_tasks_in_flight == 0) {
+          active_workers.size() == 0 && num_busy_workers == 0) {
         return true;
       }
 
       return false;
     }
 
-    // Check whether the pipelines to the active workers associated with a
-    // SchedulingKeyEntry are all full.
-    inline bool AllPipelinesToWorkersFull(uint32_t max_tasks_in_flight_per_worker) const {
-      return total_tasks_in_flight >=
-             (active_workers.size() * max_tasks_in_flight_per_worker);
+    // Check whether all workers are busy.
+    inline bool AllWorkersBusy() const {
+      RAY_CHECK_LE(num_busy_workers, active_workers.size());
+      return num_busy_workers == active_workers.size();
     }
 
     // Get the current backlog size for this scheduling key

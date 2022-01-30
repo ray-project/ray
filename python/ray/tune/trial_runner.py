@@ -14,12 +14,16 @@ from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList
 from ray.tune.experiment import Experiment
-from ray.tune.insufficient_resources_manager import (
-    InsufficientResourcesManager)
+from ray.tune.insufficient_resources_manager import InsufficientResourcesManager
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import (DEBUG_METRICS, DEFAULT_METRIC, DONE,
-                             TIME_THIS_ITER_S, RESULT_DUPLICATE,
-                             SHOULD_CHECKPOINT)
+from ray.tune.result import (
+    DEBUG_METRICS,
+    DEFAULT_METRIC,
+    DONE,
+    TIME_THIS_ITER_S,
+    RESULT_DUPLICATE,
+    SHOULD_CHECKPOINT,
+)
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
@@ -28,8 +32,7 @@ from ray.tune.trial import Checkpoint, Trial
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.utils.placement_groups import PlacementGroupFactory
-from ray.tune.utils.serialization import TuneFunctionDecoder, \
-    TuneFunctionEncoder
+from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
 from ray.util.debug import log_once
 
@@ -41,7 +44,8 @@ logger = logging.getLogger(__name__)
 def find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
     """Returns path to most recently modified checkpoint."""
     full_paths = [
-        os.path.join(ckpt_dir, fname) for fname in os.listdir(ckpt_dir)
+        os.path.join(ckpt_dir, fname)
+        for fname in os.listdir(ckpt_dir)
         if fname.startswith("experiment_state") and fname.endswith(".json")
     ]
     if not full_paths:
@@ -50,8 +54,8 @@ def find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
 
 
 def load_trials_from_experiment_checkpoint(
-        experiment_checkpoint: Mapping[str, Any],
-        stub: bool = False) -> List[Trial]:
+    experiment_checkpoint: Mapping[str, Any], stub: bool = False
+) -> List[Trial]:
     """Create trial objects from experiment checkpoint.
 
     Given an experiment checkpoint (TrialRunner state dict), return
@@ -85,17 +89,19 @@ class _ExperimentCheckpointManager:
 
     """
 
-    def __init__(self,
-                 checkpoint_dir: str,
-                 checkpoint_period: Union[int, float, str],
-                 start_time: float,
-                 session_str: str,
-                 syncer: CloudSyncer,
-                 sync_trial_checkpoints: bool = True):
+    def __init__(
+        self,
+        checkpoint_dir: str,
+        checkpoint_period: Union[int, float, str],
+        start_time: float,
+        session_str: str,
+        syncer: CloudSyncer,
+        sync_trial_checkpoints: bool = True,
+    ):
         self._checkpoint_dir = checkpoint_dir
         self._auto_checkpoint_enabled = checkpoint_period == "auto"
         if self._auto_checkpoint_enabled:
-            self._checkpoint_period = 10.  # Initial value
+            self._checkpoint_period = 10.0  # Initial value
         else:
             self._checkpoint_period = float(checkpoint_period)
 
@@ -105,18 +111,20 @@ class _ExperimentCheckpointManager:
         self._syncer = syncer
         self._sync_trial_checkpoints = sync_trial_checkpoints
 
-        self._last_checkpoint_time = 0.
+        self._last_checkpoint_time = 0.0
 
     @property
     def auto_checkpoint_enabled(self):
         return self._auto_checkpoint_enabled
 
-    def checkpoint(self,
-                   checkpoint_file: str,
-                   trial_runner: "TrialRunner",
-                   trial_executor: RayTrialExecutor,
-                   search_alg: SearchAlgorithm,
-                   force=False):
+    def checkpoint(
+        self,
+        checkpoint_file: str,
+        trial_runner: "TrialRunner",
+        trial_executor: RayTrialExecutor,
+        search_alg: SearchAlgorithm,
+        force=False,
+    ):
         """Saves execution state to `self._local_checkpoint_dir`.
 
         Overwrites the current session checkpoint, which starts when self
@@ -132,8 +140,7 @@ class _ExperimentCheckpointManager:
             return
 
         now = time.time()
-        if now - self._last_checkpoint_time < self._checkpoint_period and (
-                not force):
+        if now - self._last_checkpoint_time < self._checkpoint_period and (not force):
             return
 
         def _serialize_and_write():
@@ -142,17 +149,15 @@ class _ExperimentCheckpointManager:
                 "runner_data": trial_runner.__getstate__(),
                 "stats": {
                     "start_time": self._start_time,
-                    "timestamp": self._last_checkpoint_time
-                }
+                    "timestamp": self._last_checkpoint_time,
+                },
             }
-            tmp_file_name = os.path.join(self._checkpoint_dir,
-                                         ".tmp_checkpoint")
+            tmp_file_name = os.path.join(self._checkpoint_dir, ".tmp_checkpoint")
             with open(tmp_file_name, "w") as f:
                 json.dump(runner_state, f, indent=2, cls=TuneFunctionEncoder)
 
             os.replace(tmp_file_name, checkpoint_file)
-            search_alg.save_to_dir(
-                self._checkpoint_dir, session_str=self._session_str)
+            search_alg.save_to_dir(self._checkpoint_dir, session_str=self._session_str)
 
         checkpoint_time_start = time.monotonic()
         _serialize_and_write()
@@ -171,11 +176,13 @@ class _ExperimentCheckpointManager:
         if self._auto_checkpoint_enabled:
             # Multiplying this time by 19 means we spend ~5% of the time
             # writing global checkpoints and 95% of the time processing trials
-            self._checkpoint_period = max(10., checkpoint_time_taken * 19)
-            logger.debug(f"Global experiment checkpointing took "
-                         f"{checkpoint_time_taken:.2f} seconds. "
-                         f"Adjusting checkpoint period to "
-                         f"{self._checkpoint_period:.2f} seconds.")
+            self._checkpoint_period = max(10.0, checkpoint_time_taken * 19)
+            logger.debug(
+                f"Global experiment checkpointing took "
+                f"{checkpoint_time_taken:.2f} seconds. "
+                f"Adjusting checkpoint period to "
+                f"{self._checkpoint_period:.2f} seconds."
+            )
 
         self._last_checkpoint_time = time.time()
         return self._checkpoint_dir
@@ -237,28 +244,27 @@ class TrialRunner:
     """
 
     CKPT_FILE_TMPL = "experiment_state-{}.json"
-    VALID_RESUME_TYPES = [
-        True, "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY", "AUTO"
-    ]
+    VALID_RESUME_TYPES = [True, "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY", "AUTO"]
     RAISE = "RAISE"
 
     def __init__(
-            self,
-            search_alg=None,
-            scheduler=None,
-            local_checkpoint_dir=None,
-            remote_checkpoint_dir=None,
-            sync_config=None,
-            stopper=None,
-            resume=False,
-            server_port=None,
-            fail_fast=False,
-            checkpoint_period=None,
-            trial_executor=None,
-            callbacks=None,
-            metric=None,
-            # Deprecate on next refactor
-            driver_sync_trial_checkpoints=False):
+        self,
+        search_alg=None,
+        scheduler=None,
+        local_checkpoint_dir=None,
+        remote_checkpoint_dir=None,
+        sync_config=None,
+        stopper=None,
+        resume=False,
+        server_port=None,
+        fail_fast=False,
+        checkpoint_period=None,
+        trial_executor=None,
+        callbacks=None,
+        metric=None,
+        # Deprecate on next refactor
+        driver_sync_trial_checkpoints=False,
+    ):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
@@ -272,7 +278,7 @@ class TrialRunner:
             if isinstance(self._search_alg, BasicVariantGenerator):
                 # Use a minimum of 16 to trigger fast autoscaling
                 # Scale up to at most the number of available cluster CPUs
-                cluster_cpus = ray.cluster_resources().get("CPU", 1.)
+                cluster_cpus = ray.cluster_resources().get("CPU", 1.0)
                 self._max_pending_trials = max(16, int(cluster_cpus * 1.1))
 
                 if self._max_pending_trials > 128:
@@ -285,7 +291,8 @@ class TrialRunner:
                         f"of trials, this could lead to scheduling overhead. "
                         f"In this case, consider setting the "
                         f"`TUNE_MAX_PENDING_TRIALS_PG` environment variable "
-                        f"to the desired maximum number of concurrent trials.")
+                        f"to the desired maximum number of concurrent trials."
+                    )
             else:
                 self._max_pending_trials = 1
         else:
@@ -299,7 +306,8 @@ class TrialRunner:
             raise ValueError(
                 "The TRIALRUNNER_WALLTIME_LIMIT environment variable is "
                 "deprecated. "
-                "Use `tune.run(time_budget_s=limit)` instead.")
+                "Use `tune.run(time_budget_s=limit)` instead."
+            )
 
         self._total_time = 0
         self._iteration = 0
@@ -313,10 +321,12 @@ class TrialRunner:
                     "mode as resources (such as Ray processes, "
                     "file descriptors, and temporary files) may not be "
                     "cleaned up properly. To use "
-                    "a safer mode, use fail_fast=True.")
+                    "a safer mode, use fail_fast=True."
+                )
             else:
-                raise ValueError("fail_fast must be one of {bool, RAISE}. "
-                                 f"Got {self._fail_fast}.")
+                raise ValueError(
+                    "fail_fast must be one of {bool, RAISE}. " f"Got {self._fail_fast}."
+                )
 
         self._server = None
         self._server_port = server_port
@@ -328,8 +338,7 @@ class TrialRunner:
         self._cached_trial_decisions = {}
         self._queued_trial_decisions = {}
         self._updated_queue = False
-        self._result_wait_time = int(
-            os.getenv("TUNE_TRIAL_RESULT_WAIT_TIME_S", "1"))
+        self._result_wait_time = int(os.getenv("TUNE_TRIAL_RESULT_WAIT_TIME_S", "1"))
 
         self._stop_queue = []
         self._should_stop_experiment = False  # used by TuneServer
@@ -341,13 +350,15 @@ class TrialRunner:
         sync_config = sync_config or SyncConfig()
         self._remote_checkpoint_dir = remote_checkpoint_dir
         self._syncer = get_cloud_syncer(
-            local_checkpoint_dir, remote_checkpoint_dir, sync_config.syncer)
+            local_checkpoint_dir, remote_checkpoint_dir, sync_config.syncer
+        )
         self._stopper = stopper or NoopStopper()
         self._resumed = False
 
         if self._validate_resume(
-                resume_type=resume,
-                driver_sync_trial_checkpoints=driver_sync_trial_checkpoints):
+            resume_type=resume,
+            driver_sync_trial_checkpoints=driver_sync_trial_checkpoints,
+        ):
             errored_only = False
             if isinstance(resume, str):
                 errored_only = resume.upper() == "ERRORED_ONLY"
@@ -367,13 +378,15 @@ class TrialRunner:
         self._start_time = time.time()
         self._last_checkpoint_time = -float("inf")
 
-        self._session_str = datetime.fromtimestamp(
-            self._start_time).strftime("%Y-%m-%d_%H-%M-%S")
+        self._session_str = datetime.fromtimestamp(self._start_time).strftime(
+            "%Y-%m-%d_%H-%M-%S"
+        )
         self.checkpoint_file = None
         if self._local_checkpoint_dir:
             self.checkpoint_file = os.path.join(
                 self._local_checkpoint_dir,
-                TrialRunner.CKPT_FILE_TMPL.format(self._session_str))
+                TrialRunner.CKPT_FILE_TMPL.format(self._session_str),
+            )
 
         self._callbacks = CallbackList(callbacks or [])
 
@@ -382,10 +395,12 @@ class TrialRunner:
 
         self._checkpoint_period = checkpoint_period
         self._checkpoint_manager = self._create_checkpoint_manager(
-            driver_sync_trial_checkpoints)
+            driver_sync_trial_checkpoints
+        )
 
-    def setup_experiments(self, experiments: List[Experiment],
-                          total_num_samples: int) -> None:
+    def setup_experiments(
+        self, experiments: List[Experiment], total_num_samples: int
+    ) -> None:
         """Obtains any necessary information from experiments.
 
         Mainly used to setup callbacks.
@@ -412,7 +427,8 @@ class TrialRunner:
             start_time=self._start_time,
             session_str=self._session_str,
             syncer=self._syncer,
-            sync_trial_checkpoints=sync_trial_checkpoints)
+            sync_trial_checkpoints=sync_trial_checkpoints,
+        )
 
     @property
     def resumed(self):
@@ -426,8 +442,7 @@ class TrialRunner:
     def scheduler_alg(self):
         return self._scheduler_alg
 
-    def _validate_resume(self, resume_type,
-                         driver_sync_trial_checkpoints=True):
+    def _validate_resume(self, resume_type, driver_sync_trial_checkpoints=True):
         """Checks whether to resume experiment.
 
         Args:
@@ -439,9 +454,11 @@ class TrialRunner:
         # TODO: Consider supporting ERRORED_ONLY+REMOTE?
         if not resume_type:
             return False
-        assert resume_type in self.VALID_RESUME_TYPES, (
-            "resume_type {} is not one of {}".format(resume_type,
-                                                     self.VALID_RESUME_TYPES))
+        assert (
+            resume_type in self.VALID_RESUME_TYPES
+        ), "resume_type {} is not one of {}".format(
+            resume_type, self.VALID_RESUME_TYPES
+        )
         # Not clear if we need this assertion, since we should always have a
         # local checkpoint dir.
         assert self._local_checkpoint_dir or self._remote_checkpoint_dir
@@ -450,7 +467,8 @@ class TrialRunner:
             if self._remote_checkpoint_dir:
                 logger.info(
                     f"Trying to find and download experiment checkpoint at "
-                    f"{self._remote_checkpoint_dir}")
+                    f"{self._remote_checkpoint_dir}"
+                )
                 # Todo: This syncs the entire experiment including trial
                 # checkpoints. We should exclude these in the future.
                 try:
@@ -462,32 +480,39 @@ class TrialRunner:
                         f"\nPlease check this error message for potential "
                         f"access problems - if a directory was not found, "
                         f"that is expected at this stage when you're starting "
-                        f"a new experiment.")
+                        f"a new experiment."
+                    )
                     logger.info(
                         "No remote checkpoint was found or an error occurred "
                         "when trying to download the experiment checkpoint. "
                         "Please check the previous warning message for more "
                         "details. "
-                        "Ray Tune will now start a new experiment.")
+                        "Ray Tune will now start a new experiment."
+                    )
                     return False
                 if not self.checkpoint_exists(self._local_checkpoint_dir):
                     logger.warning(
                         "A remote checkpoint was fetched, but no checkpoint "
                         "data was found. This can happen when e.g. the cloud "
                         "bucket exists but does not contain any data. "
-                        "Ray Tune will start a new, fresh run.")
+                        "Ray Tune will start a new, fresh run."
+                    )
                     return False
                 logger.info(
                     "A remote experiment checkpoint was found and will be "
-                    "used to restore the previous experiment state.")
+                    "used to restore the previous experiment state."
+                )
                 return True
             elif not self.checkpoint_exists(self._local_checkpoint_dir):
-                logger.info("No local checkpoint was found. "
-                            "Ray Tune will now start a new experiment.")
+                logger.info(
+                    "No local checkpoint was found. "
+                    "Ray Tune will now start a new experiment."
+                )
                 return False
             logger.info(
                 "A local experiment checkpoint was found and will be used "
-                "to restore the previous experiment state.")
+                "to restore the previous experiment state."
+            )
             return True
 
         if resume_type in [True, "LOCAL", "PROMPT", "ERRORED_ONLY"]:
@@ -496,29 +521,35 @@ class TrialRunner:
                     f"You called resume ({resume_type}) when no checkpoint "
                     f"exists in local directory "
                     f"({self._local_checkpoint_dir}). If you want to start "
-                    f"a new experiment, use `resume=\"AUTO\"` or "
+                    f'a new experiment, use `resume="AUTO"` or '
                     f"`resume=None`. If you expected an experiment to "
                     f"already exist, check if you supplied the correct "
-                    f"`local_dir` to `tune.run()`.")
+                    f"`local_dir` to `tune.run()`."
+                )
             elif resume_type == "PROMPT":
-                if click.confirm(f"Resume from local directory? "
-                                 f"({self._local_checkpoint_dir})"):
+                if click.confirm(
+                    f"Resume from local directory? " f"({self._local_checkpoint_dir})"
+                ):
                     return True
 
         if resume_type in ["REMOTE", "PROMPT"]:
             if resume_type == "PROMPT" and not click.confirm(
-                    f"Try downloading from remote directory? "
-                    f"({self._remote_checkpoint_dir})"):
+                f"Try downloading from remote directory? "
+                f"({self._remote_checkpoint_dir})"
+            ):
                 return False
             if not self._remote_checkpoint_dir:
                 raise ValueError(
                     "Called resume from remote without remote directory. "
                     "Fix this by passing a `SyncConfig` object with "
-                    "`upload_dir` set to `tune.run(sync_config=...)`.")
+                    "`upload_dir` set to `tune.run(sync_config=...)`."
+                )
 
             # Try syncing down the upload directory.
-            logger.info(f"Downloading experiment checkpoint from "
-                        f"{self._remote_checkpoint_dir}")
+            logger.info(
+                f"Downloading experiment checkpoint from "
+                f"{self._remote_checkpoint_dir}"
+            )
             if driver_sync_trial_checkpoints:
                 exclude = None
             else:
@@ -531,15 +562,18 @@ class TrialRunner:
                 raise RuntimeError(
                     "Syncing the remote experiment checkpoint to the driver "
                     "failed. Please check the error message. If you want to "
-                    "start a new experiment, use `resume=\"AUTO\"` or "
+                    'start a new experiment, use `resume="AUTO"` or '
                     "`resume=None`. If you expected an experiment to "
                     "already exist, check if you supplied the correct "
                     "`upload_dir` to the `tune.SyncConfig` passed to "
-                    "`tune.run()`.") from e
+                    "`tune.run()`."
+                ) from e
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):
-                raise ValueError("Called resume when no checkpoint exists "
-                                 "in remote or local directory.")
+                raise ValueError(
+                    "Called resume when no checkpoint exists "
+                    "in remote or local directory."
+                )
         return True
 
     @classmethod
@@ -548,7 +582,8 @@ class TrialRunner:
             return False
         return any(
             (fname.startswith("experiment_state") and fname.endswith(".json"))
-            for fname in os.listdir(directory))
+            for fname in os.listdir(directory)
+        )
 
     def checkpoint(self, force=False):
         """Saves execution state to `self._local_checkpoint_dir`.
@@ -563,22 +598,24 @@ class TrialRunner:
             force (bool): Forces a checkpoint despite checkpoint_period.
         """
         with warn_if_slow(
-                "experiment_checkpoint",
-                message="Checkpointing the experiment state took "
-                "{duration:.3f} s, which may be a performance "
-                "bottleneck. Please ensure the "
-                "`TUNE_GLOBAL_CHECKPOINT_S` environment variable is "
-                "something significantly higher than this duration "
-                "to ensure compute time is mostly spent on the main "
-                "training loop.",
-                disable=self._checkpoint_manager.auto_checkpoint_enabled):
+            "experiment_checkpoint",
+            message="Checkpointing the experiment state took "
+            "{duration:.3f} s, which may be a performance "
+            "bottleneck. Please ensure the "
+            "`TUNE_GLOBAL_CHECKPOINT_S` environment variable is "
+            "something significantly higher than this duration "
+            "to ensure compute time is mostly spent on the main "
+            "training loop.",
+            disable=self._checkpoint_manager.auto_checkpoint_enabled,
+        ):
 
             self._checkpoint_manager.checkpoint(
                 checkpoint_file=self.checkpoint_file,
                 trial_runner=self,
                 trial_executor=self.trial_executor,
                 search_alg=self._search_alg,
-                force=force)
+                force=force,
+            )
 
     def resume(self, run_errored_only=False):
         """Resumes all checkpointed trials from previous run.
@@ -586,31 +623,36 @@ class TrialRunner:
         Requires user to manually re-register their objects. Also stops
         all ongoing trials.
         """
-        newest_ckpt_path = find_newest_experiment_checkpoint(
-            self._local_checkpoint_dir)
+        newest_ckpt_path = find_newest_experiment_checkpoint(self._local_checkpoint_dir)
 
         if not newest_ckpt_path:
-            raise ValueError(f"Tried to resume from checkpoint dir "
-                             f"`{self._local_checkpoint_dir}`, but no "
-                             f"experiment checkpoint data was found.")
+            raise ValueError(
+                f"Tried to resume from checkpoint dir "
+                f"`{self._local_checkpoint_dir}`, but no "
+                f"experiment checkpoint data was found."
+            )
 
         with open(newest_ckpt_path, "r") as f:
             runner_state = json.load(f, cls=TuneFunctionDecoder)
             self.checkpoint_file = newest_ckpt_path
 
-        logger.warning("".join([
-            "Attempting to resume experiment from {}. ".format(
-                self._local_checkpoint_dir),
-            "This will ignore any new changes to the specification."
-        ]))
+        logger.warning(
+            "".join(
+                [
+                    "Attempting to resume experiment from {}. ".format(
+                        self._local_checkpoint_dir
+                    ),
+                    "This will ignore any new changes to the specification.",
+                ]
+            )
+        )
 
         self.__setstate__(runner_state["runner_data"])
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
         trials = load_trials_from_experiment_checkpoint(runner_state)
-        for trial in sorted(
-                trials, key=lambda t: t.last_update_time, reverse=True):
+        for trial in sorted(trials, key=lambda t: t.last_update_time, reverse=True):
             if run_errored_only and trial.status == Trial.ERROR:
                 new_trial = trial.reset()
                 self.add_trial(new_trial)
@@ -618,7 +660,8 @@ class TrialRunner:
                 self.add_trial(trial)
 
     def update_pending_trial_resources(
-            self, resources: Union[dict, PlacementGroupFactory]):
+        self, resources: Union[dict, PlacementGroupFactory]
+    ):
         """Update trial resources when resuming from checkpoint.
 
         Only updating the pending ones.
@@ -636,10 +679,10 @@ class TrialRunner:
         # evaluation. Specifically, if there are live trials, we check
         # these live trials first. Only if none of the live trials is
         # live anymore do we loop over all trials for a final check.
-        trials_done = (len(self._live_trials) == 0 or all(
-            trial.is_finished()
-            for trial in self._live_trials)) and all(trial.is_finished()
-                                                     for trial in self._trials)
+        trials_done = (
+            len(self._live_trials) == 0
+            or all(trial.is_finished() for trial in self._live_trials)
+        ) and all(trial.is_finished() for trial in self._trials)
         return trials_done and self._search_alg.is_finished()
 
     def step(self):
@@ -656,7 +699,8 @@ class TrialRunner:
             self.trial_executor.on_step_begin(self.get_trials())
         with warn_if_slow("callbacks.on_step_begin"):
             self._callbacks.on_step_begin(
-                iteration=self._iteration, trials=self._trials)
+                iteration=self._iteration, trials=self._trials
+            )
 
         # This will contain the next trial to start
         next_trial = self._get_next_trial()  # blocking
@@ -664,7 +708,8 @@ class TrialRunner:
         # continue updating if this was successful (next_trial is not None)
         if not self._updated_queue or (self._updated_queue and next_trial):
             num_pending_trials = len(
-                [t for t in self._live_trials if t.status == Trial.PENDING])
+                [t for t in self._live_trials if t.status == Trial.PENDING]
+            )
             while num_pending_trials < self._max_pending_trials:
                 if not self._update_trial_queue(blocking=False):
                     break
@@ -678,9 +723,8 @@ class TrialRunner:
             with warn_if_slow("start_trial"):
                 if self.trial_executor.start_trial(trial):
                     self._callbacks.on_trial_start(
-                        iteration=self._iteration,
-                        trials=self._trials,
-                        trial=trial)
+                        iteration=self._iteration, trials=self._trials, trial=trial
+                    )
                     return True
                 return False
 
@@ -709,7 +753,8 @@ class TrialRunner:
                 self._process_events(timeout=timeout)
             else:
                 self._insufficient_resources_manager.on_no_available_trials(
-                    self.get_trials())
+                    self.get_trials()
+                )
 
         self._stop_experiment_if_needed()
 
@@ -728,8 +773,7 @@ class TrialRunner:
         with warn_if_slow("on_step_end"):
             self.trial_executor.on_step_end(self.get_trials())
         with warn_if_slow("callbacks.on_step_end"):
-            self._callbacks.on_step_end(
-                iteration=self._iteration, trials=self._trials)
+            self._callbacks.on_step_end(iteration=self._iteration, trials=self._trials)
 
         self._reconcile_live_trials()
 
@@ -761,16 +805,14 @@ class TrialRunner:
             self._live_trials.add(trial)
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(
-                TrialRunnerWrapper(self, runner_whitelist_attr={"search_alg"}),
-                trial)
+                TrialRunnerWrapper(self, runner_whitelist_attr={"search_alg"}), trial
+            )
         self.trial_executor.mark_trial_to_checkpoint(trial)
 
     def debug_string(self, delim="\n"):
         from ray.tune.progress_reporter import trial_progress_str
 
-        result_keys = [
-            list(t.last_result) for t in self.get_trials() if t.last_result
-        ]
+        result_keys = [list(t.last_result) for t in self.get_trials() if t.last_result]
         metrics = set().union(*result_keys)
         messages = [
             self._scheduler_alg.debug_string(),
@@ -782,11 +824,11 @@ class TrialRunner:
     def _stop_experiment_if_needed(self):
         """Stops all trials."""
         fail_fast = self._fail_fast and self._has_errored
-        if (self._stopper.stop_all() or fail_fast
-                or self._should_stop_experiment):
+        if self._stopper.stop_all() or fail_fast or self._should_stop_experiment:
             self._search_alg.set_finished()
             [
-                self.trial_executor.stop_trial(t) for t in self._trials
+                self.trial_executor.stop_trial(t)
+                for t in self._trials
                 if t.status is not Trial.ERROR
             ]
 
@@ -805,8 +847,7 @@ class TrialRunner:
                 no_trials_pending = False
             if not no_trials_unfinished and not no_trials_pending:
                 break
-        wait_for_trial = (no_trials_unfinished
-                          and not self._search_alg.is_finished())
+        wait_for_trial = no_trials_unfinished and not self._search_alg.is_finished()
         # Only fetch a new trial if we have no pending trial
         if wait_for_trial or no_trials_pending:
             self._update_trial_queue(blocking=wait_for_trial)
@@ -820,7 +861,8 @@ class TrialRunner:
         # TODO(ujvl): Consider combining get_next_available_trial and
         #  fetch_result functionality so that we don't timeout on fetch.
         trial = self.trial_executor.get_next_available_trial(
-            timeout=timeout)  # blocking
+            timeout=timeout
+        )  # blocking
         if not trial:
             return
         if trial.is_restoring:
@@ -828,29 +870,30 @@ class TrialRunner:
                 self._process_trial_restore(trial)
             with warn_if_slow("callbacks.on_trial_restore"):
                 self._callbacks.on_trial_restore(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial)
+                    iteration=self._iteration, trials=self._trials, trial=trial
+                )
         elif trial.is_saving:
             with warn_if_slow("process_trial_save") as _profile:
                 self._process_trial_save(trial)
             with warn_if_slow("callbacks.on_trial_save"):
                 self._callbacks.on_trial_save(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial)
+                    iteration=self._iteration, trials=self._trials, trial=trial
+                )
             if _profile.too_slow and trial.sync_on_checkpoint:
                 # TODO(ujvl): Suggest using cloud checkpointing once
                 #  API has converged.
 
-                msg = ("Consider turning off forced head-worker trial "
-                       "checkpoint syncs by setting sync_on_checkpoint=False"
-                       ". Note that this may result in faulty trial "
-                       "restoration if a failure occurs while the checkpoint "
-                       "is being synced from the worker to the head node.")
+                msg = (
+                    "Consider turning off forced head-worker trial "
+                    "checkpoint syncs by setting sync_on_checkpoint=False"
+                    ". Note that this may result in faulty trial "
+                    "restoration if a failure occurs while the checkpoint "
+                    "is being synced from the worker to the head node."
+                )
 
-                if trial.location.hostname and (trial.location.hostname !=
-                                                get_node_ip_address()):
+                if trial.location.hostname and (
+                    trial.location.hostname != get_node_ip_address()
+                ):
                     if log_once("tune_head_worker_checkpoint"):
                         logger.warning(msg)
 
@@ -861,8 +904,7 @@ class TrialRunner:
         # `self._queued_trial_decisions` now contains a final decision
         # based on all results
         if trial not in self._cached_trial_decisions:
-            final_decision = self._queued_trial_decisions.pop(
-                trial.trial_id, None)
+            final_decision = self._queued_trial_decisions.pop(trial.trial_id, None)
             if final_decision:
                 self._execute_action(trial, final_decision)
 
@@ -885,10 +927,11 @@ class TrialRunner:
         try:
             results = self.trial_executor.fetch_result(trial)
             with warn_if_slow(
-                    "process_trial_results",
-                    message="Processing trial results took {duration:.3f} s, "
-                    "which may be a performance bottleneck. Please consider "
-                    "reporting results less frequently to Ray Tune."):
+                "process_trial_results",
+                message="Processing trial results took {duration:.3f} s, "
+                "which may be a performance bottleneck. Please consider "
+                "reporting results less frequently to Ray Tune.",
+            ):
                 for i, result in enumerate(results):
                     with warn_if_slow("process_trial_result"):
                         decision = self._process_trial_result(trial, result)
@@ -906,7 +949,8 @@ class TrialRunner:
                                     f"training was continued before it was "
                                     f"saved. Consider using non-buffered "
                                     f"training by setting the env variable "
-                                    f"`TUNE_RESULT_BUFFER_LENGTH=1`.")
+                                    f"`TUNE_RESULT_BUFFER_LENGTH=1`."
+                                )
                     elif decision == TrialScheduler.STOP:
                         # If the decision is to stop the trial,
                         # ignore all results that came after that.
@@ -937,13 +981,11 @@ class TrialRunner:
         flat_result = flatten_dict(result)
         self._validate_result_metrics(flat_result)
 
-        if self._stopper(trial.trial_id,
-                         result) or trial.should_stop(flat_result):
+        if self._stopper(trial.trial_id, result) or trial.should_stop(flat_result):
             decision = TrialScheduler.STOP
         else:
             with warn_if_slow("scheduler.on_trial_result"):
-                decision = self._scheduler_alg.on_trial_result(
-                    self, trial, flat_result)
+                decision = self._scheduler_alg.on_trial_result(self, trial, flat_result)
         if decision == TrialScheduler.STOP:
             result.update(done=True)
         else:
@@ -959,7 +1001,8 @@ class TrialRunner:
                     iteration=self._iteration,
                     trials=self._trials,
                     trial=trial,
-                    result=result.copy())
+                    result=result.copy(),
+                )
             trial.update_last_result(result)
             # Include in next experiment checkpoint
             self.trial_executor.mark_trial_to_checkpoint(trial)
@@ -990,17 +1033,20 @@ class TrialRunner:
 
         This will ignore checking for the DEFAULT_METRIC.
         """
-        if int(os.environ.get(
-                "TUNE_DISABLE_STRICT_METRIC_CHECKING", 0)) != 1 and (len({
-                    k
-                    for k in result if k not in list(DEBUG_METRICS) + [DONE]
-                }) > 1):
-            base_metric = self._metric \
-                if self._metric != DEFAULT_METRIC else None
-            scheduler_metric = self._scheduler_alg.metric \
-                if self._scheduler_alg.metric != DEFAULT_METRIC else None
-            search_metrics = self._search_alg.metric \
-                if self._search_alg.metric != DEFAULT_METRIC else None
+        if int(os.environ.get("TUNE_DISABLE_STRICT_METRIC_CHECKING", 0)) != 1 and (
+            len({k for k in result if k not in list(DEBUG_METRICS) + [DONE]}) > 1
+        ):
+            base_metric = self._metric if self._metric != DEFAULT_METRIC else None
+            scheduler_metric = (
+                self._scheduler_alg.metric
+                if self._scheduler_alg.metric != DEFAULT_METRIC
+                else None
+            )
+            search_metrics = (
+                self._search_alg.metric
+                if self._search_alg.metric != DEFAULT_METRIC
+                else None
+            )
 
             if isinstance(search_metrics, str):
                 search_metrics = [search_metrics]
@@ -1011,11 +1057,15 @@ class TrialRunner:
             elif scheduler_metric and scheduler_metric not in result:
                 report_metric = scheduler_metric
                 location = type(self._scheduler_alg).__name__
-            elif search_metrics and any(search_metric not in result
-                                        for search_metric in search_metrics):
+            elif search_metrics and any(
+                search_metric not in result for search_metric in search_metrics
+            ):
                 report_metric = list(
-                    filter(lambda search_metric: search_metric not in result,
-                           search_metrics))
+                    filter(
+                        lambda search_metric: search_metric not in result,
+                        search_metrics,
+                    )
+                )
                 if len(report_metric) == 1:
                     report_metric = report_metric[0]
                 location = type(self._search_alg).__name__
@@ -1031,7 +1081,9 @@ class TrialRunner:
                     "metric, or set the "
                     "TUNE_DISABLE_STRICT_METRIC_CHECKING "
                     "environment variable to 1. Result: {}".format(
-                        report_metric, location, result))
+                        report_metric, location, result
+                    )
+                )
 
     def _process_trial_save(self, trial):
         """Processes a trial save.
@@ -1059,13 +1111,15 @@ class TrialRunner:
                     iteration=self._iteration,
                     trials=self._trials,
                     trial=trial,
-                    checkpoint=trial.saving_to)
+                    checkpoint=trial.saving_to,
+                )
                 trial.on_checkpoint(trial.saving_to)
                 if trial.checkpoint.storage != Checkpoint.MEMORY:
                     self.trial_executor.mark_trial_to_checkpoint(trial)
             except Exception:
-                logger.exception("Trial %s: Error handling checkpoint %s",
-                                 trial, checkpoint_value)
+                logger.exception(
+                    "Trial %s: Error handling checkpoint %s", trial, checkpoint_value
+                )
                 if self._fail_fast == TrialRunner.RAISE:
                     raise
 
@@ -1111,16 +1165,13 @@ class TrialRunner:
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
                 self._callbacks.on_trial_error(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial)
-                self.trial_executor.stop_trial(
-                    trial, error=True, error_msg=error_msg)
+                    iteration=self._iteration, trials=self._trials, trial=trial
+                )
+                self.trial_executor.stop_trial(trial, error=True, error_msg=error_msg)
 
     def _queue_decision(self, trial, decision):
         # Get old decision, setting it to the current decision if it isn't set
-        old_decision = self._queued_trial_decisions.setdefault(
-            trial.trial_id, decision)
+        old_decision = self._queued_trial_decisions.setdefault(trial.trial_id, decision)
 
         # Stopping always takes precedence. If we decided to stop, just quit
         if old_decision is TrialScheduler.STOP:
@@ -1170,36 +1221,36 @@ class TrialRunner:
             # Restore was unsuccessful, try again without checkpoint.
             trial.clear_checkpoint()
         self.trial_executor.stop_trial(
-            trial, error=error_msg is not None, error_msg=error_msg)
+            trial, error=error_msg is not None, error_msg=error_msg
+        )
         if self.trial_executor.has_resources_for_trial(trial):
             requeue_trial = False
             logger.info(
-                "Trial %s: Attempting to restore "
-                "trial state from last checkpoint.", trial)
+                "Trial %s: Attempting to restore " "trial state from last checkpoint.",
+                trial,
+            )
             started = self.trial_executor.start_trial(trial)
             if not started:
                 requeue_trial = True
             elif trial.status == Trial.ERROR:
                 logger.exception(
-                    "Trial %s: Error restoring trial from checkpoint, abort.",
-                    trial)
+                    "Trial %s: Error restoring trial from checkpoint, abort.", trial
+                )
                 if started:
                     # Clean up again if an actor was launched
                     self.trial_executor.stop_trial(trial, error=True)
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
                 self._callbacks.on_trial_error(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial)
+                    iteration=self._iteration, trials=self._trials, trial=trial
+                )
             else:
                 logger.debug("Trial %s: Restore dispatched correctly.", trial)
         else:
             requeue_trial = True
 
         if requeue_trial:
-            logger.debug("Trial %s: Notifying Scheduler and requeueing.",
-                         trial)
+            logger.debug("Trial %s: Notifying Scheduler and requeueing.", trial)
             self._requeue_trial(trial)
 
     def _requeue_trial(self, trial):
@@ -1224,11 +1275,10 @@ class TrialRunner:
 
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(
-                TrialRunnerWrapper(self, runner_whitelist_attr={"search_alg"}),
-                trial)
+                TrialRunnerWrapper(self, runner_whitelist_attr={"search_alg"}), trial
+            )
 
-    def _update_trial_queue(self, blocking: bool = False,
-                            timeout: int = 600) -> bool:
+    def _update_trial_queue(self, blocking: bool = False, timeout: int = 600) -> bool:
         """Adds next trials to queue if possible.
 
         Note that the timeout is currently unexposed to the user.
@@ -1249,8 +1299,9 @@ class TrialRunner:
             # Checking `is_finished` instead of _search_alg.is_finished
             # is fine because blocking only occurs if all trials are
             # finished and search_algorithm is not yet finished
-            while (not trial and not self.is_finished()
-                   and time.time() - start < timeout):
+            while (
+                not trial and not self.is_finished() and time.time() - start < timeout
+            ):
                 logger.info("Blocking for next trial...")
                 trial = self._search_alg.next_trial()
                 time.sleep(1)
@@ -1293,11 +1344,14 @@ class TrialRunner:
                 # By this time trial.last_result should have been
                 # updated already.
                 self._scheduler_alg.on_trial_complete(
-                    self, trial, flatten_dict(trial.last_result))
+                    self, trial, flatten_dict(trial.last_result)
+                )
                 self._search_alg.on_trial_complete(
-                    trial.trial_id, result=flatten_dict(trial.last_result))
+                    trial.trial_id, result=flatten_dict(trial.last_result)
+                )
             self._callbacks.on_trial_complete(
-                iteration=self._iteration, trials=self._trials, trial=trial)
+                iteration=self._iteration, trials=self._trials, trial=trial
+            )
             self.trial_executor.export_trial_if_needed(trial)
             self.trial_executor.stop_trial(trial)
             self._live_trials.discard(trial)
@@ -1330,10 +1384,17 @@ class TrialRunner:
         """
         state = self.__dict__.copy()
         for k in [
-                "_trials", "_live_trials", "_stop_queue", "_server",
-                "_search_alg", "_scheduler_alg", "_pending_trial_queue_times",
-                "trial_executor", "_syncer", "_callbacks",
-                "_checkpoint_manager"
+            "_trials",
+            "_live_trials",
+            "_stop_queue",
+            "_server",
+            "_search_alg",
+            "_scheduler_alg",
+            "_pending_trial_queue_times",
+            "trial_executor",
+            "_syncer",
+            "_callbacks",
+            "_checkpoint_manager",
         ]:
             del state[k]
         state["launch_web_server"] = bool(self._server)
@@ -1364,21 +1425,23 @@ class TrialExecutorWrapper(RayTrialExecutor):
     the current API exposure of TrialExecutor by TrialScheduler.
     """
 
-    def __init__(self,
-                 trial_executor: RayTrialExecutor,
-                 whitelist_attr: Optional[set] = None):
+    def __init__(
+        self, trial_executor: RayTrialExecutor, whitelist_attr: Optional[set] = None
+    ):
         self._trial_executor = trial_executor
         self._whitelist_attr = whitelist_attr or set()
 
     def __getattr__(self, attr):
         if attr not in self._whitelist_attr:
-            logger.warning(f"You are trying to access {attr} interface of "
-                           f"TrialExecutor in TrialScheduler, which is being "
-                           f"restricted. If you believe it is reasonable for "
-                           f"your scheduler to access this TrialExecutor API, "
-                           f"please reach out to Ray team on GitHub. A more "
-                           f"strict API access pattern would be enforced "
-                           f"starting 1.12.0")
+            logger.warning(
+                f"You are trying to access {attr} interface of "
+                f"TrialExecutor in TrialScheduler, which is being "
+                f"restricted. If you believe it is reasonable for "
+                f"your scheduler to access this TrialExecutor API, "
+                f"please reach out to Ray team on GitHub. A more "
+                f"strict API access pattern would be enforced "
+                f"starting 1.12.0"
+            )
         return getattr(self._trial_executor, attr)
 
 
@@ -1392,24 +1455,29 @@ class TrialRunnerWrapper(TrialRunner):
 
     _EXECUTOR_ATTR = "trial_executor"
 
-    def __init__(self,
-                 trial_runner: TrialRunner,
-                 runner_whitelist_attr: Optional[set] = None,
-                 executor_whitelist_attr: Optional[set] = None):
+    def __init__(
+        self,
+        trial_runner: TrialRunner,
+        runner_whitelist_attr: Optional[set] = None,
+        executor_whitelist_attr: Optional[set] = None,
+    ):
         self._trial_runner = trial_runner
         self._trial_executor = TrialExecutorWrapper(
-            trial_runner.trial_executor, executor_whitelist_attr)
+            trial_runner.trial_executor, executor_whitelist_attr
+        )
         self._runner_whitelist_attr = runner_whitelist_attr or set()
 
     def __getattr__(self, attr):
         if attr == self._EXECUTOR_ATTR:
             return self._trial_executor
         if attr not in self._runner_whitelist_attr:
-            logger.warning(f"You are trying to access {attr} interface of "
-                           f"TrialRunner in TrialScheduler, which is being "
-                           f"restricted. If you believe it is reasonable for "
-                           f"your scheduler to access this TrialRunner API, "
-                           f"please reach out to Ray team on GitHub. A more "
-                           f"strict API access pattern would be enforced "
-                           f"starting 1.12s.0")
+            logger.warning(
+                f"You are trying to access {attr} interface of "
+                f"TrialRunner in TrialScheduler, which is being "
+                f"restricted. If you believe it is reasonable for "
+                f"your scheduler to access this TrialRunner API, "
+                f"please reach out to Ray team on GitHub. A more "
+                f"strict API access pattern would be enforced "
+                f"starting 1.12s.0"
+            )
         return getattr(self._trial_runner, attr)

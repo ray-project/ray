@@ -19,8 +19,7 @@ def _get_source_files(event_dir, source_types=None, event_file_filter=None):
     source_files = {}
     all_source_types = set(event_consts.EVENT_SOURCE_ALL)
     for source_type in source_types or event_consts.EVENT_SOURCE_ALL:
-        assert source_type in all_source_types, \
-            f"Invalid source type: {source_type}"
+        assert source_type in all_source_types, f"Invalid source type: {source_type}"
         files = []
         for n in event_log_names:
             if fnmatch.fnmatch(n, f"*{source_type}*"):
@@ -35,9 +34,9 @@ def _get_source_files(event_dir, source_types=None, event_file_filter=None):
 
 def _restore_newline(event_dict):
     try:
-        event_dict["message"] = event_dict["message"]\
-            .replace("\\n", "\n")\
-            .replace("\\r", "\n")
+        event_dict["message"] = (
+            event_dict["message"].replace("\\n", "\n").replace("\\r", "\n")
+        )
     except Exception:
         logger.exception("Restore newline for event failed: %s", event_dict)
     return event_dict
@@ -61,13 +60,13 @@ def parse_event_strings(event_string_list):
 
 
 ReadFileResult = collections.namedtuple(
-    "ReadFileResult", ["fid", "size", "mtime", "position", "lines"])
+    "ReadFileResult", ["fid", "size", "mtime", "position", "lines"]
+)
 
 
-def _read_file(file,
-               pos,
-               n_lines=event_consts.EVENT_READ_LINE_COUNT_LIMIT,
-               closefd=True):
+def _read_file(
+    file, pos, n_lines=event_consts.EVENT_READ_LINE_COUNT_LIMIT, closefd=True
+):
     with open(file, "rb", closefd=closefd) as f:
         # The ino may be 0 on Windows.
         stat = os.stat(f.fileno())
@@ -82,24 +81,25 @@ def _read_file(file,
                 if sep - start <= event_consts.EVENT_READ_LINE_LENGTH_LIMIT:
                     lines.append(mm[start:sep].decode("utf-8"))
                 else:
-                    truncated_size = min(
-                        100, event_consts.EVENT_READ_LINE_LENGTH_LIMIT)
+                    truncated_size = min(100, event_consts.EVENT_READ_LINE_LENGTH_LIMIT)
                     logger.warning(
                         "Ignored long string: %s...(%s chars)",
-                        mm[start:start + truncated_size].decode("utf-8"),
-                        sep - start)
+                        mm[start : start + truncated_size].decode("utf-8"),
+                        sep - start,
+                    )
                 start = sep + 1
         return ReadFileResult(fid, stat.st_size, stat.st_mtime, start, lines)
 
 
 def monitor_events(
-        event_dir,
-        callback,
-        scan_interval_seconds=event_consts.SCAN_EVENT_DIR_INTERVAL_SECONDS,
-        start_mtime=time.time() + event_consts.SCAN_EVENT_START_OFFSET_SECONDS,
-        monitor_files=None,
-        source_types=None):
-    """ Monitor events in directory. New events will be read and passed to the
+    event_dir,
+    callback,
+    scan_interval_seconds=event_consts.SCAN_EVENT_DIR_INTERVAL_SECONDS,
+    start_mtime=time.time() + event_consts.SCAN_EVENT_START_OFFSET_SECONDS,
+    monitor_files=None,
+    source_types=None,
+):
+    """Monitor events in directory. New events will be read and passed to the
     callback.
 
     Args:
@@ -121,20 +121,22 @@ def monitor_events(
         monitor_files = {}
 
     logger.info(
-        "Monitor events logs modified after %s on %s, "
-        "the source types are %s.", start_mtime, event_dir, "all"
-        if source_types is None else source_types)
+        "Monitor events logs modified after %s on %s, " "the source types are %s.",
+        start_mtime,
+        event_dir,
+        "all" if source_types is None else source_types,
+    )
 
-    MonitorFile = collections.namedtuple("MonitorFile",
-                                         ["size", "mtime", "position"])
+    MonitorFile = collections.namedtuple("MonitorFile", ["size", "mtime", "position"])
 
     def _source_file_filter(source_file):
         stat = os.stat(source_file)
         return stat.st_mtime > start_mtime
 
     def _read_monitor_file(file, pos):
-        assert isinstance(file, str), \
-            f"File should be a str, but a {type(file)}({file}) found"
+        assert isinstance(
+            file, str
+        ), f"File should be a str, but a {type(file)}({file}) found"
         fd = os.open(file, os.O_RDONLY)
         try:
             stat = os.stat(fd)
@@ -145,12 +147,14 @@ def monitor_events(
             fid = stat.st_ino or file
             monitor_file = monitor_files.get(fid)
             if monitor_file:
-                if (monitor_file.position == monitor_file.size
-                        and monitor_file.size == stat.st_size
-                        and monitor_file.mtime == stat.st_mtime):
+                if (
+                    monitor_file.position == monitor_file.size
+                    and monitor_file.size == stat.st_size
+                    and monitor_file.mtime == stat.st_mtime
+                ):
                     logger.debug(
-                        "Skip reading the file because "
-                        "there is no change: %s", file)
+                        "Skip reading the file because " "there is no change: %s", file
+                    )
                     return []
                 position = monitor_file.position
             else:
@@ -169,22 +173,23 @@ def monitor_events(
     @async_loop_forever(scan_interval_seconds, cancellable=True)
     async def _scan_event_log_files():
         # Scan event files.
-        source_files = await loop.run_in_executor(None, _get_source_files,
-                                                  event_dir, source_types,
-                                                  _source_file_filter)
+        source_files = await loop.run_in_executor(
+            None, _get_source_files, event_dir, source_types, _source_file_filter
+        )
 
         # Limit concurrent read to avoid fd exhaustion.
         semaphore = asyncio.Semaphore(event_consts.CONCURRENT_READ_LIMIT)
 
         async def _concurrent_coro(filename):
             async with semaphore:
-                return await loop.run_in_executor(None, _read_monitor_file,
-                                                  filename, 0)
+                return await loop.run_in_executor(None, _read_monitor_file, filename, 0)
 
         # Read files.
-        await asyncio.gather(*[
-            _concurrent_coro(filename)
-            for filename in list(itertools.chain(*source_files.values()))
-        ])
+        await asyncio.gather(
+            *[
+                _concurrent_coro(filename)
+                for filename in list(itertools.chain(*source_files.values()))
+            ]
+        )
 
     return create_task(_scan_event_log_files())

@@ -39,8 +39,9 @@ class DatasetReader(InputReader):
         # We allow the creation of a non-functioning None DatasetReader.
         # It's useful for example for a non-rollout local worker.
         if ds:
-            print("DatasetReader ", ioctx.worker_index, " has ", ds.count(),
-                  " samples.")
+            print(
+                "DatasetReader ", ioctx.worker_index, " has ", ds.count(), " samples."
+            )
             self._iter = self._dataset.repeat().iter_rows()
         else:
             self._iter = None

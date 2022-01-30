@@ -2,8 +2,10 @@ import os
 import ray
 import time
 import pytest
-from ray._private.test_utils import (run_string_as_driver_nonblocking,
-                                     run_string_as_driver)
+from ray._private.test_utils import (
+    run_string_as_driver_nonblocking,
+    run_string_as_driver,
+)
 from ray.tests.conftest import *  # noqa
 from ray import workflow
 from unittest.mock import patch
@@ -52,4 +54,5 @@ def test_workflow_lifetime_2(call_ray_start, reset_workflow):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -71,8 +71,7 @@ def log_status_change_thread(log_queue, request_iterator):
             root_logger.addHandler(current_handler)
             root_logger.setLevel(req.loglevel)
     except grpc.RpcError as e:
-        logger.debug(f"closing log thread "
-                     f"grpc error reading request_iterator: {e}")
+        logger.debug(f"closing log thread " f"grpc error reading request_iterator: {e}")
     finally:
         if current_handler is not None:
             root_logger.setLevel(default_level)
@@ -95,17 +94,20 @@ class LogstreamServicer(ray_client_pb2_grpc.RayletLogStreamerServicer):
                 context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
                 logger.warning(
                     f"Logstream: Num clients {self.num_clients} has reached "
-                    f"the threshold {threshold}. Rejecting new connection.")
+                    f"the threshold {threshold}. Rejecting new connection."
+                )
                 return
             self.num_clients += 1
             initialized = True
-            logger.info("New logs connection established. "
-                        f"Total clients: {self.num_clients}")
+            logger.info(
+                "New logs connection established. " f"Total clients: {self.num_clients}"
+            )
         log_queue = queue.Queue()
         thread = threading.Thread(
             target=log_status_change_thread,
             args=(log_queue, request_iterator),
-            daemon=True)
+            daemon=True,
+        )
         thread.start()
         try:
             queue_iter = iter(log_queue.get, None)
