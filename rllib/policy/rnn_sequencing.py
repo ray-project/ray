@@ -206,8 +206,7 @@ def add_time_dimension(
 
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len
-        batch_major_shape = \
-            (new_batch_size, max_seq_len) + padded_inputs.shape[1:]
+        batch_major_shape = (new_batch_size, max_seq_len) + padded_inputs.shape[1:]
         padded_outputs = padded_inputs.view(batch_major_shape)
 
         if time_major:
