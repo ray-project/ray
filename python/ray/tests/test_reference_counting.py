@@ -13,8 +13,12 @@ import ray
 import ray.cluster_utils
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
-    SignalActor, kill_actor_and_wait_for_failure, put_object,
-    wait_for_condition, convert_actor_state)
+    SignalActor,
+    kill_actor_and_wait_for_failure,
+    put_object,
+    wait_for_condition,
+    convert_actor_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,19 +26,14 @@ logger = logging.getLogger(__name__)
 @pytest.fixture
 def one_worker_100MiB(request):
     # It has lots of tests that don't require object spilling.
-    config = {
-        "task_retry_delay_ms": 0,
-        "automatic_object_spilling_enabled": False
-    }
+    config = {"task_retry_delay_ms": 0, "automatic_object_spilling_enabled": False}
     yield ray.init(
-        num_cpus=1,
-        object_store_memory=100 * 1024 * 1024,
-        _system_config=config)
+        num_cpus=1, object_store_memory=100 * 1024 * 1024, _system_config=config
+    )
     ray.shutdown()
 
 
-def _fill_object_store_and_get(obj, succeed=True, object_MiB=20,
-                               num_objects=5):
+def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5):
     for _ in range(num_objects):
         ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8))
 
@@ -43,7 +42,8 @@ def _fill_object_store_and_get(obj, succeed=True, object_MiB=20,
 
     if succeed:
         wait_for_condition(
-            lambda: ray.worker.global_worker.core_worker.object_exists(obj))
+            lambda: ray.worker.global_worker.core_worker.object_exists(obj)
+        )
     else:
         wait_for_condition(
             lambda: not ray.worker.global_worker.core_worker.object_exists(obj)
@@ -182,8 +182,7 @@ def test_basic_pinning(one_worker_100MiB):
             # Hold a long-lived reference to a ray.put object's ID. The object
             # should not be garbage collected while the actor is alive because
             # the object is pinned by the raylet.
-            self.large_object = ray.put(
-                np.zeros(25 * 1024 * 1024, dtype=np.uint8))
+            self.large_object = ray.put(np.zeros(25 * 1024 * 1024, dtype=np.uint8))
 
         def get_large_object(self):
             return ray.get(self.large_object)
@@ -194,8 +193,7 @@ def test_basic_pinning(one_worker_100MiB):
     # evicted before the long-lived object whose reference is held by
     # the actor.
     for batch in range(10):
-        intermediate_result = f.remote(
-            np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+        intermediate_result = f.remote(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
         ray.get(intermediate_result)
 
     # The ray.get below would fail with only LRU eviction, as the object
@@ -233,8 +231,7 @@ def test_feature_flag(shutdown_only):
     @ray.remote
     class Actor(object):
         def __init__(self):
-            self.large_object = ray.put(
-                np.zeros(25 * 1024 * 1024, dtype=np.uint8))
+            self.large_object = ray.put(np.zeros(25 * 1024 * 1024, dtype=np.uint8))
 
         def wait_for_actor_to_start(self):
             pass
@@ -256,19 +253,18 @@ def test_feature_flag(shutdown_only):
     del put_ref
 
     wait_for_condition(
-        lambda: not ray.worker.global_worker.core_worker.object_exists(ref))
+        lambda: not ray.worker.global_worker.core_worker.object_exists(ref)
+    )
 
 
 def test_out_of_band_serialized_object_ref(one_worker_100MiB):
-    assert len(
-        ray.worker.global_worker.core_worker.get_all_reference_counts()) == 0
+    assert len(ray.worker.global_worker.core_worker.get_all_reference_counts()) == 0
     obj_ref = ray.put("hello")
     _check_refcounts({obj_ref: (1, 0)})
     obj_ref_str = ray.cloudpickle.dumps(obj_ref)
     _check_refcounts({obj_ref: (2, 0)})
     del obj_ref
-    assert len(
-        ray.worker.global_worker.core_worker.get_all_reference_counts()) == 1
+    assert len(ray.worker.global_worker.core_worker.get_all_reference_counts()) == 1
     assert ray.get(ray.cloudpickle.loads(obj_ref_str)) == "hello"
 
 
@@ -317,8 +313,9 @@ def test_captured_object_ref(one_worker_100MiB):
 # Remote function takes serialized reference and doesn't hold onto it after
 # finishing. Referenced object shouldn't be evicted while the task is pending
 # and should be evicted after it returns.
-@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
-                                                 (True, False), (True, True)])
+@pytest.mark.parametrize(
+    "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
+)
 def test_basic_serialized_reference(one_worker_100MiB, use_ray_put, failure):
     @ray.remote(max_retries=1)
     def pending(ref, dep):
@@ -326,8 +323,7 @@ def test_basic_serialized_reference(one_worker_100MiB, use_ray_put, failure):
         if failure:
             os._exit(0)
 
-    array_oid = put_object(
-        np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+    array_oid = put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
     signal = SignalActor.remote()
     obj_ref = pending.remote([array_oid], signal.wait.remote())
 
@@ -353,10 +349,10 @@ def test_basic_serialized_reference(one_worker_100MiB, use_ray_put, failure):
 # Call a recursive chain of tasks that pass a serialized reference to the end
 # of the chain. The reference should still exist while the final task in the
 # chain is running and should be removed once it finishes.
-@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
-                                                 (True, False), (True, True)])
-def test_recursive_serialized_reference(one_worker_100MiB, use_ray_put,
-                                        failure):
+@pytest.mark.parametrize(
+    "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
+)
+def test_recursive_serialized_reference(one_worker_100MiB, use_ray_put, failure):
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
         ray.get(ref[0])
@@ -371,8 +367,7 @@ def test_recursive_serialized_reference(one_worker_100MiB, use_ray_put,
     signal = SignalActor.remote()
 
     max_depth = 5
-    array_oid = put_object(
-        np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+    array_oid = put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
     head_oid = recursive.remote([array_oid], signal, max_depth)
 
     # Remove the local reference.
@@ -405,10 +400,10 @@ def test_recursive_serialized_reference(one_worker_100MiB, use_ray_put,
 # Test that a passed reference held by an actor after the method finishes
 # is kept until the reference is removed from the actor. Also tests giving
 # the actor a duplicate reference to the same object ref.
-@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
-                                                 (True, False), (True, True)])
-def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put,
-                                            failure):
+@pytest.mark.parametrize(
+    "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
+)
+def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put, failure):
     @ray.remote
     class GreedyActor(object):
         def __init__(self):
@@ -427,8 +422,7 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put,
             self.ref2 = None
 
     # Test that the reference held by the actor isn't evicted.
-    array_oid = put_object(
-        np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+    array_oid = put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
     actor = GreedyActor.remote()
     actor.set_ref1.remote([array_oid])
 
@@ -462,10 +456,10 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put,
 # is kept until the reference is removed from the worker. Also tests giving
 # the worker a duplicate reference to the same object ref.
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
-                                                 (True, False), (True, True)])
-def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
-                                             failure):
+@pytest.mark.parametrize(
+    "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
+)
+def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put, failure):
     @ray.remote(max_retries=1)
     def child(dep1, dep2):
         if failure:
@@ -483,11 +477,9 @@ def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
     signal = SignalActor.remote()
 
     # Test that the reference held by the actor isn't evicted.
-    array_oid = put_object(
-        np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+    array_oid = put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
     s = Submitter.remote()
-    child_return_id = ray.get(
-        s.launch_pending_task.remote([array_oid], signal))
+    child_return_id = ray.get(s.launch_pending_task.remote([array_oid], signal))
 
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
@@ -527,7 +519,8 @@ def test_basic_nested_ids(one_worker_100MiB):
 def _all_actors_dead():
     return all(
         actor["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
-        for actor in list(ray.state.actors().values()))
+        for actor in list(ray.state.actors().values())
+    )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -559,4 +552,5 @@ def test_remove_actor_immediately_after_creation(ray_start_regular):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -21,7 +21,7 @@ class TestDreamer(unittest.TestCase):
         config = dreamer.DEFAULT_CONFIG.copy()
         config["env_config"] = {
             "observation_space": Box(-1.0, 1.0, (3, 64, 64)),
-            "action_space": Box(-1.0, 1.0, (3, ))
+            "action_space": Box(-1.0, 1.0, (3,)),
         }
         # Num episode chunks per batch.
         config["batch_size"] = 2
@@ -45,4 +45,5 @@ class TestDreamer(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

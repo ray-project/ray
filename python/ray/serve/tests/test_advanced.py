@@ -31,7 +31,8 @@ def test_serve_graceful_shutdown(serve_instance):
         name="wait",
         max_concurrent_queries=10,
         _graceful_shutdown_timeout_s=1000,
-        _graceful_shutdown_wait_loop_s=0.5)
+        _graceful_shutdown_wait_loop_s=0.5,
+    )
     class Wait:
         async def __call__(self, signal_actor):
             await signal_actor.wait.remote()
@@ -100,4 +101,5 @@ def test_parallel_start(serve_instance):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

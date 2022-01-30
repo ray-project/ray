@@ -16,8 +16,7 @@ from torch.nn.parallel import DistributedDataParallel
 
 
 class Net(nn.Module):
-    def __init__(self, n_layers, n_features, num_hidden, dropout_every,
-                 drop_prob):
+    def __init__(self, n_layers, n_features, num_hidden, dropout_every, drop_prob):
         super().__init__()
         self.n_layers = n_layers
         self.dropout_every = dropout_every
@@ -137,14 +136,16 @@ def train_func(config):
 
     print("Defining model, loss, and optimizer...")
 
-    device = torch.device(f"cuda:{train.local_rank()}"
-                          if use_gpu and torch.cuda.is_available() else "cpu")
+    device = torch.device(
+        f"cuda:{train.local_rank()}" if use_gpu and torch.cuda.is_available() else "cpu"
+    )
 
     train_dataset_pipeline = train.get_dataset_shard("train_dataset")
     train_dataset_epoch_iterator = train_dataset_pipeline.iter_epochs()
     test_dataset = train.get_dataset_shard("test_dataset")
     test_torch_dataset = test_dataset.to_torch(
-        label_column="label", batch_size=batch_size)
+        label_column="label", batch_size=batch_size
+    )
 
     net = Net(
         n_layers=num_layers,
@@ -167,17 +168,20 @@ def train_func(config):
         print(f"epoch load time {time.time() - start}")
 
         train_torch_dataset = train_dataset.to_torch(
-            label_column="label", batch_size=batch_size)
+            label_column="label", batch_size=batch_size
+        )
 
         train_running_loss, train_num_correct, train_num_total = train_epoch(
-            train_torch_dataset, net, device, criterion, optimizer)
+            train_torch_dataset, net, device, criterion, optimizer
+        )
         train_acc = train_num_correct / train_num_total
         print(
             f"epoch [{epoch + 1}]: training accuracy: {train_num_correct} / {train_num_total} = {train_acc:.4f}"
         )
 
         test_running_loss, test_num_correct, test_num_total = test_epoch(
-            test_torch_dataset, net, device, criterion)
+            test_torch_dataset, net, device, criterion
+        )
         test_acc = test_num_correct / test_num_total
         print(
             f"epoch [{epoch + 1}]: testing accuracy: {test_num_correct} / {test_num_total} = {test_acc:.4f}"
@@ -188,7 +192,8 @@ def train_func(config):
             train_acc=train_acc,
             train_loss=train_running_loss,
             test_acc=test_acc,
-            test_loss=test_running_loss)
+            test_loss=test_running_loss,
+        )
 
     if train.world_rank() == 0:
         return net.module.cpu()
@@ -214,7 +219,8 @@ def create_dataset_pipeline(files, epochs, num_windows):
                 split = file_splits[self.i % num_windows]
                 self.i += 1
                 return lambda: ray.data.read_parquet(
-                    list(split), _spread_resource_prefix="node:")
+                    list(split), _spread_resource_prefix="node:"
+                )
 
         pipe = DatasetPipeline.from_iterable(Windower())
         pipe = pipe.random_shuffle_each_window(_spread_resource_prefix="node:")
@@ -231,27 +237,25 @@ if __name__ == "__main__":
         "--smoke-test",
         action="store_true",
         default=False,
-        help="Finish quickly for testing.")
+        help="Finish quickly for testing.",
+    )
     parser.add_argument(
         "--address",
         required=False,
         type=str,
-        help="The address to use for Ray. `auto` if running through `ray submit"
+        help="The address to use for Ray. `auto` if running through `ray submit",
     )
     parser.add_argument(
         "--num-workers",
         default=1,
         type=int,
-        help="number of Ray workers to use for distributed training")
+        help="number of Ray workers to use for distributed training",
+    )
     parser.add_argument(
-        "--use-gpu",
-        action="store_true",
-        default=False,
-        help="Use GPU for training.")
-    parser.add_argument(
-        "--num-epochs", default=4, type=int, help="number of epochs")
-    parser.add_argument(
-        "--num-windows", default=64, type=int, help="number of windows")
+        "--use-gpu", action="store_true", default=False, help="Use GPU for training."
+    )
+    parser.add_argument("--num-epochs", default=4, type=int, help="number of epochs")
+    parser.add_argument("--num-windows", default=64, type=int, help="number of windows")
 
     args = parser.parse_args()
     smoke_test = args.smoke_test
@@ -286,13 +290,9 @@ if __name__ == "__main__":
         files = files[:1]
         train_dataset_pipeline = create_dataset_pipeline(files, num_epochs, 1)
     else:
-        train_dataset_pipeline = create_dataset_pipeline(
-            files, num_epochs, num_windows)
+        train_dataset_pipeline = create_dataset_pipeline(files, num_epochs, num_windows)
 
-    datasets = {
-        "train_dataset": train_dataset_pipeline,
-        "test_dataset": test_dataset
-    }
+    datasets = {"train_dataset": train_dataset_pipeline, "test_dataset": test_dataset}
 
     config = {
         "is_distributed": True,
@@ -303,7 +303,7 @@ if __name__ == "__main__":
         "num_layers": NUM_LAYERS,
         "dropout_every": DROPOUT_EVERY,
         "dropout_prob": DROPOUT_PROB,
-        "num_features": num_features
+        "num_features": num_features,
     }
 
     num_gpus = 1 if use_gpu else 0
@@ -313,13 +313,12 @@ if __name__ == "__main__":
         backend="torch",
         num_workers=num_workers,
         use_gpu=use_gpu,
-        resources_per_worker={
-            "CPU": num_cpus,
-            "GPU": num_gpus
-        })
+        resources_per_worker={"CPU": num_cpus, "GPU": num_gpus},
+    )
     trainer.start()
     results = trainer.run(
-        train_func=train_func, config=config, callbacks=[], dataset=datasets)
+        train_func=train_func, config=config, callbacks=[], dataset=datasets
+    )
     model = results[0]
     trainer.shutdown()
 

@@ -48,15 +48,18 @@ exe_suffix = ".exe" if sys.platform == "win32" else ""
 # https://docs.python.org/3/faq/windows.html#is-a-pyd-file-the-same-as-a-dll
 pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 
-pickle5_url = ("https://github.com/pitrou/pickle5-backport/archive/"
-               "e6117502435aba2901585cc6c692fb9582545f08.tar.gz")
+pickle5_url = (
+    "https://github.com/pitrou/pickle5-backport/archive/"
+    "e6117502435aba2901585cc6c692fb9582545f08.tar.gz"
+)
 
 
 def find_version(*filepath):
     # Extract version information from filepath
     with open(os.path.join(ROOT_DIR, *filepath)) as fp:
-        version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
-                                  fp.read(), re.M)
+        version_match = re.search(
+            r"^__version__ = ['\"]([^'\"]*)['\"]", fp.read(), re.M
+        )
         if version_match:
             return version_match.group(1)
         raise RuntimeError("Unable to find version string.")
@@ -75,8 +78,9 @@ class BuildType(Enum):
 
 
 class SetupSpec:
-    def __init__(self, type: SetupType, name: str, description: str,
-                 build_type: BuildType):
+    def __init__(
+        self, type: SetupType, name: str, description: str, build_type: BuildType
+    ):
         self.type: SetupType = type
         self.name: str = name
         version = find_version("ray", "__init__.py")
@@ -115,17 +119,23 @@ else:
 if os.getenv("RAY_INSTALL_CPP") == "1":
     # "ray-cpp" wheel package.
     setup_spec = SetupSpec(
-        SetupType.RAY_CPP, "ray-cpp",
-        "A subpackage of Ray which provides the Ray C++ API.", BUILD_TYPE)
+        SetupType.RAY_CPP,
+        "ray-cpp",
+        "A subpackage of Ray which provides the Ray C++ API.",
+        BUILD_TYPE,
+    )
 else:
     # "ray" primary wheel package.
     setup_spec = SetupSpec(
-        SetupType.RAY, "ray", "Ray provides a simple, "
-        "universal API for building distributed applications.", BUILD_TYPE)
+        SetupType.RAY,
+        "ray",
+        "Ray provides a simple, "
+        "universal API for building distributed applications.",
+        BUILD_TYPE,
+    )
     RAY_EXTRA_CPP = True
     # Disable extra cpp for the development versions.
-    if "dev" in setup_spec.version or os.getenv(
-            "RAY_DISABLE_EXTRA_CPP") == "1":
+    if "dev" in setup_spec.version or os.getenv("RAY_DISABLE_EXTRA_CPP") == "1":
         RAY_EXTRA_CPP = False
 
 # Ideally, we could include these files by putting them in a
@@ -142,8 +152,7 @@ ray_files = [
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
 ]
 
-if BUILD_JAVA or os.path.exists(
-        os.path.join(ROOT_DIR, "ray/jars/ray_dist.jar")):
+if BUILD_JAVA or os.path.exists(os.path.join(ROOT_DIR, "ray/jars/ray_dist.jar")):
     ray_files.append("ray/jars/ray_dist.jar")
 
 if setup_spec.type == SetupType.RAY_CPP:
@@ -199,26 +208,22 @@ if setup_spec.type == SetupType.RAY:
         ],
         "default": [
             "aiohttp >= 3.7",
-            "aiosignal",
             "aiohttp_cors",
-            "aioredis < 2",
             "colorful",
-            "frozenlist",
             "py-spy >= 0.2.0",
             "requests",
             "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
             "prometheus_client >= 0.7.1",
-            "smart_open"
+            "smart_open",
         ],
-        "serve": [
-            "uvicorn==0.16.0", "requests", "starlette", "fastapi", "aiorwlock"
-        ],
+        "serve": ["uvicorn==0.16.0", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
-            "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
-            "opentelemetry-exporter-otlp==1.1.0"
+            "opentelemetry-api==1.1.0",
+            "opentelemetry-sdk==1.1.0",
+            "opentelemetry-exporter-otlp==1.1.0",
         ],
     }
 
@@ -230,7 +235,8 @@ if setup_spec.type == SetupType.RAY:
 
     # Ray Serve depends on the Ray dashboard components.
     setup_spec.extras["serve"] = list(
-        set(setup_spec.extras["serve"] + setup_spec.extras["default"]))
+        set(setup_spec.extras["serve"] + setup_spec.extras["default"])
+    )
 
     if RAY_EXTRA_CPP:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
@@ -251,7 +257,8 @@ if setup_spec.type == SetupType.RAY:
     ]
 
     setup_spec.extras["all"] = list(
-        set(chain.from_iterable(setup_spec.extras.values())))
+        set(chain.from_iterable(setup_spec.extras.values()))
+    )
 
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
@@ -270,6 +277,9 @@ if setup_spec.type == SetupType.RAY:
         "protobuf >= 3.15.3",
         "pyyaml",
         "redis >= 3.5.0",
+        "aioredis < 2",
+        "aiosignal",
+        "frozenlist",
     ]
 
 
@@ -322,8 +332,7 @@ def download(url):
 
 # Installs pickle5-backport into the local subdirectory.
 def download_pickle5(pickle5_dir):
-    pickle5_file = urllib.parse.unquote(
-        urllib.parse.urlparse(pickle5_url).path)
+    pickle5_file = urllib.parse.unquote(urllib.parse.urlparse(pickle5_url).path)
     pickle5_name = re.sub("\\.tar\\.gz$", ".tgz", pickle5_file, flags=re.I)
     url_path_parts = os.path.splitext(pickle5_name)[0].split("/")
     (project, commit) = (url_path_parts[2], url_path_parts[4])
@@ -386,7 +395,8 @@ def replace_symlinks_with_junctions():
         path = os.path.join(root_dir, link)
         try:
             out = subprocess.check_output(
-                "DIR /A:LD /B", shell=True, cwd=os.path.dirname(path))
+                "DIR /A:LD /B", shell=True, cwd=os.path.dirname(path)
+            )
         except subprocess.CalledProcessError:
             out = b""
         if os.path.basename(path) in out.decode("utf8").splitlines():
@@ -412,13 +422,13 @@ def replace_symlinks_with_junctions():
                     os.rmdir(path)
             else:
                 raise ValueError(f"Unexpected type of entry: '{path}'")
-            target = os.path.abspath(
-                os.path.join(os.path.dirname(path), target))
+            target = os.path.abspath(os.path.join(os.path.dirname(path), target))
             logger.info("Setting {} -> {}".format(link, target))
             subprocess.check_call(
                 f'MKLINK /J "{os.path.basename(link)}" "{target}"',
                 shell=True,
-                cwd=os.path.dirname(path))
+                cwd=os.path.dirname(path),
+            )
 
 
 if is_automated_build and is_native_windows_or_msys():
@@ -430,16 +440,21 @@ if is_automated_build and is_native_windows_or_msys():
 
 def build(build_python, build_java, build_cpp):
     if tuple(sys.version_info[:2]) not in SUPPORTED_PYTHONS:
-        msg = ("Detected Python version {}, which is not supported. "
-               "Only Python {} are supported.").format(
-                   ".".join(map(str, sys.version_info[:2])),
-                   ", ".join(".".join(map(str, v)) for v in SUPPORTED_PYTHONS))
+        msg = (
+            "Detected Python version {}, which is not supported. "
+            "Only Python {} are supported."
+        ).format(
+            ".".join(map(str, sys.version_info[:2])),
+            ", ".join(".".join(map(str, v)) for v in SUPPORTED_PYTHONS),
+        )
         raise RuntimeError(msg)
 
     if is_invalid_windows_platform():
-        msg = ("Please use official native CPython on Windows,"
-               " not Cygwin/MSYS/MSYS2/MinGW/etc.\n" +
-               "Detected: {}\n  at: {!r}".format(sys.version, sys.executable))
+        msg = (
+            "Please use official native CPython on Windows,"
+            " not Cygwin/MSYS/MSYS2/MinGW/etc.\n"
+            + "Detected: {}\n  at: {!r}".format(sys.version, sys.executable)
+        )
         raise OSError(msg)
 
     bazel_env = dict(os.environ, PYTHON3_BIN_PATH=sys.executable)
@@ -452,11 +467,13 @@ def build(build_python, build_java, build_cpp):
         SYSTEMROOT = os.getenv("SystemRoot")
         wsl_bash = os.path.join(SYSTEMROOT, "System32", "bash.exe")
         if (not BAZEL_SH) and SYSTEMROOT and os.path.isfile(wsl_bash):
-            msg = ("You appear to have Bash from WSL,"
-                   " which Bazel may invoke unexpectedly. "
-                   "To avoid potential problems,"
-                   " please explicitly set the {name!r}"
-                   " environment variable for Bazel.").format(name="BAZEL_SH")
+            msg = (
+                "You appear to have Bash from WSL,"
+                " which Bazel may invoke unexpectedly. "
+                "To avoid potential problems,"
+                " please explicitly set the {name!r}"
+                " environment variable for Bazel."
+            ).format(name="BAZEL_SH")
             raise RuntimeError(msg)
 
     # Check if the current Python already has pickle5 (either comes with newer
@@ -480,10 +497,16 @@ def build(build_python, build_java, build_cpp):
         pip_packages = ["psutil", "setproctitle==1.2.2", "colorama"]
         subprocess.check_call(
             [
-                sys.executable, "-m", "pip", "install", "-q",
-                "--target=" + os.path.join(ROOT_DIR, THIRDPARTY_SUBDIR)
-            ] + pip_packages,
-            env=dict(os.environ, CC="gcc"))
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-q",
+                "--target=" + os.path.join(ROOT_DIR, THIRDPARTY_SUBDIR),
+            ]
+            + pip_packages,
+            env=dict(os.environ, CC="gcc"),
+        )
 
     bazel_flags = ["--verbose_failures"]
     if BAZEL_LIMIT_CPUS:
@@ -494,16 +517,17 @@ def build(build_python, build_java, build_cpp):
         bazel_precmd_flags = []
     if is_automated_build:
         root_dir = os.path.join(
-            os.path.abspath(os.environ["SRC_DIR"]), "..", "bazel-root")
-        out_dir = os.path.join(
-            os.path.abspath(os.environ["SRC_DIR"]), "..", "b-o")
+            os.path.abspath(os.environ["SRC_DIR"]), "..", "bazel-root"
+        )
+        out_dir = os.path.join(os.path.abspath(os.environ["SRC_DIR"]), "..", "b-o")
 
         for d in (root_dir, out_dir):
             if not os.path.exists(d):
                 os.makedirs(d)
 
         bazel_precmd_flags = [
-            "--output_user_root=" + root_dir, "--output_base=" + out_dir
+            "--output_user_root=" + root_dir,
+            "--output_base=" + out_dir,
         ]
 
         if is_native_windows_or_msys():
@@ -524,7 +548,8 @@ def build(build_python, build_java, build_cpp):
     return bazel_invoke(
         subprocess.check_call,
         bazel_precmd_flags + ["build"] + bazel_flags + ["--"] + bazel_targets,
-        env=bazel_env)
+        env=bazel_env,
+    )
 
 
 def walk_directory(directory):
@@ -580,7 +605,8 @@ def pip_run(build_ext):
         # relevant non-Python pickle5 files get copied.
         pickle5_dir = os.path.join(ROOT_DIR, PICKLE5_SUBDIR)
         setup_spec.files_to_include += walk_directory(
-            os.path.join(pickle5_dir, "pickle5"))
+            os.path.join(pickle5_dir, "pickle5")
+        )
 
         thirdparty_dir = os.path.join(ROOT_DIR, THIRDPARTY_SUBDIR)
         setup_spec.files_to_include += walk_directory(thirdparty_dir)
@@ -590,7 +616,8 @@ def pip_run(build_ext):
             for filename in os.listdir(directory):
                 if filename[-3:] == ".py":
                     setup_spec.files_to_include.append(
-                        os.path.join(directory, filename))
+                        os.path.join(directory, filename)
+                    )
 
     copied_files = 0
     for filename in setup_spec.files_to_include:
@@ -602,8 +629,7 @@ def pip_run(build_ext):
         runtime_dlls = ["msvcp140.dll"]
         add_system_dlls(runtime_dlls, os.path.join(build_ext.build_lib, "ray"))
         copied_files += len(runtime_dlls)
-    print("# of files copied to {}: {}".format(build_ext.build_lib,
-                                               copied_files))
+    print("# of files copied to {}: {}".format(build_ext.build_lib, copied_files))
 
 
 def api_main(program, *args):
@@ -616,8 +642,9 @@ def api_main(program, *args):
         default="python,cpp",
         type=str,
         help="A list of languages to build native libraries. "
-        "Supported languages include \"python\" and \"java\". "
-        "If not specified, only the Python library will be built.")
+        'Supported languages include "python" and "java". '
+        "If not specified, only the Python library will be built.",
+    )
     parsed_args = parser.parse_args(args)
 
     result = None
@@ -688,12 +715,13 @@ setuptools.setup(
     author_email="ray-dev@googlegroups.com",
     description=(setup_spec.description),
     long_description=io.open(
-        os.path.join(ROOT_DIR, os.path.pardir, "README.rst"),
-        "r",
-        encoding="utf-8").read(),
+        os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
+    ).read(),
     url="https://github.com/ray-project/ray",
-    keywords=("ray distributed parallel machine-learning hyperparameter-tuning"
-              "reinforcement-learning deep-learning serving python"),
+    keywords=(
+        "ray distributed parallel machine-learning hyperparameter-tuning"
+        "reinforcement-learning deep-learning serving python"
+    ),
     classifiers=[
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
@@ -718,4 +746,5 @@ setuptools.setup(
     },
     include_package_data=True,
     zip_safe=False,
-    license="Apache 2.0") if __name__ == "__main__" else None
+    license="Apache 2.0",
+) if __name__ == "__main__" else None
