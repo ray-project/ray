@@ -26,9 +26,9 @@ def do_link(package, force=False, local_path=None):
     assert os.path.exists(local_home), local_home
     # Confirm with user.
     if not force and not click.confirm(
-            f"This will replace:\n  {package_home}\nwith "
-            f"a symlink to:\n  {local_home}",
-            default=True):
+        f"This will replace:\n  {package_home}\nwith " f"a symlink to:\n  {local_home}",
+        default=True,
+    ):
         return
 
     # Windows: Create directory junction.
@@ -43,10 +43,12 @@ def do_link(package, force=False, local_path=None):
         # create symlink for directory or file
         if os.path.isdir(local_home):
             subprocess.check_call(
-                ["mklink", "/J", package_home, local_home], shell=True)
+                ["mklink", "/J", package_home, local_home], shell=True
+            )
         elif os.path.isfile(local_home):
             subprocess.check_call(
-                ["mklink", "/H", package_home, local_home], shell=True)
+                ["mklink", "/H", package_home, local_home], shell=True
+            )
         else:
             print(f"{local_home} is neither directory nor file. Link failed.")
 
@@ -54,22 +56,20 @@ def do_link(package, force=False, local_path=None):
     else:
         sudo = []
         if not os.access(os.path.dirname(package_home), os.W_OK):
-            print("You don't have write permission "
-                  f"to {package_home}, using sudo:")
+            print("You don't have write permission " f"to {package_home}, using sudo:")
             sudo = ["sudo"]
-        print(
-            f"Creating symbolic link from \n {local_home} to \n {package_home}"
-        )
+        print(f"Creating symbolic link from \n {local_home} to \n {package_home}")
         subprocess.check_call(sudo + ["rm", "-rf", package_home])
         subprocess.check_call(sudo + ["ln", "-s", local_home, package_home])
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="Setup dev.")
+        formatter_class=argparse.RawDescriptionHelpFormatter, description="Setup dev."
+    )
     parser.add_argument(
-        "--yes", "-y", action="store_true", help="Don't ask for confirmation.")
+        "--yes", "-y", action="store_true", help="Don't ask for confirmation."
+    )
     args = parser.parse_args()
 
     do_link("rllib", force=args.yes, local_path="../../../rllib")
@@ -94,11 +94,13 @@ if __name__ == "__main__":
     # The repo's `dashboard` is a file, soft-linking to which will not work
     # on Mac.
     do_link("dashboard", force=args.yes, local_path="../../../dashboard")
-    print("Created links.\n\nIf you run into issues initializing Ray, please "
-          "ensure that your local repo and the installed Ray are in sync "
-          "(pip install -U the latest wheels at "
-          "https://docs.ray.io/en/master/installation.html, "
-          "and ensure you are up-to-date on the master branch on git).\n\n"
-          "Note that you may need to delete the package symlinks when pip "
-          "installing new Ray versions to prevent pip from overwriting files "
-          "in your git repo.")
+    print(
+        "Created links.\n\nIf you run into issues initializing Ray, please "
+        "ensure that your local repo and the installed Ray are in sync "
+        "(pip install -U the latest wheels at "
+        "https://docs.ray.io/en/master/installation.html, "
+        "and ensure you are up-to-date on the master branch on git).\n\n"
+        "Note that you may need to delete the package symlinks when pip "
+        "installing new Ray versions to prevent pip from overwriting files "
+        "in your git repo."
+    )

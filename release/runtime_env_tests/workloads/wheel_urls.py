@@ -26,8 +26,9 @@ from ray._private.utils import get_master_wheel_url, get_release_wheel_url
 
 def update_progress(result):
     result["last_update"] = time.time()
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/release_test_output.json")
+    test_output_json = os.environ.get(
+        "TEST_OUTPUT_JSON", "/tmp/release_test_output.json"
+    )
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 
@@ -45,13 +46,15 @@ if __name__ == "__main__":
                     ray_commit=ray.__commit__,
                     sys_platform=sys_platform,
                     ray_version=ray.__version__,
-                    py_version=py_version)
+                    py_version=py_version,
+                )
             else:
                 url = get_release_wheel_url(
                     ray_commit=ray.__commit__,
                     sys_platform=sys_platform,
                     ray_version=ray.__version__,
-                    py_version=py_version)
+                    py_version=py_version,
+                )
             if requests.head(url).status_code != 200:
                 print("URL not found (yet?):", url)
                 retry.add(url)
@@ -63,9 +66,11 @@ if __name__ == "__main__":
     MAX_NUM_RETRIES = 12
 
     while retry and num_retries < MAX_NUM_RETRIES:
-        print(f"There are {len(retry)} URLs to retry. Sleeping 10 minutes "
-              f"to give some time for wheels to be built. "
-              f"Trial {num_retries + 1}/{MAX_NUM_RETRIES}.")
+        print(
+            f"There are {len(retry)} URLs to retry. Sleeping 10 minutes "
+            f"to give some time for wheels to be built. "
+            f"Trial {num_retries + 1}/{MAX_NUM_RETRIES}."
+        )
         print("List of URLs to retry:", retry)
         time.sleep(600)
         print("Retrying now...")

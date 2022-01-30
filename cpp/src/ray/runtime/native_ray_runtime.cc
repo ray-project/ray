@@ -19,6 +19,7 @@
 #include "./object/native_object_store.h"
 #include "./object/object_store.h"
 #include "./task/native_task_submitter.h"
+#include "ray/common/ray_config.h"
 
 namespace ray {
 namespace internal {
@@ -28,14 +29,19 @@ NativeRayRuntime::NativeRayRuntime() {
   task_submitter_ = std::unique_ptr<TaskSubmitter>(new NativeTaskSubmitter());
   task_executor_ = std::make_unique<TaskExecutor>();
 
-  auto redis_ip = ConfigInternal::Instance().redis_ip;
-  if (redis_ip.empty()) {
-    redis_ip = GetNodeIpAddress();
+  auto bootstrap_address = ConfigInternal::Instance().bootstrap_ip;
+  if (bootstrap_address.empty()) {
+    bootstrap_address = GetNodeIpAddress();
   }
-  std::string redis_address =
-      redis_ip + ":" + std::to_string(ConfigInternal::Instance().redis_port);
-  global_state_accessor_ = ProcessHelper::GetInstance().CreateGlobalStateAccessor(
-      redis_address, ConfigInternal::Instance().redis_password);
+  bootstrap_address =
+      bootstrap_address + ":" + std::to_string(ConfigInternal::Instance().bootstrap_port);
+  if (::RayConfig::instance().bootstrap_with_gcs()) {
+    global_state_accessor_ =
+        ProcessHelper::GetInstance().CreateGlobalStateAccessor(bootstrap_address);
+  } else {
+    global_state_accessor_ = ProcessHelper::GetInstance().CreateGlobalStateAccessor(
+        bootstrap_address, ConfigInternal::Instance().redis_password);
+  }
 }
 
 ActorID NativeRayRuntime::GetCurrentActorID() {

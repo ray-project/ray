@@ -35,36 +35,40 @@ def get_cli_args():
         "--framework",
         choices=["tf", "tf2", "tfe", "torch"],
         default="tf",
-        help="The DL framework specifier.")
+        help="The DL framework specifier.",
+    )
     parser.add_argument(
         "--as-test",
         action="store_true",
         help="Whether this script should be run as a test: --stop-reward must "
-        "be achieved within --stop-timesteps AND --stop-iters.")
+        "be achieved within --stop-timesteps AND --stop-iters.",
+    )
     parser.add_argument(
-        "--stop-iters",
-        type=int,
-        default=50,
-        help="Number of iterations to train.")
+        "--stop-iters", type=int, default=50, help="Number of iterations to train."
+    )
     parser.add_argument(
         "--stop-timesteps",
         type=int,
         default=100000,
-        help="Number of timesteps to train.")
+        help="Number of timesteps to train.",
+    )
     parser.add_argument(
         "--stop-reward",
         type=float,
         default=150.0,
-        help="Reward at which we stop training.")
+        help="Reward at which we stop training.",
+    )
     parser.add_argument(
         "--no-tune",
         action="store_true",
         help="Run without Tune using a manual train loop instead. Here,"
-        "there is no TensorBoard support.")
+        "there is no TensorBoard support.",
+    )
     parser.add_argument(
         "--local-mode",
         action="store_true",
-        help="Init Ray in local mode for easier debugging.")
+        help="Init Ray in local mode for easier debugging.",
+    )
 
     args = parser.parse_args()
     print(f"Running with following CLI args: {args}")
@@ -96,9 +100,10 @@ class PPOTrainerRemoteInference(PPOTrainer):
                     # Different bundle (meaning: possibly different node)
                     # for your n "remote" envs (set remote_worker_envs=True).
                     "CPU": cf["num_envs_per_worker"],
-                }
+                },
             ],
-            strategy=config.get("placement_strategy", "PACK"))
+            strategy=config.get("placement_strategy", "PACK"),
+        )
 
 
 if __name__ == "__main__":
@@ -134,8 +139,10 @@ if __name__ == "__main__":
             result = trainer.train()
             print(pretty_print(result))
             # Stop training if the target train steps or reward are reached.
-            if result["timesteps_total"] >= args.stop_timesteps or \
-                    result["episode_reward_mean"] >= args.stop_reward:
+            if (
+                result["timesteps_total"] >= args.stop_timesteps
+                or result["episode_reward_mean"] >= args.stop_reward
+            ):
                 break
 
     # Run with Tune for auto env and trainer creation and TensorBoard.
@@ -147,7 +154,8 @@ if __name__ == "__main__":
         }
 
         results = tune.run(
-            PPOTrainerRemoteInference, config=config, stop=stop, verbose=1)
+            PPOTrainerRemoteInference, config=config, stop=stop, verbose=1
+        )
 
         if args.as_test:
             check_learning_achieved(results, args.stop_reward)

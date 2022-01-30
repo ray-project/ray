@@ -26,14 +26,16 @@ class RunExperimentTest(unittest.TestCase):
                 reporter(timesteps_total=i)
 
         register_trainable("f1", train)
-        trials = run_experiments({
-            "foo": {
-                "run": "f1",
-            },
-            "bar": {
-                "run": "f1",
+        trials = run_experiments(
+            {
+                "foo": {
+                    "run": "f1",
+                },
+                "bar": {
+                    "run": "f1",
+                },
             }
-        })
+        )
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
@@ -44,10 +46,12 @@ class RunExperimentTest(unittest.TestCase):
                 reporter(timesteps_total=i)
 
         register_trainable("f1", train)
-        exp1 = Experiment(**{
-            "name": "foo",
-            "run": "f1",
-        })
+        exp1 = Experiment(
+            **{
+                "name": "foo",
+                "run": "f1",
+            }
+        )
         [trial] = run_experiments(exp1)
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
@@ -58,14 +62,18 @@ class RunExperimentTest(unittest.TestCase):
                 reporter(timesteps_total=i)
 
         register_trainable("f1", train)
-        exp1 = Experiment(**{
-            "name": "foo",
-            "run": "f1",
-        })
-        exp2 = Experiment(**{
-            "name": "bar",
-            "run": "f1",
-        })
+        exp1 = Experiment(
+            **{
+                "name": "foo",
+                "run": "f1",
+            }
+        )
+        exp2 = Experiment(
+            **{
+                "name": "bar",
+                "run": "f1",
+            }
+        )
         trials = run_experiments([exp1, exp2])
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
@@ -81,14 +89,14 @@ class RunExperimentTest(unittest.TestCase):
                 return {"timesteps_this_iter": 1, "done": True}
 
         register_trainable("f1", train)
-        trials = run_experiments({
-            "foo": {
-                "run": train,
-            },
-            "bar": {
-                "run": B
+        trials = run_experiments(
+            {
+                "foo": {
+                    "run": train,
+                },
+                "bar": {"run": B},
             }
-        })
+        )
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
 
@@ -103,12 +111,7 @@ class RunExperimentTest(unittest.TestCase):
                     f.write("OK")
                 return checkpoint
 
-        trials = run_experiments({
-            "foo": {
-                "run": train,
-                "checkpoint_at_end": True
-            }
-        })
+        trials = run_experiments({"foo": {"run": train, "checkpoint_at_end": True}})
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
@@ -124,16 +127,10 @@ class RunExperimentTest(unittest.TestCase):
                     f.write("OK")
                 return {export_formats[0]: path}
 
-        trials = run_experiments({
-            "foo": {
-                "run": train,
-                "export_formats": ["format"]
-            }
-        })
+        trials = run_experiments({"foo": {"run": train, "export_formats": ["format"]}})
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
-            self.assertTrue(
-                os.path.exists(os.path.join(trial.logdir, "exported")))
+            self.assertTrue(os.path.exists(os.path.join(trial.logdir, "exported")))
 
     def testInvalidExportFormats(self):
         class train(Trainable):
@@ -145,12 +142,7 @@ class RunExperimentTest(unittest.TestCase):
                 return {}
 
         def fail_trial():
-            run_experiments({
-                "foo": {
-                    "run": train,
-                    "export_formats": ["format"]
-                }
-            })
+            run_experiments({"foo": {"run": train, "export_formats": ["format"]}})
 
         self.assertRaises(TuneError, fail_trial)
 
@@ -162,17 +154,14 @@ class RunExperimentTest(unittest.TestCase):
             def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
-        trials = run_experiments({
-            "foo": {
-                "run": train,
-                "resources_per_trial": {
-                    "cpu": 1,
-                    "custom_resources": {
-                        "hi": 2
-                    }
+        trials = run_experiments(
+            {
+                "foo": {
+                    "run": train,
+                    "resources_per_trial": {"cpu": 1, "custom_resources": {"hi": 2}},
                 }
             }
-        })
+        )
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
 
@@ -186,42 +175,22 @@ class RunExperimentTest(unittest.TestCase):
                     f.write("hi")
 
         [trial] = run_experiments(
-            {
-                "foo": {
-                    "run": "__fake",
-                    "stop": {
-                        "training_iteration": 1
-                    }
-                }
-            },
-            callbacks=[LegacyLoggerCallback(logger_classes=[CustomLogger])])
+            {"foo": {"run": "__fake", "stop": {"training_iteration": 1}}},
+            callbacks=[LegacyLoggerCallback(logger_classes=[CustomLogger])],
+        )
         self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
-        self.assertFalse(
-            os.path.exists(os.path.join(trial.logdir, "params.json")))
-
-        [trial] = run_experiments({
-            "foo": {
-                "run": "__fake",
-                "stop": {
-                    "training_iteration": 1
-                }
-            }
-        })
-        self.assertFalse(
-            os.path.exists(os.path.join(trial.logdir, "params.json")))
+        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "params.json")))
 
         [trial] = run_experiments(
-            {
-                "foo": {
-                    "run": "__fake",
-                    "stop": {
-                        "training_iteration": 1
-                    }
-                }
-            },
-            callbacks=[LegacyLoggerCallback(logger_classes=[])])
-        self.assertFalse(
-            os.path.exists(os.path.join(trial.logdir, "params.json")))
+            {"foo": {"run": "__fake", "stop": {"training_iteration": 1}}}
+        )
+        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "params.json")))
+
+        [trial] = run_experiments(
+            {"foo": {"run": "__fake", "stop": {"training_iteration": 1}}},
+            callbacks=[LegacyLoggerCallback(logger_classes=[])],
+        )
+        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "params.json")))
 
     def testCustomLoggerWithAutoLogging(self):
         """Creates CSV/JSON logger callbacks automatically"""
@@ -234,60 +203,42 @@ class RunExperimentTest(unittest.TestCase):
                     f.write("hi")
 
         [trial] = run_experiments(
-            {
-                "foo": {
-                    "run": "__fake",
-                    "stop": {
-                        "training_iteration": 1
-                    }
-                }
-            },
-            callbacks=[LegacyLoggerCallback(logger_classes=[CustomLogger])])
+            {"foo": {"run": "__fake", "stop": {"training_iteration": 1}}},
+            callbacks=[LegacyLoggerCallback(logger_classes=[CustomLogger])],
+        )
         self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
-        self.assertTrue(
-            os.path.exists(os.path.join(trial.logdir, "params.json")))
+        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "params.json")))
 
-        [trial] = run_experiments({
-            "foo": {
-                "run": "__fake",
-                "stop": {
-                    "training_iteration": 1
-                }
-            }
-        })
-        self.assertTrue(
-            os.path.exists(os.path.join(trial.logdir, "params.json")))
+        [trial] = run_experiments(
+            {"foo": {"run": "__fake", "stop": {"training_iteration": 1}}}
+        )
+        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "params.json")))
 
+        [trial] = run_experiments(
+            {"foo": {"run": "__fake", "stop": {"training_iteration": 1}}},
+            callbacks=[LegacyLoggerCallback(logger_classes=[])],
+        )
+        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "params.json")))
+
+    def testCustomTrialString(self):
         [trial] = run_experiments(
             {
                 "foo": {
                     "run": "__fake",
-                    "stop": {
-                        "training_iteration": 1
-                    }
+                    "stop": {"training_iteration": 1},
+                    "trial_name_creator": lambda t: "{}_{}_321".format(
+                        t.trainable_name, t.trial_id
+                    ),
                 }
-            },
-            callbacks=[LegacyLoggerCallback(logger_classes=[])])
-        self.assertTrue(
-            os.path.exists(os.path.join(trial.logdir, "params.json")))
-
-    def testCustomTrialString(self):
-        [trial] = run_experiments({
-            "foo": {
-                "run": "__fake",
-                "stop": {
-                    "training_iteration": 1
-                },
-                "trial_name_creator":
-                    lambda t: "{}_{}_321".format(t.trainable_name, t.trial_id)
             }
-        })
+        )
         self.assertEqual(
-            str(trial), "{}_{}_321".format(trial.trainable_name,
-                                           trial.trial_id))
+            str(trial), "{}_{}_321".format(trial.trainable_name, trial.trial_id)
+        )
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

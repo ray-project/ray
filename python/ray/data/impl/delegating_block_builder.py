@@ -15,6 +15,7 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
         if self._builder is None:
             if isinstance(item, dict) or isinstance(item, ArrowRow):
                 import pyarrow
+
                 try:
                     check = ArrowBlockBuilder()
                     check.add(item)

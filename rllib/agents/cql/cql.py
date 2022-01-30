@@ -4,12 +4,14 @@ from typing import Type
 
 from ray.rllib.agents.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.agents.cql.cql_torch_policy import CQLTorchPolicy
-from ray.rllib.agents.sac.sac import SACTrainer, \
-    DEFAULT_CONFIG as SAC_CONFIG
+from ray.rllib.agents.sac.sac import SACTrainer, DEFAULT_CONFIG as SAC_CONFIG
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import Replay
-from ray.rllib.execution.train_ops import MultiGPUTrainOneStep, TrainOneStep, \
-    UpdateTargetNetwork
+from ray.rllib.execution.train_ops import (
+    MultiGPUTrainOneStep,
+    TrainOneStep,
+    UpdateTargetNetwork,
+)
 from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -67,8 +69,7 @@ class CQLTrainer(SACTrainer):
         replay_buffer = self.local_replay_buffer
 
         # For d4rl, add the D4RLReaders' dataset to the buffer.
-        if isinstance(self.config["input"], str) and \
-                "d4rl" in self.config["input"]:
+        if isinstance(self.config["input"], str) and "d4rl" in self.config["input"]:
             dataset = reader.dataset
             replay_buffer.add_batch(dataset)
         # For a list of files, add each file's entire content to the buffer.
@@ -84,8 +85,9 @@ class CQLTrainer(SACTrainer):
                 # next-obs to cause learning problems.
                 if SampleBatch.NEXT_OBS not in batch:
                     obs = batch[SampleBatch.OBS]
-                    batch[SampleBatch.NEXT_OBS] = \
-                        np.concatenate([obs[1:], np.zeros_like(obs[0:1])])
+                    batch[SampleBatch.NEXT_OBS] = np.concatenate(
+                        [obs[1:], np.zeros_like(obs[0:1])]
+                    )
                     batch[SampleBatch.DONES][-1] = True
                 replay_buffer.add_batch(batch)
             print(
@@ -96,7 +98,8 @@ class CQLTrainer(SACTrainer):
             raise ValueError(
                 "Unknown offline input! config['input'] must either be list of"
                 " offline files (json) or a D4RL-specific InputReader "
-                "specifier (e.g. 'd4rl.hopper-medium-v0').")
+                "specifier (e.g. 'd4rl.hopper-medium-v0')."
+            )
 
     @classmethod
     @override(SACTrainer)
@@ -114,8 +117,7 @@ class CQLTrainer(SACTrainer):
         # CQL-torch performs the optimizer steps inside the loss function.
         # Using the multi-GPU optimizer will therefore not work (see multi-GPU
         # check above) and we must use the simple optimizer for now.
-        if config["simple_optimizer"] is not True and \
-                config["framework"] == "torch":
+        if config["simple_optimizer"] is not True and config["framework"] == "torch":
             config["simple_optimizer"] = True
 
         if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
@@ -123,12 +125,12 @@ class CQLTrainer(SACTrainer):
                 "You need `tensorflow_probability` in order to run CQL! "
                 "Install it via `pip install tensorflow_probability`. Your "
                 f"tf.__version__={tf.__version__ if tf else None}."
-                "Trying to import tfp results in the following error:")
+                "Trying to import tfp results in the following error:"
+            )
             try_import_tfp(error=True)
 
     @override(SACTrainer)
-    def get_default_policy_class(self,
-                                 config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return CQLTorchPolicy
         else:
@@ -137,8 +139,9 @@ class CQLTrainer(SACTrainer):
     @staticmethod
     @override(SACTrainer)
     def execution_plan(workers, config, **kwargs):
-        assert "local_replay_buffer" in kwargs, (
-            "CQL execution plan requires a local replay buffer.")
+        assert (
+            "local_replay_buffer" in kwargs
+        ), "CQL execution plan requires a local replay buffer."
 
         local_replay_buffer = kwargs["local_replay_buffer"]
 
@@ -152,10 +155,13 @@ class CQLTrainer(SACTrainer):
                     #  policies (note: fixing this in torch_policy.py will
                     #  break e.g. DDPPO!).
                     td_error = info.get(
-                        "td_error", info[LEARNER_STATS_KEY].get("td_error"))
+                        "td_error", info[LEARNER_STATS_KEY].get("td_error")
+                    )
                     samples.policy_batches[policy_id].set_get_interceptor(None)
-                    prio_dict[policy_id] = (samples.policy_batches[policy_id]
-                                            .get("batch_indexes"), td_error)
+                    prio_dict[policy_id] = (
+                        samples.policy_batches[policy_id].get("batch_indexes"),
+                        td_error,
+                    )
                 local_replay_buffer.update_priorities(prio_dict)
             return info_dict
 
@@ -173,14 +179,19 @@ class CQLTrainer(SACTrainer):
                 sgd_minibatch_size=config["train_batch_size"],
                 num_sgd_iter=1,
                 num_gpus=config["num_gpus"],
-                _fake_gpus=config["_fake_gpus"])
+                _fake_gpus=config["_fake_gpus"],
+            )
 
-        train_op = Replay(local_buffer=local_replay_buffer) \
-            .for_each(lambda x: post_fn(x, workers, config)) \
-            .for_each(train_step_op) \
-            .for_each(update_prio) \
-            .for_each(UpdateTargetNetwork(
-                workers, config["target_network_update_freq"]))
+        train_op = (
+            Replay(local_buffer=local_replay_buffer)
+            .for_each(lambda x: post_fn(x, workers, config))
+            .for_each(train_step_op)
+            .for_each(update_prio)
+            .for_each(
+                UpdateTargetNetwork(workers, config["target_network_update_freq"])
+            )
+        )
 
         return StandardMetricsReporting(
-            train_op, workers, config, by_steps_trained=True)
+            train_op, workers, config, by_steps_trained=True
+        )
