@@ -26,17 +26,15 @@ def one_worker_100MiB(request):
     config = {
         "task_retry_delay_ms": 0,
         "object_timeout_milliseconds": 1000,
-        "automatic_object_spilling_enabled": False
+        "automatic_object_spilling_enabled": False,
     }
     yield ray.init(
-        num_cpus=1,
-        object_store_memory=100 * 1024 * 1024,
-        _system_config=config)
+        num_cpus=1, object_store_memory=100 * 1024 * 1024, _system_config=config
+    )
     ray.shutdown()
 
 
-def _fill_object_store_and_get(obj, succeed=True, object_MiB=20,
-                               num_objects=5):
+def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5):
     for _ in range(num_objects):
         ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8))
 
@@ -45,7 +43,8 @@ def _fill_object_store_and_get(obj, succeed=True, object_MiB=20,
 
     if succeed:
         wait_for_condition(
-            lambda: ray.worker.global_worker.core_worker.object_exists(obj))
+            lambda: ray.worker.global_worker.core_worker.object_exists(obj)
+        )
     else:
         wait_for_condition(
             lambda: not ray.worker.global_worker.core_worker.object_exists(obj)
@@ -55,8 +54,9 @@ def _fill_object_store_and_get(obj, succeed=True, object_MiB=20,
 # Test that an object containing object refs within it pins the inner IDs
 # recursively and for submitted tasks.
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
-                                                 (True, False), (True, True)])
+@pytest.mark.parametrize(
+    "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
+)
 def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
@@ -72,8 +72,7 @@ def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
     signal = SignalActor.remote()
 
     max_depth = 5
-    array_oid = put_object(
-        np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+    array_oid = put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
     nested_oid = array_oid
     for _ in range(max_depth):
         nested_oid = ray.put([nested_oid])
@@ -109,15 +108,13 @@ def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
 # Test that serialized ObjectRefs returned from remote tasks are pinned until
 # they go out of scope on the caller side.
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
-                                                 (True, False), (True, True)])
+@pytest.mark.parametrize(
+    "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
+)
 def test_return_object_ref(one_worker_100MiB, use_ray_put, failure):
     @ray.remote
     def return_an_id():
-        return [
-            put_object(
-                np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
-        ]
+        return [put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)]
 
     @ray.remote(max_retries=1)
     def exit():
@@ -146,15 +143,13 @@ def test_return_object_ref(one_worker_100MiB, use_ray_put, failure):
 
 # Test that serialized ObjectRefs returned from remote tasks are pinned if
 # passed into another remote task by the caller.
-@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
-                                                 (True, False), (True, True)])
+@pytest.mark.parametrize(
+    "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
+)
 def test_pass_returned_object_ref(one_worker_100MiB, use_ray_put, failure):
     @ray.remote
     def return_an_id():
-        return [
-            put_object(
-                np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
-        ]
+        return [put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)]
 
     # TODO(edoakes): this fails with an ActorError with max_retries=1.
     @ray.remote(max_retries=0)
@@ -194,14 +189,13 @@ def test_pass_returned_object_ref(one_worker_100MiB, use_ray_put, failure):
 # returned by another task to the end of the chain. The reference should still
 # exist while the final task in the chain is running and should be removed once
 # it finishes.
-@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
-                                                 (True, False), (True, True)])
-def test_recursively_pass_returned_object_ref(one_worker_100MiB, use_ray_put,
-                                              failure):
+@pytest.mark.parametrize(
+    "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
+)
+def test_recursively_pass_returned_object_ref(one_worker_100MiB, use_ray_put, failure):
     @ray.remote
     def return_an_id():
-        return put_object(
-            np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+        return put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
 
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
@@ -212,8 +206,7 @@ def test_recursively_pass_returned_object_ref(one_worker_100MiB, use_ray_put,
                 os._exit(0)
             return inner_id
         else:
-            return inner_id, recursive.remote(ref, signal, max_depth,
-                                              depth + 1)
+            return inner_id, recursive.remote(ref, signal, max_depth, depth + 1)
 
     max_depth = 5
     outer_oid = return_an_id.remote()
@@ -259,16 +252,19 @@ def test_recursively_pass_returned_object_ref(one_worker_100MiB, use_ray_put,
 # returning the result. The reference should still exist while the driver has a
 # reference to the final task's ObjectRef.
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
-                                                 (True, False), (True, True)])
-def test_recursively_return_borrowed_object_ref(one_worker_100MiB, use_ray_put,
-                                                failure):
+@pytest.mark.parametrize(
+    "use_ray_put,failure", [(False, False), (False, True), (True, False), (True, True)]
+)
+def test_recursively_return_borrowed_object_ref(
+    one_worker_100MiB, use_ray_put, failure
+):
     @ray.remote
     def recursive(num_tasks_left):
         if num_tasks_left == 0:
-            return put_object(
-                np.zeros(20 * 1024 * 1024, dtype=np.uint8),
-                use_ray_put), os.getpid()
+            return (
+                put_object(np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put),
+                os.getpid(),
+            )
 
         return ray.get(recursive.remote(num_tasks_left - 1))
 
@@ -325,8 +321,7 @@ def test_borrowed_id_failure(one_worker_100MiB, failure):
         def resolve_ref(self):
             assert self.ref is not None
             if failure:
-                with pytest.raises(
-                        ray.exceptions.ReferenceCountingAssertionError):
+                with pytest.raises(ray.exceptions.ReferenceCountingAssertionError):
                     ray.get(self.ref)
             else:
                 ray.get(self.ref)
@@ -352,18 +347,15 @@ def test_borrowed_id_failure(one_worker_100MiB, failure):
     ray.get(borrower.resolve_ref.remote())
 
 
-@pytest.mark.skipif(
-    platform.system() in ["Windows"], reason="Failing on Windows.")
+@pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
 def test_object_unpin(ray_start_cluster):
     nodes = []
     cluster = ray_start_cluster
     head_node = cluster.add_node(
         num_cpus=0,
         object_store_memory=100 * 1024 * 1024,
-        _system_config={
-            "num_heartbeats_timeout": 10,
-            "subscriber_timeout_ms": 100
-        })
+        _system_config={"num_heartbeats_timeout": 10, "subscriber_timeout_ms": 100},
+    )
     ray.init(address=cluster.address)
 
     # Add worker nodes.
@@ -372,7 +364,9 @@ def test_object_unpin(ray_start_cluster):
             cluster.add_node(
                 num_cpus=1,
                 resources={f"node_{i}": 1},
-                object_store_memory=100 * 1024 * 1024))
+                object_store_memory=100 * 1024 * 1024,
+            )
+        )
     cluster.wait_for_nodes()
 
     one_mb_array = np.ones(1 * 1024 * 1024, dtype=np.uint8)
@@ -410,14 +404,13 @@ def test_object_unpin(ray_start_cluster):
     ten_mb_arrays.append(ray.put(ten_mb_array))
 
     def check_memory(mb):
-        return ((f"Plasma memory usage {mb} "
-                 "MiB" in memory_summary(
-                     address=head_node.address, stats_only=True)))
+        return f"Plasma memory usage {mb} " "MiB" in memory_summary(
+            address=head_node.address, stats_only=True
+        )
 
     def wait_until_node_dead(node):
         for n in ray.nodes():
-            if (n["ObjectStoreSocketName"] == node.address_info[
-                    "object_store_address"]):
+            if n["ObjectStoreSocketName"] == node.address_info["object_store_address"]:
                 return not n["Alive"]
         return False
 
@@ -458,15 +451,13 @@ def test_object_unpin(ray_start_cluster):
     wait_for_condition(lambda: check_memory(0))
 
 
-@pytest.mark.skipif(
-    platform.system() in ["Windows"], reason="Failing on Windows.")
+@pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
 def test_object_unpin_stress(ray_start_cluster):
     nodes = []
     cluster = ray_start_cluster
     cluster.add_node(
-        num_cpus=1,
-        resources={"head": 1},
-        object_store_memory=1000 * 1024 * 1024)
+        num_cpus=1, resources={"head": 1}, object_store_memory=1000 * 1024 * 1024
+    )
     ray.init(address=cluster.address)
 
     # Add worker nodes.
@@ -475,7 +466,9 @@ def test_object_unpin_stress(ray_start_cluster):
             cluster.add_node(
                 num_cpus=1,
                 resources={f"node_{i}": 1},
-                object_store_memory=1000 * 1024 * 1024))
+                object_store_memory=1000 * 1024 * 1024,
+            )
+        )
     cluster.wait_for_nodes()
 
     one_mb_array = np.ones(1 * 1024 * 1024, dtype=np.uint8)
@@ -519,11 +512,11 @@ def test_object_unpin_stress(ray_start_cluster):
     def random_ops(actors):
         r = random.random()
         for actor in actors:
-            if r <= .25:
+            if r <= 0.25:
                 actor.put_10_mb.remote()
-            elif r <= .5:
+            elif r <= 0.5:
                 actor.put_1_mb.remote()
-            elif r <= .75:
+            elif r <= 0.75:
                 actor.pop_10_mb.remote()
             else:
                 actor.pop_1_mb.remote()
@@ -537,13 +530,19 @@ def test_object_unpin_stress(ray_start_cluster):
     for _ in range(total_iter):
         random_ops([actor_on_node_1, actor_on_head_node])
 
-    total_size = sum([
-        ray.get(actor_on_node_1.get_obj_size.remote()),
-        ray.get(actor_on_head_node.get_obj_size.remote())
-    ])
+    total_size = sum(
+        [
+            ray.get(actor_on_node_1.get_obj_size.remote()),
+            ray.get(actor_on_head_node.get_obj_size.remote()),
+        ]
+    )
 
-    wait_for_condition(lambda: ((f"Plasma memory usage {total_size}"
-                                 " MiB") in memory_summary(stats_only=True)))
+    wait_for_condition(
+        lambda: (
+            (f"Plasma memory usage {total_size}" " MiB")
+            in memory_summary(stats_only=True)
+        )
+    )
 
 
 @pytest.mark.parametrize("inline_args", [True, False])
@@ -553,9 +552,8 @@ def test_inlined_nested_refs(ray_start_cluster, inline_args):
     if not inline_args:
         config["max_direct_call_object_size"] = 0
     cluster.add_node(
-        num_cpus=2,
-        object_store_memory=100 * 1024 * 1024,
-        _system_config=config)
+        num_cpus=2, object_store_memory=100 * 1024 * 1024, _system_config=config
+    )
     ray.init(address=cluster.address)
 
     @ray.remote
@@ -705,4 +703,5 @@ def test_forward_nested_ref(shutdown_only):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

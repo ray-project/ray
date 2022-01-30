@@ -18,8 +18,7 @@ import aiosignal  # noqa: F401
 from google.protobuf.json_format import MessageToDict
 from frozenlist import FrozenList  # noqa: F401
 
-from ray._private.utils import (binary_to_hex,
-                                check_dashboard_dependencies_installed)
+from ray._private.utils import binary_to_hex, check_dashboard_dependencies_installed
 
 try:
     create_task = asyncio.create_task
@@ -97,23 +96,26 @@ def get_all_modules(module_type):
     """
     logger.info(f"Get all modules by type: {module_type.__name__}")
     import ray.dashboard.modules
-    should_only_load_minimal_modules = (
-        not check_dashboard_dependencies_installed())
+
+    should_only_load_minimal_modules = not check_dashboard_dependencies_installed()
 
     for module_loader, name, ispkg in pkgutil.walk_packages(
-            ray.dashboard.modules.__path__,
-            ray.dashboard.modules.__name__ + "."):
+        ray.dashboard.modules.__path__, ray.dashboard.modules.__name__ + "."
+    ):
         try:
             importlib.import_module(name)
         except ModuleNotFoundError as e:
-            logger.info(f"Module {name} cannot be loaded because "
-                        "we cannot import all dependencies. Download "
-                        "`pip install ray[default]` for the full "
-                        f"dashboard functionality. Error: {e}")
+            logger.info(
+                f"Module {name} cannot be loaded because "
+                "we cannot import all dependencies. Download "
+                "`pip install ray[default]` for the full "
+                f"dashboard functionality. Error: {e}"
+            )
             if not should_only_load_minimal_modules:
                 logger.info(
                     "Although `pip install ray[default] is downloaded, "
-                    "module couldn't be imported`")
+                    "module couldn't be imported`"
+                )
                 raise e
 
     imported_modules = []
@@ -202,7 +204,8 @@ def message_to_dict(message, decode_keys=None, **kwargs):
 
     if decode_keys:
         return _decode_keys(
-            MessageToDict(message, use_integers_for_enums=False, **kwargs))
+            MessageToDict(message, use_integers_for_enums=False, **kwargs)
+        )
     else:
         return MessageToDict(message, use_integers_for_enums=False, **kwargs)
 
@@ -251,8 +254,9 @@ class Change:
         self.new = new
 
     def __str__(self):
-        return f"Change(owner: {type(self.owner)}), " \
-               f"old: {self.old}, new: {self.new}"
+        return (
+            f"Change(owner: {type(self.owner)}), " f"old: {self.old}, new: {self.new}"
+        )
 
 
 class NotifyQueue:
@@ -289,10 +293,7 @@ https://docs.python.org/3/library/json.html?highlight=json#json.JSONEncoder
     | None              | null          |
     +-------------------+---------------+
 """
-_json_compatible_types = {
-    dict, list, tuple, str, int, float, bool,
-    type(None), bytes
-}
+_json_compatible_types = {dict, list, tuple, str, int, float, bool, type(None), bytes}
 
 
 def is_immutable(self):
@@ -318,8 +319,7 @@ class Immutable(metaclass=ABCMeta):
 
 
 class ImmutableList(Immutable, Sequence):
-    """Makes a :class:`list` immutable.
-    """
+    """Makes a :class:`list` immutable."""
 
     __slots__ = ("_list", "_proxy")
 
@@ -332,7 +332,7 @@ class ImmutableList(Immutable, Sequence):
         self._proxy = [None] * len(list_value)
 
     def __reduce_ex__(self, protocol):
-        return type(self), (self._list, )
+        return type(self), (self._list,)
 
     def mutable(self):
         return self._list
@@ -366,8 +366,7 @@ class ImmutableList(Immutable, Sequence):
 
 
 class ImmutableDict(Immutable, Mapping):
-    """Makes a :class:`dict` immutable.
-    """
+    """Makes a :class:`dict` immutable."""
 
     __slots__ = ("_dict", "_proxy")
 
@@ -380,7 +379,7 @@ class ImmutableDict(Immutable, Mapping):
         self._proxy = {}
 
     def __reduce_ex__(self, protocol):
-        return type(self), (self._dict, )
+        return type(self), (self._dict,)
 
     def mutable(self):
         return self._dict
@@ -443,21 +442,23 @@ class Dict(ImmutableDict, MutableMapping):
         if len(self.signal) and old != value:
             if old is None:
                 co = self.signal.send(
-                    Change(owner=self, new=Dict.ChangeItem(key, value)))
+                    Change(owner=self, new=Dict.ChangeItem(key, value))
+                )
             else:
                 co = self.signal.send(
                     Change(
                         owner=self,
                         old=Dict.ChangeItem(key, old),
-                        new=Dict.ChangeItem(key, value)))
+                        new=Dict.ChangeItem(key, value),
+                    )
+                )
             NotifyQueue.put(co)
 
     def __delitem__(self, key):
         old = self._dict.pop(key, None)
         self._proxy.pop(key, None)
         if len(self.signal) and old is not None:
-            co = self.signal.send(
-                Change(owner=self, old=Dict.ChangeItem(key, old)))
+            co = self.signal.send(Change(owner=self, old=Dict.ChangeItem(key, old)))
             NotifyQueue.put(co)
 
     def reset(self, d):
@@ -482,12 +483,15 @@ def async_loop_forever(interval_seconds, cancellable=False):
                     await coro(*args, **kwargs)
                 except asyncio.CancelledError as ex:
                     if cancellable:
-                        logger.info(f"An async loop forever coroutine "
-                                    f"is cancelled {coro}.")
+                        logger.info(
+                            f"An async loop forever coroutine " f"is cancelled {coro}."
+                        )
                         raise ex
                     else:
-                        logger.exception(f"Can not cancel the async loop "
-                                         f"forever coroutine {coro}.")
+                        logger.exception(
+                            f"Can not cancel the async loop "
+                            f"forever coroutine {coro}."
+                        )
                 except Exception:
                     logger.exception(f"Error looping coroutine {coro}.")
                 await asyncio.sleep(interval_seconds)
@@ -497,15 +501,18 @@ def async_loop_forever(interval_seconds, cancellable=False):
     return _wrapper
 
 
-async def get_aioredis_client(redis_address, redis_password,
-                              retry_interval_seconds, retry_times):
+async def get_aioredis_client(
+    redis_address, redis_password, retry_interval_seconds, retry_times
+):
     for x in range(retry_times):
         try:
             return await aioredis.create_redis_pool(
-                address=redis_address, password=redis_password)
+                address=redis_address, password=redis_password
+            )
         except (socket.gaierror, ConnectionError) as ex:
             logger.error("Connect to Redis failed: %s, retry...", ex)
             await asyncio.sleep(retry_interval_seconds)
     # Raise exception from create_redis_pool
     return await aioredis.create_redis_pool(
-        address=redis_address, password=redis_password)
+        address=redis_address, password=redis_password
+    )

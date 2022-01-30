@@ -47,8 +47,10 @@ from ray.tune.logger import pretty_print
 
 tf1, tf, tfv = try_import_tf()
 SUPPORTED_ENVS = [
-    "RepeatAfterMeEnv", "RepeatInitialObsEnv", "LookAndPush",
-    "StatelessCartPole"
+    "RepeatAfterMeEnv",
+    "RepeatInitialObsEnv",
+    "LookAndPush",
+    "StatelessCartPole",
 ]
 
 
@@ -60,48 +62,53 @@ def get_cli_args():
     parser.add_argument(
         "--no-attention",
         action="store_true",
-        help="Do NOT use attention. For comparison: The agent will not learn.")
-    parser.add_argument(
-        "--env", choices=SUPPORTED_ENVS, default="RepeatAfterMeEnv")
+        help="Do NOT use attention. For comparison: The agent will not learn.",
+    )
+    parser.add_argument("--env", choices=SUPPORTED_ENVS, default="RepeatAfterMeEnv")
 
     # general args
     parser.add_argument(
-        "--run", default="PPO", help="The RLlib-registered algorithm to use.")
+        "--run", default="PPO", help="The RLlib-registered algorithm to use."
+    )
     parser.add_argument("--num-cpus", type=int, default=3)
     parser.add_argument(
         "--framework",
         choices=["tf", "tf2", "tfe", "torch"],
         default="tf",
-        help="The DL framework specifier.")
+        help="The DL framework specifier.",
+    )
     parser.add_argument(
-        "--stop-iters",
-        type=int,
-        default=200,
-        help="Number of iterations to train.")
+        "--stop-iters", type=int, default=200, help="Number of iterations to train."
+    )
     parser.add_argument(
         "--stop-timesteps",
         type=int,
         default=500000,
-        help="Number of timesteps to train.")
+        help="Number of timesteps to train.",
+    )
     parser.add_argument(
         "--stop-reward",
         type=float,
         default=80.0,
-        help="Reward at which we stop training.")
+        help="Reward at which we stop training.",
+    )
     parser.add_argument(
         "--as-test",
         action="store_true",
         help="Whether this script should be run as a test: --stop-reward must "
-        "be achieved within --stop-timesteps AND --stop-iters.")
+        "be achieved within --stop-timesteps AND --stop-iters.",
+    )
     parser.add_argument(
         "--no-tune",
         action="store_true",
         help="Run without Tune using a manual train loop instead. Here,"
-        "there is no TensorBoard support.")
+        "there is no TensorBoard support.",
+    )
     parser.add_argument(
         "--local-mode",
         action="store_true",
-        help="Init Ray in local mode for easier debugging.")
+        help="Init Ray in local mode for easier debugging.",
+    )
 
     args = parser.parse_args()
     print(f"Running with following CLI args: {args}")
@@ -115,8 +122,7 @@ if __name__ == "__main__":
 
     # register custom environments
     registry.register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
-    registry.register_env("RepeatInitialObsEnv",
-                          lambda _: RepeatInitialObsEnv())
+    registry.register_env("RepeatInitialObsEnv", lambda _: RepeatInitialObsEnv())
     registry.register_env("LookAndPush", lambda _: OneHot(LookAndPush()))
     registry.register_env("StatelessCartPole", lambda _: StatelessCartPole())
 
@@ -170,8 +176,10 @@ if __name__ == "__main__":
             result = trainer.train()
             print(pretty_print(result))
             # stop training if the target train steps or reward are reached
-            if result["timesteps_total"] >= args.stop_timesteps or \
-                    result["episode_reward_mean"] >= args.stop_reward:
+            if (
+                result["timesteps_total"] >= args.stop_timesteps
+                or result["episode_reward_mean"] >= args.stop_reward
+            ):
                 break
 
         # Run manual test loop (only for RepeatAfterMe env).
@@ -183,8 +191,7 @@ if __name__ == "__main__":
             done = False
             total_reward = 0
             # start with all zeros as state
-            num_transformers = config["model"][
-                "attention_num_transformer_units"]
+            num_transformers = config["model"]["attention_num_transformer_units"]
             attention_dim = config["model"]["attention_dim"]
             memory = config["model"]["attention_memory_inference"]
             init_state = state = [
@@ -194,8 +201,7 @@ if __name__ == "__main__":
             # run one iteration until done
             print(f"RepeatAfterMeEnv with {config['env_config']}")
             while not done:
-                action, state_out, _ = trainer.compute_single_action(
-                    obs, state)
+                action, state_out, _ = trainer.compute_single_action(obs, state)
                 next_obs, reward, done, _ = env.step(action)
                 print(f"Obs: {obs}, Action: {action}, Reward: {reward}")
                 obs = next_obs

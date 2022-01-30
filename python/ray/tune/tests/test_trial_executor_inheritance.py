@@ -44,10 +44,12 @@ class TestTrialExecutorInheritance(unittest.TestCase):
             def get_running_trials(self):
                 return []
 
-        msg = ("_MyTrialExecutor inherits from TrialExecutor, which is being "
-               "deprecated. "
-               "RFC: https://github.com/ray-project/ray/issues/17593. "
-               "Please reach out on the Ray Github if you have any concerns.")
+        msg = (
+            "_MyTrialExecutor inherits from TrialExecutor, which is being "
+            "deprecated. "
+            "RFC: https://github.com/ray-project/ray/issues/17593. "
+            "Please reach out on the Ray Github if you have any concerns."
+        )
         mocked_warn.assert_called_once_with(msg, DeprecationWarning)
 
     @patch.object(warnings, "warn")

@@ -4,18 +4,22 @@ import time
 from ray.actor import ActorHandle
 from ray.util.iter import LocalIterator
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
-from ray.rllib.execution.common import AGENT_STEPS_SAMPLED_COUNTER, \
-    STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER, \
-    STEPS_TRAINED_THIS_ITER_COUNTER, _get_shared_metrics
+from ray.rllib.execution.common import (
+    AGENT_STEPS_SAMPLED_COUNTER,
+    STEPS_SAMPLED_COUNTER,
+    STEPS_TRAINED_COUNTER,
+    STEPS_TRAINED_THIS_ITER_COUNTER,
+    _get_shared_metrics,
+)
 from ray.rllib.evaluation.worker_set import WorkerSet
 
 
 def StandardMetricsReporting(
-        train_op: LocalIterator[Any],
-        workers: WorkerSet,
-        config: dict,
-        selected_workers: List[ActorHandle] = None,
-        by_steps_trained: bool = False,
+    train_op: LocalIterator[Any],
+    workers: WorkerSet,
+    config: dict,
+    selected_workers: List[ActorHandle] = None,
+    by_steps_trained: bool = False,
 ) -> LocalIterator[dict]:
     """Operator to periodically collect and report metrics.
 
@@ -40,16 +44,23 @@ def StandardMetricsReporting(
         {"episode_reward_max": ..., "episode_reward_mean": ..., ...}
     """
 
-    output_op = train_op \
-        .filter(OncePerTimestepsElapsed(config["timesteps_per_iteration"],
-                                        by_steps_trained=by_steps_trained)) \
-        .filter(OncePerTimeInterval(config["min_time_s_per_reporting"])) \
-        .for_each(CollectMetrics(
-            workers,
-            min_history=config["metrics_num_episodes_for_smoothing"],
-            timeout_seconds=config["metrics_episode_collection_timeout_s"],
-            selected_workers=selected_workers,
-            by_steps_trained=by_steps_trained))
+    output_op = (
+        train_op.filter(
+            OncePerTimestepsElapsed(
+                config["timesteps_per_iteration"], by_steps_trained=by_steps_trained
+            )
+        )
+        .filter(OncePerTimeInterval(config["min_time_s_per_reporting"]))
+        .for_each(
+            CollectMetrics(
+                workers,
+                min_history=config["metrics_num_episodes_for_smoothing"],
+                timeout_seconds=config["metrics_episode_collection_timeout_s"],
+                selected_workers=selected_workers,
+                by_steps_trained=by_steps_trained,
+            )
+        )
+    )
     return output_op
 
 
@@ -67,12 +78,14 @@ class CollectMetrics:
         {"episode_reward_max": ..., "episode_reward_mean": ..., ...}
     """
 
-    def __init__(self,
-                 workers: WorkerSet,
-                 min_history: int = 100,
-                 timeout_seconds: int = 180,
-                 selected_workers: List[ActorHandle] = None,
-                 by_steps_trained: bool = False):
+    def __init__(
+        self,
+        workers: WorkerSet,
+        min_history: int = 100,
+        timeout_seconds: int = 180,
+        selected_workers: List[ActorHandle] = None,
+        by_steps_trained: bool = False,
+    ):
         self.workers = workers
         self.episode_history = []
         self.to_be_collected = []
@@ -87,14 +100,15 @@ class CollectMetrics:
             self.workers.local_worker(),
             self.selected_workers or self.workers.remote_workers(),
             self.to_be_collected,
-            timeout_seconds=self.timeout_seconds)
+            timeout_seconds=self.timeout_seconds,
+        )
         orig_episodes = list(episodes)
         missing = self.min_history - len(episodes)
         if missing > 0:
             episodes = self.episode_history[-missing:] + episodes
             assert len(episodes) <= self.min_history
         self.episode_history.extend(orig_episodes)
-        self.episode_history = self.episode_history[-self.min_history:]
+        self.episode_history = self.episode_history[-self.min_history :]
         res = summarize_episodes(episodes, orig_episodes)
 
         # Add in iterator metrics.
@@ -109,20 +123,25 @@ class CollectMetrics:
         for k, timer in metrics.timers.items():
             timers["{}_time_ms".format(k)] = round(timer.mean * 1000, 3)
             if timer.has_units_processed():
-                timers["{}_throughput".format(k)] = round(
-                    timer.mean_throughput, 3)
-        res.update({
-            "num_healthy_workers": len(self.workers.remote_workers()),
-            "timesteps_total": (metrics.counters[STEPS_TRAINED_COUNTER]
-                                if self.by_steps_trained else
-                                metrics.counters[STEPS_SAMPLED_COUNTER]),
-            # tune.Trainable uses timesteps_this_iter for tracking
-            # total timesteps.
-            "timesteps_this_iter": metrics.counters[
-                STEPS_TRAINED_THIS_ITER_COUNTER],
-            "agent_timesteps_total": metrics.counters.get(
-                AGENT_STEPS_SAMPLED_COUNTER, 0),
-        })
+                timers["{}_throughput".format(k)] = round(timer.mean_throughput, 3)
+        res.update(
+            {
+                "num_healthy_workers": len(self.workers.remote_workers()),
+                "timesteps_total": (
+                    metrics.counters[STEPS_TRAINED_COUNTER]
+                    if self.by_steps_trained
+                    else metrics.counters[STEPS_SAMPLED_COUNTER]
+                ),
+                # tune.Trainable uses timesteps_this_iter for tracking
+                # total timesteps.
+                "timesteps_this_iter": metrics.counters[
+                    STEPS_TRAINED_THIS_ITER_COUNTER
+                ],
+                "agent_timesteps_total": metrics.counters.get(
+                    AGENT_STEPS_SAMPLED_COUNTER, 0
+                ),
+            }
+        )
         res["timers"] = timers
         res["info"] = info
         res["info"].update(counters)

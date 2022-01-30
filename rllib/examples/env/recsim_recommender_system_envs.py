@@ -5,8 +5,11 @@ Source: https://github.com/google-research/recsim
 """
 
 from recsim import choice_model
-from recsim.environments import long_term_satisfaction as lts, \
-    interest_evolution as iev, interest_exploration as iex
+from recsim.environments import (
+    long_term_satisfaction as lts,
+    interest_evolution as iev,
+    interest_exploration as iex,
+)
 
 from ray.rllib.env.wrappers.recsim import make_recsim_env
 from ray.tune import register_env
@@ -24,7 +27,8 @@ def lts_user_model_creator(env_ctx):
     return lts.LTSUserModel(
         env_ctx["slate_size"],
         user_state_ctor=lts.LTSUserState,
-        response_model_ctor=lts.LTSResponse)
+        response_model_ctor=lts.LTSResponse,
+    )
 
 
 def lts_document_sampler_creator(env_ctx):
@@ -49,7 +53,8 @@ def iex_user_model_creator(env_ctx):
         env_ctx["slate_size"],
         user_state_ctor=iex.IEUserState,
         response_model_ctor=iex.IEResponse,
-        seed=env_ctx["seed"])
+        seed=env_ctx["seed"],
+    )
 
 
 def iex_document_sampler_creator(env_ctx):
@@ -72,12 +77,12 @@ def iev_user_model_creator(env_ctx):
         choice_model_ctor=choice_model.MultinomialProportionalChoiceModel,
         response_model_ctor=iev.IEvResponse,
         user_state_ctor=iev.IEvUserState,
-        seed=env_ctx["seed"])
+        seed=env_ctx["seed"],
+    )
 
 
 def iev_document_sampler_creator(env_ctx):
-    return iev.UtilityModelVideoSampler(
-        doc_ctor=iev.IEvVideo, seed=env_ctx["seed"])
+    return iev.UtilityModelVideoSampler(doc_ctor=iev.IEvVideo, seed=env_ctx["seed"])
 
 
 InterestEvolutionRecSimEnv = make_recsim_env(
@@ -88,5 +93,5 @@ InterestEvolutionRecSimEnv = make_recsim_env(
 
 # Backward compatibility.
 register_env(
-    name="RecSim-v1",
-    env_creator=lambda env_ctx: InterestEvolutionRecSimEnv(env_ctx))
+    name="RecSim-v1", env_creator=lambda env_ctx: InterestEvolutionRecSimEnv(env_ctx)
+)
