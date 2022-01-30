@@ -1238,6 +1238,13 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
         else:
             return colorama.Fore.CYAN
 
+    def end_for(line: str) -> str:
+        if sys.platform == "win32":
+            return "\n"
+        if line.endswith("\r"):
+            return ""
+        return "\n"
+
     if data.get("pid") == "autoscaler":
         pid = "scheduler +{}".format(time_string())
         lines = filter_autoscaler_events(data.get("lines", []))
@@ -1257,6 +1264,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                     line,
                 ),
                 file=print_file,
+                end=end_for(line),
             )
     else:
         for line in lines:
@@ -1271,6 +1279,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                     line,
                 ),
                 file=print_file,
+                end=end_for(line),
             )
 
 
