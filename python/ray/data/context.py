@@ -28,11 +28,11 @@ class DatasetContext:
     """
 
     def __init__(
-            self,
-            block_owner: ray.actor.ActorHandle,
-            block_splitting_enabled: bool,
-            target_max_block_size: int,
-            enable_pandas_block: bool,
+        self,
+        block_owner: ray.actor.ActorHandle,
+        block_splitting_enabled: bool,
+        target_max_block_size: int,
+        enable_pandas_block: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_owner = block_owner
@@ -60,8 +60,7 @@ class DatasetContext:
                 )
 
             if _default_context.block_owner is None:
-                owner = _DesignatedBlockOwner.options(
-                    lifetime="detached").remote()
+                owner = _DesignatedBlockOwner.options(lifetime="detached").remote()
                 ray.get(owner.ping.remote())
 
                 # Clear the actor handle after Ray reinits since it's no longer

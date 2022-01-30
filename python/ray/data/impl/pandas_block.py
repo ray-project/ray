@@ -5,16 +5,18 @@ import numpy as np
 
 _pandas = None
 
+
 def lazy_import_pandas():
     global _pandas
     if _pandas is None:
         import pandas
+
         _pandas = pandas
     return _pandas
 
+
 from ray.data.block import BlockAccessor, BlockMetadata, KeyFn
-from ray.data.impl.table_block import TableBlockAccessor, TableRow, \
-    TableBlockBuilder
+from ray.data.impl.table_block import TableBlockAccessor, TableRow, TableBlockBuilder
 from ray.data.impl.arrow_block import ArrowBlockAccessor
 from ray.data.aggregate import AggregateFn
 
@@ -53,13 +55,11 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
         pandas = lazy_import_pandas()
         super().__init__(pandas.DataFrame)
 
-    def _table_from_pydict(
-            self, columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
+    def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         return pandas.DataFrame(columns)
 
-    def _concat_tables(self,
-                       tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
+    def _concat_tables(self, tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         return pandas.concat(tables, ignore_index=True)
 
@@ -71,8 +71,7 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
 
 # This is to be compatible with pyarrow.lib.schema
 # TODO (kfstorm): We need a format-independent way to represent schema.
-PandasBlockSchema = collections.namedtuple("PandasBlockSchema",
-                                           ["names", "types"])
+PandasBlockSchema = collections.namedtuple("PandasBlockSchema", ["names", "types"])
 
 
 class PandasBlockAccessor(TableBlockAccessor):
@@ -94,14 +93,16 @@ class PandasBlockAccessor(TableBlockAccessor):
     def schema(self) -> PandasBlockSchema:
         dtypes = self._table.dtypes
         schema = PandasBlockSchema(
-            names=dtypes.index.tolist(), types=dtypes.values.tolist())
+            names=dtypes.index.tolist(), types=dtypes.values.tolist()
+        )
         # Column names with non-str types of a pandas DataFrame is not
         # supported by Ray Dataset.
         if any(not isinstance(name, str) for name in schema.names):
             raise ValueError(
                 "A Pandas DataFrame with column names of non-str types"
                 " is not supported by Ray Dataset. Column names of this"
-                f" DataFrame: {schema.names!r}.")
+                f" DataFrame: {schema.names!r}."
+            )
         return schema
 
     def to_pandas(self) -> "pandas.DataFrame":
@@ -111,15 +112,19 @@ class PandasBlockAccessor(TableBlockAccessor):
         if not column:
             raise ValueError(
                 "`column` must be specified when calling .to_numpy() "
-                "on Pandas blocks.")
+                "on Pandas blocks."
+            )
         if column not in self._table.columns:
             raise ValueError(
                 "Cannot find column {}, available columns: {}".format(
-                    column, self._table.columns.tolist()))
+                    column, self._table.columns.tolist()
+                )
+            )
         return self._table[column].to_numpy()
 
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow
+
         return pyarrow.table(self._table)
 
     def num_rows(self) -> int:
@@ -153,41 +158,39 @@ class PandasBlockAccessor(TableBlockAccessor):
         return PandasBlockBuilder._empty_table()
 
     def _sample(self, n_samples: int, key: "SortKeyT") -> "pandas.DataFrame":
-        return self._table[[k[0] for k in key]].sample(
-            n_samples, ignore_index=True)
+        return self._table[[k[0] for k in key]].sample(n_samples, ignore_index=True)
 
-    def sort_and_partition(self, boundaries: List[T], key: "SortKeyT",
-                           descending: bool) -> List["pandas.DataFrame"]:
+    def sort_and_partition(
+        self, boundaries: List[T], key: "SortKeyT", descending: bool
+    ) -> List["pandas.DataFrame"]:
         # TODO (kfstorm): A workaround to pass tests. Not efficient.
-        delegated_result = BlockAccessor.for_block(
-            self.to_arrow()).sort_and_partition(boundaries, key, descending)
-        return [
-            BlockAccessor.for_block(_).to_pandas() for _ in delegated_result
-        ]
+        delegated_result = BlockAccessor.for_block(self.to_arrow()).sort_and_partition(
+            boundaries, key, descending
+        )
+        return [BlockAccessor.for_block(_).to_pandas() for _ in delegated_result]
 
-    def combine(self, key: KeyFn,
-                aggs: Tuple[AggregateFn]) -> "pandas.DataFrame":
+    def combine(self, key: KeyFn, aggs: Tuple[AggregateFn]) -> "pandas.DataFrame":
         # TODO (kfstorm): A workaround to pass tests. Not efficient.
-        return BlockAccessor.for_block(self.to_arrow()).combine(
-            key, aggs).to_pandas()
+        return BlockAccessor.for_block(self.to_arrow()).combine(key, aggs).to_pandas()
 
     @staticmethod
     def merge_sorted_blocks(
-            blocks: List["pandas.DataFrame"], key: "SortKeyT",
-            _descending: bool) -> Tuple["pandas.DataFrame", BlockMetadata]:
+        blocks: List["pandas.DataFrame"], key: "SortKeyT", _descending: bool
+    ) -> Tuple["pandas.DataFrame", BlockMetadata]:
         # TODO (kfstorm): A workaround to pass tests. Not efficient.
         block, metadata = ArrowBlockAccessor.merge_sorted_blocks(
             [BlockAccessor.for_block(block).to_arrow() for block in blocks],
-            key, _descending)
+            key,
+            _descending,
+        )
         return BlockAccessor.for_block(block).to_pandas(), metadata
 
     @staticmethod
     def aggregate_combined_blocks(
-            blocks: List["pandas.DataFrame"], key: KeyFn,
-            aggs: Tuple[AggregateFn]
+        blocks: List["pandas.DataFrame"], key: KeyFn, aggs: Tuple[AggregateFn]
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
         # TODO (kfstorm): A workaround to pass tests. Not efficient.
         block, metadata = ArrowBlockAccessor.aggregate_combined_blocks(
-            [BlockAccessor.for_block(block).to_arrow() for block in blocks],
-            key, aggs)
+            [BlockAccessor.for_block(block).to_arrow() for block in blocks], key, aggs
+        )
         return BlockAccessor.for_block(block).to_pandas(), metadata
