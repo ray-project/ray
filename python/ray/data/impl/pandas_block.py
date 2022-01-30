@@ -3,18 +3,6 @@ from typing import Dict, List, Tuple, Any, TypeVar, Optional, TYPE_CHECKING
 import collections
 import numpy as np
 
-_pandas = None
-
-
-def lazy_import_pandas():
-    global _pandas
-    if _pandas is None:
-        import pandas
-
-        _pandas = pandas
-    return _pandas
-
-
 from ray.data.block import BlockAccessor, BlockMetadata, KeyFn
 from ray.data.impl.table_block import TableBlockAccessor, TableRow, TableBlockBuilder
 from ray.data.impl.arrow_block import ArrowBlockAccessor
@@ -26,6 +14,17 @@ if TYPE_CHECKING:
     from ray.data.impl.sort import SortKeyT
 
 T = TypeVar("T")
+
+_pandas = None
+
+
+def lazy_import_pandas():
+    global _pandas
+    if _pandas is None:
+        import pandas
+
+        _pandas = pandas
+    return _pandas
 
 
 class PandasRow(TableRow):
