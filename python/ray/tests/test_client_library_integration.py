@@ -4,14 +4,14 @@ import pytest
 
 from ray import tune
 from ray.util.client.ray_client_helpers import ray_start_client_server
-from ray._private.client_mode_hook import enable_client_mode,\
-    client_mode_should_convert
+from ray._private.client_mode_hook import enable_client_mode, client_mode_should_convert
 
 
 @pytest.mark.skip(reason="KV store is not working properly.")
 def test_rllib_integration(ray_start_regular_shared):
     with ray_start_client_server():
         import ray.rllib.agents.dqn as dqn
+
         # Confirming the behavior of this context manager.
         # (Client mode hook not yet enabled.)
         assert not client_mode_should_convert(auto_init=True)
@@ -44,15 +44,15 @@ def test_rllib_integration_tune(ray_start_regular_shared):
             # Confirming mode hook is enabled.
             assert client_mode_should_convert(auto_init=True)
             tune.run(
-                "DQN",
-                config={"env": "CartPole-v1"},
-                stop={"training_iteration": 2})
+                "DQN", config={"env": "CartPole-v1"}, stop={"training_iteration": 2}
+            )
 
 
 @pytest.mark.asyncio
 async def test_serve_handle(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         from ray import serve
+
         with enable_client_mode():
             serve.start()
 

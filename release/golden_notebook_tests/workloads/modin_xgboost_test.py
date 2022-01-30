@@ -5,7 +5,8 @@ import json
 from util import import_and_execute_test_script, wait_for_cluster_client
 
 NOTEBOOK_PATH_RELATIVE_TO_RAY_REPO = (
-    "doc/source/ray-core/_examples/modin_xgboost/modin_xgboost.py")
+    "doc/source/ray-core/_examples/modin_xgboost/modin_xgboost.py"
+)
 
 
 def main():
@@ -29,8 +30,9 @@ if __name__ == "__main__":
     result = {
         "time_taken": taken,
     }
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/modin_xgboost_test.json")
+    test_output_json = os.environ.get(
+        "TEST_OUTPUT_JSON", "/tmp/modin_xgboost_test.json"
+    )
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 

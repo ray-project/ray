@@ -39,8 +39,8 @@ import ray
 def get_data_loader():
     """Safely downloads data. Returns training/validation set dataloader."""
     mnist_transforms = transforms.Compose(
-        [transforms.ToTensor(),
-         transforms.Normalize((0.1307, ), (0.3081, ))])
+        [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+    )
 
     # We add FileLock here because multiple workers will want to
     # download data, and this may cause overwrites since
@@ -48,16 +48,16 @@ def get_data_loader():
     with FileLock(os.path.expanduser("~/data.lock")):
         train_loader = torch.utils.data.DataLoader(
             datasets.MNIST(
-                "~/data",
-                train=True,
-                download=True,
-                transform=mnist_transforms),
+                "~/data", train=True, download=True, transform=mnist_transforms
+            ),
             batch_size=128,
-            shuffle=True)
+            shuffle=True,
+        )
         test_loader = torch.utils.data.DataLoader(
             datasets.MNIST("~/data", train=False, transform=mnist_transforms),
             batch_size=128,
-            shuffle=True)
+            shuffle=True,
+        )
     return train_loader, test_loader
 
 
@@ -75,7 +75,7 @@ def evaluate(model, test_loader):
             _, predicted = torch.max(outputs.data, 1)
             total += target.size(0)
             correct += (predicted == target).sum().item()
-    return 100. * correct / total
+    return 100.0 * correct / total
 
 
 #######################################################################
@@ -144,8 +144,7 @@ class ParameterServer(object):
 
     def apply_gradients(self, *gradients):
         summed_gradients = [
-            np.stack(gradient_zip).sum(axis=0)
-            for gradient_zip in zip(*gradients)
+            np.stack(gradient_zip).sum(axis=0) for gradient_zip in zip(*gradients)
         ]
         self.optimizer.zero_grad()
         self.model.set_gradients(summed_gradients)
@@ -215,9 +214,7 @@ test_loader = get_data_loader()[1]
 print("Running synchronous parameter server training.")
 current_weights = ps.get_weights.remote()
 for i in range(iterations):
-    gradients = [
-        worker.compute_gradients.remote(current_weights) for worker in workers
-    ]
+    gradients = [worker.compute_gradients.remote(current_weights) for worker in workers]
     # Calculate update after all gradients are available.
     current_weights = ps.apply_gradients.remote(*gradients)
 

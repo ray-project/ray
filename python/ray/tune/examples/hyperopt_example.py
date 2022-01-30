@@ -13,7 +13,7 @@ from ray.tune.suggest.hyperopt import HyperOptSearch
 
 def evaluation_fn(step, width, height):
     time.sleep(0.1)
-    return (0.1 + width * step / 100)**(-1) + height * 0.1
+    return (0.1 + width * step / 100) ** (-1) + height * 0.1
 
 
 def easy_objective(config):
@@ -32,14 +32,15 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using " "Ray Client.",
+    )
     args, _ = parser.parse_known_args()
 
     if args.server_address:
@@ -48,16 +49,8 @@ if __name__ == "__main__":
         ray.init(configure_logging=False)
 
     current_best_params = [
-        {
-            "width": 1,
-            "height": 2,
-            "activation": "relu"  # Activation will be relu
-        },
-        {
-            "width": 4,
-            "height": 2,
-            "activation": "tanh"  # Activation will be tanh
-        }
+        {"width": 1, "height": 2, "activation": "relu"},  # Activation will be relu
+        {"width": 4, "height": 2, "activation": "tanh"},  # Activation will be tanh
     ]
 
     algo = HyperOptSearch(points_to_evaluate=current_best_params)
@@ -76,7 +69,8 @@ if __name__ == "__main__":
             "width": tune.uniform(0, 20),
             "height": tune.uniform(-100, 100),
             # This is an ignored parameter.
-            "activation": tune.choice(["relu", "tanh"])
-        })
+            "activation": tune.choice(["relu", "tanh"]),
+        },
+    )
 
     print("Best hyperparameters found were: ", analysis.best_config)

@@ -21,7 +21,7 @@ class StatelessPendulum(PendulumEnv):
         super().__init__(g=g)
 
         # Fix our observation-space (remove angular velocity component).
-        high = np.array([1., 1.], dtype=np.float32)
+        high = np.array([1.0, 1.0], dtype=np.float32)
         self.observation_space = Box(low=-high, high=high, dtype=np.float32)
 
     def step(self, action):

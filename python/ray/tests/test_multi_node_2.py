@@ -9,8 +9,11 @@ from ray.autoscaler.sdk import request_resources
 from ray.autoscaler._private.monitor import Monitor
 from ray.cluster_utils import Cluster
 from ray._private.gcs_utils import use_gcs_for_bootstrap
-from ray._private.test_utils import (generate_system_config_map,
-                                     wait_for_condition, SignalActor)
+from ray._private.test_utils import (
+    generate_system_config_map,
+    wait_for_condition,
+    SignalActor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +40,14 @@ def test_shutdown():
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [
+    "ray_start_cluster_head",
+    [
         generate_system_config_map(
-            num_heartbeats_timeout=3, object_timeout_milliseconds=12345)
+            num_heartbeats_timeout=3, object_timeout_milliseconds=12345
+        )
     ],
-    indirect=True)
+    indirect=True,
+)
 def test_system_config(ray_start_cluster_head):
     """Checks that the internal configuration setting works.
 
@@ -73,7 +79,8 @@ def test_system_config(ray_start_cluster_head):
 
 def setup_monitor(address):
     monitor = Monitor(
-        address, None, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
+        address, None, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD
+    )
     return monitor
 
 
@@ -84,10 +91,9 @@ def assert_correct_pg(pg_response_data, pg_demands, strategy):
         "PACK": 0,
         "SPREAD": 1,
         "STRICT_PACK": 2,
-        "STRICT_SPREAD": 3
+        "STRICT_SPREAD": 3,
     }
-    assert pg_response_data.strategy == strategy_mapping_dict_protobuf[
-        strategy]
+    assert pg_response_data.strategy == strategy_mapping_dict_protobuf[strategy]
     assert pg_response_data.creator_job_id
     assert pg_response_data.creator_actor_id
     assert pg_response_data.creator_actor_dead
@@ -149,23 +155,21 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
         if expected_resource_usage is None:
             if all(x for x in resource_usage[0:]):
                 break
-        elif all(x == y
-                 for x, y in zip(resource_usage, expected_resource_usage)):
+        elif all(x == y for x, y in zip(resource_usage, expected_resource_usage)):
             break
         else:
             timeout -= 1
             time.sleep(1)
 
         if timeout <= 0:
-            raise ValueError("Timeout. {} != {}".format(
-                resource_usage, expected_resource_usage))
+            raise ValueError(
+                "Timeout. {} != {}".format(resource_usage, expected_resource_usage)
+            )
 
     # Sanity check we emitted a resize event.
     assert any("Resized to" in x for x in monitor.event_summarizer.summary())
 
-    assert visited_atleast_once[0] == {
-        "memory", "object_store_memory", "node:"
-    }
+    assert visited_atleast_once[0] == {"memory", "object_store_memory", "node:"}
     assert visited_atleast_once[0] == visited_atleast_once[1]
 
     remove_placement_group(pg)
@@ -174,12 +178,17 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "num_cpus": 1,
-    }, {
-        "num_cpus": 2,
-    }],
-    indirect=True)
+    "ray_start_cluster_head",
+    [
+        {
+            "num_cpus": 1,
+        },
+        {
+            "num_cpus": 2,
+        },
+    ],
+    indirect=True,
+)
 def test_heartbeats_single(ray_start_cluster_head):
     """Unit test for `Cluster.wait_for_nodes`.
 
@@ -254,13 +263,16 @@ def test_wait_for_nodes(ray_start_cluster_head):
 
 
 @pytest.mark.parametrize(
-    "call_ray_start", [
-        "ray start --head --ray-client-server-port 20000 " +
-        "--min-worker-port=0 --max-worker-port=0 --port 0"
+    "call_ray_start",
+    [
+        "ray start --head --ray-client-server-port 20000 "
+        + "--min-worker-port=0 --max-worker-port=0 --port 0"
     ],
-    indirect=True)
+    indirect=True,
+)
 def test_ray_client(call_ray_start):
     from ray.util.client import ray as ray_client
+
     ray.client("localhost:20000").connect()
 
     @ray.remote
@@ -308,7 +320,8 @@ def test_detached_actor_autoscaling(ray_start_cluster_head):
     up, down = ray.wait(
         [actor.ping.remote() for actor in actor_handles],
         timeout=5,
-        num_returns=len(actor_handles))
+        num_returns=len(actor_handles),
+    )
     assert len(up) == len(actor_handles) - 1
     assert len(down) == 1
 
@@ -317,7 +330,8 @@ def test_detached_actor_autoscaling(ray_start_cluster_head):
     up, down = ray.wait(
         [actor.ping.remote() for actor in actor_handles],
         timeout=5,
-        num_returns=len(actor_handles))
+        num_returns=len(actor_handles),
+    )
     assert len(up) == len(actor_handles)
     assert len(down) == 0
 
@@ -330,15 +344,13 @@ def test_multi_node_pgs(ray_start_cluster):
 
     pgs = [ray.util.placement_group([{"CPU": 1}]) for _ in range(4)]
 
-    ready, not_ready = ray.wait(
-        [pg.ready() for pg in pgs], timeout=5, num_returns=4)
+    ready, not_ready = ray.wait([pg.ready() for pg in pgs], timeout=5, num_returns=4)
     assert len(ready) == 2
     assert len(not_ready) == 2
 
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes(3)
-    ready, not_ready = ray.wait(
-        [pg.ready() for pg in pgs], timeout=5, num_returns=4)
+    ready, not_ready = ray.wait([pg.ready() for pg in pgs], timeout=5, num_returns=4)
     assert len(ready) == 4
     assert len(not_ready) == 0
 
@@ -348,11 +360,13 @@ def test_multi_node_pgs(ray_start_cluster):
         print(".")
         more_pgs = [ray.util.placement_group([{"CPU": 1}]) for _ in range(2)]
         ready, not_ready = ray.wait(
-            [pg.ready() for pg in more_pgs], timeout=5, num_returns=2)
+            [pg.ready() for pg in more_pgs], timeout=5, num_returns=2
+        )
         assert len(ready) == 2
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -22,8 +22,11 @@ import ray.cluster_utils
 import ray._private.resource_spec as resource_spec
 import setproctitle
 
-from ray._private.test_utils import (check_call_ray, wait_for_condition,
-                                     wait_for_num_actors)
+from ray._private.test_utils import (
+    check_call_ray,
+    wait_for_condition,
+    wait_for_num_actors,
+)
 from ray._private.runtime_env.utils import RuntimeEnv
 
 logger = logging.getLogger(__name__)
@@ -38,7 +41,8 @@ def test_global_state_api(shutdown_only):
     assert ray.cluster_resources()["CustomResource"] == 1
 
     job_id = ray._private.utils.compute_job_id_from_driver(
-        ray.WorkerID(ray.worker.global_worker.worker_id))
+        ray.WorkerID(ray.worker.global_worker.worker_id)
+    )
 
     client_table = ray.nodes()
     node_ip_address = ray.worker.global_worker.node_ip_address
@@ -58,7 +62,7 @@ def test_global_state_api(shutdown_only):
     actor_table = ray.state.actors()
     assert len(actor_table) == 1
 
-    actor_info, = actor_table.values()
+    (actor_info,) = actor_table.values()
     assert actor_info["JobID"] == job_id.hex()
     assert actor_info["Name"] == "test_actor"
     assert "IPAddress" in actor_info["Address"]
@@ -87,6 +91,7 @@ class CaptureOutputAndError:
 
     def __init__(self, captured_output_and_error):
         import io
+
         self.output_buffer = io.StringIO()
         self.error_buffer = io.StringIO()
         self.captured_output_and_error = captured_output_and_error
@@ -189,11 +194,11 @@ def test_object_ref_properties():
 
 
 def test_wait_reconstruction(shutdown_only):
-    ray.init(num_cpus=1, object_store_memory=int(10**8))
+    ray.init(num_cpus=1, object_store_memory=int(10 ** 8))
 
     @ray.remote
     def f():
-        return np.zeros(6 * 10**7, dtype=np.uint8)
+        return np.zeros(6 * 10 ** 7, dtype=np.uint8)
 
     x_id = f.remote()
     ray.wait([x_id])
@@ -244,8 +249,8 @@ def test_ray_task_name_setproctitle(ray_start_2_cpus):
 
 
 @pytest.mark.skipif(
-    os.getenv("TRAVIS") is None,
-    reason="This test should only be run on Travis.")
+    os.getenv("TRAVIS") is None, reason="This test should only be run on Travis."
+)
 def test_ray_stack(ray_start_2_cpus):
     def unique_name_1():
         time.sleep(1000)
@@ -266,15 +271,18 @@ def test_ray_stack(ray_start_2_cpus):
     while time.time() - start_time < 30:
         # Attempt to parse the "ray stack" call.
         output = ray._private.utils.decode(
-            check_call_ray(["stack"], capture_stdout=True))
-        if ("unique_name_1" in output and "unique_name_2" in output
-                and "unique_name_3" in output):
+            check_call_ray(["stack"], capture_stdout=True)
+        )
+        if (
+            "unique_name_1" in output
+            and "unique_name_2" in output
+            and "unique_name_3" in output
+        ):
             success = True
             break
 
     if not success:
-        raise Exception("Failed to find necessary information with "
-                        "'ray stack'")
+        raise Exception("Failed to find necessary information with " "'ray stack'")
 
 
 def test_raylet_is_robust_to_random_messages(ray_start_regular):
@@ -308,7 +316,8 @@ def test_non_ascii_comment(ray_start_regular):
 
 
 @pytest.mark.parametrize(
-    "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
+    "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True
+)
 def test_put_pins_object(ray_start_object_store_memory):
     obj = np.ones(200 * 1024, dtype=np.uint8)
     x_id = ray.put(obj)
@@ -326,7 +335,8 @@ def test_put_pins_object(ray_start_object_store_memory):
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
     assert not ray.worker.global_worker.core_worker.object_exists(
-        ray.ObjectRef(x_binary))
+        ray.ObjectRef(x_binary)
+    )
 
 
 def test_decorated_function(ray_start_regular):
@@ -426,9 +436,7 @@ def test_move_log_files_to_old(shutdown_only):
             print("function f finished")
 
     # First create a temporary actor.
-    actors = [
-        Actor.remote() for i in range(ray_constants.LOG_MONITOR_MAX_OPEN_FILES)
-    ]
+    actors = [Actor.remote() for i in range(ray_constants.LOG_MONITOR_MAX_OPEN_FILES)]
     ray.get([a.f.remote() for a in actors])
 
     # Make sure no log files are in the "old" directory before the actors
@@ -450,12 +458,16 @@ def test_move_log_files_to_old(shutdown_only):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_cpus": 0,
-        "num_nodes": 1,
-        "do_init": False,
-    }],
-    indirect=True)
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 0,
+            "num_nodes": 1,
+            "do_init": False,
+        }
+    ],
+    indirect=True,
+)
 def test_ray_address_environment_variable(ray_start_cluster):
     address = ray_start_cluster.address
     # In this test we use zero CPUs to distinguish between starting a local
@@ -494,8 +506,7 @@ def test_ray_address_environment_variable(ray_start_cluster):
 def test_ray_resources_environment_variable(ray_start_cluster):
     address = ray_start_cluster.address
 
-    os.environ[
-        "RAY_OVERRIDE_RESOURCES"] = "{\"custom1\":1, \"custom2\":2, \"CPU\":3}"
+    os.environ["RAY_OVERRIDE_RESOURCES"] = '{"custom1":1, "custom2":2, "CPU":3}'
     ray.init(address=address, resources={"custom1": 3, "custom3": 3})
 
     cluster_resources = ray.cluster_resources()
@@ -553,20 +564,18 @@ def test_accelerator_type_api(shutdown_only):
 
     @ray.remote(accelerator_type=v100)
     def decorated_func(quantity):
-        wait_for_condition(
-            lambda: ray.available_resources()[resource_name] < quantity)
+        wait_for_condition(lambda: ray.available_resources()[resource_name] < quantity)
         return True
 
     assert ray.get(decorated_func.remote(quantity))
 
     def via_options_func(quantity):
-        wait_for_condition(
-            lambda: ray.available_resources()[resource_name] < quantity)
+        wait_for_condition(lambda: ray.available_resources()[resource_name] < quantity)
         return True
 
     assert ray.get(
-        ray.remote(via_options_func).options(
-            accelerator_type=v100).remote(quantity))
+        ray.remote(via_options_func).options(accelerator_type=v100).remote(quantity)
+    )
 
     @ray.remote(accelerator_type=v100)
     class DecoratedActor:
@@ -587,70 +596,77 @@ def test_accelerator_type_api(shutdown_only):
     # Avoid a race condition where the actor hasn't been initialized and
     # claimed the resources yet.
     ray.get(decorated_actor.initialized.remote())
-    wait_for_condition(
-        lambda: ray.available_resources()[resource_name] < quantity)
+    wait_for_condition(lambda: ray.available_resources()[resource_name] < quantity)
 
     quantity = ray.available_resources()[resource_name]
-    with_options = ray.remote(ActorWithOptions).options(
-        accelerator_type=v100).remote()
+    with_options = ray.remote(ActorWithOptions).options(accelerator_type=v100).remote()
     ray.get(with_options.initialized.remote())
-    wait_for_condition(
-        lambda: ray.available_resources()[resource_name] < quantity)
+    wait_for_condition(lambda: ray.available_resources()[resource_name] < quantity)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="not relevant for windows")
 def test_detect_docker_cpus():
     # No limits set
-    with tempfile.NamedTemporaryFile(
-            "w") as quota_file, tempfile.NamedTemporaryFile(
-                "w") as period_file, tempfile.NamedTemporaryFile(
-                    "w") as cpuset_file:
+    with tempfile.NamedTemporaryFile("w") as quota_file, tempfile.NamedTemporaryFile(
+        "w"
+    ) as period_file, tempfile.NamedTemporaryFile("w") as cpuset_file:
         quota_file.write("-1")
         period_file.write("100000")
         cpuset_file.write("0-63")
         quota_file.flush()
         period_file.flush()
         cpuset_file.flush()
-        assert ray._private.utils._get_docker_cpus(
-            cpu_quota_file_name=quota_file.name,
-            cpu_period_file_name=period_file.name,
-            cpuset_file_name=cpuset_file.name) == 64
+        assert (
+            ray._private.utils._get_docker_cpus(
+                cpu_quota_file_name=quota_file.name,
+                cpu_period_file_name=period_file.name,
+                cpuset_file_name=cpuset_file.name,
+            )
+            == 64
+        )
 
     # No cpuset used
-    with tempfile.NamedTemporaryFile(
-            "w") as quota_file, tempfile.NamedTemporaryFile(
-                "w") as period_file, tempfile.NamedTemporaryFile(
-                    "w") as cpuset_file:
+    with tempfile.NamedTemporaryFile("w") as quota_file, tempfile.NamedTemporaryFile(
+        "w"
+    ) as period_file, tempfile.NamedTemporaryFile("w") as cpuset_file:
         quota_file.write("-1")
         period_file.write("100000")
         cpuset_file.write("0-10,20,50-63")
         quota_file.flush()
         period_file.flush()
         cpuset_file.flush()
-        assert ray._private.utils._get_docker_cpus(
-            cpu_quota_file_name=quota_file.name,
-            cpu_period_file_name=period_file.name,
-            cpuset_file_name=cpuset_file.name) == 26
+        assert (
+            ray._private.utils._get_docker_cpus(
+                cpu_quota_file_name=quota_file.name,
+                cpu_period_file_name=period_file.name,
+                cpuset_file_name=cpuset_file.name,
+            )
+            == 26
+        )
 
     # Quota set
-    with tempfile.NamedTemporaryFile(
-            "w") as quota_file, tempfile.NamedTemporaryFile(
-                "w") as period_file, tempfile.NamedTemporaryFile(
-                    "w") as cpuset_file:
+    with tempfile.NamedTemporaryFile("w") as quota_file, tempfile.NamedTemporaryFile(
+        "w"
+    ) as period_file, tempfile.NamedTemporaryFile("w") as cpuset_file:
         quota_file.write("42")
         period_file.write("100")
         cpuset_file.write("0-63")
         quota_file.flush()
         period_file.flush()
         cpuset_file.flush()
-        assert ray._private.utils._get_docker_cpus(
-            cpu_quota_file_name=quota_file.name,
-            cpu_period_file_name=period_file.name,
-            cpuset_file_name=cpuset_file.name) == 0.42
+        assert (
+            ray._private.utils._get_docker_cpus(
+                cpu_quota_file_name=quota_file.name,
+                cpu_period_file_name=period_file.name,
+                cpuset_file_name=cpuset_file.name,
+            )
+            == 0.42
+        )
 
 
 @pytest.mark.skipif(
-    sys.platform.startswith("win"), reason="No need to test on Windows.")
+    sys.platform.startswith("win"), reason="No need to test on Windows."
+)
 def test_k8s_cpu():
     """Test all the functions in dashboard/k8s_utils.py.
     Also test ray._private.utils.get_num_cpus when running in a  K8s pod.
@@ -659,8 +675,7 @@ def test_k8s_cpu():
     """
 
     # Some experimentally-obtained K8S CPU usage files for use in test_k8s_cpu.
-    PROCSTAT1 = \
-    """cpu  2945022 98 3329420 148744854 39522 0 118587 0 0 0
+    PROCSTAT1 = """cpu  2945022 98 3329420 148744854 39522 0 118587 0 0 0
     cpu0 370299 14 413841 18589778 5304 0 15288 0 0 0
     cpu1 378637 10 414414 18589275 5283 0 14731 0 0 0
     cpu2 367328 8 420914 18590974 4844 0 14416 0 0 0
@@ -676,10 +691,9 @@ def test_k8s_cpu():
     procs_running 6
     procs_blocked 0
     softirq 524311775 0 230142964 27143 63542182 0 0 171 74042767 0 156556548
-    """ # noqa
+    """  # noqa
 
-    PROCSTAT2 = \
-    """cpu  2945152 98 3329436 148745483 39522 0 118587 0 0 0
+    PROCSTAT2 = """cpu  2945152 98 3329436 148745483 39522 0 118587 0 0 0
     cpu0 370399 14 413841 18589778 5304 0 15288 0 0 0
     cpu1 378647 10 414415 18589362 5283 0 14731 0 0 0
     cpu2 367329 8 420916 18591067 4844 0 14416 0 0 0
@@ -695,7 +709,7 @@ def test_k8s_cpu():
     procs_running 4
     procs_blocked 0
     softirq 524317451 0 230145523 27143 63542930 0 0 171 74043232 0 156558452
-    """ # noqa
+    """  # noqa
 
     CPUACCTUSAGE1 = "2268980984108"
 
@@ -711,14 +725,13 @@ def test_k8s_cpu():
     proc_stat_file.write(PROCSTAT1)
     for file in shares_file, cpu_file, proc_stat_file:
         file.flush()
-    with mock.patch("ray._private.utils.os.environ",
-                    {"KUBERNETES_SERVICE_HOST"}),\
-            mock.patch("ray.dashboard.k8s_utils.CPU_USAGE_PATH",
-                       cpu_file.name),\
-            mock.patch("ray.dashboard.k8s_utils.PROC_STAT_PATH",
-                       proc_stat_file.name),\
-            mock.patch("ray._private.utils.get_k8s_cpus.__defaults__",
-                       (shares_file.name,)):
+    with mock.patch(
+        "ray._private.utils.os.environ", {"KUBERNETES_SERVICE_HOST"}
+    ), mock.patch("ray.dashboard.k8s_utils.CPU_USAGE_PATH", cpu_file.name), mock.patch(
+        "ray.dashboard.k8s_utils.PROC_STAT_PATH", proc_stat_file.name
+    ), mock.patch(
+        "ray._private.utils.get_k8s_cpus.__defaults__", (shares_file.name,)
+    ):
 
         # Test helpers
         assert ray._private.utils.get_num_cpus() == 2
@@ -749,14 +762,16 @@ def test_sync_job_config(shutdown_only):
     ray.init(
         job_config=ray.job_config.JobConfig(
             num_java_workers_per_process=num_java_workers_per_process,
-            runtime_env=runtime_env))
+            runtime_env=runtime_env,
+        )
+    )
 
     # Check that the job config is synchronized at the driver side.
     job_config = ray.worker.global_worker.core_worker.get_job_config()
-    assert (job_config.num_java_workers_per_process ==
-            num_java_workers_per_process)
-    job_runtime_env = RuntimeEnv(serialized_runtime_env=job_config.
-                                 runtime_env_info.serialized_runtime_env)
+    assert job_config.num_java_workers_per_process == num_java_workers_per_process
+    job_runtime_env = RuntimeEnv(
+        serialized_runtime_env=job_config.runtime_env_info.serialized_runtime_env
+    )
     assert job_runtime_env.env_vars() == runtime_env["env_vars"]
 
     @ray.remote
@@ -767,10 +782,10 @@ def test_sync_job_config(shutdown_only):
     # Check that the job config is synchronized at the worker side.
     job_config = gcs_utils.JobConfig()
     job_config.ParseFromString(ray.get(get_job_config.remote()))
-    assert (job_config.num_java_workers_per_process ==
-            num_java_workers_per_process)
-    job_runtime_env = RuntimeEnv(serialized_runtime_env=job_config.
-                                 runtime_env_info.serialized_runtime_env)
+    assert job_config.num_java_workers_per_process == num_java_workers_per_process
+    job_runtime_env = RuntimeEnv(
+        serialized_runtime_env=job_config.runtime_env_info.serialized_runtime_env
+    )
     assert job_runtime_env.env_vars() == runtime_env["env_vars"]
 
 
@@ -787,13 +802,14 @@ def test_duplicated_arg(ray_start_cluster):
     arr = np.ones(1 * 1024 * 1024, dtype=np.uint8)  # 1MB
     ref = ray.put(arr)
     assert np.array_equal(
-        ray.get(task_with_dup_arg.remote(ref, ref, ref)), sum([arr, arr, arr]))
+        ray.get(task_with_dup_arg.remote(ref, ref, ref)), sum([arr, arr, arr])
+    )
 
     # Make sure it works when it is mixed with other args.
     ref2 = ray.put(arr)
     assert np.array_equal(
-        ray.get(task_with_dup_arg.remote(ref, ref2, ref)), sum([arr, arr,
-                                                                arr]))
+        ray.get(task_with_dup_arg.remote(ref, ref2, ref)), sum([arr, arr, arr])
+    )
 
     # Test complicated scenario with multi nodes.
     cluster.add_node(num_cpus=1, resources={"worker_1": 1})
@@ -813,11 +829,12 @@ def test_duplicated_arg(ray_start_cluster):
     ref2 = create_remote_ref.options(resources={"worker_2": 1}).remote(arr)
     ref3 = create_remote_ref.remote(arr)
     np.array_equal(
-        ray.get(
-            task_with_dup_arg_ref.remote(ref1, ref2, ref3, ref1, ref2, ref3)),
-        sum([arr] * 6))
+        ray.get(task_with_dup_arg_ref.remote(ref1, ref2, ref3, ref1, ref2, ref3)),
+        sum([arr] * 6),
+    )
 
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))
