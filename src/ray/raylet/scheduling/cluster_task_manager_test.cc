@@ -427,24 +427,24 @@ TEST_F(ClusterTaskManagerTest, IdempotencyTest) {
   ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(node_info_calls_, 0);
 
-  ASSERT_EQ(scheduler_->GetLocalAvailableCpus(), 4.0);
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 4.0);
 
   task_manager_.ReleaseCpuResourcesFromUnblockedWorker(worker);
   task_manager_.ReleaseCpuResourcesFromUnblockedWorker(worker);
 
-  ASSERT_EQ(scheduler_->GetLocalAvailableCpus(), 8.0);
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 8.0);
 
   task_manager_.ReturnCpuResourcesToBlockedWorker(worker);
   task_manager_.ReturnCpuResourcesToBlockedWorker(worker);
 
-  ASSERT_EQ(scheduler_->GetLocalAvailableCpus(), 4.0);
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 4.0);
 
   RayTask finished_task;
   task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
   task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
   ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
             task.GetTaskSpecification().TaskId());
-  ASSERT_EQ(scheduler_->GetLocalAvailableCpus(), 8.0);
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 8.0);
   AssertNoLeaks();
 }
 
@@ -1408,7 +1408,7 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
 
   // Delete cpu resource of local node, then task 2 should be turned into
   // infeasible.
-  scheduler_->DeleteLocalResource(ray::kCPU_ResourceLabel);
+  scheduler_->GetLocalResourceManager().DeleteLocalResource(ray::kCPU_ResourceLabel);
 
   RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply2;
@@ -1442,13 +1442,15 @@ TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) 
   // Check failed as the worker has no allocated resource instances.
   ASSERT_FALSE(task_manager_.ReleaseCpuResourcesFromUnblockedWorker(worker));
 
-  auto node_resource_instances = scheduler_->GetLocalResources();
+  auto node_resource_instances =
+      scheduler_->GetLocalResourceManager().GetLocalResources();
   auto available_resource_instances =
       node_resource_instances.GetAvailableResourceInstances();
 
   auto allocated_instances = std::make_shared<TaskResourceInstances>();
   const absl::flat_hash_map<std::string, double> task_spec = {{"CPU", 1.}, {"GPU", 1.}};
-  ASSERT_TRUE(scheduler_->AllocateLocalTaskResources(task_spec, allocated_instances));
+  ASSERT_TRUE(scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+      task_spec, allocated_instances));
   worker->SetAllocatedInstances(allocated_instances);
 
   // Check that the resoruces are allocated successfully.
@@ -1756,7 +1758,8 @@ TEST_F(ClusterTaskManagerTest, PopWorkerExactlyOnce) {
 }
 
 TEST_F(ClusterTaskManagerTest, CapRunningOnDispatchQueue) {
-  scheduler_->AddLocalResourceInstances(ray::kGPU_ResourceLabel, {1, 1, 1});
+  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(ray::kGPU_ResourceLabel,
+                                                                  {1, 1, 1});
   RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 4}, {ray::kGPU_ResourceLabel, 1}},
                             /*num_args=*/0, /*args=*/{});
   RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 4}, {ray::kGPU_ResourceLabel, 1}},
@@ -1807,7 +1810,8 @@ TEST_F(ClusterTaskManagerTest, CapRunningOnDispatchQueue) {
 }
 
 TEST_F(ClusterTaskManagerTest, ZeroCPUTasks) {
-  scheduler_->AddLocalResourceInstances(ray::kGPU_ResourceLabel, {1, 1, 1});
+  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(ray::kGPU_ResourceLabel,
+                                                                  {1, 1, 1});
   RayTask task = CreateTask({{"GPU", 1}}, /*num_args=*/0, /*args=*/{});
   RayTask task2 = CreateTask({{"GPU", 1}}, /*num_args=*/0, /*args=*/{});
   RayTask task3 = CreateTask({{"GPU", 1}}, /*num_args=*/0, /*args=*/{});

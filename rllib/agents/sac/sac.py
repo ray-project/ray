@@ -16,9 +16,14 @@ tfp = try_import_tfp()
 logger = logging.getLogger(__name__)
 
 OPTIMIZER_SHARED_CONFIGS = [
-    "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
-    "prioritized_replay_beta", "prioritized_replay_eps",
-    "rollout_fragment_length", "train_batch_size", "learning_starts"
+    "buffer_size",
+    "prioritized_replay",
+    "prioritized_replay_alpha",
+    "prioritized_replay_beta",
+    "prioritized_replay_eps",
+    "rollout_fragment_length",
+    "train_batch_size",
+    "learning_starts",
 ]
 
 # yapf: disable
@@ -156,8 +161,8 @@ DEFAULT_CONFIG = with_common_config({
     "num_cpus_per_worker": 1,
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
-    # Prevent iterations from going lower than this time span.
-    "min_iter_time_s": 1,
+    # Prevent reporting frequency from going lower than this time span.
+    "min_time_s_per_reporting": 1,
 
     # Whether the loss should be calculated deterministically (w/o the
     # stochastic action sampling step). True only useful for cont. actions and
@@ -197,8 +202,7 @@ class SACTrainer(DQNTrainer):
         super().validate_config(config)
 
         if config["use_state_preprocessor"] != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config['use_state_preprocessor']", error=False)
+            deprecation_warning(old="config['use_state_preprocessor']", error=False)
             config["use_state_preprocessor"] = DEPRECATED_VALUE
 
         if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
@@ -209,14 +213,15 @@ class SACTrainer(DQNTrainer):
                 "You need `tensorflow_probability` in order to run SAC! "
                 "Install it via `pip install tensorflow_probability`. Your "
                 f"tf.__version__={tf.__version__ if tf else None}."
-                "Trying to import tfp results in the following error:")
+                "Trying to import tfp results in the following error:"
+            )
             try_import_tfp(error=True)
 
     @override(DQNTrainer)
-    def get_default_policy_class(self,
-                                 config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.agents.sac.sac_torch_policy import SACTorchPolicy
+
             return SACTorchPolicy
         else:
             return SACTFPolicy

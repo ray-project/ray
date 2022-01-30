@@ -70,9 +70,9 @@ class TaskPool:
 
 
 def create_colocated_actors(
-        actor_specs: Sequence[Tuple[Type, Any, Any, int]],
-        node: Optional[str] = "localhost",
-        max_attempts: int = 10,
+    actor_specs: Sequence[Tuple[Type, Any, Any, int]],
+    node: Optional[str] = "localhost",
+    max_attempts: int = 10,
 ) -> Dict[Type, List[ActorHandle]]:
     """Create co-located actors of any type(s) on any node.
 
@@ -118,7 +118,8 @@ def create_colocated_actors(
                     args=args,
                     kwargs=kwargs,
                     count=count * (attempt + 1),
-                    node=node)
+                    node=node,
+                )
                 # If node did not matter (None), from here on, use the host
                 # that the first actor(s) are already co-located on.
                 if node is None:
@@ -145,11 +146,11 @@ def create_colocated_actors(
 
 
 def try_create_colocated(
-        cls: Type[ActorClass],
-        args: List[Any],
-        count: int,
-        kwargs: Optional[List[Any]] = None,
-        node: Optional[str] = "localhost",
+    cls: Type[ActorClass],
+    args: List[Any],
+    count: int,
+    kwargs: Optional[List[Any]] = None,
+    node: Optional[str] = "localhost",
 ) -> List[ActorHandle]:
     """Tries to co-locate (same node) a set of Actors of the same type.
 
@@ -189,8 +190,8 @@ def try_create_colocated(
 
 
 def split_colocated(
-        actors: List[ActorHandle],
-        node: Optional[str] = "localhost",
+    actors: List[ActorHandle],
+    node: Optional[str] = "localhost",
 ) -> Tuple[List[ActorHandle], List[ActorHandle]]:
     """Splits up given actors into colocated (on same node) and non colocated.
 

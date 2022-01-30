@@ -23,13 +23,6 @@ class ClusterResourceSchedulerInterface {
  public:
   virtual ~ClusterResourceSchedulerInterface() = default;
 
-  /// Add a local resource that is available.
-  ///
-  /// \param resource_name: Resource which we want to update.
-  /// \param resource_total: New capacity of the resource.
-  void AddLocalResourceInstances(const std::string &resource_name,
-                                 std::vector<FixedPoint> instances);
-
   /// Remove node from the cluster data structure. This happens
   /// when a node fails or it is removed from the cluster.
   ///
@@ -56,33 +49,6 @@ class ClusterResourceSchedulerInterface {
   /// \param resource_name: Resource we want to delete
   virtual void DeleteResource(const std::string &node_id_string,
                               const std::string &resource_name) = 0;
-
-  /// Update last report resources local cache from gcs cache,
-  /// this is needed when gcs fo.
-  ///
-  /// \param gcs_resources: The remote cache from gcs.
-  virtual void UpdateLastResourceUsage(
-      const std::shared_ptr<SchedulingResources> gcs_resources) {}
-
-  /// Populate the relevant parts of the heartbeat table. This is intended for
-  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
-  /// resources_available and resources_total.
-  ///
-  /// \param Output parameter. `resources_available` and `resources_total` are the only
-  /// fields used.
-  virtual void FillResourceUsage(rpc::ResourcesData &data) = 0;
-
-  virtual double GetLocalAvailableCpus() const = 0;
-
-  /// Populate a UpdateResourcesRequest. This is inteneded to update the
-  /// resource totals on a node when a custom resource is created or deleted
-  /// (e.g. during the placement group lifecycle).
-  ///
-  /// \param resource_map_filter When returning the resource map, the returned result will
-  /// only contain the keys in the filter. Note that only the key of the map is used.
-  /// \return The total resource capacity of the node.
-  virtual ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals(
-      const absl::flat_hash_map<std::string, double> &resource_map_filter) const = 0;
 
   /// Return local resources in human-readable string form.
   virtual std::string GetLocalResourceViewString() const = 0;

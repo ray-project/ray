@@ -1,7 +1,7 @@
 from typing import Dict, Any, Optional
 
 from ray import cloudpickle
-from ray.serve.common import (EndpointInfo, EndpointTag)
+from ray.serve.common import EndpointInfo, EndpointTag
 from ray.serve.long_poll import LongPollNamespace
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost
@@ -34,8 +34,9 @@ class EndpointState:
         self._kv_store.put(CHECKPOINT_KEY, cloudpickle.dumps(self._endpoints))
 
     def _notify_route_table_changed(self):
-        self._long_poll_host.notify_changed(LongPollNamespace.ROUTE_TABLE,
-                                            self._endpoints)
+        self._long_poll_host.notify_changed(
+            LongPollNamespace.ROUTE_TABLE, self._endpoints
+        )
 
     def _get_endpoint_for_route(self, route: str) -> Optional[EndpointTag]:
         for endpoint, info in self._endpoints.items():
@@ -44,23 +45,23 @@ class EndpointState:
 
         return None
 
-    def update_endpoint(self, endpoint: EndpointTag,
-                        endpoint_info: EndpointInfo) -> None:
+    def update_endpoint(
+        self, endpoint: EndpointTag, endpoint_info: EndpointInfo
+    ) -> None:
         """Create or update the given endpoint.
 
         This method is idempotent - if the endpoint already exists it will be
         updated to match the given parameters. Calling this twice with the same
         arguments is a no-op.
         """
-        existing_route_endpoint = self._get_endpoint_for_route(
-            endpoint_info.route)
-        if (existing_route_endpoint is not None
-                and existing_route_endpoint != endpoint):
+        existing_route_endpoint = self._get_endpoint_for_route(endpoint_info.route)
+        if existing_route_endpoint is not None and existing_route_endpoint != endpoint:
             raise ValueError(
-                f"route_prefix '{endpoint_info.route}' is already registered.")
+                f"route_prefix '{endpoint_info.route}' is already registered."
+            )
 
         if endpoint in self._endpoints:
-            if (self._endpoints[endpoint] == endpoint_info):
+            if self._endpoints[endpoint] == endpoint_info:
                 return
 
         self._endpoints[endpoint] = endpoint_info
