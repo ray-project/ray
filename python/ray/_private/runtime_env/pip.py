@@ -25,12 +25,14 @@ def _get_pip_hash(pip_list: List[str]) -> str:
 
 
 def _install_pip_list_to_dir(
-        pip_list: List[str],
-        target_dir: str,
-        logger: Optional[logging.Logger] = default_logger):
+    pip_list: List[str],
+    target_dir: str,
+    logger: Optional[logging.Logger] = default_logger,
+):
     try_to_create_directory(target_dir)
     exit_code, output = exec_cmd_stream_to_logger(
-        ["pip", "install", f"--target={target_dir}"] + pip_list, logger)
+        ["pip", "install", f"--target={target_dir}"] + pip_list, logger
+    )
     if exit_code != 0:
         shutil.rmtree(target_dir)
         raise RuntimeError(f"Failed to install pip requirements:\n{output}")
@@ -43,8 +45,10 @@ def get_uri(runtime_env: Dict) -> Optional[str]:
         if isinstance(pip, list):
             uri = "pip://" + _get_pip_hash(pip_list=pip)
         else:
-            raise TypeError("pip field received by RuntimeEnvAgent must be "
-                            f"list, not {type(pip).__name__}.")
+            raise TypeError(
+                "pip field received by RuntimeEnvAgent must be "
+                f"list, not {type(pip).__name__}."
+            )
     else:
         uri = None
     return uri
@@ -64,14 +68,16 @@ class PipManager:
         """
         return os.path.join(self._resources_dir, hash)
 
-    def delete_uri(self,
-                   uri: str,
-                   logger: Optional[logging.Logger] = default_logger) -> bool:
+    def delete_uri(
+        self, uri: str, logger: Optional[logging.Logger] = default_logger
+    ) -> bool:
         logger.info(f"Got request to delete URI {uri}")
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.PIP:
-            raise ValueError("PipManager can only delete URIs with protocol "
-                             f"pip. Received protocol {protocol}, URI {uri}")
+            raise ValueError(
+                "PipManager can only delete URIs with protocol "
+                f"pip. Received protocol {protocol}, URI {uri}"
+            )
 
         pip_env_path = self._get_path_from_hash(hash)
         try:
@@ -82,10 +88,12 @@ class PipManager:
             logger.warning(f"Error when deleting pip env {pip_env_path}.")
         return successful
 
-    def setup(self,
-              runtime_env: RuntimeEnv,
-              context: RuntimeEnvContext,
-              logger: Optional[logging.Logger] = default_logger):
+    def setup(
+        self,
+        runtime_env: RuntimeEnv,
+        context: RuntimeEnvContext,
+        logger: Optional[logging.Logger] = default_logger,
+    ):
         if not runtime_env.has_pip():
             return
 
