@@ -22,6 +22,7 @@
 #include "absl/memory/memory.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/stats/metric_defs.h"
 
 DEFINE_stats(test_hist, "TestStats", ("method", "method2"), (1.0, 2.0, 3.0, 4.0),
              ray::stats::HISTOGRAM);
