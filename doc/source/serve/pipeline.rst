@@ -32,13 +32,13 @@ The Serve Pipeline has the following features:
 - Each model in the DAG can be scaled to many replicas across the Ray cluster.
   You can fine-tune the resource usage to achieve maximum throughput and utilization.
 
-Compare to ServeHandle, Serve Pipeline is more explicit about the dependencies
+Compared to ServeHandle, Serve Pipeline is more explicit about the dependencies
 of each model in the pipeline and let you deploy the entire DAG at once.
 
-Compare to KServe (formerly KFServing), Serve Pipeline enables writing pipeline
+Compared to KServe (formerly KFServing), Serve Pipeline enables writing pipeline
 as code and arbitrary control flow operation using Python.
 
-Compare to building your own orchestration micro-services, Serve Pipeline helps
+Compared to building your own orchestration micro-services, Serve Pipeline helps
 you to be productive in building scalable pipeline in hours.
 
 
@@ -58,7 +58,7 @@ You can import it as:
 You can decorate any function or class using ``pipeline.step``. You can then
 combine these steps into a pipeline by calling the decorated steps. In
 the example below, we have a single step that takes the special node ``pipeline.INPUT``,
-, which is a placeholder for the arguments that will be passed into the pipeline.
+which is a placeholder for the arguments that will be passed into the pipeline.
 
 Once you have defined the pipeline by combining one or more steps, you can call ``.deploy()`` to instantiate it.
 Once you have instantiated the pipeline, you can call ``.call(inp)`` to invoke synchronously.
@@ -106,7 +106,7 @@ Chaining Example
 In this section, we show how to implement a two stage pipeline that's common
 for computer vision tasks. For workloads like image classification, the preprocessing
 steps are CPU bounded and hard to parallelize. The actual inference steps can run
-on GPU and batched (batching helps improving throughput without sacrificing latency,
+on GPU and batched (batching helps improving throughput without sacrificing latency;
 you can learn more in our :ref:`batching tutorial <serve-batch-tutorial>`).
 They are often split up into separate stages and scaled separately to increase throughput.
 
