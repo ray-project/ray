@@ -557,7 +557,7 @@ if __name__ == "__main__":
         help="The IP address of the machine hosting the monitor process.")
     args = parser.parse_args()
     setup_component_logger(
-        logging_level="debug",
+        logging_level=args.logging_level,
         logging_format=args.logging_format,
         log_dir=args.logs_dir,
         filename=args.logging_filename,
