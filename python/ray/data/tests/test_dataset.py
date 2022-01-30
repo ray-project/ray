@@ -83,7 +83,8 @@ def test_basic_actors(shutdown_only, pipelined):
     ds = ray.data.range(n)
     ds = maybe_pipeline(ds, pipelined)
     assert sorted(ds.map(lambda x: x + 1, compute="actors").take()) == list(
-        range(1, n + 1))
+        range(1, n + 1)
+    )
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
