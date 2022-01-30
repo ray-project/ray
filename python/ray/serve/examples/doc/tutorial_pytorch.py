@@ -1,4 +1,4 @@
-# yapf: disable
+# fmt: off
 import ray
 # __doc_import_begin__
 from ray import serve
@@ -11,7 +11,7 @@ import torch
 from torchvision import transforms
 from torchvision.models import resnet18
 # __doc_import_end__
-# yapf: enable
+# fmt: on
 
 
 # __doc_define_servable_begin__
