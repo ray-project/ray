@@ -54,7 +54,7 @@ DEFAULT_CONFIG = with_common_config({
     # in a dueling architecture.
     "hiddens": [256, 64, 16],
 
-    # set batchmode
+    # Set batch_mode.
     "batch_mode": "complete_episodes",
 
     # === Deep Learning Framework Settings ===
@@ -79,7 +79,9 @@ DEFAULT_CONFIG = with_common_config({
     # not affect learning, only the length of iterations.
     "timesteps_per_iteration": 1000,
     # Update the target network every `target_network_update_freq` steps.
-    "target_network_update_freq": 5000,
+    "target_network_update_freq": 1,
+    # Update the target by \tau * policy + (1-\tau) * target_policy.
+    "tau": 5e-3,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
@@ -133,6 +135,9 @@ DEFAULT_CONFIG = with_common_config({
     # Learning method used by the slateq policy. Choose from: RANDOM,
     # MYOP (myopic), SARSA, QL (Q-Learning),
     "slateq_strategy": "QL",
+    # Only relevant for `slateq_strategy="QL"`:
+    # Use double_q correction to avoid overestimation of target Q-values.
+    "double_q": True,
 })
 # __sphinx_doc_end__
 # yapf: enable

@@ -1,4 +1,4 @@
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import gym
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -111,7 +111,9 @@ class SlateQModel(TorchModelV2, nn.Module):
             *,
             user_embedding_size: int,
             doc_embedding_size: int,
+            num_docs: int,
             q_hiddens: Sequence[int],
+            double_q: bool = True,
     ):
         nn.Module.__init__(self)
         TorchModelV2.__init__(
@@ -127,16 +129,27 @@ class SlateQModel(TorchModelV2, nn.Module):
         self.q_model = QValueModel(user_embedding_size + doc_embedding_size,
                                    q_hiddens)
         self.slate_size = len(action_space.nvec)
+        self.double_q = double_q
+
+        self.num_docs = num_docs
+        self.indices = torch.arange(self.num_docs, dtype=torch.long)#, device=doc.device)
+        # slates.shape = [num_slates, slate_size]
+        self.slates = torch.combinations(self.indices, r=self.slate_size)
+        self.num_slates, _ = self.slates.shape
 
     def choose_slate(self, user: TensorType,
-                     doc: TensorType) -> Tuple[TensorType, TensorType]:
+                     doc: TensorType,
+                     target_slate_q_values: Optional[TensorType] = None,
+                     ) -> Tuple[TensorType, TensorType]:
         """Build a slate by selecting from candidate documents
 
         Args:
-            user (TensorType): User embeddings of shape (batch_size,
+            user: User embeddings of shape (batch_size,
                 embedding_size).
-            doc (TensorType): Doc embeddings of shape (batch_size,
-                num_docs, embedding_size).
+            doc: Doc embeddings of shape (batch_size, num_docs,
+                embedding_size).
+            double_q: Whether to apply double-Q correction on the target
+                term.
 
         Returns:
             slate_selected (TensorType): Indices of documents selected for
@@ -144,55 +157,61 @@ class SlateQModel(TorchModelV2, nn.Module):
             best_slate_q_value (TensorType): The Q-value of the selected slate,
                 with shape (batch_size).
         """
-        # Step 1: compute item scores (proportional to click probabilities)
+        slate_q_values = self.get_per_slate_q_values(user, doc)
+
+        if target_slate_q_values is not None:
+            assert self.double_q
+            max_values, best_target_indices = torch.max(target_slate_q_values, dim=1)
+            best_slate_q_value = torch.gather(slate_q_values, 1, best_target_indices.unsqueeze(1)).squeeze(1)
+            # slates_selected.shape: [batch_size, slate_size]
+            slates_selected = self.slates[best_target_indices]
+        else:
+            # Find the slate that maximizes q value.
+            best_slate_q_value, max_idx = torch.max(slate_q_values, dim=1)
+            # slates_selected.shape: [batch_size, slate_size]
+            slates_selected = self.slates[max_idx]
+
+        return slates_selected, best_slate_q_value
+
+    def get_per_slate_q_values(self, user, doc):
+        # Compute item scores (proportional to click probabilities)
         # raw_scores.shape=[batch_size, num_docs+1]
         raw_scores = self.choice_model(user, doc)
         # max_raw_scores.shape=[batch_size, 1]
         max_raw_scores, _ = torch.max(raw_scores, dim=1, keepdim=True)
-        # deduct scores by max_scores to avoid value explosion
+        # Deduct scores by max_scores to avoid value explosion.
         scores = torch.exp(raw_scores - max_raw_scores)
         scores_doc = scores[:, :-1]  # shape=[batch_size, num_docs]
         scores_no_click = scores[:, [-1]]  # shape=[batch_size, 1]
 
-        # Step 2: calculate the item-wise Q values
+        # Calculate the item-wise Q values.
         # q_values.shape=[batch_size, num_docs+1]
         q_values = self.q_model(user, doc)
         q_values_doc = q_values[:, :-1]  # shape=[batch_size, num_docs]
         q_values_no_click = q_values[:, [-1]]  # shape=[batch_size, 1]
 
-        # Step 3: construct all possible slates
-        _, num_docs, _ = doc.shape
-        indices = torch.arange(num_docs, dtype=torch.long, device=doc.device)
-        # slates.shape = [num_slates, slate_size]
-        slates = torch.combinations(indices, r=self.slate_size)
-        num_slates, _ = slates.shape
-
-        # Step 4: calculate slate Q values
+        # Calculate per-slate Q values.
         batch_size, _ = q_values_doc.shape
         # slate_decomp_q_values.shape: [batch_size, num_slates, slate_size]
         slate_decomp_q_values = torch.gather(
             # input.shape: [batch_size, num_slates, num_docs]
-            input=q_values_doc.unsqueeze(1).expand(-1, num_slates, -1),
+            input=q_values_doc.unsqueeze(1).expand(-1, self.num_slates, -1),
             dim=2,
             # index.shape: [batch_size, num_slates, slate_size]
-            index=slates.unsqueeze(0).expand(batch_size, -1, -1))
+            index=self.slates.unsqueeze(0).expand(batch_size, -1, -1))
         # slate_scores.shape: [batch_size, num_slates, slate_size]
         slate_scores = torch.gather(
             # input.shape: [batch_size, num_slates, num_docs]
-            input=scores_doc.unsqueeze(1).expand(-1, num_slates, -1),
+            input=scores_doc.unsqueeze(1).expand(-1, self.num_slates, -1),
             dim=2,
             # index.shape: [batch_size, num_slates, slate_size]
-            index=slates.unsqueeze(0).expand(batch_size, -1, -1))
+            index=self.slates.unsqueeze(0).expand(batch_size, -1, -1))
+
         # slate_q_values.shape: [batch_size, num_slates]
         slate_q_values = ((slate_decomp_q_values * slate_scores).sum(dim=2) +
                           (q_values_no_click * scores_no_click)) / (
                               slate_scores.sum(dim=2) + scores_no_click)
-
-        # Step 5: find the slate that maximizes q value
-        best_slate_q_value, max_idx = torch.max(slate_q_values, dim=1)
-        # slates_selected.shape: [batch_size, slate_size]
-        slates_selected = slates[max_idx]
-        return slates_selected, best_slate_q_value
+        return slate_q_values
 
     def forward(self, input_dict: Dict[str, TensorType],
                 state: List[TensorType],

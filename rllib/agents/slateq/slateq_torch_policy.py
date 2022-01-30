@@ -6,7 +6,7 @@ import time
 from typing import Dict, List, Tuple, Type
 
 import ray
-from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
+from ray.rllib.agents.sac.sac_torch_policy import TargetNetworkMixin
 from ray.rllib.agents.slateq.slateq_torch_model import SlateQModel
 from ray.rllib.models.modelv2 import ModelV2, restore_original_dimensions
 from ray.rllib.models.torch.torch_action_dist import \
@@ -15,6 +15,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_utils import apply_grad_clipping, huber_loss
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -44,7 +45,9 @@ def build_slateq_model_and_distribution(
         name="slateq_model",
         user_embedding_size=obs_space.original_space["user"].shape[0],
         doc_embedding_size=obs_space.original_space["doc"]["0"].shape[0],
+        num_docs=len(obs_space.original_space["doc"].spaces),
         q_hiddens=config["hiddens"],
+        double_q=config["double_q"],
     )
 
     policy.target_model = SlateQModel(
@@ -54,7 +57,9 @@ def build_slateq_model_and_distribution(
         name="target_slateq_model",
         user_embedding_size=obs_space.original_space["user"].shape[0],
         doc_embedding_size=obs_space.original_space["doc"]["0"].shape[0],
+        num_docs=len(obs_space.original_space["doc"].spaces),
         q_hiddens=config["hiddens"],
+        double_q=config["double_q"],
     )
 
     return model, TorchCategorical
@@ -156,14 +161,18 @@ def build_slateq_losses(policy: Policy, model: ModelV2,
         next_user = next_obs["user"]
         dones = train_batch["dones"]
         with torch.no_grad():
-            _, next_q_values = policy.target_models[model].choose_slate(
-                next_user, next_doc)
+            if policy.config["double_q"]:
+                next_target_per_slate_q_values = policy.target_models[model].get_per_slate_q_values(next_user, next_doc)
+                _, next_q_values = model.choose_slate(next_user, next_doc, next_target_per_slate_q_values)
+            else:
+                _, next_q_values = policy.target_models[model].choose_slate(
+                    next_user, next_doc)
         next_q_values = next_q_values.detach()
         next_q_values[dones.bool()] = 0.0
     else:
         raise ValueError(learning_strategy)
     # target_q_values.shape: [batch_size]
-    target_q_values = policy.config["gamma"] * train_batch["rewards"] + next_q_values
+    target_q_values = train_batch["rewards"] + policy.config["gamma"] * next_q_values
 
     # q_values.shape: [batch_size, slate_size+1].
     q_values = model.q_model(user, selected_doc)
@@ -174,8 +183,8 @@ def build_slateq_losses(policy: Policy, model: ModelV2,
     q_values = torch.sum(
         q_values * scores, dim=1) / torch.sum(
             scores, dim=1)  # shape=[batch_size]
-
-    q_value_loss = nn.MSELoss()(q_values, target_q_values)
+    td_error = torch.abs(q_values - target_q_values)
+    q_value_loss = torch.mean(huber_loss(td_error))
 
     # Store values for stats function in model (tower), such that for
     # multi-GPU, we do not override them during the parallel loss phase.
@@ -184,6 +193,7 @@ def build_slateq_losses(policy: Policy, model: ModelV2,
     model.tower_stats["q_values"] = q_values
     model.tower_stats["next_q_values"] = next_q_values
     model.tower_stats["next_q_minus_q"] = next_q_values - q_values
+    model.tower_stats["td_error"] = td_error
     model.tower_stats["target_q_values"] = target_q_values
     model.tower_stats["raw_scores"] = raw_scores
 
@@ -206,6 +216,8 @@ def build_slateq_stats(policy: Policy, batch) -> Dict[str, TensorType]:
             torch.stack(policy.get_tower_stats("next_q_minus_q"))),
         "target_q_values": torch.mean(
             torch.stack(policy.get_tower_stats("target_q_values"))),
+        "td_error": torch.mean(
+            torch.stack(policy.get_tower_stats("td_error"))),
     }
     model_stats = {
         k: torch.mean(var)
@@ -230,7 +242,7 @@ def action_sampler_fn(policy: Policy, model: SlateQModel, input_dict, state,
                       explore, timestep):
     """Determine which action to take"""
     # First, we transform the observation into its unflattened form.
-    start = time.time()
+    #start = time.time()
     obs = restore_original_dimensions(
         input_dict[SampleBatch.CUR_OBS],
         policy.observation_space,
@@ -247,7 +259,7 @@ def action_sampler_fn(policy: Policy, model: SlateQModel, input_dict, state,
     logp = None
     state_out = []
 
-    print(f"action calculation took {time.time()-start}s")
+    #print(f"action calculation took {time.time()-start}s")
 
     return action, logp, state_out
 
@@ -296,5 +308,6 @@ SlateQTorchPolicy = build_policy_class(
     action_sampler_fn=action_sampler_fn,
     # Post processing sampled trajectory data.
     postprocess_fn=postprocess_fn_add_next_actions_for_sarsa,
+    extra_grad_process_fn=apply_grad_clipping,
     mixins=[TargetNetworkMixin],
 )

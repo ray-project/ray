@@ -11,6 +11,7 @@ configured via the --env option:
 import argparse
 from datetime import datetime
 import numpy as np
+from scipy.stats import sem
 
 import ray
 from ray import tune
@@ -93,7 +94,7 @@ parser.add_argument(
     help="Init Ray in local mode for easier debugging.")
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=2000)
-parser.add_argument("--stop-reward", type=float, default=180.0)
+parser.add_argument("--stop-reward", type=float, default=200.0)
 parser.add_argument("--stop-timesteps", type=int, default=4000000)
 
 
@@ -114,27 +115,32 @@ def main():
                 else InterestExplorationRecSimEnv
                 if args.env == "interest-exploration" else
                 LongTermSatisfactionRecSimEnv),
-        "hiddens": tune.grid_search([[256, 256, 256], [256, 256]]),#TEST
+        "hiddens": [256, 256],#64, 16],#tune.grid_search([[256, 256, 256], [256, 256]]),#TEST
         "num_gpus": args.num_gpus,
         "num_workers": args.num_workers,
         "env_config": env_config,
         "lr_choice_model": 0.003,
-        "lr_q_model": tune.grid_search([0.003, 0.01]),
+        "lr_q_model": 0.003,#tune.grid_search([0.003, 0.01]),
         "rollout_fragment_length": 4,
         "exploration_config": {
-            "epsilon_timesteps": 500000,#TODO
+            "epsilon_timesteps": 100000,
+            "final_epsilon": 0.04,
         },
-        "target_network_update_freq": 5000,#TODO
+        "target_network_update_freq": 1,
+        "tau": 5e-3,
+
         "evaluation_interval": 1,
-        "evaluation_num_workers": 2,
-        "evaluation_num_episodes": 10,
+        "evaluation_num_workers": 4,
+        "evaluation_duration": 200,
+        "evaluation_duration_unit": "episodes",
         "evaluation_parallel_to_training": True,
     }
 
     # Perform a test run on the env with a random agent to see, what
     # the random baseline reward is.
     if args.random_test_episodes:
-        print(f"Running {args.random_test_episodes} to get a random agent's baseline reward ...")
+        print(f"Running {args.random_test_episodes} episodes to get a random "
+              "agent's baseline reward ...")
         env = config["env"](config=env_config)
         env.reset()
         num_episodes = 0
@@ -147,11 +153,9 @@ def main():
             if d:
                 num_episodes += 1
                 episode_rewards.append(episode_reward)
-                #print(f"R={episode_reward}")
                 episode_reward = 0.0
                 env.reset()
-        print(f"Ran {args.random_test_episodes} episodes with a random agent reaching a mean episode return of {np.mean(episode_rewards)}")
-        #quit()
+        print(f"Ran {args.random_test_episodes} episodes with a random agent reaching a mean episode return of {np.mean(episode_rewards)}+/-{sem(episode_rewards)}.")
 
     if args.use_tune:
         stop = {
