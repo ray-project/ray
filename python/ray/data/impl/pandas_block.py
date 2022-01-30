@@ -1,13 +1,16 @@
 from typing import Dict, List, Tuple, Any, TypeVar, Optional, TYPE_CHECKING
-from ray._private.utils import lazy_import
 
 import collections
 import numpy as np
 
-try:
-    pandas = lazy_import("pandas")
-except ImportError:
-    pandas = None
+_pandas = None
+
+def lazy_import_pandas():
+    global _pandas
+    if _pandas is None:
+        import pandas
+        _pandas = pandas
+    return _pandas
 
 from ray.data.block import BlockAccessor, BlockMetadata, KeyFn
 from ray.data.impl.table_block import TableBlockAccessor, TableRow, \
@@ -47,20 +50,22 @@ class PandasRow(TableRow):
 
 class PandasBlockBuilder(TableBlockBuilder[T]):
     def __init__(self):
-        if pandas is None:
-            raise ImportError("Run `pip install pandas` for Pandas support.")
+        pandas = lazy_import_pandas()
         super().__init__(pandas.DataFrame)
 
     def _table_from_pydict(
             self, columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
+        pandas = lazy_import_pandas()
         return pandas.DataFrame(columns)
 
     def _concat_tables(self,
                        tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
+        pandas = lazy_import_pandas()
         return pandas.concat(tables, ignore_index=True)
 
     @staticmethod
     def _empty_table() -> "pandas.DataFrame":
+        pandas = lazy_import_pandas()
         return pandas.DataFrame()
 
 
@@ -72,8 +77,6 @@ PandasBlockSchema = collections.namedtuple("PandasBlockSchema",
 
 class PandasBlockAccessor(TableBlockAccessor):
     def __init__(self, table: "pandas.DataFrame"):
-        if pandas is None:
-            raise ImportError("Run `pip install pandas` for Pandas support.")
         super().__init__(table)
 
     def _create_table_row(self, row: "pandas.DataFrame") -> PandasRow:
