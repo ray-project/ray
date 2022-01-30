@@ -251,10 +251,10 @@ class Monitor:
         request = gcs_service_pb2.GetAllResourceUsageRequest()
         response = self.gcs_node_resources_stub.GetAllResourceUsage(
             request, timeout=60)
-        logger.debug(">>>>>Logging detailed resource usage.")
-        logger.debug(response)
-        logger.debug(">>>>>Done logging detailed resource usage.")
         resources_batch_data = response.resource_usage_data
+        logger.debug(">>>Logging raw resource data.")
+        logger.debug(resources_batch_data)
+        logger.debug(">>>Done logging raw resource data.")
 
         # Tell the readonly node provider what nodes to report.
         if self.readonly_config:
@@ -557,7 +557,7 @@ if __name__ == "__main__":
         help="The IP address of the machine hosting the monitor process.")
     args = parser.parse_args()
     setup_component_logger(
-        logging_level=args.logging_level,
+        logging_level="debug",
         logging_format=args.logging_format,
         log_dir=args.logs_dir,
         filename=args.logging_filename,

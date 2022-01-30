@@ -136,6 +136,18 @@ class LoadMetrics:
         if ip not in self.last_used_time_by_ip or \
                 self.static_resources_by_ip[ip] != \
                 self.dynamic_resources_by_ip[ip]:
+
+            logger.debug(f"Node with ip {ip} is in use.")
+            static_resources = self.static_resources_by_ip[ip]
+            dynamic_resources = self.dynamic_resources_by_ip[ip]
+            for resource in static_resources:
+                total = static_resources[resource]
+                available = dynamic_resources[resource]
+                if total != available:
+                    used = total - available
+                    logger.debug(
+                        f"Node at ip {ip} is using {used} {resource}.")
+
             self.last_used_time_by_ip[ip] = now
         self.last_heartbeat_time_by_ip[ip] = now
         self.waiting_bundles = waiting_bundles
