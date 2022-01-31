@@ -1,5 +1,2 @@
-import abc
-
-
-class Accelerator(abc.ABC):
+class Accelerator:
     pass
