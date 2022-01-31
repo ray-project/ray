@@ -484,6 +484,7 @@ def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
     # This is needed because pa.fs.S3FileSystem assumes pa.fs is already
     # imported before deserialization. See #17085.
     import pyarrow as pa
+    import pyarrow.fs
 
     if isinstance(filesystem, pa.fs.S3FileSystem):
         return _S3FileSystemWrapper(filesystem)
