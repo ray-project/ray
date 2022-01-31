@@ -271,6 +271,7 @@ def inference(
         model_cls,
         compute="actors",
         batch_size=batch_size,
+        batch_format="pandas",
         num_gpus=num_gpus,
         num_cpus=0,
     ).write_parquet(result_path)
@@ -584,8 +585,8 @@ if __name__ == "__main__":
     )
 
     num_columns = len(train_dataset.schema().names)
-    # remove label column and internal Arrow column.
-    num_features = num_columns - 2
+    # remove label column.
+    num_features = num_columns - 1
 
     NUM_EPOCHS = 2
     BATCH_SIZE = 512
@@ -688,8 +689,10 @@ if __name__ == "__main__":
             self.model = load_model_func().to(self.device)
 
         def __call__(self, batch) -> "pd.DataFrame":
-            tensor = torch.FloatTensor(batch.to_pandas().values).to(self.device)
-            return pd.DataFrame(self.model(tensor).cpu().detach().numpy())
+            tensor = torch.FloatTensor(batch.values).to(self.device)
+            return pd.DataFrame(
+                self.model(tensor).cpu().detach().numpy(), columns=["value"]
+            )
 
     inference_dataset = preprocessor.preprocess_inference_data(
         read_dataset(inference_path)
