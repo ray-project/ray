@@ -192,7 +192,6 @@ if __name__ == "__main__":
         loop = asyncio.get_event_loop()
         loop.run_until_complete(dashboard.run())
     except Exception as e:
-        # logger.exception(e)
         traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
         message = (
             f"The dashboard on node {platform.uname()[1]} "

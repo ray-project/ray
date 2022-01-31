@@ -63,7 +63,6 @@ class HttpServerDashboardHead:
             # Not to raise FrontendNotFoundError due to NPM incompatibilities
             # with Windows.
             # Please refer to ci.sh::build_dashboard_front_end()
-            logger.info("sang")
             if sys.platform in ["win32", "cygwin"]:
                 logger.warning(ex)
             else:

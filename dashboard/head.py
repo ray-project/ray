@@ -150,7 +150,7 @@ class DashboardHead:
         )
         logger.info("Dashboard head grpc address: %s:%s", grpc_ip, self.grpc_port)
         # If the dashboard is started as non-minimal version, http server should
-        # be configured to communicate with the dashboard in a head node.
+        # be configured to expose APIs.
         self.http_server = None
 
     async def _configure_http_server(self, modules):
@@ -298,5 +298,5 @@ class DashboardHead:
         await asyncio.gather(*concurrent_tasks, *(m.run(self.server) for m in modules))
         await self.server.wait_for_termination()
 
-        if not self.minimal:
+        if self.http_server:
             await self.http_server.cleanup()
