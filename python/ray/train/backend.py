@@ -427,7 +427,7 @@ class BackendExecutor:
                     local_rank=local_rank_map[index],
                     world_size=len(self.worker_group),
                     train_func=train_func,
-                    default_accelerator_factory=self._backend_config.default_accelerator_factory,
+                    default_accelerator_factory=self._backend_config.default_accelerator_factory,  # noqa: E501
                     dataset_shard=self.dataset_shards[index],
                     checkpoint=checkpoint,
                     encode_data_fn=self._backend.encode_data,

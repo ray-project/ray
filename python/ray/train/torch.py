@@ -7,7 +7,6 @@ from datetime import timedelta
 from typing import Optional, Dict, Any, Callable
 
 import ray
-from ray import train
 from ray.train.backend import BackendConfig, Backend, EncodedData
 from ray.train.worker_group import WorkerGroup
 from ray.train.utils import get_address_and_port
