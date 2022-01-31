@@ -19,6 +19,8 @@ from ray.train.worker_group import WorkerGroup
 from ray.util.annotations import DeveloperAPI
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
+from .accelerators import Accelerator
+
 T = TypeVar("T")
 
 EncodedData = TypeVar("EncodedData")
@@ -32,6 +34,10 @@ class BackendConfig:
 
     @property
     def backend_cls(self):
+        raise NotImplementedError
+
+    @property
+    def default_accelerator_factory(self) -> Callable[[], Accelerator]:
         raise NotImplementedError
 
 
@@ -382,6 +388,7 @@ class BackendExecutor:
             world_rank,
             local_rank,
             world_size,
+            default_accelerator_factory,
             checkpoint,
             dataset_shard,
             encode_data_fn,
@@ -392,6 +399,7 @@ class BackendExecutor:
                     world_rank=world_rank,
                     local_rank=local_rank,
                     world_size=world_size,
+                    default_accelerator_factory=default_accelerator_factory,
                     dataset_shard=dataset_shard,
                     checkpoint=checkpoint,
                     encode_data_fn=encode_data_fn,
@@ -420,6 +428,7 @@ class BackendExecutor:
                     local_rank=local_rank_map[index],
                     world_size=len(self.worker_group),
                     train_func=train_func,
+                    default_accelerator_factory=self._backend_config.default_accelerator_factory,
                     dataset_shard=self.dataset_shards[index],
                     checkpoint=checkpoint,
                     encode_data_fn=self._backend.encode_data,

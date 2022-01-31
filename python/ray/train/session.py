@@ -26,6 +26,8 @@ from ray.train.constants import (
 from ray.train.utils import PropagatingThread, RayDataset
 from ray.util import PublicAPI
 
+from .accelerators import Accelerator
+
 
 class TrainingResultType(Enum):
     REPORT = auto()
@@ -42,21 +44,23 @@ class Session:
     """Holds information for training on each worker."""
 
     def __init__(
-        self,
-        training_func: Callable,
-        world_rank: int,
-        local_rank: int,
-        world_size: int,
-        dataset_shard: Optional[RayDataset] = None,
-        checkpoint: Optional[Dict] = None,
-        encode_data_fn: Callable = None,
-        detailed_autofilled_metrics: bool = False,
+            self,
+            training_func: Callable,
+            world_rank: int,
+            local_rank: int,
+            world_size: int,
+            default_accelerator_factory: Callable[[], Accelerator],
+            dataset_shard: Optional[RayDataset] = None,
+            checkpoint: Optional[Dict] = None,
+            encode_data_fn: Callable = None,
+            detailed_autofilled_metrics: bool = False,
     ):
 
         self.dataset_shard = dataset_shard
 
         # The Thread object that is running the training function.
-        self.training_thread = PropagatingThread(target=training_func, daemon=True)
+        self.training_thread = PropagatingThread(
+            target=training_func, daemon=True)
         self.world_rank = world_rank
         self.local_rank = local_rank
         self.world_size = world_size
@@ -86,6 +90,9 @@ class Session:
 
         self.ignore_report = False
         self.training_started = False
+
+        self._accelerator = None
+        self._default_accelerator_factory = default_accelerator_factory
 
     def get_current_ip(self):
         self.local_ip = ray.util.get_node_ip_address()
@@ -125,7 +132,8 @@ class Session:
         # While training is still ongoing, attempt to get the result.
         while result is None and self.training_thread.is_alive():
             try:
-                result = self.result_queue.get(block=True, timeout=RESULT_FETCH_TIMEOUT)
+                result = self.result_queue.get(
+                    block=True, timeout=RESULT_FETCH_TIMEOUT)
             except queue.Empty:
                 pass
 
@@ -136,8 +144,7 @@ class Session:
             # termination of the thread runner.
             try:
                 result = self.result_queue.get(
-                    block=False, timeout=RESULT_FETCH_TIMEOUT
-                )
+                    block=False, timeout=RESULT_FETCH_TIMEOUT)
             except queue.Empty:
                 pass
 
@@ -221,7 +228,8 @@ class Session:
         if self.world_rank != 0:
             kwargs = {}
         else:
-            kwargs = self._encode_data_fn(self._auto_fill_checkpoint_metrics(kwargs))
+            kwargs = self._encode_data_fn(
+                self._auto_fill_checkpoint_metrics(kwargs))
 
         result = TrainingResult(TrainingResultType.CHECKPOINT, kwargs)
         # Add result to a thread-safe queue.
@@ -231,6 +239,18 @@ class Session:
         # checkpoint has been processed.
         self.continue_lock.acquire()
 
+    @property
+    def accelerator(self) -> Accelerator:
+        if not self._accelerator:
+            self._accelerator = self._default_accelerator_factory()
+        return self._accelerator
+
+    @accelerator.setter
+    def accelerator(self, accelerator: Accelerator) -> None:
+        if self._accelerator:
+            raise RuntimeError
+        self._accelerator = accelerator
+
 
 _session = None
 
@@ -238,22 +258,18 @@ _session = None
 def init_session(*args, **kwargs) -> None:
     global _session
     if _session:
-        raise ValueError(
-            "A Train session is already in use. Do not call "
-            "`init_session()` manually."
-        )
+        raise ValueError("A Train session is already in use. Do not call "
+                         "`init_session()` manually.")
     _session = Session(*args, **kwargs)
 
 
 def get_session() -> Session:
     global _session
     if _session is None or not isinstance(_session, Session):
-        raise ValueError(
-            "Trying to access a Train session that has not been "
-            "initialized yet. Train functions like "
-            "`train.report()` should only be called from inside "
-            "the training function."
-        )
+        raise ValueError("Trying to access a Train session that has not been "
+                         "initialized yet. Train functions like "
+                         "`train.report()` should only be called from inside "
+                         "the training function.")
     return _session
 
 
@@ -264,7 +280,8 @@ def shutdown_session():
 
 
 @PublicAPI(stability="beta")
-def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional[RayDataset]:
+def get_dataset_shard(
+        dataset_name: Optional[str] = None) -> Optional[RayDataset]:
     """Returns the Ray Dataset or DatasetPipeline shard for this worker.
 
     You should call ``to_torch()`` or ``to_tf()`` on this shard to convert
@@ -303,19 +320,16 @@ def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional[RayDataset
     session = get_session()
     shard = session.dataset_shard
     if shard is None:
-        warnings.warn(
-            "No dataset passed in. Returning None. Make sure to "
-            "pass in a Ray Dataset to Trainer.run to use this "
-            "function."
-        )
+        warnings.warn("No dataset passed in. Returning None. Make sure to "
+                      "pass in a Ray Dataset to Trainer.run to use this "
+                      "function.")
     elif isinstance(shard, dict):
         if not dataset_name:
             raise RuntimeError(
                 "Multiple datasets were passed into ``Trainer``, "
                 "but no ``dataset_name`` is passed into "
                 "``get_dataset_shard``. Please specify which "
-                "dataset shard to retrieve."
-            )
+                "dataset shard to retrieve.")
         return shard[dataset_name]
     return shard
 

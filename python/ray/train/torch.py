@@ -4,7 +4,7 @@ import logging
 import os
 
 from datetime import timedelta
-from typing import Optional, Dict, Any
+from typing import Any, Callable, Dict, Optional
 
 import ray
 from ray import train
@@ -14,14 +14,11 @@ from ray.train.utils import get_address_and_port
 
 import torch
 import torch.distributed as dist
-from ray.util import PublicAPI
 from torch.nn.parallel import DistributedDataParallel
-from torch.utils.data import (
-    DistributedSampler,
-    DataLoader,
-    IterableDataset,
-    SequentialSampler,
-)
+from ray.util import PublicAPI
+
+from .session import get_session
+from .accelerators import Accelerator, TorchAccelerator
 
 logger = logging.getLogger(__name__)
 
@@ -53,13 +50,17 @@ class TorchConfig(BackendConfig):
     def backend_cls(self):
         return TorchBackend
 
+    @property
+    def default_accelerator_factory(self) -> Callable[[], Accelerator]:
+        return TorchAccelerator
+
 
 def setup_torch_process_group(
-    backend: str,
-    world_rank: int,
-    world_size: int,
-    init_method: str,
-    timeout_s: int = 1800,
+        backend: str,
+        world_rank: int,
+        world_size: int,
+        init_method: str,
+        timeout_s: int = 1800,
 ):
     """Connects the distributed PyTorch backend.
 
@@ -72,15 +73,13 @@ def setup_torch_process_group(
     """
     logger.info(
         f"Setting up process group for: {init_method} [rank={world_rank}, "
-        f"world_size={world_size}]"
-    )
+        f"world_size={world_size}]")
     logger.debug(f"using {backend}")
 
     if backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
         logger.debug(
             "Setting NCCL_BLOCKING_WAIT for detecting node failure. "
-            "To override this behavior, you can set NCCL_BLOCKING_WAIT=0."
-        )
+            "To override this behavior, you can set NCCL_BLOCKING_WAIT=0.")
         os.environ["NCCL_BLOCKING_WAIT"] = "1"
 
     dist.init_process_group(
@@ -114,15 +113,15 @@ class TorchBackend(Backend):
                 backend = backend_config.backend
 
             master_addr, master_port = worker_group.execute_single(
-                0, get_address_and_port
-            )
+                0, get_address_and_port)
             if backend_config.init_method == "env":
 
                 def set_env_vars(addr, port):
                     os.environ["MASTER_ADDR"] = addr
                     os.environ["MASTER_PORT"] = str(port)
 
-                worker_group.execute(set_env_vars, addr=master_addr, port=master_port)
+                worker_group.execute(
+                    set_env_vars, addr=master_addr, port=master_port)
                 url = "env://"
             elif backend_config.init_method == "tcp":
                 url = f"tcp://{master_addr}:{master_port}"
@@ -130,8 +129,7 @@ class TorchBackend(Backend):
                 raise ValueError(
                     f"The provided init_method ("
                     f"{backend_config.init_method}) is not supported. Must "
-                    f"be either 'env' or 'tcp'."
-                )
+                    f"be either 'env' or 'tcp'.")
 
             setup_futures = []
             for i in range(len(worker_group)):
@@ -144,17 +142,16 @@ class TorchBackend(Backend):
                         world_size=len(worker_group),
                         init_method=url,
                         timeout_s=backend_config.timeout_s,
-                    )
-                )
+                    ))
             ray.get(setup_futures)
         else:
             raise RuntimeError("Distributed torch is not available.")
 
-    def on_shutdown(self, worker_group: WorkerGroup, backend_config: TorchConfig):
+    def on_shutdown(self, worker_group: WorkerGroup,
+                    backend_config: TorchConfig):
 
         worker_group.execute(
-            shutdown_torch, destroy_process_group=len(worker_group) > 1
-        )
+            shutdown_torch, destroy_process_group=len(worker_group) > 1)
 
     @staticmethod
     def encode_data(data_dict: Dict) -> EncodedData:
@@ -183,33 +180,6 @@ class TorchBackend(Backend):
         return checkpoint_dict
 
 
-class _WrappedDataLoader(DataLoader):
-    def __init__(self, base_dataloader: DataLoader, device: torch.device):
-
-        self.__dict__.update(getattr(base_dataloader, "__dict__", {}))
-        self.dataloader = base_dataloader
-        self.device = device
-
-    def _move_to_device(self, item):
-        def try_move_device(i):
-            try:
-                i = i.to(self.device)
-            except AttributeError:
-                logger.debug(f"Item {i} cannot be moved to device " f"{self.device}.")
-            return i
-
-        return tuple(try_move_device(i) for i in item)
-
-    def __len__(self):
-        return len(self.dataloader)
-
-    def __iter__(self):
-        iterator = iter(self.dataloader)
-
-        for item in iterator:
-            yield self._move_to_device(item)
-
-
 def get_device() -> torch.device:
     """Gets the correct torch device to use for training."""
     if torch.cuda.is_available():
@@ -223,10 +193,10 @@ def get_device() -> torch.device:
 
 @PublicAPI(stability="beta")
 def prepare_model(
-    model: torch.nn.Module,
-    move_to_device: bool = True,
-    wrap_ddp: bool = True,
-    ddp_kwargs: Optional[Dict[str, Any]] = None,
+        model: torch.nn.Module,
+        move_to_device: bool = True,
+        wrap_ddp: bool = True,
+        ddp_kwargs: Optional[Dict[str, Any]] = None,
 ) -> torch.nn.Module:
     """Prepares the model for distributed execution.
 
@@ -244,35 +214,18 @@ def prepare_model(
             ``DistributedDataParallel`` initialization if ``wrap_ddp`` is
             set to True.
     """
-    ddp_kwargs = ddp_kwargs or {}
-
-    rank = train.local_rank()
-
-    device = get_device()
-
-    if torch.cuda.is_available():
-        torch.cuda.set_device(device)
-
-    if move_to_device:
-        logger.info(f"Moving model to device: {device}")
-        model = model.to(device)
-    if wrap_ddp and train.world_size() > 1:
-        logger.info("Wrapping provided model in DDP.")
-        if torch.cuda.is_available():
-            model = DistributedDataParallel(
-                model, device_ids=[rank], output_device=rank, **ddp_kwargs
-            )
-        else:
-            model = DistributedDataParallel(model, **ddp_kwargs)
-
-    return model
+    return get_session().accelerator.prepare_model(
+        model,
+        move_to_device=move_to_device,
+        wrap_ddp=wrap_ddp,
+        ddp_kwargs=ddp_kwargs)
 
 
 @PublicAPI(stability="beta")
 def prepare_data_loader(
-    data_loader: torch.utils.data.DataLoader,
-    add_dist_sampler: bool = True,
-    move_to_device: bool = True,
+        data_loader: torch.utils.data.DataLoader,
+        add_dist_sampler: bool = True,
+        move_to_device: bool = True,
 ) -> torch.utils.data.DataLoader:
     """
     Prepares DataLoader for distributed execution.
@@ -288,58 +241,15 @@ def prepare_data_loader(
         move_to_device (bool): If set, automatically move the data
             returned by the data loader to the correct device.
     """
-
-    # Only add Distributed Sampler if the following conditions hold:
-    # 1. More than one training worker is being used.
-    # 2. A DistributedSampler has not already been added by the user.
-    # 3. The dataset is not an IterableDataset. Samplers do not worker with
-    # IterableDatasets.
-    if (
-        train.world_size() > 1
-        and not isinstance(data_loader.sampler, DistributedSampler)
-        and not (
-            hasattr(data_loader, "dataset")
-            and isinstance(data_loader.dataset, IterableDataset)
-        )
-        and add_dist_sampler
-    ):
-
-        def with_sampler(loader):
-            # Automatically set the DistributedSampler
-
-            # If using a sampler, the shuffle attribute in the
-            # DataLoader must be set to False.
-            # Instead the shuffling is determined by the shuffle attribute
-            # in the DistributedSampler.
-            # We identify if shuffling is enabled in the passed in
-            # DataLoader by seeing if the sampler for the DataLoader is a
-            # SequentialSampler.
-            shuffle = not isinstance(loader.sampler, SequentialSampler)
-
-            data_loader_args = {
-                "dataset": loader.dataset,
-                "batch_size": loader.batch_size,
-                "shuffle": False,
-                "num_workers": loader.num_workers,
-                "collate_fn": loader.collate_fn,
-                "pin_memory": loader.pin_memory,
-                "drop_last": loader.drop_last,
-                "timeout": loader.timeout,
-                "worker_init_fn": loader.worker_init_fn,
-                "sampler": DistributedSampler(loader.dataset, shuffle=shuffle),
-            }
-            return DataLoader(**data_loader_args)
-
-        data_loader = with_sampler(data_loader)
-
-    if move_to_device:
-        device = get_device()
-        data_loader = _WrappedDataLoader(data_loader, device)
-
-    return data_loader
+    return get_session().accelerator.prepare_data_loader(
+        data_loader,
+        add_dist_sampler=add_dist_sampler,
+        move_to_device=move_to_device)
 
 
-def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer:
+@PublicAPI(stability="beta")
+def prepare_optimizer(
+        optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer:
     """Wraps optimizer to support automatic mixed precision.
 
     Args:
@@ -348,7 +258,7 @@ def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer
     Returns:
         A wrapped optimizer.
     """
-    raise NotImplementedError
+    return get_session().accelerator.prepare_optimizer(optimizer)
 
 
 @PublicAPI(stability="beta")
@@ -358,7 +268,7 @@ def backward(tensor: torch.Tensor) -> None:
     Args:
         tensor (torch.Tensor): Tensor of which the derivative will be computed.
     """
-    raise NotImplementedError
+    get_session().accelerator.backward(tensor)
 
 
 @PublicAPI(stability="beta")
@@ -369,5 +279,4 @@ def accelerate(amp: bool = False) -> None:
         amp (bool): If true, use native automatic mixed precision. Otherwise, use full
             precision.
     """
-    raise NotImplementedError
-
+    get_session().accelerator = TorchAccelerator(amp=amp)
