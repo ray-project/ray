@@ -2476,6 +2476,18 @@ Dict[str, List[str]]]): The names of the columns
         return self._blocks.get_blocks()
 
     @DeveloperAPI
+    def force_reads(self) -> "Dataset[T]":
+        """Force full evaluation of the blocks of this dataset.
+
+        This can be used to read all blocks into memory. By default, Datasets
+        doesn't read blocks from the datasource until the first transform.
+        """
+        blocks = self.get_internal_block_refs()
+        bar = ProgressBar("Force reads", len(blocks))
+        bar.block_until_complete(blocks)
+        return self
+
+    @DeveloperAPI
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
         return self._stats.summary_string()
