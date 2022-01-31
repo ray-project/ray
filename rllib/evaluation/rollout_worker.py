@@ -1565,7 +1565,7 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> global_vars = worker.set_global_vars({"timestep": 4242})
         """
-        self.foreach_policy(lambda p, _: p.on_global_var_update(global_vars))
+        self.foreach_policy_to_train(lambda p, _: p.on_global_var_update(global_vars))
         self.global_vars = global_vars
 
     @DeveloperAPI
