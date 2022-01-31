@@ -180,12 +180,14 @@ class Dataset(Generic[T]):
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
         return Dataset(blocks, self._epoch, stats_builder.build(blocks))
 
-    def with_column(self,
-                    col: str,
-                    fn: Callable[[T], Any],
-                    *,
-                    compute: Optional[str] = None,
-                    **ray_remote_args) -> "Dataset[T]":
+    def with_column(
+        self,
+        col: str,
+        fn: Callable[[T], Any],
+        *,
+        compute: Optional[str] = None,
+        **ray_remote_args,
+    ) -> "Dataset[T]":
         """Add the given column to the dataset.
 
         This is only supported for datasets convertible to Arrow records.
@@ -221,8 +223,7 @@ class Dataset(Generic[T]):
             df[col] = [fn(row) for row in block.iter_rows()]
             return df
 
-        return self.map_batches(
-            process_batch, compute=compute, **ray_remote_args)
+        return self.map_batches(process_batch, compute=compute, **ray_remote_args)
 
     def drop_columns(self, *cols: str) -> "Dataset[T]":
         """Drop the given columns from the dataset.
