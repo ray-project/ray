@@ -987,18 +987,6 @@ class Dataset(Generic[T]):
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
-    def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
-        if len(result) == 1:
-            if isinstance(result, tuple):
-                return result[0]
-            else:
-                # NOTE (kfstorm): We cannot call `result[0]` directly on
-                # `PandasRow` because indexing a column with position is not
-                # supported by pandas.
-                return list(result.values())[0]
-        else:
-            return result
-
     def sum(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute sum over entire dataset.
 
