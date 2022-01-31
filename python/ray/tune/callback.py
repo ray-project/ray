@@ -47,11 +47,13 @@ class Callback(ABC):
     """
 
     # arguments here match Experiment.public_spec
-    def setup(self,
-              stop: Optional["Stopper"] = None,
-              num_samples: Optional[int] = None,
-              total_num_samples: Optional[int] = None,
-              **info):
+    def setup(
+        self,
+        stop: Optional["Stopper"] = None,
+        num_samples: Optional[int] = None,
+        total_num_samples: Optional[int] = None,
+        **info,
+    ):
         """Called once at the very beginning of training.
 
         Any Callback setup should be added here (setting environment
@@ -95,8 +97,9 @@ class Callback(ABC):
         """
         pass
 
-    def on_trial_start(self, iteration: int, trials: List["Trial"],
-                       trial: "Trial", **info):
+    def on_trial_start(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
         """Called after starting a trial instance.
 
         Arguments:
@@ -108,8 +111,9 @@ class Callback(ABC):
         """
         pass
 
-    def on_trial_restore(self, iteration: int, trials: List["Trial"],
-                         trial: "Trial", **info):
+    def on_trial_restore(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
         """Called after restoring a trial instance.
 
         Arguments:
@@ -120,8 +124,9 @@ class Callback(ABC):
         """
         pass
 
-    def on_trial_save(self, iteration: int, trials: List["Trial"],
-                      trial: "Trial", **info):
+    def on_trial_save(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
         """Called after receiving a checkpoint from a trial.
 
         Arguments:
@@ -132,8 +137,14 @@ class Callback(ABC):
         """
         pass
 
-    def on_trial_result(self, iteration: int, trials: List["Trial"],
-                        trial: "Trial", result: Dict, **info):
+    def on_trial_result(
+        self,
+        iteration: int,
+        trials: List["Trial"],
+        trial: "Trial",
+        result: Dict,
+        **info,
+    ):
         """Called after receiving a result from a trial.
 
         The search algorithm and scheduler are notified before this
@@ -148,8 +159,9 @@ class Callback(ABC):
         """
         pass
 
-    def on_trial_complete(self, iteration: int, trials: List["Trial"],
-                          trial: "Trial", **info):
+    def on_trial_complete(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
         """Called after a trial instance completed.
 
         The search algorithm and scheduler are notified before this
@@ -163,8 +175,9 @@ class Callback(ABC):
         """
         pass
 
-    def on_trial_error(self, iteration: int, trials: List["Trial"],
-                       trial: "Trial", **info):
+    def on_trial_error(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
         """Called after a trial instance failed (errored).
 
         The search algorithm and scheduler are notified before this
@@ -178,8 +191,14 @@ class Callback(ABC):
         """
         pass
 
-    def on_checkpoint(self, iteration: int, trials: List["Trial"],
-                      trial: "Trial", checkpoint: Checkpoint, **info):
+    def on_checkpoint(
+        self,
+        iteration: int,
+        trials: List["Trial"],
+        trial: "Trial",
+        checkpoint: Checkpoint,
+        **info,
+    ):
         """Called after a trial saved a checkpoint with Tune.
 
         Arguments:
@@ -217,7 +236,9 @@ class CallbackList:
                     warnings.warn(
                         "Please update `setup` method in callback "
                         f"`{callback.__class__}` to match the method signature"
-                        " in `ray.tune.callback.Callback`.", FutureWarning)
+                        " in `ray.tune.callback.Callback`.",
+                        FutureWarning,
+                    )
                     callback.setup()
                 else:
                     raise e

@@ -13,15 +13,11 @@ parts:
       - file: data/dataset
         title: Ray Data
         sections:
-          - file: data/dataset-pipeline
-          - file: data/dataset-ml-preprocessing
-          - file: data/dataset-execution-model
-          - file: data/dataset-tensor-support
+          - file: data/getting-started
+          - file: data/user-guide
+          - file: data/key-concepts
           - file: data/examples/big_data_ingestion
-          - file: data/dask-on-ray
-          - file: data/mars-on-ray
-          - file: data/modin/index
-          - file: data/raydp
+
       - file: train/train
         title: Ray Train
         sections:

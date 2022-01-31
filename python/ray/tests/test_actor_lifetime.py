@@ -17,10 +17,8 @@ from ray.exceptions import RayActorError
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 
-@pytest.mark.parametrize("default_actor_lifetime",
-                         ["detached", "non_detached"])
-@pytest.mark.parametrize("child_actor_lifetime",
-                         [None, "detached", "non_detached"])
+@pytest.mark.parametrize("default_actor_lifetime", ["detached", "non_detached"])
+@pytest.mark.parametrize("child_actor_lifetime", [None, "detached", "non_detached"])
 def test_default_actor_lifetime(default_actor_lifetime, child_actor_lifetime):
     @ray.remote
     class OwnerActor:
@@ -29,7 +27,8 @@ def test_default_actor_lifetime(default_actor_lifetime, child_actor_lifetime):
                 self._child_actor = ChildActor.remote()
             else:
                 self._child_actor = ChildActor.options(
-                    lifetime=child_actor_lifetime).remote()
+                    lifetime=child_actor_lifetime
+                ).remote()
             assert "ok" == ray.get(self._child_actor.ready.remote())
             return self._child_actor
 
@@ -45,9 +44,7 @@ def test_default_actor_lifetime(default_actor_lifetime, child_actor_lifetime):
             return "ok"
 
     if default_actor_lifetime is not None:
-        ray.init(
-            job_config=JobConfig(
-                default_actor_lifetime=default_actor_lifetime))
+        ray.init(job_config=JobConfig(default_actor_lifetime=default_actor_lifetime))
     else:
         ray.init()
 
@@ -86,4 +83,5 @@ def test_default_actor_lifetime(default_actor_lifetime, child_actor_lifetime):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))
