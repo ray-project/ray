@@ -24,15 +24,13 @@ class Executor(ABC):
 class LocalExecutor(Executor):
     """Executor that runs code in-process."""
 
-    def __init__(self, serialized_callable_factory: bytes,
-                 _config: StepConfig):
-        self._callable: Callable = cloudpickle.loads(
-            serialized_callable_factory)()
+    def __init__(self, serialized_callable_factory: bytes, _config: StepConfig):
+        self._callable: Callable = cloudpickle.loads(serialized_callable_factory)()
 
     def call(self, *args: Tuple[Any]) -> Any:
         args = tuple(
-            ray.get(arg) if isinstance(arg, ObjectRef) else arg
-            for arg in args)
+            ray.get(arg) if isinstance(arg, ObjectRef) else arg for arg in args
+        )
         return self._callable(*args)
 
     async def call_async(self, input_arg: Tuple[Any]) -> Any:
@@ -91,8 +89,9 @@ class ActorsExecutor(Executor):
         raise NotImplementedError("No async support yet.")
 
 
-def create_executor_from_step_config(serialized_callable_factory: bytes,
-                                     config: StepConfig) -> Executor:
+def create_executor_from_step_config(
+    serialized_callable_factory: bytes, config: StepConfig
+) -> Executor:
     if config.execution_mode == ExecutionMode.LOCAL:
         return LocalExecutor(serialized_callable_factory, config)
     elif config.execution_mode == ExecutionMode.TASKS:

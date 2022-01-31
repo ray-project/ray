@@ -7,9 +7,9 @@ from ray.serve.constants import CONTROL_LOOP_PERIOD_S
 from typing import List
 
 
-def calculate_desired_num_replicas(autoscaling_config: AutoscalingConfig,
-                                   current_num_ongoing_requests: List[float]
-                                   ) -> int:  # (desired replicas):
+def calculate_desired_num_replicas(
+    autoscaling_config: AutoscalingConfig, current_num_ongoing_requests: List[float]
+) -> int:  # (desired replicas):
     """Returns the number of replicas to scale to based on the given metrics.
 
     Args:
@@ -29,26 +29,24 @@ def calculate_desired_num_replicas(autoscaling_config: AutoscalingConfig,
         raise ValueError("Number of replicas cannot be zero")
 
     # The number of ongoing requests per replica, averaged over all replicas.
-    num_ongoing_requests_per_replica: float = sum(
-        current_num_ongoing_requests) / len(current_num_ongoing_requests)
+    num_ongoing_requests_per_replica: float = sum(current_num_ongoing_requests) / len(
+        current_num_ongoing_requests
+    )
 
     # Example: if error_ratio == 2.0, we have two times too many ongoing
     # requests per replica, so we desire twice as many replicas.
     error_ratio: float = (
-        num_ongoing_requests_per_replica /
-        autoscaling_config.target_num_ongoing_requests_per_replica)
+        num_ongoing_requests_per_replica
+        / autoscaling_config.target_num_ongoing_requests_per_replica
+    )
 
     # Multiply the distance to 1 by the smoothing ("gain") factor (default=1).
-    smoothed_error_ratio = 1 + (
-        (error_ratio - 1) * autoscaling_config.smoothing_factor)
-    desired_num_replicas = math.ceil(
-        current_num_replicas * smoothed_error_ratio)
+    smoothed_error_ratio = 1 + ((error_ratio - 1) * autoscaling_config.smoothing_factor)
+    desired_num_replicas = math.ceil(current_num_replicas * smoothed_error_ratio)
 
     # Ensure min_replicas <= desired_num_replicas <= max_replicas.
-    desired_num_replicas = min(autoscaling_config.max_replicas,
-                               desired_num_replicas)
-    desired_num_replicas = max(autoscaling_config.min_replicas,
-                               desired_num_replicas)
+    desired_num_replicas = min(autoscaling_config.max_replicas, desired_num_replicas)
+    desired_num_replicas = max(autoscaling_config.min_replicas, desired_num_replicas)
 
     return desired_num_replicas
 
@@ -61,6 +59,7 @@ class AutoscalingPolicy:
     to provide a non-default constructor. However, this state will be lost when
     the controller recovers from a failure.
     """
+
     __metaclass__ = ABCMeta
 
     def __init__(self, config: AutoscalingConfig):
@@ -68,9 +67,9 @@ class AutoscalingPolicy:
         self.config = config
 
     @abstractmethod
-    def get_decision_num_replicas(self,
-                                  current_num_ongoing_requests: List[float],
-                                  curr_target_num_replicas: int) -> int:
+    def get_decision_num_replicas(
+        self, current_num_ongoing_requests: List[float], curr_target_num_replicas: int
+    ) -> int:
         """Make a decision to scale replicas.
 
         Arguments:
@@ -101,9 +100,11 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         # TODO(architkulkarni): Make configurable via AutoscalingConfig
         self.loop_period_s = CONTROL_LOOP_PERIOD_S
         self.scale_up_consecutive_periods = int(
-            config.upscale_delay_s / self.loop_period_s)
+            config.upscale_delay_s / self.loop_period_s
+        )
         self.scale_down_consecutive_periods = int(
-            config.downscale_delay_s / self.loop_period_s)
+            config.downscale_delay_s / self.loop_period_s
+        )
 
         # Keeps track of previous decisions. Each time the load is above
         # 'scale_up_threshold', the counter is incremented and each time it is
@@ -117,16 +118,17 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         # scale_up_periods or scale_down_periods.
         self.decision_counter = 0
 
-    def get_decision_num_replicas(self,
-                                  current_num_ongoing_requests: List[float],
-                                  curr_target_num_replicas: int) -> int:
+    def get_decision_num_replicas(
+        self, current_num_ongoing_requests: List[float], curr_target_num_replicas: int
+    ) -> int:
         if len(current_num_ongoing_requests) == 0:
             return curr_target_num_replicas
 
         decision_num_replicas = curr_target_num_replicas
 
         desired_num_replicas = calculate_desired_num_replicas(
-            self.config, current_num_ongoing_requests)
+            self.config, current_num_ongoing_requests
+        )
         # Scale up.
         if desired_num_replicas > curr_target_num_replicas:
             # If the previous decision was to scale down (the counter was

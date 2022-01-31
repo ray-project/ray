@@ -72,8 +72,24 @@ extensions = [
     "sphinx_external_toc",
 ]
 
+myst_enable_extensions = [
+    # "dollarmath",
+    # "amsmath",
+    # "deflist",
+    # "fieldlist",
+    "html_admonition",
+    "html_image",
+    # "colon_fence",
+    # "smartquotes",
+    # "replacements",
+    # "linkify",
+    # "strikethrough",
+    # "substitution",
+    # "tasklist",
+]
+
 external_toc_exclude_missing = False
-external_toc_path = '_toc.yml'
+external_toc_path = "_toc.yml"
 
 # There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
 # of imports.
@@ -96,7 +112,8 @@ versionwarning_messages = {
         "<b>Got questions?</b> Join "
         f'<a href="{FORUM_LINK}">the Ray Community forum</a> '
         "for Q&A on all things Ray, as well as to share and learn use cases "
-        "and best practices with the Ray community."),
+        "and best practices with the Ray community."
+    ),
 }
 
 versionwarning_body_selector = "#main-content"
@@ -173,11 +190,16 @@ exclude_patterns += sphinx_gallery_conf["examples_dirs"]
 # If "DOC_LIB" is found, only build that top-level navigation item.
 build_one_lib = os.getenv("DOC_LIB")
 
-all_toc_libs = [
-    f.path for f in os.scandir(".") if f.is_dir() and "ray-" in f.path
-]
+all_toc_libs = [f.path for f in os.scandir(".") if f.is_dir() and "ray-" in f.path]
 all_toc_libs += [
-    "cluster", "tune", "data", "raysgd", "train", "rllib", "serve", "workflows"
+    "cluster",
+    "tune",
+    "data",
+    "raysgd",
+    "train",
+    "rllib",
+    "serve",
+    "workflows",
 ]
 if build_one_lib and build_one_lib in all_toc_libs:
     all_toc_libs.remove(build_one_lib)
@@ -389,8 +411,9 @@ def setup(app):
     # Custom JS
     app.add_js_file(
         "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js",
-        defer="defer")
-    app.add_js_file("docsearch.sbt.js", defer="defer")
+        defer="defer",
+    )
+    app.add_js_file("js/docsearch.js", defer="defer")
     # Custom Sphinx directives
     app.add_directive("customgalleryitem", CustomGalleryItemDirective)
     # Custom docstring processor

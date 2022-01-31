@@ -934,7 +934,7 @@ Ray Train provides native support for :ref:`Ray Datasets <datasets>` to support 
    worker will only load its assigned shard into memory rather than the entire ``Dataset``.
 3. **Pipelined Execution**: Ray Datasets also supports pipelining, meaning that data processing operations
    can be run concurrently with training. Training is no longer blocked on expensive data processing operations (such as global shuffling)
-   and this minimizes the amount of time your GPUs are idle. See :ref:`dataset-pipeline` for more information.
+   and this minimizes the amount of time your GPUs are idle. See :ref:`dataset-pipeline-api` for more information.
 
 To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Underneath the hood, Ray Train will automatically shard the given dataset.
 
@@ -945,14 +945,14 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
     already sharded.
 
     .. code-block:: python
+        :emphasize-lines: 1, 6
+
+        from ray.train.tensorflow import prepare_dataset_shard
 
         def train_func():
             ...
-            tf_dataset = ray.train.get_dataset_shard().to_tf()
-            options = tf.data.Options()
-            options.experimental_distribute.auto_shard_policy = \
-                tf.data.experimental.AutoShardPolicy.OFF
-            tf_dataset = tf_dataset.with_options(options)
+            tf_dataset = ray.train.get_dataset_shard().to_tf(...)
+            tf_dataset = prepare_dataset_shard(tf_dataset)
 
 
 **Simple Dataset Example**
@@ -1004,10 +1004,10 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
 
 Pipelined Execution
 ~~~~~~~~~~~~~~~~~~~
-For pipelined execution, you just need to convert your :ref:`Dataset <datasets>` into a :ref:`DatasetPipeline <dataset-pipeline>`.
+For pipelined execution, you just need to convert your :ref:`Dataset <datasets>` into a :ref:`DatasetPipeline <dataset-pipeline-api>`.
 All operations after this conversion will be executed in a pipelined fashion.
 
-See :ref:`dataset-pipeline` for more semantics on pipelining.
+See :ref:`dataset-pipeline-api` for more semantics on pipelining.
 
 Example: Per-Epoch Shuffle Pipeline
 +++++++++++++++++++++++++++++++++++

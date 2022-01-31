@@ -38,15 +38,19 @@ class TestAttentionNets(unittest.TestCase):
             "env": RandomEnv,
             "env_config": {
                 "config": {
-                    "action_space": Dict({
-                        "a": Box(-1.0, 1.0, ()),
-                        "b": Box(-1.0, 1.0, (2, )),
-                        "c": Tuple([
-                            Discrete(2),
-                            MultiDiscrete([2, 3]),
-                            Box(-1.0, 1.0, (3, )),
-                        ]),
-                    }),
+                    "action_space": Dict(
+                        {
+                            "a": Box(-1.0, 1.0, ()),
+                            "b": Box(-1.0, 1.0, (2,)),
+                            "c": Tuple(
+                                [
+                                    Discrete(2),
+                                    MultiDiscrete([2, 3]),
+                                    Box(-1.0, 1.0, (3,)),
+                                ]
+                            ),
+                        }
+                    ),
                 },
             },
             # Need to set this to True to enable complex (prev.) actions
@@ -66,16 +70,13 @@ class TestAttentionNets(unittest.TestCase):
             "num_workers": 1,
         }
         for _ in framework_iterator(config):
-            tune.run(
-                "PPO",
-                config=config,
-                stop={"training_iteration": 1},
-                verbose=1)
+            tune.run("PPO", config=config, stop={"training_iteration": 1}, verbose=1)
 
     def test_ppo_attention_net_learning(self):
         ModelCatalog.register_custom_model("attention_net", GTrXLNet)
         config = dict(
-            self.config, **{
+            self.config,
+            **{
                 "num_workers": 0,
                 "entropy_coeff": 0.001,
                 "vf_loss_coeff": 1e-5,
@@ -93,7 +94,8 @@ class TestAttentionNets(unittest.TestCase):
                         "position_wise_mlp_dim": 32,
                     },
                 },
-            })
+            }
+        )
         tune.run("PPO", config=config, stop=self.stop, verbose=1)
 
     # TODO: (sven) causes memory failures/timeouts on Travis.
@@ -128,4 +130,5 @@ class TestAttentionNets(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

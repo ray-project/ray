@@ -14,16 +14,21 @@ from typing import List, Optional, Type
 
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
-from ray.rllib.agents.dqn.simple_q import SimpleQTrainer, \
-    DEFAULT_CONFIG as SIMPLEQ_DEFAULT_CONFIG
+from ray.rllib.agents.dqn.simple_q import (
+    SimpleQTrainer,
+    DEFAULT_CONFIG as SIMPLEQ_DEFAULT_CONFIG,
+)
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork, \
-    MultiGPUTrainOneStep
+from ray.rllib.execution.train_ops import (
+    TrainOneStep,
+    UpdateTargetNetwork,
+    MultiGPUTrainOneStep,
+)
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -114,9 +119,11 @@ def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
     # This is to set freshly rollout-collected data in relation to
     # the data we pull from the replay buffer (which also contains old
     # samples).
-    native_ratio = config["train_batch_size"] / \
-        (config["rollout_fragment_length"] *
-         config["num_envs_per_worker"] * config["num_workers"])
+    native_ratio = config["train_batch_size"] / (
+        config["rollout_fragment_length"]
+        * config["num_envs_per_worker"]
+        * config["num_workers"]
+    )
 
     # Training intensity is specified in terms of
     # (steps_replayed / steps_sampled), so adjust for the native ratio.
@@ -136,13 +143,13 @@ class DQNTrainer(SimpleQTrainer):
         super().validate_config(config)
 
         # Update effective batch size to include n-step
-        adjusted_rollout_len = max(config["rollout_fragment_length"],
-                                   config["n_step"])
+        adjusted_rollout_len = max(config["rollout_fragment_length"], config["n_step"])
         config["rollout_fragment_length"] = adjusted_rollout_len
 
     @override(SimpleQTrainer)
     def get_default_policy_class(
-            self, config: TrainerConfigDict) -> Optional[Type[Policy]]:
+        self, config: TrainerConfigDict
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return DQNTorchPolicy
         else:
@@ -150,10 +157,12 @@ class DQNTrainer(SimpleQTrainer):
 
     @staticmethod
     @override(SimpleQTrainer)
-    def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
-                       **kwargs) -> LocalIterator[dict]:
-        assert "local_replay_buffer" in kwargs, (
-            "DQN's execution plan requires a local replay buffer.")
+    def execution_plan(
+        workers: WorkerSet, config: TrainerConfigDict, **kwargs
+    ) -> LocalIterator[dict]:
+        assert (
+            "local_replay_buffer" in kwargs
+        ), "DQN's execution plan requires a local replay buffer."
 
         # Assign to Trainer, so we can store the MultiAgentReplayBuffer's
         # data when we save checkpoints.
@@ -165,7 +174,8 @@ class DQNTrainer(SimpleQTrainer):
         # (1) Generate rollouts and store them in our local replay buffer.
         # Calling next() on store_op drives this.
         store_op = rollouts.for_each(
-            StoreToReplayBuffer(local_buffer=local_replay_buffer))
+            StoreToReplayBuffer(local_buffer=local_replay_buffer)
+        )
 
         def update_prio(item):
             samples, info_dict = item
@@ -177,16 +187,20 @@ class DQNTrainer(SimpleQTrainer):
                     #  policies (note: fixing this in torch_policy.py will
                     #  break e.g. DDPPO!).
                     td_error = info.get(
-                        "td_error", info[LEARNER_STATS_KEY].get("td_error"))
+                        "td_error", info[LEARNER_STATS_KEY].get("td_error")
+                    )
                     samples.policy_batches[policy_id].set_get_interceptor(None)
                     batch_indices = samples.policy_batches[policy_id].get(
-                        "batch_indexes")
+                        "batch_indexes"
+                    )
                     # In case the buffer stores sequences, TD-error could
                     # already be calculated per sequence chunk.
                     if len(batch_indices) != len(td_error):
                         T = local_replay_buffer.replay_sequence_length
-                        assert len(batch_indices) > len(
-                            td_error) and len(batch_indices) % T == 0
+                        assert (
+                            len(batch_indices) > len(td_error)
+                            and len(batch_indices) % T == 0
+                        )
                         batch_indices = batch_indices.reshape([-1, T])[:, 0]
                         assert len(batch_indices) == len(td_error)
                     prio_dict[policy_id] = (batch_indices, td_error)
@@ -207,14 +221,18 @@ class DQNTrainer(SimpleQTrainer):
                 sgd_minibatch_size=config["train_batch_size"],
                 num_sgd_iter=1,
                 num_gpus=config["num_gpus"],
-                _fake_gpus=config["_fake_gpus"])
+                _fake_gpus=config["_fake_gpus"],
+            )
 
-        replay_op = Replay(local_buffer=local_replay_buffer) \
-            .for_each(lambda x: post_fn(x, workers, config)) \
-            .for_each(train_step_op) \
-            .for_each(update_prio) \
-            .for_each(UpdateTargetNetwork(
-                workers, config["target_network_update_freq"]))
+        replay_op = (
+            Replay(local_buffer=local_replay_buffer)
+            .for_each(lambda x: post_fn(x, workers, config))
+            .for_each(train_step_op)
+            .for_each(update_prio)
+            .for_each(
+                UpdateTargetNetwork(workers, config["target_network_update_freq"])
+            )
+        )
 
         # Alternate deterministically between (1) and (2).
         # Only return the output of (2) since training metrics are not
@@ -223,13 +241,14 @@ class DQNTrainer(SimpleQTrainer):
             [store_op, replay_op],
             mode="round_robin",
             output_indexes=[1],
-            round_robin_weights=calculate_rr_weights(config))
+            round_robin_weights=calculate_rr_weights(config),
+        )
 
         return StandardMetricsReporting(train_op, workers, config)
 
 
 @Deprecated(
-    new="Sub-class directly from `DQNTrainer` and override its methods",
-    error=False)
+    new="Sub-class directly from `DQNTrainer` and override its methods", error=False
+)
 class GenericOffPolicyTrainer(DQNTrainer):
     pass

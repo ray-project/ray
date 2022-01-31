@@ -18,7 +18,7 @@ class HalfCheetahRandDirecEnv(MujocoEnv, EzPickle, TaskSettableEnv):
 
     def sample_tasks(self, n_tasks):
         # For fwd/bwd env, goal direc is backwards if - 1.0, forwards if + 1.0
-        return np.random.choice((-1.0, 1.0), (n_tasks, ))
+        return np.random.choice((-1.0, 1.0), (n_tasks,))
 
     def set_task(self, task):
         """
@@ -43,19 +43,21 @@ class HalfCheetahRandDirecEnv(MujocoEnv, EzPickle, TaskSettableEnv):
         reward_run = self.goal_direction * (xposafter - xposbefore) / self.dt
         reward = reward_ctrl + reward_run
         done = False
-        return ob, reward, done, dict(
-            reward_run=reward_run, reward_ctrl=reward_ctrl)
+        return ob, reward, done, dict(reward_run=reward_run, reward_ctrl=reward_ctrl)
 
     def _get_obs(self):
-        return np.concatenate([
-            self.sim.data.qpos.flat[1:],
-            self.sim.data.qvel.flat,
-        ])
+        return np.concatenate(
+            [
+                self.sim.data.qpos.flat[1:],
+                self.sim.data.qvel.flat,
+            ]
+        )
 
     def reset_model(self):
         qpos = self.init_qpos + self.np_random.uniform(
-            low=-.1, high=.1, size=self.model.nq)
-        qvel = self.init_qvel + self.np_random.randn(self.model.nv) * .1
+            low=-0.1, high=0.1, size=self.model.nq
+        )
+        qvel = self.init_qvel + self.np_random.randn(self.model.nv) * 0.1
         self.set_state(qpos, qvel)
         obs = self._get_obs()
         return obs
