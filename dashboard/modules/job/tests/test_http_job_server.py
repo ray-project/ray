@@ -2,24 +2,26 @@ import logging
 from pathlib import Path
 import sys
 import tempfile
+from typing import Optional
 
 import pytest
+from unittest.mock import patch
 
 import ray
-from ray.dashboard.tests.conftest import *  # noqa
-from ray.tests.conftest import _ray_start
-from ray._private.test_utils import (
-    format_web_url,
-    wait_for_condition,
-    wait_until_server_available,
-)
 from ray.dashboard.modules.job.common import CURRENT_VERSION, JobStatus
 from ray.dashboard.modules.job.sdk import (
     ClusterInfo,
     JobSubmissionClient,
     parse_cluster_info,
 )
-from unittest.mock import patch
+from ray.dashboard.tests.conftest import *  # noqa
+from ray.ray_constants import DEFAULT_DASHBOARD_PORT
+from ray.tests.conftest import _ray_start
+from ray._private.test_utils import (
+    format_web_url,
+    wait_for_condition,
+    wait_until_server_available,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -125,11 +127,7 @@ def test_http_bad_request(job_sdk_client):
     client = job_sdk_client
 
     # 400 - HTTPBadRequest
-    r = client._do_request(
-        "POST",
-        "/api/jobs/",
-        json_data={"key": "baaaad request"},
-    )
+    r = client._do_request("POST", "/api/jobs/", json_data={"key": "baaaad request"},)
 
     assert r.status_code == 400
     assert "TypeError: __init__() got an unexpected keyword argument" in r.text
@@ -226,17 +224,14 @@ def test_job_metadata(job_sdk_client):
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 
-    assert (
-        str(
-            {
-                "job_name": job_id,
-                "job_submission_id": job_id,
-                "key1": "val1",
-                "key2": "val2",
-            }
-        )
-        in client.get_job_logs(job_id)
-    )
+    assert str(
+        {
+            "job_name": job_id,
+            "job_submission_id": job_id,
+            "key1": "val1",
+            "key2": "val2",
+        }
+    ) in client.get_job_logs(job_id)
 
 
 def test_pass_job_id(job_sdk_client):
@@ -264,11 +259,7 @@ def test_submit_optional_args(job_sdk_client):
     """Check that job_id, runtime_env, and metadata are optional."""
     client = job_sdk_client
 
-    r = client._do_request(
-        "POST",
-        "/api/jobs/",
-        json_data={"entrypoint": "ls"},
-    )
+    r = client._do_request("POST", "/api/jobs/", json_data={"entrypoint": "ls"},)
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=r.json()["job_id"])
 
@@ -304,11 +295,7 @@ def test_request_headers(job_sdk_client):
     client = job_sdk_client
 
     with patch("requests.request") as mock_request:
-        _ = client._do_request(
-            "POST",
-            "/api/jobs/",
-            json_data={"entrypoint": "ls"},
-        )
+        _ = client._do_request("POST", "/api/jobs/", json_data={"entrypoint": "ls"},)
         mock_request.assert_called_with(
             "POST",
             "http://127.0.0.1:8265/api/jobs/",
@@ -319,26 +306,28 @@ def test_request_headers(job_sdk_client):
         )
 
 
-@pytest.mark.parametrize(
-    "address",
-    [
-        "http://127.0.0.1",
-        "https://127.0.0.1",
-        "ray://127.0.0.1",
-        "fake_module://127.0.0.1",
-    ],
-)
-def test_parse_cluster_info(address: str):
-    if address.startswith("ray"):
+@pytest.mark.parametrize("scheme", ["http", "https", "ray", "fake_module"])
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "fake.dns.name"])
+@pytest.mark.parametrize("port", [None, 8265, 10000])
+def test_parse_cluster_info(scheme: str, host: str, port: Optional[int]):
+    address = f"{scheme}://{host}"
+    if port is not None:
+        address += f":{port}"
+
+    final_port = port if port is not None else DEFAULT_DASHBOARD_PORT
+    if scheme in {"http", "ray"}:
         assert parse_cluster_info(address, False) == ClusterInfo(
-            address="http" + address[address.index("://") :],
+            address=f"http://{host}:{final_port}",
             cookies=None,
             metadata=None,
             headers=None,
         )
-    elif address.startswith("http") or address.startswith("https"):
+    elif scheme == "https":
         assert parse_cluster_info(address, False) == ClusterInfo(
-            address=address, cookies=None, metadata=None, headers=None
+            address=f"https://{host}:{final_port}",
+            cookies=None,
+            metadata=None,
+            headers=None,
         )
     else:
         with pytest.raises(RuntimeError):
