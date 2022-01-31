@@ -12,7 +12,6 @@ import ray
 from ray.experimental.internal_kv import _internal_kv_get
 from ray.ray_constants import DEBUG_AUTOSCALING_ERROR
 import ray._private.utils
-from ray.util.placement_group import placement_group
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import cluster_not_supported
 import ray._private.gcs_pubsub as gcs_pubsub
@@ -25,73 +24,6 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
 )
 
-
-def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
-    p = error_pubsub
-    # Check that we get warning messages for infeasible tasks.
-
-    @ray.remote(num_gpus=1)
-    def f():
-        pass
-
-    @ray.remote(resources={"Custom": 1})
-    class Foo:
-        pass
-
-    # This task is infeasible.
-    f.remote()
-    errors = get_error_message(p, 1, ray_constants.INFEASIBLE_TASK_ERROR)
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
-
-    # This actor placement task is infeasible.
-    foo = Foo.remote()
-    print(foo)
-    errors = get_error_message(p, 1, ray_constants.INFEASIBLE_TASK_ERROR)
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
-
-    # Placement group cannot be made, but no warnings should occur.
-    total_cpus = ray.cluster_resources()["CPU"]
-
-    # Occupy one cpu by an actor
-    @ray.remote(num_cpus=1)
-    class A:
-        pass
-
-    a = A.remote()
-    print(a)
-
-    @ray.remote(num_cpus=total_cpus)
-    def g():
-        pass
-
-    pg = placement_group([{"CPU": total_cpus}], strategy="STRICT_PACK")
-    g.options(placement_group=pg).remote()
-
-    errors = get_error_message(p, 1, ray_constants.INFEASIBLE_TASK_ERROR, timeout=5)
-    assert len(errors) == 0, errors
-
-
-def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
-    # Check that we cannot place an actor on a 0 CPU machine and that we get an
-    # infeasibility warning (even though the actor creation task itself
-    # requires no CPUs).
-
-    ray.init(num_cpus=0)
-    p = init_error_pubsub()
-
-    @ray.remote
-    class Foo:
-        pass
-
-    # The actor creation should be infeasible.
-    a = Foo.remote()
-    errors = get_error_message(p, 1, ray_constants.INFEASIBLE_TASK_ERROR)
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
-    p.close()
-    del a
 
 
 def test_warning_for_too_many_actors(shutdown_only):
