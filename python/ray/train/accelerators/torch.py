@@ -11,7 +11,6 @@ from torch.utils.data import (
 )
 
 from ray import train
-from ray.util import PublicAPI
 from ray.train.torch import get_device
 
 from .base import Accelerator
@@ -133,25 +132,6 @@ class TorchAccelerator(Accelerator):
             data_loader = _WrappedDataLoader(data_loader, device)
 
         return data_loader
-
-    def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer:
-        """Wraps optimizer to support automatic mixed precision.
-
-        Args:
-            optimizer (torch.optim.Optimizer): The DataLoader to prepare.
-
-        Returns:
-            A wrapped optimizer.
-        """
-        raise NotImplementedError
-
-    def backward(tensor: torch.Tensor) -> None:
-        """Computes the gradient of the specified tensor w.r.t. graph leaves.
-
-        Args:
-            tensor (torch.Tensor): Tensor of which the derivative will be computed.
-        """
-        raise NotImplementedError
 
 
 class _WrappedDataLoader(DataLoader):

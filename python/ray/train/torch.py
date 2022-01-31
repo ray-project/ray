@@ -249,34 +249,6 @@ def prepare_data_loader(
 
 
 @PublicAPI(stability="beta")
-def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer:
-    """Wraps optimizer to support automatic mixed precision.
-
-    Args:
-        optimizer (torch.optim.Optimizer): The DataLoader to prepare.
-
-    Returns:
-        A wrapped optimizer.
-    """
-    return get_session().accelerator.prepare_optimizer(optimizer)
-
-
-@PublicAPI(stability="beta")
-def backward(tensor: torch.Tensor) -> None:
-    """Computes the gradient of the specified tensor w.r.t. graph leaves.
-
-    Args:
-        tensor (torch.Tensor): Tensor of which the derivative will be computed.
-    """
-    get_session().accelerator.backward(tensor)
-
-
-@PublicAPI(stability="beta")
-def accelerate(amp: bool = False) -> None:
-    """Enables training optimizations.
-
-    Args:
-        amp (bool): If true, use native automatic mixed precision. Otherwise, use full
-            precision.
-    """
-    get_session().accelerator = TorchAccelerator(amp=amp)
+def accelerate() -> None:
+    """Enables training optimizations."""
+    get_session().accelerator = TorchAccelerator()
