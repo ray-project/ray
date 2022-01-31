@@ -559,8 +559,8 @@ while True:
     job_manager.stop_job(job_id)
 
 
-def test_boostrap_address(job_manager, monkeypatch):
-    """Ensure we always use boostrap address in job manager  even though ray
+def test_bootstrap_address(job_manager, monkeypatch):
+    """Ensure we always use bootstrap address in job manager even though ray
     cluster might be started with http://ip:{dashboard_port} from previous
     runs.
     """
