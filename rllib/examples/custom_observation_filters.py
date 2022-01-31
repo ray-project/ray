@@ -16,10 +16,8 @@ tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--run",
-    type=str,
-    default="PPO",
-    help="The RLlib-registered algorithm to use.")
+    "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
+)
 parser.add_argument("--stop-iters", type=int, default=200)
 
 
@@ -74,6 +72,7 @@ class CustomFilter(Filter):
     Filter that normalizes by using a single mean
     and std sampled from all obs inputs
     """
+
     is_concurrent = False
 
     def __init__(self, shape):
@@ -137,6 +136,7 @@ if __name__ == "__main__":
     }
 
     results = tune.run(
-        args.run, config=config, stop={"training_iteration": args.stop_iters})
+        args.run, config=config, stop={"training_iteration": args.stop_iters}
+    )
 
     ray.shutdown()

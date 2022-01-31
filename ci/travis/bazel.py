@@ -14,10 +14,10 @@ from collections import defaultdict, OrderedDict
 
 def textproto_format(space, key, value, json_encoder):
     """Rewrites a key-value pair from textproto as JSON."""
-    if value.startswith(b"\""):
+    if value.startswith(b'"'):
         evaluated = ast.literal_eval(value.decode("utf-8"))
         value = json_encoder.encode(evaluated).encode("utf-8")
-    return b"%s[\"%s\", %s]" % (space, key, value)
+    return b'%s["%s", %s]' % (space, key, value)
 
 
 def textproto_split(input_lines, json_encoder):
@@ -50,19 +50,21 @@ def textproto_split(input_lines, json_encoder):
         pieces = re.split(b"(\\r|\\n)", full_line, 1)
         pieces[1:] = [b"".join(pieces[1:])]
         [line, tail] = pieces
-        next_line = pat_open.sub(b"\\1[\"\\2\",\\3[", line)
-        outputs.append(b"" if not prev_comma else b"]"
-                       if next_line.endswith(b"}") else b",")
+        next_line = pat_open.sub(b'\\1["\\2",\\3[', line)
+        outputs.append(
+            b"" if not prev_comma else b"]" if next_line.endswith(b"}") else b","
+        )
         next_line = pat_close.sub(b"]", next_line)
         next_line = pat_line.sub(
-            lambda m: textproto_format(*(m.groups() + (json_encoder, ))),
-            next_line)
+            lambda m: textproto_format(*(m.groups() + (json_encoder,))), next_line
+        )
         outputs.append(prev_tail + next_line)
         if line == b"}":
             yield b"".join(outputs)
             del outputs[:]
-        prev_comma = line != b"}" and (next_line.endswith(b"]")
-                                       or next_line.endswith(b"\""))
+        prev_comma = line != b"}" and (
+            next_line.endswith(b"]") or next_line.endswith(b'"')
+        )
         prev_tail = tail
     if len(outputs) > 0:
         yield b"".join(outputs)
@@ -80,13 +82,14 @@ class Bazel(object):
     def __init__(self, program=None):
         if program is None:
             program = os.getenv("BAZEL_EXECUTABLE", "bazel")
-        self.argv = (program, )
-        self.extra_args = ("--show_progress=no", )
+        self.argv = (program,)
+        self.extra_args = ("--show_progress=no",)
 
     def _call(self, command, *args):
         return subprocess.check_output(
-            self.argv + (command, ) + args[:1] + self.extra_args + args[1:],
-            stdin=subprocess.PIPE)
+            self.argv + (command,) + args[:1] + self.extra_args + args[1:],
+            stdin=subprocess.PIPE,
+        )
 
     def info(self, *args):
         result = OrderedDict()
@@ -248,8 +251,7 @@ def shellcheck(bazel_aquery, *shellcheck_argv):
 def main(program, command, *command_args):
     result = 0
     if command == textproto2json.__name__:
-        result = textproto2json(sys.stdin.buffer, sys.stdout.buffer,
-                                *command_args)
+        result = textproto2json(sys.stdin.buffer, sys.stdout.buffer, *command_args)
     elif command == shellcheck.__name__:
         result = shellcheck(*command_args)
     elif command == preclean.__name__:

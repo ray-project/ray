@@ -52,23 +52,24 @@ class _DatasetStatsBuilder:
         self.start_time = time.perf_counter()
 
     def build_multistage(
-            self, stages: Dict[str, List[BlockMetadata]]) -> "DatasetStats":
+        self, stages: Dict[str, List[BlockMetadata]]
+    ) -> "DatasetStats":
         stats = DatasetStats(
-            stages={self.stage_name + "_" + k: v
-                    for k, v in stages.items()},
-            parent=self.parent)
+            stages={self.stage_name + "_" + k: v for k, v in stages.items()},
+            parent=self.parent,
+        )
         stats.time_total_s = time.perf_counter() - self.start_time
         return stats
 
     def build(self, final_blocks: BlockList) -> "DatasetStats":
         stats = DatasetStats(
-            stages={self.stage_name: final_blocks.get_metadata()},
-            parent=self.parent)
+            stages={self.stage_name: final_blocks.get_metadata()}, parent=self.parent
+        )
         stats.time_total_s = time.perf_counter() - self.start_time
         return stats
 
 
-@ray.remote(num_cpus=0)
+@ray.remote(num_cpus=0, placement_group=None)
 class _StatsActor:
     """Actor holding stats for blocks created by LazyBlockList.
 
@@ -94,8 +95,10 @@ class _StatsActor:
     def get(self, stats_uuid):
         if stats_uuid not in self.metadata:
             return {}, 0.0
-        return self.metadata[stats_uuid], \
-            self.last_time[stats_uuid] - self.start_time[stats_uuid]
+        return (
+            self.metadata[stats_uuid],
+            self.last_time[stats_uuid] - self.start_time[stats_uuid],
+        )
 
 
 # Actor handle, job id the actor was created for.
@@ -104,8 +107,11 @@ _stats_actor = [None, None]
 
 def get_or_create_stats_actor():
     # Need to re-create it if Ray restarts (mostly for unit tests).
-    if (not _stats_actor[0] or not ray.is_initialized()
-            or _stats_actor[1] != ray.get_runtime_context().job_id.hex()):
+    if (
+        not _stats_actor[0]
+        or not ray.is_initialized()
+        or _stats_actor[1] != ray.get_runtime_context().job_id.hex()
+    ):
         _stats_actor[0] = _StatsActor.remote()
         _stats_actor[1] = ray.get_runtime_context().job_id.hex()
 
@@ -125,12 +131,14 @@ class DatasetStats:
     but not the Dataset object itself, to allow its blocks to be dropped from
     memory."""
 
-    def __init__(self,
-                 *,
-                 stages: Dict[str, List[BlockMetadata]],
-                 parent: Union[Optional["DatasetStats"], List["DatasetStats"]],
-                 stats_actor=None,
-                 stats_uuid=None):
+    def __init__(
+        self,
+        *,
+        stages: Dict[str, List[BlockMetadata]],
+        parent: Union[Optional["DatasetStats"], List["DatasetStats"]],
+        stats_actor=None,
+        stats_uuid=None
+    ):
         """Create dataset stats.
 
         Args:
@@ -151,8 +159,9 @@ class DatasetStats:
                 self.parents.extend(parent)
             else:
                 self.parents.append(parent)
-        self.number: int = (0 if not self.parents else
-                            max(p.number for p in self.parents) + 1)
+        self.number: int = (
+            0 if not self.parents else max(p.number for p in self.parents) + 1
+        )
         self.dataset_uuid: str = None
         self.time_total_s: float = 0
         self.stats_actor = stats_actor
@@ -186,7 +195,8 @@ class DatasetStats:
         if self.stats_actor:
             # XXX this is a super hack, clean it up.
             stats_map, self.time_total_s = ray.get(
-                self.stats_actor.get.remote(self.stats_uuid))
+                self.stats_actor.get.remote(self.stats_uuid)
+            )
             for i, metadata in stats_map.items():
                 self.stages["read"][i] = metadata
         out = ""
@@ -212,13 +222,18 @@ class DatasetStats:
 
     def _summarize_iter(self) -> str:
         out = ""
-        if (self.iter_total_s.get() or self.iter_wait_s.get()
-                or self.iter_format_batch_s.get() or self.iter_get_s.get()):
+        if (
+            self.iter_total_s.get()
+            or self.iter_wait_s.get()
+            or self.iter_format_batch_s.get()
+            or self.iter_get_s.get()
+        ):
             out += "\nDataset iterator time breakdown:\n"
             out += "* In ray.wait(): {}\n".format(fmt(self.iter_wait_s.get()))
             out += "* In ray.get(): {}\n".format(fmt(self.iter_get_s.get()))
             out += "* In format_batch(): {}\n".format(
-                fmt(self.iter_format_batch_s.get()))
+                fmt(self.iter_format_batch_s.get())
+            )
             out += "* In user code: {}\n".format(fmt(self.iter_user_s.get()))
             out += "* Total time: {}\n".format(fmt(self.iter_total_s.get()))
         return out
@@ -226,52 +241,52 @@ class DatasetStats:
     def _summarize_blocks(self, blocks: List[BlockMetadata]) -> str:
         exec_stats = [m.exec_stats for m in blocks if m.exec_stats is not None]
         out = "{}/{} blocks executed in {}s\n".format(
-            len(exec_stats), len(blocks), round(self.time_total_s, 2))
+            len(exec_stats), len(blocks), round(self.time_total_s, 2)
+        )
 
         if exec_stats:
-            out += ("* Remote wall time: {} min, {} max, {} mean, {} total\n".
-                    format(
-                        fmt(min([e.wall_time_s for e in exec_stats])),
-                        fmt(max([e.wall_time_s for e in exec_stats])),
-                        fmt(np.mean([e.wall_time_s for e in exec_stats])),
-                        fmt(sum([e.wall_time_s for e in exec_stats]))))
+            out += "* Remote wall time: {} min, {} max, {} mean, {} total\n".format(
+                fmt(min([e.wall_time_s for e in exec_stats])),
+                fmt(max([e.wall_time_s for e in exec_stats])),
+                fmt(np.mean([e.wall_time_s for e in exec_stats])),
+                fmt(sum([e.wall_time_s for e in exec_stats])),
+            )
 
-            out += ("* Remote cpu time: {} min, {} max, {} mean, {} total\n".
-                    format(
-                        fmt(min([e.cpu_time_s for e in exec_stats])),
-                        fmt(max([e.cpu_time_s for e in exec_stats])),
-                        fmt(np.mean([e.cpu_time_s for e in exec_stats])),
-                        fmt(sum([e.cpu_time_s for e in exec_stats]))))
+            out += "* Remote cpu time: {} min, {} max, {} mean, {} total\n".format(
+                fmt(min([e.cpu_time_s for e in exec_stats])),
+                fmt(max([e.cpu_time_s for e in exec_stats])),
+                fmt(np.mean([e.cpu_time_s for e in exec_stats])),
+                fmt(sum([e.cpu_time_s for e in exec_stats])),
+            )
 
-        output_num_rows = [
-            m.num_rows for m in blocks if m.num_rows is not None
-        ]
+        output_num_rows = [m.num_rows for m in blocks if m.num_rows is not None]
         if output_num_rows:
-            out += ("* Output num rows: {} min, {} max, {} mean, {} total\n".
-                    format(
-                        min(output_num_rows), max(output_num_rows),
-                        int(np.mean(output_num_rows)), sum(output_num_rows)))
+            out += "* Output num rows: {} min, {} max, {} mean, {} total\n".format(
+                min(output_num_rows),
+                max(output_num_rows),
+                int(np.mean(output_num_rows)),
+                sum(output_num_rows),
+            )
 
-        output_size_bytes = [
-            m.size_bytes for m in blocks if m.size_bytes is not None
-        ]
+        output_size_bytes = [m.size_bytes for m in blocks if m.size_bytes is not None]
         if output_size_bytes:
-            out += ("* Output size bytes: {} min, {} max, {} mean, {} total\n".
-                    format(
-                        min(output_size_bytes), max(output_size_bytes),
-                        int(np.mean(output_size_bytes)),
-                        sum(output_size_bytes)))
+            out += "* Output size bytes: {} min, {} max, {} mean, {} total\n".format(
+                min(output_size_bytes),
+                max(output_size_bytes),
+                int(np.mean(output_size_bytes)),
+                sum(output_size_bytes),
+            )
 
         if exec_stats:
             node_counts = collections.defaultdict(int)
             for s in exec_stats:
                 node_counts[s.node_id] += 1
-            out += (
-                "* Tasks per node: {} min, {} max, {} mean; {} nodes used\n".
-                format(
-                    min(node_counts.values()), max(node_counts.values()),
-                    int(np.mean(list(node_counts.values()))),
-                    len(node_counts)))
+            out += "* Tasks per node: {} min, {} max, {} mean; {} nodes used\n".format(
+                min(node_counts.values()),
+                max(node_counts.values()),
+                int(np.mean(list(node_counts.values()))),
+                len(node_counts),
+            )
 
         return out
 
@@ -312,14 +327,18 @@ class DatasetPipelineStats:
             out += "\n"
         out += "##### Overall Pipeline Time Breakdown #####\n"
         # Drop the first sample since there's no pipelining there.
-        wait_time_s = self.wait_time_s[1 if exclude_first_window else 0:]
+        wait_time_s = self.wait_time_s[1 if exclude_first_window else 0 :]
         if wait_time_s:
-            out += ("* Time stalled waiting for next dataset: "
-                    "{} min, {} max, {} mean, {} total\n".format(
-                        fmt(min(wait_time_s)), fmt(max(wait_time_s)),
-                        fmt(np.mean(wait_time_s)), fmt(sum(wait_time_s))))
-        out += "* Time in dataset iterator: {}\n".format(
-            fmt(self.iter_wait_s.get()))
+            out += (
+                "* Time stalled waiting for next dataset: "
+                "{} min, {} max, {} mean, {} total\n".format(
+                    fmt(min(wait_time_s)),
+                    fmt(max(wait_time_s)),
+                    fmt(np.mean(wait_time_s)),
+                    fmt(sum(wait_time_s)),
+                )
+            )
+        out += "* Time in dataset iterator: {}\n".format(fmt(self.iter_wait_s.get()))
         out += "* Time in user code: {}\n".format(fmt(self.iter_user_s.get()))
         out += "* Total time: {}\n".format(fmt(self.iter_total_s.get()))
         return out

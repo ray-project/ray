@@ -37,8 +37,9 @@ def _read_yaml(path: str):
         return yaml.safe_load(f)
 
 
-def _update_docker_compose(docker_compose_path: str, project_name: str,
-                           status: Optional[Dict[str, Any]]) -> bool:
+def _update_docker_compose(
+    docker_compose_path: str, project_name: str, status: Optional[Dict[str, Any]]
+) -> bool:
     docker_compose_config = _read_yaml(docker_compose_path)
 
     if not docker_compose_config:
@@ -56,11 +57,13 @@ def _update_docker_compose(docker_compose_path: str, project_name: str,
         cmd = ["down"]
         shutdown = True
     try:
-        subprocess.check_output([
-            "docker", "compose", "-f", docker_compose_path, "-p", project_name
-        ] + cmd + [
-            "--remove-orphans",
-        ])
+        subprocess.check_output(
+            ["docker", "compose", "-f", docker_compose_path, "-p", project_name]
+            + cmd
+            + [
+                "--remove-orphans",
+            ]
+        )
     except Exception as e:
         print(f"Ran into error when updating docker compose: {e}")
         # Ignore error
@@ -68,16 +71,20 @@ def _update_docker_compose(docker_compose_path: str, project_name: str,
     return shutdown
 
 
-def _get_ip(project_name: str,
-            container_name: str,
-            override_network: Optional[str] = None,
-            retry_times: int = 3) -> Optional[str]:
+def _get_ip(
+    project_name: str,
+    container_name: str,
+    override_network: Optional[str] = None,
+    retry_times: int = 3,
+) -> Optional[str]:
     network = override_network or f"{project_name}_ray_local"
 
     cmd = [
-        "docker", "inspect", "-f", "\"{{ .NetworkSettings.Networks"
-        f".{network}.IPAddress"
-        " }}\"", f"{container_name}"
+        "docker",
+        "inspect",
+        "-f",
+        '"{{ .NetworkSettings.Networks' f".{network}.IPAddress" ' }}"',
+        f"{container_name}",
     ]
     for i in range(retry_times):
         try:
@@ -85,24 +92,27 @@ def _get_ip(project_name: str,
         except Exception:
             time.sleep(1)
         else:
-            return ip_address.strip().strip("\"").strip("\\\"")
+            return ip_address.strip().strip('"').strip('\\"')
     return None
 
 
-def _update_docker_status(docker_compose_path: str, project_name: str,
-                          docker_status_path: str):
+def _update_docker_status(
+    docker_compose_path: str, project_name: str, docker_status_path: str
+):
     try:
-        data_str = subprocess.check_output([
-            "docker",
-            "compose",
-            "-f",
-            docker_compose_path,
-            "-p",
-            project_name,
-            "ps",
-            "--format",
-            "json",
-        ])
+        data_str = subprocess.check_output(
+            [
+                "docker",
+                "compose",
+                "-f",
+                docker_compose_path,
+                "-p",
+                project_name,
+                "ps",
+                "--format",
+                "json",
+            ]
+        )
         data: List[Dict[str, str]] = json.loads(data_str)
     except Exception as e:
         print(f"Ran into error when fetching status: {e}")
@@ -125,10 +135,12 @@ def _update_docker_status(docker_compose_path: str, project_name: str,
     return status
 
 
-def monitor_docker(docker_compose_path: str,
-                   status_path: str,
-                   project_name: str,
-                   update_interval: float = 1.):
+def monitor_docker(
+    docker_compose_path: str,
+    status_path: str,
+    project_name: str,
+    update_interval: float = 1.0,
+):
     while not os.path.exists(docker_compose_path):
         # Wait until cluster is created
         time.sleep(0.5)
@@ -141,7 +153,7 @@ def monitor_docker(docker_compose_path: str,
     docker_config = {"force_update": True}
 
     # Force update
-    next_update = time.monotonic() - 1.
+    next_update = time.monotonic() - 1.0
     shutdown = False
     status = None
 
@@ -152,16 +164,16 @@ def monitor_docker(docker_compose_path: str,
         new_docker_config = _read_yaml(docker_compose_path)
         if new_docker_config != docker_config:
             # Update cluster
-            shutdown = _update_docker_compose(docker_compose_path,
-                                              project_name, status)
+            shutdown = _update_docker_compose(docker_compose_path, project_name, status)
 
             # Force status update
-            next_update = time.monotonic() - 1.
+            next_update = time.monotonic() - 1.0
 
         if time.monotonic() > next_update:
             # Update docker status
-            status = _update_docker_status(docker_compose_path, project_name,
-                                           status_path)
+            status = _update_docker_status(
+                docker_compose_path, project_name, status_path
+            )
             next_update = time.monotonic() + update_interval
 
         docker_config = new_docker_config
@@ -176,7 +188,8 @@ def start_monitor(config_file: str):
     provider_config = cluster_config["provider"]
     assert provider_config["type"] == "fake_multinode_docker", (
         f"The docker monitor only works with providers of type "
-        f"`fake_multinode_docker`, got `{provider_config['type']}`")
+        f"`fake_multinode_docker`, got `{provider_config['type']}`"
+    )
 
     project_name = provider_config["project_name"]
 
@@ -188,8 +201,7 @@ def start_monitor(config_file: str):
     shutil.copy(config_file, bootstrap_config_path)
 
     # These two files usually don't exist, yet
-    docker_compose_config_path = os.path.join(volume_dir,
-                                              "docker-compose.yaml")
+    docker_compose_config_path = os.path.join(volume_dir, "docker-compose.yaml")
 
     docker_status_path = os.path.join(volume_dir, "status.json")
 
@@ -204,10 +216,11 @@ def start_monitor(config_file: str):
         with open(docker_status_path, "wt") as f:
             f.write("{}")
 
-    print(f"Starting monitor process. Please start Ray cluster with:\n"
-          f"   RAY_FAKE_CLUSTER=1 ray up {config_file}")
-    monitor_docker(docker_compose_config_path, docker_status_path,
-                   project_name)
+    print(
+        f"Starting monitor process. Please start Ray cluster with:\n"
+        f"   RAY_FAKE_CLUSTER=1 ray up {config_file}"
+    )
+    monitor_docker(docker_compose_config_path, docker_status_path, project_name)
 
 
 if __name__ == "__main__":
@@ -215,7 +228,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "config_file",
         help="Path to cluster config file containing a fake docker "
-        "cluster configuration.")
+        "cluster configuration.",
+    )
     args = parser.parse_args()
 
     start_monitor(args.config_file)

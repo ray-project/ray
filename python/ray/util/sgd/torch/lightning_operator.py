@@ -3,8 +3,7 @@ import logging
 
 import torch
 from pytorch_lightning.core.step_result import Result
-from pytorch_lightning.overrides.data_parallel import \
-    LightningDistributedDataParallel
+from pytorch_lightning.overrides.data_parallel import LightningDistributedDataParallel
 from pytorch_lightning.utilities.model_utils import is_overridden
 from pytorch_lightning.trainer.model_hooks import TrainerModelHooksMixin
 from pytorch_lightning.trainer.optimizers import TrainerOptimizersMixin
@@ -13,8 +12,11 @@ from pytorch_lightning.utilities.exceptions import MisconfigurationException
 from pytorch_lightning.utilities.memory import recursive_detach
 from ray.util.annotations import Deprecated
 from ray.util.sgd.torch import TrainingOperator
-from ray.util.sgd.torch.constants import NUM_STEPS, SCHEDULER_STEP_BATCH, \
-    SCHEDULER_STEP_EPOCH
+from ray.util.sgd.torch.constants import (
+    NUM_STEPS,
+    SCHEDULER_STEP_BATCH,
+    SCHEDULER_STEP_EPOCH,
+)
 from ray.util.sgd.utils import AverageMeterCollection, NUM_SAMPLES
 
 tqdm = None
@@ -27,8 +29,9 @@ logger = logging.getLogger(__name__)
 
 
 @Deprecated
-class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
-                        TrainerOptimizersMixin):
+class LightningOperator(
+    TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMixin
+):
     """A subclass of TrainingOperator created from a PTL ``LightningModule``.
 
     This class is returned by `TrainingOperator.from_ptl` and it's training
@@ -51,8 +54,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         assert len(models) == 1
         model = models[0]
         assert isinstance(model, ptl.LightningModule)
-        model, optimizers = model.configure_apex(
-            amp, model, optimizers, amp_level="O2")
+        model, optimizers = model.configure_apex(amp, model, optimizers, amp_level="O2")
         return [model], optimizers
 
     def _configure_ddp(self, models, device_ids, ddp_args=None):
@@ -60,7 +62,8 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         model = models[0]
         assert isinstance(model, ptl.LightningModule)
         model = LightningDistributedDataParallel(
-            model, device_ids=device_ids, find_unused_parameters=True)
+            model, device_ids=device_ids, find_unused_parameters=True
+        )
         return [model]
 
     @property
@@ -110,9 +113,11 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         # Pass in config if ptl_module accepts it.
         ptl_class = self.__class__._lightning_module_cls
         if not issubclass(ptl_class, ptl.LightningModule):
-            raise TypeError("Argument must be subclass of "
-                            "pytorch_lightning.LightningModule. Got class {} "
-                            "instead.".format(ptl_class))
+            raise TypeError(
+                "Argument must be subclass of "
+                "pytorch_lightning.LightningModule. Got class {} "
+                "instead.".format(ptl_class)
+            )
         if "config" in inspect.signature(ptl_class.__init__).parameters:
             ptl_module = ptl_class(config=config)
         else:
@@ -127,7 +132,8 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
 
         # Only run data preparation once per node.
         if self.local_rank == 0 and self.is_function_implemented(
-                "prepare_data", ptl_module):
+            "prepare_data", ptl_module
+        ):
             ptl_module.prepare_data()
 
         # Call model.setup.
@@ -135,31 +141,41 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
 
         if not is_overridden("configure_optimizers", ptl_module):
             raise MisconfigurationException(
-                "No `configure_optimizers()` method defined.")
+                "No `configure_optimizers()` method defined."
+            )
 
-        optimizers, self._scheduler_dicts, optimizer_frequencies = \
-            self.init_optimizers(model=ptl_module)
+        optimizers, self._scheduler_dicts, optimizer_frequencies = self.init_optimizers(
+            model=ptl_module
+        )
 
         if len(optimizer_frequencies) > 0:
-            logger.warning("Optimizer frequencies will be ignored. When "
-                           "passing in multiple optimizers, you should "
-                           "implement your own custom training loop.")
+            logger.warning(
+                "Optimizer frequencies will be ignored. When "
+                "passing in multiple optimizers, you should "
+                "implement your own custom training loop."
+            )
 
         lr_schedulers = []
         for scheduler in self.scheduler_dicts:
             if isinstance(scheduler, dict):
                 # A scheduler dictionary is passed in.
-                if "reduce_on_plateau" in scheduler and "monitor" in \
-                        scheduler and scheduler["reduce_on_plateau"] is True:
+                if (
+                    "reduce_on_plateau" in scheduler
+                    and "monitor" in scheduler
+                    and scheduler["reduce_on_plateau"] is True
+                ):
                     logger.info(
                         "reduce_on_plateau and monitor will be "
                         "ignored "
                         "from the scheduler dict {}. To update a "
                         "ReduceLROnPlateau scheduler, you should use "
-                        "TorchTrainer.update_schedulers.".format(scheduler))
+                        "TorchTrainer.update_schedulers.".format(scheduler)
+                    )
                 if "frequency" in scheduler and scheduler["frequency"] > 1:
-                    logger.info("frequency will be ignored from the "
-                                "scheduler dict {}.".format(scheduler))
+                    logger.info(
+                        "frequency will be ignored from the "
+                        "scheduler dict {}.".format(scheduler)
+                    )
                 lr_schedulers.append(scheduler["scheduler"])
             else:
                 lr_schedulers.append(scheduler)
@@ -167,9 +183,8 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         # Set this so register doesn't complain.
         self._scheduler_step_freq = "ptl"
         ddp_model, self._optimizers, self._schedulers = self.register(
-            models=[ptl_module],
-            optimizers=optimizers,
-            schedulers=lr_schedulers)
+            models=[ptl_module], optimizers=optimizers, schedulers=lr_schedulers
+        )
 
         assert len(ddp_model) == 1
         self._model = ddp_model[0]
@@ -191,7 +206,8 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
             val_data_loader = model.val_dataloader()
 
         self.register_data(
-            train_loader=train_data_loader, validation_loader=val_data_loader)
+            train_loader=train_data_loader, validation_loader=val_data_loader
+        )
 
     def train_epoch(self, iterator, info):
         model = self.get_model()
@@ -219,17 +235,13 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                 if hasattr(iterator, "__len__"):
                     total = len(iterator)
 
-            _progress_bar = tqdm(
-                total=total, desc=desc, unit="batch", leave=False)
+            _progress_bar = tqdm(total=total, desc=desc, unit="batch", leave=False)
 
         # Output for each batch.
         epoch_outputs = []
 
         for batch_idx, batch in enumerate(iterator):
-            batch_info = {
-                "batch_idx": batch_idx,
-                "global_step": self.global_step
-            }
+            batch_info = {"batch_idx": batch_idx, "global_step": self.global_step}
             batch_info.update(info)
             batch_output = self.train_batch(batch, batch_info=batch_info)
             # batch output for each optimizer.
@@ -244,8 +256,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                     postfix.update(loss=batch_output["training_loss"])
                 _progress_bar.set_postfix(postfix)
 
-            for s_dict, scheduler in zip(self.scheduler_dicts,
-                                         self.schedulers):
+            for s_dict, scheduler in zip(self.scheduler_dicts, self.schedulers):
                 if s_dict["interval"] == SCHEDULER_STEP_BATCH:
                     scheduler.step()
 
@@ -263,14 +274,18 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
             if isinstance(processed_outputs, torch.Tensor):
                 return_output = {"train_loss": processed_outputs}
             elif isinstance(processed_outputs, Result):
-                raise ValueError("Result objects are not supported. Please "
-                                 "return a dictionary instead.")
+                raise ValueError(
+                    "Result objects are not supported. Please "
+                    "return a dictionary instead."
+                )
             elif isinstance(processed_outputs, dict):
                 return_output = processed_outputs
             else:
-                raise TypeError("training_epoch_end returned an invalid "
-                                "type. It must return a Tensor, Result, "
-                                "or dict.")
+                raise TypeError(
+                    "training_epoch_end returned an invalid "
+                    "type. It must return a Tensor, Result, "
+                    "or dict."
+                )
         else:
             # User did not override training_epoch_end
             assert isinstance(epoch_outputs, list)
@@ -282,14 +297,13 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                 if isinstance(raw_output, dict):
                     meter_collection.update(raw_output, num_samples)
                 elif isinstance(raw_output, torch.Tensor):
-                    meter_collection.update({
-                        "train_loss": o["training_loss"]
-                    }, num_samples)
+                    meter_collection.update(
+                        {"train_loss": o["training_loss"]}, num_samples
+                    )
                 return_output = meter_collection.summary()
 
         if self.is_function_implemented("on_train_epoch_end", model):
-            model.on_train_epoch_end(
-                [eo.get("raw_output") for eo in epoch_outputs])
+            model.on_train_epoch_end([eo.get("raw_output") for eo in epoch_outputs])
 
         for s_dict, scheduler in zip(self.scheduler_dicts, self.schedulers):
             if s_dict["interval"] == SCHEDULER_STEP_EPOCH:
@@ -306,7 +320,8 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
 
         if self.is_function_implemented("on_train_batch_start", model):
             response = model.on_train_batch_start(
-                batch=batch, batch_idx=batch_idx, dataloader_idx=0)
+                batch=batch, batch_idx=batch_idx, dataloader_idx=0
+            )
             # Skip remainder of epoch if response is -1.
             if response == -1:
                 return {"signal": -1}
@@ -335,8 +350,10 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                 output = model.training_step(*args)
 
         if isinstance(output, Result):
-            raise ValueError("TrainResult objects are not supported. Please "
-                             "return a dictionary instead.")
+            raise ValueError(
+                "TrainResult objects are not supported. Please "
+                "return a dictionary instead."
+            )
 
         # allow any mode to define training_step_end
         # do something will all the dp outputs (like softmax)
@@ -352,7 +369,8 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
             else:
                 raise RuntimeError(
                     "No `loss` value in the dictionary returned from "
-                    "`model.training_step()`.")
+                    "`model.training_step()`."
+                )
 
         # If output contains tensors, detach them all.
         if isinstance(output, torch.Tensor):
@@ -360,8 +378,10 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         elif isinstance(output, dict):
             output = recursive_detach(output)
         else:
-            raise TypeError("training_step returned invalid type. It must "
-                            "return either a Tensor, Result, or dict.")
+            raise TypeError(
+                "training_step returned invalid type. It must "
+                "return either a Tensor, Result, or dict."
+            )
 
         untouched_loss = loss.detach().clone()
 
@@ -381,17 +401,13 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         model.on_before_zero_grad(optimizer)
 
         model.optimizer_zero_grad(
-            epoch=epoch_idx,
-            batch_idx=batch_idx,
-            optimizer=optimizer,
-            optimizer_idx=0)
+            epoch=epoch_idx, batch_idx=batch_idx, optimizer=optimizer, optimizer_idx=0
+        )
 
         if self.is_function_implemented("on_train_batch_end", model):
             model.on_train_batch_end(
-                outputs=output,
-                batch=batch,
-                batch_idx=batch_idx,
-                dataloader_idx=0)
+                outputs=output, batch=batch, batch_idx=batch_idx, dataloader_idx=0
+            )
 
         return {
             "signal": 0,
@@ -427,14 +443,18 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
             if isinstance(processed_outputs, torch.Tensor):
                 return_output = {"val_loss": processed_outputs}
             elif isinstance(processed_outputs, Result):
-                raise ValueError("Result objects are not supported. Please "
-                                 "return a dictionary instead.")
+                raise ValueError(
+                    "Result objects are not supported. Please "
+                    "return a dictionary instead."
+                )
             elif isinstance(processed_outputs, dict):
                 return_output = processed_outputs
             else:
-                raise TypeError("validation_epoch_end returned an invalid "
-                                "type. It must return a Tensor, Result, "
-                                "or dict.")
+                raise TypeError(
+                    "validation_epoch_end returned an invalid "
+                    "type. It must return a Tensor, Result, "
+                    "or dict."
+                )
         else:
             # User did not override training_epoch_end
             assert isinstance(val_outputs, list)
@@ -446,9 +466,9 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                 if isinstance(raw_output, dict):
                     meter_collection.update(raw_output, num_samples)
                 elif isinstance(raw_output, torch.Tensor):
-                    meter_collection.update({
-                        "val_loss": raw_output.item()
-                    }, num_samples)
+                    meter_collection.update(
+                        {"val_loss": raw_output.item()}, num_samples
+                    )
                 return_output = meter_collection.summary()
 
         if self.is_function_implemented("on_validation_epoch_end", model):
@@ -464,7 +484,8 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         batch_idx = batch_info["batch_idx"]
         if is_overridden("on_validation_batch_start", model):
             model.on_validation_batch_start(
-                batch=batch, batch_idx=batch_idx, dataloader_idx=0)
+                batch=batch, batch_idx=batch_idx, dataloader_idx=0
+            )
         args = [batch, batch_idx]
         with self.timers.record("eval_fwd"):
             if self._is_distributed:
@@ -481,18 +502,18 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                 output = model.validation_step(*args)
 
         if isinstance(output, Result):
-            raise ValueError("EvalResult objects are not supported. Please "
-                             "return a dictionary instead.")
+            raise ValueError(
+                "EvalResult objects are not supported. Please "
+                "return a dictionary instead."
+            )
 
         if is_overridden("on_validation_step_end", model):
             output = model.validation_step_end(output)
 
         if self.is_function_implemented("on_validation_batch_end", model):
             model.on_validation_batch_end(
-                outputs=output,
-                batch=batch,
-                batch_idx=batch_idx,
-                dataloader_idx=0)
+                outputs=output, batch=batch, batch_idx=batch_idx, dataloader_idx=0
+            )
         return {
             "raw_output": output,
             # NUM_SAMPLES: len(batch)
@@ -507,21 +528,23 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
         self.get_model().on_load_checkpoint(checkpoint=state_dict)
 
     def _get_train_loader(self):
-        if not hasattr(self, "_train_loader") or \
-                self._train_loader is None:
-            raise RuntimeError("Training Operator does not have any "
-                               "registered training loader. Make sure "
-                               "to pass in a training loader to "
-                               "TrainingOperator.from_ptl or implement "
-                               "train_dataloader in your LightningModule.")
+        if not hasattr(self, "_train_loader") or self._train_loader is None:
+            raise RuntimeError(
+                "Training Operator does not have any "
+                "registered training loader. Make sure "
+                "to pass in a training loader to "
+                "TrainingOperator.from_ptl or implement "
+                "train_dataloader in your LightningModule."
+            )
         return self._train_loader
 
     def _get_validation_loader(self):
-        if not hasattr(self, "_validation_loader") or \
-                self._validation_loader is None:
-            raise RuntimeError("Training Operator does not have any "
-                               "registered validation loader. Make sure "
-                               "to pass in a validation loader to "
-                               "TrainingOperator.from_ptl or implement "
-                               "val_dataloader in your LightningModule.")
+        if not hasattr(self, "_validation_loader") or self._validation_loader is None:
+            raise RuntimeError(
+                "Training Operator does not have any "
+                "registered validation loader. Make sure "
+                "to pass in a validation loader to "
+                "TrainingOperator.from_ptl or implement "
+                "val_dataloader in your LightningModule."
+            )
         return self._validation_loader

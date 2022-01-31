@@ -94,16 +94,7 @@ void LocalResourceManager::AddLocalResourceInstances(
 }
 
 void LocalResourceManager::DeleteLocalResource(const std::string &resource_name) {
-  int idx = -1;
-  if (resource_name == ray::kCPU_ResourceLabel) {
-    idx = (int)CPU;
-  } else if (resource_name == ray::kGPU_ResourceLabel) {
-    idx = (int)GPU;
-  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
-    idx = (int)OBJECT_STORE_MEM;
-  } else if (resource_name == ray::kMemory_ResourceLabel) {
-    idx = (int)MEM;
-  };
+  int idx = GetPredefinedResourceIndex(resource_name);
   if (idx != -1) {
     for (auto &total : local_resources_.predefined_resources[idx].total) {
       total = 0;
@@ -124,16 +115,7 @@ void LocalResourceManager::DeleteLocalResource(const std::string &resource_name)
 }
 
 bool LocalResourceManager::IsAvailableResourceEmpty(const std::string &resource_name) {
-  int idx = -1;
-  if (resource_name == ray::kCPU_ResourceLabel) {
-    idx = (int)CPU;
-  } else if (resource_name == ray::kGPU_ResourceLabel) {
-    idx = (int)GPU;
-  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
-    idx = (int)OBJECT_STORE_MEM;
-  } else if (resource_name == ray::kMemory_ResourceLabel) {
-    idx = (int)MEM;
-  };
+  int idx = GetPredefinedResourceIndex(resource_name);
 
   if (idx != -1) {
     return FixedPoint::Sum(local_resources_.predefined_resources[idx].available) <= 0;
@@ -358,8 +340,6 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
       return false;
     }
   }
-
-  OnResourceChanged();
   return true;
 }
 
@@ -378,7 +358,6 @@ void LocalResourceManager::FreeTaskResourceInstances(
       AddAvailableResourceInstances(task_allocation_custom_resource.second, &it->second);
     }
   }
-  OnResourceChanged();
 }
 
 std::vector<double> LocalResourceManager::AddCPUResourceInstances(
@@ -656,24 +635,15 @@ std::string LocalResourceManager::SerializedTaskResourceInstances(
   return buffer.str();
 }
 
-void LocalResourceManager::UpdateLastResourceUsage(
-    std::shared_ptr<SchedulingResources> gcs_resources) {
+void LocalResourceManager::ResetLastReportResourceUsage(
+    const SchedulingResources &replacement) {
   last_report_resources_ = std::make_unique<NodeResources>(ResourceMapToNodeResources(
-      resource_name_to_id_, gcs_resources->GetTotalResources().GetResourceMap(),
-      gcs_resources->GetAvailableResources().GetResourceMap()));
+      resource_name_to_id_, replacement.GetTotalResources().GetResourceMap(),
+      replacement.GetAvailableResources().GetResourceMap()));
 }
 
 bool LocalResourceManager::ResourcesExist(const std::string &resource_name) {
-  int idx = -1;
-  if (resource_name == ray::kCPU_ResourceLabel) {
-    idx = (int)CPU;
-  } else if (resource_name == ray::kGPU_ResourceLabel) {
-    idx = (int)GPU;
-  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
-    idx = (int)OBJECT_STORE_MEM;
-  } else if (resource_name == ray::kMemory_ResourceLabel) {
-    idx = (int)MEM;
-  };
+  int idx = GetPredefinedResourceIndex(resource_name);
   if (idx != -1) {
     // Return true directly for predefined resources as we always initialize this kind of
     // resources at the beginning.
@@ -683,6 +653,20 @@ bool LocalResourceManager::ResourcesExist(const std::string &resource_name) {
     const auto &it = local_resources_.custom_resources.find(resource_id);
     return it != local_resources_.custom_resources.end();
   }
+}
+
+int GetPredefinedResourceIndex(const std::string &resource_name) {
+  int idx = -1;
+  if (resource_name == ray::kCPU_ResourceLabel) {
+    idx = (int)ray::CPU;
+  } else if (resource_name == ray::kGPU_ResourceLabel) {
+    idx = (int)ray::GPU;
+  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
+    idx = (int)ray::OBJECT_STORE_MEM;
+  } else if (resource_name == ray::kMemory_ResourceLabel) {
+    idx = (int)ray::MEM;
+  };
+  return idx;
 }
 
 }  // namespace ray

@@ -84,18 +84,18 @@ class PBTBenchmarkExample(tune.Trainable):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     parser.add_argument(
-        "--cluster",
-        action="store_true",
-        help="Distribute tuning on a cluster")
+        "--cluster", action="store_true", help="Distribute tuning on a cluster"
+    )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using " "Ray Client.",
+    )
     args, _ = parser.parse_known_args()
 
     if args.server_address:
@@ -115,7 +115,8 @@ if __name__ == "__main__":
             "lr": lambda: random.uniform(0.0001, 0.02),
             # allow perturbations within this set of categorical values
             "some_other_factor": [1, 2],
-        })
+        },
+    )
 
     analysis = tune.run(
         PBTBenchmarkExample,
@@ -135,6 +136,7 @@ if __name__ == "__main__":
             # note: this parameter is perturbed but has no effect on
             # the model training in this example
             "some_other_factor": 1,
-        })
+        },
+    )
 
     print("Best hyperparameters found were: ", analysis.best_config)
