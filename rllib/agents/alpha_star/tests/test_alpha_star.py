@@ -17,7 +17,7 @@ register_env("connect_four",
 class TestAlphaStar(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=20)
+        ray.init()#num_cpus=20)
 
     @classmethod
     def tearDownClass(cls):
@@ -50,7 +50,7 @@ class TestAlphaStar(unittest.TestCase):
             "use_kl_loss": True,
         }
 
-        num_iterations = 2
+        num_iterations = 200
 
         for _ in framework_iterator(config, frameworks=("tf2", )):
             _config = config.copy()
@@ -58,7 +58,7 @@ class TestAlphaStar(unittest.TestCase):
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
-                pprint.pprint(results)
+                #pprint.pprint(results)
             check_compute_single_action(trainer)
             trainer.stop()
 

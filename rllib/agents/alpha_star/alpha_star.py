@@ -181,7 +181,10 @@ class AlphaStarTrainer(appo.APPOTrainer):
     def setup(self, config: PartialTrainerConfigDict):
         # Call super's setup to validate config, create RolloutWorkers
         # (train and eval), etc..
+        num_gpus_saved = config["num_gpus"]
+        config["num_gpus"] = min(config["num_gpus"], 1)
         super().setup(config)
+        self.config["num_gpus"] = num_gpus_saved
 
         # AlphaStar specific setup:
         # - Create n policy learner actors (@ray.remote-converted Policies) on
@@ -310,8 +313,13 @@ class AlphaStarTrainer(appo.APPOTrainer):
 
             policy_weights_ref = ray.put(policy_weights)
 
+            global_vars = {
+                "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
+                "win_rates": self.win_rates,
+            }
+
             for worker in self.workers.remote_workers():
-                worker.set_weights.remote(policy_weights_ref)
+                worker.set_weights.remote(policy_weights_ref, global_vars)
 
         return train_infos
 
@@ -429,7 +437,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
                         # Play against any non-trainable policy (excluding itself).
                         all_opponents = list(non_trainable_policies)
                         probs = softmax(
-                            [worker.win_rates[pid] for pid in all_opponents])
+                            [worker.global_vars["win_rates"][pid] for pid in all_opponents])
                         opponent = np.random.choice(all_opponents, p=probs)
                         print(
                             f"{league_exploiter} (training) vs {opponent} (frozen)"
@@ -460,7 +468,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
                                 for p in list(range(1, num_main_policies))
                             ]
                             probs = softmax([
-                                worker.win_rates[pid] for pid in all_opponents
+                                worker.global_vars["win_rates"][pid] for pid in all_opponents
                             ])
                             main = np.random.choice(all_opponents, p=probs)
                             training = "frozen"
