@@ -13,6 +13,8 @@ from horovod.ray.utils import detect_nics, nics_to_env_var
 from horovod.runner.common.util import secret, timeout
 from ray.util import PublicAPI
 
+from .accelerators import Accelerator, HorovodAccelerator
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,6 +71,10 @@ class HorovodConfig(BackendConfig):
     @property
     def backend_cls(self):
         return HorovodBackend
+
+    @property
+    def default_accelerator_factory(self) -> Callable[[], Accelerator]:
+        return HorovodAccelerator
 
 
 def init_env_vars(world_rank: int, world_size: int, node_id: str):
