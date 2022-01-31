@@ -19,7 +19,7 @@ register_env("connect_four", lambda _: OpenSpielEnv(pyspiel.load_game("connect_f
 class TestAlphaStar(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()  # num_cpus=20)
+        ray.init(local_mode=True)#TODO  # num_cpus=20)
 
     @classmethod
     def tearDownClass(cls):
@@ -44,7 +44,7 @@ class TestAlphaStar(unittest.TestCase):
             "replay_buffer_capacity": 10,
             "replay_buffer_replay_ratio": 0.0,
             # Two GPUs -> 2 policies per GPU.
-            "num_gpus": 1,
+            "num_gpus": 4,
             "_fake_gpus": True,
             # Test with KL loss, just to cover that extra code.
             "use_kl_loss": True,
