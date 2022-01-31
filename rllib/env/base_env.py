@@ -1,12 +1,10 @@
 import logging
-from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING,\
-    Union, Set
+from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING, Union, Set
 
 import gym
 import ray
 from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
-from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, \
-    MultiEnvDict
+from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, MultiEnvDict
 
 if TYPE_CHECKING:
     from ray.rllib.models.preprocessors import Preprocessor
@@ -78,11 +76,11 @@ class BaseEnv:
     """
 
     def to_base_env(
-            self,
-            make_env: Callable[[int], EnvType] = None,
-            num_envs: int = 1,
-            remote_envs: bool = False,
-            remote_env_batch_wait_ms: int = 0,
+        self,
+        make_env: Optional[Callable[[int], EnvType]] = None,
+        num_envs: int = 1,
+        remote_envs: bool = False,
+        remote_env_batch_wait_ms: int = 0,
     ) -> "BaseEnv":
         """Converts an RLlib-supported env into a BaseEnv object.
 
@@ -123,8 +121,9 @@ class BaseEnv:
         return self
 
     @PublicAPI
-    def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
-                            MultiEnvDict, MultiEnvDict]:
+    def poll(
+        self,
+    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
         """Returns observations from ready agents.
 
         All return values are two-level dicts mapping from EnvID to dicts
@@ -159,8 +158,9 @@ class BaseEnv:
         raise NotImplementedError
 
     @PublicAPI
-    def try_reset(self, env_id: Optional[EnvID] = None
-                  ) -> Optional[Union[MultiAgentDict, MultiEnvDict]]:
+    def try_reset(
+        self, env_id: Optional[EnvID] = None
+    ) -> Optional[Union[MultiAgentDict, MultiEnvDict]]:
         """Attempt to reset the sub-env with the given id or all sub-envs.
 
         If the environment does not support synchronous reset, None can be
@@ -183,8 +183,7 @@ class BaseEnv:
         return None
 
     @PublicAPI
-    def get_sub_environments(
-            self, as_dict: bool = False) -> Union[List[EnvType], dict]:
+    def get_sub_environments(self, as_dict: bool = False) -> Union[List[EnvType], dict]:
         """Return a reference to the underlying sub environments, if any.
 
         Args:
@@ -290,8 +289,9 @@ class BaseEnv:
         return {}
 
     @PublicAPI
-    def last(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
-                            MultiEnvDict, MultiEnvDict]:
+    def last(
+        self,
+    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
         """Returns the last observations, rewards, and done flags that were
             returned by the environment.
 
@@ -340,8 +340,7 @@ class BaseEnv:
         agents = set(self.get_agent_ids())
         for multi_agent_dict in x.values():
             for agent_id, obs in multi_agent_dict:
-                if (agent_id not in agents) or (
-                        not space[agent_id].contains(obs)):
+                if (agent_id not in agents) or (not space[agent_id].contains(obs)):
                     return False
 
         return True
@@ -352,29 +351,31 @@ _DUMMY_AGENT_ID = "agent0"
 
 
 @Deprecated(new="with_dummy_agent_id", error=False)
-def _with_dummy_agent_id(env_id_to_values: Dict[EnvID, Any],
-                         dummy_id: "AgentID" = _DUMMY_AGENT_ID
-                         ) -> MultiEnvDict:
+def _with_dummy_agent_id(
+    env_id_to_values: Dict[EnvID, Any], dummy_id: "AgentID" = _DUMMY_AGENT_ID
+) -> MultiEnvDict:
     return {k: {dummy_id: v} for (k, v) in env_id_to_values.items()}
 
 
-def with_dummy_agent_id(env_id_to_values: Dict[EnvID, Any],
-                        dummy_id: "AgentID" = _DUMMY_AGENT_ID) -> MultiEnvDict:
+def with_dummy_agent_id(
+    env_id_to_values: Dict[EnvID, Any], dummy_id: "AgentID" = _DUMMY_AGENT_ID
+) -> MultiEnvDict:
     return {k: {dummy_id: v} for (k, v) in env_id_to_values.items()}
 
 
 @Deprecated(
     old="ray.rllib.env.base_env._ExternalEnvToBaseEnv",
     new="ray.rllib.env.external.ExternalEnvWrapper",
-    error=False)
+    error=False,
+)
 class _ExternalEnvToBaseEnv(BaseEnv):
     """Internal adapter of ExternalEnv to BaseEnv."""
 
-    def __init__(self,
-                 external_env: "ExternalEnv",
-                 preprocessor: "Preprocessor" = None):
-        from ray.rllib.env.external_multi_agent_env import \
-            ExternalMultiAgentEnv
+    def __init__(
+        self, external_env: "ExternalEnv", preprocessor: "Preprocessor" = None
+    ):
+        from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
+
         self.external_env = external_env
         self.prep = preprocessor
         self.multiagent = issubclass(type(external_env), ExternalMultiAgentEnv)
@@ -386,8 +387,9 @@ class _ExternalEnvToBaseEnv(BaseEnv):
         external_env.start()
 
     @override(BaseEnv)
-    def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
-                            MultiEnvDict, MultiEnvDict]:
+    def poll(
+        self,
+    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
         with self.external_env._results_avail_condition:
             results = self._poll()
             while len(results[0]) == 0:
@@ -396,9 +398,10 @@ class _ExternalEnvToBaseEnv(BaseEnv):
                 if not self.external_env.is_alive():
                     raise Exception("Serving thread has stopped.")
         limit = self.external_env._max_concurrent_episodes
-        assert len(results[0]) < limit, \
-            ("Too many concurrent episodes, were some leaked? This "
-             "ExternalEnv was created with max_concurrent={}".format(limit))
+        assert len(results[0]) < limit, (
+            "Too many concurrent episodes, were some leaked? This "
+            "ExternalEnv was created with max_concurrent={}".format(limit)
+        )
         return results
 
     @override(BaseEnv)
@@ -409,16 +412,21 @@ class _ExternalEnvToBaseEnv(BaseEnv):
         else:
             for env_id, action in action_dict.items():
                 self.external_env._episodes[env_id].action_queue.put(
-                    action[_DUMMY_AGENT_ID])
+                    action[_DUMMY_AGENT_ID]
+                )
 
-    def _poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
-                             MultiEnvDict, MultiEnvDict]:
+    def _poll(
+        self,
+    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
         all_obs, all_rewards, all_dones, all_infos = {}, {}, {}, {}
         off_policy_actions = {}
         for eid, episode in self.external_env._episodes.copy().items():
             data = episode.get_data()
-            cur_done = episode.cur_done_dict[
-                "__all__"] if self.multiagent else episode.cur_done
+            cur_done = (
+                episode.cur_done_dict["__all__"]
+                if self.multiagent
+                else episode.cur_done
+            )
             if cur_done:
                 del self.external_env._episodes[eid]
             if data:
@@ -444,20 +452,22 @@ class _ExternalEnvToBaseEnv(BaseEnv):
                     fix(all_rewards, 0.0)
                     fix(all_dones, False)
                     fix(all_infos, {})
-            return (all_obs, all_rewards, all_dones, all_infos,
-                    off_policy_actions)
+            return (all_obs, all_rewards, all_dones, all_infos, off_policy_actions)
         else:
-            return _with_dummy_agent_id(all_obs), \
-                _with_dummy_agent_id(all_rewards), \
-                _with_dummy_agent_id(all_dones, "__all__"), \
-                _with_dummy_agent_id(all_infos), \
-                _with_dummy_agent_id(off_policy_actions)
+            return (
+                _with_dummy_agent_id(all_obs),
+                _with_dummy_agent_id(all_rewards),
+                _with_dummy_agent_id(all_dones, "__all__"),
+                _with_dummy_agent_id(all_infos),
+                _with_dummy_agent_id(off_policy_actions),
+            )
 
 
 @Deprecated(
     old="ray.rllib.env.base_env._VectorEnvToBaseEnv",
     new="ray.rllib.env.vector_env.VectorEnvWrapper",
-    error=False)
+    error=False,
+)
 class _VectorEnvToBaseEnv(BaseEnv):
     """Internal adapter of VectorEnv to BaseEnv.
 
@@ -477,8 +487,9 @@ class _VectorEnvToBaseEnv(BaseEnv):
         self.cur_infos = [None for _ in range(self.num_envs)]
 
     @override(BaseEnv)
-    def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
-                            MultiEnvDict, MultiEnvDict]:
+    def poll(
+        self,
+    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
         if self.new_obs is None:
             self.new_obs = self.vector_env.vector_reset()
         new_obs = dict(enumerate(self.new_obs))
@@ -489,18 +500,25 @@ class _VectorEnvToBaseEnv(BaseEnv):
         self.cur_rewards = []
         self.cur_dones = []
         self.cur_infos = []
-        return _with_dummy_agent_id(new_obs), \
-            _with_dummy_agent_id(rewards), \
-            _with_dummy_agent_id(dones, "__all__"), \
-            _with_dummy_agent_id(infos), {}
+        return (
+            _with_dummy_agent_id(new_obs),
+            _with_dummy_agent_id(rewards),
+            _with_dummy_agent_id(dones, "__all__"),
+            _with_dummy_agent_id(infos),
+            {},
+        )
 
     @override(BaseEnv)
     def send_actions(self, action_dict: MultiEnvDict) -> None:
         action_vector = [None] * self.num_envs
         for i in range(self.num_envs):
             action_vector[i] = action_dict[i][_DUMMY_AGENT_ID]
-        self.new_obs, self.cur_rewards, self.cur_dones, self.cur_infos = \
-            self.vector_env.vector_step(action_vector)
+        (
+            self.new_obs,
+            self.cur_rewards,
+            self.cur_dones,
+            self.cur_infos,
+        ) = self.vector_env.vector_step(action_vector)
 
     @override(BaseEnv)
     def try_reset(self, env_id: Optional[EnvID] = None) -> MultiAgentDict:
@@ -520,15 +538,20 @@ class _VectorEnvToBaseEnv(BaseEnv):
 @Deprecated(
     old="ray.rllib.env.base_env._MultiAgentEnvToBaseEnv",
     new="ray.rllib.env.multi_agent_env.MultiAgentEnvWrapper",
-    error=False)
+    error=False,
+)
 class _MultiAgentEnvToBaseEnv(BaseEnv):
     """Internal adapter of MultiAgentEnv to BaseEnv.
 
     This also supports vectorization if num_envs > 1.
     """
 
-    def __init__(self, make_env: Callable[[int], EnvType],
-                 existing_envs: "MultiAgentEnv", num_envs: int):
+    def __init__(
+        self,
+        make_env: Callable[[int], EnvType],
+        existing_envs: "MultiAgentEnv",
+        num_envs: int,
+    ):
         """Wraps MultiAgentEnv(s) into the BaseEnv API.
 
         Args:
@@ -542,6 +565,7 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
                 `existing_envs`.
         """
         from ray.rllib.env.multi_agent_env import MultiAgentEnv
+
         self.make_env = make_env
         self.envs = existing_envs
         self.num_envs = num_envs
@@ -553,8 +577,9 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
         self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
 
     @override(BaseEnv)
-    def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
-                            MultiEnvDict, MultiEnvDict]:
+    def poll(
+        self,
+    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
         obs, rewards, dones, infos = {}, {}, {}, {}
         for i, env_state in enumerate(self.env_states):
             obs[i], rewards[i], dones[i], infos[i] = env_state.poll()
@@ -574,19 +599,21 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
             # Allow `__common__` entry in `infos` for data unrelated with any
             # agent, but rather with the environment itself.
             if set(infos).difference(set(obs) | {"__common__"}):
-                raise ValueError("Key set for infos must be a subset of obs: "
-                                 "{} vs {}".format(infos.keys(), obs.keys()))
+                raise ValueError(
+                    "Key set for infos must be a subset of obs: "
+                    "{} vs {}".format(infos.keys(), obs.keys())
+                )
             if "__all__" not in dones:
                 raise ValueError(
                     "In multi-agent environments, '__all__': True|False must "
-                    "be included in the 'done' dict: got {}.".format(dones))
+                    "be included in the 'done' dict: got {}.".format(dones)
+                )
             if dones["__all__"]:
                 self.dones.add(env_id)
             self.env_states[env_id].observe(obs, rewards, dones, infos)
 
     @override(BaseEnv)
-    def try_reset(self,
-                  env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
+    def try_reset(self, env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
         obs = self.env_states[env_id].reset()
         assert isinstance(obs, dict), "Not a multi-agent obs"
         if obs is not None and env_id in self.dones:
@@ -608,16 +635,18 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
 @Deprecated(
     old="ray.rllib.env.base_env._MultiAgentEnvState",
     new="ray.rllib.env.multi_agent_env._MultiAgentEnvState",
-    error=False)
+    error=False,
+)
 class _MultiAgentEnvState:
     def __init__(self, env: "MultiAgentEnv"):
         from ray.rllib.env.multi_agent_env import MultiAgentEnv
+
         assert isinstance(env, MultiAgentEnv)
         self.env = env
         self.initialized = False
 
     def poll(
-            self
+        self,
     ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
         if not self.initialized:
             self.reset()
@@ -654,8 +683,13 @@ class _MultiAgentEnvState:
         self.last_dones["__all__"] = False
         return observations, rewards, dones, infos
 
-    def observe(self, obs: MultiAgentDict, rewards: MultiAgentDict,
-                dones: MultiAgentDict, infos: MultiAgentDict):
+    def observe(
+        self,
+        obs: MultiAgentDict,
+        rewards: MultiAgentDict,
+        dones: MultiAgentDict,
+        infos: MultiAgentDict,
+    ):
         self.last_obs = obs
         for ag, r in rewards.items():
             if ag in self.last_rewards:
@@ -678,11 +712,11 @@ class _MultiAgentEnvState:
 
 
 def convert_to_base_env(
-        env: EnvType,
-        make_env: Callable[[int], EnvType] = None,
-        num_envs: int = 1,
-        remote_envs: bool = False,
-        remote_env_batch_wait_ms: int = 0,
+    env: EnvType,
+    make_env: Callable[[int], EnvType] = None,
+    num_envs: int = 1,
+    remote_envs: bool = False,
+    remote_env_batch_wait_ms: int = 0,
 ) -> "BaseEnv":
     """Converts an RLlib-supported env into a BaseEnv object.
 
@@ -723,21 +757,32 @@ def convert_to_base_env(
     from ray.rllib.env.external_env import ExternalEnv
     from ray.rllib.env.multi_agent_env import MultiAgentEnv
     from ray.rllib.env.vector_env import VectorEnv, VectorEnvWrapper
+
     if remote_envs and num_envs == 1:
-        raise ValueError("Remote envs only make sense to use if num_envs > 1 "
-                         "(i.e. vectorization is enabled).")
+        raise ValueError(
+            "Remote envs only make sense to use if num_envs > 1 "
+            "(i.e. vectorization is enabled)."
+        )
 
     # Given `env` is already a BaseEnv -> Return as is.
     if isinstance(env, (BaseEnv, MultiAgentEnv, VectorEnv, ExternalEnv)):
-        return env.to_base_env()
+        return env.to_base_env(
+            make_env=make_env,
+            num_envs=num_envs,
+            remote_envs=remote_envs,
+            remote_env_batch_wait_ms=remote_env_batch_wait_ms,
+        )
     # `env` is not a BaseEnv yet -> Need to convert/vectorize.
     else:
         # Sub-environments are ray.remote actors:
         if remote_envs:
             # Determine, whether the already existing sub-env (could
             # be a ray.actor) is multi-agent or not.
-            multiagent = ray.get(env._is_multi_agent.remote()) if \
-                hasattr(env, "_is_multi_agent") else False
+            multiagent = (
+                ray.get(env._is_multi_agent.remote())
+                if hasattr(env, "_is_multi_agent")
+                else False
+            )
             env = RemoteBaseEnv(
                 make_env,
                 num_envs,

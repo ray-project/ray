@@ -3,8 +3,7 @@ from typing import Type
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.marwil.marwil_tf_policy import MARWILTFPolicy
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
-    MultiAgentReplayBuffer
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
@@ -67,6 +66,9 @@ DEFAULT_CONFIG = with_common_config({
     # Number of steps to read before learning starts.
     "learning_starts": 0,
 
+    # A coeff to encourage higher action distribution entropy for exploration.
+    "bc_logstd_coeff": 0.0,
+
     # === Parallelism ===
     "num_workers": 0,
 })
@@ -91,24 +93,26 @@ class MARWILTrainer(Trainer):
         if config["postprocess_inputs"] is False and config["beta"] > 0.0:
             raise ValueError(
                 "`postprocess_inputs` must be True for MARWIL (to "
-                "calculate accum., discounted returns)!")
+                "calculate accum., discounted returns)!"
+            )
 
     @override(Trainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> \
-            Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
-            from ray.rllib.agents.marwil.marwil_torch_policy import \
-                MARWILTorchPolicy
+            from ray.rllib.agents.marwil.marwil_torch_policy import MARWILTorchPolicy
+
             return MARWILTorchPolicy
         else:
             return MARWILTFPolicy
 
     @staticmethod
     @override(Trainer)
-    def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
-                       **kwargs) -> LocalIterator[dict]:
-        assert len(kwargs) == 0, (
-            "Marwill execution_plan does NOT take any additional parameters")
+    def execution_plan(
+        workers: WorkerSet, config: TrainerConfigDict, **kwargs
+    ) -> LocalIterator[dict]:
+        assert (
+            len(kwargs) == 0
+        ), "Marwill execution_plan does NOT take any additional parameters"
 
         rollouts = ParallelRollouts(workers, mode="bulk_sync")
         replay_buffer = MultiAgentReplayBuffer(
@@ -118,18 +122,21 @@ class MARWILTrainer(Trainer):
             replay_sequence_length=1,
         )
 
-        store_op = rollouts \
-            .for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
+        store_op = rollouts.for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
 
-        replay_op = Replay(local_buffer=replay_buffer) \
+        replay_op = (
+            Replay(local_buffer=replay_buffer)
             .combine(
-            ConcatBatches(
-                min_batch_size=config["train_batch_size"],
-                count_steps_by=config["multiagent"]["count_steps_by"],
-            )) \
+                ConcatBatches(
+                    min_batch_size=config["train_batch_size"],
+                    count_steps_by=config["multiagent"]["count_steps_by"],
+                )
+            )
             .for_each(TrainOneStep(workers))
+        )
 
         train_op = Concurrently(
-            [store_op, replay_op], mode="round_robin", output_indexes=[1])
+            [store_op, replay_op], mode="round_robin", output_indexes=[1]
+        )
 
         return StandardMetricsReporting(train_op, workers, config)

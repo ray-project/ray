@@ -17,6 +17,18 @@
 namespace ray {
 namespace gcs {
 
+InternalPubSubHandler::InternalPubSubHandler(
+    instrumented_io_context &io_service,
+    const std::shared_ptr<gcs::GcsPublisher> &gcs_publisher)
+    : io_service_(io_service), gcs_publisher_(gcs_publisher) {
+  io_service_thread_ = std::make_unique<std::thread>([this] {
+    SetThreadName("pubsub");
+    // Keep io_service_ alive.
+    boost::asio::io_service::work io_service_work_(io_service_);
+    io_service_.run();
+  });
+}
+
 void InternalPubSubHandler::HandleGcsPublish(const rpc::GcsPublishRequest &request,
                                              rpc::GcsPublishReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
@@ -91,6 +103,13 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
     }
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void InternalPubSubHandler::Stop() {
+  io_service_.stop();
+  if (io_service_thread_->joinable()) {
+    io_service_thread_->join();
+  }
 }
 
 }  // namespace gcs

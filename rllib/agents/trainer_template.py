@@ -8,8 +8,13 @@ from ray.rllib.policy import Policy
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import EnvConfigDict, EnvType, \
-    PartialTrainerConfigDict, ResultDict, TrainerConfigDict
+from ray.rllib.utils.typing import (
+    EnvCreator,
+    EnvType,
+    PartialTrainerConfigDict,
+    ResultDict,
+    TrainerConfigDict,
+)
 from ray.tune.logger import Logger
 
 logger = logging.getLogger(__name__)
@@ -18,27 +23,31 @@ logger = logging.getLogger(__name__)
 @Deprecated(
     new="Sub-class from Trainer (or another Trainer sub-class) directly! "
     "See e.g. ray.rllib.agents.dqn.dqn.py for an example.",
-    error=False)
+    error=False,
+)
 def build_trainer(
-        name: str,
-        *,
-        default_config: Optional[TrainerConfigDict] = None,
-        validate_config: Optional[Callable[[TrainerConfigDict], None]] = None,
-        default_policy: Optional[Type[Policy]] = None,
-        get_policy_class: Optional[Callable[[TrainerConfigDict], Optional[Type[
-            Policy]]]] = None,
-        validate_env: Optional[Callable[[EnvType, EnvContext], None]] = None,
-        before_init: Optional[Callable[[Trainer], None]] = None,
-        after_init: Optional[Callable[[Trainer], None]] = None,
-        before_evaluate_fn: Optional[Callable[[Trainer], None]] = None,
-        mixins: Optional[List[type]] = None,
-        execution_plan: Optional[Union[Callable[
-            [WorkerSet, TrainerConfigDict], Iterable[ResultDict]], Callable[[
-                Trainer, WorkerSet, TrainerConfigDict
-            ], Iterable[ResultDict]]]] = None,
-        allow_unknown_configs: bool = False,
-        allow_unknown_subkeys: Optional[List[str]] = None,
-        override_all_subkeys_if_type_changes: Optional[List[str]] = None,
+    name: str,
+    *,
+    default_config: Optional[TrainerConfigDict] = None,
+    validate_config: Optional[Callable[[TrainerConfigDict], None]] = None,
+    default_policy: Optional[Type[Policy]] = None,
+    get_policy_class: Optional[
+        Callable[[TrainerConfigDict], Optional[Type[Policy]]]
+    ] = None,
+    validate_env: Optional[Callable[[EnvType, EnvContext], None]] = None,
+    before_init: Optional[Callable[[Trainer], None]] = None,
+    after_init: Optional[Callable[[Trainer], None]] = None,
+    before_evaluate_fn: Optional[Callable[[Trainer], None]] = None,
+    mixins: Optional[List[type]] = None,
+    execution_plan: Optional[
+        Union[
+            Callable[[WorkerSet, TrainerConfigDict], Iterable[ResultDict]],
+            Callable[[Trainer, WorkerSet, TrainerConfigDict], Iterable[ResultDict]],
+        ]
+    ] = None,
+    allow_unknown_configs: bool = False,
+    allow_unknown_subkeys: Optional[List[str]] = None,
+    override_all_subkeys_if_type_changes: Optional[List[str]] = None,
 ) -> Type[Trainer]:
     """Helper function for defining a custom Trainer class.
 
@@ -94,14 +103,22 @@ def build_trainer(
         _default_config = default_config or COMMON_CONFIG
         _policy_class = default_policy
 
-        def __init__(self,
-                     config: TrainerConfigDict = None,
-                     env: Union[str, EnvType, None] = None,
-                     logger_creator: Callable[[], Logger] = None,
-                     remote_checkpoint_dir: Optional[str] = None,
-                     sync_function_tpl: Optional[str] = None):
-            Trainer.__init__(self, config, env, logger_creator,
-                             remote_checkpoint_dir, sync_function_tpl)
+        def __init__(
+            self,
+            config: TrainerConfigDict = None,
+            env: Union[str, EnvType, None] = None,
+            logger_creator: Callable[[], Logger] = None,
+            remote_checkpoint_dir: Optional[str] = None,
+            sync_function_tpl: Optional[str] = None,
+        ):
+            Trainer.__init__(
+                self,
+                config,
+                env,
+                logger_creator,
+                remote_checkpoint_dir,
+                sync_function_tpl,
+            )
 
         @override(base)
         def setup(self, config: PartialTrainerConfigDict):
@@ -109,12 +126,12 @@ def build_trainer(
                 self._allow_unknown_subkeys += allow_unknown_subkeys
             self._allow_unknown_configs = allow_unknown_configs
             if override_all_subkeys_if_type_changes is not None:
-                self._override_all_subkeys_if_type_changes += \
+                self._override_all_subkeys_if_type_changes += (
                     override_all_subkeys_if_type_changes
+                )
             Trainer.setup(self, config)
 
-        def _init(self, config: TrainerConfigDict,
-                  env_creator: Callable[[EnvConfigDict], EnvType]):
+        def _init(self, config: TrainerConfigDict, env_creator: EnvCreator):
 
             # No `get_policy_class` function.
             if get_policy_class is None:
@@ -139,10 +156,12 @@ def build_trainer(
                 validate_env=validate_env,
                 policy_class=self._policy_class,
                 config=config,
-                num_workers=self.config["num_workers"])
+                num_workers=self.config["num_workers"],
+            )
 
             self.train_exec_impl = self.execution_plan(
-                self.workers, config, **self._kwargs_for_execution_plan())
+                self.workers, config, **self._kwargs_for_execution_plan()
+            )
 
             if after_init:
                 after_init(self)

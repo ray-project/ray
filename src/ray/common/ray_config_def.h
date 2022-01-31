@@ -23,12 +23,12 @@ RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
 /// Whether to enable Ray event stats collection.
 /// TODO(ekl) this seems to segfault Java unit tests when on by default?
-RAY_CONFIG(bool, event_stats, false)
+RAY_CONFIG(bool, event_stats, true)
 
 /// Whether to enable Ray legacy scheduler warnings. These are replaced by
 /// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
 /// TODO(ekl) remove this after Ray 1.8
-RAY_CONFIG(bool, legacy_scheduler_warnings, true)
+RAY_CONFIG(bool, legacy_scheduler_warnings, false)
 
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available to
@@ -205,8 +205,8 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128);
 
-/// Allow up to 5 seconds for connecting to Redis.
-RAY_CONFIG(int64_t, redis_db_connect_retries, 50)
+/// Allow up to 60 seconds for connecting to Redis.
+RAY_CONFIG(int64_t, redis_db_connect_retries, 600)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
 
 /// The object manager's global timer interval in milliseconds.
@@ -278,7 +278,7 @@ RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 // TODO(ekl) broken as of https://github.com/ray-project/ray/issues/16858
 RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 // Feature flag to enable grpc based pubsub in GCS.
-RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
+RAY_CONFIG(bool, gcs_grpc_based_pubsub, true)
 // The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
 RAY_CONFIG(std::string, gcs_storage, "redis")
 // Feature flag to enable GCS based bootstrapping.
@@ -301,7 +301,7 @@ RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
 RAY_CONFIG(uint64_t, global_gc_min_interval_s, 30)
 
 /// Duration to wait between retries for failed tasks.
-RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
+RAY_CONFIG(uint32_t, task_retry_delay_ms, 0)
 
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
@@ -326,13 +326,8 @@ RAY_CONFIG(int64_t, enable_metrics_collection, true)
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 
-/// Maximum number of tasks that can be in flight between an owner and a worker for which
-/// the owner has been granted a lease. A value >1 is used when we want to enable
-/// pipelining task submission.
-RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
-
 /// Maximum number of pending lease requests per scheduling category
-RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 1)
+RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 10)
 
 /// Interval to restart dashboard agent after the process exit.
 RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
