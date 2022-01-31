@@ -16,15 +16,25 @@ import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
+
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
-from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, NODE_IP, PID,
-                             TRAINING_ITERATION, TRIAL_ID, DEBUG_METRICS)
+from ray.tune.result import (
+    DEFAULT_RESULTS_DIR,
+    DONE,
+    NODE_IP,
+    PID,
+    TRAINING_ITERATION,
+    TRIAL_ID,
+    DEBUG_METRICS,
+)
 from ray.tune.resources import Resources
-from ray.tune.utils.placement_groups import PlacementGroupFactory, \
-    resource_dict_to_pg_factory
+from ray.tune.utils.placement_groups import (
+    PlacementGroupFactory,
+    resource_dict_to_pg_factory,
+)
 from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
@@ -58,6 +68,7 @@ class ExportFormat:
     This may correspond to different file formats based on the
     Trainable implementation.
     """
+
     CHECKPOINT = "checkpoint"
     MODEL = "model"
     ONNX = "onnx"
@@ -73,11 +84,12 @@ class ExportFormat:
         for i in range(len(formats)):
             formats[i] = formats[i].strip().lower()
             if formats[i] not in [
-                    ExportFormat.CHECKPOINT, ExportFormat.MODEL,
-                    ExportFormat.ONNX, ExportFormat.H5
+                ExportFormat.CHECKPOINT,
+                ExportFormat.MODEL,
+                ExportFormat.ONNX,
+                ExportFormat.H5,
             ]:
-                raise TuneError("Unsupported import/export format: " +
-                                formats[i])
+                raise TuneError("Unsupported import/export format: " + formats[i])
 
 
 class CheckpointDeleter:
@@ -99,8 +111,9 @@ class CheckpointDeleter:
         if checkpoint.storage == Checkpoint.PERSISTENT and checkpoint.value:
             checkpoint_path = checkpoint.value
 
-            logger.debug("Trial %s: Deleting checkpoint %s", self.trial_id,
-                         checkpoint_path)
+            logger.debug(
+                "Trial %s: Deleting checkpoint %s", self.trial_id, checkpoint_path
+            )
 
             # TODO(ujvl): Batch remote deletes.
             # We first delete the remote checkpoint. If it is on the same
@@ -110,12 +123,10 @@ class CheckpointDeleter:
             # Delete local copy, if any exists.
             if os.path.exists(checkpoint_path):
                 try:
-                    checkpoint_dir = TrainableUtil.find_checkpoint_dir(
-                        checkpoint_path)
+                    checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
                     shutil.rmtree(checkpoint_dir)
                 except FileNotFoundError:
-                    logger.debug(
-                        "Local checkpoint dir not found during deletion.")
+                    logger.debug("Local checkpoint dir not found during deletion.")
 
 
 class TrialInfo:
@@ -146,8 +157,7 @@ class TrialInfo:
         return self._trial_resources
 
     @trial_resources.setter
-    def trial_resources(
-            self, new_resources: Union[Resources, PlacementGroupFactory]):
+    def trial_resources(self, new_resources: Union[Resources, PlacementGroupFactory]):
         self._trial_resources = new_resources
 
 
@@ -157,16 +167,19 @@ def create_logdir(dirname, local_dir):
     if os.path.exists(logdir):
         old_dirname = dirname
         dirname += "_" + uuid.uuid4().hex[:4]
-        logger.info(f"Creating a new dirname {dirname} because "
-                    f"trial dirname '{old_dirname}' already exists.")
+        logger.info(
+            f"Creating a new dirname {dirname} because "
+            f"trial dirname '{old_dirname}' already exists."
+        )
         logdir = os.path.join(local_dir, dirname)
     os.makedirs(logdir, exist_ok=True)
     return logdir
 
 
-def _to_pg_factory(resources: Optional[Resources],
-                   placement_group_factory: Optional[PlacementGroupFactory]
-                   ) -> PlacementGroupFactory:
+def _to_pg_factory(
+    resources: Optional[Resources],
+    placement_group_factory: Optional[PlacementGroupFactory],
+) -> PlacementGroupFactory:
     """Outputs resources requirement in the form of PGF.
 
     In case that `placement_group_factory` is None, `resources` will be
@@ -221,30 +234,32 @@ class Trial:
     TERMINATED = "TERMINATED"
     ERROR = "ERROR"
 
-    def __init__(self,
-                 trainable_name,
-                 config=None,
-                 trial_id=None,
-                 local_dir=DEFAULT_RESULTS_DIR,
-                 evaluated_params=None,
-                 experiment_tag="",
-                 resources=None,
-                 placement_group_factory=None,
-                 stopping_criterion=None,
-                 remote_checkpoint_dir=None,
-                 sync_function_tpl=None,
-                 checkpoint_freq=0,
-                 checkpoint_at_end=False,
-                 sync_on_checkpoint=True,
-                 keep_checkpoints_num=None,
-                 checkpoint_score_attr=TRAINING_ITERATION,
-                 export_formats=None,
-                 restore_path=None,
-                 trial_name_creator=None,
-                 trial_dirname_creator=None,
-                 log_to_file=None,
-                 max_failures=0,
-                 stub=False):
+    def __init__(
+        self,
+        trainable_name,
+        config=None,
+        trial_id=None,
+        local_dir=DEFAULT_RESULTS_DIR,
+        evaluated_params=None,
+        experiment_tag="",
+        resources=None,
+        placement_group_factory=None,
+        stopping_criterion=None,
+        remote_checkpoint_dir=None,
+        sync_function_tpl=None,
+        checkpoint_freq=0,
+        checkpoint_at_end=False,
+        sync_on_checkpoint=True,
+        keep_checkpoints_num=None,
+        checkpoint_score_attr=TRAINING_ITERATION,
+        export_formats=None,
+        restore_path=None,
+        trial_name_creator=None,
+        trial_dirname_creator=None,
+        log_to_file=None,
+        max_failures=0,
+        stub=False,
+    ):
         """Initialize a new trial.
 
         The args here take the same meaning as the command line flags defined
@@ -268,8 +283,7 @@ class Trial:
         self.experiment_tag = experiment_tag
         trainable_cls = self.get_trainable_cls()
         if trainable_cls:
-            default_resources = trainable_cls.default_resource_request(
-                self.config)
+            default_resources = trainable_cls.default_resource_request(self.config)
 
             # If Trainable returns resources, do not allow manual override via
             # `resources_per_trial` by the user.
@@ -279,7 +293,9 @@ class Trial:
                         "Resources for {} have been automatically set to {} "
                         "by its `default_resource_request()` method. Please "
                         "clear the `resources_per_trial` option.".format(
-                            trainable_cls, default_resources))
+                            trainable_cls, default_resources
+                        )
+                    )
 
                 if isinstance(default_resources, PlacementGroupFactory):
                     placement_group_factory = default_resources
@@ -289,23 +305,26 @@ class Trial:
                     resources = default_resources
         self.location = Location()
 
-        self.placement_group_factory = _to_pg_factory(resources,
-                                                      placement_group_factory)
+        self.placement_group_factory = _to_pg_factory(
+            resources, placement_group_factory
+        )
 
         self.stopping_criterion = stopping_criterion or {}
 
         self.log_to_file = log_to_file
         # Make sure `stdout_file, stderr_file = Trial.log_to_file` works
-        if not self.log_to_file or not isinstance(self.log_to_file, Sequence) \
-           or not len(self.log_to_file) == 2:
+        if (
+            not self.log_to_file
+            or not isinstance(self.log_to_file, Sequence)
+            or not len(self.log_to_file) == 2
+        ):
             self.log_to_file = (None, None)
 
         self.max_failures = max_failures
 
         # Local trial state that is updated during the run
         self._last_result = {}
-        self._default_result_or_future: Union[ray.ObjectRef, dict, None] = (
-            None)
+        self._default_result_or_future: Union[ray.ObjectRef, dict, None] = None
         self.last_update_time = -float("inf")
 
         # stores in memory max/min/avg/last-n-avg/last result for each
@@ -335,8 +354,7 @@ class Trial:
         else:
             self.remote_checkpoint_dir_prefix = None
 
-        if sync_function_tpl == "auto" or not isinstance(
-                sync_function_tpl, str):
+        if sync_function_tpl == "auto" or not isinstance(sync_function_tpl, str):
             sync_function_tpl = None
         self.sync_function_tpl = sync_function_tpl
 
@@ -346,8 +364,10 @@ class Trial:
         self.checkpoint_score_attr = checkpoint_score_attr
         self.sync_on_checkpoint = sync_on_checkpoint
         self.checkpoint_manager = CheckpointManager(
-            keep_checkpoints_num, checkpoint_score_attr,
-            CheckpointDeleter(self._trainable_name(), self.runner))
+            keep_checkpoints_num,
+            checkpoint_score_attr,
+            CheckpointDeleter(self._trainable_name(), self.runner),
+        )
 
         # Restoration fields
         self.restore_path = restore_path
@@ -367,8 +387,9 @@ class Trial:
         if trial_dirname_creator:
             self.custom_dirname = trial_dirname_creator(self)
             if os.path.sep in self.custom_dirname:
-                raise ValueError("Trial dirname must not contain '/'. "
-                                 "Got {self.custom_dirname}")
+                raise ValueError(
+                    "Trial dirname must not contain '/'. " "Got {self.custom_dirname}"
+                )
 
         self._state_json = None
         self._state_valid = False
@@ -380,17 +401,19 @@ class Trial:
         Will also set the trial location if runner is set.
         """
         if self._default_result_or_future and isinstance(
-                self._default_result_or_future, ray.ObjectRef):
+            self._default_result_or_future, ray.ObjectRef
+        ):
             try:
-                self._default_result_or_future = ray.get(
-                    self._default_result_or_future)
+                self._default_result_or_future = ray.get(self._default_result_or_future)
             except RayActorError:  # error during initialization
                 self._default_result_or_future = None
         if self._default_result_or_future and self.runner:
             self.set_location(
                 Location(
                     self._default_result_or_future.get(NODE_IP),
-                    self._default_result_or_future.get(PID)))
+                    self._default_result_or_future.get(PID),
+                )
+            )
         return self._default_result_or_future
 
     @property
@@ -465,10 +488,12 @@ class Trial:
         # of the trouble to specify the resources themselves by having some
         # default resources for popular RLlib algorithms.
         trainable_cls = self.get_trainable_cls()
-        clear_resources = (trainable_cls and
-                           trainable_cls.default_resource_request(self.config))
-        placement_group_factory = (self.placement_group_factory
-                                   if not clear_resources else None)
+        clear_resources = trainable_cls and trainable_cls.default_resource_request(
+            self.config
+        )
+        placement_group_factory = (
+            self.placement_group_factory if not clear_resources else None
+        )
 
         return Trial(
             self.trainable_name,
@@ -496,8 +521,7 @@ class Trial:
     def init_logdir(self):
         """Init logdir."""
         if not self.logdir:
-            self.logdir = create_logdir(self._generate_dirname(),
-                                        self.local_dir)
+            self.logdir = create_logdir(self._generate_dirname(), self.local_dir)
         else:
             os.makedirs(self.logdir, exist_ok=True)
         self.invalidate_json_state()
@@ -519,8 +543,9 @@ class Trial:
         else:
             resources = Resources(**resources)
 
-        self.placement_group_factory = _to_pg_factory(resources,
-                                                      placement_group_factory)
+        self.placement_group_factory = _to_pg_factory(
+            resources, placement_group_factory
+        )
 
         self.invalidate_json_state()
 
@@ -531,10 +556,12 @@ class Trial:
         if runner:
             # Do not block here, the result will be gotten when last_result
             # property is accessed
-            self._default_result_or_future = (
-                runner.get_auto_filled_metrics.remote(debug_metrics_only=True))
+            self._default_result_or_future = runner.get_auto_filled_metrics.remote(
+                debug_metrics_only=True
+            )
         self.checkpoint_manager.delete = CheckpointDeleter(
-            self._trainable_name(), runner)
+            self._trainable_name(), runner
+        )
         # No need to invalidate state cache: runner is not stored in json
         # self.invalidate_json_state()
 
@@ -565,8 +592,11 @@ class Trial:
             self.num_failures += 1
             self.error_file = os.path.join(self.logdir, "error.txt")
             with open(self.error_file, "a+") as f:
-                f.write("Failure # {} (occurred at {})\n".format(
-                    self.num_failures, date_str()))
+                f.write(
+                    "Failure # {} (occurred at {})\n".format(
+                        self.num_failures, date_str()
+                    )
+                )
                 f.write(error_msg + "\n")
             self.error_msg = error_msg
         self.invalidate_json_state()
@@ -580,11 +610,14 @@ class Trial:
             if criteria not in result:
                 raise TuneError(
                     "Stopping criteria {} not provided in result {}.".format(
-                        criteria, result))
+                        criteria, result
+                    )
+                )
             elif isinstance(criteria, dict):
                 raise ValueError(
                     "Stopping criteria is now flattened by default. "
-                    "Use forward slashes to nest values `key1/key2/key3`.")
+                    "Use forward slashes to nest values `key1/key2/key3`."
+                )
             elif result[criteria] >= stop_value:
                 return True
         return False
@@ -594,8 +627,10 @@ class Trial:
         result = self.last_result or {}
         if result.get(DONE) and self.checkpoint_at_end:
             return True
-        return (self.checkpoint_freq and
-                result.get(TRAINING_ITERATION, 0) % self.checkpoint_freq == 0)
+        return (
+            self.checkpoint_freq
+            and result.get(TRAINING_ITERATION, 0) % self.checkpoint_freq == 0
+        )
 
     def has_checkpoint(self):
         return self.checkpoint.value is not None
@@ -650,32 +685,35 @@ class Trial:
                         "max": value,
                         "min": value,
                         "avg": value,
-                        "last": value
+                        "last": value,
                     }
                     self.metric_n_steps[metric] = {}
                     for n in self.n_steps:
                         key = "last-{:d}-avg".format(n)
                         self.metric_analysis[metric][key] = value
                         # Store n as string for correct restore.
-                        self.metric_n_steps[metric][str(n)] = deque(
-                            [value], maxlen=n)
+                        self.metric_n_steps[metric][str(n)] = deque([value], maxlen=n)
                 else:
                     step = result["training_iteration"] or 1
                     self.metric_analysis[metric]["max"] = max(
-                        value, self.metric_analysis[metric]["max"])
+                        value, self.metric_analysis[metric]["max"]
+                    )
                     self.metric_analysis[metric]["min"] = min(
-                        value, self.metric_analysis[metric]["min"])
-                    self.metric_analysis[metric]["avg"] = 1 / step * (
-                        value +
-                        (step - 1) * self.metric_analysis[metric]["avg"])
+                        value, self.metric_analysis[metric]["min"]
+                    )
+                    self.metric_analysis[metric]["avg"] = (
+                        1
+                        / step
+                        * (value + (step - 1) * self.metric_analysis[metric]["avg"])
+                    )
                     self.metric_analysis[metric]["last"] = value
 
                     for n in self.n_steps:
                         key = "last-{:d}-avg".format(n)
                         self.metric_n_steps[metric][str(n)].append(value)
                         self.metric_analysis[metric][key] = sum(
-                            self.metric_n_steps[metric][str(n)]) / len(
-                                self.metric_n_steps[metric][str(n)])
+                            self.metric_n_steps[metric][str(n)]
+                        ) / len(self.metric_n_steps[metric][str(n)])
         self.invalidate_json_state()
 
     def get_trainable_cls(self):
@@ -724,12 +762,16 @@ class Trial:
             generated_dirname = self.custom_dirname
         else:
             if "MAX_LEN_IDENTIFIER" in os.environ:
-                logger.error("The MAX_LEN_IDENTIFIER environment variable is "
-                             "deprecated and will be removed in the future. "
-                             "Use TUNE_MAX_LEN_IDENTIFIER instead.")
+                logger.error(
+                    "The MAX_LEN_IDENTIFIER environment variable is "
+                    "deprecated and will be removed in the future. "
+                    "Use TUNE_MAX_LEN_IDENTIFIER instead."
+                )
             MAX_LEN_IDENTIFIER = int(
-                os.environ.get("TUNE_MAX_LEN_IDENTIFIER",
-                               os.environ.get("MAX_LEN_IDENTIFIER", 130)))
+                os.environ.get(
+                    "TUNE_MAX_LEN_IDENTIFIER", os.environ.get("MAX_LEN_IDENTIFIER", 130)
+                )
+            )
             generated_dirname = f"{str(self)}_{self.experiment_tag}"
             generated_dirname = generated_dirname[:MAX_LEN_IDENTIFIER]
             generated_dirname += f"_{date_str()}"
@@ -742,7 +784,8 @@ class Trial:
     def get_json_state(self) -> str:
         if not self._state_json or not self._state_valid:
             json_state = json.dumps(
-                self.__getstate__(), indent=2, cls=TuneFunctionEncoder)
+                self.__getstate__(), indent=2, cls=TuneFunctionEncoder
+            )
             self._state_json = json_state
             self._state_valid = True
         return self._state_json
@@ -777,7 +820,11 @@ class Trial:
         for key in self._nonjson_fields:
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
+        # Ensure that stub doesn't get overriden
+        stub = state.pop("stub", True)
         self.__dict__.update(state)
+        self.stub = stub or getattr(self, "stub", False)
+
         if not self.stub:
             validate_trainable(self.trainable_name)
 

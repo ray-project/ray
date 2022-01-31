@@ -7,9 +7,12 @@ from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
-from ray.rllib.execution.common import (STEPS_TRAINED_COUNTER,
-                                        STEPS_TRAINED_THIS_ITER_COUNTER,
-                                        _get_global_vars, _get_shared_metrics)
+from ray.rllib.execution.common import (
+    STEPS_TRAINED_COUNTER,
+    STEPS_TRAINED_THIS_ITER_COUNTER,
+    _get_global_vars,
+    _get_shared_metrics,
+)
 from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
@@ -50,7 +53,7 @@ DEFAULT_CONFIG = with_common_config({
     #
     "rollout_fragment_length": 50,
     "train_batch_size": 500,
-    "min_iter_time_s": 10,
+    "min_time_s_per_reporting": 10,
     "num_workers": 2,
     # Number of GPUs the learner should use.
     "num_gpus": 1,
@@ -130,8 +133,10 @@ DEFAULT_CONFIG = with_common_config({
 def make_learner_thread(local_worker, config):
     if not config["simple_optimizer"]:
         logger.info(
-            "Enabling multi-GPU mode, {} GPUs, {} parallel tower-stacks".
-            format(config["num_gpus"], config["num_multi_gpu_tower_stacks"]))
+            "Enabling multi-GPU mode, {} GPUs, {} parallel tower-stacks".format(
+                config["num_gpus"], config["num_multi_gpu_tower_stacks"]
+            )
+        )
         num_stacks = config["num_multi_gpu_tower_stacks"]
         buffer_size = config["minibatch_buffer_size"]
         if num_stacks < buffer_size:
@@ -141,7 +146,8 @@ def make_learner_thread(local_worker, config):
                 "you have stack-index slots in the buffer! You have "
                 f"configured {num_stacks} stacks and a buffer of size "
                 f"{buffer_size}. Setting "
-                f"`minibatch_buffer_size={num_stacks}`.")
+                f"`minibatch_buffer_size={num_stacks}`."
+            )
             config["minibatch_buffer_size"] = num_stacks
 
         learner_thread = MultiGPULearnerThread(
@@ -152,14 +158,16 @@ def make_learner_thread(local_worker, config):
             num_multi_gpu_tower_stacks=config["num_multi_gpu_tower_stacks"],
             num_sgd_iter=config["num_sgd_iter"],
             learner_queue_size=config["learner_queue_size"],
-            learner_queue_timeout=config["learner_queue_timeout"])
+            learner_queue_timeout=config["learner_queue_timeout"],
+        )
     else:
         learner_thread = LearnerThread(
             local_worker,
             minibatch_buffer_size=config["minibatch_buffer_size"],
             num_sgd_iter=config["num_sgd_iter"],
             learner_queue_size=config["learner_queue_size"],
-            learner_queue_timeout=config["learner_queue_timeout"])
+            learner_queue_timeout=config["learner_queue_timeout"],
+        )
     return learner_thread
 
 
@@ -167,20 +175,26 @@ def gather_experiences_directly(workers, config):
     rollouts = ParallelRollouts(
         workers,
         mode="async",
-        num_async=config["max_sample_requests_in_flight_per_worker"])
+        num_async=config["max_sample_requests_in_flight_per_worker"],
+    )
 
     # Augment with replay and concat to desired train batch size.
-    train_batches = rollouts \
-        .for_each(lambda batch: batch.decompress_if_needed()) \
-        .for_each(MixInReplay(
-            num_slots=config["replay_buffer_num_slots"],
-            replay_proportion=config["replay_proportion"])) \
-        .flatten() \
+    train_batches = (
+        rollouts.for_each(lambda batch: batch.decompress_if_needed())
+        .for_each(
+            MixInReplay(
+                num_slots=config["replay_buffer_num_slots"],
+                replay_proportion=config["replay_proportion"],
+            )
+        )
+        .flatten()
         .combine(
             ConcatBatches(
                 min_batch_size=config["train_batch_size"],
                 count_steps_by=config["multiagent"]["count_steps_by"],
-            ))
+            )
+        )
+    )
 
     return train_batches
 
@@ -197,8 +211,10 @@ class BroadcastUpdateLearnerWeights:
     def __call__(self, item):
         actor, batch = item
         self.steps_since_broadcast += 1
-        if (self.steps_since_broadcast >= self.broadcast_interval
-                and self.learner_thread.weights_updated):
+        if (
+            self.steps_since_broadcast >= self.broadcast_interval
+            and self.learner_thread.weights_updated
+        ):
             self.weights = ray.put(self.workers.local_worker().get_weights())
             self.steps_since_broadcast = 0
             self.learner_thread.weights_updated = False
@@ -217,22 +233,26 @@ class ImpalaTrainer(Trainer):
         return DEFAULT_CONFIG
 
     @override(Trainer)
-    def get_default_policy_class(self, config: PartialTrainerConfigDict) -> \
-            Optional[Type[Policy]]:
+    def get_default_policy_class(
+        self, config: PartialTrainerConfigDict
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             if config["vtrace"]:
-                from ray.rllib.agents.impala.vtrace_torch_policy import \
-                    VTraceTorchPolicy
+                from ray.rllib.agents.impala.vtrace_torch_policy import (
+                    VTraceTorchPolicy,
+                )
+
                 return VTraceTorchPolicy
             else:
-                from ray.rllib.agents.a3c.a3c_torch_policy import \
-                    A3CTorchPolicy
+                from ray.rllib.agents.a3c.a3c_torch_policy import A3CTorchPolicy
+
                 return A3CTorchPolicy
         else:
             if config["vtrace"]:
                 return VTraceTFPolicy
             else:
                 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
+
                 return A3CTFPolicy
 
     @override(Trainer)
@@ -244,11 +264,9 @@ class ImpalaTrainer(Trainer):
 
         if config["num_data_loader_buffers"] != DEPRECATED_VALUE:
             deprecation_warning(
-                "num_data_loader_buffers",
-                "num_multi_gpu_tower_stacks",
-                error=False)
-            config["num_multi_gpu_tower_stacks"] = \
-                config["num_data_loader_buffers"]
+                "num_data_loader_buffers", "num_multi_gpu_tower_stacks", error=False
+            )
+            config["num_multi_gpu_tower_stacks"] = config["num_data_loader_buffers"]
 
         if config["entropy_coeff"] < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0!")
@@ -257,13 +275,14 @@ class ImpalaTrainer(Trainer):
         if config["num_aggregation_workers"] > config["num_workers"]:
             raise ValueError(
                 "`num_aggregation_workers` must be smaller than or equal "
-                "`num_workers`! Aggregation makes no sense otherwise.")
-        elif config["num_aggregation_workers"] > \
-                config["num_workers"] / 2:
+                "`num_workers`! Aggregation makes no sense otherwise."
+            )
+        elif config["num_aggregation_workers"] > config["num_workers"] / 2:
             logger.warning(
                 "`num_aggregation_workers` should be significantly smaller "
                 "than `num_workers`! Try setting it to 0.5*`num_workers` or "
-                "less.")
+                "less."
+            )
 
         # If two separate optimizers/loss terms used for tf, must also set
         # `_tf_policy_handles_more_than_one_loss` to True.
@@ -274,23 +293,25 @@ class ImpalaTrainer(Trainer):
             #  the different torch optimizers).
             if config["framework"] not in ["tf", "tf2", "tfe"]:
                 raise ValueError(
-                    "`_separate_vf_optimizer` only supported to tf so far!")
+                    "`_separate_vf_optimizer` only supported to tf so far!"
+                )
             if config["_tf_policy_handles_more_than_one_loss"] is False:
                 logger.warning(
                     "`_tf_policy_handles_more_than_one_loss` must be set to "
                     "True, for TFPolicy to support more than one loss "
-                    "term/optimizer! Auto-setting it to True.")
+                    "term/optimizer! Auto-setting it to True."
+                )
                 config["_tf_policy_handles_more_than_one_loss"] = True
 
     @staticmethod
     @override(Trainer)
     def execution_plan(workers, config, **kwargs):
-        assert len(kwargs) == 0, (
-            "IMPALA execution_plan does NOT take any additional parameters")
+        assert (
+            len(kwargs) == 0
+        ), "IMPALA execution_plan does NOT take any additional parameters"
 
         if config["num_aggregation_workers"] > 0:
-            train_batches = gather_experiences_tree_aggregation(
-                workers, config)
+            train_batches = gather_experiences_tree_aggregation(workers, config)
         else:
             train_batches = gather_experiences_directly(workers, config)
 
@@ -299,14 +320,16 @@ class ImpalaTrainer(Trainer):
         learner_thread.start()
 
         # This sub-flow sends experiences to the learner.
-        enqueue_op = train_batches \
-            .for_each(Enqueue(learner_thread.inqueue))
+        enqueue_op = train_batches.for_each(Enqueue(learner_thread.inqueue))
         # Only need to update workers if there are remote workers.
         if workers.remote_workers():
-            enqueue_op = enqueue_op.zip_with_source_actor() \
-                .for_each(BroadcastUpdateLearnerWeights(
-                    learner_thread, workers,
-                    broadcast_interval=config["broadcast_interval"]))
+            enqueue_op = enqueue_op.zip_with_source_actor().for_each(
+                BroadcastUpdateLearnerWeights(
+                    learner_thread,
+                    workers,
+                    broadcast_interval=config["broadcast_interval"],
+                )
+            )
 
         def record_steps_trained(item):
             count, fetches = item
@@ -320,20 +343,23 @@ class ImpalaTrainer(Trainer):
         # This sub-flow updates the steps trained counter based on learner
         # output.
         dequeue_op = Dequeue(
-            learner_thread.outqueue, check=learner_thread.is_alive) \
-            .for_each(record_steps_trained)
+            learner_thread.outqueue, check=learner_thread.is_alive
+        ).for_each(record_steps_trained)
 
         merged_op = Concurrently(
-            [enqueue_op, dequeue_op], mode="async", output_indexes=[1])
+            [enqueue_op, dequeue_op], mode="async", output_indexes=[1]
+        )
 
         # Callback for APPO to use to update KL, target network periodically.
         # The input to the callback is the learner fetches dict.
         if config["after_train_step"]:
             merged_op = merged_op.for_each(lambda t: t[1]).for_each(
-                config["after_train_step"](workers, config))
+                config["after_train_step"](workers, config)
+            )
 
-        return StandardMetricsReporting(merged_op, workers, config) \
-            .for_each(learner_thread.add_learner_metrics)
+        return StandardMetricsReporting(merged_op, workers, config).for_each(
+            learner_thread.add_learner_metrics
+        )
 
     @classmethod
     @override(Trainer)
@@ -345,32 +371,44 @@ class ImpalaTrainer(Trainer):
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
         return PlacementGroupFactory(
-            bundles=[{
-                # Driver + Aggregation Workers:
-                # Force to be on same node to maximize data bandwidth
-                # between aggregation workers and the learner (driver).
-                # Aggregation workers tree-aggregate experiences collected
-                # from RolloutWorkers (n rollout workers map to m
-                # aggregation workers, where m < n) and always use 1 CPU
-                # each.
-                "CPU": cf["num_cpus_for_driver"] +
-                cf["num_aggregation_workers"],
-                "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
-            }] + [
+            bundles=[
+                {
+                    # Driver + Aggregation Workers:
+                    # Force to be on same node to maximize data bandwidth
+                    # between aggregation workers and the learner (driver).
+                    # Aggregation workers tree-aggregate experiences collected
+                    # from RolloutWorkers (n rollout workers map to m
+                    # aggregation workers, where m < n) and always use 1 CPU
+                    # each.
+                    "CPU": cf["num_cpus_for_driver"] + cf["num_aggregation_workers"],
+                    "GPU": 0 if cf["_fake_gpus"] else cf["num_gpus"],
+                }
+            ]
+            + [
                 {
                     # RolloutWorkers.
                     "CPU": cf["num_cpus_per_worker"],
                     "GPU": cf["num_gpus_per_worker"],
-                } for _ in range(cf["num_workers"])
-            ] + ([
-                {
-                    # Evaluation (remote) workers.
-                    # Note: The local eval worker is located on the driver
-                    # CPU or not even created iff >0 eval workers.
-                    "CPU": eval_config.get("num_cpus_per_worker",
-                                           cf["num_cpus_per_worker"]),
-                    "GPU": eval_config.get("num_gpus_per_worker",
-                                           cf["num_gpus_per_worker"]),
-                } for _ in range(cf["evaluation_num_workers"])
-            ] if cf["evaluation_interval"] else []),
-            strategy=config.get("placement_strategy", "PACK"))
+                }
+                for _ in range(cf["num_workers"])
+            ]
+            + (
+                [
+                    {
+                        # Evaluation (remote) workers.
+                        # Note: The local eval worker is located on the driver
+                        # CPU or not even created iff >0 eval workers.
+                        "CPU": eval_config.get(
+                            "num_cpus_per_worker", cf["num_cpus_per_worker"]
+                        ),
+                        "GPU": eval_config.get(
+                            "num_gpus_per_worker", cf["num_gpus_per_worker"]
+                        ),
+                    }
+                    for _ in range(cf["evaluation_num_workers"])
+                ]
+                if cf["evaluation_interval"]
+                else []
+            ),
+            strategy=config.get("placement_strategy", "PACK"),
+        )

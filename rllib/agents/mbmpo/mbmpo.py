@@ -6,17 +6,22 @@ import ray
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.mbmpo.mbmpo_torch_policy import MBMPOTorchPolicy
 from ray.rllib.agents.mbmpo.model_ensemble import DynamicsEnsembleCustomModel
-from ray.rllib.agents.mbmpo.utils import calculate_gae_advantages, \
-    MBMPOExploration
+from ray.rllib.agents.mbmpo.utils import calculate_gae_advantages, MBMPOExploration
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.wrappers.model_vector_env import model_vector_env
-from ray.rllib.evaluation.metrics import collect_episodes, collect_metrics, \
-    get_learner_stats
+from ray.rllib.evaluation.metrics import (
+    collect_episodes,
+    collect_metrics,
+    get_learner_stats,
+)
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    STEPS_TRAINED_COUNTER, STEPS_TRAINED_THIS_ITER_COUNTER, \
-    _get_shared_metrics
+from ray.rllib.execution.common import (
+    STEPS_SAMPLED_COUNTER,
+    STEPS_TRAINED_COUNTER,
+    STEPS_TRAINED_THIS_ITER_COUNTER,
+    _get_shared_metrics,
+)
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
@@ -113,9 +118,7 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 # Select Metric Keys for MAML Stats Tracing
-METRICS_KEYS = [
-    "episode_reward_mean", "episode_reward_min", "episode_reward_max"
-]
+METRICS_KEYS = ["episode_reward_mean", "episode_reward_min", "episode_reward_max"]
 
 
 class MetaUpdate:
@@ -142,15 +145,16 @@ class MetaUpdate:
 
     def __call__(self, data_tuple):
         """Args:
-            data_tuple (tuple): 1st element is samples collected from MAML
-            Inner adaptation steps and 2nd element is accumulated metrics
+        data_tuple (tuple): 1st element is samples collected from MAML
+        Inner adaptation steps and 2nd element is accumulated metrics
         """
         # Metaupdate Step.
         print("Meta-Update Step")
         samples = data_tuple[0]
         adapt_metrics_dict = data_tuple[1]
         self.postprocess_metrics(
-            adapt_metrics_dict, prefix="MAMLIter{}".format(self.step_counter))
+            adapt_metrics_dict, prefix="MAMLIter{}".format(self.step_counter)
+        )
 
         # MAML Meta-update.
         fetches = None
@@ -161,15 +165,16 @@ class MetaUpdate:
         # Update KLs.
         def update(pi, pi_id):
             assert "inner_kl" not in learner_stats, (
-                "inner_kl should be nested under policy id key", learner_stats)
+                "inner_kl should be nested under policy id key",
+                learner_stats,
+            )
             if pi_id in learner_stats:
-                assert "inner_kl" in learner_stats[pi_id], (learner_stats,
-                                                            pi_id)
+                assert "inner_kl" in learner_stats[pi_id], (learner_stats, pi_id)
                 pi.update_kls(learner_stats[pi_id]["inner_kl"])
             else:
                 logger.warning("No data for {}, not updating kl".format(pi_id))
 
-        self.workers.local_worker().foreach_trainable_policy(update)
+        self.workers.local_worker().foreach_policy_to_train(update)
 
         # Modify Reporting Metrics.
         metrics = _get_shared_metrics()
@@ -178,8 +183,7 @@ class MetaUpdate:
         metrics.counters[STEPS_TRAINED_COUNTER] += samples.count
 
         if self.step_counter == self.num_steps - 1:
-            td_metric = self.workers.local_worker().foreach_policy(
-                fit_dynamics)[0]
+            td_metric = self.workers.local_worker().foreach_policy(fit_dynamics)[0]
 
             # Sync workers with meta policy.
             self.workers.sync_weights()
@@ -188,8 +192,7 @@ class MetaUpdate:
             sync_ensemble(self.workers)
             sync_stats(self.workers)
 
-            metrics.counters[STEPS_SAMPLED_COUNTER] = td_metric[
-                STEPS_SAMPLED_COUNTER]
+            metrics.counters[STEPS_SAMPLED_COUNTER] = td_metric[STEPS_SAMPLED_COUNTER]
 
             # Modify to CollectMetrics.
             res = self.metric_gen.__call__(None)
@@ -261,14 +264,12 @@ def sync_ensemble(workers: WorkerSet) -> None:
 
         def policy_ensemble_weights(policy):
             model = policy.dynamics_model
-            return {
-                k: v.cpu().detach().numpy()
-                for k, v in model.state_dict().items()
-            }
+            return {k: v.cpu().detach().numpy() for k, v in model.state_dict().items()}
 
         return {
             pid: policy_ensemble_weights(policy)
-            for pid, policy in policy_map.items() if pid in policies
+            for pid, policy in policy_map.items()
+            if pid in policies
         }
 
     def set_ensemble_weights(policy, pid, weights):
@@ -293,12 +294,10 @@ def sync_stats(workers: WorkerSet) -> None:
         policy.dynamics_model.set_norms(normalizations)
 
     if workers.remote_workers():
-        normalization_dict = ray.put(
-            get_normalizations(workers.local_worker()))
+        normalization_dict = ray.put(get_normalizations(workers.local_worker()))
         set_func = ray.put(set_normalizations)
         for e in workers.remote_workers():
-            e.foreach_policy.remote(
-                set_func, normalizations=normalization_dict)
+            e.foreach_policy.remote(set_func, normalizations=normalization_dict)
 
 
 def post_process_samples(samples, config: TrainerConfigDict):
@@ -313,13 +312,11 @@ def post_process_samples(samples, config: TrainerConfigDict):
 
         paths = []
         for i in range(0, len(reward_list)):
-            paths.append({
-                "rewards": reward_list[i],
-                "observations": observation_list[i]
-            })
+            paths.append(
+                {"rewards": reward_list[i], "observations": observation_list[i]}
+            )
 
-        paths = calculate_gae_advantages(paths, config["gamma"],
-                                         config["lambda"])
+        paths = calculate_gae_advantages(paths, config["gamma"], config["lambda"])
 
         advantages = np.concatenate([path["advantages"] for path in paths])
         sample["advantages"] = standardized(advantages)
@@ -353,7 +350,8 @@ class MBMPOTrainer(Trainer):
         if config["framework"] != "torch":
             logger.warning(
                 "MB-MPO only supported in PyTorch so far! Switching to "
-                "`framework=torch`.")
+                "`framework=torch`."
+            )
             config["framework"] = "torch"
         if config["inner_adaptation_steps"] <= 0:
             raise ValueError("Inner adaptation steps must be >=1!")
@@ -368,19 +366,21 @@ class MBMPOTrainer(Trainer):
         if config["create_env_on_driver"] is False:
             raise ValueError(
                 "Must have an actual Env created on the driver "
-                "(local) worker! Set `create_env_on_driver` to True.")
+                "(local) worker! Set `create_env_on_driver` to True."
+            )
 
     @override(Trainer)
-    def get_default_policy_class(self,
-                                 config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return MBMPOTorchPolicy
 
     @staticmethod
     @override(Trainer)
-    def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
-                       **kwargs) -> LocalIterator[dict]:
-        assert len(kwargs) == 0, (
-            "MBMPO execution_plan does NOT take any additional parameters")
+    def execution_plan(
+        workers: WorkerSet, config: TrainerConfigDict, **kwargs
+    ) -> LocalIterator[dict]:
+        assert (
+            len(kwargs) == 0
+        ), "MBMPO execution_plan does NOT take any additional parameters"
 
         # Train TD Models on the driver.
         workers.local_worker().foreach_policy(fit_dynamics)
@@ -394,15 +394,15 @@ class MBMPOTrainer(Trainer):
 
         # Dropping metrics from the first iteration
         _, _ = collect_episodes(
-            workers.local_worker(),
-            workers.remote_workers(), [],
-            timeout_seconds=9999)
+            workers.local_worker(), workers.remote_workers(), [], timeout_seconds=9999
+        )
 
         # Metrics Collector.
         metric_collect = CollectMetrics(
             workers,
             min_history=0,
-            timeout_seconds=config["metrics_episode_collection_timeout_s"])
+            timeout_seconds=config["metrics_episode_collection_timeout_s"],
+        )
 
         num_inner_steps = config["inner_adaptation_steps"]
 
@@ -411,8 +411,7 @@ class MBMPOTrainer(Trainer):
             split = []
             metrics = {}
             for samples in itr:
-                print("Collecting Samples, Inner Adaptation {}".format(
-                    len(split)))
+                print("Collecting Samples, Inner Adaptation {}".format(len(split)))
                 # Processing Samples (Standardize Advantages)
                 samples, split_lst = post_process_samples(samples, config)
 
@@ -443,8 +442,13 @@ class MBMPOTrainer(Trainer):
         # Meta update step with outer combine loop for multiple MAML
         # iterations.
         train_op = rollouts.combine(
-            MetaUpdate(workers, config["num_maml_steps"],
-                       config["maml_optimizer_steps"], metric_collect))
+            MetaUpdate(
+                workers,
+                config["num_maml_steps"],
+                config["maml_optimizer_steps"],
+                metric_collect,
+            )
+        )
         return train_op
 
     @staticmethod
@@ -463,4 +467,5 @@ class MBMPOTrainer(Trainer):
         if not hasattr(env, "reward") or not callable(env.reward):
             raise ValueError(
                 f"Env {env} doest not have a `reward()` method, needed for "
-                "MB-MPO! This `reward()` method should return ")
+                "MB-MPO! This `reward()` method should return "
+            )

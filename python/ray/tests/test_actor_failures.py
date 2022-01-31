@@ -27,10 +27,14 @@ def ray_init_with_task_retry_delay():
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "object_store_memory": 150 * 1024 * 1024,
-    }],
-    indirect=True)
+    "ray_start_regular",
+    [
+        {
+            "object_store_memory": 150 * 1024 * 1024,
+        }
+    ],
+    indirect=True,
+)
 @pytest.mark.skipif(sys.platform == "win32", reason="Segfaults on CI")
 def test_actor_spilled(ray_start_regular):
     object_store_memory = 150 * 1024 * 1024
@@ -246,8 +250,9 @@ def test_named_actor_max_task_retries(ray_init_with_task_retry_delay):
     signal = SignalActor.remote()
 
     # Start the two actors, wait for ActorToKill's constructor to run.
-    a = ActorToKill.options(
-        name="a", max_restarts=-1, max_task_retries=-1).remote(init_counter)
+    a = ActorToKill.options(name="a", max_restarts=-1, max_task_retries=-1).remote(
+        init_counter
+    )
     c = CallingActor.remote()
     ray.get(init_counter.wait_for_count.remote(1), timeout=30)
 
@@ -323,7 +328,7 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
 
 def test_caller_actor_restart(ray_start_regular):
     """Test tasks from a restarted actor can be correctly processed
-       by the receiving actor."""
+    by the receiving actor."""
 
     @ray.remote(max_restarts=1)
     class RestartableActor:
@@ -365,7 +370,7 @@ def test_caller_actor_restart(ray_start_regular):
 
 def test_caller_task_reconstruction(ray_start_regular):
     """Test a retried task from a dead worker can be correctly processed
-       by the receiving actor."""
+    by the receiving actor."""
 
     @ray.remote(max_retries=5)
     def RetryableTask(actor):
@@ -397,11 +402,14 @@ def test_caller_task_reconstruction(ray_start_regular):
 # may happen and cause the test fauilure. If the value is too large, this test
 # could be very slow. We can remove this once we support dynamic timeout.
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [
+    "ray_start_cluster_head",
+    [
         generate_system_config_map(
-            object_timeout_milliseconds=1000, num_heartbeats_timeout=10)
+            object_timeout_milliseconds=1000, num_heartbeats_timeout=10
+        )
     ],
-    indirect=True)
+    indirect=True,
+)
 def test_multiple_actor_restart(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     # This test can be made more stressful by increasing the numbers below.
@@ -437,13 +445,12 @@ def test_multiple_actor_restart(ray_start_cluster_head):
     # a raylet, and run some more methods.
     for node in worker_nodes:
         # Create some actors.
-        actors.extend(
-            [SlowCounter.remote() for _ in range(num_actors_at_a_time)])
+        actors.extend([SlowCounter.remote() for _ in range(num_actors_at_a_time)])
         # Run some methods.
         for j in range(len(actors)):
             actor = actors[j]
             for _ in range(num_function_calls_at_a_time):
-                result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
+                result_ids[actor].append(actor.inc.remote(j ** 2 * 0.000001))
         # Kill a node.
         cluster.remove_node(node)
 
@@ -451,7 +458,7 @@ def test_multiple_actor_restart(ray_start_cluster_head):
         for j in range(len(actors)):
             actor = actors[j]
             for _ in range(num_function_calls_at_a_time):
-                result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
+                result_ids[actor].append(actor.inc.remote(j ** 2 * 0.000001))
 
     # Get the results and check that they have the correct values.
     for _, result_id_list in result_ids.items():
@@ -484,8 +491,7 @@ def test_decorated_method(ray_start_regular):
             # Turn two arguments into one.
             return f(self, b + c)
 
-        new_f_execution.__ray_invocation_decorator__ = (
-            method_invocation_decorator)
+        new_f_execution.__ray_invocation_decorator__ = method_invocation_decorator
         return new_f_execution
 
     @ray.remote
@@ -503,10 +509,15 @@ def test_decorated_method(ray_start_regular):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_cpus": 1,
-        "num_nodes": 1,
-    }], indirect=True)
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 1,
+            "num_nodes": 1,
+        }
+    ],
+    indirect=True,
+)
 def test_actor_owner_worker_dies_before_dependency_ready(ray_start_cluster):
     """Test actor owner worker dies before local dependencies are resolved.
     This test verifies the scenario where owner worker
@@ -569,10 +580,15 @@ def test_actor_owner_worker_dies_before_dependency_ready(ray_start_cluster):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_cpus": 3,
-        "num_nodes": 1,
-    }], indirect=True)
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 3,
+            "num_nodes": 1,
+        }
+    ],
+    indirect=True,
+)
 def test_actor_owner_node_dies_before_dependency_ready(ray_start_cluster):
     """Test actor owner node dies before local dependencies are resolved.
     This test verifies the scenario where owner node
@@ -681,8 +697,7 @@ def test_actor_failure_per_type(ray_start_cluster):
 
     # Test actor is dead because its reference is gone.
     # Q(sang): Should we raise RayACtorError in this case?
-    with pytest.raises(
-            RuntimeError, match="Lost reference to actor") as exc_info:
+    with pytest.raises(RuntimeError, match="Lost reference to actor") as exc_info:
         ray.get(Actor.remote().check_alive.remote())
     print(exc_info._excinfo[1])
 
@@ -690,8 +705,8 @@ def test_actor_failure_per_type(ray_start_cluster):
     a = Actor.remote()
     ray.kill(a)
     with pytest.raises(
-            ray.exceptions.RayActorError,
-            match="it was killed by `ray.kill") as exc_info:
+        ray.exceptions.RayActorError, match="it was killed by `ray.kill"
+    ) as exc_info:
         ray.get(a.check_alive.remote())
     print(exc_info._excinfo[1])
 
@@ -700,9 +715,9 @@ def test_actor_failure_per_type(ray_start_cluster):
     pid = ray.get(a.check_alive.remote())
     os.kill(pid, 9)
     with pytest.raises(
-            ray.exceptions.RayActorError,
-            match=("The actor is dead because its worker process has died"
-                   )) as exc_info:
+        ray.exceptions.RayActorError,
+        match=("The actor is dead because its worker process has died"),
+    ) as exc_info:
         ray.get(a.check_alive.remote())
     print(exc_info._excinfo[1])
 
@@ -711,8 +726,9 @@ def test_actor_failure_per_type(ray_start_cluster):
     a = ray.get(owner.create_actor.remote())
     ray.kill(owner)
     with pytest.raises(
-            ray.exceptions.RayActorError,
-            match="The actor is dead because its owner has died") as exc_info:
+        ray.exceptions.RayActorError,
+        match="The actor is dead because its owner has died",
+    ) as exc_info:
         ray.get(a.check_alive.remote())
     print(exc_info._excinfo[1])
 
@@ -722,12 +738,28 @@ def test_actor_failure_per_type(ray_start_cluster):
     ray.get(a.check_alive.remote())
     cluster.remove_node(node_to_kill)
     with pytest.raises(
-            ray.exceptions.RayActorError,
-            match="The actor is dead because its node has died.") as exc_info:
+        ray.exceptions.RayActorError,
+        match="The actor is dead because its node has died.",
+    ) as exc_info:
         ray.get(a.check_alive.remote())
     print(exc_info._excinfo[1])
 
 
+def test_utf8_actor_exception(ray_start_regular):
+    @ray.remote
+    class FlakyActor:
+        def __init__(self):
+            raise RuntimeError("你好呀，祝你有个好心情！")
+
+        def ping(self):
+            return True
+
+    actor = FlakyActor.remote()
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(actor.ping.remote())
+
+
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

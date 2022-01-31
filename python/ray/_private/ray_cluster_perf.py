@@ -11,12 +11,11 @@ def main():
     cluster = Cluster(
         initialize_head=True,
         connect=True,
-        head_node_args={
-            "object_store_memory": 20 * 1024 * 1024 * 1024,
-            "num_cpus": 16
-        })
+        head_node_args={"object_store_memory": 20 * 1024 * 1024 * 1024, "num_cpus": 16},
+    )
     cluster.add_node(
-        object_store_memory=20 * 1024 * 1024 * 1024, num_gpus=1, num_cpus=16)
+        object_store_memory=20 * 1024 * 1024 * 1024, num_gpus=1, num_cpus=16
+    )
 
     object_ref_list = []
     for i in range(0, 10):
@@ -36,8 +35,12 @@ def main():
 
     time_diff, time_diff_std = ray.get(f.remote(object_ref_list))
 
-    print("latency to get an 1G object over network", round(time_diff, 2),
-          "+-", round(time_diff_std, 2))
+    print(
+        "latency to get an 1G object over network",
+        round(time_diff, 2),
+        "+-",
+        round(time_diff_std, 2),
+    )
 
     ray.shutdown()
     cluster.shutdown()

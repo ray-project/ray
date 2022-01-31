@@ -21,10 +21,10 @@ import yaml
 
 class ReleaseTest:
     def __init__(
-            self,
-            name: str,
-            smoke_test: bool = False,
-            retry: int = 0,
+        self,
+        name: str,
+        smoke_test: bool = False,
+        retry: int = 0,
     ):
         self.name = name
         self.smoke_test = smoke_test
@@ -48,8 +48,7 @@ class ReleaseTest:
 
 class SmokeTest(ReleaseTest):
     def __init__(self, name: str, retry: int = 0):
-        super(SmokeTest, self).__init__(
-            name=name, smoke_test=True, retry=retry)
+        super(SmokeTest, self).__init__(name=name, smoke_test=True, retry=retry)
 
 
 CORE_NIGHTLY_TESTS = {
@@ -61,8 +60,6 @@ CORE_NIGHTLY_TESTS = {
         "non_streaming_shuffle_100gb",
         "non_streaming_shuffle_50gb_large_partition",
         "non_streaming_shuffle_50gb",
-        "dask_on_ray_10gb_sort",
-        "dask_on_ray_100gb_sort",
         SmokeTest("dask_on_ray_large_scale_test_no_spilling"),
         SmokeTest("dask_on_ray_large_scale_test_spilling"),
         "stress_test_placement_group",
@@ -78,9 +75,7 @@ CORE_NIGHTLY_TESTS = {
         SmokeTest("stress_test_many_tasks"),
         SmokeTest("stress_test_dead_actors"),
         "shuffle_data_loader",
-        "dask_on_ray_1tb_sort",
         SmokeTest("threaded_actors_stress_test"),
-        "placement_group_performance_test",
         "pg_long_running_performance_test",
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
@@ -132,9 +127,9 @@ CORE_DAILY_TESTS = {
         "dask_on_ray_large_scale_test_spilling",
         "pg_autoscaling_regression_test",
         "threaded_actors_stress_test",
+        "k8s_threaded_actors_stress_test",
         "stress_test_many_tasks",
         "stress_test_dead_actors",
-        "many_nodes_actor_test",
     ],
     "~/ray/release/nightly_tests/chaos_test.yaml": [
         "chaos_dask_on_ray_large_scale_test_no_spilling",
@@ -148,10 +143,6 @@ CORE_SCALABILITY_TESTS_DAILY = {
         "many_tasks",
         "many_pgs",
         "many_nodes",
-        "scheduling_test_many_0s_tasks_single_node",
-        "scheduling_test_many_0s_tasks_many_nodes",
-        "scheduling_test_many_5s_tasks_single_node",
-        "scheduling_test_many_5s_tasks_many_nodes",
     ],
 }
 
@@ -161,6 +152,23 @@ CORE_REDIS_HA_TESTS_DAILY = {
         "many_tasks_redis_ha",
         "many_pgs_redis_ha",
         "many_nodes_redis_ha",
+    ],
+}
+
+CORE_SCHEDULING_DAILY = {
+    "~/ray/benchmarks/benchmark_tests.yaml": [
+        "scheduling_test_many_0s_tasks_single_node",
+        "scheduling_test_many_0s_tasks_many_nodes",
+        # Reenable these two once we got right setup
+        # "scheduling_test_many_5s_tasks_single_node",
+        # "scheduling_test_many_5s_tasks_many_nodes",
+    ],
+    "~/ray/release/nightly_tests/nightly_tests.yaml": [
+        "many_nodes_actor_test",
+        "dask_on_ray_10gb_sort",
+        "dask_on_ray_100gb_sort",
+        "dask_on_ray_1tb_sort",
+        "placement_group_performance_test",
     ],
 }
 
@@ -186,6 +194,19 @@ NIGHTLY_TESTS = {
         SmokeTest("pbt"),
         # SmokeTest("serve"),
         # SmokeTest("serve_failure"),
+        # Full long running tests (1 day runtime)
+        "actor_deaths",
+        "apex",
+        "impala",
+        "many_actor_tasks",
+        "many_drivers",
+        "many_ppo",
+        "many_tasks",
+        "many_tasks_serialized_ids",
+        "node_failures",
+        "pbt",
+        "serve",
+        "serve_failure",
     ],
     "~/ray/release/sgd_tests/sgd_tests.yaml": [
         "sgd_gpu",
@@ -228,7 +249,9 @@ NIGHTLY_TESTS = {
         # "example_scripts_on_gpu_tests",
     ],
     "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
-        "rte_many_tasks_actors", "wheel_urls", "rte_ray_client"
+        "rte_many_tasks_actors",
+        "wheel_urls",
+        "rte_ray_client",
     ],
 }
 
@@ -239,21 +262,6 @@ WEEKLY_TESTS = {
     "~/ray/release/long_running_distributed_tests"
     "/long_running_distributed.yaml": [
         "pytorch_pbt_failure",
-    ],
-    # Full long running tests (1 day runtime)
-    "~/ray/release/long_running_tests/long_running_tests.yaml": [
-        "actor_deaths",
-        "apex",
-        "impala",
-        "many_actor_tasks",
-        "many_drivers",
-        "many_ppo",
-        "many_tasks",
-        "many_tasks_serialized_ids",
-        "node_failures",
-        "pbt",
-        "serve",
-        "serve_failure",
     ],
     "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
         "network_overhead",
@@ -275,11 +283,15 @@ WEEKLY_TESTS = {
 #   4. Have the `use_connect` flag set.
 USER_TESTS = {
     "~/ray/release/ml_user_tests/ml_user_tests.yaml": [
-        "train_tensorflow_mnist_test", "train_torch_linear_test",
-        "ray_lightning_user_test_latest", "ray_lightning_user_test_master",
-        "horovod_user_test_latest", "horovod_user_test_master",
-        "xgboost_gpu_connect_latest", "xgboost_gpu_connect_master",
-        "tune_rllib_connect_test"
+        "train_tensorflow_mnist_test",
+        "train_torch_linear_test",
+        "ray_lightning_user_test_latest",
+        "ray_lightning_user_test_master",
+        "horovod_user_test_latest",
+        "horovod_user_test_master",
+        "xgboost_gpu_connect_latest",
+        "xgboost_gpu_connect_master",
+        "tune_rllib_connect_test",
     ]
 }
 
@@ -289,10 +301,8 @@ SUITES = {
     "core-daily": CORE_DAILY_TESTS,
     "core-scalability": CORE_SCALABILITY_TESTS_DAILY,
     "core-redis-ha": CORE_REDIS_HA_TESTS_DAILY,
-    "nightly": {
-        **NIGHTLY_TESTS,
-        **USER_TESTS
-    },
+    "nightly": {**NIGHTLY_TESTS, **USER_TESTS},
+    "core-scheduling-daily": CORE_SCHEDULING_DAILY,
     "weekly": WEEKLY_TESTS,
 }
 
@@ -304,29 +314,27 @@ DEFAULT_STEP_TEMPLATE = {
         "RELEASE_AWS_LOCATION": "dev",
         "RELEASE_AWS_DB_NAME": "ray_ci",
         "RELEASE_AWS_DB_TABLE": "release_test_result",
-        "AWS_REGION": "us-west-2"
+        "AWS_REGION": "us-west-2",
     },
-    "agents": {
-        "queue": "runner_queue_branch"
-    },
-    "plugins": [{
-        "docker#v3.9.0": {
-            "image": "rayproject/ray",
-            "propagate-environment": True,
-            "volumes": [
-                "/tmp/ray_release_test_artifacts:"
-                "/tmp/ray_release_test_artifacts"
-            ],
+    "agents": {"queue": "runner_queue_branch"},
+    "plugins": [
+        {
+            "docker#v3.9.0": {
+                "image": "rayproject/ray",
+                "propagate-environment": True,
+                "volumes": [
+                    "/tmp/ray_release_test_artifacts:" "/tmp/ray_release_test_artifacts"
+                ],
+            }
         }
-    }],
+    ],
     "artifact_paths": ["/tmp/ray_release_test_artifacts/**/*"],
 }
 
 
 def ask_configuration():
     RAY_BRANCH = os.environ.get("RAY_BRANCH", "master")
-    RAY_REPO = os.environ.get("RAY_REPO",
-                              "https://github.com/ray-project/ray.git")
+    RAY_REPO = os.environ.get("RAY_REPO", "https://github.com/ray-project/ray.git")
     RAY_VERSION = os.environ.get("RAY_VERSION", "")
     RAY_WHEELS = os.environ.get("RAY_WHEELS", "")
 
@@ -341,90 +349,122 @@ def ask_configuration():
         "input": "Input required: Please specify tests to run",
         "fields": [
             {
-                "text": ("RAY_REPO: Please specify the Ray repository used "
-                         "to find the wheel."),
-                "hint": ("Repository from which to fetch the latest "
-                         "commits to find the Ray wheels. Usually you don't "
-                         "need to change this."),
+                "text": (
+                    "RAY_REPO: Please specify the Ray repository used "
+                    "to find the wheel."
+                ),
+                "hint": (
+                    "Repository from which to fetch the latest "
+                    "commits to find the Ray wheels. Usually you don't "
+                    "need to change this."
+                ),
                 "default": RAY_REPO,
-                "key": "ray_repo"
+                "key": "ray_repo",
             },
             {
-                "text": ("RAY_BRANCH: Please specify the Ray branch used "
-                         "to find the wheel."),
+                "text": (
+                    "RAY_BRANCH: Please specify the Ray branch used "
+                    "to find the wheel."
+                ),
                 "hint": "For releases, this will be e.g. `releases/1.x.0`",
                 "default": RAY_BRANCH,
-                "key": "ray_branch"
+                "key": "ray_branch",
             },
             {
-                "text": ("RAY_VERSION: Please specify the Ray version used "
-                         "to find the wheel."),
-                "hint": ("Leave empty for latest master. For releases, "
-                         "specify the release version."),
+                "text": (
+                    "RAY_VERSION: Please specify the Ray version used "
+                    "to find the wheel."
+                ),
+                "hint": (
+                    "Leave empty for latest master. For releases, "
+                    "specify the release version."
+                ),
                 "required": False,
                 "default": RAY_VERSION,
-                "key": "ray_version"
+                "key": "ray_version",
             },
             {
                 "text": "RAY_WHEELS: Please specify the Ray wheel URL.",
-                "hint": ("ATTENTION: If you provide this, RAY_REPO, "
-                         "RAY_BRANCH and RAY_VERSION will be ignored! "
-                         "Please also make sure to provide the wheels URL "
-                         "for Python 3.7 on Linux.\n"
-                         "You can also insert a commit hash here instead "
-                         "of a full URL.\n"
-                         "NOTE: You can specify multiple commits or URLs "
-                         "for easy bisection (one per line) - this will "
-                         "run each test on each of the specified wheels."),
+                "hint": (
+                    "ATTENTION: If you provide this, RAY_REPO, "
+                    "RAY_BRANCH and RAY_VERSION will be ignored! "
+                    "Please also make sure to provide the wheels URL "
+                    "for Python 3.7 on Linux.\n"
+                    "You can also insert a commit hash here instead "
+                    "of a full URL.\n"
+                    "NOTE: You can specify multiple commits or URLs "
+                    "for easy bisection (one per line) - this will "
+                    "run each test on each of the specified wheels."
+                ),
                 "required": False,
                 "default": RAY_WHEELS,
-                "key": "ray_wheels"
+                "key": "ray_wheels",
             },
             {
-                "text": ("RAY_TEST_REPO: Please specify the Ray repository "
-                         "used to find the tests you would like to run."),
-                "hint": ("If you're developing a new release test, this "
-                         "will most likely be your GitHub fork."),
+                "text": (
+                    "RAY_TEST_REPO: Please specify the Ray repository "
+                    "used to find the tests you would like to run."
+                ),
+                "hint": (
+                    "If you're developing a new release test, this "
+                    "will most likely be your GitHub fork."
+                ),
                 "default": RAY_TEST_REPO,
-                "key": "ray_test_repo"
+                "key": "ray_test_repo",
             },
             {
-                "text": ("RAY_TEST_BRANCH: Please specify the Ray branch used "
-                         "to find the tests you would like to run."),
-                "hint": ("If you're developing a new release test, this "
-                         "will most likely be a branch living on your "
-                         "GitHub fork."),
+                "text": (
+                    "RAY_TEST_BRANCH: Please specify the Ray branch used "
+                    "to find the tests you would like to run."
+                ),
+                "hint": (
+                    "If you're developing a new release test, this "
+                    "will most likely be a branch living on your "
+                    "GitHub fork."
+                ),
                 "default": RAY_TEST_BRANCH,
-                "key": "ray_test_branch"
+                "key": "ray_test_branch",
             },
             {
-                "select": ("RELEASE_TEST_SUITE: Please specify the release "
-                           "test suite containing the tests you would like "
-                           "to run."),
-                "hint": ("Check in the `build_pipeline.py` if you're "
-                         "unsure which suite contains your tests."),
+                "select": (
+                    "RELEASE_TEST_SUITE: Please specify the release "
+                    "test suite containing the tests you would like "
+                    "to run."
+                ),
+                "hint": (
+                    "Check in the `build_pipeline.py` if you're "
+                    "unsure which suite contains your tests."
+                ),
                 "required": True,
                 "options": sorted(SUITES.keys()),
                 "default": RELEASE_TEST_SUITE,
-                "key": "release_test_suite"
+                "key": "release_test_suite",
             },
             {
-                "text": ("FILTER_FILE: Please specify a filter for the "
-                         "test files that should be included in this build."),
-                "hint": ("Only test files (e.g. xgboost_tests.yml) that "
-                         "match this string will be included in the test"),
+                "text": (
+                    "FILTER_FILE: Please specify a filter for the "
+                    "test files that should be included in this build."
+                ),
+                "hint": (
+                    "Only test files (e.g. xgboost_tests.yml) that "
+                    "match this string will be included in the test"
+                ),
                 "default": FILTER_FILE,
                 "required": False,
-                "key": "filter_file"
+                "key": "filter_file",
             },
             {
-                "text": ("FILTER_TEST: Please specify a filter for the "
-                         "test names that should be included in this build."),
-                "hint": ("Only test names (e.g. tune_4x32) that match "
-                         "this string will be included in the test"),
+                "text": (
+                    "FILTER_TEST: Please specify a filter for the "
+                    "test names that should be included in this build."
+                ),
+                "hint": (
+                    "Only test names (e.g. tune_4x32) that match "
+                    "this string will be included in the test"
+                ),
                 "default": FILTER_TEST,
                 "required": False,
-                "key": "filter_test"
+                "key": "filter_test",
             },
         ],
         "key": "input_ask_step",
@@ -432,7 +472,7 @@ def ask_configuration():
 
     run_again_step = {
         "commands": [
-            f"export {v}=$(buildkite-agent meta-data get \"{k}\")"
+            f'export {v}=$(buildkite-agent meta-data get "{k}")'
             for k, v in {
                 "ray_branch": "RAY_BRANCH",
                 "ray_repo": "RAY_REPO",
@@ -444,18 +484,19 @@ def ask_configuration():
                 "filter_file": "FILTER_FILE",
                 "filter_test": "FILTER_TEST",
             }.items()
-        ] + [
+        ]
+        + [
             "export AUTOMATIC=1",
             "python3 -m pip install --user pyyaml",
             "rm -rf ~/ray || true",
             "git clone -b $${RAY_TEST_BRANCH} $${RAY_TEST_REPO} ~/ray",
-            ("python3 ~/ray/release/.buildkite/build_pipeline.py "
-             "| buildkite-agent pipeline upload"),
+            (
+                "python3 ~/ray/release/.buildkite/build_pipeline.py "
+                "| buildkite-agent pipeline upload"
+            ),
         ],
         "label": ":pipeline: Again",
-        "agents": {
-            "queue": "runner_queue_branch"
-        },
+        "agents": {"queue": "runner_queue_branch"},
         "depends_on": "input_ask_step",
         "key": "run_again_step",
     }
@@ -467,14 +508,14 @@ def ask_configuration():
 
 
 def create_test_step(
-        ray_repo: str,
-        ray_branch: str,
-        ray_version: str,
-        ray_wheels: str,
-        ray_test_repo: str,
-        ray_test_branch: str,
-        test_file: str,
-        test_name: ReleaseTest,
+    ray_repo: str,
+    ray_branch: str,
+    ray_version: str,
+    ray_wheels: str,
+    ray_test_repo: str,
+    ray_test_branch: str,
+    test_file: str,
+    test_name: ReleaseTest,
 ):
     custom_commit_str = "custom_wheels_url"
     if ray_wheels:
@@ -488,18 +529,22 @@ def create_test_step(
 
     logging.info(f"Creating step for {test_file}/{test_name}{ray_wheels_str}")
 
-    cmd = (f"./release/run_e2e.sh "
-           f"--ray-repo \"{ray_repo}\" "
-           f"--ray-branch \"{ray_branch}\" "
-           f"--ray-version \"{ray_version}\" "
-           f"--ray-wheels \"{ray_wheels}\" "
-           f"--ray-test-repo \"{ray_test_repo}\" "
-           f"--ray-test-branch \"{ray_test_branch}\" ")
+    cmd = (
+        f"./release/run_e2e.sh "
+        f'--ray-repo "{ray_repo}" '
+        f'--ray-branch "{ray_branch}" '
+        f'--ray-version "{ray_version}" '
+        f'--ray-wheels "{ray_wheels}" '
+        f'--ray-test-repo "{ray_test_repo}" '
+        f'--ray-test-branch "{ray_test_branch}" '
+    )
 
-    args = (f"--category {ray_branch} "
-            f"--test-config {test_file} "
-            f"--test-name {test_name} "
-            f"--keep-results-dir")
+    args = (
+        f"--category {ray_branch} "
+        f"--test-config {test_file} "
+        f"--test-name {test_name} "
+        f"--keep-results-dir"
+    )
 
     if test_name.smoke_test:
         logging.info("This test will run as a smoke test.")
@@ -508,13 +553,9 @@ def create_test_step(
     step_conf = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
     if test_name.retry:
-        logging.info(f"This test will be retried up to "
-                     f"{test_name.retry} times.")
+        logging.info(f"This test will be retried up to " f"{test_name.retry} times.")
         step_conf["retry"] = {
-            "automatic": [{
-                "exit_status": "*",
-                "limit": test_name.retry
-            }]
+            "automatic": [{"exit_status": "*", "limit": test_name.retry}]
         }
     else:
         # Default retry logic
@@ -523,18 +564,9 @@ def create_test_step(
         # the run_e2e.sh script!
         step_conf["retry"] = {
             "automatic": [
-                {
-                    "exit_status": 7,  # Prepare timeout
-                    "limit": 2
-                },
-                {
-                    "exit_status": 9,  # Session timeout
-                    "limit": 2
-                },
-                {
-                    "exit_status": 10,  # Prepare error
-                    "limit": 2
-                }
+                {"exit_status": 7, "limit": 2},  # Prepare timeout
+                {"exit_status": 9, "limit": 2},  # Session timeout
+                {"exit_status": 10, "limit": 2},  # Prepare error
             ],
         }
 
@@ -543,7 +575,8 @@ def create_test_step(
     step_conf["label"] = (
         f"{test_name} "
         f"({custom_commit_str if ray_wheels_str else ray_branch}) - "
-        f"{ray_test_branch}/{ray_test_repo}")
+        f"{ray_test_branch}/{ray_test_repo}"
+    )
     return step_conf
 
 
@@ -551,8 +584,7 @@ def build_pipeline(steps):
     all_steps = []
 
     RAY_BRANCH = os.environ.get("RAY_BRANCH", "master")
-    RAY_REPO = os.environ.get("RAY_REPO",
-                              "https://github.com/ray-project/ray.git")
+    RAY_REPO = os.environ.get("RAY_REPO", "https://github.com/ray-project/ray.git")
     RAY_VERSION = os.environ.get("RAY_VERSION", "")
     RAY_WHEELS = os.environ.get("RAY_WHEELS", "")
 
@@ -567,8 +599,10 @@ def build_pipeline(steps):
         ray_wheels_list = RAY_WHEELS.split("\n")
 
     if len(ray_wheels_list) > 1:
-        logging.info(f"This will run a bisec on the following URLs/commits: "
-                     f"{ray_wheels_list}")
+        logging.info(
+            f"This will run a bisec on the following URLs/commits: "
+            f"{ray_wheels_list}"
+        )
 
     logging.info(
         f"Building pipeline \n"
@@ -582,7 +616,8 @@ def build_pipeline(steps):
         f" RAY_TEST_BRANCH = {RAY_TEST_BRANCH}\n\n"
         f"Filtering for these tests:\n"
         f" FILTER_FILE = {FILTER_FILE}\n"
-        f" FILTER_TEST = {FILTER_TEST}\n\n")
+        f" FILTER_TEST = {FILTER_TEST}\n\n"
+    )
 
     for test_file, test_names in steps.items():
         if FILTER_FILE and FILTER_FILE not in test_file:
@@ -607,7 +642,8 @@ def build_pipeline(steps):
                     ray_test_repo=RAY_TEST_REPO,
                     ray_test_branch=RAY_TEST_BRANCH,
                     test_file=test_file,
-                    test_name=test_name)
+                    test_name=test_name,
+                )
 
                 all_steps.append(step_conf)
 

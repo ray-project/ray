@@ -5,6 +5,7 @@ from __future__ import print_function
 import inspect
 import logging
 import numpy as np
+
 # use cloudpickle instead of pickle to make lambda funcs
 # in dragonfly pickleable
 from ray import cloudpickle
@@ -12,8 +13,11 @@ from typing import Dict, List, Optional, Union
 
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Domain, Float, Quantized
-from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
-    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
+from ray.tune.suggest.suggestion import (
+    UNRESOLVED_SEARCH_SPACE,
+    UNDEFINED_METRIC_MODE,
+    UNDEFINED_SEARCH_SPACE,
+)
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict, is_nan_or_inf, unflatten_dict
 
@@ -143,17 +147,21 @@ class DragonflySearch(Searcher):
 
     """
 
-    def __init__(self,
-                 optimizer: Optional[Union[str, BlackboxOptimiser]] = None,
-                 domain: Optional[str] = None,
-                 space: Optional[Union[Dict, List[Dict]]] = None,
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None,
-                 points_to_evaluate: Optional[List[Dict]] = None,
-                 evaluated_rewards: Optional[List] = None,
-                 random_state_seed: Optional[int] = None,
-                 **kwargs):
-        assert dragonfly is not None, """dragonfly must be installed!
+    def __init__(
+        self,
+        optimizer: Optional[Union[str, BlackboxOptimiser]] = None,
+        domain: Optional[str] = None,
+        space: Optional[Union[Dict, List[Dict]]] = None,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        points_to_evaluate: Optional[List[Dict]] = None,
+        evaluated_rewards: Optional[List] = None,
+        random_state_seed: Optional[int] = None,
+        **kwargs
+    ):
+        assert (
+            dragonfly is not None
+        ), """dragonfly must be installed!
             You can install Dragonfly with the command:
             `pip install dragonfly-opt`."""
         if mode:
@@ -162,10 +170,10 @@ class DragonflySearch(Searcher):
             assert isinstance(
                 random_state_seed, int
             ), "random_state_seed must be None or int, got '{}'.".format(
-                type(random_state_seed))
+                type(random_state_seed)
+            )
 
-        super(DragonflySearch, self).__init__(
-            metric=metric, mode=mode, **kwargs)
+        super(DragonflySearch, self).__init__(metric=metric, mode=mode, **kwargs)
 
         self._opt_arg = optimizer
         self._domain = domain
@@ -174,8 +182,8 @@ class DragonflySearch(Searcher):
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
             if domain_vars or grid_vars:
                 logger.warning(
-                    UNRESOLVED_SEARCH_SPACE.format(
-                        par="space", cls=type(self)))
+                    UNRESOLVED_SEARCH_SPACE.format(par="space", cls=type(self))
+                )
                 space = self.convert_search_space(space)
 
         self._space = space
@@ -191,7 +199,8 @@ class DragonflySearch(Searcher):
             if domain or space:
                 raise ValueError(
                     "If you pass an optimizer instance to dragonfly, do not "
-                    "pass a `domain` or `space`.")
+                    "pass a `domain` or `space`."
+                )
             self._opt = optimizer
             self.init_dragonfly()
         elif self._space:
@@ -202,11 +211,15 @@ class DragonflySearch(Searcher):
         assert not self._opt, "Optimizer already set."
 
         from dragonfly import load_config
-        from dragonfly.exd.experiment_caller import CPFunctionCaller, \
-            EuclideanFunctionCaller
+        from dragonfly.exd.experiment_caller import (
+            CPFunctionCaller,
+            EuclideanFunctionCaller,
+        )
         from dragonfly.opt.blackbox_optimiser import BlackboxOptimiser
-        from dragonfly.opt.random_optimiser import CPRandomOptimiser, \
-            EuclideanRandomOptimiser
+        from dragonfly.opt.random_optimiser import (
+            CPRandomOptimiser,
+            EuclideanRandomOptimiser,
+        )
         from dragonfly.opt.cp_ga_optimiser import CPGAOptimiser
         from dragonfly.opt.gp_bandit import CPGPBandit, EuclideanGPBandit
 
@@ -214,12 +227,14 @@ class DragonflySearch(Searcher):
             raise ValueError(
                 "You have to pass a `space` when initializing dragonfly, or "
                 "pass a search space definition to the `config` parameter "
-                "of `tune.run()`.")
+                "of `tune.run()`."
+            )
 
         if not self._domain:
             raise ValueError(
                 "You have to set a `domain` when initializing dragonfly. "
-                "Choose one of [Cartesian, Euclidean].")
+                "Choose one of [Cartesian, Euclidean]."
+            )
 
         self._point_parameter_names = [param["name"] for param in self._space]
 
@@ -231,12 +246,15 @@ class DragonflySearch(Searcher):
         elif self._domain.lower().startswith("euclidean"):
             function_caller_cls = EuclideanFunctionCaller
         else:
-            raise ValueError("Dragonfly's `domain` argument must be one of "
-                             "[Cartesian, Euclidean].")
+            raise ValueError(
+                "Dragonfly's `domain` argument must be one of "
+                "[Cartesian, Euclidean]."
+            )
 
         optimizer_cls = None
         if inspect.isclass(self._opt_arg) and issubclass(
-                self._opt_arg, BlackboxOptimiser):
+            self._opt_arg, BlackboxOptimiser
+        ):
             optimizer_cls = self._opt_arg
         elif isinstance(self._opt_arg, str):
             if self._opt_arg.lower().startswith("random"):
@@ -255,25 +273,29 @@ class DragonflySearch(Searcher):
                 else:
                     raise ValueError(
                         "Currently only the `cartesian` domain works with "
-                        "the `genetic` optimizer.")
+                        "the `genetic` optimizer."
+                    )
             else:
                 raise ValueError(
                     "Invalid optimizer specification. Either pass a full "
                     "dragonfly optimizer, or a string "
-                    "in [random, bandit, genetic].")
+                    "in [random, bandit, genetic]."
+                )
 
         assert optimizer_cls, "No optimizer could be determined."
         domain_config = load_config({"domain": self._space})
         function_caller = function_caller_cls(
-            None, domain_config.domain.list_of_domains[0])
+            None, domain_config.domain.list_of_domains[0]
+        )
         self._opt = optimizer_cls(function_caller, ask_tell_mode=True)
         self.init_dragonfly()
 
     def init_dragonfly(self):
         if self._points_to_evaluate:
-            points_to_evaluate = [[
-                config[par] for par in self._point_parameter_names
-            ] for config in self._points_to_evaluate]
+            points_to_evaluate = [
+                [config[par] for par in self._point_parameter_names]
+                for config in self._points_to_evaluate
+            ]
         else:
             points_to_evaluate = None
 
@@ -284,34 +306,37 @@ class DragonflySearch(Searcher):
             self._initial_points = points_to_evaluate
         # Dragonfly internally maximizes, so "min" => -1
         if self._mode == "min":
-            self._metric_op = -1.
+            self._metric_op = -1.0
         elif self._mode == "max":
-            self._metric_op = 1.
+            self._metric_op = 1.0
 
         if self._metric is None and self._mode:
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
 
-    def add_evaluated_point(self,
-                            parameters: Dict,
-                            value: float,
-                            error: bool = False,
-                            pruned: bool = False,
-                            intermediate_values: Optional[List[float]] = None):
+    def add_evaluated_point(
+        self,
+        parameters: Dict,
+        value: float,
+        error: bool = False,
+        pruned: bool = False,
+        intermediate_values: Optional[List[float]] = None,
+    ):
         assert self._opt, "Optimizer must be set."
         if intermediate_values:
-            logger.warning(
-                "dragonfly doesn't use intermediate_values. Ignoring.")
+            logger.warning("dragonfly doesn't use intermediate_values. Ignoring.")
         if not error and not pruned:
             self._opt.tell(
-                [([parameters[par] for par in self._point_parameter_names],
-                  value)])
+                [([parameters[par] for par in self._point_parameter_names], value)]
+            )
         else:
-            logger.warning("Only non errored and non pruned points"
-                           " can be added to dragonfly.")
+            logger.warning(
+                "Only non errored and non pruned points" " can be added to dragonfly."
+            )
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict, **spec) -> bool:
+    def set_search_properties(
+        self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
+    ) -> bool:
         if self._opt:
             return False
         space = self.convert_search_space(config)
@@ -328,14 +353,16 @@ class DragonflySearch(Searcher):
         if not self._opt:
             raise RuntimeError(
                 UNDEFINED_SEARCH_SPACE.format(
-                    cls=self.__class__.__name__, space="space"))
+                    cls=self.__class__.__name__, space="space"
+                )
+            )
 
         if not self._metric or not self._mode:
             raise RuntimeError(
                 UNDEFINED_METRIC_MODE.format(
-                    cls=self.__class__.__name__,
-                    metric=self._metric,
-                    mode=self._mode))
+                    cls=self.__class__.__name__, metric=self._metric, mode=self._mode
+                )
+            )
 
         if self._initial_points:
             suggested_config = self._initial_points[0]
@@ -347,7 +374,9 @@ class DragonflySearch(Searcher):
                 logger.warning(
                     "Dragonfly errored when querying. This may be due to a "
                     "higher level of parallelism than supported. Try reducing "
-                    "parallelism in the experiment: %s", str(exc))
+                    "parallelism in the experiment: %s",
+                    str(exc),
+                )
                 return None
         self._live_trial_mapping[trial_id] = suggested_config
 
@@ -356,15 +385,13 @@ class DragonflySearch(Searcher):
         config.update(point=suggested_config)
         return unflatten_dict(config)
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False):
+    def on_trial_complete(
+        self, trial_id: str, result: Optional[Dict] = None, error: bool = False
+    ):
         """Passes result to Dragonfly unless early terminated or errored."""
         trial_info = self._live_trial_mapping.pop(trial_id)
         if result and not is_nan_or_inf(result[self._metric]):
-            self._opt.tell([(trial_info,
-                             self._metric_op * result[self._metric])])
+            self._opt.tell([(trial_info, self._metric_op * result[self._metric])])
 
     @staticmethod
     def convert_search_space(spec: Dict) -> List[Dict]:
@@ -373,7 +400,8 @@ class DragonflySearch(Searcher):
         if grid_vars:
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
-                "to a Dragonfly search space.")
+                "to a Dragonfly search space."
+            )
 
         # Flatten and resolve again after checking for grid search.
         spec = flatten_dict(spec, prevent_delimiter=True)
@@ -384,29 +412,30 @@ class DragonflySearch(Searcher):
             if isinstance(sampler, Quantized):
                 logger.warning(
                     "Dragonfly search does not support quantization. "
-                    "Dropped quantization.")
+                    "Dropped quantization."
+                )
                 sampler = sampler.get_sampler()
 
             if isinstance(domain, Float):
                 if domain.sampler is not None:
                     logger.warning(
                         "Dragonfly does not support specific sampling methods."
-                        " The {} sampler will be dropped.".format(sampler))
+                        " The {} sampler will be dropped.".format(sampler)
+                    )
                 return {
                     "name": par,
                     "type": "float",
                     "min": domain.lower,
-                    "max": domain.upper
+                    "max": domain.upper,
                 }
 
-            raise ValueError("Dragonfly does not support parameters of type "
-                             "`{}`".format(type(domain).__name__))
+            raise ValueError(
+                "Dragonfly does not support parameters of type "
+                "`{}`".format(type(domain).__name__)
+            )
 
         # Parameter name is e.g. "a/b/c" for nested dicts
-        space = [
-            resolve_value("/".join(path), domain)
-            for path, domain in domain_vars
-        ]
+        space = [resolve_value("/".join(path), domain) for path, domain in domain_vars]
         return space
 
     def save(self, checkpoint_path: str):

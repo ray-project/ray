@@ -3,8 +3,7 @@ import ray
 import subprocess
 import sys
 
-from ray._private.test_utils import (Semaphore, client_test_enabled,
-                                     wait_for_condition)
+from ray._private.test_utils import Semaphore, client_test_enabled, wait_for_condition
 from ray.experimental.internal_kv import _internal_kv_list
 
 
@@ -48,16 +47,15 @@ def test_jemalloc_env_var_propagate():
     """
     expected = {}
     actual = ray._private.services.propagate_jemalloc_env_var(
-        jemalloc_path="",
-        jemalloc_conf="",
-        jemalloc_comps=[],
-        process_type=gcs_ptype)
+        jemalloc_path="", jemalloc_conf="", jemalloc_comps=[], process_type=gcs_ptype
+    )
     assert actual == expected
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=None,
         jemalloc_conf="a,b,c",
         jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_GCS_SERVER],
-        process_type=gcs_ptype)
+        process_type=gcs_ptype,
+    )
     assert actual == expected
     """
     When the shared library is specified
@@ -68,7 +66,8 @@ def test_jemalloc_env_var_propagate():
         jemalloc_path=library_path,
         jemalloc_conf="",
         jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_GCS_SERVER],
-        process_type=gcs_ptype)
+        process_type=gcs_ptype,
+    )
     assert actual == expected
 
     # comps should be a list type.
@@ -77,7 +76,8 @@ def test_jemalloc_env_var_propagate():
             jemalloc_path=library_path,
             jemalloc_conf="",
             jemalloc_comps="ray.ray_constants.PROCESS_TYPE_GCS_SERVER,",
-            process_type=gcs_ptype)
+            process_type=gcs_ptype,
+        )
 
     # When comps don't match the process_type, it should return an empty dict.
     expected = {}
@@ -85,7 +85,8 @@ def test_jemalloc_env_var_propagate():
         jemalloc_path=library_path,
         jemalloc_conf="",
         jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_RAYLET],
-        process_type=gcs_ptype)
+        process_type=gcs_ptype,
+    )
     """
     When the malloc config is specified
     """
@@ -96,7 +97,8 @@ def test_jemalloc_env_var_propagate():
         jemalloc_path=library_path,
         jemalloc_conf=malloc_conf,
         jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_GCS_SERVER],
-        process_type=gcs_ptype)
+        process_type=gcs_ptype,
+    )
     assert actual == expected
 
 
@@ -162,26 +164,47 @@ def test_local_mode_deadlock(shutdown_only_with_initialization_check):
 
 def get_gcs_memory_used():
     import psutil
-    m = sum([
-        process.memory_info().rss for process in psutil.process_iter()
-        if process.name() in ("gcs_server", "redis-server")
-    ])
+
+    m = sum(
+        [
+            process.memory_info().rss
+            for process in psutil.process_iter()
+            if process.name() in ("gcs_server", "redis-server")
+        ]
+    )
     return m
 
 
 def function_entry_num(job_id):
     from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
-    return len(_internal_kv_list(b"IsolatedExports:" + job_id,
-                                 namespace=KV_NAMESPACE_FUNCTION_TABLE)) + \
-        len(_internal_kv_list(b"RemoteFunction:" + job_id,
-                              namespace=KV_NAMESPACE_FUNCTION_TABLE)) + \
-        len(_internal_kv_list(b"ActorClass:" + job_id,
-                              namespace=KV_NAMESPACE_FUNCTION_TABLE))
+
+    return (
+        len(
+            _internal_kv_list(
+                b"IsolatedExports:" + job_id, namespace=KV_NAMESPACE_FUNCTION_TABLE
+            )
+        )
+        + len(
+            _internal_kv_list(
+                b"RemoteFunction:" + job_id, namespace=KV_NAMESPACE_FUNCTION_TABLE
+            )
+        )
+        + len(
+            _internal_kv_list(
+                b"ActorClass:" + job_id, namespace=KV_NAMESPACE_FUNCTION_TABLE
+            )
+        )
+        + len(
+            _internal_kv_list(
+                b"FunctionsToRun:" + job_id, namespace=KV_NAMESPACE_FUNCTION_TABLE
+            )
+        )
+    )
 
 
 @pytest.mark.skipif(
-    client_test_enabled(),
-    reason="client api doesn't support namespace right now.")
+    client_test_enabled(), reason="client api doesn't support namespace right now."
+)
 def test_function_table_gc(call_ray_start):
     """This test tries to verify that function table is cleaned up
     after job exits.
@@ -218,11 +241,10 @@ def test_function_table_gc(call_ray_start):
 
 
 @pytest.mark.skipif(
-    client_test_enabled(),
-    reason="client api doesn't support namespace right now.")
+    client_test_enabled(), reason="client api doesn't support namespace right now."
+)
 def test_function_table_gc_actor(call_ray_start):
-    """If there is a detached actor, the table won't be cleaned up.
-    """
+    """If there is a detached actor, the table won't be cleaned up."""
     ray.init(address="auto", namespace="a")
 
     @ray.remote
@@ -254,4 +276,5 @@ def test_function_table_gc_actor(call_ray_start):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))
