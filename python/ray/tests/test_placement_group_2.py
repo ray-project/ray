@@ -12,9 +12,15 @@ import ray.cluster_utils
 import ray._private.gcs_utils as gcs_utils
 
 from ray._private.test_utils import (
-    get_other_nodes, generate_system_config_map,
-    kill_actor_and_wait_for_failure, run_string_as_driver, wait_for_condition,
-    get_error_message, placement_group_assert_no_leak, convert_actor_state)
+    get_other_nodes,
+    generate_system_config_map,
+    kill_actor_and_wait_for_failure,
+    run_string_as_driver,
+    wait_for_condition,
+    get_error_message,
+    placement_group_assert_no_leak,
+    convert_actor_state,
+)
 from ray.util.placement_group import get_current_placement_group
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 
@@ -41,21 +47,18 @@ def test_check_bundle_index(ray_start_cluster, connect_to_client):
 
     with connect_to_client_or_not(connect_to_client):
         placement_group = ray.util.placement_group(
-            name="name", strategy="SPREAD", bundles=[{
-                "CPU": 2
-            }, {
-                "CPU": 2
-            }])
+            name="name", strategy="SPREAD", bundles=[{"CPU": 2}, {"CPU": 2}]
+        )
 
         with pytest.raises(ValueError, match="bundle index 3 is invalid"):
             Actor.options(
-                placement_group=placement_group,
-                placement_group_bundle_index=3).remote()
+                placement_group=placement_group, placement_group_bundle_index=3
+            ).remote()
 
         with pytest.raises(ValueError, match="bundle index -2 is invalid"):
             Actor.options(
-                placement_group=placement_group,
-                placement_group_bundle_index=-2).remote()
+                placement_group=placement_group, placement_group_bundle_index=-2
+            ).remote()
 
         with pytest.raises(ValueError, match="bundle index must be -1"):
             Actor.options(placement_group_bundle_index=0).remote()
@@ -76,16 +79,11 @@ def test_pending_placement_group_wait(ray_start_cluster, connect_to_client):
             name="name",
             strategy="SPREAD",
             bundles=[
-                {
-                    "CPU": 2
-                },
-                {
-                    "CPU": 2
-                },
-                {
-                    "GPU": 2
-                },
-            ])
+                {"CPU": 2},
+                {"CPU": 2},
+                {"GPU": 2},
+            ],
+        )
         ready, unready = ray.wait([placement_group.ready()], timeout=0.1)
         assert len(unready) == 1
         assert len(ready) == 0
@@ -105,14 +103,13 @@ def test_placement_group_wait(ray_start_cluster, connect_to_client):
     with connect_to_client_or_not(connect_to_client):
         # Wait on placement group that cannot be created.
         placement_group = ray.util.placement_group(
-            name="name", strategy="SPREAD", bundles=[
-                {
-                    "CPU": 2
-                },
-                {
-                    "CPU": 2
-                },
-            ])
+            name="name",
+            strategy="SPREAD",
+            bundles=[
+                {"CPU": 2},
+                {"CPU": 2},
+            ],
+        )
         ready, unready = ray.wait([placement_group.ready()])
         assert len(unready) == 0
         assert len(ready) == 1
@@ -125,8 +122,7 @@ def test_placement_group_wait(ray_start_cluster, connect_to_client):
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_schedule_placement_group_when_node_add(ray_start_cluster,
-                                                connect_to_client):
+def test_schedule_placement_group_when_node_add(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
@@ -187,17 +183,18 @@ def test_atomic_creation(ray_start_cluster, connect_to_client):
         pg = ray.util.placement_group(
             name="name",
             strategy="SPREAD",
-            bundles=[{
-                "CPU": bundle_cpu_size
-            } for _ in range(num_nodes * bundle_per_node)])
+            bundles=[
+                {"CPU": bundle_cpu_size} for _ in range(num_nodes * bundle_per_node)
+            ],
+        )
 
         # Create a placement group actor.
         # This shouldn't be scheduled because atomic
         # placement group creation should've failed.
         pg_actor = NormalActor.options(
             placement_group=pg,
-            placement_group_bundle_index=num_nodes * bundle_per_node -
-            1).remote()
+            placement_group_bundle_index=num_nodes * bundle_per_node - 1,
+        ).remote()
 
         # Wait on the placement group now. It should be unready
         # because normal actor takes resources that are required
@@ -234,7 +231,8 @@ def test_atomic_creation(ray_start_cluster, connect_to_client):
         # This all should scheduled on each bundle.
         check_with_pg = [
             resource_check.options(
-                placement_group=pg, placement_group_bundle_index=i).remote()
+                placement_group=pg, placement_group_bundle_index=i
+            ).remote()
             for i in range(bundle_per_node * num_nodes)
         ]
 
@@ -287,6 +285,7 @@ def test_mini_integration(ray_start_cluster, connect_to_client):
         def random_tasks():
             import time
             import random
+
             sleep_time = random.uniform(0.1, 0.2)
             time.sleep(sleep_time)
             return True
@@ -300,19 +299,21 @@ def test_mini_integration(ray_start_cluster, connect_to_client):
                 ray.util.placement_group(
                     name=f"name{index}",
                     strategy="PACK",
-                    bundles=[{
-                        "GPU": per_bundle_gpus
-                    } for _ in range(bundles_per_pg)]))
+                    bundles=[{"GPU": per_bundle_gpus} for _ in range(bundles_per_pg)],
+                )
+            )
 
         # Schedule tasks.
         for i in range(total_num_pg):
             pg = pgs[i]
-            pg_tasks.append([
-                random_tasks.options(
-                    placement_group=pg,
-                    placement_group_bundle_index=bundle_index).remote()
-                for bundle_index in range(bundles_per_pg)
-            ])
+            pg_tasks.append(
+                [
+                    random_tasks.options(
+                        placement_group=pg, placement_group_bundle_index=bundle_index
+                    ).remote()
+                    for bundle_index in range(bundles_per_pg)
+                ]
+            )
 
         # Make sure tasks are done and we remove placement groups.
         num_removed_pg = 0
@@ -344,12 +345,7 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
     ray.init(address=cluster.address)
 
     with connect_to_client_or_not(connect_to_client):
-        pg = ray.util.placement_group(
-            [{
-                "CPU": 2
-            }, {
-                "CPU": 2
-            }], strategy="STRICT_PACK")
+        pg = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}], strategy="STRICT_PACK")
         ray.get(pg.ready())
 
         # If get_current_placement_group is used when the current worker/driver
@@ -385,8 +381,8 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
                 self.actors.append(actor)
 
         a = Actor.options(
-            placement_group=pg,
-            placement_group_capture_child_tasks=True).remote()
+            placement_group=pg, placement_group_capture_child_tasks=True
+        ).remote()
         ray.get(a.ready.remote())
         # 1 top level actor + 3 children.
         for _ in range(total_num_actors - 1):
@@ -396,7 +392,8 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         node_id_set = set()
         for actor_info in ray.state.actors().values():
             if actor_info["State"] == convert_actor_state(
-                    gcs_utils.ActorTableData.ALIVE):
+                gcs_utils.ActorTableData.ALIVE
+            ):
                 node_id = actor_info["Address"]["NodeID"]
                 node_id_set.add(node_id)
 
@@ -420,7 +417,8 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         node_id_set = set()
         for actor_info in ray.state.actors().values():
             if actor_info["State"] == convert_actor_state(
-                    gcs_utils.ActorTableData.ALIVE):
+                gcs_utils.ActorTableData.ALIVE
+            ):
                 node_id = actor_info["Address"]["NodeID"]
                 node_id_set.add(node_id)
 
@@ -444,7 +442,8 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         node_id_set = set()
         for actor_info in ray.state.actors().values():
             if actor_info["State"] == convert_actor_state(
-                    gcs_utils.ActorTableData.ALIVE):
+                gcs_utils.ActorTableData.ALIVE
+            ):
                 node_id = actor_info["Address"]["NodeID"]
                 node_id_set.add(node_id)
 
@@ -461,14 +460,18 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
 
     with connect_to_client_or_not(connect_to_client):
         pg = ray.util.placement_group(
-            [{
-                "CPU": 2,
-                "GPU": 2,
-            }, {
-                "CPU": 2,
-                "GPU": 2,
-            }],
-            strategy="STRICT_PACK")
+            [
+                {
+                    "CPU": 2,
+                    "GPU": 2,
+                },
+                {
+                    "CPU": 2,
+                    "GPU": 2,
+                },
+            ],
+            strategy="STRICT_PACK",
+        )
         ray.get(pg.ready())
 
         # If get_current_placement_group is used when the current worker/driver
@@ -495,7 +498,8 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
             num_cpus=1,
             num_gpus=0,
             placement_group=pg,
-            placement_group_capture_child_tasks=True).remote(1, 0)
+            placement_group_capture_child_tasks=True,
+        ).remote(1, 0)
         pgs = ray.get(t)
         # Every task should have current placement group because they
         # should be implicitly captured by default.
@@ -505,7 +509,8 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
             num_cpus=1,
             num_gpus=0,
             placement_group=pg,
-            placement_group_capture_child_tasks=True).remote(1, 0, True)
+            placement_group_capture_child_tasks=True,
+        ).remote(1, 0, True)
         pgs = ray.get(t1)
         # Every task should have no placement group since it's set to None.
         # should be implicitly captured by default.
@@ -513,7 +518,8 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
 
         # Test if tasks don't capture child tasks when the option is off.
         t2 = create_nested_task.options(
-            num_cpus=0, num_gpus=1, placement_group=pg).remote(0, 1)
+            num_cpus=0, num_gpus=1, placement_group=pg
+        ).remote(0, 1)
         pgs = ray.get(t2)
         # All placement groups should be None since we don't capture child
         # tasks.
@@ -528,7 +534,8 @@ def test_ready_warning_suppressed(ray_start_regular, error_pubsub):
         ray.get(pg.ready(), timeout=0.5)
 
     errors = get_error_message(
-        p, 1, ray.ray_constants.INFEASIBLE_TASK_ERROR, timeout=0.1)
+        p, 1, ray.ray_constants.INFEASIBLE_TASK_ERROR, timeout=0.1
+    )
     assert len(errors) == 0
 
 
@@ -610,8 +617,7 @@ def test_automatic_cleanup_detached_actors(ray_start_cluster):
         cluster.add_node(num_cpus=num_cpu_per_node)
     cluster.wait_for_nodes()
 
-    info = ray.init(
-        address=cluster.address, namespace="default_test_namespace")
+    info = ray.init(address=cluster.address, namespace="default_test_namespace")
     available_cpus = ray.available_resources()["CPU"]
     assert available_cpus == num_nodes * num_cpu_per_node
 
@@ -697,13 +703,17 @@ ray.shutdown()
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head_with_external_redis", [
+    "ray_start_cluster_head_with_external_redis",
+    [
         generate_system_config_map(
-            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
+            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60
+        )
     ],
-    indirect=True)
+    indirect=True,
+)
 def test_create_placement_group_after_gcs_server_restart(
-        ray_start_cluster_head_with_external_redis):
+    ray_start_cluster_head_with_external_redis,
+):
     cluster = ray_start_cluster_head_with_external_redis
     cluster.add_node(num_cpus=2)
     cluster.add_node(num_cpus=2)
@@ -735,13 +745,17 @@ def test_create_placement_group_after_gcs_server_restart(
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head_with_external_redis", [
+    "ray_start_cluster_head_with_external_redis",
+    [
         generate_system_config_map(
-            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
+            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60
+        )
     ],
-    indirect=True)
+    indirect=True,
+)
 def test_create_actor_with_placement_group_after_gcs_server_restart(
-        ray_start_cluster_head_with_external_redis):
+    ray_start_cluster_head_with_external_redis,
+):
     cluster = ray_start_cluster_head_with_external_redis
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
@@ -753,19 +767,23 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
     cluster.head_node.kill_gcs_server()
     cluster.head_node.start_gcs_server()
     actor_2 = Increase.options(
-        placement_group=placement_group,
-        placement_group_bundle_index=1).remote()
+        placement_group=placement_group, placement_group_bundle_index=1
+    ).remote()
     assert ray.get(actor_2.method.remote(1)) == 3
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head_with_external_redis", [
+    "ray_start_cluster_head_with_external_redis",
+    [
         generate_system_config_map(
-            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
+            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60
+        )
     ],
-    indirect=True)
+    indirect=True,
+)
 def test_bundle_recreated_when_raylet_fo_after_gcs_server_restart(
-        ray_start_cluster_head_with_external_redis):
+    ray_start_cluster_head_with_external_redis,
+):
     cluster = ray_start_cluster_head_with_external_redis
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
@@ -787,8 +805,8 @@ def test_bundle_recreated_when_raylet_fo_after_gcs_server_restart(
 
     # Schedule an actor and make sure its creaton successfully.
     actor = Increase.options(
-        placement_group=placement_group,
-        placement_group_bundle_index=0).remote()
+        placement_group=placement_group, placement_group_bundle_index=0
+    ).remote()
 
     assert ray.get(actor.method.remote(1), timeout=5) == 3
 

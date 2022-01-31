@@ -67,28 +67,12 @@ export type TaskSpec = {
 
 export type Actor = {
   actorId: string;
-  children: { [key: string]: Actor };
-  taskSpec: TaskSpec;
-  ipAddress: string;
-  isDirectCall: boolean;
   jobId: string;
-  numExecutedTasks: number;
-  numLocalObjects: number;
-  numObjectIdsInScope: number;
   state: ActorEnum | string; // PENDING, ALIVE, RECONSTRUCTING, DEAD
-  taskQueueLength: number;
-  usedObjectStoreMemory: number;
-  usedResources: { [key: string]: string | number };
-  timestamp: number;
-  actorTitle: string;
-  averageTaskExecutionSpeed: number;
   nodeId: string;
   pid: number;
-  ownerAddress: Address;
   address: Address;
-  maxReconstructions: string;
-  remainingReconstructions: string;
-  isDetached: false;
   name: string;
   numRestarts: string;
+  taskSpec: TaskSpec;
 };

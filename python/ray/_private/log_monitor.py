@@ -31,25 +31,33 @@ RUNTIME_ENV_SETUP_PATTERN = re.compile(".*runtime_env_setup-(\d+).log")
 # Log name update interval under pressure.
 # We need it because log name update is CPU intensive and uses 100%
 # of cpu when there are many log files.
-LOG_NAME_UPDATE_INTERVAL_S = float(
-    os.getenv("LOG_NAME_UPDATE_INTERVAL_S", 0.5))
+LOG_NAME_UPDATE_INTERVAL_S = float(os.getenv("LOG_NAME_UPDATE_INTERVAL_S", 0.5))
 # Once there are more files than this threshold,
 # log monitor start giving backpressure to lower cpu usages.
 RAY_LOG_MONITOR_MANY_FILES_THRESHOLD = int(
-    os.getenv("RAY_LOG_MONITOR_MANY_FILES_THRESHOLD", 1000))
+    os.getenv("RAY_LOG_MONITOR_MANY_FILES_THRESHOLD", 1000)
+)
+RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED = int(
+    os.getenv("RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED", 1)
+)
 
 
 class LogFileInfo:
-    def __init__(self,
-                 filename=None,
-                 size_when_last_opened=None,
-                 file_position=None,
-                 file_handle=None,
-                 is_err_file=False,
-                 job_id=None,
-                 worker_pid=None):
-        assert (filename is not None and size_when_last_opened is not None
-                and file_position is not None)
+    def __init__(
+        self,
+        filename=None,
+        size_when_last_opened=None,
+        file_position=None,
+        file_handle=None,
+        is_err_file=False,
+        job_id=None,
+        worker_pid=None,
+    ):
+        assert (
+            filename is not None
+            and size_when_last_opened is not None
+            and file_position is not None
+        )
         self.filename = filename
         self.size_when_last_opened = size_when_last_opened
         self.file_position = file_position
@@ -93,11 +101,7 @@ class LogMonitor:
             false otherwise.
     """
 
-    def __init__(self,
-                 logs_dir,
-                 redis_address,
-                 gcs_address,
-                 redis_password=None):
+    def __init__(self, logs_dir, redis_address, gcs_address, redis_password=None):
         """Initialize the log monitor object."""
         self.ip = services.get_node_ip_address()
         self.logs_dir = logs_dir
@@ -105,9 +109,9 @@ class LogMonitor:
             self.redis_client = None
         else:
             self.redis_client = ray._private.services.create_redis_client(
-                redis_address, password=redis_password)
-            gcs_address = gcs_utils.get_gcs_address_from_redis(
-                self.redis_client)
+                redis_address, password=redis_password
+            )
+            gcs_address = gcs_utils.get_gcs_address_from_redis(self.redis_client)
         self.publisher = None
         if gcs_pubsub.gcs_pubsub_enabled():
             self.publisher = gcs_pubsub.GcsPublisher(address=gcs_address)
@@ -125,28 +129,32 @@ class LogMonitor:
             try:
                 # Test if the worker process that generated the log file
                 # is still alive. Only applies to worker processes.
-                if (file_info.worker_pid != "raylet"
-                        and file_info.worker_pid != "gcs_server"
-                        and file_info.worker_pid != "autoscaler"
-                        and file_info.worker_pid != "runtime_env"
-                        and file_info.worker_pid is not None):
+                if (
+                    file_info.worker_pid != "raylet"
+                    and file_info.worker_pid != "gcs_server"
+                    and file_info.worker_pid != "autoscaler"
+                    and file_info.worker_pid != "runtime_env"
+                    and file_info.worker_pid is not None
+                ):
                     assert not isinstance(file_info.worker_pid, str), (
                         "PID should be an int type. "
-                        "Given PID: {file_info.worker_pid}.")
+                        "Given PID: {file_info.worker_pid}."
+                    )
                     os.kill(file_info.worker_pid, 0)
             except OSError:
                 # The process is not alive any more, so move the log file
                 # out of the log directory so glob.glob will not be slowed
                 # by it.
-                target = os.path.join(self.logs_dir, "old",
-                                      os.path.basename(file_info.filename))
+                target = os.path.join(
+                    self.logs_dir, "old", os.path.basename(file_info.filename)
+                )
                 try:
                     shutil.move(file_info.filename, target)
                 except (IOError, OSError) as e:
                     if e.errno == errno.ENOENT:
                         logger.warning(
-                            f"Warning: The file {file_info.filename} "
-                            "was not found.")
+                            f"Warning: The file {file_info.filename} " "was not found."
+                        )
                     else:
                         raise e
             else:
@@ -164,13 +172,18 @@ class LogMonitor:
         # If gcs server restarts, there can be multiple log files.
         gcs_err_path = glob.glob(f"{self.logs_dir}/gcs_server*.err")
         # runtime_env setup process is logged here
-        runtime_env_setup_paths = glob.glob(
-            f"{self.logs_dir}/runtime_env*.log")
+        runtime_env_setup_paths = []
+        if RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED:
+            runtime_env_setup_paths = glob.glob(f"{self.logs_dir}/runtime_env*.log")
         total_files = 0
-        for file_path in (log_file_paths + raylet_err_paths + gcs_err_path +
-                          monitor_log_paths + runtime_env_setup_paths):
-            if os.path.isfile(
-                    file_path) and file_path not in self.log_filenames:
+        for file_path in (
+            log_file_paths
+            + raylet_err_paths
+            + gcs_err_path
+            + monitor_log_paths
+            + runtime_env_setup_paths
+        ):
+            if os.path.isfile(file_path) and file_path not in self.log_filenames:
                 job_match = JOB_LOG_PATTERN.match(file_path)
                 if job_match:
                     job_id = job_match.group(2)
@@ -182,8 +195,7 @@ class LogMonitor:
                 # Perform existence check first because most file will not be
                 # including runtime_env. This saves some cpu cycle.
                 if "runtime_env" in file_path:
-                    runtime_env_job_match = RUNTIME_ENV_SETUP_PATTERN.match(
-                        file_path)
+                    runtime_env_job_match = RUNTIME_ENV_SETUP_PATTERN.match(file_path)
                     if runtime_env_job_match:
                         job_id = runtime_env_job_match.group(1)
 
@@ -198,7 +210,9 @@ class LogMonitor:
                         file_handle=None,
                         is_err_file=is_err_file,
                         job_id=job_id,
-                        worker_pid=worker_pid))
+                        worker_pid=worker_pid,
+                    )
+                )
                 log_filename = os.path.basename(file_path)
                 logger.info(f"Beginning to track file {log_filename}")
             total_files += 1
@@ -216,8 +230,7 @@ class LogMonitor:
 
         files_with_no_updates = []
         while len(self.closed_file_infos) > 0:
-            if (len(self.open_file_infos) >=
-                    ray_constants.LOG_MONITOR_MAX_OPEN_FILES):
+            if len(self.open_file_infos) >= ray_constants.LOG_MONITOR_MAX_OPEN_FILES:
                 self.can_open_more_files = False
                 break
 
@@ -230,8 +243,9 @@ class LogMonitor:
             except (IOError, OSError) as e:
                 # Catch "file not found" errors.
                 if e.errno == errno.ENOENT:
-                    logger.warning(f"Warning: The file {file_info.filename} "
-                                   "was not found.")
+                    logger.warning(
+                        f"Warning: The file {file_info.filename} " "was not found."
+                    )
                     self.log_filenames.remove(file_info.filename)
                     continue
                 raise e
@@ -244,8 +258,8 @@ class LogMonitor:
                 except (IOError, OSError) as e:
                     if e.errno == errno.ENOENT:
                         logger.warning(
-                            f"Warning: The file {file_info.filename} "
-                            "was not found.")
+                            f"Warning: The file {file_info.filename} " "was not found."
+                        )
                         self.log_filenames.remove(file_info.filename)
                         continue
                     else:
@@ -286,8 +300,9 @@ class LogMonitor:
                 if self.publisher:
                     self.publisher.publish_logs(data)
                 else:
-                    self.redis_client.publish(gcs_utils.LOG_FILE_CHANNEL,
-                                              json.dumps(data))
+                    self.redis_client.publish(
+                        gcs_utils.LOG_FILE_CHANNEL, json.dumps(data)
+                    )
                 anything_published = True
                 lines_to_publish = []
 
@@ -307,19 +322,20 @@ class LogMonitor:
                     if next_line[-1] == "\n":
                         next_line = next_line[:-1]
 
-                    if next_line.startswith(
-                            ray_constants.LOG_PREFIX_ACTOR_NAME):
+                    if next_line.startswith(ray_constants.LOG_PREFIX_ACTOR_NAME):
                         flush()  # Possible change of task/actor name.
                         file_info.actor_name = next_line.split(
-                            ray_constants.LOG_PREFIX_ACTOR_NAME, 1)[1]
+                            ray_constants.LOG_PREFIX_ACTOR_NAME, 1
+                        )[1]
                         file_info.task_name = None
-                    elif next_line.startswith(
-                            ray_constants.LOG_PREFIX_TASK_NAME):
+                    elif next_line.startswith(ray_constants.LOG_PREFIX_TASK_NAME):
                         flush()  # Possible change of task/actor name.
                         file_info.task_name = next_line.split(
-                            ray_constants.LOG_PREFIX_TASK_NAME, 1)[1]
+                            ray_constants.LOG_PREFIX_TASK_NAME, 1
+                        )[1]
                     elif next_line.startswith(
-                            "Windows fatal exception: access violation"):
+                        "Windows fatal exception: access violation"
+                    ):
                         # We are suppressing the
                         # 'Windows fatal exception: access violation'
                         # message on workers on Windows here.
@@ -337,7 +353,8 @@ class LogMonitor:
                     logger.error(
                         f"Error: Reading file: {file_info.filename}, "
                         f"position: {file_info.file_info.file_handle.tell()} "
-                        "failed.")
+                        "failed."
+                    )
                     raise
 
             if file_info.file_position == 0:
@@ -366,8 +383,10 @@ class LogMonitor:
         last_updated = time.time()
         while True:
             elapsed_seconds = int(time.time() - last_updated)
-            if (total_log_files < RAY_LOG_MONITOR_MANY_FILES_THRESHOLD
-                    or elapsed_seconds > LOG_NAME_UPDATE_INTERVAL_S):
+            if (
+                total_log_files < RAY_LOG_MONITOR_MANY_FILES_THRESHOLD
+                or elapsed_seconds > LOG_NAME_UPDATE_INTERVAL_S
+            ):
                 total_log_files = self.update_log_filenames()
                 last_updated = time.time()
             self.open_closed_files()
@@ -380,38 +399,36 @@ class LogMonitor:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description=("Parse Redis server for the "
-                     "log monitor to connect "
-                     "to."))
+        description=("Parse Redis server for the " "log monitor to connect " "to.")
+    )
     parser.add_argument(
-        "--gcs-address",
-        required=False,
-        type=str,
-        help="The address (ip:port) of GCS.")
+        "--gcs-address", required=False, type=str, help="The address (ip:port) of GCS."
+    )
     parser.add_argument(
-        "--redis-address",
-        required=True,
-        type=str,
-        help="The address to use for Redis.")
+        "--redis-address", required=True, type=str, help="The address to use for Redis."
+    )
     parser.add_argument(
         "--redis-password",
         required=False,
         type=str,
         default=None,
-        help="the password to use for Redis")
+        help="the password to use for Redis",
+    )
     parser.add_argument(
         "--logging-level",
         required=False,
         type=str,
         default=ray_constants.LOGGER_LEVEL,
         choices=ray_constants.LOGGER_LEVEL_CHOICES,
-        help=ray_constants.LOGGER_LEVEL_HELP)
+        help=ray_constants.LOGGER_LEVEL_HELP,
+    )
     parser.add_argument(
         "--logging-format",
         required=False,
         type=str,
         default=ray_constants.LOGGER_FORMAT,
-        help=ray_constants.LOGGER_FORMAT_HELP)
+        help=ray_constants.LOGGER_FORMAT_HELP,
+    )
     parser.add_argument(
         "--logging-filename",
         required=False,
@@ -419,13 +436,14 @@ if __name__ == "__main__":
         default=ray_constants.LOG_MONITOR_LOG_FILE_NAME,
         help="Specify the name of log file, "
         "log to stdout if set empty, default is "
-        f"\"{ray_constants.LOG_MONITOR_LOG_FILE_NAME}\"")
+        f'"{ray_constants.LOG_MONITOR_LOG_FILE_NAME}"',
+    )
     parser.add_argument(
         "--logs-dir",
         required=True,
         type=str,
-        help="Specify the path of the temporary directory used by Ray "
-        "processes.")
+        help="Specify the path of the temporary directory used by Ray " "processes.",
+    )
     parser.add_argument(
         "--logging-rotate-bytes",
         required=False,
@@ -433,14 +451,16 @@ if __name__ == "__main__":
         default=ray_constants.LOGGING_ROTATE_BYTES,
         help="Specify the max bytes for rotating "
         "log file, default is "
-        f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.")
+        f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.",
+    )
     parser.add_argument(
         "--logging-rotate-backup-count",
         required=False,
         type=int,
         default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
         help="Specify the backup count of rotated log file, default is "
-        f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.")
+        f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.",
+    )
     args = parser.parse_args()
     setup_component_logger(
         logging_level=args.logging_level,
@@ -448,35 +468,41 @@ if __name__ == "__main__":
         log_dir=args.logs_dir,
         filename=args.logging_filename,
         max_bytes=args.logging_rotate_bytes,
-        backup_count=args.logging_rotate_backup_count)
+        backup_count=args.logging_rotate_backup_count,
+    )
 
     log_monitor = LogMonitor(
         args.logs_dir,
         args.redis_address,
         args.gcs_address,
-        redis_password=args.redis_password)
+        redis_password=args.redis_password,
+    )
 
     try:
         log_monitor.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
         redis_client = ray._private.services.create_redis_client(
-            args.redis_address, password=args.redis_password)
+            args.redis_address, password=args.redis_password
+        )
         gcs_publisher = None
         if gcs_pubsub_enabled():
             if gcs_utils.use_gcs_for_bootstrap():
                 gcs_publisher = GcsPublisher(address=args.gcs_address)
             else:
                 gcs_publisher = GcsPublisher(
-                    address=gcs_utils.get_gcs_address_from_redis(redis_client))
-        traceback_str = ray._private.utils.format_error_message(
-            traceback.format_exc())
-        message = (f"The log monitor on node {platform.node()} "
-                   f"failed with the following error:\n{traceback_str}")
+                    address=gcs_utils.get_gcs_address_from_redis(redis_client)
+                )
+        traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
+        message = (
+            f"The log monitor on node {platform.node()} "
+            f"failed with the following error:\n{traceback_str}"
+        )
         ray._private.utils.publish_error_to_driver(
             ray_constants.LOG_MONITOR_DIED_ERROR,
             message,
             redis_client=redis_client,
-            gcs_publisher=gcs_publisher)
+            gcs_publisher=gcs_publisher,
+        )
         logger.error(message)
         raise e

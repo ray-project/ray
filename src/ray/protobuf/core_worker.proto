@@ -85,16 +85,6 @@ message ReturnObject {
   int64 size = 6;
 }
 
-message StealTasksRequest {
-  // The address of the thief that is requesting to steal tasks.
-  Address thief_addr = 1;
-}
-
-message StealTasksReply {
-  // The TaskIDs of the tasks that were stolen
-  repeated bytes stolen_tasks_ids = 2;
-}
-
 message PushTaskRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
@@ -118,8 +108,6 @@ message PushTaskRequest {
 message PushTaskReply {
   // The returned objects.
   repeated ReturnObject return_objects = 1;
-  // Set to true if the task was stolen before its execution at the worker.
-  bool task_stolen = 2;
   // Set to true if the worker will be exiting.
   bool worker_exiting = 3;
   // The references that the worker borrowed during the task execution. A
@@ -361,8 +349,6 @@ message AssignObjectOwnerReply {
 service CoreWorkerService {
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
-  // Steal tasks from a worker if it has a surplus of work
-  rpc StealTasks(StealTasksRequest) returns (StealTasksReply);
   // Reply from raylet that wait for direct actor call args has completed.
   rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
       returns (DirectActorCallArgWaitCompleteReply);

@@ -42,10 +42,14 @@ import ray
 from ray import tune
 from ray.rllib.agents import ppo
 from ray.rllib.examples.env.correlated_actions_env import CorrelatedActionsEnv
-from ray.rllib.examples.models.autoregressive_action_model import \
-    AutoregressiveActionModel, TorchAutoregressiveActionModel
-from ray.rllib.examples.models.autoregressive_action_dist import \
-    BinaryAutoregressiveDistribution, TorchBinaryAutoregressiveDistribution
+from ray.rllib.examples.models.autoregressive_action_model import (
+    AutoregressiveActionModel,
+    TorchAutoregressiveActionModel,
+)
+from ray.rllib.examples.models.autoregressive_action_dist import (
+    BinaryAutoregressiveDistribution,
+    TorchBinaryAutoregressiveDistribution,
+)
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.logger import pretty_print
@@ -60,49 +64,52 @@ def get_cli_args():
         "--no-autoreg",
         action="store_true",
         help="Do NOT use an autoregressive action distribution but normal,"
-        "independently distributed actions.")
+        "independently distributed actions.",
+    )
 
     # general args
     parser.add_argument(
-        "--run",
-        type=str,
-        default="PPO",
-        help="The RLlib-registered algorithm to use.")
+        "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
+    )
     parser.add_argument(
         "--framework",
         choices=["tf", "tf2", "tfe", "torch"],
         default="tf",
-        help="The DL framework specifier.")
+        help="The DL framework specifier.",
+    )
     parser.add_argument("--num-cpus", type=int, default=0)
     parser.add_argument(
         "--as-test",
         action="store_true",
         help="Whether this script should be run as a test: --stop-reward must "
-        "be achieved within --stop-timesteps AND --stop-iters.")
+        "be achieved within --stop-timesteps AND --stop-iters.",
+    )
     parser.add_argument(
-        "--stop-iters",
-        type=int,
-        default=200,
-        help="Number of iterations to train.")
+        "--stop-iters", type=int, default=200, help="Number of iterations to train."
+    )
     parser.add_argument(
         "--stop-timesteps",
         type=int,
         default=100000,
-        help="Number of timesteps to train.")
+        help="Number of timesteps to train.",
+    )
     parser.add_argument(
         "--stop-reward",
         type=float,
         default=200.0,
-        help="Reward at which we stop training.")
+        help="Reward at which we stop training.",
+    )
     parser.add_argument(
         "--no-tune",
         action="store_true",
         help="Run without Tune using a manual train loop instead. Here,"
-        "there is no TensorBoard support.")
+        "there is no TensorBoard support.",
+    )
     parser.add_argument(
         "--local-mode",
         action="store_true",
-        help="Init Ray in local mode for easier debugging.")
+        help="Init Ray in local mode for easier debugging.",
+    )
 
     args = parser.parse_args()
     print(f"Running with following CLI args: {args}")
@@ -116,11 +123,17 @@ if __name__ == "__main__":
     # main part: register and configure autoregressive action model and dist
     # here, tailored to the CorrelatedActionsEnv such that a2 depends on a1
     ModelCatalog.register_custom_model(
-        "autoregressive_model", TorchAutoregressiveActionModel
-        if args.framework == "torch" else AutoregressiveActionModel)
+        "autoregressive_model",
+        TorchAutoregressiveActionModel
+        if args.framework == "torch"
+        else AutoregressiveActionModel,
+    )
     ModelCatalog.register_custom_action_dist(
-        "binary_autoreg_dist", TorchBinaryAutoregressiveDistribution
-        if args.framework == "torch" else BinaryAutoregressiveDistribution)
+        "binary_autoreg_dist",
+        TorchBinaryAutoregressiveDistribution
+        if args.framework == "torch"
+        else BinaryAutoregressiveDistribution,
+    )
 
     # standard config
     config = {
@@ -156,8 +169,10 @@ if __name__ == "__main__":
             result = trainer.train()
             print(pretty_print(result))
             # stop training if the target train steps or reward are reached
-            if result["timesteps_total"] >= args.stop_timesteps or \
-                    result["episode_reward_mean"] >= args.stop_reward:
+            if (
+                result["timesteps_total"] >= args.stop_timesteps
+                or result["episode_reward_mean"] >= args.stop_reward
+            ):
                 break
 
         # run manual test loop: 1 iteration until done

@@ -5,19 +5,25 @@ from typing import Callable, List, Optional, Tuple, Union
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
-from ray.rllib.utils.typing import EnvActionType, EnvID, EnvInfoDict, \
-    EnvObsType, EnvType, MultiEnvDict
+from ray.rllib.utils.typing import (
+    EnvActionType,
+    EnvID,
+    EnvInfoDict,
+    EnvObsType,
+    EnvType,
+    MultiEnvDict,
+)
 
 logger = logging.getLogger(__name__)
 
 
 @PublicAPI
 class VectorEnv:
-    """An environment that supports batch evaluation using clones of sub-envs.
-    """
+    """An environment that supports batch evaluation using clones of sub-envs."""
 
-    def __init__(self, observation_space: gym.Space, action_space: gym.Space,
-                 num_envs: int):
+    def __init__(
+        self, observation_space: gym.Space, action_space: gym.Space, num_envs: int
+    ):
         """Initializes a VectorEnv instance.
 
         Args:
@@ -32,14 +38,15 @@ class VectorEnv:
 
     @staticmethod
     def vectorize_gym_envs(
-            make_env: Optional[Callable[[int], EnvType]] = None,
-            existing_envs: Optional[List[gym.Env]] = None,
-            num_envs: int = 1,
-            action_space: Optional[gym.Space] = None,
-            observation_space: Optional[gym.Space] = None,
-            # Deprecated. These seem to have never been used.
-            env_config=None,
-            policy_config=None) -> "_VectorizedGymEnv":
+        make_env: Optional[Callable[[int], EnvType]] = None,
+        existing_envs: Optional[List[gym.Env]] = None,
+        num_envs: int = 1,
+        action_space: Optional[gym.Space] = None,
+        observation_space: Optional[gym.Space] = None,
+        # Deprecated. These seem to have never been used.
+        env_config=None,
+        policy_config=None,
+    ) -> "_VectorizedGymEnv":
         """Translates any given gym.Env(s) into a VectorizedEnv object.
 
         Args:
@@ -88,7 +95,7 @@ class VectorEnv:
 
     @PublicAPI
     def vector_step(
-            self, actions: List[EnvActionType]
+        self, actions: List[EnvActionType]
     ) -> Tuple[List[EnvObsType], List[float], List[bool], List[EnvInfoDict]]:
         """Performs a vectorized step on all sub environments using `actions`.
 
@@ -114,8 +121,7 @@ class VectorEnv:
         return []
 
     # TODO: (sven) Experimental method. Make @PublicAPI at some point.
-    def try_render_at(self, index: Optional[int] = None) -> \
-            Optional[np.ndarray]:
+    def try_render_at(self, index: Optional[int] = None) -> Optional[np.ndarray]:
         """Renders a single environment.
 
         Args:
@@ -137,57 +143,56 @@ class VectorEnv:
 
     @PublicAPI
     def to_base_env(
-            self,
-            make_env: Callable[[int], EnvType] = None,
-            num_envs: int = 1,
-            remote_envs: bool = False,
-            remote_env_batch_wait_ms: int = 0,
+        self,
+        make_env: Optional[Callable[[int], EnvType]] = None,
+        num_envs: int = 1,
+        remote_envs: bool = False,
+        remote_env_batch_wait_ms: int = 0,
     ) -> "BaseEnv":
         """Converts an RLlib MultiAgentEnv into a BaseEnv object.
 
-            The resulting BaseEnv is always vectorized (contains n
-            sub-environments) to support batched forward passes, where n may
-            also be 1. BaseEnv also supports async execution via the `poll` and
-            `send_actions` methods and thus supports external simulators.
+        The resulting BaseEnv is always vectorized (contains n
+        sub-environments) to support batched forward passes, where n may
+        also be 1. BaseEnv also supports async execution via the `poll` and
+        `send_actions` methods and thus supports external simulators.
 
-            Args:
-                make_env: A callable taking an int as input (which indicates
-                    the number of individual sub-environments within the final
-                    vectorized BaseEnv) and returning one individual
-                    sub-environment.
-                num_envs: The number of sub-environments to create in the
-                    resulting (vectorized) BaseEnv. The already existing `env`
-                    will be one of the `num_envs`.
-                remote_envs: Whether each sub-env should be a @ray.remote
-                    actor. You can set this behavior in your config via the
-                    `remote_worker_envs=True` option.
-                remote_env_batch_wait_ms: The wait time (in ms) to poll remote
-                    sub-environments for, if applicable. Only used if
-                    `remote_envs` is True.
+        Args:
+            make_env: A callable taking an int as input (which indicates
+                the number of individual sub-environments within the final
+                vectorized BaseEnv) and returning one individual
+                sub-environment.
+            num_envs: The number of sub-environments to create in the
+                resulting (vectorized) BaseEnv. The already existing `env`
+                will be one of the `num_envs`.
+            remote_envs: Whether each sub-env should be a @ray.remote
+                actor. You can set this behavior in your config via the
+                `remote_worker_envs=True` option.
+            remote_env_batch_wait_ms: The wait time (in ms) to poll remote
+                sub-environments for, if applicable. Only used if
+                `remote_envs` is True.
 
-            Returns:
-                The resulting BaseEnv object.
-            """
+        Returns:
+            The resulting BaseEnv object.
+        """
         del make_env, num_envs, remote_envs, remote_env_batch_wait_ms
         env = VectorEnvWrapper(self)
         return env
 
 
 class _VectorizedGymEnv(VectorEnv):
-    """Internal wrapper to translate any gym.Envs into a VectorEnv object.
-    """
+    """Internal wrapper to translate any gym.Envs into a VectorEnv object."""
 
     def __init__(
-            self,
-            make_env: Optional[Callable[[int], EnvType]] = None,
-            existing_envs: Optional[List[gym.Env]] = None,
-            num_envs: int = 1,
-            *,
-            observation_space: Optional[gym.Space] = None,
-            action_space: Optional[gym.Space] = None,
-            # Deprecated. These seem to have never been used.
-            env_config=None,
-            policy_config=None,
+        self,
+        make_env: Optional[Callable[[int], EnvType]] = None,
+        existing_envs: Optional[List[gym.Env]] = None,
+        num_envs: int = 1,
+        *,
+        observation_space: Optional[gym.Space] = None,
+        action_space: Optional[gym.Space] = None,
+        # Deprecated. These seem to have never been used.
+        env_config=None,
+        policy_config=None,
     ):
         """Initializes a _VectorizedGymEnv object.
 
@@ -211,10 +216,10 @@ class _VectorizedGymEnv(VectorEnv):
             self.envs.append(make_env(len(self.envs)))
 
         super().__init__(
-            observation_space=observation_space
-            or self.envs[0].observation_space,
+            observation_space=observation_space or self.envs[0].observation_space,
             action_space=action_space or self.envs[0].action_space,
-            num_envs=num_envs)
+            num_envs=num_envs,
+        )
 
     @override(VectorEnv)
     def vector_reset(self):
@@ -234,10 +239,12 @@ class _VectorizedGymEnv(VectorEnv):
             if not np.isscalar(r) or not np.isreal(r) or not np.isfinite(r):
                 raise ValueError(
                     "Reward should be finite scalar, got {} ({}). "
-                    "Actions={}.".format(r, type(r), actions[i]))
+                    "Actions={}.".format(r, type(r), actions[i])
+                )
             if not isinstance(info, dict):
-                raise ValueError("Info should be a dict, got {} ({})".format(
-                    info, type(info)))
+                raise ValueError(
+                    "Info should be a dict, got {} ({})".format(info, type(info))
+                )
             obs_batch.append(obs)
             rew_batch.append(r)
             done_batch.append(done)
@@ -274,9 +281,11 @@ class VectorEnvWrapper(BaseEnv):
         self._action_space = vector_env.action_space
 
     @override(BaseEnv)
-    def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
-                            MultiEnvDict, MultiEnvDict]:
+    def poll(
+        self,
+    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
         from ray.rllib.env.base_env import with_dummy_agent_id
+
         if self.new_obs is None:
             self.new_obs = self.vector_env.vector_reset()
         new_obs = dict(enumerate(self.new_obs))
@@ -287,40 +296,47 @@ class VectorEnvWrapper(BaseEnv):
         self.cur_rewards = []
         self.cur_dones = []
         self.cur_infos = []
-        return with_dummy_agent_id(new_obs), \
-            with_dummy_agent_id(rewards), \
-            with_dummy_agent_id(dones, "__all__"), \
-            with_dummy_agent_id(infos), {}
+        return (
+            with_dummy_agent_id(new_obs),
+            with_dummy_agent_id(rewards),
+            with_dummy_agent_id(dones, "__all__"),
+            with_dummy_agent_id(infos),
+            {},
+        )
 
     @override(BaseEnv)
     def send_actions(self, action_dict: MultiEnvDict) -> None:
         from ray.rllib.env.base_env import _DUMMY_AGENT_ID
+
         action_vector = [None] * self.num_envs
         for i in range(self.num_envs):
             action_vector[i] = action_dict[i][_DUMMY_AGENT_ID]
-        self.new_obs, self.cur_rewards, self.cur_dones, self.cur_infos = \
-            self.vector_env.vector_step(action_vector)
+        (
+            self.new_obs,
+            self.cur_rewards,
+            self.cur_dones,
+            self.cur_infos,
+        ) = self.vector_env.vector_step(action_vector)
 
     @override(BaseEnv)
     def try_reset(self, env_id: Optional[EnvID] = None) -> MultiEnvDict:
         from ray.rllib.env.base_env import _DUMMY_AGENT_ID
+
         assert env_id is None or isinstance(env_id, int)
         return {
-            env_id if env_id is not None else 0: {
-                _DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)
-            }
+            env_id
+            if env_id is not None
+            else 0: {_DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)}
         }
 
     @override(BaseEnv)
-    def get_sub_environments(
-            self, as_dict: bool = False) -> Union[List[EnvType], dict]:
+    def get_sub_environments(self, as_dict: bool = False) -> Union[List[EnvType], dict]:
         if not as_dict:
             return self.vector_env.get_sub_environments()
         else:
             return {
                 _id: env
-                for _id, env in enumerate(
-                    self.vector_env.get_sub_environments())
+                for _id, env in enumerate(self.vector_env.get_sub_environments())
             }
 
     @override(BaseEnv)

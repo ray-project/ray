@@ -26,19 +26,22 @@ class PlacementGroupSchedulingStrategy(object):
             as its parent. It is False by default.
     """
 
-    def __init__(self,
-                 placement_group: PlacementGroup,
-                 placement_group_bundle_index: int = -1,
-                 placement_group_capture_child_tasks: Optional[bool] = None):
+    def __init__(
+        self,
+        placement_group: PlacementGroup,
+        placement_group_bundle_index: int = -1,
+        placement_group_capture_child_tasks: Optional[bool] = None,
+    ):
         if placement_group is None:
-            raise ValueError("placement_group needs to be an instance "
-                             "of PlacementGroup")
+            raise ValueError(
+                "placement_group needs to be an instance " "of PlacementGroup"
+            )
 
         self.placement_group = placement_group
         self.placement_group_bundle_index = placement_group_bundle_index
-        self.placement_group_capture_child_tasks = \
-            placement_group_capture_child_tasks
+        self.placement_group_capture_child_tasks = placement_group_capture_child_tasks
 
 
-SchedulingStrategyT = Union[None, str,  # Literal["DEFAULT", "SPREAD"]
-                            PlacementGroupSchedulingStrategy]
+SchedulingStrategyT = Union[
+    None, str, PlacementGroupSchedulingStrategy  # Literal["DEFAULT", "SPREAD"]
+]

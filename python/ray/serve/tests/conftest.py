@@ -30,10 +30,8 @@ def _shared_serve_instance():
         num_cpus=36,
         namespace="default_test_namespace",
         _metrics_export_port=9999,
-        _system_config={
-            "metrics_report_interval_ms": 1000,
-            "task_retry_delay_ms": 50
-        })
+        _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
+    )
     yield serve.start(detached=True)
 
 

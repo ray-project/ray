@@ -318,7 +318,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int metrics_agent_port
         c_bool connect_on_start
         int runtime_env_hash
-        int worker_shim_pid
         int startup_token
 
     cdef cppclass CCoreWorkerProcess "ray::core::CoreWorkerProcess":
