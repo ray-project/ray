@@ -6,6 +6,7 @@ from typing import Callable, TypeVar, List, Optional, Dict, Union, Type, Tuple
 import ray
 from ray.exceptions import RayActorError
 from ray.ray_constants import env_integer
+from ray.train.accelerators.base import Accelerator
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
@@ -18,8 +19,6 @@ from ray.train.utils import RayDataset, check_for_failure, Singleton
 from ray.train.worker_group import WorkerGroup
 from ray.util.annotations import DeveloperAPI
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
-
-from .accelerators import Accelerator
 
 T = TypeVar("T")
 
@@ -38,7 +37,7 @@ class BackendConfig:
 
     @property
     def default_accelerator_factory(self) -> Callable[[], Accelerator]:
-        raise NotImplementedError
+        return Accelerator
 
 
 @DeveloperAPI

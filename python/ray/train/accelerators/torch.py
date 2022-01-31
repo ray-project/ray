@@ -11,7 +11,6 @@ from torch.utils.data import (
 )
 
 from ray import train
-from ray.train.torch import get_device
 
 from .base import Accelerator
 
@@ -20,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 class TorchAccelerator(Accelerator):
     def prepare_model(
+        self,
         model: torch.nn.Module,
         move_to_device: bool = True,
         wrap_ddp: bool = True,
@@ -65,6 +65,7 @@ class TorchAccelerator(Accelerator):
         return model
 
     def prepare_data_loader(
+        self,
         data_loader: torch.utils.data.DataLoader,
         add_dist_sampler: bool = True,
         move_to_device: bool = True,
@@ -159,3 +160,14 @@ class _WrappedDataLoader(DataLoader):
 
         for item in iterator:
             yield self._move_to_device(item)
+
+
+def get_device() -> torch.device:
+    """Gets the correct torch device to use for training."""
+    if torch.cuda.is_available():
+        rank = train.local_rank()
+        device = torch.device(f"cuda:{rank}")
+    else:
+        device = torch.device("cpu")
+
+    return device

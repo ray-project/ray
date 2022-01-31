@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from typing import Callable, List
+from typing import List
 
 import ray
 from ray.train.backend import BackendConfig, Backend
@@ -10,8 +10,6 @@ from ray.train.session import shutdown_session
 from ray.train.utils import get_address_and_port
 from ray.train.worker_group import WorkerGroup
 from ray.util import PublicAPI
-
-from .accelerators import Accelerator, TensorflowAccelerator
 
 import tensorflow as tf
 
@@ -24,10 +22,6 @@ class TensorflowConfig(BackendConfig):
     @property
     def backend_cls(self):
         return TensorflowBackend
-
-    @property
-    def default_accelerator_factory(self) -> Callable[[], Accelerator]:
-        return TensorflowAccelerator
 
 
 def setup_tensorflow_environment(worker_addresses: List[str], index: int):

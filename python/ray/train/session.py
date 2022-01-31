@@ -11,6 +11,7 @@ from typing import Optional, Dict
 import warnings
 
 import ray
+from ray.train.accelerators.base import Accelerator
 from ray.train.constants import (
     DETAILED_AUTOFILLED_KEYS,
     TIME_THIS_ITER_S,
@@ -25,8 +26,6 @@ from ray.train.constants import (
 )
 from ray.train.utils import PropagatingThread, RayDataset
 from ray.util import PublicAPI
-
-from .accelerators import Accelerator
 
 
 class TrainingResultType(Enum):

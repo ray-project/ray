@@ -184,17 +184,6 @@ class TorchBackend(Backend):
         return checkpoint_dict
 
 
-def get_device() -> torch.device:
-    """Gets the correct torch device to use for training."""
-    if torch.cuda.is_available():
-        rank = train.local_rank()
-        device = torch.device(f"cuda:{rank}")
-    else:
-        device = torch.device("cpu")
-
-    return device
-
-
 @PublicAPI(stability="beta")
 def prepare_model(
     model: torch.nn.Module,
