@@ -1,4 +1,5 @@
 import itertools
+import os
 import logging
 from typing import (
     List,
@@ -45,6 +46,10 @@ from ray.data.datasource import (
     BinaryDatasource,
     NumpyDatasource,
     ReadTask,
+)
+from ray.data.datasource.file_based_datasource import (
+    _wrap_s3_filesystem_workaround,
+    _unwrap_s3_filesystem_workaround,
 )
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.arrow_block import ArrowRow
@@ -197,7 +202,22 @@ def read_datasource(
         Dataset holding the data read from the datasource.
     """
 
-    read_tasks = datasource.prepare_read(parallelism, **read_args)
+    # TODO(ekl) remove this feature flag.
+    if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
+        read_tasks = datasource.prepare_read(parallelism, **read_args)
+    else:
+        # Prepare read in a remote task so that in Ray client mode, we aren't
+        # attempting metadata resolution from the client machine.
+        ctx = DatasetContext.get_current()
+        prepare_read = cached_remote_fn(
+            _prepare_read, retry_exceptions=False, num_cpus=0
+        )
+        read_tasks = ray.get(
+            prepare_read.remote(
+                datasource, ctx, parallelism, _wrap_s3_filesystem_workaround(read_args)
+            )
+        )
+
     context = DatasetContext.get_current()
     stats_actor = get_or_create_stats_actor()
     stats_uuid = uuid.uuid4()
@@ -788,3 +808,11 @@ def _get_metadata(table: "pyarrow.Table") -> BlockMetadata:
     return BlockAccessor.for_block(table).get_metadata(
         input_files=None, exec_stats=stats.build()
     )
+
+
+def _prepare_read(
+    ds: Datasource, ctx: DatasetContext, parallelism: int, kwargs: dict
+) -> List[ReadTask]:
+    kwargs = _unwrap_s3_filesystem_workaround(kwargs)
+    DatasetContext._set_current(ctx)
+    return ds.prepare_read(parallelism, **kwargs)

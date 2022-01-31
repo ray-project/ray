@@ -43,6 +43,13 @@ def maybe_pipeline(ds, enabled):
         return ds
 
 
+class SlowCSVDatasource(CSVDatasource):
+    def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
+        for block in CSVDatasource._read_stream(self, f, path, **reader_args):
+            time.sleep(3)
+            yield block
+
+
 # Tests that we don't block on exponential rampup when doing bulk reads.
 # https://github.com/ray-project/ray/issues/20625
 @pytest.mark.parametrize("block_split", [False, True])
@@ -50,17 +57,11 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
     ray.init(num_cpus=8)
     ctx = ray.data.context.DatasetContext.get_current()
 
-    class SlowCSVDatasource(CSVDatasource):
-        def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
-            for block in CSVDatasource._read_stream(self, f, path, **reader_args):
-                time.sleep(3)
-                yield block
-
     try:
         original = ctx.block_splitting_enabled
 
         ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
-        ctx.block_splitting_enabled = True
+        ctx.block_splitting_enabled = block_split
         ds = ray.data.read_datasource(
             SlowCSVDatasource(), parallelism=8, paths=str(tmp_path)
         )
@@ -4000,35 +4001,37 @@ def test_sort_arrow_with_empty_blocks(ray_start_regular):
     assert ds.sort("value").count() == 0
 
 
+@ray.remote
+class Counter:
+    def __init__(self):
+        self.value = 0
+
+    def increment(self):
+        self.value += 1
+        return self.value
+
+
+class FlakyCSVDatasource(CSVDatasource):
+    def __init__(self):
+        self.counter = Counter.remote()
+
+    def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
+        count = self.counter.increment.remote()
+        if ray.get(count) == 1:
+            raise ValueError("oops")
+        else:
+            for block in CSVDatasource._read_stream(self, f, path, **reader_args):
+                yield block
+
+    def _write_block(self, f: "pa.NativeFile", block: BlockAccessor, **writer_args):
+        count = self.counter.increment.remote()
+        if ray.get(count) == 1:
+            raise ValueError("oops")
+        else:
+            CSVDatasource._write_block(self, f, block, **writer_args)
+
+
 def test_dataset_retry_exceptions(ray_start_regular, local_path):
-    @ray.remote
-    class Counter:
-        def __init__(self):
-            self.value = 0
-
-        def increment(self):
-            self.value += 1
-            return self.value
-
-    class FlakyCSVDatasource(CSVDatasource):
-        def __init__(self):
-            self.counter = Counter.remote()
-
-        def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
-            count = self.counter.increment.remote()
-            if ray.get(count) == 1:
-                raise ValueError("oops")
-            else:
-                for block in CSVDatasource._read_stream(self, f, path, **reader_args):
-                    yield block
-
-        def _write_block(self, f: "pa.NativeFile", block: BlockAccessor, **writer_args):
-            count = self.counter.increment.remote()
-            if ray.get(count) == 1:
-                raise ValueError("oops")
-            else:
-                CSVDatasource._write_block(self, f, block, **writer_args)
-
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(local_path, "test1.csv")
     df1.to_csv(path1, index=False, storage_options={})

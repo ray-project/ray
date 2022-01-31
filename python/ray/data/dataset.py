@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from typing import (
     List,
@@ -56,6 +57,11 @@ from ray.data.datasource import (
     ParquetDatasource,
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
+    WriteResult,
+)
+from ray.data.datasource.file_based_datasource import (
+    _wrap_s3_filesystem_workaround,
+    _unwrap_s3_filesystem_workaround,
 )
 from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -1755,8 +1761,28 @@ class Dataset(Generic[T]):
             write_args: Additional write args to pass to the datasource.
         """
 
+        ctx = DatasetContext.get_current()
         blocks, metadata = zip(*self._blocks.get_blocks_with_metadata())
-        write_results = datasource.do_write(blocks, metadata, **write_args)
+
+        # TODO(ekl) remove this feature flag.
+        if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
+            write_results: List[ObjectRef[WriteResult]] = datasource.do_write(
+                blocks, metadata, **write_args
+            )
+        else:
+            # Prepare write in a remote task so that in Ray client mode, we
+            # don't do metadata resolution from the client machine.
+            do_write = cached_remote_fn(_do_write, retry_exceptions=False, num_cpus=0)
+            write_results: List[ObjectRef[WriteResult]] = ray.get(
+                do_write.remote(
+                    datasource,
+                    ctx,
+                    blocks,
+                    metadata,
+                    _wrap_s3_filesystem_workaround(write_args),
+                )
+            )
+
         progress = ProgressBar("Write Progress", len(write_results))
         try:
             progress.block_until_complete(write_results)
@@ -2367,7 +2393,7 @@ Dict[str, List[str]]]): The names of the columns
                     raise StopIteration
                 self._ds._set_epoch(self._i)
                 self._i += 1
-                return lambda: self._ds
+                return lambda: self._ds.force_reads()
 
         class Iterable:
             def __init__(self, ds: "Dataset[T]"):
@@ -2446,7 +2472,8 @@ Dict[str, List[str]]]): The names of the columns
                 blocks = self._splits.pop(0)
 
                 def gen():
-                    return Dataset(blocks, self._epoch, outer_stats)
+                    ds = Dataset(blocks, self._epoch, outer_stats)
+                    return ds
 
                 return gen
 
@@ -2757,3 +2784,15 @@ def _split_block(
         b1 = None
         m1 = None
     return b0, m0, b1, m1
+
+
+def _do_write(
+    ds: Datasource,
+    ctx: DatasetContext,
+    blocks: List[Block],
+    meta: List[BlockMetadata],
+    write_args: dict,
+) -> List[ObjectRef[WriteResult]]:
+    write_args = _unwrap_s3_filesystem_workaround(write_args)
+    DatasetContext._set_current(ctx)
+    return ds.do_write(blocks, meta, **write_args)
