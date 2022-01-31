@@ -18,6 +18,7 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/util/container_util.h"
 
 namespace ray {
 
@@ -121,9 +122,8 @@ bool ClusterResourceManager::GetNodeResources(int64_t node_id,
 const NodeResources &ClusterResourceManager::GetNodeResources(
     const std::string &node_name) const {
   int64_t node_id = string_to_int_map_.Get(node_name);
-  const auto &node_it = nodes_.find(node_id);
-  RAY_CHECK(node_it != nodes_.end());
-  return node_it->second.GetLocalView();
+  const auto &node = map_find_or_die(nodes_, node_id);
+  return node.GetLocalView();
 }
 
 int64_t ClusterResourceManager::NumNodes() const { return nodes_.size(); }
@@ -204,9 +204,8 @@ void ClusterResourceManager::DeleteResource(const std::string &node_id_string,
 std::string ClusterResourceManager::GetNodeResourceViewString(
     const std::string &node_name) const {
   int64_t node_id = string_to_int_map_.Get(node_name);
-  const auto &node_it = nodes_.find(node_id);
-  RAY_CHECK(node_it != nodes_.end());
-  return node_it->second.GetLocalView().DictString(string_to_int_map_);
+  const auto &node = map_find_or_die(nodes_, node_id);
+  return node.GetLocalView().DictString(string_to_int_map_);
 }
 
 std::string ClusterResourceManager::GetResourceNameFromIndex(int64_t res_idx) {
