@@ -4,14 +4,12 @@ import json
 from collections import defaultdict
 from contextlib import redirect_stdout
 from pathlib import Path
-from typing import Callable
 
 import pytest
 
 import ray
 import ray.train as train
 from ray.train import Trainer
-from ray.train.accelerators import Accelerator
 from ray.train.backend import BackendConfig, Backend
 from ray.train.callbacks import JsonLoggerCallback, PrintCallback, TBXLoggerCallback
 from ray.train.callbacks.logging import MLflowLoggerCallback, TrainCallbackLogdirManager

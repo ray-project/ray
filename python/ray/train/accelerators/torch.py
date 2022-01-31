@@ -70,8 +70,7 @@ class TorchAccelerator(Accelerator):
         add_dist_sampler: bool = True,
         move_to_device: bool = True,
     ) -> torch.utils.data.DataLoader:
-        """
-        Prepares DataLoader for distributed execution.
+        """Prepares DataLoader for distributed execution.
 
         This allows you to use the same exact code regardless of number of
         workers or the device type being used (CPU, GPU).

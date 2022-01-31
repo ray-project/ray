@@ -4,7 +4,7 @@ import logging
 import os
 
 from datetime import timedelta
-from typing import Any, Callable, Dict, Optional
+from typing import Optional, Dict, Any, Callable
 
 import ray
 from ray import train
@@ -218,8 +218,7 @@ def prepare_data_loader(
     add_dist_sampler: bool = True,
     move_to_device: bool = True,
 ) -> torch.utils.data.DataLoader:
-    """
-    Prepares DataLoader for distributed execution.
+    """Prepares DataLoader for distributed execution.
 
     This allows you to use the same exact code regardless of number of
     workers or the device type being used (CPU, GPU).
