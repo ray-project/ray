@@ -181,6 +181,27 @@ def test_user_config(serve_instance):
     wait_for_condition(lambda: check("456", 3))
 
 
+def test_call_method(serve_instance):
+    @serve.deployment(name="method")
+    class CallMethod:
+        def method(self, *args):
+            return "hello"
+
+    CallMethod.deploy()
+
+    # Test HTTP path.
+    resp = requests.get(
+        "http://127.0.0.1:8000/method",
+        timeout=1,
+        headers={"X-SERVE-CALL-METHOD": "method"},
+    )
+    assert resp.text == "hello"
+
+    # Test serve handle path.
+    handle = CallMethod.get_handle()
+    assert ray.get(handle.options(method_name="method").remote()) == "hello"
+
+
 def test_reject_duplicate_route(serve_instance):
     @serve.deployment(name="A", route_prefix="/api")
     class A:

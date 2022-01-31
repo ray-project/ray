@@ -22,12 +22,12 @@ from ray.tune.utils.release_test_util import timed_tune_run
 
 
 def main(bucket):
-    secrets_file = os.path.join(
-        os.path.dirname(__file__), "..", "aws_secrets.txt")
+    secrets_file = os.path.join(os.path.dirname(__file__), "..", "aws_secrets.txt")
     if os.path.isfile(secrets_file):
         print(f"Loading AWS secrets from file {secrets_file}")
 
         from configparser import ConfigParser
+
         config = ConfigParser()
         config.read(secrets_file)
 
@@ -48,11 +48,13 @@ def main(bucket):
         os.environ["AWS_SESSION_TOKEN"] = current_credentials.token
 
     if all(
-            os.getenv(k, "") for k in [
-                "AWS_ACCESS_KEY_ID",
-                "AWS_SECRET_ACCESS_KEY",
-                "AWS_SESSION_TOKEN",
-            ]):
+        os.getenv(k, "")
+        for k in [
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN",
+        ]
+    ):
         print("AWS secrets found in env.")
     else:
         print("Warning: No AWS secrets found in env!")
@@ -72,10 +74,13 @@ def main(bucket):
         trial_length_s=trial_length_s,
         max_runtime=max_runtime,
         checkpoint_freq_s=10,  # Once every 10 seconds
-        checkpoint_size_b=int(10 * 1000**2),  # 10 MB
+        checkpoint_size_b=int(10 * 1000 ** 2),  # 10 MB
         keep_checkpoints_num=2,
         resources_per_trial={"cpu": 2},
-        sync_config=tune.SyncConfig(upload_dir=f"s3://{bucket}/durable/", ))
+        sync_config=tune.SyncConfig(
+            upload_dir=f"s3://{bucket}/durable/",
+        ),
+    )
 
 
 if __name__ == "__main__":

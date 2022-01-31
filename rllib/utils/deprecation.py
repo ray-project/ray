@@ -13,11 +13,12 @@ DEPRECATED_VALUE = -1
 
 
 def deprecation_warning(
-        old: str,
-        new: Optional[str] = None,
-        *,
-        help: Optional[str] = None,
-        error: Optional[Union[bool, Exception]] = None) -> None:
+    old: str,
+    new: Optional[str] = None,
+    *,
+    help: Optional[str] = None,
+    error: Optional[Union[bool, Exception]] = None,
+) -> None:
     """Warns (via the `logger` object) or throws a deprecation warning/error.
 
     Args:
@@ -34,16 +35,17 @@ def deprecation_warning(
         Exception: Of type `error`, iff `error` is a sub-class of `Exception`.
     """
     msg = "`{}` has been deprecated.{}".format(
-        old, (" Use `{}` instead.".format(new) if new else f" {help}"
-              if help else ""))
+        old, (" Use `{}` instead.".format(new) if new else f" {help}" if help else "")
+    )
 
     if error is True:
-        raise ValueError(msg)
+        raise DeprecationWarning(msg)
     elif error and issubclass(error, Exception):
         raise error(msg)
     else:
-        logger.warning("DeprecationWarning: " + msg +
-                       " This will raise an error in the future!")
+        logger.warning(
+            "DeprecationWarning: " + msg + " This will raise an error in the future!"
+        )
 
 
 def Deprecated(old=None, *, new=None, help=None, error):

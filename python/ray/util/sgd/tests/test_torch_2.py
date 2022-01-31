@@ -8,9 +8,11 @@ import ray
 from ray.util.sgd.data.examples import mlp_identity
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.examples.train_example import (
-    model_creator, optimizer_creator, data_creator)
-from ray.util.sgd.torch.training_operator import (get_test_operator,
-                                                  TrainingOperator)
+    model_creator,
+    optimizer_creator,
+    data_creator,
+)
+from ray.util.sgd.torch.training_operator import get_test_operator, TrainingOperator
 
 
 @pytest.fixture
@@ -36,7 +38,8 @@ def ray_start_4_cpus():
 
 
 Operator = TrainingOperator.from_creators(
-    model_creator, optimizer_creator, data_creator, loss_creator=nn.MSELoss)
+    model_creator, optimizer_creator, data_creator, loss_creator=nn.MSELoss
+)
 
 
 @pytest.mark.parametrize("use_local", [True, False])
@@ -46,7 +49,8 @@ def test_dead_trainer(ray_start_2_cpus, use_local):  # noqa: F811
         training_operator_cls=TestOperator,
         num_workers=2,
         use_local=use_local,
-        use_gpu=False)
+        use_gpu=False,
+    )
     trainer.train(num_steps=1)
     trainer.shutdown()
     with pytest.raises(RuntimeError):
@@ -72,37 +76,32 @@ def test_multi_model(ray_start_2_cpus, num_workers, use_local):
             _, predicted = outputs.max(1)
             total += targets.size(0)
             correct += predicted.eq(targets).sum().item()
-        return {
-            "accuracy": correct / total,
-            "train_loss": train_loss / (batch_idx + 1)
-        }
+        return {"accuracy": correct / total, "train_loss": train_loss / (batch_idx + 1)}
 
     def train_epoch(self, iterator, info):
         result = {}
         data = list(iterator)
-        for i, (model, optimizer) in enumerate(
-                zip(self.models, self.optimizers)):
+        for i, (model, optimizer) in enumerate(zip(self.models, self.optimizers)):
             result[f"model_{i}"] = train(
                 model=model,
                 criterion=self.criterion,
                 optimizer=optimizer,
-                iterator=iter(data))
+                iterator=iter(data),
+            )
         return result
 
     class MultiModelOperator(TrainingOperator):
         def setup(self, config):
             models = nn.Linear(1, 1), nn.Linear(1, 1)
-            opts = [
-                torch.optim.SGD(model.parameters(), lr=0.0001)
-                for model in models
-            ]
+            opts = [torch.optim.SGD(model.parameters(), lr=0.0001) for model in models]
             loss = nn.MSELoss()
             train_dataloader, val_dataloader = data_creator(config)
             self.models, self.optimizers, self.criterion = self.register(
-                models=models, optimizers=opts, criterion=loss)
+                models=models, optimizers=opts, criterion=loss
+            )
             self.register_data(
-                train_loader=train_dataloader,
-                validation_loader=val_dataloader)
+                train_loader=train_dataloader, validation_loader=val_dataloader
+            )
 
     TestOperator = get_test_operator(MultiModelOperator)
 
@@ -153,12 +152,10 @@ def test_multi_model_matrix(ray_start_2_cpus, num_workers, use_local):  #
             assert len(self.models) == self.config["models"], self.config
 
         if self.config.get("optimizers", 1) > 1:
-            assert len(
-                self.optimizers) == self.config["optimizers"], self.config
+            assert len(self.optimizers) == self.config["optimizers"], self.config
 
         if self.config.get("schedulers", 1) > 1:
-            assert len(
-                self.schedulers) == self.config["schedulers"], self.config
+            assert len(self.schedulers) == self.config["schedulers"], self.config
         return {"done": 1}
 
     def multi_model_creator(config):
@@ -179,8 +176,7 @@ def test_multi_model_matrix(ray_start_2_cpus, num_workers, use_local):  #
         main_opt = optimizer[0] if type(optimizer) is list else optimizer
         for i in range(config.get("schedulers", 1)):
             schedulers += [
-                torch.optim.lr_scheduler.StepLR(
-                    main_opt, step_size=30, gamma=0.1)
+                torch.optim.lr_scheduler.StepLR(main_opt, step_size=30, gamma=0.1)
             ]
         return schedulers[0] if len(schedulers) == 1 else schedulers
 
@@ -192,12 +188,18 @@ def test_multi_model_matrix(ray_start_2_cpus, num_workers, use_local):  #
             train_loader, val_loader = data_creator(config)
             loss = nn.MSELoss()
 
-            self.models, self.optimizers, self.criterion, self.schedulers = \
-                self.register(models=models, optimizers=optimizers,
-                              schedulers=schedulers,
-                              criterion=loss)
-            self.register_data(
-                train_loader=train_loader, validation_loader=val_loader)
+            (
+                self.models,
+                self.optimizers,
+                self.criterion,
+                self.schedulers,
+            ) = self.register(
+                models=models,
+                optimizers=optimizers,
+                schedulers=schedulers,
+                criterion=loss,
+            )
+            self.register_data(train_loader=train_loader, validation_loader=val_loader)
 
     TestOperator = get_test_operator(MultiModelOperator)
 
@@ -213,8 +215,9 @@ def test_multi_model_matrix(ray_start_2_cpus, num_workers, use_local):  #
                         "models": model_count,
                         "optimizers": optimizer_count,
                         "schedulers": scheduler_count,
-                        "custom_func": train_epoch
-                    })
+                        "custom_func": train_epoch,
+                    },
+                )
                 trainer.train()
                 trainer.shutdown()
 
@@ -235,7 +238,8 @@ def test_dataset(ray_start_4_cpus, use_local):
     DatasetOperator = TrainingOperator.from_creators(
         model_creator=model_creator,
         optimizer_creator=optimizer_creator,
-        loss_creator=nn.MSELoss)
+        loss_creator=nn.MSELoss,
+    )
 
     trainer = TorchTrainer(
         training_operator_cls=DatasetOperator,
@@ -260,12 +264,14 @@ def test_num_steps(ray_start_2_cpus, use_local):
     def data_creator(config):
         train_dataset = [0] * 5 + [1] * 5
         val_dataset = [0] * 5 + [1] * 5
-        return DataLoader(train_dataset, batch_size=config["batch_size"]), \
-            DataLoader(val_dataset, batch_size=config["batch_size"])
+        return DataLoader(train_dataset, batch_size=config["batch_size"]), DataLoader(
+            val_dataset, batch_size=config["batch_size"]
+        )
 
     batch_size = 1
-    Operator = TrainingOperator.from_creators(model_creator, optimizer_creator,
-                                              data_creator)
+    Operator = TrainingOperator.from_creators(
+        model_creator, optimizer_creator, data_creator
+    )
 
     def train_func(self, iterator, info=None):
         total_sum = 0
@@ -281,10 +287,8 @@ def test_num_steps(ray_start_2_cpus, use_local):
         num_workers=2,
         use_local=use_local,
         add_dist_sampler=False,
-        config={
-            "batch_size": batch_size,
-            "custom_func": train_func
-        })
+        config={"batch_size": batch_size, "custom_func": train_func},
+    )
 
     # If num_steps not passed, should do one full epoch.
     result = trainer.train()

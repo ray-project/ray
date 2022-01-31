@@ -13,8 +13,12 @@ import os
 import uuid
 import inspect
 import pickle
-from ray.util.inspect import is_cython, is_class_method,\
-    is_function_or_method, is_static_method
+from ray.util.inspect import (
+    is_cython,
+    is_class_method,
+    is_function_or_method,
+    is_static_method,
+)
 import logging
 import threading
 from collections import OrderedDict
@@ -29,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 # The maximum field value for int32 id's -- which is also the maximum
 # number of simultaneous in-flight requests.
-INT32_MAX = (2**31) - 1
+INT32_MAX = (2 ** 31) - 1
 
 # gRPC status codes that the client shouldn't attempt to recover from
 # Resource exhausted: Server is low on resources, or has hit the max number
@@ -40,11 +44,13 @@ INT32_MAX = (2**31) - 1
 # Failed precondition: Reserverd for application errors
 # Aborted: Set when an error is serialized into the details of the context,
 #   signals that error should be deserialized on the client side
-GRPC_UNRECOVERABLE_ERRORS = (grpc.StatusCode.RESOURCE_EXHAUSTED,
-                             grpc.StatusCode.INVALID_ARGUMENT,
-                             grpc.StatusCode.NOT_FOUND,
-                             grpc.StatusCode.FAILED_PRECONDITION,
-                             grpc.StatusCode.ABORTED)
+GRPC_UNRECOVERABLE_ERRORS = (
+    grpc.StatusCode.RESOURCE_EXHAUSTED,
+    grpc.StatusCode.INVALID_ARGUMENT,
+    grpc.StatusCode.NOT_FOUND,
+    grpc.StatusCode.FAILED_PRECONDITION,
+    grpc.StatusCode.ABORTED,
+)
 
 # TODO: Instead of just making the max message size large, the right thing to
 # do is to split up the bytes representation of serialized data into multiple
@@ -70,14 +76,12 @@ GRPC_OPTIONS = [
     ("grpc.keepalive_permit_without_calls", 1),
     # Send an infinite number of pings
     ("grpc.http2.max_pings_without_data", 0),
-    ("grpc.http2.min_ping_interval_without_data_ms",
-     GRPC_KEEPALIVE_TIME_MS - 50),
+    ("grpc.http2.min_ping_interval_without_data_ms", GRPC_KEEPALIVE_TIME_MS - 50),
     # Allow many strikes
-    ("grpc.http2.max_ping_strikes", 0)
+    ("grpc.http2.max_ping_strikes", 0),
 ]
 
-CLIENT_SERVER_MAX_THREADS = float(
-    os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
+CLIENT_SERVER_MAX_THREADS = float(os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
 
 # Aliases for compatibility.
 ClientObjectRef = raylet.ClientObjectRef
@@ -110,8 +114,10 @@ class ClientRemoteFunc(ClientStub):
         self._options = validate_options(options)
 
     def __call__(self, *args, **kwargs):
-        raise TypeError("Remote function cannot be called directly. "
-                        f"Use {self._name}.remote method instead")
+        raise TypeError(
+            "Remote function cannot be called directly. "
+            f"Use {self._name}.remote method instead"
+        )
 
     def remote(self, *args, **kwargs):
         # Check if supplied parameters match the function signature. Same case
@@ -147,10 +153,10 @@ class ClientRemoteFunc(ClientStub):
                 data = ray.worker._dumps_from_client(self._func)
                 # Check pickled size before sending it to server, which is more
                 # efficient and can be done synchronously inside remote() call.
-                check_oversized_function(data, self._name, "remote function",
-                                         None)
+                check_oversized_function(data, self._name, "remote function", None)
                 self._ref = ray.worker._put_pickled(
-                    data, client_ref_id=self._client_side_ref.id)
+                    data, client_ref_id=self._client_side_ref.id
+                )
 
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
         self._ensure_ref()
@@ -183,15 +189,17 @@ class ClientActorClass(ClientStub):
         self._lock = threading.Lock()
         self._name = actor_cls.__name__
         self._init_signature = inspect.Signature(
-            parameters=extract_signature(
-                actor_cls.__init__, ignore_first=True))
+            parameters=extract_signature(actor_cls.__init__, ignore_first=True)
+        )
         self._ref = None
         self._client_side_ref = ClientSideRefID.generate_id()
         self._options = validate_options(options)
 
     def __call__(self, *args, **kwargs):
-        raise TypeError("Remote actor cannot be instantiated directly. "
-                        f"Use {self._name}.remote() instead")
+        raise TypeError(
+            "Remote actor cannot be instantiated directly. "
+            f"Use {self._name}.remote() instead"
+        )
 
     def _ensure_ref(self):
         with self._lock:
@@ -205,7 +213,8 @@ class ClientActorClass(ClientStub):
                 # efficient and can be done synchronously inside remote() call.
                 check_oversized_function(data, self._name, "actor", None)
                 self._ref = ray.worker._put_pickled(
-                    data, client_ref_id=self._client_side_ref.id)
+                    data, client_ref_id=self._client_side_ref.id
+                )
 
     def remote(self, *args, **kwargs) -> "ClientActorHandle":
         self._init_signature.bind(*args, **kwargs)
@@ -258,24 +267,31 @@ class ClientActorHandle(ClientStub):
           is a serialized version of the actual handle as an opaque token.
     """
 
-    def __init__(self,
-                 actor_ref: ClientActorRef,
-                 actor_class: Optional[ClientActorClass] = None):
+    def __init__(
+        self, actor_ref: ClientActorRef, actor_class: Optional[ClientActorClass] = None
+    ):
         self.actor_ref = actor_ref
         self._dir: Optional[List[str]] = None
         if actor_class is not None:
             self._method_num_returns = {}
             self._method_signatures = {}
             for method_name, method_obj in inspect.getmembers(
-                    actor_class.actor_cls, is_function_or_method):
+                actor_class.actor_cls, is_function_or_method
+            ):
                 self._method_num_returns[method_name] = getattr(
-                    method_obj, "__ray_num_returns__", None)
+                    method_obj, "__ray_num_returns__", None
+                )
                 self._method_signatures[method_name] = inspect.Signature(
                     parameters=extract_signature(
                         method_obj,
-                        ignore_first=(not (
-                            is_class_method(method_obj) or is_static_method(
-                                actor_class.actor_cls, method_name)))))
+                        ignore_first=(
+                            not (
+                                is_class_method(method_obj)
+                                or is_static_method(actor_class.actor_cls, method_name)
+                            )
+                        ),
+                    )
+                )
         else:
             self._method_num_returns = None
             self._method_signatures = None
@@ -297,8 +313,12 @@ class ClientActorHandle(ClientStub):
     def __getattr__(self, key):
         if self._method_num_returns is None:
             self._init_class_info()
-        return ClientRemoteMethod(self, key, self._method_num_returns.get(key),
-                                  self._method_signatures.get(key))
+        return ClientRemoteMethod(
+            self,
+            key,
+            self._method_num_returns.get(key),
+            self._method_signatures.get(key),
+        )
 
     def __repr__(self):
         return "ClientActorHandle(%s)" % (self.actor_ref.id.hex())
@@ -310,12 +330,12 @@ class ClientActorHandle(ClientStub):
             return x._ray_method_num_returns, x._ray_method_signatures
 
         self._method_num_returns, method_parameters = ray.get(
-            get_class_info.remote(self))
+            get_class_info.remote(self)
+        )
 
         self._method_signatures = {}
         for method, parameters in method_parameters.items():
-            self._method_signatures[method] = inspect.Signature(
-                parameters=parameters)
+            self._method_signatures[method] = inspect.Signature(parameters=parameters)
 
 
 class ClientRemoteMethod(ClientStub):
@@ -329,17 +349,24 @@ class ClientRemoteMethod(ClientStub):
         method_name: The name of this method
     """
 
-    def __init__(self, actor_handle: ClientActorHandle, method_name: str,
-                 num_returns: int, signature: inspect.Signature):
+    def __init__(
+        self,
+        actor_handle: ClientActorHandle,
+        method_name: str,
+        num_returns: int,
+        signature: inspect.Signature,
+    ):
         self._actor_handle = actor_handle
         self._method_name = method_name
         self._method_num_returns = num_returns
         self._signature = signature
 
     def __call__(self, *args, **kwargs):
-        raise TypeError("Actor methods cannot be called directly. Instead "
-                        f"of running 'object.{self._method_name}()', try "
-                        f"'object.{self._method_name}.remote()'.")
+        raise TypeError(
+            "Actor methods cannot be called directly. Instead "
+            f"of running 'object.{self._method_name}()', try "
+            f"'object.{self._method_name}.remote()'."
+        )
 
     def remote(self, *args, **kwargs):
         self._signature.bind(*args, **kwargs)
@@ -347,7 +374,10 @@ class ClientRemoteMethod(ClientStub):
 
     def __repr__(self):
         return "ClientRemoteMethod(%s, %s, %s)" % (
-            self._method_name, self._actor_handle, self._method_num_returns)
+            self._method_name,
+            self._actor_handle,
+            self._method_num_returns,
+        )
 
     def options(self, **kwargs):
         return OptionWrapper(self, kwargs)
@@ -403,13 +433,14 @@ class ActorOptionWrapper(OptionWrapper):
         actor_class = None
         if isinstance(self._remote_stub, ClientActorClass):
             actor_class = self._remote_stub
-        return ClientActorHandle(
-            ClientActorRef(futures[0]), actor_class=actor_class)
+        return ClientActorHandle(ClientActorRef(futures[0]), actor_class=actor_class)
 
 
-def set_task_options(task: ray_client_pb2.ClientTask,
-                     options: Optional[Dict[str, Any]],
-                     field: str = "options") -> None:
+def set_task_options(
+    task: ray_client_pb2.ClientTask,
+    options: Optional[Dict[str, Any]],
+    field: str = "options",
+) -> None:
     if options is None:
         task.ClearField(field)
         return
@@ -417,8 +448,9 @@ def set_task_options(task: ray_client_pb2.ClientTask,
     getattr(task, field).pickled_options = pickle.dumps(options)
 
 
-def return_refs(futures: List[concurrent.futures.Future]
-                ) -> Union[None, ClientObjectRef, List[ClientObjectRef]]:
+def return_refs(
+    futures: List[concurrent.futures.Future],
+) -> Union[None, ClientObjectRef, List[ClientObjectRef]]:
     if not futures:
         return None
     if len(futures) == 1:
@@ -446,14 +478,15 @@ class ClientSideRefID:
 
 def remote_decorator(options: Optional[Dict[str, Any]]):
     def decorator(function_or_class) -> ClientStub:
-        if (inspect.isfunction(function_or_class)
-                or is_cython(function_or_class)):
+        if inspect.isfunction(function_or_class) or is_cython(function_or_class):
             return ClientRemoteFunc(function_or_class, options=options)
         elif inspect.isclass(function_or_class):
             return ClientActorClass(function_or_class, options=options)
         else:
-            raise TypeError("The @ray.remote decorator must be applied to "
-                            "either a function or to a class.")
+            raise TypeError(
+                "The @ray.remote decorator must be applied to "
+                "either a function or to a class."
+            )
 
     return decorator
 
@@ -461,6 +494,7 @@ def remote_decorator(options: Optional[Dict[str, Any]]):
 @dataclass
 class ClientServerHandle:
     """Holds the handles to the registered gRPC servicers and their server."""
+
     task_servicer: ray_client_pb2_grpc.RayletDriverServicer
     data_servicer: ray_client_pb2_grpc.RayletDataStreamerServicer
     logs_servicer: ray_client_pb2_grpc.RayletLogStreamerServicer
@@ -602,19 +636,20 @@ class ResponseCache:
                                 "original request. This might happen if this "
                                 "request was received out of order. The "
                                 "result of the caller is no longer needed. "
-                                f"({request_id} != {cached_request_id})")
+                                f"({request_id} != {cached_request_id})"
+                            )
                     return cached_resp
                 if not _id_is_newer(request_id, cached_request_id):
                     raise RuntimeError(
                         "Attempting to replace newer cache entry with older "
                         "one. This might happen if this request was received "
                         "out of order. The result of the caller is no "
-                        f"longer needed. ({request_id} != {cached_request_id}")
+                        f"longer needed. ({request_id} != {cached_request_id}"
+                    )
             self.cache[thread_id] = (request_id, None)
         return None
 
-    def update_cache(self, thread_id: int, request_id: int,
-                     response: Any) -> None:
+    def update_cache(self, thread_id: int, request_id: int, response: Any) -> None:
         """
         Inserts `response` into the cache for `request_id`.
         """
@@ -631,7 +666,8 @@ class ResponseCache:
                     "do not match the current request_id. This might happen "
                     "if this request was received out of order. The result "
                     f"of the caller is no longer needed. ({request_id} != "
-                    f"{cached_request_id})")
+                    f"{cached_request_id})"
+                )
             self.cache[thread_id] = (request_id, response)
             self.cv.notify_all()
 
@@ -654,15 +690,15 @@ class OrderedResponseCache:
         not been seen yet, otherwise returns the cached result.
         """
         with self.cv:
-            if _id_is_newer(self.last_received,
-                            req_id) or self.last_received == req_id:
+            if _id_is_newer(self.last_received, req_id) or self.last_received == req_id:
                 # Request is for an id that has already been cleared from
                 # cache/acknowledged.
                 raise RuntimeError(
                     "Attempting to accesss a cache entry that has already "
                     "cleaned up. The client has already acknowledged "
                     f"receiving this response. ({req_id}, "
-                    f"{self.last_received})")
+                    f"{self.last_received})"
+                )
             if req_id in self.cache:
                 cached_resp = self.cache[req_id]
                 while cached_resp is None:
@@ -673,7 +709,8 @@ class OrderedResponseCache:
                     if req_id not in self.cache:
                         raise RuntimeError(
                             "Cache entry was removed. This likely means that "
-                            "the result of this call is no longer needed.")
+                            "the result of this call is no longer needed."
+                        )
                     cached_resp = self.cache[req_id]
                 return cached_resp
             self.cache[req_id] = None
@@ -689,7 +726,8 @@ class OrderedResponseCache:
                 raise RuntimeError(
                     "Attempting to update the cache, but placeholder is "
                     "missing. This might happen on a redundant call to "
-                    f"update_cache. ({req_id})")
+                    f"update_cache. ({req_id})"
+                )
             self.cache[req_id] = resp
 
     def invalidate(self, e: Exception) -> bool:
@@ -720,8 +758,7 @@ class OrderedResponseCache:
                 self.last_received = last_received
             to_remove = []
             for req_id in self.cache:
-                if _id_is_newer(last_received,
-                                req_id) or last_received == req_id:
+                if _id_is_newer(last_received, req_id) or last_received == req_id:
                     to_remove.append(req_id)
                 else:
                     break

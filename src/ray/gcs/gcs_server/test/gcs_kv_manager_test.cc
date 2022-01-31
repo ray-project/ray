@@ -68,7 +68,7 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
   kv_instance->Get("N2", "A_1", [](auto b) { ASSERT_FALSE(b.has_value()); });
   kv_instance->Get("N1", "A_1", [](auto b) { ASSERT_TRUE(b.has_value()); });
   {
-    // Delete by prefix are two steps in redis mode, so we need sync here
+    // Delete by prefix are two steps in redis mode, so we need sync here.
     std::promise<void> p;
     kv_instance->Del("N1", "A_", true, [&p](auto b) {
       ASSERT_EQ(3, b);
@@ -77,7 +77,17 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
     p.get_future().get();
   }
   {
-    // Make sure the last cb is called
+    // Delete by prefix are two steps in redis mode, so we need sync here.
+    std::promise<void> p;
+    kv_instance->Del("NX", "A_", true, [&p](auto b) {
+      ASSERT_EQ(0, b);
+      p.set_value();
+    });
+    p.get_future().get();
+  }
+
+  {
+    // Make sure the last cb is called.
     std::promise<void> p;
     kv_instance->Get("N1", "A_1", [&p](auto b) {
       ASSERT_FALSE(b.has_value());

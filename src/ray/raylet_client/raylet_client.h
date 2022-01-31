@@ -119,14 +119,13 @@ class ResourceReserveInterface {
       const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply>
           &callback) = 0;
 
-  /// Request a raylet to commit resources of a given bundle for atomic placement group
-  /// creation. This is used for the first phase of atomic placement group creation. The
+  /// Request a raylet to commit resources of given bundles for atomic placement group
+  /// creation. This is used for the second phase of atomic placement group creation. The
   /// callback will be sent via gRPC.
-  /// \param resource_spec Resources that should be
-  /// allocated for the worker.
+  /// \param bundle_specs Bundles to be scheduled at this raylet.
   /// \return ray::Status
   virtual void CommitBundleResources(
-      const BundleSpecification &bundle_spec,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback) = 0;
 
   virtual void CancelResourceReserve(
@@ -245,7 +244,6 @@ class RayletClient : public RayletClientInterface {
   /// \param serialized_job_config If this is a driver connection, the job config
   /// provided by driver will be passed to Raylet. If this is a worker connection,
   /// this will be populated with the current job config.
-  /// \param worker_shim_pid The PID of the process for setup worker runtime env.
   /// \param startup_token The startup token of the process assigned to
   /// it during startup as a command line argument.
   RayletClient(instrumented_io_context &io_service,
@@ -254,8 +252,7 @@ class RayletClient : public RayletClientInterface {
                rpc::WorkerType worker_type, const JobID &job_id,
                const int &runtime_env_hash, const Language &language,
                const std::string &ip_address, Status *status, NodeID *raylet_id,
-               int *port, std::string *serialized_job_config, pid_t worker_shim_pid,
-               StartupToken startup_token);
+               int *port, std::string *serialized_job_config, StartupToken startup_token);
 
   /// Connect to the raylet via grpc only.
   ///
@@ -406,7 +403,7 @@ class RayletClient : public RayletClientInterface {
 
   /// Implements CommitBundleResourcesInterface.
   void CommitBundleResources(
-      const BundleSpecification &bundle_spec,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback)
       override;
 

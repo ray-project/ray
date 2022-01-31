@@ -6,8 +6,13 @@ from typing import Callable, Tuple, Optional, TYPE_CHECKING
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.typing import EnvActionType, EnvInfoDict, EnvObsType, \
-    EnvType, MultiEnvDict
+from ray.rllib.utils.typing import (
+    EnvActionType,
+    EnvInfoDict,
+    EnvObsType,
+    EnvType,
+    MultiEnvDict,
+)
 
 if TYPE_CHECKING:
     from ray.rllib.models.preprocessors import Preprocessor
@@ -40,10 +45,12 @@ class ExternalEnv(threading.Thread):
     """
 
     @PublicAPI
-    def __init__(self,
-                 action_space: gym.Space,
-                 observation_space: gym.Space,
-                 max_concurrent: int = 100):
+    def __init__(
+        self,
+        action_space: gym.Space,
+        observation_space: gym.Space,
+        max_concurrent: int = 100,
+    ):
         """Initializes an ExternalEnv instance.
 
         Args:
@@ -79,9 +86,9 @@ class ExternalEnv(threading.Thread):
         raise NotImplementedError
 
     @PublicAPI
-    def start_episode(self,
-                      episode_id: Optional[str] = None,
-                      training_enabled: bool = True) -> str:
+    def start_episode(
+        self, episode_id: Optional[str] = None, training_enabled: bool = True
+    ) -> str:
         """Record the start of an episode.
 
         Args:
@@ -98,21 +105,19 @@ class ExternalEnv(threading.Thread):
             episode_id = uuid.uuid4().hex
 
         if episode_id in self._finished:
-            raise ValueError(
-                "Episode {} has already completed.".format(episode_id))
+            raise ValueError("Episode {} has already completed.".format(episode_id))
 
         if episode_id in self._episodes:
-            raise ValueError(
-                "Episode {} is already started".format(episode_id))
+            raise ValueError("Episode {} is already started".format(episode_id))
 
         self._episodes[episode_id] = _ExternalEnvEpisode(
-            episode_id, self._results_avail_condition, training_enabled)
+            episode_id, self._results_avail_condition, training_enabled
+        )
 
         return episode_id
 
     @PublicAPI
-    def get_action(self, episode_id: str,
-                   observation: EnvObsType) -> EnvActionType:
+    def get_action(self, episode_id: str, observation: EnvObsType) -> EnvActionType:
         """Record an observation and get the on-policy action.
 
         Args:
@@ -127,8 +132,9 @@ class ExternalEnv(threading.Thread):
         return episode.wait_for_action(observation)
 
     @PublicAPI
-    def log_action(self, episode_id: str, observation: EnvObsType,
-                   action: EnvActionType) -> None:
+    def log_action(
+        self, episode_id: str, observation: EnvObsType, action: EnvActionType
+    ) -> None:
         """Record an observation and (off-policy) action taken.
 
         Args:
@@ -141,10 +147,9 @@ class ExternalEnv(threading.Thread):
         episode.log_action(observation, action)
 
     @PublicAPI
-    def log_returns(self,
-                    episode_id: str,
-                    reward: float,
-                    info: Optional[EnvInfoDict] = None) -> None:
+    def log_returns(
+        self, episode_id: str, reward: float, info: Optional[EnvInfoDict] = None
+    ) -> None:
         """Records returns (rewards and infos) from the environment.
 
         The reward will be attributed to the previous action taken by the
@@ -180,8 +185,7 @@ class ExternalEnv(threading.Thread):
         """Get a started episode by its ID or raise an error."""
 
         if episode_id in self._finished:
-            raise ValueError(
-                "Episode {} has already completed.".format(episode_id))
+            raise ValueError("Episode {} has already completed.".format(episode_id))
 
         if episode_id not in self._episodes:
             raise ValueError("Episode {} not found.".format(episode_id))
@@ -189,43 +193,44 @@ class ExternalEnv(threading.Thread):
         return self._episodes[episode_id]
 
     def to_base_env(
-            self,
-            make_env: Callable[[int], EnvType] = None,
-            num_envs: int = 1,
-            remote_envs: bool = False,
-            remote_env_batch_wait_ms: int = 0,
+        self,
+        make_env: Optional[Callable[[int], EnvType]] = None,
+        num_envs: int = 1,
+        remote_envs: bool = False,
+        remote_env_batch_wait_ms: int = 0,
     ) -> "BaseEnv":
         """Converts an RLlib MultiAgentEnv into a BaseEnv object.
 
-            The resulting BaseEnv is always vectorized (contains n
-            sub-environments) to support batched forward passes, where n may
-            also be 1. BaseEnv also supports async execution via the `poll` and
-            `send_actions` methods and thus supports external simulators.
+        The resulting BaseEnv is always vectorized (contains n
+        sub-environments) to support batched forward passes, where n may
+        also be 1. BaseEnv also supports async execution via the `poll` and
+        `send_actions` methods and thus supports external simulators.
 
-            Args:
-                make_env: A callable taking an int as input (which indicates
-                    the number of individual sub-environments within the final
-                    vectorized BaseEnv) and returning one individual
-                    sub-environment.
-                num_envs: The number of sub-environments to create in the
-                    resulting (vectorized) BaseEnv. The already existing `env`
-                    will be one of the `num_envs`.
-                remote_envs: Whether each sub-env should be a @ray.remote
-                    actor. You can set this behavior in your config via the
-                    `remote_worker_envs=True` option.
-                remote_env_batch_wait_ms: The wait time (in ms) to poll remote
-                    sub-environments for, if applicable. Only used if
-                    `remote_envs` is True.
+        Args:
+            make_env: A callable taking an int as input (which indicates
+                the number of individual sub-environments within the final
+                vectorized BaseEnv) and returning one individual
+                sub-environment.
+            num_envs: The number of sub-environments to create in the
+                resulting (vectorized) BaseEnv. The already existing `env`
+                will be one of the `num_envs`.
+            remote_envs: Whether each sub-env should be a @ray.remote
+                actor. You can set this behavior in your config via the
+                `remote_worker_envs=True` option.
+            remote_env_batch_wait_ms: The wait time (in ms) to poll remote
+                sub-environments for, if applicable. Only used if
+                `remote_envs` is True.
 
-            Returns:
-                The resulting BaseEnv object.
-            """
+        Returns:
+            The resulting BaseEnv object.
+        """
         if num_envs != 1:
             raise ValueError(
                 "External(MultiAgent)Env does not currently support "
                 "num_envs > 1. One way of solving this would be to "
                 "treat your Env as a MultiAgentEnv hosting only one "
-                "type of agent but with several copies.")
+                "type of agent but with several copies."
+            )
         env = ExternalEnvWrapper(self)
 
         return env
@@ -234,11 +239,13 @@ class ExternalEnv(threading.Thread):
 class _ExternalEnvEpisode:
     """Tracked state for each active episode."""
 
-    def __init__(self,
-                 episode_id: str,
-                 results_avail_condition: threading.Condition,
-                 training_enabled: bool,
-                 multiagent: bool = False):
+    def __init__(
+        self,
+        episode_id: str,
+        results_avail_condition: threading.Condition,
+        training_enabled: bool,
+        multiagent: bool = False,
+    ):
         self.episode_id = episode_id
         self.results_avail_condition = results_avail_condition
         self.training_enabled = training_enabled
@@ -329,11 +336,11 @@ class _ExternalEnvEpisode:
 class ExternalEnvWrapper(BaseEnv):
     """Internal adapter of ExternalEnv to BaseEnv."""
 
-    def __init__(self,
-                 external_env: "ExternalEnv",
-                 preprocessor: "Preprocessor" = None):
-        from ray.rllib.env.external_multi_agent_env import \
-            ExternalMultiAgentEnv
+    def __init__(
+        self, external_env: "ExternalEnv", preprocessor: "Preprocessor" = None
+    ):
+        from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
+
         self.external_env = external_env
         self.prep = preprocessor
         self.multiagent = issubclass(type(external_env), ExternalMultiAgentEnv)
@@ -345,8 +352,9 @@ class ExternalEnvWrapper(BaseEnv):
         external_env.start()
 
     @override(BaseEnv)
-    def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
-                            MultiEnvDict, MultiEnvDict]:
+    def poll(
+        self,
+    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
         with self.external_env._results_avail_condition:
             results = self._poll()
             while len(results[0]) == 0:
@@ -355,31 +363,39 @@ class ExternalEnvWrapper(BaseEnv):
                 if not self.external_env.is_alive():
                     raise Exception("Serving thread has stopped.")
         limit = self.external_env._max_concurrent_episodes
-        assert len(results[0]) < limit, \
-            ("Too many concurrent episodes, were some leaked? This "
-             "ExternalEnv was created with max_concurrent={}".format(limit))
+        assert len(results[0]) < limit, (
+            "Too many concurrent episodes, were some leaked? This "
+            "ExternalEnv was created with max_concurrent={}".format(limit)
+        )
         return results
 
     @override(BaseEnv)
     def send_actions(self, action_dict: MultiEnvDict) -> None:
         from ray.rllib.env.base_env import _DUMMY_AGENT_ID
+
         if self.multiagent:
             for env_id, actions in action_dict.items():
                 self.external_env._episodes[env_id].action_queue.put(actions)
         else:
             for env_id, action in action_dict.items():
                 self.external_env._episodes[env_id].action_queue.put(
-                    action[_DUMMY_AGENT_ID])
+                    action[_DUMMY_AGENT_ID]
+                )
 
-    def _poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
-                             MultiEnvDict, MultiEnvDict]:
+    def _poll(
+        self,
+    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
         from ray.rllib.env.base_env import with_dummy_agent_id
+
         all_obs, all_rewards, all_dones, all_infos = {}, {}, {}, {}
         off_policy_actions = {}
         for eid, episode in self.external_env._episodes.copy().items():
             data = episode.get_data()
-            cur_done = episode.cur_done_dict[
-                "__all__"] if self.multiagent else episode.cur_done
+            cur_done = (
+                episode.cur_done_dict["__all__"]
+                if self.multiagent
+                else episode.cur_done
+            )
             if cur_done:
                 del self.external_env._episodes[eid]
             if data:
@@ -405,14 +421,15 @@ class ExternalEnvWrapper(BaseEnv):
                     fix(all_rewards, 0.0)
                     fix(all_dones, False)
                     fix(all_infos, {})
-            return (all_obs, all_rewards, all_dones, all_infos,
-                    off_policy_actions)
+            return (all_obs, all_rewards, all_dones, all_infos, off_policy_actions)
         else:
-            return with_dummy_agent_id(all_obs), \
-                with_dummy_agent_id(all_rewards), \
-                with_dummy_agent_id(all_dones, "__all__"), \
-                with_dummy_agent_id(all_infos), \
-                with_dummy_agent_id(off_policy_actions)
+            return (
+                with_dummy_agent_id(all_obs),
+                with_dummy_agent_id(all_rewards),
+                with_dummy_agent_id(all_dones, "__all__"),
+                with_dummy_agent_id(all_infos),
+                with_dummy_agent_id(off_policy_actions),
+            )
 
     @property
     @override(BaseEnv)
