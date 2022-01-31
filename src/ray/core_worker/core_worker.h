@@ -71,6 +71,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   CoreWorker(CoreWorker const &) = delete;
 
+  /// Core worker's deallocation lifecycle
+  ///
+  /// Shutdown API must be called before deallocating a core worker.
+  /// Otherwise, it can have various destruction order related memory corruption.
+  ///
+  /// If the core worker is initiated at a driver, the driver is responsible for calling
+  /// the shutdown API before terminating. If the core worker is initated at a worker,
+  /// shutdown must be called before terminating the task execution loop.
+  ~CoreWorker();
+
   void operator=(CoreWorker const &other) = delete;
 
   ///
@@ -93,11 +103,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Shut down the worker completely.
   ///
+  /// This must be called before deallocating a worker / driver's core worker for memory
+  /// safety.
+  ///
   /// \return void.
   void Shutdown();
-
-  /// Block the current thread until the worker is shut down.
-  void WaitForShutdown();
 
   /// Start receiving and executing tasks.
   /// \return void.
@@ -411,8 +421,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[in] max_retires max number of retry when the task fails.
-  /// \param[in] placement_options placement group options.
-  /// \param[in] placement_group_capture_child_tasks whether or not the submitted task
+  /// \param[in] scheduling_strategy Strategy about how to schedule the task.
   /// \param[in] debugger_breakpoint breakpoint to drop into for the debugger after this
   /// task starts executing, or "" if we do not want to drop into the debugger.
   /// should capture parent's placement group implicilty.
@@ -420,7 +429,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::vector<rpc::ObjectReference> SubmitTask(
       const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
       const TaskOptions &task_options, int max_retries, bool retry_exceptions,
-      BundleID placement_options, bool placement_group_capture_child_tasks,
+      const rpc::SchedulingStrategy &scheduling_strategy,
       const std::string &debugger_breakpoint);
 
   /// Create an actor.
@@ -477,7 +486,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \return ObjectRefs returned by this task.
-  std::vector<rpc::ObjectReference> SubmitActorTask(
+  std::optional<std::vector<rpc::ObjectReference>> SubmitActorTask(
       const ActorID &actor_id, const RayFunction &function,
       const std::vector<std::unique_ptr<TaskArg>> &args, const TaskOptions &task_options);
 
@@ -568,7 +577,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status AllocateReturnObject(const ObjectID &object_id, const size_t &data_size,
                               const std::shared_ptr<Buffer> &metadata,
                               const std::vector<ObjectID> &contained_object_id,
-                              int64_t &task_output_inlined_bytes,
+                              int64_t *task_output_inlined_bytes,
                               std::shared_ptr<RayObject> *return_object);
 
   /// Seal a return object for an executing task. The caller should already have
@@ -579,6 +588,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status SealReturnObject(const ObjectID &return_id,
                           std::shared_ptr<RayObject> return_object);
+
+  /// Pin the local copy of the return object, if one exists.
+  ///
+  /// \param[in] return_id ObjectID of the return value.
+  /// \param[out] return_object The object that was pinned.
+  /// \return success if the object still existed and was pinned. Note that
+  /// pinning is done asynchronously.
+  bool PinExistingReturnObject(const ObjectID &return_id,
+                               std::shared_ptr<RayObject> *return_object);
 
   /// Get a handle to an actor.
   ///
@@ -621,11 +639,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Implements gRPC server handler.
   void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Implements gRPC server handler.
-  void HandleStealTasks(const rpc::StealTasksRequest &request,
-                        rpc::StealTasksReply *reply,
-                        rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleDirectActorCallArgWaitComplete(
@@ -783,11 +796,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const BundleID &bundle_id, bool placement_group_capture_child_tasks,
       const std::string &debugger_breakpoint, int64_t depth,
       const std::string &serialized_runtime_env,
       const std::string &concurrency_group_name = "");
-  void SetCurrentTaskId(const TaskID &task_id);
+  void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
 
   void SetActorId(const ActorID &actor_id);
 
@@ -1020,14 +1032,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Whether or not this worker is connected to the raylet and GCS.
   bool connected_ = false;
 
+  // Client to the GCS shared by core worker interfaces.
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+
   std::pair<std::string, int> gcs_server_address_ GUARDED_BY(gcs_server_address_mutex_) =
       std::make_pair<std::string, int>("", 0);
   /// To protect accessing the `gcs_server_address_`.
   absl::Mutex gcs_server_address_mutex_;
   std::unique_ptr<GcsServerAddressUpdater> gcs_server_address_updater_;
-
-  // Client to the GCS shared by core worker interfaces.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through
@@ -1160,6 +1172,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// when exiting_ is set to true HandlePushTask becomes no-op.
   std::atomic<bool> exiting_ = false;
 
+  std::atomic<bool> is_shutdown_ = false;
+
   int64_t max_direct_call_object_size_;
 
   friend class CoreWorkerTest;
@@ -1199,6 +1213,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   };
   TaskCounter task_counter_;
+
+  /// Used to guarantee that submitting actor task is thread safe.
+  /// NOTE(MissiontoMars,scv119): In particular, without this mutex,
+  /// the checking and increasing of backpressure pending calls counter
+  /// is not atomic, which may lead to under counting or over counting.
+  absl::Mutex actor_task_mutex_;
 };
 
 }  // namespace core

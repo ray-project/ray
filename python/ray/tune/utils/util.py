@@ -17,9 +17,14 @@ import ray
 import psutil
 
 from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
-from ray.util.ml_utils.dict import merge_dicts, deep_update, flatten_dict, \
-                                    unflatten_dict, unflatten_list_dict, \
-                                    unflattened_lookup  # noqa
+from ray.util.ml_utils.dict import (  # noqa: F401
+    merge_dicts,
+    deep_update,
+    flatten_dict,
+    unflatten_dict,
+    unflatten_list_dict,
+    unflattened_lookup,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +77,11 @@ class UtilMonitor(Thread):
         with self.lock:
             if psutil is not None:
                 self.values["cpu_util_percent"].append(
-                    float(psutil.cpu_percent(interval=None)))
+                    float(psutil.cpu_percent(interval=None))
+                )
                 self.values["ram_util_percent"].append(
-                    float(getattr(psutil.virtual_memory(), "percent")))
+                    float(getattr(psutil.virtual_memory(), "percent"))
+                )
             if self.GPUtil is not None:
                 gpu_list = []
                 try:
@@ -83,9 +90,11 @@ class UtilMonitor(Thread):
                     logger.debug("GPUtil failed to retrieve GPUs.")
                 for gpu in gpu_list:
                     self.values["gpu_util_percent" + str(gpu.id)].append(
-                        float(gpu.load))
+                        float(gpu.load)
+                    )
                     self.values["vram_util_percent" + str(gpu.id)].append(
-                        float(gpu.memoryUtil))
+                        float(gpu.memoryUtil)
+                    )
 
     def get_data(self):
         if self.stopped:
@@ -95,12 +104,7 @@ class UtilMonitor(Thread):
             ret_values = copy.deepcopy(self.values)
             for key, val in self.values.items():
                 del val[:]
-        return {
-            "perf": {
-                k: np.mean(v)
-                for k, v in ret_values.items() if len(v) > 0
-            }
-        }
+        return {"perf": {k: np.mean(v) for k, v in ret_values.items() if len(v) > 0}}
 
     def run(self):
         self.stopped = False
@@ -135,14 +139,18 @@ class warn_if_slow:
     """
 
     DEFAULT_THRESHOLD = float(os.environ.get("TUNE_WARN_THRESHOLD_S", 0.5))
-    DEFAULT_MESSAGE = "The `{name}` operation took {duration:.3f} s, " \
-                      "which may be a performance bottleneck."
+    DEFAULT_MESSAGE = (
+        "The `{name}` operation took {duration:.3f} s, "
+        "which may be a performance bottleneck."
+    )
 
-    def __init__(self,
-                 name: str,
-                 threshold: Optional[float] = None,
-                 message: Optional[str] = None,
-                 disable: bool = False):
+    def __init__(
+        self,
+        name: str,
+        threshold: Optional[float] = None,
+        message: Optional[str] = None,
+        disable: bool = False,
+    ):
         self.name = name
         self.threshold = threshold or self.DEFAULT_THRESHOLD
         self.message = message or self.DEFAULT_MESSAGE
@@ -160,8 +168,7 @@ class warn_if_slow:
         if now - self.start > self.threshold and now - START_OF_TIME > 60.0:
             self.too_slow = True
             duration = now - self.start
-            logger.warning(
-                self.message.format(name=self.name, duration=duration))
+            logger.warning(self.message.format(name=self.name, duration=duration))
 
 
 class Tee(object):
@@ -294,37 +301,44 @@ def diagnose_serialization(trainable):
     except Exception as e:
         print(f"Serialization failed: {e}")
 
-    print("Inspecting the scope of the trainable by running "
-          f"`inspect.getclosurevars({str(trainable)})`...")
+    print(
+        "Inspecting the scope of the trainable by running "
+        f"`inspect.getclosurevars({str(trainable)})`..."
+    )
     closure = inspect.getclosurevars(trainable)
     failure_set = set()
     if closure.globals:
-        print(f"Detected {len(closure.globals)} global variables. "
-              "Checking serializability...")
-        check_variables(closure.globals, failure_set,
-                        lambda s: print("   " + s))
+        print(
+            f"Detected {len(closure.globals)} global variables. "
+            "Checking serializability..."
+        )
+        check_variables(closure.globals, failure_set, lambda s: print("   " + s))
 
     if closure.nonlocals:
-        print(f"Detected {len(closure.nonlocals)} nonlocal variables. "
-              "Checking serializability...")
-        check_variables(closure.nonlocals, failure_set,
-                        lambda s: print("   " + s))
+        print(
+            f"Detected {len(closure.nonlocals)} nonlocal variables. "
+            "Checking serializability..."
+        )
+        check_variables(closure.nonlocals, failure_set, lambda s: print("   " + s))
 
     if not failure_set:
-        print("Nothing was found to have failed the diagnostic test, though "
-              "serialization did not succeed. Feel free to raise an "
-              "issue on github.")
+        print(
+            "Nothing was found to have failed the diagnostic test, though "
+            "serialization did not succeed. Feel free to raise an "
+            "issue on github."
+        )
         return failure_set
     else:
-        print(f"Variable(s) {failure_set} was found to be non-serializable. "
-              "Consider either removing the instantiation/imports "
-              "of these objects or moving them into the scope of "
-              "the trainable. ")
+        print(
+            f"Variable(s) {failure_set} was found to be non-serializable. "
+            "Consider either removing the instantiation/imports "
+            "of these objects or moving them into the scope of "
+            "the trainable. "
+        )
         return failure_set
 
 
-def atomic_save(state: Dict, checkpoint_dir: str, file_name: str,
-                tmp_file_name: str):
+def atomic_save(state: Dict, checkpoint_dir: str, file_name: str, tmp_file_name: str):
     """Atomically saves the state object to the checkpoint directory.
 
     This is automatically used by tune.run during a Tune job.
@@ -336,6 +350,7 @@ def atomic_save(state: Dict, checkpoint_dir: str, file_name: str,
         tmp_file_name (str): Temporary name of file.
     """
     import ray.cloudpickle as cloudpickle
+
     tmp_search_ckpt_path = os.path.join(checkpoint_dir, tmp_file_name)
     with open(tmp_search_ckpt_path, "wb") as f:
         cloudpickle.dump(state, f)
@@ -358,6 +373,7 @@ def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
         (dict) Deserialized state dict.
     """
     import ray.cloudpickle as cloudpickle
+
     full_paths = glob.glob(os.path.join(dirpath, ckpt_pattern))
     if not full_paths:
         return
@@ -367,11 +383,9 @@ def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
     return checkpoint_state
 
 
-def wait_for_gpu(gpu_id=None,
-                 target_util=0.01,
-                 retry=20,
-                 delay_s=5,
-                 gpu_memory_limit=None):
+def wait_for_gpu(
+    gpu_id=None, target_util=0.01, retry=20, delay_s=5, gpu_memory_limit=None
+):
     """Checks if a given GPU has freed memory.
 
     Requires ``gputil`` to be installed: ``pip install gputil``.
@@ -406,17 +420,19 @@ def wait_for_gpu(gpu_id=None,
     """
     GPUtil = _import_gputil()
     if gpu_memory_limit:
-        raise ValueError("'gpu_memory_limit' is deprecated. "
-                         "Use 'target_util' instead.")
+        raise ValueError(
+            "'gpu_memory_limit' is deprecated. " "Use 'target_util' instead."
+        )
     if GPUtil is None:
-        raise RuntimeError(
-            "GPUtil must be installed if calling `wait_for_gpu`.")
+        raise RuntimeError("GPUtil must be installed if calling `wait_for_gpu`.")
 
     if gpu_id is None:
         gpu_id_list = ray.get_gpu_ids()
         if not gpu_id_list:
-            raise RuntimeError("No GPU ids found from `ray.get_gpu_ids()`. "
-                               "Did you set Tune resources correctly?")
+            raise RuntimeError(
+                "No GPU ids found from `ray.get_gpu_ids()`. "
+                "Did you set Tune resources correctly?"
+            )
         gpu_id = gpu_id_list[0]
 
     gpu_attr = "id"
@@ -443,24 +459,25 @@ def wait_for_gpu(gpu_id=None,
         raise ValueError(
             f"{gpu_id} not found in set of available GPUs: {gpu_ids}. "
             "`wait_for_gpu` takes either GPU ordinal ID (e.g., '0') or "
-            "UUID (e.g., 'GPU-04546190-b68d-65ac-101b-035f8faed77d').")
+            "UUID (e.g., 'GPU-04546190-b68d-65ac-101b-035f8faed77d')."
+        )
 
     for i in range(int(retry)):
-        gpu_object = next(
-            g for g in GPUtil.getGPUs() if gpu_id_fn(g) == gpu_id)
+        gpu_object = next(g for g in GPUtil.getGPUs() if gpu_id_fn(g) == gpu_id)
         if gpu_object.memoryUtil > target_util:
-            logger.info(f"Waiting for GPU util to reach {target_util}. "
-                        f"Util: {gpu_object.memoryUtil:0.3f}")
+            logger.info(
+                f"Waiting for GPU util to reach {target_util}. "
+                f"Util: {gpu_object.memoryUtil:0.3f}"
+            )
             time.sleep(delay_s)
         else:
             return True
     raise RuntimeError("GPU memory was not freed.")
 
 
-def validate_save_restore(trainable_cls,
-                          config=None,
-                          num_gpus=0,
-                          use_object_store=False):
+def validate_save_restore(
+    trainable_cls, config=None, num_gpus=0, use_object_store=False
+):
     """Helper method to check if your Trainable class will resume correctly.
 
     Args:
@@ -483,15 +500,16 @@ def validate_save_restore(trainable_cls,
 
     assert res.get(TRAINING_ITERATION), (
         "Validation will not pass because it requires `training_iteration` "
-        "to be returned.")
+        "to be returned."
+    )
 
     if use_object_store:
         restore_check = trainable_2.restore_from_object.remote(
-            trainable_1.save_to_object.remote())
+            trainable_1.save_to_object.remote()
+        )
         ray.get(restore_check)
     else:
-        restore_check = ray.get(
-            trainable_2.restore.remote(trainable_1.save.remote()))
+        restore_check = ray.get(trainable_2.restore.remote(trainable_1.save.remote()))
 
     res = ray.get(trainable_2.train.remote())
     assert res[TRAINING_ITERATION] == 4
@@ -520,7 +538,8 @@ def detect_checkpoint_function(train_func, abort=False, partial=False):
             "Provided training function must have 2 args "
             "in the signature, and the latter arg must "
             "contain `checkpoint_dir`. For example: "
-            "`func(config, checkpoint_dir=None)`. Got {}".format(func_args))
+            "`func(config, checkpoint_dir=None)`. Got {}".format(func_args)
+        )
     return validated
 
 
@@ -566,17 +585,21 @@ def create_logdir(dirname: str, local_dir: str):
     if os.path.exists(logdir):
         old_dirname = dirname
         dirname += "_" + uuid.uuid4().hex[:4]
-        logger.info(f"Creating a new dirname {dirname} because "
-                    f"trial dirname '{old_dirname}' already exists.")
+        logger.info(
+            f"Creating a new dirname {dirname} because "
+            f"trial dirname '{old_dirname}' already exists."
+        )
         logdir = os.path.join(local_dir, dirname)
     os.makedirs(logdir, exist_ok=True)
     return logdir
 
 
-def validate_warmstart(parameter_names: List[str],
-                       points_to_evaluate: List[Union[List, Dict]],
-                       evaluated_rewards: List,
-                       validate_point_name_lengths: bool = True):
+def validate_warmstart(
+    parameter_names: List[str],
+    points_to_evaluate: List[Union[List, Dict]],
+    evaluated_rewards: List,
+    validate_point_name_lengths: bool = True,
+):
     """Generic validation of a Searcher's warm start functionality.
     Raises exceptions in case of type and length mismatches between
     parameters.
@@ -589,29 +612,36 @@ def validate_warmstart(parameter_names: List[str],
         if not isinstance(points_to_evaluate, list):
             raise TypeError(
                 "points_to_evaluate expected to be a list, got {}.".format(
-                    type(points_to_evaluate)))
+                    type(points_to_evaluate)
+                )
+            )
         for point in points_to_evaluate:
             if not isinstance(point, (dict, list)):
                 raise TypeError(
                     f"points_to_evaluate expected to include list or dict, "
-                    f"got {point}.")
+                    f"got {point}."
+                )
 
-            if validate_point_name_lengths and (
-                    not len(point) == len(parameter_names)):
-                raise ValueError("Dim of point {}".format(point) +
-                                 " and parameter_names {}".format(
-                                     parameter_names) + " do not match.")
+            if validate_point_name_lengths and (not len(point) == len(parameter_names)):
+                raise ValueError(
+                    "Dim of point {}".format(point)
+                    + " and parameter_names {}".format(parameter_names)
+                    + " do not match."
+                )
 
     if points_to_evaluate and evaluated_rewards:
         if not isinstance(evaluated_rewards, list):
             raise TypeError(
                 "evaluated_rewards expected to be a list, got {}.".format(
-                    type(evaluated_rewards)))
+                    type(evaluated_rewards)
+                )
+            )
         if not len(evaluated_rewards) == len(points_to_evaluate):
             raise ValueError(
-                "Dim of evaluated_rewards {}".format(evaluated_rewards) +
-                " and points_to_evaluate {}".format(points_to_evaluate) +
-                " do not match.")
+                "Dim of evaluated_rewards {}".format(evaluated_rewards)
+                + " and points_to_evaluate {}".format(points_to_evaluate)
+                + " do not match."
+            )
 
 
 if __name__ == "__main__":

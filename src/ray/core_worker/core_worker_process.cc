@@ -209,7 +209,7 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
             }
 
             // If there's no more attempt to try.
-            if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+            if (status.IsGrpcUnavailable()) {
               std::ostringstream ss;
               ss << "Failed to get the system config from raylet because "
                  << "it is dead. Worker will terminate. Status: " << status;
@@ -281,7 +281,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateWorker() {
 }
 
 void CoreWorkerProcessImpl::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
-  worker->WaitForShutdown();
   absl::WriterMutexLock lock(&mutex_);
   if (global_worker_) {
     RAY_CHECK(global_worker_ == worker);
@@ -307,7 +306,7 @@ void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
       worker = CreateWorker();
     }
     worker->RunTaskExecutionLoop();
-    RAY_LOG(DEBUG) << "Task execution loop terminated. Removing the global worker.";
+    RAY_LOG(INFO) << "Task execution loop terminated. Removing the global worker.";
     RemoveWorker(worker);
   } else {
     std::vector<std::thread> worker_threads;

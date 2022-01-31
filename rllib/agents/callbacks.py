@@ -1,3 +1,4 @@
+import numpy as np
 import os
 import tracemalloc
 from typing import Dict, Optional, TYPE_CHECKING
@@ -6,8 +7,14 @@ from ray.rllib.env import BaseEnv
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.episode import Episode
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.exploration.random_encoder import (
+    MovingMeanStd,
+    compute_states_entropy,
+    update_beta,
+)
 from ray.rllib.utils.typing import AgentID, PolicyID
 
 # Import psutil after ray so the packaged version is used.
@@ -33,12 +40,19 @@ class DefaultCallbacks:
         if legacy_callbacks_dict:
             deprecation_warning(
                 "callbacks dict interface",
-                "a class extending rllib.agents.callbacks.DefaultCallbacks")
+                "a class extending rllib.agents.callbacks.DefaultCallbacks",
+            )
         self.legacy_callbacks = legacy_callbacks_dict or {}
 
-    def on_episode_start(self, *, worker: "RolloutWorker", base_env: BaseEnv,
-                         policies: Dict[PolicyID, Policy], episode: Episode,
-                         **kwargs) -> None:
+    def on_episode_start(
+        self,
+        *,
+        worker: "RolloutWorker",
+        base_env: BaseEnv,
+        policies: Dict[PolicyID, Policy],
+        episode: Episode,
+        **kwargs,
+    ) -> None:
         """Callback run on the rollout worker before each episode starts.
 
         Args:
@@ -56,19 +70,23 @@ class DefaultCallbacks:
         """
 
         if self.legacy_callbacks.get("on_episode_start"):
-            self.legacy_callbacks["on_episode_start"]({
-                "env": base_env,
-                "policy": policies,
-                "episode": episode,
-            })
+            self.legacy_callbacks["on_episode_start"](
+                {
+                    "env": base_env,
+                    "policy": policies,
+                    "episode": episode,
+                }
+            )
 
-    def on_episode_step(self,
-                        *,
-                        worker: "RolloutWorker",
-                        base_env: BaseEnv,
-                        policies: Optional[Dict[PolicyID, Policy]] = None,
-                        episode: Episode,
-                        **kwargs) -> None:
+    def on_episode_step(
+        self,
+        *,
+        worker: "RolloutWorker",
+        base_env: BaseEnv,
+        policies: Optional[Dict[PolicyID, Policy]] = None,
+        episode: Episode,
+        **kwargs,
+    ) -> None:
         """Runs on each episode step.
 
         Args:
@@ -87,14 +105,19 @@ class DefaultCallbacks:
         """
 
         if self.legacy_callbacks.get("on_episode_step"):
-            self.legacy_callbacks["on_episode_step"]({
-                "env": base_env,
-                "episode": episode
-            })
+            self.legacy_callbacks["on_episode_step"](
+                {"env": base_env, "episode": episode}
+            )
 
-    def on_episode_end(self, *, worker: "RolloutWorker", base_env: BaseEnv,
-                       policies: Dict[PolicyID, Policy], episode: Episode,
-                       **kwargs) -> None:
+    def on_episode_end(
+        self,
+        *,
+        worker: "RolloutWorker",
+        base_env: BaseEnv,
+        policies: Dict[PolicyID, Policy],
+        episode: Episode,
+        **kwargs,
+    ) -> None:
         """Runs when an episode is done.
 
         Args:
@@ -113,17 +136,26 @@ class DefaultCallbacks:
         """
 
         if self.legacy_callbacks.get("on_episode_end"):
-            self.legacy_callbacks["on_episode_end"]({
-                "env": base_env,
-                "policy": policies,
-                "episode": episode,
-            })
+            self.legacy_callbacks["on_episode_end"](
+                {
+                    "env": base_env,
+                    "policy": policies,
+                    "episode": episode,
+                }
+            )
 
     def on_postprocess_trajectory(
-            self, *, worker: "RolloutWorker", episode: Episode,
-            agent_id: AgentID, policy_id: PolicyID,
-            policies: Dict[PolicyID, Policy], postprocessed_batch: SampleBatch,
-            original_batches: Dict[AgentID, SampleBatch], **kwargs) -> None:
+        self,
+        *,
+        worker: "RolloutWorker",
+        episode: Episode,
+        agent_id: AgentID,
+        policy_id: PolicyID,
+        policies: Dict[PolicyID, Policy],
+        postprocessed_batch: SampleBatch,
+        original_batches: Dict[AgentID, SampleBatch],
+        **kwargs,
+    ) -> None:
         """Called immediately after a policy's postprocess_fn is called.
 
         You can use this callback to do additional postprocessing for a policy,
@@ -146,16 +178,19 @@ class DefaultCallbacks:
         """
 
         if self.legacy_callbacks.get("on_postprocess_traj"):
-            self.legacy_callbacks["on_postprocess_traj"]({
-                "episode": episode,
-                "agent_id": agent_id,
-                "pre_batch": original_batches[agent_id],
-                "post_batch": postprocessed_batch,
-                "all_pre_batches": original_batches,
-            })
+            self.legacy_callbacks["on_postprocess_traj"](
+                {
+                    "episode": episode,
+                    "agent_id": agent_id,
+                    "pre_batch": original_batches[agent_id],
+                    "post_batch": postprocessed_batch,
+                    "all_pre_batches": original_batches,
+                }
+            )
 
-    def on_sample_end(self, *, worker: "RolloutWorker", samples: SampleBatch,
-                      **kwargs) -> None:
+    def on_sample_end(
+        self, *, worker: "RolloutWorker", samples: SampleBatch, **kwargs
+    ) -> None:
         """Called at the end of RolloutWorker.sample().
 
         Args:
@@ -166,13 +201,16 @@ class DefaultCallbacks:
         """
 
         if self.legacy_callbacks.get("on_sample_end"):
-            self.legacy_callbacks["on_sample_end"]({
-                "worker": worker,
-                "samples": samples,
-            })
+            self.legacy_callbacks["on_sample_end"](
+                {
+                    "worker": worker,
+                    "samples": samples,
+                }
+            )
 
-    def on_learn_on_batch(self, *, policy: Policy, train_batch: SampleBatch,
-                          result: dict, **kwargs) -> None:
+    def on_learn_on_batch(
+        self, *, policy: Policy, train_batch: SampleBatch, result: dict, **kwargs
+    ) -> None:
         """Called at the beginning of Policy.learn_on_batch().
 
         Note: This is called before 0-padding via
@@ -194,8 +232,7 @@ class DefaultCallbacks:
 
         pass
 
-    def on_train_result(self, *, trainer: "Trainer", result: dict,
-                        **kwargs) -> None:
+    def on_train_result(self, *, trainer: "Trainer", result: dict, **kwargs) -> None:
         """Called at the end of Trainable.train().
 
         Args:
@@ -206,10 +243,12 @@ class DefaultCallbacks:
         """
 
         if self.legacy_callbacks.get("on_train_result"):
-            self.legacy_callbacks["on_train_result"]({
-                "trainer": trainer,
-                "result": result,
-            })
+            self.legacy_callbacks["on_train_result"](
+                {
+                    "trainer": trainer,
+                    "result": result,
+                }
+            )
 
 
 class MemoryTrackingCallbacks(DefaultCallbacks):
@@ -239,14 +278,16 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
         # Will track the top 10 lines where memory is allocated
         tracemalloc.start(10)
 
-    def on_episode_end(self,
-                       *,
-                       worker: "RolloutWorker",
-                       base_env: BaseEnv,
-                       policies: Dict[PolicyID, Policy],
-                       episode: Episode,
-                       env_index: Optional[int] = None,
-                       **kwargs) -> None:
+    def on_episode_end(
+        self,
+        *,
+        worker: "RolloutWorker",
+        base_env: BaseEnv,
+        policies: Dict[PolicyID, Policy],
+        episode: Episode,
+        env_index: Optional[int] = None,
+        **kwargs,
+    ) -> None:
         snapshot = tracemalloc.take_snapshot()
         top_stats = snapshot.statistics("lineno")
 
@@ -297,14 +338,16 @@ class MultiCallbacks(DefaultCallbacks):
 
         return self
 
-    def on_episode_start(self,
-                         *,
-                         worker: "RolloutWorker",
-                         base_env: BaseEnv,
-                         policies: Dict[PolicyID, Policy],
-                         episode: Episode,
-                         env_index: Optional[int] = None,
-                         **kwargs) -> None:
+    def on_episode_start(
+        self,
+        *,
+        worker: "RolloutWorker",
+        base_env: BaseEnv,
+        policies: Dict[PolicyID, Policy],
+        episode: Episode,
+        env_index: Optional[int] = None,
+        **kwargs,
+    ) -> None:
         for callback in self._callback_list:
             callback.on_episode_start(
                 worker=worker,
@@ -312,16 +355,19 @@ class MultiCallbacks(DefaultCallbacks):
                 policies=policies,
                 episode=episode,
                 env_index=env_index,
-                **kwargs)
+                **kwargs,
+            )
 
-    def on_episode_step(self,
-                        *,
-                        worker: "RolloutWorker",
-                        base_env: BaseEnv,
-                        policies: Optional[Dict[PolicyID, Policy]] = None,
-                        episode: Episode,
-                        env_index: Optional[int] = None,
-                        **kwargs) -> None:
+    def on_episode_step(
+        self,
+        *,
+        worker: "RolloutWorker",
+        base_env: BaseEnv,
+        policies: Optional[Dict[PolicyID, Policy]] = None,
+        episode: Episode,
+        env_index: Optional[int] = None,
+        **kwargs,
+    ) -> None:
         for callback in self._callback_list:
             callback.on_episode_step(
                 worker=worker,
@@ -329,16 +375,19 @@ class MultiCallbacks(DefaultCallbacks):
                 policies=policies,
                 episode=episode,
                 env_index=env_index,
-                **kwargs)
+                **kwargs,
+            )
 
-    def on_episode_end(self,
-                       *,
-                       worker: "RolloutWorker",
-                       base_env: BaseEnv,
-                       policies: Dict[PolicyID, Policy],
-                       episode: Episode,
-                       env_index: Optional[int] = None,
-                       **kwargs) -> None:
+    def on_episode_end(
+        self,
+        *,
+        worker: "RolloutWorker",
+        base_env: BaseEnv,
+        policies: Dict[PolicyID, Policy],
+        episode: Episode,
+        env_index: Optional[int] = None,
+        **kwargs,
+    ) -> None:
         for callback in self._callback_list:
             callback.on_episode_end(
                 worker=worker,
@@ -346,13 +395,21 @@ class MultiCallbacks(DefaultCallbacks):
                 policies=policies,
                 episode=episode,
                 env_index=env_index,
-                **kwargs)
+                **kwargs,
+            )
 
     def on_postprocess_trajectory(
-            self, *, worker: "RolloutWorker", episode: Episode,
-            agent_id: AgentID, policy_id: PolicyID,
-            policies: Dict[PolicyID, Policy], postprocessed_batch: SampleBatch,
-            original_batches: Dict[AgentID, SampleBatch], **kwargs) -> None:
+        self,
+        *,
+        worker: "RolloutWorker",
+        episode: Episode,
+        agent_id: AgentID,
+        policy_id: PolicyID,
+        policies: Dict[PolicyID, Policy],
+        postprocessed_batch: SampleBatch,
+        original_batches: Dict[AgentID, SampleBatch],
+        **kwargs,
+    ) -> None:
         for callback in self._callback_list:
             callback.on_postprocess_trajectory(
                 worker=worker,
@@ -362,22 +419,86 @@ class MultiCallbacks(DefaultCallbacks):
                 policies=policies,
                 postprocessed_batch=postprocessed_batch,
                 original_batches=original_batches,
-                **kwargs)
+                **kwargs,
+            )
 
-    def on_sample_end(self, *, worker: "RolloutWorker", samples: SampleBatch,
-                      **kwargs) -> None:
+    def on_sample_end(
+        self, *, worker: "RolloutWorker", samples: SampleBatch, **kwargs
+    ) -> None:
         for callback in self._callback_list:
             callback.on_sample_end(worker=worker, samples=samples, **kwargs)
 
-    def on_learn_on_batch(self, *, policy: Policy, train_batch: SampleBatch,
-                          result: dict, **kwargs) -> None:
+    def on_learn_on_batch(
+        self, *, policy: Policy, train_batch: SampleBatch, result: dict, **kwargs
+    ) -> None:
         for callback in self._callback_list:
             callback.on_learn_on_batch(
-                policy=policy,
-                train_batch=train_batch,
-                result=result,
-                **kwargs)
+                policy=policy, train_batch=train_batch, result=result, **kwargs
+            )
 
     def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
         for callback in self._callback_list:
             callback.on_train_result(trainer=trainer, result=result, **kwargs)
+
+
+# This Callback is used by the RE3 exploration strategy.
+# See rllib/examples/re3_exploration.py for details.
+class RE3UpdateCallbacks(DefaultCallbacks):
+    """Update input callbacks to mutate batch with states entropy rewards."""
+
+    _step = 0
+
+    def __init__(
+        self,
+        *args,
+        embeds_dim: int = 128,
+        k_nn: int = 50,
+        beta: float = 0.1,
+        rho: float = 0.0001,
+        beta_schedule: str = "constant",
+        **kwargs,
+    ):
+        self.embeds_dim = embeds_dim
+        self.k_nn = k_nn
+        self.beta = beta
+        self.rho = rho
+        self.beta_schedule = beta_schedule
+        self._rms = MovingMeanStd()
+        super().__init__(*args, **kwargs)
+
+    def on_learn_on_batch(
+        self,
+        *,
+        policy: Policy,
+        train_batch: SampleBatch,
+        result: dict,
+        **kwargs,
+    ):
+        super().on_learn_on_batch(
+            policy=policy, train_batch=train_batch, result=result, **kwargs
+        )
+        states_entropy = compute_states_entropy(
+            train_batch[SampleBatch.OBS_EMBEDS], self.embeds_dim, self.k_nn
+        )
+        states_entropy = update_beta(
+            self.beta_schedule, self.beta, self.rho, RE3UpdateCallbacks._step
+        ) * np.reshape(
+            self._rms(states_entropy),
+            train_batch[SampleBatch.OBS_EMBEDS].shape[:-1],
+        )
+        train_batch[SampleBatch.REWARDS] = (
+            train_batch[SampleBatch.REWARDS] + states_entropy
+        )
+        if Postprocessing.ADVANTAGES in train_batch:
+            train_batch[Postprocessing.ADVANTAGES] = (
+                train_batch[Postprocessing.ADVANTAGES] + states_entropy
+            )
+            train_batch[Postprocessing.VALUE_TARGETS] = (
+                train_batch[Postprocessing.VALUE_TARGETS] + states_entropy
+            )
+
+    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
+        # TODO(gjoliver): Remove explicit _step tracking and pass
+        # trainer._iteration as a parameter to on_learn_on_batch() call.
+        RE3UpdateCallbacks._step = result["training_iteration"]
+        super().on_train_result(trainer=trainer, result=result, **kwargs)

@@ -10,6 +10,7 @@ import time
 from ray.experimental import shuffle
 from ray.tests.conftest import _ray_start_chaos_cluster
 from ray.data.impl.progress_bar import ProgressBar
+from ray.util.placement_group import placement_group
 from ray._private.test_utils import get_log_message
 from ray.exceptions import RayTaskError, ObjectLostError
 
@@ -18,9 +19,8 @@ def assert_no_system_failure(p, timeout):
     # Get all logs for 20 seconds.
     logs = get_log_message(p, timeout=timeout)
     for log in logs:
-        assert "SIG" not in log, ("There's the segfault or SIGBART reported.")
-        assert "Check failed" not in log, (
-            "There's the check failure reported.")
+        assert "SIG" not in log, "There's the segfault or SIGBART reported."
+        assert "Check failed" not in log, "There's the check failure reported."
 
 
 @pytest.fixture
@@ -55,13 +55,14 @@ def set_kill_interval(request):
 
 
 @pytest.mark.skip(
-    reason="Skip until https://github.com/ray-project/ray/issues/20706 "
-    "is fixed.")
+    reason="Skip until https://github.com/ray-project/ray/issues/20706 " "is fixed."
+)
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
-    "set_kill_interval", [(True, None), (True, 20), (False, None),
-                          (False, 20)],
-    indirect=True)
+    "set_kill_interval",
+    [(True, None), (True, 20), (False, None), (False, 20)],
+    indirect=True,
+)
 def test_chaos_task_retry(set_kill_interval):
     # Chaos testing.
     @ray.remote(max_retries=-1)
@@ -93,9 +94,10 @@ def test_chaos_task_retry(set_kill_interval):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
-    "set_kill_interval", [(True, None), (True, 20), (False, None),
-                          (False, 20)],
-    indirect=True)
+    "set_kill_interval",
+    [(True, None), (True, 20), (False, None), (False, 20)],
+    indirect=True,
+)
 def test_chaos_actor_retry(set_kill_interval):
     # Chaos testing.
     @ray.remote(num_cpus=0.25, max_restarts=-1, max_task_retries=-1)
@@ -125,6 +127,29 @@ def test_chaos_actor_retry(set_kill_interval):
     # assert_no_system_failure(p, 10)
 
 
+def test_chaos_defer(monkeypatch, ray_start_cluster):
+    with monkeypatch.context() as m:
+        m.setenv("RAY_grpc_based_resource_broadcast", "true")
+        # defer for 3s
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "NodeManagerService.grpc_client.PrepareBundleResources" "=2000000:2000000",
+        )
+        m.setenv("RAY_event_stats", "true")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=1, object_store_memory=1e9)
+        cluster.wait_for_nodes()
+        ray.init(address="auto")  # this will connect to gpu nodes
+        cluster.add_node(num_cpus=0, num_gpus=1)
+        bundle = [{"GPU": 1}, {"CPU": 1}]
+        pg = placement_group(bundle)
+        # PG will not be ready within 3s
+        with pytest.raises(ray.exceptions.GetTimeoutError):
+            ray.get(pg.ready(), timeout=1)
+        # it'll be ready eventually
+        ray.get(pg.ready())
+
+
 @ray.remote(num_cpus=0)
 class ShuffleStatusTracker:
     def __init__(self):
@@ -143,7 +168,8 @@ class ShuffleStatusTracker:
                 self.map_refs,
                 timeout=1,
                 num_returns=len(self.map_refs),
-                fetch_local=False)
+                fetch_local=False,
+            )
             if ready:
                 print("Still waiting on map refs", self.map_refs)
             self.num_map += len(ready)
@@ -152,7 +178,8 @@ class ShuffleStatusTracker:
                 self.reduce_refs,
                 timeout=1,
                 num_returns=len(self.reduce_refs),
-                fetch_local=False)
+                fetch_local=False,
+            )
             if ready:
                 print("Still waiting on reduce refs", self.reduce_refs)
             self.num_reduce += len(ready)
@@ -161,7 +188,8 @@ class ShuffleStatusTracker:
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
-    "set_kill_interval", [(False, None), (False, 60)], indirect=True)
+    "set_kill_interval", [(False, None), (False, 60)], indirect=True
+)
 def test_nonstreaming_shuffle(set_kill_interval):
     lineage_reconstruction_enabled, kill_interval, _ = set_kill_interval
     try:
@@ -170,14 +198,16 @@ def test_nonstreaming_shuffle(set_kill_interval):
         ray.get(tracker.get_progress.remote())
         assert len(ray.nodes()) == 1, (
             "Tracker actor may have been scheduled to remote node "
-            "and may get killed during the test")
+            "and may get killed during the test"
+        )
 
         shuffle.run(
             ray_address="auto",
             no_streaming=True,
             num_partitions=200,
             partition_size=1e6,
-            tracker=tracker)
+            tracker=tracker,
+        )
     except (RayTaskError, ObjectLostError):
         assert kill_interval is not None
         assert not lineage_reconstruction_enabled
@@ -186,9 +216,10 @@ def test_nonstreaming_shuffle(set_kill_interval):
 @pytest.mark.skip(reason="https://github.com/ray-project/ray/issues/20713")
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
-    "set_kill_interval", [(True, None), (True, 60), (False, None),
-                          (False, 60)],
-    indirect=True)
+    "set_kill_interval",
+    [(True, None), (True, 60), (False, None), (False, 60)],
+    indirect=True,
+)
 def test_streaming_shuffle(set_kill_interval):
     lineage_reconstruction_enabled, kill_interval, _ = set_kill_interval
     try:
@@ -197,14 +228,16 @@ def test_streaming_shuffle(set_kill_interval):
         ray.get(tracker.get_progress.remote())
         assert len(ray.nodes()) == 1, (
             "Tracker actor may have been scheduled to remote node "
-            "and may get killed during the test")
+            "and may get killed during the test"
+        )
 
         shuffle.run(
             ray_address="auto",
             no_streaming=False,
             num_partitions=200,
             partition_size=1e6,
-            tracker=tracker)
+            tracker=tracker,
+        )
     except (RayTaskError, ObjectLostError):
         assert kill_interval is not None
 
@@ -214,4 +247,5 @@ def test_streaming_shuffle(set_kill_interval):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

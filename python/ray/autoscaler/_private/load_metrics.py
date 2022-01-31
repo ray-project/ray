@@ -8,11 +8,12 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import ray.ray_constants
-from ray.autoscaler._private.constants import MEMORY_RESOURCE_UNIT_BYTES,\
-    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
+from ray.autoscaler._private.constants import (
+    MEMORY_RESOURCE_UNIT_BYTES,
+    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
+)
 from ray._private.gcs_utils import PlacementGroupTableData
-from ray.autoscaler._private.resource_demand_scheduler import \
-    NodeIP, ResourceDict
+from ray.autoscaler._private.resource_demand_scheduler import NodeIP, ResourceDict
 from ray.core.generated.common_pb2 import PlacementStrategy
 
 logger = logging.getLogger(__name__)
@@ -38,8 +39,7 @@ class LoadMetricsSummary:
     head_ip: Optional[NodeIP] = None
 
 
-def add_resources(dict1: Dict[str, float],
-                  dict2: Dict[str, float]) -> Dict[str, float]:
+def add_resources(dict1: Dict[str, float], dict2: Dict[str, float]) -> Dict[str, float]:
     """Add the values in two dictionaries.
 
     Returns:
@@ -51,9 +51,9 @@ def add_resources(dict1: Dict[str, float],
     return new_dict
 
 
-def freq_of_dicts(dicts: List[Dict],
-                  serializer=lambda d: frozenset(d.items()),
-                  deserializer=dict) -> DictCount:
+def freq_of_dicts(
+    dicts: List[Dict], serializer=lambda d: frozenset(d.items()), deserializer=dict
+) -> DictCount:
     """Count a list of dictionaries (or unhashable types).
 
     This is somewhat annoying because mutable data structures aren't hashable,
@@ -100,16 +100,18 @@ class LoadMetrics:
         self.resource_requests = []
         self.cluster_full_of_actors_detected = False
 
-    def update(self,
-               ip: str,
-               raylet_id: bytes,
-               static_resources: Dict[str, Dict],
-               dynamic_resources: Dict[str, Dict],
-               resource_load: Dict[str, Dict],
-               waiting_bundles: List[Dict[str, float]] = None,
-               infeasible_bundles: List[Dict[str, float]] = None,
-               pending_placement_groups: List[PlacementGroupTableData] = None,
-               cluster_full_of_actors_detected: bool = False):
+    def update(
+        self,
+        ip: str,
+        raylet_id: bytes,
+        static_resources: Dict[str, Dict],
+        dynamic_resources: Dict[str, Dict],
+        resource_load: Dict[str, Dict],
+        waiting_bundles: List[Dict[str, float]] = None,
+        infeasible_bundles: List[Dict[str, float]] = None,
+        pending_placement_groups: List[PlacementGroupTableData] = None,
+        cluster_full_of_actors_detected: bool = False,
+    ):
         self.resource_load_by_ip[ip] = resource_load
         self.static_resources_by_ip[ip] = static_resources
         self.raylet_id_by_ip[ip] = raylet_id
@@ -133,9 +135,10 @@ class LoadMetrics:
         self.dynamic_resources_by_ip[ip] = dynamic_resources_update
 
         now = time.time()
-        if ip not in self.last_used_time_by_ip or \
-                self.static_resources_by_ip[ip] != \
-                self.dynamic_resources_by_ip[ip]:
+        if (
+            ip not in self.last_used_time_by_ip
+            or self.static_resources_by_ip[ip] != self.dynamic_resources_by_ip[ip]
+        ):
             self.last_used_time_by_ip[ip] = now
         self.last_heartbeat_time_by_ip[ip] = now
         self.waiting_bundles = waiting_bundles
@@ -174,7 +177,9 @@ class LoadMetrics:
                 logger.info(
                     "LoadMetrics: "
                     "Removed {} stale ip mappings: {} not in {}".format(
-                        len(unwanted_ips), unwanted_ips, active_ips))
+                        len(unwanted_ips), unwanted_ips, active_ips
+                    )
+                )
             assert not (unwanted_ips & set(mapping))
 
         prune(self.last_used_time_by_ip, should_log=True)
@@ -245,10 +250,8 @@ class LoadMetrics:
             # demand scheduler bin packing algorithm takes a reasonable amount
             # of time to run.
             return (
-                self.
-                waiting_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE] +
-                self.
-                infeasible_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE]
+                self.waiting_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE]
+                + self.infeasible_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE]
             )
         else:
             return self.waiting_bundles + self.infeasible_bundles
@@ -264,42 +267,51 @@ class LoadMetrics:
 
         For example, "3 CPUs, 4 GPUs".
         """
-        total_resources = reduce(add_resources,
-                                 self.static_resources_by_ip.values()
-                                 ) if self.static_resources_by_ip else {}
+        total_resources = (
+            reduce(add_resources, self.static_resources_by_ip.values())
+            if self.static_resources_by_ip
+            else {}
+        )
         out = "{} CPUs".format(int(total_resources.get("CPU", 0)))
         if "GPU" in total_resources:
             out += ", {} GPUs".format(int(total_resources["GPU"]))
         return out
 
     def summary(self):
-        available_resources = reduce(add_resources,
-                                     self.dynamic_resources_by_ip.values()
-                                     ) if self.dynamic_resources_by_ip else {}
-        total_resources = reduce(add_resources,
-                                 self.static_resources_by_ip.values()
-                                 ) if self.static_resources_by_ip else {}
+        available_resources = (
+            reduce(add_resources, self.dynamic_resources_by_ip.values())
+            if self.dynamic_resources_by_ip
+            else {}
+        )
+        total_resources = (
+            reduce(add_resources, self.static_resources_by_ip.values())
+            if self.static_resources_by_ip
+            else {}
+        )
         usage_dict = {}
         for key in total_resources:
             if key in ["memory", "object_store_memory"]:
-                total = total_resources[key] * \
-                    ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
-                available = available_resources[key] * \
-                    ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
+                total = (
+                    total_resources[key] * ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
+                )
+                available = (
+                    available_resources[key]
+                    * ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
+                )
                 usage_dict[key] = (total - available, total)
             else:
                 total = total_resources[key]
                 usage_dict[key] = (total - available_resources[key], total)
 
         summarized_demand_vector = freq_of_dicts(
-            self.get_resource_demand_vector(clip=False))
-        summarized_resource_requests = freq_of_dicts(
-            self.get_resource_requests())
+            self.get_resource_demand_vector(clip=False)
+        )
+        summarized_resource_requests = freq_of_dicts(self.get_resource_requests())
 
         def placement_group_serializer(pg):
             bundles = tuple(
-                frozenset(bundle.unit_resources.items())
-                for bundle in pg.bundles)
+                frozenset(bundle.unit_resources.items()) for bundle in pg.bundles
+            )
             return (bundles, pg.strategy)
 
         def placement_group_deserializer(pg_tuple):
@@ -310,13 +322,14 @@ class LoadMetrics:
             bundles = list(map(dict, pg_tuple[0]))
             return {
                 "bundles": freq_of_dicts(bundles),
-                "strategy": PlacementStrategy.Name(pg_tuple[1])
+                "strategy": PlacementStrategy.Name(pg_tuple[1]),
             }
 
         summarized_placement_groups = freq_of_dicts(
             self.get_pending_placement_groups(),
             serializer=placement_group_serializer,
-            deserializer=placement_group_deserializer)
+            deserializer=placement_group_deserializer,
+        )
         nodes_summary = freq_of_dicts(self.static_resources_by_ip.values())
 
         return LoadMetricsSummary(
@@ -324,7 +337,8 @@ class LoadMetrics:
             resource_demand=summarized_demand_vector,
             pg_demand=summarized_placement_groups,
             request_demand=summarized_resource_requests,
-            node_types=nodes_summary)
+            node_types=nodes_summary,
+        )
 
     def set_resource_requests(self, requested_resources):
         if requested_resources is not None:
@@ -335,48 +349,49 @@ class LoadMetrics:
 
     def info_string(self):
         return " - " + "\n - ".join(
-            ["{}: {}".format(k, v) for k, v in sorted(self._info().items())])
+            ["{}: {}".format(k, v) for k, v in sorted(self._info().items())]
+        )
 
     def _info(self):
         resources_used, resources_total = self._get_resource_usage()
 
         now = time.time()
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]
-        heartbeat_times = [
-            now - t for t in self.last_heartbeat_time_by_ip.values()
-        ]
+        heartbeat_times = [now - t for t in self.last_heartbeat_time_by_ip.values()]
         most_delayed_heartbeats = sorted(
-            self.last_heartbeat_time_by_ip.items(),
-            key=lambda pair: pair[1])[:5]
-        most_delayed_heartbeats = {
-            ip: (now - t)
-            for ip, t in most_delayed_heartbeats
-        }
+            self.last_heartbeat_time_by_ip.items(), key=lambda pair: pair[1]
+        )[:5]
+        most_delayed_heartbeats = {ip: (now - t) for ip, t in most_delayed_heartbeats}
 
         def format_resource(key, value):
             if key in ["object_store_memory", "memory"]:
                 return "{} GiB".format(
-                    round(
-                        value * MEMORY_RESOURCE_UNIT_BYTES /
-                        (1024 * 1024 * 1024), 2))
+                    round(value * MEMORY_RESOURCE_UNIT_BYTES / (1024 * 1024 * 1024), 2)
+                )
             else:
                 return round(value, 2)
 
         return {
-            "ResourceUsage": ", ".join([
-                "{}/{} {}".format(
-                    format_resource(rid, resources_used[rid]),
-                    format_resource(rid, resources_total[rid]), rid)
-                for rid in sorted(resources_used)
-                if not rid.startswith("node:")
-            ]),
+            "ResourceUsage": ", ".join(
+                [
+                    "{}/{} {}".format(
+                        format_resource(rid, resources_used[rid]),
+                        format_resource(rid, resources_total[rid]),
+                        rid,
+                    )
+                    for rid in sorted(resources_used)
+                    if not rid.startswith("node:")
+                ]
+            ),
             "NodeIdleSeconds": "Min={} Mean={} Max={}".format(
                 int(np.min(idle_times)) if idle_times else -1,
                 int(np.mean(idle_times)) if idle_times else -1,
-                int(np.max(idle_times)) if idle_times else -1),
+                int(np.max(idle_times)) if idle_times else -1,
+            ),
             "TimeSinceLastHeartbeat": "Min={} Mean={} Max={}".format(
                 int(np.min(heartbeat_times)) if heartbeat_times else -1,
                 int(np.mean(heartbeat_times)) if heartbeat_times else -1,
-                int(np.max(heartbeat_times)) if heartbeat_times else -1),
+                int(np.max(heartbeat_times)) if heartbeat_times else -1,
+            ),
             "MostDelayedHeartbeats": most_delayed_heartbeats,
         }

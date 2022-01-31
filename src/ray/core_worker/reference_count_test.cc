@@ -229,26 +229,22 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
   }
 
   void PublishFailure(const rpc::ChannelType channel_type,
-                      const std::string &key_id_binary) {
-    RAY_LOG(FATAL) << "No need to implement it for testing.";
-  }
+                      const std::string &key_id_binary) {}
 
   void Publish(const rpc::PubMessage &pub_message) {
     if (pub_message.channel_type() == rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL) {
       // TODO(swang): Test object locations pubsub too.
       return;
     }
-    auto maybe_subscribers = directory_->GetSubscriberIdsByKeyId(pub_message.key_id());
+    const auto subscribers = directory_->GetSubscriberIdsByKeyId(pub_message.key_id());
     const auto oid = ObjectID::FromBinary(pub_message.key_id());
-    if (maybe_subscribers.has_value()) {
-      for (const auto &subscriber_id : maybe_subscribers.value().get()) {
-        const auto id = GenerateID(publisher_id_, subscriber_id);
-        const auto it = subscription_callback_map_->find(id);
-        if (it != subscription_callback_map_->end()) {
-          const auto callback_it = it->second.find(oid);
-          RAY_CHECK(callback_it != it->second.end());
-          callback_it->second(pub_message);
-        }
+    for (const auto &subscriber_id : subscribers) {
+      const auto id = GenerateID(publisher_id_, subscriber_id);
+      const auto it = subscription_callback_map_->find(id);
+      if (it != subscription_callback_map_->end()) {
+        const auto callback_it = it->second.find(oid);
+        RAY_CHECK(callback_it != it->second.end());
+        callback_it->second(pub_message);
       }
     }
   }
@@ -621,6 +617,19 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
   ASSERT_EQ(locality_data_obj1->nodes_containing_object,
             absl::flat_hash_set<NodeID>({node1, node2}));
   rc->RemoveObjectLocation(obj1, node2);
+  locality_data_obj1 = rc->GetLocalityData(obj1);
+  ASSERT_EQ(locality_data_obj1->nodes_containing_object,
+            absl::flat_hash_set<NodeID>({node1}));
+
+  // When node2 is dead, reference table should remove it from obj1's locations.
+  // And then GetLocalityData should only return node1.
+  rc->AddObjectLocation(obj1, node2);
+  locality_data_obj1 = rc->GetLocalityData(obj1);
+  ASSERT_TRUE(locality_data_obj1.has_value());
+  ASSERT_EQ(locality_data_obj1->object_size, object_size);
+  ASSERT_EQ(locality_data_obj1->nodes_containing_object,
+            absl::flat_hash_set<NodeID>({node1, node2}));
+  rc->ResetObjectsOnRemovedNode(node2);
   locality_data_obj1 = rc->GetLocalityData(obj1);
   ASSERT_EQ(locality_data_obj1->nodes_containing_object,
             absl::flat_hash_set<NodeID>({node1}));

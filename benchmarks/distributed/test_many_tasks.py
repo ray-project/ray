@@ -16,9 +16,7 @@ def test_max_running_tasks(num_tasks):
     def task():
         time.sleep(sleep_time)
 
-    refs = [
-        task.remote() for _ in tqdm.trange(num_tasks, desc="Launching tasks")
-    ]
+    refs = [task.remote() for _ in tqdm.trange(num_tasks, desc="Launching tasks")]
 
     max_cpus = ray.cluster_resources()["CPU"]
     min_cpus_available = max_cpus
@@ -48,21 +46,27 @@ def no_resource_leaks():
 
 
 @click.command()
-@click.option(
-    "--num-tasks", required=True, type=int, help="Number of tasks to launch.")
+@click.option("--num-tasks", required=True, type=int, help="Number of tasks to launch.")
 def test(num_tasks):
     ray.init(address="auto")
 
     test_utils.wait_for_condition(no_resource_leaks)
+    monitor_actor = test_utils.monitor_memory_usage()
     start_time = time.time()
     test_max_running_tasks(num_tasks)
     end_time = time.time()
+    ray.get(monitor_actor.stop_run.remote())
+    used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
+    print(f"Peak memory usage: {round(used_gb, 2)}GB")
+    print(f"Peak memory usage per processes:\n {usage}")
+    del monitor_actor
     test_utils.wait_for_condition(no_resource_leaks)
 
     rate = num_tasks / (end_time - start_time - sleep_time)
-
-    print(f"Success! Started {num_tasks} tasks in {end_time - start_time}s. "
-          f"({rate} tasks/s)")
+    print(
+        f"Success! Started {num_tasks} tasks in {end_time - start_time}s. "
+        f"({rate} tasks/s)"
+    )
 
     if "TEST_OUTPUT_JSON" in os.environ:
         out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
@@ -70,7 +74,9 @@ def test(num_tasks):
             "tasks_per_second": rate,
             "num_tasks": num_tasks,
             "time": end_time - start_time,
-            "success": "1"
+            "success": "1",
+            "_peak_memory": round(used_gb, 2),
+            "_peak_process_memory": usage,
         }
         json.dump(results, out_file)
 

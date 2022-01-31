@@ -10,7 +10,7 @@ from ray.tune.schedulers import AsyncHyperBandScheduler
 
 def evaluation_fn(step, width, height):
     time.sleep(0.1)
-    return (0.1 + width * step / 100)**(-1) + height * 0.1
+    return (0.1 + width * step / 100) ** (-1) + height * 0.1
 
 
 def easy_objective(config):
@@ -27,18 +27,20 @@ def easy_objective(config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     parser.add_argument(
         "--ray-address",
         help="Address of Ray cluster for seamless distributed execution.",
-        required=False)
+        required=False,
+    )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using " "Ray Client.",
+    )
     args, _ = parser.parse_known_args()
     if args.server_address is not None:
         ray.init(f"ray://{args.server_address}")
@@ -60,13 +62,11 @@ if __name__ == "__main__":
         stop=stopping_criteria,
         num_samples=20,
         verbose=1,
-        resources_per_trial={
-            "cpu": 1,
-            "gpu": 0
-        },
+        resources_per_trial={"cpu": 1, "gpu": 0},
         config={  # Hyperparameter space
             "steps": 100,
             "width": tune.uniform(10, 100),
             "height": tune.uniform(0, 100),
-        })
+        },
+    )
     print("Best hyperparameters found were: ", analysis.best_config)

@@ -9,12 +9,33 @@ except ImportError:
 
 import ray
 import ray.cluster_utils
-from ray._private.test_utils import (get_other_nodes, wait_for_condition,
-                                     is_placement_group_removed,
-                                     placement_group_assert_no_leak)
+from ray._private.test_utils import (
+    get_other_nodes,
+    wait_for_condition,
+    is_placement_group_removed,
+    placement_group_assert_no_leak,
+)
 from ray._raylet import PlacementGroupID
 from ray.util.placement_group import PlacementGroup
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+
+MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_CLASS_PATH = (
+    "ray.tests.test_placement_group.MockWorkerStartupSlowlyPlugin"  # noqa
+)
+
+
+class MockWorkerStartupSlowlyPlugin(RuntimeEnvPlugin):
+    def validate(runtime_env_dict: dict) -> str:
+        return "success"
+
+    @staticmethod
+    def create(uri: str, runtime_env_dict: dict, ctx: RuntimeEnvContext) -> float:
+        import time
+
+        time.sleep(15)
+        return 0
 
 
 @pytest.mark.parametrize("connect_to_client", [True, False])
@@ -140,21 +161,17 @@ def test_placement_group_pack(ray_start_cluster, connect_to_client):
             name="name",
             strategy="PACK",
             bundles=[
-                {
-                    "CPU": 2,
-                    "GPU": 0  # Test 0 resource spec doesn't break tests.
-                },
-                {
-                    "CPU": 2
-                }
-            ])
+                {"CPU": 2, "GPU": 0},  # Test 0 resource spec doesn't break tests.
+                {"CPU": 2},
+            ],
+        )
         ray.get(placement_group.ready())
         actor_1 = Actor.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=0).remote()
+            placement_group=placement_group, placement_group_bundle_index=0
+        ).remote()
         actor_2 = Actor.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=1).remote()
+            placement_group=placement_group, placement_group_bundle_index=1
+        ).remote()
 
         ray.get(actor_1.value.remote())
         ray.get(actor_2.value.remote())
@@ -196,21 +213,21 @@ def test_placement_group_strict_pack(ray_start_cluster, connect_to_client):
             strategy="STRICT_PACK",
             bundles=[
                 {
-                    "memory": 50 * 1024 *
-                    1024,  # Test memory resource spec doesn't break tests.
-                    "CPU": 2
+                    "memory": 50
+                    * 1024
+                    * 1024,  # Test memory resource spec doesn't break tests.
+                    "CPU": 2,
                 },
-                {
-                    "CPU": 2
-                }
-            ])
+                {"CPU": 2},
+            ],
+        )
         ray.get(placement_group.ready())
         actor_1 = Actor.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=0).remote()
+            placement_group=placement_group, placement_group_bundle_index=0
+        ).remote()
         actor_2 = Actor.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=1).remote()
+            placement_group=placement_group, placement_group_bundle_index=1
+        ).remote()
 
         ray.get(actor_1.value.remote())
         ray.get(actor_2.value.remote())
@@ -249,18 +266,15 @@ def test_placement_group_spread(ray_start_cluster, connect_to_client):
 
     with connect_to_client_or_not(connect_to_client):
         placement_group = ray.util.placement_group(
-            name="name", strategy="SPREAD", bundles=[{
-                "CPU": 2
-            }, {
-                "CPU": 2
-            }])
+            name="name", strategy="SPREAD", bundles=[{"CPU": 2}, {"CPU": 2}]
+        )
         ray.get(placement_group.ready())
         actor_1 = Actor.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=0).remote()
+            placement_group=placement_group, placement_group_bundle_index=0
+        ).remote()
         actor_2 = Actor.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=1).remote()
+            placement_group=placement_group, placement_group_bundle_index=1
+        ).remote()
 
         ray.get(actor_1.value.remote())
         ray.get(actor_2.value.remote())
@@ -301,23 +315,18 @@ def test_placement_group_strict_spread(ray_start_cluster, connect_to_client):
         placement_group = ray.util.placement_group(
             name="name",
             strategy="STRICT_SPREAD",
-            bundles=[{
-                "CPU": 2
-            }, {
-                "CPU": 2
-            }, {
-                "CPU": 2
-            }])
+            bundles=[{"CPU": 2}, {"CPU": 2}, {"CPU": 2}],
+        )
         ray.get(placement_group.ready())
         actor_1 = Actor.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=0).remote()
+            placement_group=placement_group, placement_group_bundle_index=0
+        ).remote()
         actor_2 = Actor.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=1).remote()
+            placement_group=placement_group, placement_group_bundle_index=1
+        ).remote()
         actor_3 = Actor.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=2).remote()
+            placement_group=placement_group, placement_group_bundle_index=2
+        ).remote()
 
         ray.get(actor_1.value.remote())
         ray.get(actor_2.value.remote())
@@ -344,8 +353,7 @@ def test_placement_group_strict_spread(ray_start_cluster, connect_to_client):
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_actor_resource_ids(ray_start_cluster,
-                                            connect_to_client):
+def test_placement_group_actor_resource_ids(ray_start_cluster, connect_to_client):
     @ray.remote(num_cpus=1)
     class F:
         def f(self):
@@ -367,8 +375,7 @@ def test_placement_group_actor_resource_ids(ray_start_cluster,
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_task_resource_ids(ray_start_cluster,
-                                           connect_to_client):
+def test_placement_group_task_resource_ids(ray_start_cluster, connect_to_client):
     @ray.remote(num_cpus=1)
     def f():
         return ray.worker.get_resource_ids()
@@ -388,15 +395,13 @@ def test_placement_group_task_resource_ids(ray_start_cluster,
         assert "CPU_group_0_" not in list(resources.keys())[0], resources
 
         # Now retry with a bundle index constraint.
-        o1 = f.options(
-            placement_group=g1, placement_group_bundle_index=0).remote()
+        o1 = f.options(placement_group=g1, placement_group_bundle_index=0).remote()
         resources = ray.get(o1)
         assert len(resources) == 2, resources
         keys = list(resources.keys())
         assert "CPU_group_" in keys[0], resources
         assert "CPU_group_" in keys[1], resources
-        assert ("CPU_group_0_" in keys[0]
-                or "CPU_group_0_" in keys[1]), resources
+        assert "CPU_group_0_" in keys[0] or "CPU_group_0_" in keys[1], resources
 
         placement_group_assert_no_leak([g1])
 
@@ -477,11 +482,11 @@ def test_remove_placement_group(ray_start_cluster, connect_to_client):
         def long_running_task():
             print(os.getpid())
             import time
+
             time.sleep(50)
 
         # Schedule a long running task and actor.
-        task_ref = long_running_task.options(
-            placement_group=placement_group).remote()
+        task_ref = long_running_task.options(placement_group=placement_group).remote()
         a = A.options(placement_group=placement_group).remote()
         assert ray.get(a.f.remote()) == 3
 
@@ -504,6 +509,49 @@ def test_remove_placement_group(ray_start_cluster, connect_to_client):
             ray.get(a.f.remote(), timeout=3.0)
         with pytest.raises(ray.exceptions.WorkerCrashedError):
             ray.get(task_ref)
+
+
+def test_remove_placement_group_worker_startup_slowly(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+
+    placement_group = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}])
+    assert placement_group.wait(10)
+
+    @ray.remote(num_cpus=2)
+    class A:
+        def f(self):
+            return 3
+
+    @ray.remote(num_cpus=2, max_retries=0)
+    def long_running_task():
+        print(os.getpid())
+        import time
+
+        time.sleep(60)
+
+    # Schedule a long-running task that uses
+    # runtime env to mock worker start up slowly.
+    task_ref = long_running_task.options(
+        placement_group=placement_group,
+        runtime_env={"plugins": {MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_CLASS_PATH: {}}},
+    ).remote()
+    a = A.options(placement_group=placement_group).remote()
+    assert ray.get(a.f.remote()) == 3
+
+    ray.util.remove_placement_group(placement_group)
+
+    # Make sure the actor has been killed
+    # because of the removal of the pg.
+    # TODO(@clay4444): Make it throw a `ActorPlacementGroupRemoved`.
+    with pytest.raises(ray.exceptions.RayActorError, match="actor died"):
+        ray.get(a.f.remote(), timeout=3.0)
+
+    # The long-running task should still be in the state
+    # of leasing-worker bacause of the worker startup delay.
+    with pytest.raises(ray.exceptions.TaskPlacementGroupRemoved):
+        ray.get(task_ref)
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
@@ -552,7 +600,8 @@ def test_placement_group_table(ray_start_cluster, connect_to_client):
         strategy = "PACK"
         bundles = [{"CPU": 2, "GPU": 1}, {"CPU": 2}]
         placement_group = ray.util.placement_group(
-            name=name, strategy=strategy, bundles=bundles)
+            name=name, strategy=strategy, bundles=bundles
+        )
         pgs_created.append(placement_group)
         result = ray.util.placement_group_table(placement_group)
         assert result["name"] == name
@@ -566,8 +615,8 @@ def test_placement_group_table(ray_start_cluster, connect_to_client):
         cluster.wait_for_nodes()
 
         actor_1 = Actor.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=0).remote()
+            placement_group=placement_group, placement_group_bundle_index=0
+        ).remote()
         ray.get(actor_1.value.remote())
 
         result = ray.util.placement_group_table(placement_group)
@@ -577,21 +626,19 @@ def test_placement_group_table(ray_start_cluster, connect_to_client):
         second_strategy = "SPREAD"
         pgs_created.append(
             ray.util.placement_group(
-                name="second_placement_group",
-                strategy=second_strategy,
-                bundles=bundles))
+                name="second_placement_group", strategy=second_strategy, bundles=bundles
+            )
+        )
         pgs_created.append(
             ray.util.placement_group(
-                name="third_placement_group",
-                strategy=second_strategy,
-                bundles=bundles))
+                name="third_placement_group", strategy=second_strategy, bundles=bundles
+            )
+        )
 
         placement_group_table = ray.util.placement_group_table()
         assert len(placement_group_table) == 3
 
-        true_name_set = {
-            "name", "second_placement_group", "third_placement_group"
-        }
+        true_name_set = {"name", "second_placement_group", "third_placement_group"}
         get_name_set = set()
 
         for _, placement_group_data in placement_group_table.items():
@@ -693,8 +740,9 @@ def test_cuda_visible_devices(ray_start_cluster, connect_to_client):
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_reschedule_when_node_dead(ray_start_cluster,
-                                                   connect_to_client):
+def test_placement_group_reschedule_when_node_dead(
+    ray_start_cluster, connect_to_client
+):
     @ray.remote(num_cpus=1)
     class Actor(object):
         def __init__(self):
@@ -717,27 +765,23 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster,
 
     with connect_to_client_or_not(connect_to_client):
         placement_group = ray.util.placement_group(
-            name="name",
-            strategy="SPREAD",
-            bundles=[{
-                "CPU": 2
-            }, {
-                "CPU": 2
-            }, {
-                "CPU": 2
-            }])
+            name="name", strategy="SPREAD", bundles=[{"CPU": 2}, {"CPU": 2}, {"CPU": 2}]
+        )
         actor_1 = Actor.options(
             placement_group=placement_group,
             placement_group_bundle_index=0,
-            lifetime="detached").remote()
+            lifetime="detached",
+        ).remote()
         actor_2 = Actor.options(
             placement_group=placement_group,
             placement_group_bundle_index=1,
-            lifetime="detached").remote()
+            lifetime="detached",
+        ).remote()
         actor_3 = Actor.options(
             placement_group=placement_group,
             placement_group_bundle_index=2,
-            lifetime="detached").remote()
+            lifetime="detached",
+        ).remote()
         ray.get(actor_1.value.remote())
         ray.get(actor_2.value.remote())
         ray.get(actor_3.value.remote())
@@ -748,15 +792,18 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster,
         actor_4 = Actor.options(
             placement_group=placement_group,
             placement_group_bundle_index=0,
-            lifetime="detached").remote()
+            lifetime="detached",
+        ).remote()
         actor_5 = Actor.options(
             placement_group=placement_group,
             placement_group_bundle_index=1,
-            lifetime="detached").remote()
+            lifetime="detached",
+        ).remote()
         actor_6 = Actor.options(
             placement_group=placement_group,
             placement_group_bundle_index=2,
-            lifetime="detached").remote()
+            lifetime="detached",
+        ).remote()
         ray.get(actor_4.value.remote())
         ray.get(actor_5.value.remote())
         ray.get(actor_6.value.remote())

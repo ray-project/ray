@@ -256,10 +256,14 @@ void ReferenceCounter::SetNestedRefInUseRecursive(ReferenceTable::iterator inner
 
 void ReferenceCounter::ReleaseAllLocalReferences() {
   absl::MutexLock lock(&mutex_);
+  std::vector<ObjectID> refs_to_remove;
   for (auto &ref : object_id_refs_) {
     for (int i = ref.second.local_ref_count; i > 0; --i) {
-      RemoveLocalReferenceInternal(ref.first, nullptr);
+      refs_to_remove.push_back(ref.first);
     }
+  }
+  for (const auto &object_id_to_remove : refs_to_remove) {
+    RemoveLocalReferenceInternal(object_id_to_remove, nullptr);
   }
 }
 
@@ -464,7 +468,7 @@ std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
           << " Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
              "(ObjectID.from_binary(...)) cannot be passed to ray.get(), ray.wait(), or "
              "as "
-             "a task argument because Ray does not know which task will create them. "
+             "a task argument because Ray does not know which task created them. "
              "If this was not how your object ID was generated, please file an issue "
              "at https://github.com/ray-project/ray/issues/";
       // TODO(swang): Java does not seem to keep the ref count properly, so the
@@ -556,14 +560,10 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 }
 
 void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
-  // NOTE(swang): We have to send this message to subscribers in case they
+  // NOTE(swang): We have to publish failure to subscribers in case they
   // subscribe after the ref is already deleted.
-  rpc::PubMessage pub_message;
-  pub_message.set_key_id(it->first.Binary());
-  pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
-  auto object_locations_msg = pub_message.mutable_worker_object_locations_message();
-  object_locations_msg->set_ref_removed(true);
-  object_info_publisher_->Publish(pub_message);
+  object_info_publisher_->PublishFailure(
+      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, it->first.Binary());
 
   RAY_CHECK(it->second.ShouldDelete(lineage_pinning_enabled_));
   auto index_it = reconstructable_owned_objects_index_.find(it->first);
@@ -638,6 +638,7 @@ std::vector<ObjectID> ReferenceCounter::ResetObjectsOnRemovedNode(
       lost_objects.push_back(object_id);
       ReleasePlasmaObject(it);
     }
+    RemoveObjectLocationInternal(it, raylet_id);
   }
   return lost_objects;
 }
@@ -1126,9 +1127,14 @@ bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
                       "object is already evicted.";
     return false;
   }
+  RemoveObjectLocationInternal(it, node_id);
+  return true;
+}
+
+void ReferenceCounter::RemoveObjectLocationInternal(ReferenceTable::iterator it,
+                                                    const NodeID &node_id) {
   it->second.locations.erase(node_id);
   PushToLocationSubscribers(it);
-  return true;
 }
 
 void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id,

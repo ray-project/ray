@@ -16,6 +16,7 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "ray/common/ray_config.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -49,38 +50,57 @@ void ProcessHelper::StopRayNode() {
 }
 
 std::unique_ptr<ray::gcs::GlobalStateAccessor> ProcessHelper::CreateGlobalStateAccessor(
-    const std::string &redis_address, const std::string &redis_password) {
+    const std::string &gcs_address) {
+  ray::gcs::GcsClientOptions client_options(gcs_address);
   auto global_state_accessor =
-      std::make_unique<ray::gcs::GlobalStateAccessor>(redis_address, redis_password);
+      std::make_unique<ray::gcs::GlobalStateAccessor>(client_options);
+  RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
+  return global_state_accessor;
+}
+
+std::unique_ptr<ray::gcs::GlobalStateAccessor> ProcessHelper::CreateGlobalStateAccessor(
+    const std::string &redis_address, const std::string &redis_password) {
+  std::vector<std::string> address;
+  boost::split(address, redis_address, boost::is_any_of(":"));
+  RAY_CHECK(address.size() == 2);
+  ray::gcs::GcsClientOptions client_options(address[0], std::stoi(address[1]),
+                                            redis_password);
+
+  auto global_state_accessor =
+      std::make_unique<ray::gcs::GlobalStateAccessor>(client_options);
   RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
   return global_state_accessor;
 }
 
 void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) {
-  std::string redis_ip = ConfigInternal::Instance().redis_ip;
-  if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER && redis_ip.empty()) {
-    redis_ip = "127.0.0.1";
-    StartRayNode(ConfigInternal::Instance().redis_port,
-                 ConfigInternal::Instance().redis_password,
+  std::string bootstrap_ip = ConfigInternal::Instance().bootstrap_ip;
+  int bootstrap_port = ConfigInternal::Instance().bootstrap_port;
+
+  if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER &&
+      bootstrap_ip.empty()) {
+    bootstrap_ip = "127.0.0.1";
+    StartRayNode(bootstrap_port, ConfigInternal::Instance().redis_password,
                  ConfigInternal::Instance().head_args);
   }
-  if (redis_ip == "127.0.0.1") {
-    redis_ip = GetNodeIpAddress();
+  if (bootstrap_ip == "127.0.0.1") {
+    bootstrap_ip = GetNodeIpAddress();
   }
 
-  std::string redis_address =
-      redis_ip + ":" + std::to_string(ConfigInternal::Instance().redis_port);
+  std::string bootstrap_address = bootstrap_ip + ":" + std::to_string(bootstrap_port);
   std::string node_ip = ConfigInternal::Instance().node_ip_address;
   if (node_ip.empty()) {
-    if (!ConfigInternal::Instance().redis_ip.empty()) {
-      node_ip = GetNodeIpAddress(redis_address);
+    if (!bootstrap_ip.empty()) {
+      node_ip = GetNodeIpAddress(bootstrap_address);
     } else {
       node_ip = GetNodeIpAddress();
     }
   }
 
   std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor =
-      CreateGlobalStateAccessor(redis_address, ConfigInternal::Instance().redis_password);
+      ::RayConfig::instance().bootstrap_with_gcs()
+          ? CreateGlobalStateAccessor(bootstrap_address)
+          : CreateGlobalStateAccessor(bootstrap_address,
+                                      ConfigInternal::Instance().redis_password);
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
     std::string node_to_connect;
     auto status =
@@ -101,15 +121,16 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   if (log_dir.empty()) {
     std::string session_dir = ConfigInternal::Instance().session_dir;
     if (session_dir.empty()) {
-      session_dir =
-          *global_state_accessor->GetInternalKV("@namespace_session:session_dir");
+      session_dir = *global_state_accessor->GetInternalKV("session", "session_dir");
     }
     log_dir = session_dir + "/logs";
   }
 
   gcs::GcsClientOptions gcs_options =
-      gcs::GcsClientOptions(redis_ip, ConfigInternal::Instance().redis_port,
-                            ConfigInternal::Instance().redis_password);
+      ::RayConfig::instance().bootstrap_with_gcs()
+          ? gcs::GcsClientOptions(bootstrap_address)
+          : gcs::GcsClientOptions(bootstrap_ip, ConfigInternal::Instance().bootstrap_port,
+                                  ConfigInternal::Instance().redis_password);
 
   CoreWorkerOptions options;
   options.worker_type = ConfigInternal::Instance().worker_type;
@@ -147,7 +168,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
 
 void ProcessHelper::RayStop() {
   CoreWorkerProcess::Shutdown();
-  if (ConfigInternal::Instance().redis_ip.empty()) {
+  if (ConfigInternal::Instance().bootstrap_ip.empty()) {
     StopRayNode();
   }
 }
