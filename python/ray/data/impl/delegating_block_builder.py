@@ -17,6 +17,7 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
             # TODO (kfstorm): Maybe we can use Pandas block format for dict.
             if isinstance(item, dict) or isinstance(item, ArrowRow):
                 import pyarrow
+
                 try:
                     check = ArrowBlockBuilder()
                     check.add(item)
