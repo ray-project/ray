@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 
 class TorchAccelerator(Accelerator):
     def prepare_model(
-            model: torch.nn.Module,
-            move_to_device: bool = True,
-            wrap_ddp: bool = True,
-            ddp_kwargs: Optional[Dict[str, Any]] = None,
+        model: torch.nn.Module,
+        move_to_device: bool = True,
+        wrap_ddp: bool = True,
+        ddp_kwargs: Optional[Dict[str, Any]] = None,
     ) -> torch.nn.Module:
         """Prepares the model for distributed execution.
 
@@ -58,16 +58,17 @@ class TorchAccelerator(Accelerator):
             logger.info("Wrapping provided model in DDP.")
             if torch.cuda.is_available():
                 model = DistributedDataParallel(
-                    model, device_ids=[rank], output_device=rank, **ddp_kwargs)
+                    model, device_ids=[rank], output_device=rank, **ddp_kwargs
+                )
             else:
                 model = DistributedDataParallel(model, **ddp_kwargs)
 
         return model
 
     def prepare_data_loader(
-            data_loader: torch.utils.data.DataLoader,
-            add_dist_sampler: bool = True,
-            move_to_device: bool = True,
+        data_loader: torch.utils.data.DataLoader,
+        add_dist_sampler: bool = True,
+        move_to_device: bool = True,
     ) -> torch.utils.data.DataLoader:
         """
         Prepares DataLoader for distributed execution.
@@ -89,11 +90,15 @@ class TorchAccelerator(Accelerator):
         # 2. A DistributedSampler has not already been added by the user.
         # 3. The dataset is not an IterableDataset. Samplers do not worker with
         # IterableDatasets.
-        if (train.world_size() > 1
-                and not isinstance(data_loader.sampler, DistributedSampler)
-                and not (hasattr(data_loader, "dataset")
-                         and isinstance(data_loader.dataset, IterableDataset))
-                and add_dist_sampler):
+        if (
+            train.world_size() > 1
+            and not isinstance(data_loader.sampler, DistributedSampler)
+            and not (
+                hasattr(data_loader, "dataset")
+                and isinstance(data_loader.dataset, IterableDataset)
+            )
+            and add_dist_sampler
+        ):
 
             def with_sampler(loader):
                 # Automatically set the DistributedSampler
@@ -117,8 +122,7 @@ class TorchAccelerator(Accelerator):
                     "drop_last": loader.drop_last,
                     "timeout": loader.timeout,
                     "worker_init_fn": loader.worker_init_fn,
-                    "sampler": DistributedSampler(
-                        loader.dataset, shuffle=shuffle),
+                    "sampler": DistributedSampler(loader.dataset, shuffle=shuffle),
                 }
                 return DataLoader(**data_loader_args)
 
@@ -130,8 +134,7 @@ class TorchAccelerator(Accelerator):
 
         return data_loader
 
-    def prepare_optimizer(
-            optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer:
+    def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer:
         """Wraps optimizer to support automatic mixed precision.
 
         Args:
@@ -163,8 +166,7 @@ class _WrappedDataLoader(DataLoader):
             try:
                 i = i.to(self.device)
             except AttributeError:
-                logger.debug(f"Item {i} cannot be moved to device "
-                             f"{self.device}.")
+                logger.debug(f"Item {i} cannot be moved to device " f"{self.device}.")
             return i
 
         return tuple(try_move_device(i) for i in item)

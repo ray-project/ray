@@ -56,11 +56,11 @@ class TorchConfig(BackendConfig):
 
 
 def setup_torch_process_group(
-        backend: str,
-        world_rank: int,
-        world_size: int,
-        init_method: str,
-        timeout_s: int = 1800,
+    backend: str,
+    world_rank: int,
+    world_size: int,
+    init_method: str,
+    timeout_s: int = 1800,
 ):
     """Connects the distributed PyTorch backend.
 
@@ -73,13 +73,15 @@ def setup_torch_process_group(
     """
     logger.info(
         f"Setting up process group for: {init_method} [rank={world_rank}, "
-        f"world_size={world_size}]")
+        f"world_size={world_size}]"
+    )
     logger.debug(f"using {backend}")
 
     if backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
         logger.debug(
             "Setting NCCL_BLOCKING_WAIT for detecting node failure. "
-            "To override this behavior, you can set NCCL_BLOCKING_WAIT=0.")
+            "To override this behavior, you can set NCCL_BLOCKING_WAIT=0."
+        )
         os.environ["NCCL_BLOCKING_WAIT"] = "1"
 
     dist.init_process_group(
@@ -113,15 +115,15 @@ class TorchBackend(Backend):
                 backend = backend_config.backend
 
             master_addr, master_port = worker_group.execute_single(
-                0, get_address_and_port)
+                0, get_address_and_port
+            )
             if backend_config.init_method == "env":
 
                 def set_env_vars(addr, port):
                     os.environ["MASTER_ADDR"] = addr
                     os.environ["MASTER_PORT"] = str(port)
 
-                worker_group.execute(
-                    set_env_vars, addr=master_addr, port=master_port)
+                worker_group.execute(set_env_vars, addr=master_addr, port=master_port)
                 url = "env://"
             elif backend_config.init_method == "tcp":
                 url = f"tcp://{master_addr}:{master_port}"
@@ -129,7 +131,8 @@ class TorchBackend(Backend):
                 raise ValueError(
                     f"The provided init_method ("
                     f"{backend_config.init_method}) is not supported. Must "
-                    f"be either 'env' or 'tcp'.")
+                    f"be either 'env' or 'tcp'."
+                )
 
             setup_futures = []
             for i in range(len(worker_group)):
@@ -142,16 +145,17 @@ class TorchBackend(Backend):
                         world_size=len(worker_group),
                         init_method=url,
                         timeout_s=backend_config.timeout_s,
-                    ))
+                    )
+                )
             ray.get(setup_futures)
         else:
             raise RuntimeError("Distributed torch is not available.")
 
-    def on_shutdown(self, worker_group: WorkerGroup,
-                    backend_config: TorchConfig):
+    def on_shutdown(self, worker_group: WorkerGroup, backend_config: TorchConfig):
 
         worker_group.execute(
-            shutdown_torch, destroy_process_group=len(worker_group) > 1)
+            shutdown_torch, destroy_process_group=len(worker_group) > 1
+        )
 
     @staticmethod
     def encode_data(data_dict: Dict) -> EncodedData:
@@ -193,10 +197,10 @@ def get_device() -> torch.device:
 
 @PublicAPI(stability="beta")
 def prepare_model(
-        model: torch.nn.Module,
-        move_to_device: bool = True,
-        wrap_ddp: bool = True,
-        ddp_kwargs: Optional[Dict[str, Any]] = None,
+    model: torch.nn.Module,
+    move_to_device: bool = True,
+    wrap_ddp: bool = True,
+    ddp_kwargs: Optional[Dict[str, Any]] = None,
 ) -> torch.nn.Module:
     """Prepares the model for distributed execution.
 
@@ -215,17 +219,15 @@ def prepare_model(
             set to True.
     """
     return get_session().accelerator.prepare_model(
-        model,
-        move_to_device=move_to_device,
-        wrap_ddp=wrap_ddp,
-        ddp_kwargs=ddp_kwargs)
+        model, move_to_device=move_to_device, wrap_ddp=wrap_ddp, ddp_kwargs=ddp_kwargs
+    )
 
 
 @PublicAPI(stability="beta")
 def prepare_data_loader(
-        data_loader: torch.utils.data.DataLoader,
-        add_dist_sampler: bool = True,
-        move_to_device: bool = True,
+    data_loader: torch.utils.data.DataLoader,
+    add_dist_sampler: bool = True,
+    move_to_device: bool = True,
 ) -> torch.utils.data.DataLoader:
     """
     Prepares DataLoader for distributed execution.
@@ -242,14 +244,12 @@ def prepare_data_loader(
             returned by the data loader to the correct device.
     """
     return get_session().accelerator.prepare_data_loader(
-        data_loader,
-        add_dist_sampler=add_dist_sampler,
-        move_to_device=move_to_device)
+        data_loader, add_dist_sampler=add_dist_sampler, move_to_device=move_to_device
+    )
 
 
 @PublicAPI(stability="beta")
-def prepare_optimizer(
-        optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer:
+def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer:
     """Wraps optimizer to support automatic mixed precision.
 
     Args:
