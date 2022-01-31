@@ -1,5 +1,5 @@
 multi-agent-cartpole-alpha-star:
-    env: ray.rllib.examples.env.multi_agent.MultAgentCartPole
+    env: ray.rllib.examples.env.multi_agent.MultiAgentCartPole
     run: AlphaStar
     stop:
         episode_reward_mean: 600  # 600 / 4 (==num_agents) = 150
@@ -10,7 +10,8 @@ multi-agent-cartpole-alpha-star:
 
         # 4-agent MA cartpole.
         env_config:
-          num_agents: 4
+          config:
+            num_agents: 4
 
         num_envs_per_worker: 5
         num_workers: 4
@@ -27,10 +28,16 @@ multi-agent-cartpole-alpha-star:
             fcnet_activation: linear
             vf_share_layers: true
 
+        # No league-building needed.
+        league_builder_config:
+            type: ray.rllib.agents.alpha_star.league_builder.NoLeagueBuilder
+
         multiagent:
             policies:
               - p0
               - p1
               - p2
               - p3
-            policy_mapping_fn: ray.rllib.
+            # YAML-capable policy_mapping_fn definition via providing a callable class here.
+            policy_mapping_fn:
+                type: ray.rllib.examples.multi_agent_and_self_play.policy_mapping_fn.PolicyMappingFn

@@ -2,6 +2,7 @@ from typing import Tuple
 
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.typing import MultiAgentPolicyConfigDict, PartialTrainerConfigDict
 
 
@@ -47,10 +48,9 @@ def check_multi_agent(
     # with DEFAULT_POLICY_ID as only policy.
     if not policies:
         policies = {DEFAULT_POLICY_ID}
-    # Policies given as set (of PolicyIDs) -> Setup each policy automatically
-    # via empty PolicySpec (will make RLlib infer obs- and action spaces
+    # Policies given as set/list/tuple (of PolicyIDs) -> Setup each policy automatically via empty PolicySpec (will make RLlib infer obs- and action spaces
     # as well as the Policy's class).
-    if isinstance(policies, set):
+    if isinstance(policies, (set, list, tuple)):
         policies = multiagent_config["policies"] = {
             pid: PolicySpec() for pid in policies
         }
@@ -87,7 +87,7 @@ def check_multi_agent(
         "agent_steps",
     ]:
         raise ValueError(
-            "config.multiagent.count_steps_by must be "
+            "config.multiagent.count_steps_by must be one of "
             "[env_steps|agent_steps], not "
             f"{multiagent_config['count_steps_by']}!"
         )
@@ -99,6 +99,12 @@ def check_multi_agent(
             "config.multiagent.replay_mode must be "
             "[independent|lockstep], not "
             f"{multiagent_config['replay_mode']}!"
+        )
+    # Attempt to create a `policy_mapping_fn` from config dict. Helpful
+    # is users would like to specify custom callable classes in yaml files.
+    if not callable(multiagent_config.get("policy_mapping_fn")):
+        multiagent_config["policy_mapping_fn"] = from_config(
+            multiagent_config["policy_mapping_fn"]
         )
 
     # Is this a multi-agent setup? True, iff DEFAULT_POLICY_ID is only

@@ -2455,15 +2455,7 @@ class Trainer(Trainable):
                 "complete_episodes]! Got {}".format(config["batch_mode"])
             )
 
-        # Check multi-agent batch count mode.
-        if config["multiagent"].get("count_steps_by", "env_steps") not in [
-            "env_steps",
-            "agent_steps",
-        ]:
-            raise ValueError(
-                "`count_steps_by` must be one of [env_steps|agent_steps]! "
-                "Got {}".format(config["multiagent"]["count_steps_by"])
-            )
+        # Store multi-agent batch count mode.
         self._by_agent_steps = (
             self.config["multiagent"].get("count_steps_by") == "agent_steps"
         )

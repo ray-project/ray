@@ -149,7 +149,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
     def default_resource_request(cls, config):
         cf = dict(cls.get_default_config(), **config)
 
-        num_policies = len(cf["max_num_policies_to_train"])
+        num_policies = cf["max_num_policies_to_train"]
         if cf["num_gpus"]:
             num_learner_shards = min(cf["num_gpus"], num_policies)
             num_gpus_per_shard = cf["num_gpus"] / num_learner_shards
