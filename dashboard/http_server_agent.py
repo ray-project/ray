@@ -23,8 +23,7 @@ class HttpServerAgent:
         # Create a http session for all modules.
         # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
         if LooseVersion(aiohttp.__version__) < LooseVersion("4.0.0"):
-            self.http_session = aiohttp.ClientSession(
-                loop=asyncio.get_event_loop())
+            self.http_session = aiohttp.ClientSession(loop=asyncio.get_event_loop())
         else:
             self.http_session = aiohttp.ClientSession()
 
@@ -47,25 +46,26 @@ class HttpServerAgent:
                     allow_methods="*",
                     allow_headers=("Content-Type", "X-Header"),
                 )
-            })
+            },
+        )
         for route in list(app.router.routes()):
             cors.add(route)
 
         self.runner = aiohttp.web.AppRunner(app)
         await self.runner.setup()
         site = aiohttp.web.TCPSite(
-            self.runner, "127.0.0.1"
-            if self.ip == "127.0.0.1" else "0.0.0.0", self.listen_port)
+            self.runner,
+            "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0",
+            self.listen_port,
+        )
         await site.start()
-        self.http_host, self.http_port, *_ = (
-            site._server.sockets[0].getsockname())
-        logger.info("Dashboard agent http address: %s:%s", self.http_host,
-                    self.http_port)
+        self.http_host, self.http_port, *_ = site._server.sockets[0].getsockname()
+        logger.info(
+            "Dashboard agent http address: %s:%s", self.http_host, self.http_port
+        )
 
         # Dump registered http routes.
-        dump_routes = [
-            r for r in app.router.routes() if r.method != hdrs.METH_HEAD
-        ]
+        dump_routes = [r for r in app.router.routes() if r.method != hdrs.METH_HEAD]
         for r in dump_routes:
             logger.info(r)
         logger.info("Registered %s routes.", len(dump_routes))

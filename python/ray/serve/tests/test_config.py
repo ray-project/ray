@@ -1,8 +1,12 @@
 import pytest
 from pydantic import ValidationError
 
-from ray.serve.config import (DeploymentConfig, DeploymentMode, HTTPOptions,
-                              ReplicaConfig)
+from ray.serve.config import (
+    DeploymentConfig,
+    DeploymentMode,
+    HTTPOptions,
+    ReplicaConfig,
+)
 from ray.serve.config import AutoscalingConfig
 
 
@@ -81,12 +85,11 @@ def test_replica_config_validation():
         ray_actor_options={
             "num_cpus": 1.0,
             "num_gpus": 10,
-            "resources": {
-                "abc": 1.0
-            },
+            "resources": {"abc": 1.0},
             "memory": 1000000.0,
             "object_store_memory": 1000000,
-        })
+        },
+    )
     with pytest.raises(TypeError):
         ReplicaConfig(Class, ray_actor_options=1.0)
     with pytest.raises(TypeError):
@@ -104,8 +107,7 @@ def test_replica_config_validation():
     with pytest.raises(ValueError):
         ReplicaConfig(Class, ray_actor_options={"memory": -1})
     with pytest.raises(TypeError):
-        ReplicaConfig(
-            Class, ray_actor_options={"object_store_memory": "hello"})
+        ReplicaConfig(Class, ray_actor_options={"object_store_memory": "hello"})
     with pytest.raises(ValueError):
         ReplicaConfig(Class, ray_actor_options={"object_store_memory": -1})
     with pytest.raises(TypeError):
@@ -125,8 +127,7 @@ def test_http_options():
     HTTPOptions(host="8.8.8.8", middlewares=[object()])
     assert HTTPOptions(host=None).location == "NoServer"
     assert HTTPOptions(location=None).location == "NoServer"
-    assert HTTPOptions(
-        location=DeploymentMode.EveryNode).location == "EveryNode"
+    assert HTTPOptions(location=DeploymentMode.EveryNode).location == "EveryNode"
 
 
 def test_with_proto():
@@ -147,8 +148,9 @@ def test_zero_default_proto():
             "min_replicas": 1,
             "max_replicas": 2,
             "smoothing_factor": 0.123,
-            "downscale_delay_s": 0
-        })
+            "downscale_delay_s": 0,
+        }
+    )
     serialized_config = config.to_proto_bytes()
     deserialized_config = DeploymentConfig.from_proto_bytes(serialized_config)
     new_delay_s = deserialized_config.autoscaling_config.downscale_delay_s
@@ -161,4 +163,5 @@ def test_zero_default_proto():
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

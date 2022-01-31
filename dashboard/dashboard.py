@@ -38,17 +38,21 @@ class FrontendNotFoundError(OSError):
 
 def setup_static_dir():
     build_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "client", "build")
+        os.path.dirname(os.path.abspath(__file__)), "client", "build"
+    )
     module_name = os.path.basename(os.path.dirname(__file__))
     if not os.path.isdir(build_dir):
         raise FrontendNotFoundError(
-            errno.ENOENT, "Dashboard build directory not found. If installing "
+            errno.ENOENT,
+            "Dashboard build directory not found. If installing "
             "from source, please follow the additional steps "
             "required to build the dashboard"
             f"(cd python/ray/{module_name}/client "
             "&& npm install "
             "&& npm ci "
-            "&& npm run build)", build_dir)
+            "&& npm run build)",
+            build_dir,
+        )
 
     static_dir = os.path.join(build_dir, "static")
     routes.static("/static", static_dir, follow_symlinks=True)
@@ -72,14 +76,16 @@ class Dashboard:
         log_dir(str): Log directory of dashboard.
     """
 
-    def __init__(self,
-                 host,
-                 port,
-                 port_retries,
-                 gcs_address,
-                 redis_address,
-                 redis_password=None,
-                 log_dir=None):
+    def __init__(
+        self,
+        host,
+        port,
+        port_retries,
+        gcs_address,
+        redis_address,
+        redis_password=None,
+        log_dir=None,
+    ):
         self.dashboard_head = dashboard_head.DashboardHead(
             http_host=host,
             http_port=port,
@@ -87,7 +93,8 @@ class Dashboard:
             gcs_address=gcs_address,
             redis_address=redis_address,
             redis_password=redis_password,
-            log_dir=log_dir)
+            log_dir=log_dir,
+        )
 
         # Setup Dashboard Routes
         try:
@@ -107,15 +114,17 @@ class Dashboard:
     async def get_index(self, req) -> aiohttp.web.FileResponse:
         return aiohttp.web.FileResponse(
             os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                "client/build/index.html"))
+                os.path.dirname(os.path.abspath(__file__)), "client/build/index.html"
+            )
+        )
 
     @routes.get("/favicon.ico")
     async def get_favicon(self, req) -> aiohttp.web.FileResponse:
         return aiohttp.web.FileResponse(
             os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                "client/build/favicon.ico"))
+                os.path.dirname(os.path.abspath(__file__)), "client/build/favicon.ico"
+            )
+        )
 
     async def run(self):
         await self.dashboard_head.run()
@@ -124,92 +133,96 @@ class Dashboard:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Ray dashboard.")
     parser.add_argument(
-        "--host",
-        required=True,
-        type=str,
-        help="The host to use for the HTTP server.")
+        "--host", required=True, type=str, help="The host to use for the HTTP server."
+    )
     parser.add_argument(
-        "--port",
-        required=True,
-        type=int,
-        help="The port to use for the HTTP server.")
+        "--port", required=True, type=int, help="The port to use for the HTTP server."
+    )
     parser.add_argument(
         "--port-retries",
         required=False,
         type=int,
         default=0,
-        help="The retry times to select a valid port.")
+        help="The retry times to select a valid port.",
+    )
     parser.add_argument(
-        "--gcs-address",
-        required=False,
-        type=str,
-        help="The address (ip:port) of GCS.")
+        "--gcs-address", required=False, type=str, help="The address (ip:port) of GCS."
+    )
     parser.add_argument(
-        "--redis-address",
-        required=True,
-        type=str,
-        help="The address to use for Redis.")
+        "--redis-address", required=True, type=str, help="The address to use for Redis."
+    )
     parser.add_argument(
         "--redis-password",
         required=False,
         type=str,
         default=None,
-        help="The password to use for Redis")
+        help="The password to use for Redis",
+    )
     parser.add_argument(
         "--logging-level",
         required=False,
         type=lambda s: logging.getLevelName(s.upper()),
         default=ray_constants.LOGGER_LEVEL,
         choices=ray_constants.LOGGER_LEVEL_CHOICES,
-        help=ray_constants.LOGGER_LEVEL_HELP)
+        help=ray_constants.LOGGER_LEVEL_HELP,
+    )
     parser.add_argument(
         "--logging-format",
         required=False,
         type=str,
         default=ray_constants.LOGGER_FORMAT,
-        help=ray_constants.LOGGER_FORMAT_HELP)
+        help=ray_constants.LOGGER_FORMAT_HELP,
+    )
     parser.add_argument(
         "--logging-filename",
         required=False,
         type=str,
         default=dashboard_consts.DASHBOARD_LOG_FILENAME,
         help="Specify the name of log file, "
-        "log to stdout if set empty, default is \"{}\"".format(
-            dashboard_consts.DASHBOARD_LOG_FILENAME))
+        'log to stdout if set empty, default is "{}"'.format(
+            dashboard_consts.DASHBOARD_LOG_FILENAME
+        ),
+    )
     parser.add_argument(
         "--logging-rotate-bytes",
         required=False,
         type=int,
         default=ray_constants.LOGGING_ROTATE_BYTES,
         help="Specify the max bytes for rotating "
-        "log file, default is {} bytes.".format(
-            ray_constants.LOGGING_ROTATE_BYTES))
+        "log file, default is {} bytes.".format(ray_constants.LOGGING_ROTATE_BYTES),
+    )
     parser.add_argument(
         "--logging-rotate-backup-count",
         required=False,
         type=int,
         default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
-        help="Specify the backup count of rotated log file, default is {}.".
-        format(ray_constants.LOGGING_ROTATE_BACKUP_COUNT))
+        help="Specify the backup count of rotated log file, default is {}.".format(
+            ray_constants.LOGGING_ROTATE_BACKUP_COUNT
+        ),
+    )
     parser.add_argument(
         "--log-dir",
         required=True,
         type=str,
         default=None,
-        help="Specify the path of log directory.")
+        help="Specify the path of log directory.",
+    )
     parser.add_argument(
         "--temp-dir",
         required=True,
         type=str,
         default=None,
-        help="Specify the path of the temporary directory use by Ray process.")
+        help="Specify the path of the temporary directory use by Ray process.",
+    )
     parser.add_argument(
         "--minimal",
         action="store_true",
         help=(
             "Minimal dashboard only contains a subset of features that don't "
             "require additional dependencies installed when ray is installed "
-            "by `pip install ray[default]`."))
+            "by `pip install ray[default]`."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -226,7 +239,8 @@ if __name__ == "__main__":
             log_dir=args.log_dir,
             filename=args.logging_filename,
             max_bytes=args.logging_rotate_bytes,
-            backup_count=args.logging_rotate_backup_count)
+            backup_count=args.logging_rotate_backup_count,
+        )
 
         dashboard = Dashboard(
             args.host,
@@ -235,25 +249,27 @@ if __name__ == "__main__":
             args.gcs_address,
             args.redis_address,
             redis_password=args.redis_password,
-            log_dir=args.log_dir)
+            log_dir=args.log_dir,
+        )
         # TODO(fyrestone): Avoid using ray.state in dashboard, it's not
         # asynchronous and will lead to low performance. ray disconnect()
         # will be hang when the ray.state is connected and the GCS is exit.
         # Please refer to: https://github.com/ray-project/ray/issues/16328
         service_discovery = PrometheusServiceDiscoveryWriter(
-            args.redis_address, args.redis_password, args.gcs_address,
-            args.temp_dir)
+            args.redis_address, args.redis_password, args.gcs_address, args.temp_dir
+        )
         # Need daemon True to avoid dashboard hangs at exit.
         service_discovery.daemon = True
         service_discovery.start()
         loop = asyncio.get_event_loop()
         loop.run_until_complete(dashboard.run())
     except Exception as e:
-        traceback_str = ray._private.utils.format_error_message(
-            traceback.format_exc())
-        message = f"The dashboard on node {platform.uname()[1]} " \
-                  f"failed with the following " \
-                  f"error:\n{traceback_str}"
+        traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
+        message = (
+            f"The dashboard on node {platform.uname()[1]} "
+            f"failed with the following "
+            f"error:\n{traceback_str}"
+        )
         if isinstance(e, FrontendNotFoundError):
             logger.warning(message)
         else:
@@ -268,17 +284,21 @@ if __name__ == "__main__":
                 gcs_publisher = GcsPublisher(args.gcs_address)
             else:
                 redis_client = ray._private.services.create_redis_client(
-                    args.redis_address, password=args.redis_password)
+                    args.redis_address, password=args.redis_password
+                )
                 gcs_publisher = GcsPublisher(
-                    address=gcs_utils.get_gcs_address_from_redis(redis_client))
+                    address=gcs_utils.get_gcs_address_from_redis(redis_client)
+                )
                 redis_client = None
         else:
             redis_client = ray._private.services.create_redis_client(
-                args.redis_address, password=args.redis_password)
+                args.redis_address, password=args.redis_password
+            )
 
         ray._private.utils.publish_error_to_driver(
             redis_client,
             ray_constants.DASHBOARD_DIED_ERROR,
             message,
             redis_client=redis_client,
-            gcs_publisher=gcs_publisher)
+            gcs_publisher=gcs_publisher,
+        )
