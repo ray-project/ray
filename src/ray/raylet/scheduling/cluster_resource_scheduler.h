@@ -26,7 +26,7 @@
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
-#include "ray/raylet/scheduling/cluster_resource_scheduler_interface.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
@@ -35,18 +35,15 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-namespace raylet {
-class ClusterTaskManagerTest; 
-}
 
 using rpc::HeartbeatTableData;
 
 /// Class encapsulating the cluster resources and the logic to assign
 /// tasks to nodes based on the task's constraints and the available
 /// resources at those nodes.
-class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
+class ClusterResourceScheduler {
  public:
-  ClusterResourceScheduler() {}
+  ClusterResourceScheduler();
   /// Constructor initializing the resources associated with the local node.
   ///
   /// \param local_node_id: ID of local node,
@@ -62,21 +59,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
 
-  // Mapping from predefined resource indexes to resource strings
-  std::string GetResourceNameFromIndex(int64_t res_idx);
-
-  /// Update node resources. This hanppens when a node resource usage udpated.
-  ///
-  /// \param node_id_string ID of the node which resoruces need to be udpated.
-  /// \param resource_data The node resource data.
-  bool UpdateNode(const std::string &node_id_string,
-                  const rpc::ResourcesData &resource_data) override;
-
-  /// Remove node from the cluster data structure. This happens
-  /// when a node fails or it is removed from the cluster.
-  ///
-  /// \param node_id_string ID of the node to be removed.
-  bool RemoveNode(const std::string &node_id_string) override;
+  const StringIdMap &GetStringIdMap() const;
 
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
@@ -112,31 +95,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
       bool requires_object_store_memory, bool actor_creation, bool force_spillback,
       int64_t *violations, bool *is_infeasible);
 
-  /// Get number of nodes in the cluster.
-  int64_t NumNodes() const;
-
-  /// Temporarily get the StringIDMap.
-  const StringIdMap &GetStringIdMap() const;
-
-  /// Update total capacity of a given resource of a given node.
-  ///
-  /// \param node_name: Node whose resource we want to update.
-  /// \param resource_name: Resource which we want to update.
-  /// \param resource_total: New capacity of the resource.
-  void UpdateResourceCapacity(const std::string &node_name,
-                              const std::string &resource_name,
-                              double resource_total) override;
-
-  /// Delete a given resource from a given node.
-  ///
-  /// \param node_name: Node whose resource we want to delete.
-  /// \param resource_name: Resource we want to delete
-  void DeleteResource(const std::string &node_name,
-                      const std::string &resource_name) override;
-
-  /// Return local resources in human-readable string form.
-  std::string GetNodeResourceViewString(const std::string &node_name) const override;
-
   /// Subtract the resources required by a given resource request (resource_request) from
   /// a given remote node.
   ///
@@ -160,8 +118,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
                            const absl::flat_hash_map<std::string, double> &shape);
 
   LocalResourceManager &GetLocalResourceManager() { return *local_resource_manager_; }
-
-  const NodeResources &GetNodeResources(const std::string &node_name) const;
+  ClusterResourceManager &GetClusterResourceManager() {
+    return *cluster_resource_manager_;
+  }
 
  private:
   bool NodeAlive(int64_t node_id) const;
@@ -177,23 +136,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   bool SubtractRemoteNodeAvailableResources(int64_t node_id,
                                             const ResourceRequest &resource_request);
 
-  /// Add a new node or overwrite the resources of an existing node.
-  ///
-  /// \param node_id: Node ID.
-  /// \param node_resources: Up to date total and available resources of the node.
-  void AddOrUpdateNode(int64_t node_id, const NodeResources &node_resources);
-
-  void AddOrUpdateNode(
-      const std::string &node_id,
-      const absl::flat_hash_map<std::string, double> &resource_map_total,
-      const absl::flat_hash_map<std::string, double> &resource_map_available);
-
-  /// Remove node from the cluster data structure. This happens
-  /// when a node fails or it is removed from the cluster.
-  ///
-  /// \param node_id ID of the node to be removed.
-  bool RemoveNode(int64_t node_id);
-
   /// Check whether a resource request can be scheduled given a node.
   ///
   ///  \param resource_request: Resource request to be scheduled.
@@ -208,29 +150,23 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   bool IsSchedulable(const ResourceRequest &resource_request, int64_t node_id,
                      const NodeResources &resources) const;
 
-  /// Return resources associated to the given node_id in ret_resources.
-  /// If node_id not found, return false; otherwise return true.
-  bool GetNodeResources(int64_t node_id, NodeResources *ret_resources) const;
-
-  /// List of nodes in the clusters and their resources organized as a map.
-  /// The key of the map is the node ID.
-  absl::flat_hash_map<int64_t, Node> nodes_;
-  /// Identifier of local node.
-  int64_t local_node_id_;
-  /// The scheduling policy to use.
-  std::unique_ptr<raylet_scheduling_policy::SchedulingPolicy> scheduling_policy_;
-  /// Internally maintained random number generator.
-  std::mt19937_64 gen_;
-  /// Resources of local node.
-  std::unique_ptr<LocalResourceManager> local_resource_manager_;
   /// Keep the mapping between node and resource IDs in string representation
   /// to integer representation. Used for improving map performance.
   StringIdMap string_to_int_map_;
+  /// Identifier of local node.
+  int64_t local_node_id_;
+  /// Internally maintained random number generator.
+  std::mt19937_64 gen_;
   /// Gcs client. It's not owned by this class.
   gcs::GcsClient *gcs_client_;
+  /// Resources of local node.
+  std::unique_ptr<LocalResourceManager> local_resource_manager_;
+  /// Resources of the entire cluster.
+  std::unique_ptr<ClusterResourceManager> cluster_resource_manager_;
+  /// The scheduling policy to use.
+  std::unique_ptr<raylet_scheduling_policy::SchedulingPolicy> scheduling_policy_;
 
   friend class ClusterResourceSchedulerTest;
-  friend class raylet::ClusterTaskManagerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingDeleteClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest);
