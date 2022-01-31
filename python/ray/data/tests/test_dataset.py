@@ -1967,6 +1967,15 @@ def test_iter_batches_basic(ray_start_regular_shared):
         pd.concat(dfs, ignore_index=True)
     )
 
+    # Batch size larger than dataset.
+    batch_size = 15
+    batches = list(
+        ds.iter_batches(batch_size=batch_size, batch_format="pandas"))
+    assert all(len(batch) == ds.count() for batch in batches)
+    assert len(batches) == 1
+    assert pd.concat(
+        batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
+
     # Batch size drop partial.
     batch_size = 5
     batches = list(
