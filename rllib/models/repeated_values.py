@@ -78,7 +78,8 @@ class RepeatedValues:
             if B is None:
                 raise ValueError(
                     "Cannot call unbatch_all() when batch_dim is unknown. "
-                    "This is probably because you are using TF graph mode.")
+                    "This is probably because you are using TF graph mode."
+                )
             else:
                 B = int(B)
             slices = self.unbatch_repeat_dim()
@@ -114,7 +115,8 @@ class RepeatedValues:
 
     def __repr__(self):
         return "RepeatedValues(value={}, lengths={}, max_len={})".format(
-            repr(self.values), repr(self.lengths), self.max_len)
+            repr(self.values), repr(self.lengths), self.max_len
+        )
 
     def __str__(self):
         return repr(self)
@@ -152,8 +154,7 @@ def _unbatch_helper(v: TensorStructType, max_len: int) -> TensorStructType:
         return [v[:, i, ...] for i in range(max_len)]
 
 
-def _batch_index_helper(v: TensorStructType, i: int,
-                        j: int) -> TensorStructType:
+def _batch_index_helper(v: TensorStructType, i: int, j: int) -> TensorStructType:
     """Selects the item at the ith batch index and jth repetition."""
     if isinstance(v, dict):
         return {k: _batch_index_helper(u, i, j) for (k, u) in v.items()}

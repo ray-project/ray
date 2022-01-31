@@ -66,21 +66,22 @@ class A3CTrainer(Trainer):
             raise ValueError("`num_workers` for A3C must be >= 1!")
 
     @override(Trainer)
-    def get_default_policy_class(self,
-                                 config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
-            from ray.rllib.agents.a3c.a3c_torch_policy import \
-                A3CTorchPolicy
+            from ray.rllib.agents.a3c.a3c_torch_policy import A3CTorchPolicy
+
             return A3CTorchPolicy
         else:
             return A3CTFPolicy
 
     @staticmethod
     @override(Trainer)
-    def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
-                       **kwargs) -> LocalIterator[dict]:
-        assert len(kwargs) == 0, (
-            "A3C execution_plan does NOT take any additional parameters")
+    def execution_plan(
+        workers: WorkerSet, config: TrainerConfigDict, **kwargs
+    ) -> LocalIterator[dict]:
+        assert (
+            len(kwargs) == 0
+        ), "A3C execution_plan does NOT take any additional parameters"
 
         # For A3C, compute policy gradients remotely on the rollout workers.
         grads = AsyncGradients(workers)

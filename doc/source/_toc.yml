@@ -5,22 +5,19 @@ parts:
     chapters:
       - file: ray-overview/index
       - file: ray-overview/installation
+      - file: ray-overview/learn-more
       - file: ray-overview/ray-libraries
 
-  - caption: Ray ML
+  - caption: Ray ML | Machine Learning
     chapters:
       - file: data/dataset
         title: Ray Data
         sections:
-          - file: data/dataset-pipeline
-          - file: data/dataset-ml-preprocessing
-          - file: data/dataset-execution-model
-          - file: data/dataset-tensor-support
+          - file: data/getting-started
+          - file: data/user-guide
+          - file: data/key-concepts
           - file: data/examples/big_data_ingestion
-          - file: data/dask-on-ray
-          - file: data/mars-on-ray
-          - file: data/modin/index
-          - file: data/raydp
+
       - file: train/train
         title: Ray Train
         sections:
@@ -90,7 +87,7 @@ parts:
       - file: ray-more-libs/index
         title: More Ray ML Libraries
 
-  - caption: Ray Core
+  - caption: Ray Core | Distributed Applications
     chapters:
       - file: ray-core/walkthrough
         title: Getting Started
@@ -99,32 +96,19 @@ parts:
       - file: ray-core/examples/overview
         title: "Tutorials and Examples"
 
-  - caption: Deploying Ray Clusters
+  - caption: Ray Clusters | Deployments
     chapters:
       - file: cluster/quickstart
       - file: cluster/user-guide
-        sections:
-          - file: cluster/index
-          - file: cluster/guide
-          - file: cluster/job-submission
-            title: "Submitting Ray Jobs"
-          - file: cluster/ray-client
       - file: cluster/cloud
-        sections:
-          - file: cluster/aws-tips
       - file: cluster/deploy
-        sections:
-          - file: cluster/kubernetes
-          - file: cluster/yarn
-          - file: cluster/slurm
-          - file: cluster/lsf
 
   - caption: References
     chapters:
       - file: ray-references/api
       - file: ray-references/faq
 
-  - caption: Developer Guide
+  - caption: Developer Guides
     chapters:
       - file: ray-contribute/getting-involved
         sections:

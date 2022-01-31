@@ -83,23 +83,35 @@ def check_components_alive(cluster, component_type, check_component_alive):
         if check_component_alive:
             assert process.poll() is None
         else:
-            print("waiting for " + component_type + " with PID " +
-                  str(process.pid) + "to terminate")
+            print(
+                "waiting for "
+                + component_type
+                + " with PID "
+                + str(process.pid)
+                + "to terminate"
+            )
             process.wait()
-            print("done waiting for " + component_type + " with PID " +
-                  str(process.pid) + "to terminate")
+            print(
+                "done waiting for "
+                + component_type
+                + " with PID "
+                + str(process.pid)
+                + "to terminate"
+            )
             assert not process.poll() is None
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_cpus": 8,
-        "num_nodes": 4,
-        "_system_config": {
-            "num_heartbeats_timeout": 10
-        },
-    }],
-    indirect=True)
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 8,
+            "num_nodes": 4,
+            "_system_config": {"num_heartbeats_timeout": 10},
+        }
+    ],
+    indirect=True,
+)
 def test_raylet_failed(ray_start_cluster):
     cluster = ray_start_cluster
     # Kill all raylets on worker nodes.
@@ -114,14 +126,15 @@ def test_get_node_info_after_raylet_died(ray_start_cluster_head):
             cluster.redis_address,
             cluster.gcs_address,
             cluster.head_node.node_ip_address,
-            redis_password=cluster.redis_password)
+            redis_password=cluster.redis_password,
+        )
 
-    assert get_node_info(
-    ).raylet_socket_name == cluster.head_node.raylet_socket_name
+    assert get_node_info().raylet_socket_name == cluster.head_node.raylet_socket_name
 
     cluster.head_node.kill_raylet()
     wait_for_condition(
-        lambda: not cluster.global_state.node_table()[0]["Alive"], timeout=30)
+        lambda: not cluster.global_state.node_table()[0]["Alive"], timeout=30
+    )
     with pytest.raises(RuntimeError):
         get_node_info()
 
@@ -131,4 +144,5 @@ def test_get_node_info_after_raylet_died(ray_start_cluster_head):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

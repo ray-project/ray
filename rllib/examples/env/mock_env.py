@@ -83,9 +83,7 @@ class MockEnv3(gym.Env):
 
     def step(self, action):
         self.i += 1
-        return self.i, self.i, self.i >= self.episode_length, {
-            "timestep": self.i
-        }
+        return self.i, self.i, self.i >= self.episode_length, {"timestep": self.i}
 
 
 class VectorizedMockEnv(VectorEnv):
@@ -99,7 +97,8 @@ class VectorizedMockEnv(VectorEnv):
         super().__init__(
             observation_space=gym.spaces.Discrete(1),
             action_space=gym.spaces.Discrete(2),
-            num_envs=num_envs)
+            num_envs=num_envs,
+        )
         self.envs = [MockEnv(episode_length) for _ in range(num_envs)]
 
     @override(VectorEnv)
@@ -139,7 +138,8 @@ class MockVectorEnv(VectorEnv):
         super().__init__(
             observation_space=self.env.observation_space,
             action_space=self.env.action_space,
-            num_envs=mocked_num_envs)
+            num_envs=mocked_num_envs,
+        )
         self.episode_len = episode_length
         self.ts = 0
 

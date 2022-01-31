@@ -173,7 +173,8 @@ bool ClusterTaskManager::PoppedWorkerHandler(
   const auto &required_resource =
       task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
   for (auto &entry : required_resource) {
-    if (!cluster_resource_scheduler_->ResourcesExist(entry.first)) {
+    if (!cluster_resource_scheduler_->GetLocalResourceManager().ResourcesExist(
+            entry.first)) {
       RAY_CHECK(task.GetTaskSpecification().PlacementGroupBundleId().first !=
                 PlacementGroupID::Nil());
       RAY_LOG(DEBUG) << "The placement group: "
@@ -226,7 +227,8 @@ bool ClusterTaskManager::PoppedWorkerHandler(
 
     dispatched = false;
     // We've already acquired resources so we need to release them.
-    cluster_resource_scheduler_->ReleaseWorkerResources(work->allocated_instances);
+    cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
+        work->allocated_instances);
     work->allocated_instances = nullptr;
     // Release pinned task args.
     ReleaseTaskArgs(task_id);
@@ -405,8 +407,10 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       // Check if the node is still schedulable. It may not be if dependency resolution
       // took a long time.
       auto allocated_instances = std::make_shared<TaskResourceInstances>();
-      bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
-          spec.GetRequiredResources().GetResourceMap(), allocated_instances);
+      bool schedulable =
+          cluster_resource_scheduler_->GetLocalResourceManager()
+              .AllocateLocalTaskResources(spec.GetRequiredResources().GetResourceMap(),
+                                          allocated_instances);
 
       if (!schedulable) {
         ReleaseTaskArgs(task_id);
@@ -438,8 +442,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         std::string allocated_instances_serialized_json = "{}";
         if (RayConfig::instance().worker_resource_limits_enabled()) {
           allocated_instances_serialized_json =
-              cluster_resource_scheduler_->SerializedTaskResourceInstances(
-                  allocated_instances);
+              cluster_resource_scheduler_->GetLocalResourceManager()
+                  .SerializedTaskResourceInstances(allocated_instances);
         }
         work->allocated_instances = allocated_instances;
         work->SetStateWaitingForWorker();
@@ -698,7 +702,7 @@ bool ClusterTaskManager::CancelTask(
         ReplyCancelled(*work_it, failure_type);
         if ((*work_it)->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
           // We've already acquired resources so we need to release them.
-          cluster_resource_scheduler_->ReleaseWorkerResources(
+          cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
               (*work_it)->allocated_instances);
           // Release pinned task args.
           ReleaseTaskArgs(task_id);
@@ -1364,7 +1368,8 @@ void ClusterTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface>
       // the CPU instances to avoid double freeing.
       allocated_instances->ClearCPUInstances();
     }
-    cluster_resource_scheduler_->ReleaseWorkerResources(worker->GetAllocatedInstances());
+    cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
+        worker->GetAllocatedInstances());
     worker->ClearAllocatedInstances();
     return;
   }
@@ -1376,7 +1381,7 @@ void ClusterTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface>
       // the CPU instances to avoid double freeing.
       lifetime_allocated_instances->ClearCPUInstances();
     }
-    cluster_resource_scheduler_->ReleaseWorkerResources(
+    cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
         worker->GetLifetimeAllocatedInstances());
     worker->ClearLifetimeAllocatedInstances();
   }
@@ -1392,7 +1397,8 @@ bool ClusterTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
     auto cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
     if (cpu_instances.size() > 0) {
       std::vector<double> overflow_cpu_instances =
-          cluster_resource_scheduler_->AddCPUResourceInstances(cpu_instances);
+          cluster_resource_scheduler_->GetLocalResourceManager().AddCPUResourceInstances(
+              cpu_instances);
       for (unsigned int i = 0; i < overflow_cpu_instances.size(); i++) {
         RAY_CHECK(overflow_cpu_instances[i] == 0) << "Should not be overflow";
       }
@@ -1415,7 +1421,7 @@ bool ClusterTaskManager::ReturnCpuResourcesToBlockedWorker(
       // Important: we allow going negative here, since otherwise you can use infinite
       // CPU resources by repeatedly blocking / unblocking a task. By allowing it to go
       // negative, at most one task can "borrow" this worker's resources.
-      cluster_resource_scheduler_->SubtractCPUResourceInstances(
+      cluster_resource_scheduler_->GetLocalResourceManager().SubtractCPUResourceInstances(
           cpu_instances, /*allow_going_negative=*/true);
       worker->MarkUnblocked();
       return true;
@@ -1537,7 +1543,8 @@ uint64_t ClusterTaskManager::MaxRunningTasksPerSchedulingClass(
     SchedulingClass sched_cls_id) const {
   auto sched_cls = TaskSpecification::GetSchedulingClassDescriptor(sched_cls_id);
   double cpu_req = sched_cls.resource_set.GetNumCpusAsDouble();
-  uint64_t total_cpus = cluster_resource_scheduler_->GetNumCpus();
+  uint64_t total_cpus =
+      cluster_resource_scheduler_->GetLocalResourceManager().GetNumCpus();
 
   if (cpu_req == 0 || total_cpus == 0) {
     return std::numeric_limits<uint64_t>::max();
