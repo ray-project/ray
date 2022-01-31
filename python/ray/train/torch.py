@@ -337,3 +337,37 @@ def prepare_data_loader(
         data_loader = _WrappedDataLoader(data_loader, device)
 
     return data_loader
+
+
+def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer:
+    """Wraps optimizer to support automatic mixed precision.
+
+    Args:
+        optimizer (torch.optim.Optimizer): The DataLoader to prepare.
+
+    Returns:
+        A wrapped optimizer.
+    """
+    raise NotImplementedError
+
+
+@PublicAPI(stability="beta")
+def backward(tensor: torch.Tensor) -> None:
+    """Computes the gradient of the specified tensor w.r.t. graph leaves.
+
+    Args:
+        tensor (torch.Tensor): Tensor of which the derivative will be computed.
+    """
+    raise NotImplementedError
+
+
+@PublicAPI(stability="beta")
+def accelerate(amp: bool = False) -> None:
+    """Enables training optimizations.
+
+    Args:
+        amp (bool): If true, use native automatic mixed precision. Otherwise, use full
+            precision.
+    """
+    raise NotImplementedError
+
