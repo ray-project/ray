@@ -9,8 +9,11 @@ from ray.tune.result import TRAINING_ITERATION
 from torch.utils.data import DataLoader, Dataset
 
 from ray import tune
-from ray.tune.integration.pytorch_lightning import TuneReportCallback, \
-    TuneReportCheckpointCallback, _TuneCheckpointCallback
+from ray.tune.integration.pytorch_lightning import (
+    TuneReportCallback,
+    TuneReportCheckpointCallback,
+    _TuneCheckpointCallback,
+)
 
 
 class _MockDataset(Dataset):
@@ -68,57 +71,59 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
 
     def testReportCallbackUnnamed(self):
         def train(config):
-            module = _MockModule(10., 20.)
+            module = _MockModule(10.0, 20.0)
             trainer = pl.Trainer(
-                max_epochs=1,
-                callbacks=[TuneReportCallback(on="validation_end")])
+                max_epochs=1, callbacks=[TuneReportCallback(on="validation_end")]
+            )
             trainer.fit(module)
 
         analysis = tune.run(train, stop={TRAINING_ITERATION: 1})
 
-        self.assertEqual(analysis.trials[0].last_result["avg_val_loss"],
-                         10. * 1.1)
+        self.assertEqual(analysis.trials[0].last_result["avg_val_loss"], 10.0 * 1.1)
 
     def testReportCallbackNamed(self):
         def train(config):
-            module = _MockModule(10., 20.)
+            module = _MockModule(10.0, 20.0)
             trainer = pl.Trainer(
                 max_epochs=1,
                 callbacks=[
                     TuneReportCallback(
-                        {
-                            "tune_loss": "avg_val_loss"
-                        }, on="validation_end")
-                ])
+                        {"tune_loss": "avg_val_loss"}, on="validation_end"
+                    )
+                ],
+            )
             trainer.fit(module)
 
         analysis = tune.run(train, stop={TRAINING_ITERATION: 1})
 
-        self.assertEqual(analysis.trials[0].last_result["tune_loss"],
-                         10. * 1.1)
+        self.assertEqual(analysis.trials[0].last_result["tune_loss"], 10.0 * 1.1)
 
     def testCheckpointCallback(self):
         tmpdir = tempfile.mkdtemp()
         self.addCleanup(lambda: shutil.rmtree(tmpdir))
 
         def train(config):
-            module = _MockModule(10., 20.)
+            module = _MockModule(10.0, 20.0)
             trainer = pl.Trainer(
                 max_epochs=1,
                 callbacks=[
                     _TuneCheckpointCallback(
-                        "trainer.ckpt", on=["batch_end", "train_end"])
-                ])
+                        "trainer.ckpt", on=["batch_end", "train_end"]
+                    )
+                ],
+            )
             trainer.fit(module)
 
         analysis = tune.run(
             train,
             stop={TRAINING_ITERATION: 10},
             keep_checkpoints_num=100,
-            local_dir=tmpdir)
+            local_dir=tmpdir,
+        )
 
         checkpoints = [
-            dir for dir in os.listdir(analysis.trials[0].logdir)
+            dir
+            for dir in os.listdir(analysis.trials[0].logdir)
             if dir.startswith("checkpoint")
         ]
         # 10 checkpoints after each batch, 1 checkpoint at end
@@ -129,23 +134,27 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
         self.addCleanup(lambda: shutil.rmtree(tmpdir))
 
         def train(config):
-            module = _MockModule(10., 20.)
+            module = _MockModule(10.0, 20.0)
             trainer = pl.Trainer(
                 max_epochs=1,
                 callbacks=[
                     TuneReportCheckpointCallback(
-                        ["avg_val_loss"], "trainer.ckpt", on="validation_end")
-                ])
+                        ["avg_val_loss"], "trainer.ckpt", on="validation_end"
+                    )
+                ],
+            )
             trainer.fit(module)
 
         analysis = tune.run(
             train,
             stop={TRAINING_ITERATION: 10},
             keep_checkpoints_num=100,
-            local_dir=tmpdir)
+            local_dir=tmpdir,
+        )
 
         checkpoints = [
-            dir for dir in os.listdir(analysis.trials[0].logdir)
+            dir
+            for dir in os.listdir(analysis.trials[0].logdir)
             if dir.startswith("checkpoint")
         ]
         # 1 checkpoint after the validation step
@@ -155,4 +164,5 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(sys.argv[1:] + ["-v", __file__]))

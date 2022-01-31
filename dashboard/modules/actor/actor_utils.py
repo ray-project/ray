@@ -7,27 +7,29 @@ PYCLASSNAME_RE = re.compile(r"(.+?)\(")
 
 def construct_actor_groups(actors):
     """actors is a dict from actor id to an actor or an
-       actor creation task The shared fields currently are
-       "actorClass", "actorId", and "state" """
+    actor creation task The shared fields currently are
+    "actorClass", "actorId", and "state" """
     actor_groups = _group_actors_by_python_class(actors)
     stats_by_group = {
-        name: _get_actor_group_stats(group)
-        for name, group in actor_groups.items()
+        name: _get_actor_group_stats(group) for name, group in actor_groups.items()
     }
 
     summarized_actor_groups = {}
     for name, group in actor_groups.items():
         summarized_actor_groups[name] = {
             "entries": group,
-            "summary": stats_by_group[name]
+            "summary": stats_by_group[name],
         }
     return summarized_actor_groups
 
 
 def actor_classname_from_task_spec(task_spec):
-    return task_spec.get("functionDescriptor", {})\
-                .get("pythonFunctionDescriptor", {})\
-                .get("className", "Unknown actor class").split(".")[-1]
+    return (
+        task_spec.get("functionDescriptor", {})
+        .get("pythonFunctionDescriptor", {})
+        .get("className", "Unknown actor class")
+        .split(".")[-1]
+    )
 
 
 def _group_actors_by_python_class(actors):

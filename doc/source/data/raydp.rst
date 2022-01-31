@@ -1,6 +1,8 @@
-********************
-RayDP (Spark on Ray)
-********************
+.. _spark-on-ray:
+
+**************************
+Using Spark on Ray (RayDP)
+**************************
 
 RayDP combines your Spark and Ray clusters, making it easy to do large scale
 data processing using the PySpark API and seemlessly use that data to train

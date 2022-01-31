@@ -24,9 +24,11 @@ from ray.train.callbacks import MLflowLoggerCallback, TBXLoggerCallback
 
 def read_dataset(path: str) -> ray.data.Dataset:
     print(f"reading data from {path}")
-    return ray.data.read_parquet(path, _spread_resource_prefix="node:") \
-        .repartition(400) \
+    return (
+        ray.data.read_parquet(path, _spread_resource_prefix="node:")
+        .repartition(400)
         .random_shuffle(_spread_resource_prefix="node:")
+    )
 
 
 class DataPreprocessor:
@@ -42,20 +44,20 @@ class DataPreprocessor:
         # columns.
         self.standard_stats = None
 
-    def preprocess_train_data(self, ds: ray.data.Dataset
-                              ) -> Tuple[ray.data.Dataset, ray.data.Dataset]:
+    def preprocess_train_data(
+        self, ds: ray.data.Dataset
+    ) -> Tuple[ray.data.Dataset, ray.data.Dataset]:
         print("\n\nPreprocessing training dataset.\n")
         return self._preprocess(ds, False)
 
-    def preprocess_inference_data(self,
-                                  df: ray.data.Dataset) -> ray.data.Dataset:
+    def preprocess_inference_data(self, df: ray.data.Dataset) -> ray.data.Dataset:
         print("\n\nPreprocessing inference dataset.\n")
         return self._preprocess(df, True)[0]
 
-    def _preprocess(self, ds: ray.data.Dataset, inferencing: bool
-                    ) -> Tuple[ray.data.Dataset, ray.data.Dataset]:
-        print(
-            "\nStep 1: Dropping nulls, creating new_col, updating feature_1\n")
+    def _preprocess(
+        self, ds: ray.data.Dataset, inferencing: bool
+    ) -> Tuple[ray.data.Dataset, ray.data.Dataset]:
+        print("\nStep 1: Dropping nulls, creating new_col, updating feature_1\n")
 
         def batch_transformer(df: pd.DataFrame):
             # Disable chained assignment warning.
@@ -66,24 +68,29 @@ class DataPreprocessor:
 
             # Add new column.
             df["new_col"] = (
-                df["feature_1"] - 2 * df["feature_2"] + df["feature_3"]) / 3.
+                df["feature_1"] - 2 * df["feature_2"] + df["feature_3"]
+            ) / 3.0
 
             # Transform column.
-            df["feature_1"] = 2. * df["feature_1"] + 0.1
+            df["feature_1"] = 2.0 * df["feature_1"] + 0.1
 
             return df
 
         ds = ds.map_batches(batch_transformer, batch_format="pandas")
 
-        print("\nStep 2: Precalculating fruit-grouped mean for new column and "
-              "for one-hot encoding (latter only uses fruit groups)\n")
+        print(
+            "\nStep 2: Precalculating fruit-grouped mean for new column and "
+            "for one-hot encoding (latter only uses fruit groups)\n"
+        )
         fruit_means = {
             r["fruit"]: r["mean(feature_1)"]
             for r in ds.groupby("fruit").mean("feature_1").take_all()
         }
 
-        print("\nStep 3: Create mean_by_fruit as mean of feature_1 groupby "
-              "fruit; one-hot encode fruit column\n")
+        print(
+            "\nStep 3: Create mean_by_fruit as mean of feature_1 groupby "
+            "fruit; one-hot encode fruit column\n"
+        )
 
         if inferencing:
             assert self.fruits is not None
@@ -92,8 +99,7 @@ class DataPreprocessor:
             self.fruits = list(fruit_means.keys())
 
         fruit_one_hots = {
-            fruit: collections.defaultdict(int, **{fruit: 1})
-            for fruit in self.fruits
+            fruit: collections.defaultdict(int, **{fruit: 1}) for fruit in self.fruits
         }
 
         def batch_transformer(df: pd.DataFrame):
@@ -124,12 +130,12 @@ class DataPreprocessor:
             # Split into 90% training set, 10% test set.
             train_ds, test_ds = ds.split_at_indices([split_index])
 
-            print("\nStep 4b: Precalculate training dataset stats for "
-                  "standard scaling\n")
+            print(
+                "\nStep 4b: Precalculate training dataset stats for "
+                "standard scaling\n"
+            )
             # Calculate stats needed for standard scaling feature columns.
-            feature_columns = [
-                col for col in train_ds.schema().names if col != "label"
-            ]
+            feature_columns = [col for col in train_ds.schema().names if col != "label"]
             standard_aggs = [
                 agg(on=col) for col in feature_columns for agg in (Mean, Std)
             ]
@@ -152,30 +158,29 @@ class DataPreprocessor:
 
         if inferencing:
             # Apply standard scaling to inference dataset.
-            inference_ds = ds.map_batches(
-                batch_standard_scaler, batch_format="pandas")
+            inference_ds = ds.map_batches(batch_standard_scaler, batch_format="pandas")
             return inference_ds, None
         else:
             # Apply standard scaling to both training dataset and test dataset.
             train_ds = train_ds.map_batches(
-                batch_standard_scaler, batch_format="pandas")
-            test_ds = test_ds.map_batches(
-                batch_standard_scaler, batch_format="pandas")
+                batch_standard_scaler, batch_format="pandas"
+            )
+            test_ds = test_ds.map_batches(batch_standard_scaler, batch_format="pandas")
             return train_ds, test_ds
 
 
-def inference(dataset, model_cls: type, batch_size: int, result_path: str,
-              use_gpu: bool):
+def inference(
+    dataset, model_cls: type, batch_size: int, result_path: str, use_gpu: bool
+):
     print("inferencing...")
     num_gpus = 1 if use_gpu else 0
-    dataset \
-        .map_batches(
-            model_cls,
-            compute="actors",
-            batch_size=batch_size,
-            num_gpus=num_gpus,
-            num_cpus=0) \
-        .write_parquet(result_path)
+    dataset.map_batches(
+        model_cls,
+        compute="actors",
+        batch_size=batch_size,
+        num_gpus=num_gpus,
+        num_cpus=0,
+    ).write_parquet(result_path)
 
 
 """
@@ -195,8 +200,7 @@ P1:
 
 
 class Net(nn.Module):
-    def __init__(self, n_layers, n_features, num_hidden, dropout_every,
-                 drop_prob):
+    def __init__(self, n_layers, n_features, num_hidden, dropout_every, drop_prob):
         super().__init__()
         self.n_layers = n_layers
         self.dropout_every = dropout_every
@@ -236,7 +240,7 @@ class Net(nn.Module):
         return x
 
 
-def train_epoch(dataset, model, device, criterion, optimizer):
+def train_epoch(dataset, model, device, criterion, optimizer, feature_size):
     num_correct = 0
     num_total = 0
     running_loss = 0.0
@@ -249,6 +253,8 @@ def train_epoch(dataset, model, device, criterion, optimizer):
         optimizer.zero_grad()
 
         # Forward + backward + optimize
+        # check the input's shape matches the expectation
+        assert inputs.size()[1] == feature_size
         outputs = model(inputs.float())
         loss = criterion(outputs, labels.float())
         loss.backward()
@@ -307,8 +313,9 @@ def train_func(config):
     print("Defining model, loss, and optimizer...")
 
     # Setup device.
-    device = torch.device(f"cuda:{train.local_rank()}"
-                          if use_gpu and torch.cuda.is_available() else "cpu")
+    device = torch.device(
+        f"cuda:{train.local_rank()}" if use_gpu and torch.cuda.is_available() else "cpu"
+    )
     print(f"Device: {device}")
 
     # Setup data.
@@ -316,7 +323,8 @@ def train_func(config):
     train_dataset_epoch_iterator = train_dataset_pipeline.iter_epochs()
     test_dataset = train.get_dataset_shard("test_dataset")
     test_torch_dataset = test_dataset.to_torch(
-        label_column="label", batch_size=batch_size)
+        label_column="label", batch_size=batch_size
+    )
 
     net = Net(
         n_layers=num_layers,
@@ -337,30 +345,37 @@ def train_func(config):
         train_dataset = next(train_dataset_epoch_iterator)
 
         train_torch_dataset = train_dataset.to_torch(
-            label_column="label", batch_size=batch_size)
+            label_column="label", batch_size=batch_size
+        )
 
         train_running_loss, train_num_correct, train_num_total = train_epoch(
-            train_torch_dataset, net, device, criterion, optimizer)
+            train_torch_dataset, net, device, criterion, optimizer, num_features
+        )
         train_acc = train_num_correct / train_num_total
-        print(f"epoch [{epoch + 1}]: training accuracy: "
-              f"{train_num_correct} / {train_num_total} = {train_acc:.4f}")
+        print(
+            f"epoch [{epoch + 1}]: training accuracy: "
+            f"{train_num_correct} / {train_num_total} = {train_acc:.4f}"
+        )
 
         test_running_loss, test_num_correct, test_num_total = test_epoch(
-            test_torch_dataset, net, device, criterion)
+            test_torch_dataset, net, device, criterion
+        )
         test_acc = test_num_correct / test_num_total
-        print(f"epoch [{epoch + 1}]: testing accuracy: "
-              f"{test_num_correct} / {test_num_total} = {test_acc:.4f}")
+        print(
+            f"epoch [{epoch + 1}]: testing accuracy: "
+            f"{test_num_correct} / {test_num_total} = {test_acc:.4f}"
+        )
 
         # Record and log stats.
         train.report(
             train_acc=train_acc,
             train_loss=train_running_loss,
             test_acc=test_acc,
-            test_loss=test_running_loss)
+            test_loss=test_running_loss,
+        )
 
         # Checkpoint model.
-        module = (net.module
-                  if isinstance(net, DistributedDataParallel) else net)
+        module = net.module if isinstance(net, DistributedDataParallel) else net
         train.save_checkpoint(model_state_dict=module.state_dict())
 
     if train.world_rank() == 0:
@@ -379,11 +394,15 @@ class TrainingWorker:
             # Following code emulates epoch based SGD training.
             print(f"Training... worker: {self.rank}, epoch: {epoch}")
             for i, _ in enumerate(
-                    training_dataset.to_torch(
-                        batch_size=self.batch_size, label_column="label")):
+                training_dataset.to_torch(
+                    batch_size=self.batch_size, label_column="label"
+                )
+            ):
                 if i % 10000 == 0:
-                    print(f"epoch: {epoch}, worker: {self.rank},"
-                          f" processing batch: {i}")
+                    print(
+                        f"epoch: {epoch}, worker: {self.rank},"
+                        f" processing batch: {i}"
+                    )
 
 
 if __name__ == "__main__":
@@ -392,48 +411,50 @@ if __name__ == "__main__":
         "--use-s3",
         action="store_true",
         default=False,
-        help="Use data from s3 for testing.")
+        help="Use data from s3 for testing.",
+    )
     parser.add_argument(
         "--smoke-test",
         action="store_true",
         default=False,
-        help="Finish quickly for testing.")
+        help="Finish quickly for testing.",
+    )
     parser.add_argument(
         "--address",
         required=False,
         type=str,
-        help=("The address to use for Ray. `auto` if running through "
-              "`ray submit`"))
+        help=("The address to use for Ray. `auto` if running through " "`ray submit`"),
+    )
     parser.add_argument(
         "--num-workers",
         default=1,
         type=int,
-        help="The number of Ray workers to use for distributed training")
+        help="The number of Ray workers to use for distributed training",
+    )
     parser.add_argument(
-        "--large-dataset",
-        action="store_true",
-        default=False,
-        help="Use 100GB dataset")
+        "--large-dataset", action="store_true", default=False, help="Use 100GB dataset"
+    )
     parser.add_argument(
-        "--use-gpu",
-        action="store_true",
-        default=False,
-        help="Use GPU for training.")
+        "--use-gpu", action="store_true", default=False, help="Use GPU for training."
+    )
     parser.add_argument(
         "--mlflow-register-model",
         action="store_true",
         help="Whether to use mlflow model registry. If set, a local MLflow "
-        "tracking server is expected to have already been started.")
+        "tracking server is expected to have already been started.",
+    )
     parser.add_argument(
         "--debug",
         action="store_true",
         default=False,
-        help="Use dummy trainer to debug dataset performance")
+        help="Use dummy trainer to debug dataset performance",
+    )
     parser.add_argument(
         "--num-epochs",
         default=2,
         type=int,
-        help="The number of epochs to use for training")
+        help="The number of epochs to use for training",
+    )
 
     args = parser.parse_args()
     smoke_test = args.smoke_test
@@ -481,8 +502,9 @@ if __name__ == "__main__":
         # 156 files, 3_120_000_000 rows and 501_748_803_387 bytes
         # cuj-big-data/100GB stats
         # 33 files, 660_000_000 rows and 106_139_169_947 bytes
-        data_path = ("s3://cuj-big-data/100GB/"
-                     if large_dataset else "s3://cuj-big-data/data/")
+        data_path = (
+            "s3://cuj-big-data/100GB/" if large_dataset else "s3://cuj-big-data/data/"
+        )
         inference_path = "s3://cuj-big-data/inference/"
         inference_output_path = "s3://cuj-big-data/output/"
     else:
@@ -490,20 +512,19 @@ if __name__ == "__main__":
         inference_path = os.path.join(dir_path, "inference")
         inference_output_path = "/tmp"
 
-        if len(os.listdir(data_path)) <= 1 or len(
-                os.listdir(inference_path)) <= 1:
+        if len(os.listdir(data_path)) <= 1 or len(os.listdir(inference_path)) <= 1:
             print("please run `python make_and_upload_dataset.py` first")
             sys.exit(1)
 
     if smoke_test:
         # Only read a single file.
         data_path = os.path.join(data_path, "data_00000.parquet.snappy")
-        inference_path = os.path.join(inference_path,
-                                      "data_00000.parquet.snappy")
+        inference_path = os.path.join(inference_path, "data_00000.parquet.snappy")
 
     preprocessor = DataPreprocessor()
     train_dataset, test_dataset = preprocessor.preprocess_train_data(
-        read_dataset(data_path))
+        read_dataset(data_path)
+    )
 
     preprocessing_end_time = timeit.default_timer()
     print("Preprocessing time (s): ", preprocessing_end_time - e2e_start_time)
@@ -520,14 +541,18 @@ if __name__ == "__main__":
 
     if args.debug:
         num_gpus = 1 if use_gpu else 0
-        shards = train_dataset.repeat(num_epochs) \
-            .random_shuffle_each_window(_spread_resource_prefix="node:") \
+        shards = (
+            train_dataset.repeat(num_epochs)
+            .random_shuffle_each_window(_spread_resource_prefix="node:")
             .split(num_workers)
+        )
         del train_dataset
 
         training_workers = [
             TrainingWorker.options(num_gpus=num_gpus, num_cpus=0).remote(
-                rank, shard, BATCH_SIZE) for rank, shard in enumerate(shards)
+                rank, shard, BATCH_SIZE
+            )
+            for rank, shard in enumerate(shards)
         ]
         ray.get([worker.train.remote() for worker in training_workers])
 
@@ -539,14 +564,12 @@ if __name__ == "__main__":
         exit()
 
     # Random global shuffle
-    train_dataset_pipeline = train_dataset.repeat() \
-        .random_shuffle_each_window(_spread_resource_prefix="node:")
+    train_dataset_pipeline = train_dataset.repeat().random_shuffle_each_window(
+        _spread_resource_prefix="node:"
+    )
     del train_dataset
 
-    datasets = {
-        "train_dataset": train_dataset_pipeline,
-        "test_dataset": test_dataset
-    }
+    datasets = {"train_dataset": train_dataset_pipeline, "test_dataset": test_dataset}
 
     config = {
         "use_gpu": use_gpu,
@@ -556,7 +579,7 @@ if __name__ == "__main__":
         "num_layers": NUM_LAYERS,
         "dropout_every": DROPOUT_EVERY,
         "dropout_prob": DROPOUT_PROB,
-        "num_features": num_features
+        "num_features": num_features,
     }
 
     # Create 2 callbacks: one for Tensorboard Logging and one for MLflow
@@ -569,7 +592,8 @@ if __name__ == "__main__":
     callbacks = [
         TBXLoggerCallback(logdir=tbx_runs_dir),
         MLflowLoggerCallback(
-            experiment_name="cuj-big-data-training", save_artifact=True)
+            experiment_name="cuj-big-data-training", save_artifact=True
+        ),
     ]
 
     # Remove CPU resource so Datasets can be scheduled.
@@ -579,13 +603,12 @@ if __name__ == "__main__":
         backend="torch",
         num_workers=num_workers,
         use_gpu=use_gpu,
-        resources_per_worker=resources_per_worker)
+        resources_per_worker=resources_per_worker,
+    )
     trainer.start()
     results = trainer.run(
-        train_func=train_func,
-        config=config,
-        callbacks=callbacks,
-        dataset=datasets)
+        train_func=train_func, config=config, callbacks=callbacks, dataset=datasets
+    )
     model = results[0]
     trainer.shutdown()
 
@@ -594,7 +617,8 @@ if __name__ == "__main__":
 
     if args.mlflow_register_model:
         mlflow.pytorch.log_model(
-            model, artifact_path="models", registered_model_name="torch_model")
+            model, artifact_path="models", registered_model_name="torch_model"
+        )
 
         # Get the latest model from mlflow model registry.
         client = mlflow.tracking.MlflowClient()
@@ -602,7 +626,8 @@ if __name__ == "__main__":
         # Get the info for the latest model.
         # By default, registered models are in stage "None".
         latest_model_info = client.get_latest_versions(
-            registered_model_name, stages=["None"])[0]
+            registered_model_name, stages=["None"]
+        )[0]
         latest_version = latest_model_info.version
 
         def load_model_func():
@@ -624,25 +649,30 @@ if __name__ == "__main__":
                 n_features=num_features,
                 num_hidden=num_hidden,
                 dropout_every=dropout_every,
-                drop_prob=dropout_prob)
+                drop_prob=dropout_prob,
+            )
             model.load_state_dict(state_dict)
             return model
 
     class BatchInferModel:
         def __init__(self, load_model_func):
-            self.device = torch.device("cuda:0"
-                                       if torch.cuda.is_available() else "cpu")
+            self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
             self.model = load_model_func().to(self.device)
 
         def __call__(self, batch) -> "pd.DataFrame":
-            tensor = torch.FloatTensor(batch.to_pandas().values).to(
-                self.device)
+            tensor = torch.FloatTensor(batch.to_pandas().values).to(self.device)
             return pd.DataFrame(self.model(tensor).cpu().detach().numpy())
 
     inference_dataset = preprocessor.preprocess_inference_data(
-        read_dataset(inference_path))
-    inference(inference_dataset, BatchInferModel(load_model_func), 100,
-              inference_output_path, use_gpu)
+        read_dataset(inference_path)
+    )
+    inference(
+        inference_dataset,
+        BatchInferModel(load_model_func),
+        100,
+        inference_output_path,
+        use_gpu,
+    )
 
     e2e_end_time = timeit.default_timer()
     print("Inference time (s): ", e2e_end_time - training_end_time)

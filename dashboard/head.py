@@ -8,6 +8,7 @@ from concurrent.futures import Future
 from queue import Queue
 
 import grpc
+
 try:
     from grpc import aio as aiogrpc
 except ImportError:
@@ -20,8 +21,11 @@ import ray._private.services
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray import ray_constants
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, \
-    GcsAioErrorSubscriber, GcsAioLogSubscriber
+from ray._private.gcs_pubsub import (
+    gcs_pubsub_enabled,
+    GcsAioErrorSubscriber,
+    GcsAioLogSubscriber,
+)
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.datacenter import DataOrganizer
@@ -33,33 +37,33 @@ aiogrpc.init_grpc_aio()
 GRPC_CHANNEL_OPTIONS = (
     ("grpc.enable_http_proxy", 0),
     ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-    ("grpc.max_receive_message_length",
-     ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+    ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
 )
 
 
 async def get_gcs_address_with_retry(redis_client) -> str:
     while True:
         try:
-            gcs_address = (await redis_client.get(
-                dashboard_consts.GCS_SERVER_ADDRESS)).decode()
+            gcs_address = (
+                await redis_client.get(dashboard_consts.GCS_SERVER_ADDRESS)
+            ).decode()
             if not gcs_address:
                 raise Exception("GCS address not found.")
             logger.info("Connect to GCS at %s", gcs_address)
             return gcs_address
         except Exception as ex:
             logger.error("Connect to GCS failed: %s, retry...", ex)
-            await asyncio.sleep(
-                dashboard_consts.GCS_RETRY_CONNECT_INTERVAL_SECONDS)
+            await asyncio.sleep(dashboard_consts.GCS_RETRY_CONNECT_INTERVAL_SECONDS)
 
 
 class GCSHealthCheckThread(threading.Thread):
     def __init__(self, gcs_address: str):
         self.grpc_gcs_channel = ray._private.utils.init_grpc_channel(
-            gcs_address, options=GRPC_CHANNEL_OPTIONS)
-        self.gcs_heartbeat_info_stub = (
-            gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
-                self.grpc_gcs_channel))
+            gcs_address, options=GRPC_CHANNEL_OPTIONS
+        )
+        self.gcs_heartbeat_info_stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
+            self.grpc_gcs_channel
+        )
         self.work_queue = Queue()
 
         super().__init__(daemon=True)
@@ -74,10 +78,10 @@ class GCSHealthCheckThread(threading.Thread):
         request = gcs_service_pb2.CheckAliveRequest()
         try:
             reply = self.gcs_heartbeat_info_stub.CheckAlive(
-                request, timeout=dashboard_consts.GCS_CHECK_ALIVE_RPC_TIMEOUT)
+                request, timeout=dashboard_consts.GCS_CHECK_ALIVE_RPC_TIMEOUT
+            )
             if reply.status.code != 0:
-                logger.exception(
-                    f"Failed to CheckAlive: {reply.status.message}")
+                logger.exception(f"Failed to CheckAlive: {reply.status.message}")
                 return False
         except grpc.RpcError:  # Deadline Exceeded
             logger.exception("Got RpcError when checking GCS is alive")
@@ -86,9 +90,9 @@ class GCSHealthCheckThread(threading.Thread):
 
     async def check_once(self) -> bool:
         """Ask the thread to perform a healthcheck."""
-        assert threading.current_thread != self, (
-            "caller shouldn't be from the same thread as GCSHealthCheckThread."
-        )
+        assert (
+            threading.current_thread != self
+        ), "caller shouldn't be from the same thread as GCSHealthCheckThread."
 
         future = Future()
         self.work_queue.put(future)
@@ -129,7 +133,7 @@ class DashboardHead:
         else:
             ip, port = gcs_address.split(":")
 
-        self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
+        self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
             self.server, f"{grpc_ip}:0")
@@ -159,7 +163,8 @@ class DashboardHead:
         # Otherwise, the dashboard will always think that gcs is alive.
         try:
             is_alive = await asyncio.wait_for(
-                check_future, dashboard_consts.GCS_CHECK_ALIVE_RPC_TIMEOUT + 1)
+                check_future, dashboard_consts.GCS_CHECK_ALIVE_RPC_TIMEOUT + 1
+            )
         except asyncio.TimeoutError:
             logger.error("Failed to check gcs health, client timed out.")
             is_alive = False
@@ -168,13 +173,16 @@ class DashboardHead:
             self._gcs_rpc_error_counter = 0
         else:
             self._gcs_rpc_error_counter += 1
-            if self._gcs_rpc_error_counter > \
-                    dashboard_consts.GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR:
+            if (
+                self._gcs_rpc_error_counter
+                > dashboard_consts.GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR
+            ):
                 logger.error(
                     "Dashboard exiting because it received too many GCS RPC "
                     "errors count: %s, threshold is %s.",
                     self._gcs_rpc_error_counter,
-                    dashboard_consts.GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR)
+                    dashboard_consts.GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR,
+                )
                 # TODO(fyrestone): Do not use ray.state in
                 # PrometheusServiceDiscoveryWriter.
                 # Currently, we use os._exit() here to avoid hanging at the ray
@@ -186,10 +194,12 @@ class DashboardHead:
         """Load dashboard head modules."""
         modules = []
         head_cls_list = dashboard_utils.get_all_modules(
-            dashboard_utils.DashboardHeadModule)
+            dashboard_utils.DashboardHeadModule
+        )
         for cls in head_cls_list:
-            logger.info("Loading %s: %s",
-                        dashboard_utils.DashboardHeadModule.__name__, cls)
+            logger.info(
+                "Loading %s: %s", dashboard_utils.DashboardHeadModule.__name__, cls
+            )
             c = cls(self)
             modules.append(c)
         logger.info("Loaded %d modules.", len(modules))
@@ -201,15 +211,17 @@ class DashboardHead:
             return self.gcs_address
         else:
             try:
-                self.aioredis_client = \
-                    await dashboard_utils.get_aioredis_client(
-                        self.redis_address, self.redis_password,
-                        dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
-                        dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
+                self.aioredis_client = await dashboard_utils.get_aioredis_client(
+                    self.redis_address,
+                    self.redis_password,
+                    dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
+                    dashboard_consts.RETRY_REDIS_CONNECTION_TIMES,
+                )
             except (socket.gaierror, ConnectionError):
                 logger.error(
-                    "Dashboard head exiting: "
-                    "Failed to connect to redis at %s", self.redis_address)
+                    "Dashboard head exiting: " "Failed to connect to redis at %s",
+                    self.redis_address,
+                )
                 sys.exit(-1)
             return await get_gcs_address_with_retry(self.aioredis_client)
 
@@ -217,14 +229,13 @@ class DashboardHead:
         gcs_address = await self.get_gcs_address()
 
         # Dashboard will handle connection failure automatically
-        self.gcs_client = GcsClient(
-            address=gcs_address, nums_reconnect_retry=0)
+        self.gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=0)
         internal_kv._initialize_internal_kv(self.gcs_client)
         self.aiogrpc_gcs_channel = ray._private.utils.init_grpc_channel(
-            gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True)
+            gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
+        )
         if gcs_pubsub_enabled():
-            self.gcs_error_subscriber = GcsAioErrorSubscriber(
-                address=gcs_address)
+            self.gcs_error_subscriber = GcsAioErrorSubscriber(address=gcs_address)
             self.gcs_log_subscriber = GcsAioLogSubscriber(address=gcs_address)
             await self.gcs_error_subscriber.subscribe()
             await self.gcs_log_subscriber.subscribe()
@@ -260,7 +271,8 @@ class DashboardHead:
         internal_kv._internal_kv_put(
             dashboard_consts.DASHBOARD_RPC_ADDRESS,
             f"{self.ip}:{self.grpc_port}",
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        )
 
         # Freeze signal after all modules loaded.
         dashboard_utils.SignalManager.freeze()
@@ -270,8 +282,7 @@ class DashboardHead:
             DataOrganizer.purge(),
             DataOrganizer.organize(),
         ]
-        await asyncio.gather(*concurrent_tasks,
-                             *(m.run(self.server) for m in modules))
+        await asyncio.gather(*concurrent_tasks, *(m.run(self.server) for m in modules))
         await self.server.wait_for_termination()
 
         if not self.minimal:

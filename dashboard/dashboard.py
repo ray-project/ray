@@ -66,92 +66,96 @@ class Dashboard:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Ray dashboard.")
     parser.add_argument(
-        "--host",
-        required=True,
-        type=str,
-        help="The host to use for the HTTP server.")
+        "--host", required=True, type=str, help="The host to use for the HTTP server."
+    )
     parser.add_argument(
-        "--port",
-        required=True,
-        type=int,
-        help="The port to use for the HTTP server.")
+        "--port", required=True, type=int, help="The port to use for the HTTP server."
+    )
     parser.add_argument(
         "--port-retries",
         required=False,
         type=int,
         default=0,
-        help="The retry times to select a valid port.")
+        help="The retry times to select a valid port.",
+    )
     parser.add_argument(
-        "--gcs-address",
-        required=False,
-        type=str,
-        help="The address (ip:port) of GCS.")
+        "--gcs-address", required=False, type=str, help="The address (ip:port) of GCS."
+    )
     parser.add_argument(
-        "--redis-address",
-        required=True,
-        type=str,
-        help="The address to use for Redis.")
+        "--redis-address", required=True, type=str, help="The address to use for Redis."
+    )
     parser.add_argument(
         "--redis-password",
         required=False,
         type=str,
         default=None,
-        help="The password to use for Redis")
+        help="The password to use for Redis",
+    )
     parser.add_argument(
         "--logging-level",
         required=False,
         type=lambda s: logging.getLevelName(s.upper()),
         default=ray_constants.LOGGER_LEVEL,
         choices=ray_constants.LOGGER_LEVEL_CHOICES,
-        help=ray_constants.LOGGER_LEVEL_HELP)
+        help=ray_constants.LOGGER_LEVEL_HELP,
+    )
     parser.add_argument(
         "--logging-format",
         required=False,
         type=str,
         default=ray_constants.LOGGER_FORMAT,
-        help=ray_constants.LOGGER_FORMAT_HELP)
+        help=ray_constants.LOGGER_FORMAT_HELP,
+    )
     parser.add_argument(
         "--logging-filename",
         required=False,
         type=str,
         default=dashboard_consts.DASHBOARD_LOG_FILENAME,
         help="Specify the name of log file, "
-        "log to stdout if set empty, default is \"{}\"".format(
-            dashboard_consts.DASHBOARD_LOG_FILENAME))
+        'log to stdout if set empty, default is "{}"'.format(
+            dashboard_consts.DASHBOARD_LOG_FILENAME
+        ),
+    )
     parser.add_argument(
         "--logging-rotate-bytes",
         required=False,
         type=int,
         default=ray_constants.LOGGING_ROTATE_BYTES,
         help="Specify the max bytes for rotating "
-        "log file, default is {} bytes.".format(
-            ray_constants.LOGGING_ROTATE_BYTES))
+        "log file, default is {} bytes.".format(ray_constants.LOGGING_ROTATE_BYTES),
+    )
     parser.add_argument(
         "--logging-rotate-backup-count",
         required=False,
         type=int,
         default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
-        help="Specify the backup count of rotated log file, default is {}.".
-        format(ray_constants.LOGGING_ROTATE_BACKUP_COUNT))
+        help="Specify the backup count of rotated log file, default is {}.".format(
+            ray_constants.LOGGING_ROTATE_BACKUP_COUNT
+        ),
+    )
     parser.add_argument(
         "--log-dir",
         required=True,
         type=str,
         default=None,
-        help="Specify the path of log directory.")
+        help="Specify the path of log directory.",
+    )
     parser.add_argument(
         "--temp-dir",
         required=True,
         type=str,
         default=None,
-        help="Specify the path of the temporary directory use by Ray process.")
+        help="Specify the path of the temporary directory use by Ray process.",
+    )
     parser.add_argument(
         "--minimal",
         action="store_true",
         help=(
             "Minimal dashboard only contains a subset of features that don't "
             "require additional dependencies installed when ray is installed "
-            "by `pip install ray[default]`."))
+            "by `pip install ray[default]`."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -168,7 +172,8 @@ if __name__ == "__main__":
             log_dir=args.log_dir,
             filename=args.logging_filename,
             max_bytes=args.logging_rotate_bytes,
-            backup_count=args.logging_rotate_backup_count)
+            backup_count=args.logging_rotate_backup_count,
+        )
 
         dashboard = Dashboard(
             args.host,
@@ -203,17 +208,21 @@ if __name__ == "__main__":
                 gcs_publisher = GcsPublisher(args.gcs_address)
             else:
                 redis_client = ray._private.services.create_redis_client(
-                    args.redis_address, password=args.redis_password)
+                    args.redis_address, password=args.redis_password
+                )
                 gcs_publisher = GcsPublisher(
-                    address=gcs_utils.get_gcs_address_from_redis(redis_client))
+                    address=gcs_utils.get_gcs_address_from_redis(redis_client)
+                )
                 redis_client = None
         else:
             redis_client = ray._private.services.create_redis_client(
-                args.redis_address, password=args.redis_password)
+                args.redis_address, password=args.redis_password
+            )
 
         ray._private.utils.publish_error_to_driver(
             redis_client,
             ray_constants.DASHBOARD_DIED_ERROR,
             message,
             redis_client=redis_client,
-            gcs_publisher=gcs_publisher)
+            gcs_publisher=gcs_publisher,
+        )

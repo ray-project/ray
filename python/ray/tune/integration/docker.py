@@ -39,13 +39,12 @@ class DockerSyncer(NodeSyncer):
 
     _cluster_config_file = os.path.expanduser("~/ray_bootstrap_config.yaml")
 
-    def __init__(self,
-                 local_dir: str,
-                 remote_dir: str,
-                 sync_client: Optional[SyncClient] = None):
+    def __init__(
+        self, local_dir: str, remote_dir: str, sync_client: Optional[SyncClient] = None
+    ):
         configure_logging(
-            log_style="record",
-            verbosity=env_integer("TUNE_SYNCER_VERBOSITY", 0))
+            log_style="record", verbosity=env_integer("TUNE_SYNCER_VERBOSITY", 0)
+        )
         self.local_ip = get_node_ip_address()
         self.worker_ip = None
 
@@ -89,10 +88,9 @@ class DockerSyncClient(SyncClient):
     def configure(self, cluster_config_file: str):
         self._cluster_config_file = cluster_config_file
 
-    def sync_up(self,
-                source: str,
-                target: Tuple[str, str],
-                exclude: Optional[List] = None) -> bool:
+    def sync_up(
+        self, source: str, target: Tuple[str, str], exclude: Optional[List] = None
+    ) -> bool:
         """Here target is a tuple (target_node, target_dir)"""
         target_node, target_dir = target
 
@@ -100,6 +98,7 @@ class DockerSyncClient(SyncClient):
         source = os.path.join(source, "")
         target_dir = os.path.join(target_dir, "")
         import click
+
         try:
             rsync(
                 cluster_config=self._cluster_config_file,
@@ -108,20 +107,21 @@ class DockerSyncClient(SyncClient):
                 down=False,
                 ip_address=target_node,
                 should_bootstrap=self._should_bootstrap,
-                use_internal_ip=True)
+                use_internal_ip=True,
+            )
         except click.ClickException:
             if log_once("docker_rsync_up_fail"):
                 logger.warning(
                     "Rsync-up failed. Consider using a durable trainable "
-                    "or setting the `TUNE_SYNC_DISABLE_BOOTSTRAP=1` env var.")
+                    "or setting the `TUNE_SYNC_DISABLE_BOOTSTRAP=1` env var."
+                )
             raise
 
         return True
 
-    def sync_down(self,
-                  source: Tuple[str, str],
-                  target: str,
-                  exclude: Optional[List] = None) -> bool:
+    def sync_down(
+        self, source: Tuple[str, str], target: str, exclude: Optional[List] = None
+    ) -> bool:
         """Here source is a tuple (source_node, source_dir)"""
         source_node, source_dir = source
 
@@ -129,6 +129,7 @@ class DockerSyncClient(SyncClient):
         source_dir = os.path.join(source_dir, "")
         target = os.path.join(target, "")
         import click
+
         try:
             rsync(
                 cluster_config=self._cluster_config_file,
@@ -137,12 +138,14 @@ class DockerSyncClient(SyncClient):
                 down=True,
                 ip_address=source_node,
                 should_bootstrap=self._should_bootstrap,
-                use_internal_ip=True)
+                use_internal_ip=True,
+            )
         except click.ClickException:
             if log_once("docker_rsync_down_fail"):
                 logger.warning(
                     "Rsync-down failed. Consider using a durable trainable "
-                    "or setting the `TUNE_SYNC_DISABLE_BOOTSTRAP=1` env var.")
+                    "or setting the `TUNE_SYNC_DISABLE_BOOTSTRAP=1` env var."
+                )
             raise
 
         return True
