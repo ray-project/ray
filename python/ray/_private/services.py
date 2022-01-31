@@ -1491,6 +1491,10 @@ def start_dashboard(
                 colorama.Fore.RESET,
                 colorama.Style.NORMAL,
             )
+        else:
+            # If it is the minimal installation, the web url (dashboard url)
+            # shouldn't be configured because it doesn't start a server.
+            dashboard_url = ""
 
         return dashboard_url, process_info
     except Exception as e:

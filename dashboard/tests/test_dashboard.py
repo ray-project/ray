@@ -10,7 +10,6 @@ import subprocess
 import collections
 
 import numpy as np
-import aiohttp.web
 import ray
 import psutil
 import pytest
@@ -30,12 +29,18 @@ from ray.ray_constants import DEBUG_AUTOSCALING_STATUS_LEGACY, DEBUG_AUTOSCALING
 from ray.dashboard import dashboard
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.modules
 from ray._private.gcs_utils import use_gcs_for_bootstrap
 
+try:
+    import aiohttp.web
+    import ray.dashboard.optional_utils as dashboard_optional_utils
+
+    routes = dashboard_optional_utils.ClassMethodRouteTable
+except Exception:
+    pass
+
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
 def make_gcs_client(address_info):
@@ -84,7 +89,6 @@ cleanup_test_files()
 def test_basic(ray_start_with_dashboard):
     """Dashboard test that starts a Ray cluster with a dashboard server running,
     then hits the dashboard API and asserts that it receives sensible data."""
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     address_info = ray_start_with_dashboard
     node_id = address_info["node_id"]
     gcs_client = make_gcs_client(address_info)
@@ -187,14 +191,20 @@ def test_basic(ray_start_with_dashboard):
 )
 def test_dashboard_address(ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
-    webui_ip = webui_url.split(":")[0]
-    assert not ipaddress.ip_address(webui_ip).is_unspecified
-    assert webui_ip in ["127.0.0.1", ray_start_with_dashboard["node_ip_address"]]
+    if os.environ.get("RAY_MINIMAL") == "1":
+        # In the minimal installation, webui url shouldn't be configured.
+        assert webui_url == ""
+    else:
+        webui_ip = webui_url.split(":")[0]
+        print(ipaddress.ip_address(webui_ip))
+        print(webui_ip)
+        assert not ipaddress.ip_address(webui_ip).is_unspecified
+        assert webui_ip in ["127.0.0.1", ray_start_with_dashboard["node_ip_address"]]
 
 
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is only run in CI with a minimal Ray installation.",
+    reason="This test is not supposed to work for minimal installation.",
 )
 def test_http_get(enable_test_module, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
@@ -242,7 +252,7 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
 
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is only run in CI with a minimal Ray installation.",
+    reason="This test is not supposed to work for minimal installation.",
 )
 def test_class_method_route_table(enable_test_module):
     head_cls_list = dashboard_utils.get_all_modules(dashboard_utils.DashboardHeadModule)
@@ -329,7 +339,7 @@ def test_class_method_route_table(enable_test_module):
 
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is only run in CI with a minimal Ray installation.",
+    reason="This test is not supposed to work for minimal installation.",
 )
 def test_async_loop_forever():
     counter = [0]
@@ -364,7 +374,7 @@ def test_async_loop_forever():
 
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is only run in CI with a minimal Ray installation.",
+    reason="This test is not supposed to work for minimal installation.",
 )
 def test_dashboard_module_decorator(enable_test_module):
     head_cls_list = dashboard_utils.get_all_modules(dashboard_utils.DashboardHeadModule)
@@ -395,7 +405,7 @@ print("success")
 
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is only run in CI with a minimal Ray installation.",
+    reason="This test is not supposed to work for minimal installation.",
 )
 def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
@@ -466,7 +476,7 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
 
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is only run in CI with a minimal Ray installation.",
+    reason="This test is not supposed to work for minimal installation.",
 )
 def test_get_cluster_status(ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
@@ -511,7 +521,7 @@ def test_get_cluster_status(ray_start_with_dashboard):
 
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is only run in CI with a minimal Ray installation.",
+    reason="This test is not supposed to work for minimal installation.",
 )
 def test_immutable_types():
     d = {str(i): i for i in range(1000)}
@@ -591,7 +601,7 @@ def test_immutable_types():
 
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is only run in CI with a minimal Ray installation.",
+    reason="This test is not supposed to work for minimal installation.",
 )
 def test_http_proxy(enable_test_module, set_http_proxy, shutdown_only):
     address_info = ray.init(num_cpus=1, include_dashboard=True)
@@ -623,6 +633,10 @@ def test_http_proxy(enable_test_module, set_http_proxy, shutdown_only):
                 raise Exception("Timed out while testing.")
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_dashboard_port_conflict(ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     address_info = ray_start_with_dashboard
@@ -671,7 +685,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
 
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is only run in CI with a minimal Ray installation.",
+    reason="This test is not supposed to work for minimal installation.",
 )
 def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
