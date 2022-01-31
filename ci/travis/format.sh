@@ -5,7 +5,7 @@
 # Cause the script to exit if a single command fails
 set -euo pipefail
 
-BLACK_IS_ENABLED=false
+BLACK_IS_ENABLED=true
 
 FLAKE8_VERSION_REQUIRED="3.9.1"
 BLACK_VERSION_REQUIRED="21.12b0"

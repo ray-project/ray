@@ -12,9 +12,15 @@ import ray.cloudpickle as cloudpickle
 from ray.tune.callback import Callback
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.util.debug import log_once
-from ray.tune.result import (TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
-                             EXPR_PARAM_FILE, EXPR_PARAM_PICKLE_FILE,
-                             EXPR_PROGRESS_FILE, EXPR_RESULT_FILE)
+from ray.tune.result import (
+    TRAINING_ITERATION,
+    TIME_TOTAL_S,
+    TIMESTEPS_TOTAL,
+    EXPR_PARAM_FILE,
+    EXPR_PARAM_PICKLE_FILE,
+    EXPR_PROGRESS_FILE,
+    EXPR_RESULT_FILE,
+)
 from ray.tune.utils import flatten_dict
 from ray.util.annotations import PublicAPI
 
@@ -40,10 +46,7 @@ class Logger:
         trial (Trial): Trial object for the logger to access.
     """
 
-    def __init__(self,
-                 config: Dict,
-                 logdir: str,
-                 trial: Optional["Trial"] = None):
+    def __init__(self, config: Dict, logdir: str, trial: Optional["Trial"] = None):
         self.config = config
         self.logdir = logdir
         self.trial = trial
@@ -110,12 +113,7 @@ class JsonLogger(Logger):
         self.config = config
         config_out = os.path.join(self.logdir, EXPR_PARAM_FILE)
         with open(config_out, "w") as f:
-            json.dump(
-                self.config,
-                f,
-                indent=2,
-                sort_keys=True,
-                cls=SafeFallbackEncoder)
+            json.dump(self.config, f, indent=2, sort_keys=True, cls=SafeFallbackEncoder)
         config_pkl = os.path.join(self.logdir, EXPR_PARAM_PICKLE_FILE)
         with open(config_pkl, "wb") as f:
             cloudpickle.dump(self.config, f)
@@ -148,8 +146,8 @@ class CSVLogger(Logger):
             if not self._continuing:
                 self._csv_out.writeheader()
         self._csv_out.writerow(
-            {k: v
-             for k, v in result.items() if k in self._csv_out.fieldnames})
+            {k: v for k, v in result.items() if k in self._csv_out.fieldnames}
+        )
         self._file.flush()
 
     def flush(self):
@@ -177,8 +175,7 @@ class TBXLogger(Logger):
             from tensorboardX import SummaryWriter
         except ImportError:
             if log_once("tbx-install"):
-                logger.info(
-                    "pip install \"ray[tune]\" to see TensorBoard files.")
+                logger.info('pip install "ray[tune]" to see TensorBoard files.')
             raise
         self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
         self.last_result = None
@@ -187,9 +184,7 @@ class TBXLogger(Logger):
         step = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
 
         tmp = result.copy()
-        for k in [
-                "config", "pid", "timestamp", TIME_TOTAL_S, TRAINING_ITERATION
-        ]:
+        for k in ["config", "pid", "timestamp", TIME_TOTAL_S, TRAINING_ITERATION]:
             if k in tmp:
                 del tmp[k]  # not useful to log these
 
@@ -199,32 +194,31 @@ class TBXLogger(Logger):
 
         for attr, value in flat_result.items():
             full_attr = "/".join(path + [attr])
-            if (isinstance(value, tuple(VALID_SUMMARY_TYPES))
-                    and not np.isnan(value)):
+            if isinstance(value, tuple(VALID_SUMMARY_TYPES)) and not np.isnan(value):
                 valid_result[full_attr] = value
-                self._file_writer.add_scalar(
-                    full_attr, value, global_step=step)
-            elif ((isinstance(value, list) and len(value) > 0)
-                  or (isinstance(value, np.ndarray) and value.size > 0)):
+                self._file_writer.add_scalar(full_attr, value, global_step=step)
+            elif (isinstance(value, list) and len(value) > 0) or (
+                isinstance(value, np.ndarray) and value.size > 0
+            ):
                 valid_result[full_attr] = value
 
                 # Must be video
                 if isinstance(value, np.ndarray) and value.ndim == 5:
                     self._file_writer.add_video(
-                        full_attr, value, global_step=step, fps=20)
+                        full_attr, value, global_step=step, fps=20
+                    )
                     continue
 
                 try:
-                    self._file_writer.add_histogram(
-                        full_attr, value, global_step=step)
+                    self._file_writer.add_histogram(full_attr, value, global_step=step)
                 # In case TensorboardX still doesn't think it's a valid value
                 # (e.g. `[[]]`), warn and move on.
                 except (ValueError, TypeError):
                     if log_once("invalid_tbx_value"):
                         logger.warning(
                             "You are trying to log an invalid value ({}={}) "
-                            "via {}!".format(full_attr, value,
-                                             type(self).__name__))
+                            "via {}!".format(full_attr, value, type(self).__name__)
+                        )
 
         self.last_result = valid_result
         self._file_writer.flush()
@@ -249,9 +243,7 @@ class TBXLogger(Logger):
         # TBX currently errors if the hparams value is None.
         flat_params = flatten_dict(self.trial.evaluated_params)
         scrubbed_params = {
-            k: v
-            for k, v in flat_params.items()
-            if isinstance(v, self.VALID_HPARAMS)
+            k: v for k, v in flat_params.items() if isinstance(v, self.VALID_HPARAMS)
         }
 
         np_params = {
@@ -270,19 +262,25 @@ class TBXLogger(Logger):
         if removed:
             logger.info(
                 "Removed the following hyperparameter values when "
-                "logging to tensorboard: %s", str(removed))
+                "logging to tensorboard: %s",
+                str(removed),
+            )
 
         from tensorboardX.summary import hparams
+
         try:
             experiment_tag, session_start_tag, session_end_tag = hparams(
-                hparam_dict=scrubbed_params, metric_dict=result)
+                hparam_dict=scrubbed_params, metric_dict=result
+            )
             self._file_writer.file_writer.add_summary(experiment_tag)
             self._file_writer.file_writer.add_summary(session_start_tag)
             self._file_writer.file_writer.add_summary(session_end_tag)
         except Exception:
-            logger.exception("TensorboardX failed to log hparams. "
-                             "This may be due to an unsupported type "
-                             "in the hyperparameter values.")
+            logger.exception(
+                "TensorboardX failed to log hparams. "
+                "This may be due to an unsupported type "
+                "in the hyperparameter values."
+            )
 
 
 DEFAULT_LOGGERS = (JsonLogger, CSVLogger, TBXLogger)
@@ -298,11 +296,13 @@ class UnifiedLogger(Logger):
             and JSON loggers.
     """
 
-    def __init__(self,
-                 config: Dict,
-                 logdir: str,
-                 trial: Optional["Trial"] = None,
-                 loggers: Optional[List[Type[Logger]]] = None):
+    def __init__(
+        self,
+        config: Dict,
+        logdir: str,
+        trial: Optional["Trial"] = None,
+        loggers: Optional[List[Type[Logger]]] = None,
+    ):
         if loggers is None:
             self._logger_cls_list = DEFAULT_LOGGERS
         else:
@@ -311,7 +311,8 @@ class UnifiedLogger(Logger):
             if log_once("JsonLogger"):
                 logger.warning(
                     "JsonLogger not provided. The ExperimentAnalysis tool is "
-                    "disabled.")
+                    "disabled."
+                )
 
         super(UnifiedLogger, self).__init__(config, logdir, trial)
 
@@ -322,8 +323,9 @@ class UnifiedLogger(Logger):
                 self._loggers.append(cls(self.config, self.logdir, self.trial))
             except Exception as exc:
                 if log_once(f"instantiate:{cls.__name__}"):
-                    logger.warning("Could not instantiate %s: %s.",
-                                   cls.__name__, str(exc))
+                    logger.warning(
+                        "Could not instantiate %s: %s.", cls.__name__, str(exc)
+                    )
 
     def on_result(self, result):
         for _logger in self._loggers:
@@ -398,28 +400,39 @@ class LoggerCallback(Callback):
         """
         pass
 
-    def on_trial_result(self, iteration: int, trials: List["Trial"],
-                        trial: "Trial", result: Dict, **info):
+    def on_trial_result(
+        self,
+        iteration: int,
+        trials: List["Trial"],
+        trial: "Trial",
+        result: Dict,
+        **info,
+    ):
         self.log_trial_result(iteration, trial, result)
 
-    def on_trial_start(self, iteration: int, trials: List["Trial"],
-                       trial: "Trial", **info):
+    def on_trial_start(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
         self.log_trial_start(trial)
 
-    def on_trial_restore(self, iteration: int, trials: List["Trial"],
-                         trial: "Trial", **info):
+    def on_trial_restore(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
         self.log_trial_restore(trial)
 
-    def on_trial_save(self, iteration: int, trials: List["Trial"],
-                      trial: "Trial", **info):
+    def on_trial_save(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
         self.log_trial_save(trial)
 
-    def on_trial_complete(self, iteration: int, trials: List["Trial"],
-                          trial: "Trial", **info):
+    def on_trial_complete(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
         self.log_trial_end(trial, failed=False)
 
-    def on_trial_error(self, iteration: int, trials: List["Trial"],
-                       trial: "Trial", **info):
+    def on_trial_error(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
         self.log_trial_end(trial, failed=True)
 
 
@@ -439,8 +452,7 @@ class LegacyLoggerCallback(LoggerCallback):
 
     def __init__(self, logger_classes: Iterable[Type[Logger]]):
         self.logger_classes = list(logger_classes)
-        self._class_trial_loggers: Dict[Type[Logger], Dict["Trial",
-                                                           Logger]] = {}
+        self._class_trial_loggers: Dict[Type[Logger], Dict["Trial", Logger]] = {}
 
     def log_trial_start(self, trial: "Trial"):
         trial.init_logdir()
@@ -521,7 +533,8 @@ class JsonLoggerCallback(LoggerCallback):
                 f,
                 indent=2,
                 sort_keys=True,
-                cls=SafeFallbackEncoder)
+                cls=SafeFallbackEncoder,
+            )
 
         config_pkl = os.path.join(trial.logdir, EXPR_PARAM_PICKLE_FILE)
         with open(config_pkl, "wb") as f:
@@ -563,16 +576,15 @@ class CSVLoggerCallback(LoggerCallback):
         result = flatten_dict(tmp, delimiter="/")
 
         if not self._trial_csv[trial]:
-            self._trial_csv[trial] = csv.DictWriter(self._trial_files[trial],
-                                                    result.keys())
+            self._trial_csv[trial] = csv.DictWriter(
+                self._trial_files[trial], result.keys()
+            )
             if not self._trial_continue[trial]:
                 self._trial_csv[trial].writeheader()
 
-        self._trial_csv[trial].writerow({
-            k: v
-            for k, v in result.items()
-            if k in self._trial_csv[trial].fieldnames
-        })
+        self._trial_csv[trial].writerow(
+            {k: v for k, v in result.items() if k in self._trial_csv[trial].fieldnames}
+        )
         self._trial_files[trial].flush()
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
@@ -599,11 +611,11 @@ class TBXLoggerCallback(LoggerCallback):
     def __init__(self):
         try:
             from tensorboardX import SummaryWriter
+
             self._summary_writer_cls = SummaryWriter
         except ImportError:
             if log_once("tbx-install"):
-                logger.info(
-                    "pip install \"ray[tune]\" to see TensorBoard files.")
+                logger.info('pip install "ray[tune]" to see TensorBoard files.')
             raise
         self._trial_writer: Dict["Trial", SummaryWriter] = {}
         self._trial_result: Dict["Trial", Dict] = {}
@@ -613,7 +625,8 @@ class TBXLoggerCallback(LoggerCallback):
             self._trial_writer[trial].close()
         trial.init_logdir()
         self._trial_writer[trial] = self._summary_writer_cls(
-            trial.logdir, flush_secs=30)
+            trial.logdir, flush_secs=30
+        )
         self._trial_result[trial] = {}
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
@@ -623,9 +636,7 @@ class TBXLoggerCallback(LoggerCallback):
         step = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
 
         tmp = result.copy()
-        for k in [
-                "config", "pid", "timestamp", TIME_TOTAL_S, TRAINING_ITERATION
-        ]:
+        for k in ["config", "pid", "timestamp", TIME_TOTAL_S, TRAINING_ITERATION]:
             if k in tmp:
                 del tmp[k]  # not useful to log these
 
@@ -635,32 +646,33 @@ class TBXLoggerCallback(LoggerCallback):
 
         for attr, value in flat_result.items():
             full_attr = "/".join(path + [attr])
-            if (isinstance(value, tuple(VALID_SUMMARY_TYPES))
-                    and not np.isnan(value)):
+            if isinstance(value, tuple(VALID_SUMMARY_TYPES)) and not np.isnan(value):
                 valid_result[full_attr] = value
-                self._trial_writer[trial].add_scalar(
-                    full_attr, value, global_step=step)
-            elif ((isinstance(value, list) and len(value) > 0)
-                  or (isinstance(value, np.ndarray) and value.size > 0)):
+                self._trial_writer[trial].add_scalar(full_attr, value, global_step=step)
+            elif (isinstance(value, list) and len(value) > 0) or (
+                isinstance(value, np.ndarray) and value.size > 0
+            ):
                 valid_result[full_attr] = value
 
                 # Must be video
                 if isinstance(value, np.ndarray) and value.ndim == 5:
                     self._trial_writer[trial].add_video(
-                        full_attr, value, global_step=step, fps=20)
+                        full_attr, value, global_step=step, fps=20
+                    )
                     continue
 
                 try:
                     self._trial_writer[trial].add_histogram(
-                        full_attr, value, global_step=step)
+                        full_attr, value, global_step=step
+                    )
                 # In case TensorboardX still doesn't think it's a valid value
                 # (e.g. `[[]]`), warn and move on.
                 except (ValueError, TypeError):
                     if log_once("invalid_tbx_value"):
                         logger.warning(
                             "You are trying to log an invalid value ({}={}) "
-                            "via {}!".format(full_attr, value,
-                                             type(self).__name__))
+                            "via {}!".format(full_attr, value, type(self).__name__)
+                        )
 
         self._trial_result[trial] = valid_result
         self._trial_writer[trial].flush()
@@ -668,8 +680,7 @@ class TBXLoggerCallback(LoggerCallback):
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         if trial in self._trial_writer:
             if trial and trial.evaluated_params and self._trial_result[trial]:
-                flat_result = flatten_dict(
-                    self._trial_result[trial], delimiter="/")
+                flat_result = flatten_dict(self._trial_result[trial], delimiter="/")
                 scrubbed_result = {
                     k: value
                     for k, value in flat_result.items()
@@ -684,9 +695,7 @@ class TBXLoggerCallback(LoggerCallback):
         # TBX currently errors if the hparams value is None.
         flat_params = flatten_dict(trial.evaluated_params)
         scrubbed_params = {
-            k: v
-            for k, v in flat_params.items()
-            if isinstance(v, self.VALID_HPARAMS)
+            k: v for k, v in flat_params.items() if isinstance(v, self.VALID_HPARAMS)
         }
 
         np_params = {
@@ -705,24 +714,32 @@ class TBXLoggerCallback(LoggerCallback):
         if removed:
             logger.info(
                 "Removed the following hyperparameter values when "
-                "logging to tensorboard: %s", str(removed))
+                "logging to tensorboard: %s",
+                str(removed),
+            )
 
         from tensorboardX.summary import hparams
+
         try:
             experiment_tag, session_start_tag, session_end_tag = hparams(
-                hparam_dict=scrubbed_params, metric_dict=result)
+                hparam_dict=scrubbed_params, metric_dict=result
+            )
             self._trial_writer[trial].file_writer.add_summary(experiment_tag)
-            self._trial_writer[trial].file_writer.add_summary(
-                session_start_tag)
+            self._trial_writer[trial].file_writer.add_summary(session_start_tag)
             self._trial_writer[trial].file_writer.add_summary(session_end_tag)
         except Exception:
-            logger.exception("TensorboardX failed to log hparams. "
-                             "This may be due to an unsupported type "
-                             "in the hyperparameter values.")
+            logger.exception(
+                "TensorboardX failed to log hparams. "
+                "This may be due to an unsupported type "
+                "in the hyperparameter values."
+            )
 
 
 # Maintain backwards compatibility.
-from ray.tune.integration.mlflow import MLflowLogger as _MLflowLogger  # noqa: E402, E501
+from ray.tune.integration.mlflow import (  # noqa: E402
+    MLflowLogger as _MLflowLogger,
+)
+
 MLflowLogger = _MLflowLogger
 # The capital L is a typo, but needs to remain for backwards compatibility.
 MLFLowLogger = _MLflowLogger

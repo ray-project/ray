@@ -45,17 +45,17 @@ RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 RAY_PRIVATE_DIR = "_private"
 AUTOSCALER_PRIVATE_DIR = "autoscaler/_private"
 REDIS_EXECUTABLE = os.path.join(
-    RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX)
+    RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX
+)
 
 # Location of the raylet executables.
-RAYLET_EXECUTABLE = os.path.join(RAY_PATH,
-                                 "core/src/ray/raylet/raylet" + EXE_SUFFIX)
+RAYLET_EXECUTABLE = os.path.join(RAY_PATH, "core/src/ray/raylet/raylet" + EXE_SUFFIX)
 GCS_SERVER_EXECUTABLE = os.path.join(
-    RAY_PATH, "core/src/ray/gcs/gcs_server" + EXE_SUFFIX)
+    RAY_PATH, "core/src/ray/gcs/gcs_server" + EXE_SUFFIX
+)
 
 # Location of the cpp default worker executables.
-DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH,
-                                         "cpp/default_worker" + EXE_SUFFIX)
+DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "cpp/default_worker" + EXE_SUFFIX)
 
 # Location of the native libraries.
 DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp/lib")
@@ -64,7 +64,8 @@ DASHBOARD_DEPENDENCY_ERROR_MESSAGE = (
     "Not all Ray Dashboard dependencies were "
     "found. To use the dashboard please "
     "install Ray using `pip install "
-    "ray[default]`.")
+    "ray[default]`."
+)
 
 RAY_JEMALLOC_LIB_PATH = "RAY_JEMALLOC_LIB_PATH"
 RAY_JEMALLOC_CONF = "RAY_JEMALLOC_CONF"
@@ -75,24 +76,26 @@ RAY_JEMALLOC_PROFILE = "RAY_JEMALLOC_PROFILE"
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-ProcessInfo = collections.namedtuple("ProcessInfo", [
-    "process",
-    "stdout_file",
-    "stderr_file",
-    "use_valgrind",
-    "use_gdb",
-    "use_valgrind_profiler",
-    "use_perftools_profiler",
-    "use_tmux",
-])
+ProcessInfo = collections.namedtuple(
+    "ProcessInfo",
+    [
+        "process",
+        "stdout_file",
+        "stderr_file",
+        "use_valgrind",
+        "use_gdb",
+        "use_valgrind_profiler",
+        "use_perftools_profiler",
+        "use_tmux",
+    ],
+)
 
 
 def _get_gcs_client_options(redis_address, redis_password, gcs_server_address):
     if not use_gcs_for_bootstrap():
         redis_ip_address, redis_port = redis_address.split(":")
         wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
-        return GcsClientOptions.from_redis_address(redis_address,
-                                                   redis_password)
+        return GcsClientOptions.from_redis_address(redis_address, redis_password)
     else:
         return GcsClientOptions.from_gcs_address(gcs_server_address)
 
@@ -101,36 +104,41 @@ def serialize_config(config):
     return base64.b64encode(json.dumps(config).encode("utf-8")).decode("utf-8")
 
 
-def propagate_jemalloc_env_var(*, jemalloc_path: str, jemalloc_conf: str,
-                               jemalloc_comps: List[str], process_type: str):
+def propagate_jemalloc_env_var(
+    *,
+    jemalloc_path: str,
+    jemalloc_conf: str,
+    jemalloc_comps: List[str],
+    process_type: str,
+):
     """Read the jemalloc memory profiling related
-        env var and return the dictionary that translates
-        them to proper jemalloc related env vars.
+    env var and return the dictionary that translates
+    them to proper jemalloc related env vars.
 
-        For example, if users specify `RAY_JEMALLOC_LIB_PATH`,
-        it is translated into `LD_PRELOAD` which is needed to
-        run Jemalloc as a shared library.
+    For example, if users specify `RAY_JEMALLOC_LIB_PATH`,
+    it is translated into `LD_PRELOAD` which is needed to
+    run Jemalloc as a shared library.
 
-        Params:
-            jemalloc_path (str): The path to the jemalloc shared library.
-            jemalloc_conf (str): `,` separated string of jemalloc config.
-            jemalloc_comps List(str): The list of Ray components
-                that we will profile.
-            process_type (str): The process type that needs jemalloc
-                env var for memory profiling. If it doesn't match one of
-                jemalloc_comps, the function will return an empty dict.
+    Params:
+        jemalloc_path (str): The path to the jemalloc shared library.
+        jemalloc_conf (str): `,` separated string of jemalloc config.
+        jemalloc_comps List(str): The list of Ray components
+            that we will profile.
+        process_type (str): The process type that needs jemalloc
+            env var for memory profiling. If it doesn't match one of
+            jemalloc_comps, the function will return an empty dict.
 
-        Returns:
-            dictionary of {env_var: value}
-                that are needed to jemalloc profiling. The caller can
-                call `dict.update(return_value_of_this_func)` to
-                update the dict of env vars. If the process_type doesn't
-                match jemalloc_comps, it will return an empty dict.
+    Returns:
+        dictionary of {env_var: value}
+            that are needed to jemalloc profiling. The caller can
+            call `dict.update(return_value_of_this_func)` to
+            update the dict of env vars. If the process_type doesn't
+            match jemalloc_comps, it will return an empty dict.
     """
     assert isinstance(jemalloc_comps, list)
     assert process_type is not None
     process_type = process_type.lower()
-    if (not jemalloc_path or process_type not in jemalloc_comps):
+    if not jemalloc_path or process_type not in jemalloc_comps:
         return {}
 
     env_vars = {
@@ -165,7 +173,7 @@ class ConsolePopen(subprocess.Popen):
             flags_key = "creationflags"
             if flags_to_add:
                 kwargs[flags_key] = (kwargs.get(flags_key) or 0) | flags_to_add
-            self._use_signals = (kwargs[flags_key] & new_pgroup)
+            self._use_signals = kwargs[flags_key] & new_pgroup
             super(ConsolePopen, self).__init__(*args, **kwargs)
 
 
@@ -184,8 +192,10 @@ def new_port(lower_bound=10000, upper_bound=65535, denylist=None):
         port = random.randint(lower_bound, upper_bound)
         retry += 1
     if retry > 100:
-        raise ValueError("Failed to find a new port from the range "
-                         f"{lower_bound}-{upper_bound}. Denylist: {denylist}")
+        raise ValueError(
+            "Failed to find a new port from the range "
+            f"{lower_bound}-{upper_bound}. Denylist: {denylist}"
+        )
     return port
 
 
@@ -306,12 +316,14 @@ def _find_redis_address_or_die():
     if len(redis_addresses) > 1:
         raise ConnectionError(
             f"Found multiple active Ray instances: {redis_addresses}. "
-            "Please specify the one to connect to by setting `address`.")
+            "Please specify the one to connect to by setting `address`."
+        )
         sys.exit(1)
     elif not redis_addresses:
         raise ConnectionError(
             "Could not find any running Ray instance. "
-            "Please specify the one to connect to by setting `address`.")
+            "Please specify the one to connect to by setting `address`."
+        )
     return redis_addresses.pop()
 
 
@@ -325,13 +337,15 @@ def _find_gcs_address_or_die():
         raise ConnectionError(
             f"Found multiple active Ray instances: {gcs_addresses}. "
             "Please specify the one to connect to by setting `--address` flag "
-            "or `RAY_ADDRESS` environment variable.")
+            "or `RAY_ADDRESS` environment variable."
+        )
         sys.exit(1)
     elif not gcs_addresses:
         raise ConnectionError(
             "Could not find any running Ray instance. "
             "Please specify the one to connect to by setting `--address` flag "
-            "or `RAY_ADDRESS` environment variable.")
+            "or `RAY_ADDRESS` environment variable."
+        )
     return gcs_addresses.pop()
 
 
@@ -352,11 +366,13 @@ def get_ray_address_from_environment():
     return addr
 
 
-def wait_for_node(redis_address,
-                  gcs_address,
-                  node_plasma_store_socket_name,
-                  redis_password=None,
-                  timeout=30):
+def wait_for_node(
+    redis_address,
+    gcs_address,
+    node_plasma_store_socket_name,
+    redis_password=None,
+    timeout=30,
+):
     """Wait until this node has appeared in the client table.
 
     Args:
@@ -377,8 +393,7 @@ def wait_for_node(redis_address,
     else:
         redis_ip_address, redis_port = redis_address.split(":")
         wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
-        gcs_options = GcsClientOptions.from_redis_address(
-            redis_address, redis_password)
+        gcs_options = GcsClientOptions.from_redis_address(redis_address, redis_password)
     global_state = ray.state.GlobalState()
     global_state._initialize_global_state(gcs_options)
     start_time = time.time()
@@ -394,14 +409,12 @@ def wait_for_node(redis_address,
     raise TimeoutError("Timed out while waiting for node to startup.")
 
 
-def get_node_to_connect_for_driver(redis_address,
-                                   gcs_address,
-                                   node_ip_address,
-                                   redis_password=None):
+def get_node_to_connect_for_driver(
+    redis_address, gcs_address, node_ip_address, redis_password=None
+):
     # Get node table from global state accessor.
     global_state = ray.state.GlobalState()
-    gcs_options = _get_gcs_client_options(redis_address, redis_password,
-                                          gcs_address)
+    gcs_options = _get_gcs_client_options(redis_address, redis_password, gcs_address)
     global_state._initialize_global_state(gcs_options)
     return global_state.get_node_to_connect_for_driver(node_ip_address)
 
@@ -409,9 +422,9 @@ def get_node_to_connect_for_driver(redis_address,
 def get_webui_url_from_internal_kv():
     assert ray.experimental.internal_kv._internal_kv_initialized()
     webui_url = ray.experimental.internal_kv._internal_kv_get(
-        "webui:url", namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
-    return ray._private.utils.decode(
-        webui_url) if webui_url is not None else None
+        "webui:url", namespace=ray_constants.KV_NAMESPACE_DASHBOARD
+    )
+    return ray._private.utils.decode(webui_url) if webui_url is not None else None
 
 
 def remaining_processes_alive():
@@ -429,8 +442,10 @@ def remaining_processes_alive():
             ray.init().
     """
     if ray.worker._global_node is None:
-        raise RuntimeError("This process is not in a position to determine "
-                           "whether all processes are alive or not.")
+        raise RuntimeError(
+            "This process is not in a position to determine "
+            "whether all processes are alive or not."
+        )
     return ray.worker._global_node.remaining_processes_alive()
 
 
@@ -456,16 +471,19 @@ def canonicalize_bootstrap_address(addr: str):
 
 def extract_ip_port(bootstrap_address: str):
     if ":" not in bootstrap_address:
-        raise ValueError(f"Malformed address {bootstrap_address}. "
-                         f"Expected '<host>:<port>'.")
+        raise ValueError(
+            f"Malformed address {bootstrap_address}. " f"Expected '<host>:<port>'."
+        )
     ip, _, port = bootstrap_address.rpartition(":")
     try:
         port = int(port)
     except ValueError:
         raise ValueError(f"Malformed address port {port}. Must be an integer.")
     if port < 1024 or port > 65535:
-        raise ValueError(f"Invalid address port {port}. Must be between 1024 "
-                         "and 65535 (inclusive).")
+        raise ValueError(
+            f"Invalid address port {port}. Must be between 1024 "
+            "and 65535 (inclusive)."
+        )
     return ip, port
 
 
@@ -552,9 +570,11 @@ def create_redis_client(redis_address, password=None):
         cli = create_redis_client.instances.get(redis_address)
         if cli is None:
             redis_ip_address, redis_port = extract_ip_port(
-                canonicalize_bootstrap_address(redis_address))
+                canonicalize_bootstrap_address(redis_address)
+            )
             cli = redis.StrictRedis(
-                host=redis_ip_address, port=int(redis_port), password=password)
+                host=redis_ip_address, port=int(redis_port), password=password
+            )
             create_redis_client.instances[redis_address] = cli
         try:
             cli.ping()
@@ -566,19 +586,21 @@ def create_redis_client(redis_address, password=None):
     raise RuntimeError(f"Unable to connect to Redis at {redis_address}")
 
 
-def start_ray_process(command,
-                      process_type,
-                      fate_share,
-                      env_updates=None,
-                      cwd=None,
-                      use_valgrind=False,
-                      use_gdb=False,
-                      use_valgrind_profiler=False,
-                      use_perftools_profiler=False,
-                      use_tmux=False,
-                      stdout_file=None,
-                      stderr_file=None,
-                      pipe_stdin=False):
+def start_ray_process(
+    command,
+    process_type,
+    fate_share,
+    env_updates=None,
+    cwd=None,
+    use_valgrind=False,
+    use_gdb=False,
+    use_valgrind_profiler=False,
+    use_perftools_profiler=False,
+    use_tmux=False,
+    stdout_file=None,
+    stderr_file=None,
+    pipe_stdin=False,
+):
     """Start one of the Ray processes.
 
     TODO(rkn): We need to figure out how these commands interact. For example,
@@ -621,14 +643,11 @@ def start_ray_process(command,
         use_valgrind = True
     valgrind_profiler_env_var = f"RAY_{process_type.upper()}_VALGRIND_PROFILER"
     if os.environ.get(valgrind_profiler_env_var) == "1":
-        logger.info("Detected environment variable '%s'.",
-                    valgrind_profiler_env_var)
+        logger.info("Detected environment variable '%s'.", valgrind_profiler_env_var)
         use_valgrind_profiler = True
-    perftools_profiler_env_var = (f"RAY_{process_type.upper()}"
-                                  "_PERFTOOLS_PROFILER")
+    perftools_profiler_env_var = f"RAY_{process_type.upper()}" "_PERFTOOLS_PROFILER"
     if os.environ.get(perftools_profiler_env_var) == "1":
-        logger.info("Detected environment variable '%s'.",
-                    perftools_profiler_env_var)
+        logger.info("Detected environment variable '%s'.", perftools_profiler_env_var)
         use_perftools_profiler = True
     tmux_env_var = f"RAY_{process_type.upper()}_TMUX"
     if os.environ.get(tmux_env_var) == "1":
@@ -647,20 +666,28 @@ def start_ray_process(command,
         jemalloc_path=jemalloc_lib_path,
         jemalloc_conf=jemalloc_conf,
         jemalloc_comps=jemalloc_comps,
-        process_type=process_type)
+        process_type=process_type,
+    )
     use_jemalloc_mem_profiler = len(jemalloc_env_vars) > 0
 
-    if sum([
-            use_gdb,
-            use_valgrind,
-            use_valgrind_profiler,
-            use_perftools_profiler,
-            use_jemalloc_mem_profiler,
-    ]) > 1:
-        raise ValueError("At most one of the 'use_gdb', 'use_valgrind', "
-                         "'use_valgrind_profiler', 'use_perftools_profiler', "
-                         "and 'use_jemalloc_mem_profiler' flags can "
-                         "be used at a time.")
+    if (
+        sum(
+            [
+                use_gdb,
+                use_valgrind,
+                use_valgrind_profiler,
+                use_perftools_profiler,
+                use_jemalloc_mem_profiler,
+            ]
+        )
+        > 1
+    ):
+        raise ValueError(
+            "At most one of the 'use_gdb', 'use_valgrind', "
+            "'use_valgrind_profiler', 'use_perftools_profiler', "
+            "and 'use_jemalloc_mem_profiler' flags can "
+            "be used at a time."
+        )
     if env_updates is None:
         env_updates = {}
     if not isinstance(env_updates, dict):
@@ -672,11 +699,14 @@ def start_ray_process(command,
     if use_gdb:
         if not use_tmux:
             raise ValueError(
-                "If 'use_gdb' is true, then 'use_tmux' must be true as well.")
+                "If 'use_gdb' is true, then 'use_tmux' must be true as well."
+            )
 
         # TODO(suquark): Any better temp file creation here?
-        gdb_init_path = os.path.join(ray._private.utils.get_ray_temp_dir(),
-                                     f"gdb_init_{process_type}_{time.time()}")
+        gdb_init_path = os.path.join(
+            ray._private.utils.get_ray_temp_dir(),
+            f"gdb_init_{process_type}_{time.time()}",
+        )
         ray_process_path = command[0]
         ray_process_args = command[1:]
         run_args = " ".join(["'{}'".format(arg) for arg in ray_process_args])
@@ -702,8 +732,10 @@ def start_ray_process(command,
         modified_env["CPUPROFILE"] = os.environ["PERFTOOLS_LOGFILE"]
 
     if use_jemalloc_mem_profiler:
-        logger.info(f"Jemalloc profiling will be used for {process_type}. "
-                    f"env vars: {jemalloc_env_vars}")
+        logger.info(
+            f"Jemalloc profiling will be used for {process_type}. "
+            f"env vars: {jemalloc_env_vars}"
+        )
         modified_env.update(jemalloc_env_vars)
 
     if use_tmux:
@@ -715,10 +747,12 @@ def start_ray_process(command,
     if fate_share:
         assert ray._private.utils.detect_fate_sharing_support(), (
             "kernel-level fate-sharing must only be specified if "
-            "detect_fate_sharing_support() has returned True")
+            "detect_fate_sharing_support() has returned True"
+        )
 
     def preexec_fn():
         import signal
+
         signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
         if fate_share and sys.platform.startswith("linux"):
             ray._private.utils.set_kill_on_parent_death_linux()
@@ -738,7 +772,8 @@ def start_ray_process(command,
         if total_chrs > 31766:
             raise ValueError(
                 f"command is limited to a total of 31767 characters, "
-                f"got {total_chrs}")
+                f"got {total_chrs}"
+            )
 
     process = ConsolePopen(
         command,
@@ -748,7 +783,8 @@ def start_ray_process(command,
         stderr=stderr_file,
         stdin=subprocess.PIPE if pipe_stdin else None,
         preexec_fn=preexec_fn if sys.platform != "win32" else None,
-        creationflags=CREATE_SUSPENDED if win32_fate_sharing else 0)
+        creationflags=CREATE_SUSPENDED if win32_fate_sharing else 0,
+    )
 
     if win32_fate_sharing:
         try:
@@ -774,7 +810,8 @@ def start_ray_process(command,
         use_gdb=use_gdb,
         use_valgrind_profiler=use_valgrind_profiler,
         use_perftools_profiler=use_perftools_profiler,
-        use_tmux=use_tmux)
+        use_tmux=use_tmux,
+    )
 
 
 def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
@@ -792,7 +829,8 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
         Exception: An exception is raised if we could not connect with Redis.
     """
     redis_client = redis.StrictRedis(
-        host=redis_ip_address, port=redis_port, password=password)
+        host=redis_ip_address, port=redis_port, password=password
+    )
     # Wait for the Redis server to start.
     num_retries = ray_constants.START_REDIS_WAIT_RETRIES
     delay = 0.001
@@ -801,7 +839,9 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
             # Run some random command and see if it worked.
             logger.debug(
                 "Waiting for redis server at {}:{} to respond...".format(
-                    redis_ip_address, redis_port))
+                    redis_ip_address, redis_port
+                )
+            )
             redis_client.client_list()
         # If the Redis service is delayed getting set up for any reason, we may
         # get a redis.ConnectionError: Error 111 connecting to host:port.
@@ -812,8 +852,11 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
         # bad password. Thus a double except clause to ensure a
         # redis.AuthenticationError isn't trapped here.
         except redis.AuthenticationError as authEx:
-            raise RuntimeError("Unable to connect to Redis at {}:{}.".format(
-                redis_ip_address, redis_port)) from authEx
+            raise RuntimeError(
+                "Unable to connect to Redis at {}:{}.".format(
+                    redis_ip_address, redis_port
+                )
+            ) from authEx
         except redis.ConnectionError as connEx:
             if i >= num_retries - 1:
                 raise RuntimeError(
@@ -824,7 +867,8 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
                     "this port. If the problem is a flaky connection, try "
                     "setting the environment variable "
                     "`RAY_START_REDIS_WAIT_RETRIES` to increase the number of"
-                    " attempts to ping the Redis server.") from connEx
+                    " attempts to ping the Redis server."
+                ) from connEx
             # Wait a little bit.
             time.sleep(delay)
             delay *= 2
@@ -837,7 +881,8 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
             "your firewall and relevant Ray ports are configured properly. "
             "You can also set the environment variable "
             "`RAY_START_REDIS_WAIT_RETRIES` to increase the number of "
-            "attempts to ping the Redis server.")
+            "attempts to ping the Redis server."
+        )
 
 
 def start_reaper(fate_share=None):
@@ -863,35 +908,39 @@ def start_reaper(fate_share=None):
             # Nothing to do; we're already a session leader.
             pass
         else:
-            logger.warning("setpgrp failed, processes may not be "
-                           "cleaned up properly: {}.".format(e))
+            logger.warning(
+                "setpgrp failed, processes may not be "
+                "cleaned up properly: {}.".format(e)
+            )
             # Don't start the reaper in this case as it could result in killing
             # other user processes.
             return None
 
-    reaper_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR,
-                                   "ray_process_reaper.py")
+    reaper_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR, "ray_process_reaper.py")
     command = [sys.executable, "-u", reaper_filepath]
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REAPER,
         pipe_stdin=True,
-        fate_share=fate_share)
+        fate_share=fate_share,
+    )
     return process_info
 
 
-def start_redis(node_ip_address,
-                redirect_files,
-                resource_spec,
-                session_dir_path,
-                port=None,
-                redis_shard_ports=None,
-                num_redis_shards=1,
-                redis_max_clients=None,
-                password=None,
-                fate_share=None,
-                external_addresses=None,
-                port_denylist=None):
+def start_redis(
+    node_ip_address,
+    redirect_files,
+    resource_spec,
+    session_dir_path,
+    port=None,
+    redis_shard_ports=None,
+    num_redis_shards=1,
+    redis_max_clients=None,
+    password=None,
+    fate_share=None,
+    external_addresses=None,
+    port_denylist=None,
+):
     """Start the Redis global state store.
 
     Args:
@@ -928,7 +977,8 @@ def start_redis(node_ip_address,
         port = int(port)
         redis_address = address(primary_redis_ip, port)
         primary_redis_client = create_redis_client(
-            "%s:%s" % (primary_redis_ip, port), password=password)
+            "%s:%s" % (primary_redis_ip, port), password=password
+        )
         # Deleting the key to avoid duplicated rpush.
         primary_redis_client.delete("RedisShards")
     else:
@@ -936,13 +986,15 @@ def start_redis(node_ip_address,
             raise ValueError(
                 "The number of redirect file pairs should be equal "
                 "to the number of redis shards (including the "
-                "primary shard) we will start.")
+                "primary shard) we will start."
+            )
         if redis_shard_ports is None:
             redis_shard_ports = num_redis_shards * [None]
         elif len(redis_shard_ports) != num_redis_shards:
             raise RuntimeError(
                 "The number of Redis shard ports does not match "
-                "the number of Redis shards.")
+                "the number of Redis shards."
+            )
         redis_executable = REDIS_EXECUTABLE
 
         redis_stdout_file, redis_stderr_file = redirect_files[0]
@@ -968,11 +1020,13 @@ def start_redis(node_ip_address,
             stderr_file=redis_stderr_file,
             fate_share=fate_share,
             port_denylist=port_denylist,
-            listen_to_localhost_only=(node_ip_address == "127.0.0.1"))
+            listen_to_localhost_only=(node_ip_address == "127.0.0.1"),
+        )
         processes.append(p)
         redis_address = address(node_ip_address, port)
         primary_redis_client = redis.StrictRedis(
-            host=node_ip_address, port=port, password=password)
+            host=node_ip_address, port=port, password=password
+        )
 
     # Register the number of Redis shards in the primary shard, so that clients
     # know how many redis shards to expect under RedisShards.
@@ -1015,7 +1069,8 @@ def start_redis(node_ip_address,
                 stderr_file=redis_stderr_file,
                 fate_share=fate_share,
                 port_denylist=port_denylist,
-                listen_to_localhost_only=(node_ip_address == "127.0.0.1"))
+                listen_to_localhost_only=(node_ip_address == "127.0.0.1"),
+            )
             processes.append(p)
 
             shard_address = address(node_ip_address, redis_shard_port)
@@ -1028,18 +1083,20 @@ def start_redis(node_ip_address,
     return redis_address, redis_shards, processes
 
 
-def _start_redis_instance(executable,
-                          session_dir_path,
-                          port,
-                          redis_max_clients=None,
-                          num_retries=20,
-                          stdout_file=None,
-                          stderr_file=None,
-                          password=None,
-                          redis_max_memory=None,
-                          fate_share=None,
-                          port_denylist=None,
-                          listen_to_localhost_only=False):
+def _start_redis_instance(
+    executable,
+    session_dir_path,
+    port,
+    redis_max_clients=None,
+    num_retries=20,
+    stdout_file=None,
+    stderr_file=None,
+    password=None,
+    redis_max_memory=None,
+    fate_share=None,
+    port_denylist=None,
+    listen_to_localhost_only=False,
+):
     """Start a single Redis server.
 
     Notes:
@@ -1089,18 +1146,18 @@ def _start_redis_instance(executable,
             if " " in password:
                 raise ValueError("Spaces not permitted in redis password.")
             command += ["--requirepass", password]
-        command += (["--port", str(port), "--loglevel", "warning"])
+        command += ["--port", str(port), "--loglevel", "warning"]
         if listen_to_localhost_only:
             command += ["--bind", "127.0.0.1"]
-        pidfile = os.path.join(session_dir_path,
-                               "redis-" + uuid.uuid4().hex + ".pid")
+        pidfile = os.path.join(session_dir_path, "redis-" + uuid.uuid4().hex + ".pid")
         command += ["--pidfile", pidfile]
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_REDIS_SERVER,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
-            fate_share=fate_share)
+            fate_share=fate_share,
+        )
         try:
             wait_for_redis_to_start("127.0.0.1", port, password=password)
         except (redis.exceptions.ResponseError, RuntimeError):
@@ -1110,8 +1167,7 @@ def _start_redis_instance(executable,
             # Try the next port by looping again.
             pass
         else:
-            r = redis.StrictRedis(
-                host="127.0.0.1", port=port, password=password)
+            r = redis.StrictRedis(host="127.0.0.1", port=port, password=password)
             # Check if Redis successfully started and we connected
             # to the right server.
             if r.config_get("pidfile")["pidfile"] == pidfile:
@@ -1119,15 +1175,16 @@ def _start_redis_instance(executable,
         port = new_port(denylist=port_denylist)
         counter += 1
     if counter == num_retries:
-        raise RuntimeError("Couldn't start Redis. "
-                           "Check log files: {} {}".format(
-                               stdout_file.name if stdout_file is not None else
-                               "<stdout>", stderr_file.name
-                               if stdout_file is not None else "<stderr>"))
+        raise RuntimeError(
+            "Couldn't start Redis. "
+            "Check log files: {} {}".format(
+                stdout_file.name if stdout_file is not None else "<stdout>",
+                stderr_file.name if stdout_file is not None else "<stderr>",
+            )
+        )
 
     # Create a Redis client just for configuring Redis.
-    redis_client = redis.StrictRedis(
-        host="127.0.0.1", port=port, password=password)
+    redis_client = redis.StrictRedis(host="127.0.0.1", port=port, password=password)
     # Wait for the Redis server to start.
     wait_for_redis_to_start("127.0.0.1", port, password=password)
     # Configure Redis to generate keyspace notifications. TODO(rkn): Change
@@ -1143,8 +1200,11 @@ def _start_redis_instance(executable,
         redis_client.config_set("maxmemory", str(redis_max_memory))
         redis_client.config_set("maxmemory-policy", "allkeys-lru")
         redis_client.config_set("maxmemory-samples", "10")
-        logger.debug("Starting Redis shard with {} GB max memory.".format(
-            round(redis_max_memory / 1e9, 2)))
+        logger.debug(
+            "Starting Redis shard with {} GB max memory.".format(
+                round(redis_max_memory / 1e9, 2)
+            )
+        )
 
     # If redis_max_clients is provided, attempt to raise the number of maximum
     # number of Redis clients.
@@ -1154,8 +1214,7 @@ def _start_redis_instance(executable,
         # If redis_max_clients is not provided, determine the current ulimit.
         # We will use this to attempt to raise the maximum number of Redis
         # clients.
-        current_max_clients = int(
-            redis_client.config_get("maxclients")["maxclients"])
+        current_max_clients = int(redis_client.config_get("maxclients")["maxclients"])
         # The below command should be the same as doing ulimit -n.
         ulimit_n = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
         # The quantity redis_client_buffer appears to be the required buffer
@@ -1164,32 +1223,33 @@ def _start_redis_instance(executable,
         # 10000 - redis_client_buffer.
         redis_client_buffer = 32
         if current_max_clients < ulimit_n - redis_client_buffer:
-            redis_client.config_set("maxclients",
-                                    ulimit_n - redis_client_buffer)
+            redis_client.config_set("maxclients", ulimit_n - redis_client_buffer)
 
     # Increase the hard and soft limits for the redis client pubsub buffer to
     # 128MB. This is a hack to make it less likely for pubsub messages to be
     # dropped and for pubsub connections to therefore be killed.
-    cur_config = (redis_client.config_get("client-output-buffer-limit")[
-        "client-output-buffer-limit"])
+    cur_config = redis_client.config_get("client-output-buffer-limit")[
+        "client-output-buffer-limit"
+    ]
     cur_config_list = cur_config.split()
     assert len(cur_config_list) == 12
     cur_config_list[8:] = ["pubsub", "134217728", "134217728", "60"]
-    redis_client.config_set("client-output-buffer-limit",
-                            " ".join(cur_config_list))
+    redis_client.config_set("client-output-buffer-limit", " ".join(cur_config_list))
     # Put a time stamp in Redis to indicate when it was started.
     redis_client.set("redis_start_time", time.time())
     return port, process_info
 
 
-def start_log_monitor(redis_address,
-                      gcs_address,
-                      logs_dir,
-                      redis_password=None,
-                      fate_share=None,
-                      max_bytes=0,
-                      backup_count=0,
-                      redirect_logging=True):
+def start_log_monitor(
+    redis_address,
+    gcs_address,
+    logs_dir,
+    redis_password=None,
+    fate_share=None,
+    max_bytes=0,
+    backup_count=0,
+    redirect_logging=True,
+):
     """Start a log monitor process.
 
     Args:
@@ -1206,15 +1266,17 @@ def start_log_monitor(redis_address,
     Returns:
         ProcessInfo for the process that was started.
     """
-    log_monitor_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR,
-                                        "log_monitor.py")
+    log_monitor_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR, "log_monitor.py")
 
     command = [
-        sys.executable, "-u", log_monitor_filepath,
-        f"--redis-address={redis_address}", f"--logs-dir={logs_dir}",
+        sys.executable,
+        "-u",
+        log_monitor_filepath,
+        f"--redis-address={redis_address}",
+        f"--logs-dir={logs_dir}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
-        f"--gcs-address={gcs_address}"
+        f"--gcs-address={gcs_address}",
     ]
     if redirect_logging:
         # Avoid hanging due to fd inheritance.
@@ -1226,7 +1288,8 @@ def start_log_monitor(redis_address,
         command.append("--logging-filename=")
         # Use stderr log format with the component name as a message prefix.
         logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
-            component=ray_constants.PROCESS_TYPE_LOG_MONITOR)
+            component=ray_constants.PROCESS_TYPE_LOG_MONITOR
+        )
         command.append(f"--logging-format={logging_format}")
         # Inherit stdout/stderr streams.
         stdout_file = None
@@ -1238,22 +1301,25 @@ def start_log_monitor(redis_address,
         ray_constants.PROCESS_TYPE_LOG_MONITOR,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
-        fate_share=fate_share)
+        fate_share=fate_share,
+    )
     return process_info
 
 
-def start_dashboard(require_dashboard,
-                    host,
-                    redis_address,
-                    gcs_address,
-                    temp_dir,
-                    logdir,
-                    port=None,
-                    redis_password=None,
-                    fate_share=None,
-                    max_bytes=0,
-                    backup_count=0,
-                    redirect_logging=True):
+def start_dashboard(
+    require_dashboard,
+    host,
+    redis_address,
+    gcs_address,
+    temp_dir,
+    logdir,
+    port=None,
+    redis_password=None,
+    fate_share=None,
+    max_bytes=0,
+    backup_count=0,
+    redirect_logging=True,
+):
     """Start a dashboard process.
 
     Args:
@@ -1304,7 +1370,8 @@ def start_dashboard(require_dashboard,
                         f"Failed to bind to {host}:{port} because it's "
                         "already occupied. You can use `ray start "
                         "--dashboard-port ...` or `ray.init(dashboard_port=..."
-                        ")` to select a different port.")
+                        ")` to select a different port."
+                    )
                 else:
                     raise e
 
@@ -1318,16 +1385,21 @@ def start_dashboard(require_dashboard,
 
         # Start the dashboard process.
         dashboard_dir = "dashboard"
-        dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir,
-                                          "dashboard.py")
+        dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
 
         command = [
-            sys.executable, "-u", dashboard_filepath, f"--host={host}",
-            f"--port={port}", f"--port-retries={port_retries}",
-            f"--redis-address={redis_address}", f"--temp-dir={temp_dir}",
-            f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
+            sys.executable,
+            "-u",
+            dashboard_filepath,
+            f"--host={host}",
+            f"--port={port}",
+            f"--port-retries={port_retries}",
+            f"--redis-address={redis_address}",
+            f"--temp-dir={temp_dir}",
+            f"--log-dir={logdir}",
+            f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
-            f"--gcs-address={gcs_address}"
+            f"--gcs-address={gcs_address}",
         ]
 
         if redirect_logging:
@@ -1340,7 +1412,8 @@ def start_dashboard(require_dashboard,
             command.append("--logging-filename=")
             # Use stderr log format with the component name as a message prefix.
             logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
-                component=ray_constants.PROCESS_TYPE_DASHBOARD)
+                component=ray_constants.PROCESS_TYPE_DASHBOARD
+            )
             command.append(f"--logging-format={logging_format}")
             # Inherit stdout/stderr streams.
             stdout_file = None
@@ -1352,12 +1425,14 @@ def start_dashboard(require_dashboard,
             ray_constants.PROCESS_TYPE_DASHBOARD,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
-            fate_share=fate_share)
+            fate_share=fate_share,
+        )
 
         # Retrieve the dashboard url
         if not use_gcs_for_bootstrap():
             redis_client = ray._private.services.create_redis_client(
-                redis_address, redis_password)
+                redis_address, redis_password
+            )
             gcs_client = GcsClient.create_from_redis(redis_client)
         else:
             gcs_client = GcsClient(address=gcs_address)
@@ -1367,7 +1442,8 @@ def start_dashboard(require_dashboard,
         for _ in range(200):
             dashboard_url = ray.experimental.internal_kv._internal_kv_get(
                 ray_constants.DASHBOARD_ADDRESS,
-                namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
             if dashboard_url is not None:
                 dashboard_url = dashboard_url.decode("utf-8")
                 break
@@ -1378,8 +1454,11 @@ def start_dashboard(require_dashboard,
             # so we need to poll often.
             time.sleep(0.1)
         if dashboard_url is None:
-            returncode_str = (f", return code {dashboard_returncode}"
-                              if dashboard_returncode is not None else "")
+            returncode_str = (
+                f", return code {dashboard_returncode}"
+                if dashboard_returncode is not None
+                else ""
+            )
             err_msg = "Failed to start the dashboard" + returncode_str
             if logdir:
                 dashboard_log = os.path.join(logdir, "dashboard.log")
@@ -1388,28 +1467,31 @@ def start_dashboard(require_dashboard,
                 lines = []
                 try:
                     with open(dashboard_log, "rb") as f:
-                        with mmap.mmap(
-                                f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                        with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
                             end = mm.size()
                             for _ in range(n):
                                 sep = mm.rfind(b"\n", 0, end - 1)
                                 if sep == -1:
                                     break
-                                lines.append(mm[sep + 1:end].decode("utf-8"))
+                                lines.append(mm[sep + 1 : end].decode("utf-8"))
                                 end = sep
                     lines.append(f" The last {n} lines of {dashboard_log}:")
                 except Exception as e:
-                    raise Exception(err_msg +
-                                    f"\nFailed to read dashboard log: {e}")
+                    raise Exception(err_msg + f"\nFailed to read dashboard log: {e}")
 
                 last_log_str = "\n" + "\n".join(reversed(lines[-n:]))
                 raise Exception(err_msg + last_log_str)
             else:
                 raise Exception(err_msg)
 
-        logger.info("View the Ray dashboard at %s%shttp://%s%s%s",
-                    colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
-                    colorama.Fore.RESET, colorama.Style.NORMAL)
+        logger.info(
+            "View the Ray dashboard at %s%shttp://%s%s%s",
+            colorama.Style.BRIGHT,
+            colorama.Fore.GREEN,
+            dashboard_url,
+            colorama.Fore.RESET,
+            colorama.Style.NORMAL,
+        )
 
         return dashboard_url, process_info
     except Exception as e:
@@ -1420,16 +1502,18 @@ def start_dashboard(require_dashboard,
             return None, None
 
 
-def start_gcs_server(redis_address,
-                     log_dir,
-                     stdout_file=None,
-                     stderr_file=None,
-                     redis_password=None,
-                     config=None,
-                     fate_share=None,
-                     gcs_server_port=None,
-                     metrics_agent_port=None,
-                     node_ip_address=None):
+def start_gcs_server(
+    redis_address,
+    log_dir,
+    stdout_file=None,
+    stderr_file=None,
+    redis_password=None,
+    config=None,
+    fate_share=None,
+    gcs_server_port=None,
+    metrics_agent_port=None,
+    node_ip_address=None,
+):
     """Start a gcs server.
     Args:
         redis_address (str): The address that the Redis server is listening on.
@@ -1470,46 +1554,49 @@ def start_gcs_server(redis_address,
         ray_constants.PROCESS_TYPE_GCS_SERVER,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
-        fate_share=fate_share)
+        fate_share=fate_share,
+    )
     return process_info
 
 
-def start_raylet(redis_address,
-                 gcs_address,
-                 node_ip_address,
-                 node_manager_port,
-                 raylet_name,
-                 plasma_store_name,
-                 worker_path,
-                 setup_worker_path,
-                 temp_dir,
-                 session_dir,
-                 resource_dir,
-                 log_dir,
-                 resource_spec,
-                 plasma_directory,
-                 object_store_memory,
-                 min_worker_port=None,
-                 max_worker_port=None,
-                 worker_port_list=None,
-                 object_manager_port=None,
-                 redis_password=None,
-                 metrics_agent_port=None,
-                 metrics_export_port=None,
-                 dashboard_agent_listen_port=None,
-                 use_valgrind=False,
-                 use_profiler=False,
-                 stdout_file=None,
-                 stderr_file=None,
-                 config=None,
-                 huge_pages=False,
-                 fate_share=None,
-                 socket_to_use=None,
-                 start_initial_python_workers_for_first_job=False,
-                 max_bytes=0,
-                 backup_count=0,
-                 ray_debugger_external=False,
-                 env_updates=None):
+def start_raylet(
+    redis_address,
+    gcs_address,
+    node_ip_address,
+    node_manager_port,
+    raylet_name,
+    plasma_store_name,
+    worker_path,
+    setup_worker_path,
+    temp_dir,
+    session_dir,
+    resource_dir,
+    log_dir,
+    resource_spec,
+    plasma_directory,
+    object_store_memory,
+    min_worker_port=None,
+    max_worker_port=None,
+    worker_port_list=None,
+    object_manager_port=None,
+    redis_password=None,
+    metrics_agent_port=None,
+    metrics_export_port=None,
+    dashboard_agent_listen_port=None,
+    use_valgrind=False,
+    use_profiler=False,
+    stdout_file=None,
+    stderr_file=None,
+    config=None,
+    huge_pages=False,
+    fate_share=None,
+    socket_to_use=None,
+    start_initial_python_workers_for_first_job=False,
+    max_bytes=0,
+    backup_count=0,
+    ray_debugger_external=False,
+    env_updates=None,
+):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1573,11 +1660,13 @@ def start_raylet(redis_address,
     # raylet. However, make sure it is at least 1.
     num_cpus_static = static_resources.get("CPU", 0)
     maximum_startup_concurrency = max(
-        1, min(multiprocessing.cpu_count(), num_cpus_static))
+        1, min(multiprocessing.cpu_count(), num_cpus_static)
+    )
 
     # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
     resource_argument = ",".join(
-        ["{},{}".format(*kv) for kv in static_resources.items()])
+        ["{},{}".format(*kv) for kv in static_resources.items()]
+    )
 
     has_java_command = False
     if shutil.which("java") is not None:
@@ -1607,9 +1696,15 @@ def start_raylet(redis_address,
 
     if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
-            "", gcs_address
-            if use_gcs_for_bootstrap() else redis_address, plasma_store_name,
-            raylet_name, redis_password, session_dir, log_dir, node_ip_address)
+            "",
+            gcs_address if use_gcs_for_bootstrap() else redis_address,
+            plasma_store_name,
+            raylet_name,
+            redis_password,
+            session_dir,
+            log_dir,
+            node_ip_address,
+        )
     else:
         cpp_worker_command = []
 
@@ -1674,7 +1769,8 @@ def start_raylet(redis_address,
         agent_command.append("--logging-filename=")
         # Use stderr log format with the component name as a message prefix.
         logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
-            component=ray_constants.PROCESS_TYPE_DASHBOARD_AGENT)
+            component=ray_constants.PROCESS_TYPE_DASHBOARD_AGENT
+        )
         agent_command.append(f"--logging-format={logging_format}")
 
     if redis_password is not None and len(redis_password) != 0:
@@ -1717,17 +1813,19 @@ def start_raylet(redis_address,
     else:
         # TODO (iycheng): remove redis_ip_address after redis removal
         redis_ip_address, redis_port = redis_address.split(":")
-        command.extend([
-            f"--redis_address={redis_ip_address}", f"--redis_port={redis_port}"
-        ])
+        command.extend(
+            [f"--redis_address={redis_ip_address}", f"--redis_port={redis_port}"]
+        )
 
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")
     if start_initial_python_workers_for_first_job:
-        command.append("--num_initial_python_workers_for_first_job={}".format(
-            resource_spec.num_cpus))
-    command.append("--agent_command={}".format(
-        subprocess.list2cmdline(agent_command)))
+        command.append(
+            "--num_initial_python_workers_for_first_job={}".format(
+                resource_spec.num_cpus
+            )
+        )
+    command.append("--agent_command={}".format(subprocess.list2cmdline(agent_command)))
     if huge_pages:
         command.append("--huge_pages")
     if socket_to_use:
@@ -1742,31 +1840,34 @@ def start_raylet(redis_address,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share,
-        env_updates=env_updates)
+        env_updates=env_updates,
+    )
 
     return process_info
 
 
 def get_ray_jars_dir():
     """Return a directory where all ray-related jars and
-      their dependencies locate."""
+    their dependencies locate."""
     current_dir = RAY_PATH
     jars_dir = os.path.abspath(os.path.join(current_dir, "jars"))
     if not os.path.exists(jars_dir):
-        raise RuntimeError("Ray jars is not packaged into ray. "
-                           "Please build ray with java enabled "
-                           "(set env var RAY_INSTALL_JAVA=1)")
+        raise RuntimeError(
+            "Ray jars is not packaged into ray. "
+            "Please build ray with java enabled "
+            "(set env var RAY_INSTALL_JAVA=1)"
+        )
     return os.path.abspath(os.path.join(current_dir, "jars"))
 
 
 def build_java_worker_command(
-        bootstrap_address,
-        plasma_store_name,
-        raylet_name,
-        redis_password,
-        session_dir,
-        node_ip_address,
-        setup_worker_path,
+    bootstrap_address,
+    plasma_store_name,
+    raylet_name,
+    redis_password,
+    session_dir,
+    node_ip_address,
+    setup_worker_path,
 ):
     """This method assembles the command used to start a Java worker.
 
@@ -1786,8 +1887,7 @@ def build_java_worker_command(
     pairs = []
     if bootstrap_address is not None:
         pairs.append(("ray.address", bootstrap_address))
-    pairs.append(("ray.raylet.node-manager-port",
-                  "RAY_NODE_MANAGER_PORT_PLACEHOLDER"))
+    pairs.append(("ray.raylet.node-manager-port", "RAY_NODE_MANAGER_PORT_PLACEHOLDER"))
 
     if plasma_store_name is not None:
         pairs.append(("ray.object-store.socket-name", plasma_store_name))
@@ -1804,9 +1904,12 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-    command = [sys.executable] + [setup_worker_path] + ["java"] + [
-        "-D{}={}".format(*pair) for pair in pairs
-    ]
+    command = (
+        [sys.executable]
+        + [setup_worker_path]
+        + ["java"]
+        + ["-D{}={}".format(*pair) for pair in pairs]
+    )
 
     # Add ray jars path to java classpath
     ray_jars = os.path.join(get_ray_jars_dir(), "*")
@@ -1818,9 +1921,16 @@ def build_java_worker_command(
     return command
 
 
-def build_cpp_worker_command(cpp_worker_options, bootstrap_address,
-                             plasma_store_name, raylet_name, redis_password,
-                             session_dir, log_dir, node_ip_address):
+def build_cpp_worker_command(
+    cpp_worker_options,
+    bootstrap_address,
+    plasma_store_name,
+    raylet_name,
+    redis_password,
+    session_dir,
+    log_dir,
+    node_ip_address,
+):
     """This method assembles the command used to start a CPP worker.
 
     Args:
@@ -1853,9 +1963,9 @@ def build_cpp_worker_command(cpp_worker_options, bootstrap_address,
     return command
 
 
-def determine_plasma_store_config(object_store_memory,
-                                  plasma_directory=None,
-                                  huge_pages=False):
+def determine_plasma_store_config(
+    object_store_memory, plasma_directory=None, huge_pages=False
+):
     """Figure out how to configure the plasma object store.
 
     This will determine which directory to use for the plasma store. On Linux,
@@ -1876,10 +1986,8 @@ def determine_plasma_store_config(object_store_memory,
     if not isinstance(object_store_memory, int):
         object_store_memory = int(object_store_memory)
 
-    if huge_pages and not (sys.platform == "linux"
-                           or sys.platform == "linux2"):
-        raise ValueError("The huge_pages argument is only supported on "
-                         "Linux.")
+    if huge_pages and not (sys.platform == "linux" or sys.platform == "linux2"):
+        raise ValueError("The huge_pages argument is only supported on " "Linux.")
 
     system_memory = ray._private.utils.get_system_memory()
 
@@ -1893,9 +2001,10 @@ def determine_plasma_store_config(object_store_memory,
             # /dev/shm.
             if shm_avail > object_store_memory:
                 plasma_directory = "/dev/shm"
-            elif (not os.environ.get("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE")
-                  and object_store_memory >
-                  ray_constants.REQUIRE_SHM_SIZE_THRESHOLD):
+            elif (
+                not os.environ.get("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE")
+                and object_store_memory > ray_constants.REQUIRE_SHM_SIZE_THRESHOLD
+            ):
                 raise ValueError(
                     "The configured object store size ({} GB) exceeds "
                     "/dev/shm size ({} GB). This will harm performance. "
@@ -1903,7 +2012,9 @@ def determine_plasma_store_config(object_store_memory,
                     "size with "
                     "--shm-size in Docker. To ignore this warning, "
                     "set RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE=1.".format(
-                        object_store_memory / 1e9, shm_avail / 1e9))
+                        object_store_memory / 1e9, shm_avail / 1e9
+                    )
+                )
             else:
                 plasma_directory = ray._private.utils.get_user_temp_dir()
                 logger.warning(
@@ -1914,9 +2025,12 @@ def determine_plasma_store_config(object_store_memory,
                     "Docker container, you can increase /dev/shm size by "
                     "passing '--shm-size={:.2f}gb' to 'docker run' (or add it "
                     "to the run_options list in a Ray cluster config). Make "
-                    "sure to set this to more than 30% of available RAM.".
-                    format(ray._private.utils.get_user_temp_dir(), shm_avail,
-                           object_store_memory * (1.1) / (2**30)))
+                    "sure to set this to more than 30% of available RAM.".format(
+                        ray._private.utils.get_user_temp_dir(),
+                        shm_avail,
+                        object_store_memory * (1.1) / (2 ** 30),
+                    )
+                )
         else:
             plasma_directory = ray._private.utils.get_user_temp_dir()
 
@@ -1924,30 +2038,38 @@ def determine_plasma_store_config(object_store_memory,
         if object_store_memory > system_memory:
             raise ValueError(
                 "The requested object store memory size is greater "
-                "than the total available memory.")
+                "than the total available memory."
+            )
     else:
         plasma_directory = os.path.abspath(plasma_directory)
-        logger.info("object_store_memory is not verified when "
-                    "plasma_directory is set.")
+        logger.info(
+            "object_store_memory is not verified when " "plasma_directory is set."
+        )
 
     if not os.path.isdir(plasma_directory):
-        raise ValueError(f"The file {plasma_directory} does not "
-                         "exist or is not a directory.")
+        raise ValueError(
+            f"The file {plasma_directory} does not " "exist or is not a directory."
+        )
 
     if huge_pages and plasma_directory is None:
-        raise ValueError("If huge_pages is True, then the "
-                         "plasma_directory argument must be provided.")
+        raise ValueError(
+            "If huge_pages is True, then the "
+            "plasma_directory argument must be provided."
+        )
 
     if object_store_memory < ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES:
-        raise ValueError("Attempting to cap object store memory usage at {} "
-                         "bytes, but the minimum allowed is {} bytes.".format(
-                             object_store_memory,
-                             ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES))
+        raise ValueError(
+            "Attempting to cap object store memory usage at {} "
+            "bytes, but the minimum allowed is {} bytes.".format(
+                object_store_memory, ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES
+            )
+        )
 
-    if sys.platform == "darwin" \
-            and object_store_memory > \
-            ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT \
-            and os.environ.get("RAY_ENABLE_MAC_LARGE_OBJECT_STORE") != "1":
+    if (
+        sys.platform == "darwin"
+        and object_store_memory > ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT
+        and os.environ.get("RAY_ENABLE_MAC_LARGE_OBJECT_STORE") != "1"
+    ):
         raise ValueError(
             "The configured object store size ({:.4}GiB) exceeds "
             "the optimal size on Mac ({:.4}GiB). "
@@ -1958,29 +2080,33 @@ def determine_plasma_store_config(object_store_memory,
             "`object_store_memory` when calling ray.init() or ray start."
             "To ignore this warning, "
             "set RAY_ENABLE_MAC_LARGE_OBJECT_STORE=1.".format(
-                object_store_memory / 2**30,
-                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2**30,
-                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2**30))
+                object_store_memory / 2 ** 30,
+                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2 ** 30,
+                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2 ** 30,
+            )
+        )
 
     # Print the object store memory using two decimal places.
     logger.debug(
         "Determine to start the Plasma object store with {} GB memory "
-        "using {}.".format(
-            round(object_store_memory / 10**9, 2), plasma_directory))
+        "using {}.".format(round(object_store_memory / 10 ** 9, 2), plasma_directory)
+    )
 
     return plasma_directory, object_store_memory
 
 
-def start_worker(node_ip_address,
-                 object_store_name,
-                 raylet_name,
-                 redis_address,
-                 worker_path,
-                 temp_dir,
-                 raylet_ip_address=None,
-                 stdout_file=None,
-                 stderr_file=None,
-                 fate_share=None):
+def start_worker(
+    node_ip_address,
+    object_store_name,
+    raylet_name,
+    redis_address,
+    worker_path,
+    temp_dir,
+    raylet_ip_address=None,
+    stdout_file=None,
+    stderr_file=None,
+    fate_share=None,
+):
     """This method starts a worker process.
 
     Args:
@@ -2019,21 +2145,24 @@ def start_worker(node_ip_address,
         ray_constants.PROCESS_TYPE_WORKER,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
-        fate_share=fate_share)
+        fate_share=fate_share,
+    )
     return process_info
 
 
-def start_monitor(redis_address,
-                  gcs_address,
-                  logs_dir,
-                  stdout_file=None,
-                  stderr_file=None,
-                  autoscaling_config=None,
-                  redis_password=None,
-                  fate_share=None,
-                  max_bytes=0,
-                  backup_count=0,
-                  monitor_ip=None):
+def start_monitor(
+    redis_address,
+    gcs_address,
+    logs_dir,
+    stdout_file=None,
+    stderr_file=None,
+    autoscaling_config=None,
+    redis_password=None,
+    fate_share=None,
+    max_bytes=0,
+    backup_count=0,
+    monitor_ip=None,
+):
     """Run a process to monitor the other processes.
 
     Args:
@@ -2074,7 +2203,8 @@ def start_monitor(redis_address,
         command.append("--logging-filename=")
         # Use stderr log format with the component name as a message prefix.
         logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
-            component=ray_constants.PROCESS_TYPE_MONITOR)
+            component=ray_constants.PROCESS_TYPE_MONITOR
+        )
         command.append(f"--logging-format={logging_format}")
     if autoscaling_config:
         command.append("--autoscaling-config=" + str(autoscaling_config))
@@ -2087,21 +2217,23 @@ def start_monitor(redis_address,
         ray_constants.PROCESS_TYPE_MONITOR,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
-        fate_share=fate_share)
+        fate_share=fate_share,
+    )
     return process_info
 
 
 def start_ray_client_server(
-        address,
-        ray_client_server_ip,
-        ray_client_server_port,
-        stdout_file=None,
-        stderr_file=None,
-        redis_password=None,
-        fate_share=None,
-        metrics_agent_port=None,
-        server_type: str = "proxy",
-        serialized_runtime_env_context: Optional[str] = None):
+    address,
+    ray_client_server_ip,
+    ray_client_server_port,
+    stdout_file=None,
+    stderr_file=None,
+    redis_password=None,
+    fate_share=None,
+    metrics_agent_port=None,
+    server_type: str = "proxy",
+    serialized_runtime_env_context: Optional[str] = None,
+):
     """Run the server process of the Ray client.
 
     Args:
@@ -2121,11 +2253,13 @@ def start_ray_client_server(
         ProcessInfo for the process that was started.
     """
     root_ray_dir = Path(__file__).resolve().parents[1]
-    setup_worker_path = os.path.join(root_ray_dir, "workers",
-                                     ray_constants.SETUP_WORKER_FILENAME)
+    setup_worker_path = os.path.join(
+        root_ray_dir, "workers", ray_constants.SETUP_WORKER_FILENAME
+    )
 
-    ray_client_server_host = \
+    ray_client_server_host = (
         "127.0.0.1" if ray_client_server_ip == "127.0.0.1" else "0.0.0.0"
+    )
     command = [
         sys.executable,
         setup_worker_path,
@@ -2150,5 +2284,6 @@ def start_ray_client_server(
         ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
-        fate_share=fate_share)
+        fate_share=fate_share,
+    )
     return process_info

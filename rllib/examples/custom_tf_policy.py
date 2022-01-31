@@ -19,13 +19,11 @@ def policy_gradient_loss(policy, model, dist_class, train_batch):
     logits, _ = model(train_batch)
     action_dist = dist_class(logits, model)
     return -tf.reduce_mean(
-        action_dist.logp(train_batch["actions"]) * train_batch["returns"])
+        action_dist.logp(train_batch["actions"]) * train_batch["returns"]
+    )
 
 
-def calculate_advantages(policy,
-                         sample_batch,
-                         other_agent_batches=None,
-                         episode=None):
+def calculate_advantages(policy, sample_batch, other_agent_batches=None, episode=None):
     sample_batch["returns"] = discount_cumsum(sample_batch["rewards"], 0.99)
     return sample_batch
 
@@ -55,4 +53,5 @@ if __name__ == "__main__":
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             "num_workers": 2,
             "framework": "tf",
-        })
+        },
+    )

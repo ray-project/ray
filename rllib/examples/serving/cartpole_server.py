@@ -52,66 +52,74 @@ def get_cli_args():
         "--port",
         type=int,
         default=SERVER_BASE_PORT,
-        help="The base-port to use (on localhost). "
-        f"Default is {SERVER_BASE_PORT}.")
+        help="The base-port to use (on localhost). " f"Default is {SERVER_BASE_PORT}.",
+    )
     parser.add_argument(
         "--callbacks-verbose",
         action="store_true",
         help="Activates info-messages for different events on "
-        "server/client (episode steps, postprocessing, etc..).")
+        "server/client (episode steps, postprocessing, etc..).",
+    )
     parser.add_argument(
         "--num-workers",
         type=int,
         default=2,
         help="The number of workers to use. Each worker will create "
-        "its own listening socket for incoming experiences.")
+        "its own listening socket for incoming experiences.",
+    )
     parser.add_argument(
         "--no-restore",
         action="store_true",
         help="Do not restore from a previously saved checkpoint (location of "
-        "which is saved in `last_checkpoint_[algo-name].out`).")
+        "which is saved in `last_checkpoint_[algo-name].out`).",
+    )
 
     # General args.
     parser.add_argument(
         "--run",
         default="PPO",
         choices=["DQN", "PPO"],
-        help="The RLlib-registered algorithm to use.")
+        help="The RLlib-registered algorithm to use.",
+    )
     parser.add_argument("--num-cpus", type=int, default=3)
     parser.add_argument(
         "--framework",
         choices=["tf", "tf2", "tfe", "torch"],
         default="tf",
-        help="The DL framework specifier.")
+        help="The DL framework specifier.",
+    )
     parser.add_argument(
-        "--stop-iters",
-        type=int,
-        default=200,
-        help="Number of iterations to train.")
+        "--stop-iters", type=int, default=200, help="Number of iterations to train."
+    )
     parser.add_argument(
         "--stop-timesteps",
         type=int,
         default=500000,
-        help="Number of timesteps to train.")
+        help="Number of timesteps to train.",
+    )
     parser.add_argument(
         "--stop-reward",
         type=float,
         default=80.0,
-        help="Reward at which we stop training.")
+        help="Reward at which we stop training.",
+    )
     parser.add_argument(
         "--as-test",
         action="store_true",
         help="Whether this script should be run as a test: --stop-reward must "
-        "be achieved within --stop-timesteps AND --stop-iters.")
+        "be achieved within --stop-timesteps AND --stop-iters.",
+    )
     parser.add_argument(
         "--no-tune",
         action="store_true",
         help="Run without Tune using a manual train loop instead. Here,"
-        "there is no TensorBoard support.")
+        "there is no TensorBoard support.",
+    )
     parser.add_argument(
         "--local-mode",
         action="store_true",
-        help="Init Ray in local mode for easier debugging.")
+        help="Init Ray in local mode for easier debugging.",
+    )
 
     args = parser.parse_args()
     print(f"Running with following CLI args: {args}")
@@ -129,8 +137,10 @@ if __name__ == "__main__":
         # Create a PolicyServerInput.
         if ioctx.worker_index > 0 or ioctx.worker.num_workers == 0:
             return PolicyServerInput(
-                ioctx, SERVER_ADDRESS, args.port + ioctx.worker_index -
-                (1 if ioctx.worker_index > 0 else 0))
+                ioctx,
+                SERVER_ADDRESS,
+                args.port + ioctx.worker_index - (1 if ioctx.worker_index > 0 else 0),
+            )
         # No InputReader (PolicyServerInput) needed.
         else:
             return None
@@ -141,13 +151,10 @@ if __name__ == "__main__":
         # Indicate that the Trainer we setup here doesn't need an actual env.
         # Allow spaces to be determined by user (see below).
         "env": None,
-
         # TODO: (sven) make these settings unnecessary and get the information
         #  about the env spaces from the client.
-        "observation_space": gym.spaces.Box(
-            float("-inf"), float("inf"), (4, )),
+        "observation_space": gym.spaces.Box(float("-inf"), float("inf"), (4,)),
         "action_space": gym.spaces.Discrete(2),
-
         # Use the `PolicyServerInput` to generate experiences.
         "input": _input,
         # Use n worker processes to listen on different ports.
@@ -165,11 +172,13 @@ if __name__ == "__main__":
     # DQN.
     if args.run == "DQN":
         # Example of using DQN (supports off-policy actions).
-        config.update({
-            "learning_starts": 100,
-            "timesteps_per_iteration": 200,
-            "n_step": 3,
-        })
+        config.update(
+            {
+                "learning_starts": 100,
+                "timesteps_per_iteration": 200,
+                "n_step": 3,
+            }
+        )
         config["model"] = {
             "fcnet_hiddens": [64],
             "fcnet_activation": "linear",
@@ -178,10 +187,12 @@ if __name__ == "__main__":
     # PPO.
     else:
         # Example of using PPO (does NOT support off-policy actions).
-        config.update({
-            "rollout_fragment_length": 1000,
-            "train_batch_size": 4000,
-        })
+        config.update(
+            {
+                "rollout_fragment_length": 1000,
+                "train_batch_size": 4000,
+            }
+        )
 
     checkpoint_path = CHECKPOINT_FILE.format(args.run)
     # Attempt to restore from checkpoint, if possible.
@@ -210,8 +221,10 @@ if __name__ == "__main__":
             print("Last checkpoint", checkpoint)
             with open(checkpoint_path, "w") as f:
                 f.write(checkpoint)
-            if results["episode_reward_mean"] >= args.stop_reward or \
-                    ts >= args.stop_timesteps:
+            if (
+                results["episode_reward_mean"] >= args.stop_reward
+                or ts >= args.stop_timesteps
+            ):
                 break
             ts += results["timesteps_total"]
 
@@ -223,9 +236,4 @@ if __name__ == "__main__":
             "episode_reward_mean": args.stop_reward,
         }
 
-        tune.run(
-            args.run,
-            config=config,
-            stop=stop,
-            verbose=2,
-            restore=checkpoint_path)
+        tune.run(args.run, config=config, stop=stop, verbose=2, restore=checkpoint_path)
