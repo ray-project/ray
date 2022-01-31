@@ -122,10 +122,10 @@ def main():
         "lr_choice_model": 0.003,
         "lr_q_model": 0.003,#tune.grid_search([0.003, 0.01]),
         "rollout_fragment_length": 4,
-        "exploration_config": {
-            "epsilon_timesteps": 100000,
-            "final_epsilon": 0.04,
-        },
+        #"exploration_config": {
+        #    "epsilon_timesteps": 50000,
+        #    "final_epsilon": 0.02,
+        #},
         "target_network_update_freq": 1,
         "tau": 5e-3,
 

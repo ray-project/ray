@@ -64,11 +64,15 @@ DEFAULT_CONFIG = with_common_config({
     # === Exploration Settings ===
     "exploration_config": {
         # The Exploration class to use.
-        "type": "EpsilonGreedy",
+        # Must be SlateEpsilonGreedy to deal with the fact that e.g.:
+        # action_space=MultiDiscrete([5, 5]) <- slate-size=2, num-docs=5
+        # but action distribution is Categorical(5*4 / 2)
+        # -> all possible unique slates.
+        "type": "SlateEpsilonGreedy",
         # Config for the Exploration class' constructor:
         "initial_epsilon": 1.0,
         "final_epsilon": 0.02,
-        "epsilon_timesteps": 100000,  # Timesteps over which to anneal epsilon.
+        "epsilon_timesteps": 50000,  # Timesteps over which to anneal epsilon.
     },
     # Switch to greedy actions in evaluation workers.
     "evaluation_config": {

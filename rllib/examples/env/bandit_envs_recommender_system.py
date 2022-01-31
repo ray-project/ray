@@ -10,7 +10,8 @@ DEFAULT_RECO_CONFIG = {
     "feature_dim": 16,
     "slate_size": 1,
     "num_candidates": 25,
-    "seed": 1
+    "seed": 1,
+
 }
 
 

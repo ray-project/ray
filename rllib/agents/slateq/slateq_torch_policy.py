@@ -163,9 +163,9 @@ def build_slateq_losses(policy: Policy, model: ModelV2,
         with torch.no_grad():
             if policy.config["double_q"]:
                 next_target_per_slate_q_values = policy.target_models[model].get_per_slate_q_values(next_user, next_doc)
-                _, next_q_values = model.choose_slate(next_user, next_doc, next_target_per_slate_q_values)
+                _, next_q_values, _ = model.choose_slate(next_user, next_doc, next_target_per_slate_q_values)
             else:
-                _, next_q_values = policy.target_models[model].choose_slate(
+                _, next_q_values, _ = policy.target_models[model].choose_slate(
                     next_user, next_doc)
         next_q_values = next_q_values.detach()
         next_q_values[dones.bool()] = 0.0
@@ -238,10 +238,16 @@ def build_slateq_optimizers(policy: Policy, config: TrainerConfigDict
     return [optimizer_choice, optimizer_q_value]
 
 
-def action_sampler_fn(policy: Policy, model: SlateQModel, input_dict, state,
-                      explore, timestep):
+def action_distribution_fn(policy: Policy,
+                           model: SlateQModel,
+                           input_dict,
+                           *,
+                           explore,
+                           is_training,
+                           **kwargs):
     """Determine which action to take"""
     # First, we transform the observation into its unflattened form.
+
     #start = time.time()
     obs = restore_original_dimensions(
         input_dict[SampleBatch.CUR_OBS],
@@ -253,15 +259,10 @@ def action_sampler_fn(policy: Policy, model: SlateQModel, input_dict, state,
     # doc.shape: [batch_size(=1), num_docs, embedding_size]
     doc = torch.cat([val.unsqueeze(1) for val in obs["doc"].values()], 1)
 
-    selected_slates, _ = model.choose_slate(user, doc)
+    _, _, per_slate_q_values = model.choose_slate(user, doc)
+    #print(f"action calculation took {time.time() - start}s")
 
-    action = selected_slates
-    logp = None
-    state_out = []
-
-    #print(f"action calculation took {time.time()-start}s")
-
-    return action, logp, state_out
+    return per_slate_q_values, TorchCategorical, []
 
 
 def postprocess_fn_add_next_actions_for_sarsa(policy: Policy,
@@ -305,7 +306,7 @@ SlateQTorchPolicy = build_policy_class(
     make_model_and_action_dist=build_slateq_model_and_distribution,
     optimizer_fn=build_slateq_optimizers,
     # Define how to act.
-    action_sampler_fn=action_sampler_fn,
+    action_distribution_fn=action_distribution_fn,
     # Post processing sampled trajectory data.
     postprocess_fn=postprocess_fn_add_next_actions_for_sarsa,
     extra_grad_process_fn=apply_grad_clipping,

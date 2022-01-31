@@ -171,7 +171,7 @@ class SlateQModel(TorchModelV2, nn.Module):
             # slates_selected.shape: [batch_size, slate_size]
             slates_selected = self.slates[max_idx]
 
-        return slates_selected, best_slate_q_value
+        return slates_selected, best_slate_q_value, slate_q_values
 
     def get_per_slate_q_values(self, user, doc):
         # Compute item scores (proportional to click probabilities)
@@ -224,7 +224,7 @@ class SlateQModel(TorchModelV2, nn.Module):
             for val in input_dict[SampleBatch.OBS]["doc"].values()
         ], 1)
 
-        slates_selected, _ = self.choose_slate(user, doc)
+        slates_selected, _, _ = self.choose_slate(user, doc)
 
         state_out = []
         return slates_selected, state_out
