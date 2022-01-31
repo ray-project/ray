@@ -160,5 +160,14 @@ class TestJobStop:
         assert f"Job '{job_id}' was stopped" not in stdout
 
 
+def test_quote_escaping(ray_start_stop):
+    cmd = "echo \"hello 'world'\""
+    job_id = "test_quote_escaping"
+    output = subprocess.check_output(
+        f"ray job submit --job-id={job_id} -- {cmd}", shell=True
+    ).decode("utf-8")
+    assert "hello 'world'" in output
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
