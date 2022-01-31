@@ -8,7 +8,8 @@ import re
 import time
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, overload
+from typing import (Any, Callable, Dict, Optional, Tuple, Type, Union, List, 
+                    overload)
 
 from fastapi import APIRouter, FastAPI
 from starlette.requests import Request
@@ -1235,3 +1236,187 @@ def list_deployments() -> Dict[str, Deployment]:
         )
 
     return deployments
+
+
+@PublicAPI(stability="beta")
+def deploy_group(deployment_list: List[Tuple[Deployment, Dict]], 
+                 _blocking: bool=True) -> List[GoalId]:
+    """
+    Takes in a list of tuples that contain a deployment object and a
+    dictionary of keyword arguments to apply that deployment via a
+    .options() call. Updates each deployments with its corresponding
+    dictionary, and then deploys all deployments atomically.
+
+    Args:
+        deployment_list(List[Tuple(Deployment, Dict)]): a list of all
+            the Deployment object–option argument pairs.
+        _blocking(bool): whether to wait for the deployments to finish
+            deploying or not.
+    
+    Raises:
+        TypeError: if a non-deployment object is passed in as a deployment,
+            or if the dictionary of options for a deployment contains a
+            non-existent option.
+    """
+
+
+    # TODO: Escalate this function to the Ray dashboard
+
+    # Apply options to deployments, store results in updated_deployments
+    updated_deployments: List[Deployment] = []
+    for deployment, options_dict in deployment_list:
+        if not isinstance(deployment, Deployment):
+            error_msg = (f"The deployment {deployment} should be a "
+                            f"Deployment class object. Instead, it was a "
+                            f"{type(deployment)} type. Make sure this "
+                            f"object is a class or function decorated with "
+                            f"@serve.deployment.")
+            logger.error(error_msg)
+            raise TypeError(error_msg)
+
+        try:
+            updated_deployment = deployment.options(**options_dict)
+        except TypeError as e:
+            error_msg = (f"Deployment {deployment.name} contained an "
+                            f"invalid option.")
+            logger.error(error_msg)
+            raise TypeError(error_msg) from e
+        
+        updated_deployments.append(updated_deployment)
+    
+    deployment_args_list = []
+    for deployment in updated_deployments:
+        deployment_args_list.append(
+            self.prepare_deployment(
+                deployment._name,
+                deployment._func_or_class,
+                deployment.init_args,
+                deployment.init_kwargs,
+                ray_actor_options=deployment._ray_actor_options,
+                config=deployment._config,
+                version=deployment._version,
+                prev_version=deployment._prev_version,
+                route_prefix=deployment.route_prefix,
+            )
+        )
+    
+    update_goals = self.deploy_group(deployment_args_list)
+
+    # This section is adapted from api.py's Client's deploy
+    for i in range(len(updated_deployments)):
+        deployment = updated_deployments[i]
+        name, version = deployment._name, deployment._version
+        updating = update_goals[i][1]
+
+        tag = f"component=serve deployment={name}"
+
+        if updating:
+            msg = f"Updating deployment '{name}'"
+            if version is not None:
+                msg += f" to version '{version}'"
+            logger.info(f"{msg}. {tag}")
+        else:
+            logger.info(
+                f"Deployment '{name}' is already at version "
+                f"'{version}', not updating. {tag}"
+            )
+    
+    # This section is also adapted from api.py's Client's deploy
+    nonblocking_goal_ids = []
+    for i in range(len(updated_deployments)):
+        deployment = updated_deployments[i]
+        url = deployment.url
+        goal_id = update_goals[i][0]
+
+        if _blocking:
+            ready, _ = ray.wait([self.wait_for_goal(goal_id)])
+
+            if len(ready) == 1:
+                async_goal_exception = ray.get(ready)[0]
+                if async_goal_exception is not None:
+                    raise async_goal_exception
+
+            if url is not None:
+                url_part = f" at `{url}`"
+            else:
+                url_part = ""
+            logger.info(
+                f"Deployment '{name}{':'+version if version else ''}' is ready"
+                f"{url_part}. {tag}"
+            )
+
+        else:
+            return nonblocking_goal_ids.append(goal_id)
+    
+    return nonblocking_goal_ids
+
+def prepare_deployment(
+    self,
+    name: str,
+    deployment_def: Union[Callable, Type[Callable], str],
+    init_args: Tuple[Any],
+    init_kwargs: Dict[Any, Any],
+    ray_actor_options: Optional[Dict] = None,
+    config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
+    version: Optional[str] = None,
+    prev_version: Optional[str] = None,
+    route_prefix: Optional[str] = None
+) -> Dict:
+    """
+    Adapted from the api.py's Client's deploy. Takes a deployment's
+    configuration, and returns the arguments needed for the controller to
+    deploy it.
+    """
+
+    # TODO: Escalate this function to the Ray Dashboard
+
+    if config is None:
+        config = {}
+    if ray_actor_options is None:
+        ray_actor_options = {}
+
+    curr_job_env = ray.get_runtime_context().runtime_env
+    if "runtime_env" in ray_actor_options:
+        ray_actor_options["runtime_env"].setdefault(
+            "working_dir", curr_job_env.get("working_dir")
+        )
+    else:
+        ray_actor_options["runtime_env"] = curr_job_env
+
+    replica_config = ReplicaConfig(
+        deployment_def,
+        init_args=init_args,
+        init_kwargs=init_kwargs,
+        ray_actor_options=ray_actor_options,
+    )
+
+    if isinstance(config, dict):
+        deployment_config = DeploymentConfig.parse_obj(config)
+    elif isinstance(config, DeploymentConfig):
+        deployment_config = config
+    else:
+        raise TypeError("config must be a DeploymentConfig or a dictionary.")
+
+    if (
+        deployment_config.autoscaling_config is not None
+        and deployment_config.max_concurrent_queries
+        < deployment_config.autoscaling_config.target_num_ongoing_requests_per_replica  # noqa: E501
+    ):
+        logger.warning(
+            "Autoscaling will never happen, "
+            "because 'max_concurrent_queries' is less than "
+            "'target_num_ongoing_requests_per_replica' now."
+        )
+    
+    controller_deploy_args = {
+        "name": name,
+        "deployment_config_proto_bytes": 
+            deployment_config.to_proto_bytes(),
+        "replica_config": replica_config,
+        "version": version,
+        "prev_version": prev_version,
+        "route_prefix": route_prefix,
+        "deployer_job_id": ray.get_runtime_context().job_id,
+    }
+
+    return controller_deploy_args
