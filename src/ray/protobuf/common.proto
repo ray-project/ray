@@ -58,7 +58,12 @@ message PlacementGroupSchedulingStrategy {
   bool placement_group_capture_child_tasks = 3;
 }
 
-message DefaultSchedulingStrategy {}
+message DefaultSchedulingStrategy {
+  // This config is not set by the user
+  // but rather determinted by the system based on
+  // the global spread threshold config and locality.
+  optional float spread_threshold = 1;
+}
 
 message SpreadSchedulingStrategy {}
 

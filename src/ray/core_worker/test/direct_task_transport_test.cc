@@ -172,7 +172,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   void RequestWorkerLease(
       const rpc::TaskSpec &task_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size = -1) override {
+      const int64_t backlog_size) override {
     num_workers_requested += 1;
     callbacks.push_back(callback);
   }
@@ -303,9 +303,9 @@ class MockLeasePolicy : public LeasePolicyInterface {
     fallback_rpc_address_.set_raylet_id(node_id.Binary());
   }
 
-  rpc::Address GetBestNodeForTask(const TaskSpecification &spec) {
+  std::pair<rpc::Address, bool> GetBestNodeForTask(const TaskSpecification &spec) {
     num_lease_policy_consults++;
-    return fallback_rpc_address_;
+    return std::make_pair(fallback_rpc_address_, false);
   };
 
   ~MockLeasePolicy() {}
