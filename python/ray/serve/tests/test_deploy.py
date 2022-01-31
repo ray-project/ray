@@ -7,7 +7,7 @@ import time
 
 from pydantic.error_wrappers import ValidationError
 import pytest
-from ray.serve.api import deployment
+from ray.serve.api import Deployment
 import requests
 
 import ray
@@ -16,6 +16,7 @@ from ray.exceptions import RayTaskError
 from ray import serve
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import get_random_letters
+from ray.serve.controller import ServeController
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
@@ -1219,9 +1220,15 @@ class TestDeployGroup:
 
     
     def test_basic_deploy_group(self, serve_instance):
-        controller = serve_instance._controller
-        controller.deploy_group(TestDeployGroup.deployments)
-        pass
+        controller: ServeController = serve_instance._controller
+
+        deployment_list = [(d, {}) for d in self.deployments]
+        controller.execute_deploy_group(deployment_list)
+        
+        for deployment, response in zip(self.deployments, self.responses):
+            assert deployment.get_handle().remote() == response
+
+
 
 
 if __name__ == "__main__":
