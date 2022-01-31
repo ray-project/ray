@@ -28,6 +28,7 @@ def create_or_get_async_loop_in_thread():
 @dataclass(frozen=True)
 class HandleOptions:
     """Options for each ServeHandle instances. These fields are immutable."""
+
     method_name: str = "__call__"
 
 
@@ -60,13 +61,13 @@ class RayServeHandle:
     """
 
     def __init__(
-            self,
-            controller_handle: ActorHandle,
-            deployment_name: EndpointTag,
-            handle_options: Optional[HandleOptions] = None,
-            *,
-            _router: Optional[Router] = None,
-            _internal_pickled_http_request: bool = False,
+        self,
+        controller_handle: ActorHandle,
+        deployment_name: EndpointTag,
+        handle_options: Optional[HandleOptions] = None,
+        *,
+        _router: Optional[Router] = None,
+        _internal_pickled_http_request: bool = False,
     ):
         self.controller_handle = controller_handle
         self.deployment_name = deployment_name
@@ -76,13 +77,15 @@ class RayServeHandle:
 
         self.request_counter = metrics.Counter(
             "serve_handle_request_counter",
-            description=("The number of handle.remote() calls that have been "
-                         "made on this handle."),
-            tag_keys=("handle", "deployment"))
-        self.request_counter.set_default_tags({
-            "handle": self.handle_tag,
-            "deployment": self.deployment_name
-        })
+            description=(
+                "The number of handle.remote() calls that have been "
+                "made on this handle."
+            ),
+            tag_keys=("handle", "deployment"),
+        )
+        self.request_counter.set_default_tags(
+            {"handle": self.handle_tag, "deployment": self.deployment_name}
+        )
 
         self.router: Router = _router or self._make_router()
 
@@ -107,9 +110,9 @@ class RayServeHandle:
         return asyncio.get_event_loop() == self.router._event_loop
 
     def options(
-            self,
-            *,
-            method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+        self,
+        *,
+        method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
     ):
         """Set options for this handle.
 
@@ -133,8 +136,7 @@ class RayServeHandle:
             _internal_pickled_http_request=self._pickled_http_request,
         )
 
-    def _remote(self, deployment_name, handle_options, args,
-                kwargs) -> Coroutine:
+    def _remote(self, deployment_name, handle_options, args, kwargs) -> Coroutine:
         request_metadata = RequestMetadata(
             get_random_letters(10),  # Used for debugging.
             deployment_name,
@@ -160,12 +162,12 @@ class RayServeHandle:
                 ``request.query_params``.
         """
         self.request_counter.inc()
-        return await self._remote(self.deployment_name, self.handle_options,
-                                  args, kwargs)
+        return await self._remote(
+            self.deployment_name, self.handle_options, args, kwargs
+        )
 
     def __repr__(self):
-        return (f"{self.__class__.__name__}"
-                f"(deployment='{self.deployment_name}')")
+        return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
 
     def __reduce__(self):
         serialized_data = {
@@ -174,7 +176,7 @@ class RayServeHandle:
             "handle_options": self.handle_options,
             "_internal_pickled_http_request": self._pickled_http_request,
         }
-        return lambda kwargs: RayServeHandle(**kwargs), (serialized_data, )
+        return lambda kwargs: RayServeHandle(**kwargs), (serialized_data,)
 
     def __getattr__(self, name):
         return self.options(method_name=name)
@@ -213,10 +215,10 @@ class RayServeSyncHandle(RayServeHandle):
                 ``request.args``.
         """
         self.request_counter.inc()
-        coro = self._remote(self.deployment_name, self.handle_options, args,
-                            kwargs)
+        coro = self._remote(self.deployment_name, self.handle_options, args, kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
-            coro, self.router._event_loop)
+            coro, self.router._event_loop
+        )
         return future.result()
 
     def __reduce__(self):
@@ -226,4 +228,4 @@ class RayServeSyncHandle(RayServeHandle):
             "handle_options": self.handle_options,
             "_internal_pickled_http_request": self._pickled_http_request,
         }
-        return lambda kwargs: RayServeSyncHandle(**kwargs), (serialized_data, )
+        return lambda kwargs: RayServeSyncHandle(**kwargs), (serialized_data,)
