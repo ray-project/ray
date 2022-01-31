@@ -23,8 +23,7 @@ def ray_start_1_cpu():
 
 @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_ray_dask_basic(ray_start_1_cpu):
-    from ray.util.dask import ray_dask_get, enable_dask_on_ray, \
-        disable_dask_on_ray
+    from ray.util.dask import ray_dask_get, enable_dask_on_ray, disable_dask_on_ray
 
     @ray.remote
     def stringify(x):
@@ -69,20 +68,24 @@ def test_ray_dask_basic(ray_start_1_cpu):
 @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_ray_dask_persist(ray_start_1_cpu):
     from ray.util.dask import ray_dask_get
+
     arr = da.ones(5) + 2
     result = arr.persist(scheduler=ray_dask_get)
     assert isinstance(
-        next(iter(result.dask.values())), (ray.ObjectRef, ClientObjectRef))
+        next(iter(result.dask.values())), (ray.ObjectRef, ClientObjectRef)
+    )
 
 
 def test_sort_with_progress_bar(ray_start_1_cpu):
     from ray.util.dask import ray_dask_get
+
     npartitions = 10
     df = dd.from_pandas(
         pd.DataFrame(
-            np.random.randint(0, 100, size=(100, 2)), columns=["age",
-                                                               "grade"]),
-        npartitions=npartitions)
+            np.random.randint(0, 100, size=(100, 2)), columns=["age", "grade"]
+        ),
+        npartitions=npartitions,
+    )
     # We set max_branch=npartitions in order to ensure that the task-based
     # shuffle happens in a single stage, which is required in order for our
     # optimization to work.
@@ -90,11 +93,11 @@ def test_sort_with_progress_bar(ray_start_1_cpu):
     sorted_without_pb = None
     with ProgressBarCallback():
         sorted_with_pb = df.set_index(
-            ["age"], shuffle="tasks", max_branch=npartitions).compute(
-                scheduler=ray_dask_get, _ray_enable_progress_bar=True)
+            ["age"], shuffle="tasks", max_branch=npartitions
+        ).compute(scheduler=ray_dask_get, _ray_enable_progress_bar=True)
     sorted_without_pb = df.set_index(
-        ["age"], shuffle="tasks",
-        max_branch=npartitions).compute(scheduler=ray_dask_get)
+        ["age"], shuffle="tasks", max_branch=npartitions
+    ).compute(scheduler=ray_dask_get)
     assert sorted_with_pb.equals(sorted_without_pb)
 
 

@@ -11,7 +11,7 @@ import java.util.Map;
 /** The options for creating actor. */
 public class ActorCreationOptions extends BaseTaskOptions {
   public final String name;
-  public final ActorLifetime lifetime;
+  public ActorLifetime lifetime;
   public final int maxRestarts;
   public final List<String> jvmOptions;
   public final int maxConcurrency;
@@ -46,7 +46,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
   /** The inner class for building ActorCreationOptions. */
   public static class Builder {
     private String name;
-    private ActorLifetime lifetime = ActorLifetime.NON_DETACHED;
+    private ActorLifetime lifetime = null;
     private Map<String, Double> resources = new HashMap<>();
     private int maxRestarts = 0;
     private List<String> jvmOptions = new ArrayList<>();

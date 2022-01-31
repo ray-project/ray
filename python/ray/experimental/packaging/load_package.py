@@ -19,8 +19,10 @@ import tempfile
 import yaml
 
 import ray
-from ray._private.runtime_env.packaging import (get_uri_for_directory,
-                                                upload_package_if_needed)
+from ray._private.runtime_env.packaging import (
+    get_uri_for_directory,
+    upload_package_if_needed,
+)
 
 
 def load_package(config_path: str) -> "_RuntimePackage":
@@ -86,15 +88,15 @@ def load_package(config_path: str) -> "_RuntimePackage":
     conda_yaml = os.path.join(base_dir, "conda.yaml")
     if os.path.exists(conda_yaml):
         if "conda" in runtime_env:
-            raise ValueError(
-                "Both conda.yaml and conda: section found in package")
+            raise ValueError("Both conda.yaml and conda: section found in package")
         runtime_env["conda"] = yaml.safe_load(open(conda_yaml).read())
 
     pkg = _RuntimePackage(
         name=config["name"],
         desc=config["description"],
         interface_file=os.path.join(base_dir, config["interface_file"]),
-        runtime_env=runtime_env)
+        runtime_env=runtime_env,
+    )
     return pkg
 
 
@@ -107,16 +109,13 @@ def _download_from_github_if_needed(config_path: str) -> str:
     """
     if config_path.startswith("http"):
         if "github" not in config_path:
-            raise ValueError(
-                "Only GitHub URLs are supported by load_package().")
+            raise ValueError("Only GitHub URLs are supported by load_package().")
         if "raw.githubusercontent.com" not in config_path:
-            raise ValueError(
-                "GitHub URL must start with raw.githubusercontent.com")
+            raise ValueError("GitHub URL must start with raw.githubusercontent.com")
         URL_FORMAT = ".*raw.githubusercontent.com/([^/]*)/([^/]*)/([^/]*)/(.*)"
         match = re.match(URL_FORMAT, config_path)
         if not match:
-            raise ValueError(
-                "GitHub URL must be of format {}".format(URL_FORMAT))
+            raise ValueError("GitHub URL must be of format {}".format(URL_FORMAT))
         gh_user = match.group(1)
         gh_repo = match.group(2)
         gh_branch = match.group(3)
@@ -126,22 +125,26 @@ def _download_from_github_if_needed(config_path: str) -> str:
         hasher = hashlib.sha1()
         hasher.update(config_path.encode("utf-8"))
         config_key = hasher.hexdigest()
-        final_path = os.path.join(_pkg_tmp(),
-                                  "github_snapshot_{}".format(config_key))
+        final_path = os.path.join(_pkg_tmp(), "github_snapshot_{}".format(config_key))
 
         # Only download the repo if needed.
         if not os.path.exists(final_path):
-            tmp = tempfile.mkdtemp(
-                prefix="github_{}".format(gh_repo), dir=_pkg_tmp())
-            subprocess.check_call([
-                "curl", "--fail", "-L",
-                "https://github.com/{}/{}/tarball/{}".format(
-                    gh_user, gh_repo, gh_branch), "--output", tmp + ".tar.gz"
-            ])
-            subprocess.check_call([
-                "tar", "xzf", tmp + ".tar.gz", "-C", tmp,
-                "--strip-components=1"
-            ])
+            tmp = tempfile.mkdtemp(prefix="github_{}".format(gh_repo), dir=_pkg_tmp())
+            subprocess.check_call(
+                [
+                    "curl",
+                    "--fail",
+                    "-L",
+                    "https://github.com/{}/{}/tarball/{}".format(
+                        gh_user, gh_repo, gh_branch
+                    ),
+                    "--output",
+                    tmp + ".tar.gz",
+                ]
+            )
+            subprocess.check_call(
+                ["tar", "xzf", tmp + ".tar.gz", "-C", tmp, "--strip-components=1"]
+            )
             os.rename(tmp, final_path)
         return os.path.join(final_path, gh_subdir)
 
@@ -156,16 +159,14 @@ class _RuntimePackage:
     access the raw runtime env defined by the package via ``pkg._runtime_env``.
     """
 
-    def __init__(self, name: str, desc: str, interface_file: str,
-                 runtime_env: dict):
+    def __init__(self, name: str, desc: str, interface_file: str, runtime_env: dict):
         self._name = name
         self._description = desc
         self._interface_file = interface_file
         self._runtime_env = runtime_env
         _validate_interface_file(self._interface_file)
 
-        spec = importlib.util.spec_from_file_location(self._name,
-                                                      self._interface_file)
+        spec = importlib.util.spec_from_file_location(self._name, self._interface_file)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         self._module = module
@@ -173,20 +174,20 @@ class _RuntimePackage:
         for symbol in dir(self._module):
             if not symbol.startswith("_"):
                 value = getattr(self._module, symbol)
-                if (isinstance(value, ray.remote_function.RemoteFunction)
-                        or isinstance(value, ray.actor.ActorClass)):
-                    setattr(
-                        self, symbol, value.options(runtime_env=runtime_env))
+                if isinstance(value, ray.remote_function.RemoteFunction) or isinstance(
+                    value, ray.actor.ActorClass
+                ):
+                    setattr(self, symbol, value.options(runtime_env=runtime_env))
 
     def __repr__(self):
         return "ray._RuntimePackage(module={}, runtime_env={})".format(
-            self._module, self._runtime_env)
+            self._module, self._runtime_env
+        )
 
 
 def _validate_interface_file(interface_file: str):
     if not os.path.exists(interface_file):
-        raise ValueError(
-            "Interface file does not exist: {}".format(interface_file))
+        raise ValueError("Interface file does not exist: {}".format(interface_file))
     for line in open(interface_file):
         line = line.replace("\n", "")
         if line.startswith("import ") or line.startswith("from "):
@@ -196,7 +197,8 @@ def _validate_interface_file(interface_file: str):
                     "at top-level, found `{}`. Please either remove or "
                     "change this into a lazy import. To unsafely allow "
                     "this import, add `# noqa` to the line "
-                    "in question.".format(line))
+                    "in question.".format(line)
+                )
 
 
 def _pkg_tmp():
@@ -221,7 +223,8 @@ if __name__ == "__main__":
     print("-> Testing load from github")
     pkg2 = load_package(
         "http://raw.githubusercontent.com/ray-project/ray/master/"
-        "python/ray/experimental/packaging/example_pkg/ray_pkg.yaml")
+        "python/ray/experimental/packaging/example_pkg/ray_pkg.yaml"
+    )
     print("-> Loaded package", pkg2)
     print("-> Testing method call")
     print(ray.get(pkg2.my_func.remote()))

@@ -621,6 +621,19 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
   ASSERT_EQ(locality_data_obj1->nodes_containing_object,
             absl::flat_hash_set<NodeID>({node1}));
 
+  // When node2 is dead, reference table should remove it from obj1's locations.
+  // And then GetLocalityData should only return node1.
+  rc->AddObjectLocation(obj1, node2);
+  locality_data_obj1 = rc->GetLocalityData(obj1);
+  ASSERT_TRUE(locality_data_obj1.has_value());
+  ASSERT_EQ(locality_data_obj1->object_size, object_size);
+  ASSERT_EQ(locality_data_obj1->nodes_containing_object,
+            absl::flat_hash_set<NodeID>({node1, node2}));
+  rc->ResetObjectsOnRemovedNode(node2);
+  locality_data_obj1 = rc->GetLocalityData(obj1);
+  ASSERT_EQ(locality_data_obj1->nodes_containing_object,
+            absl::flat_hash_set<NodeID>({node1}));
+
   // Borrowed object with defined object size and at least one node location should
   // return valid locality data.
   rc->AddLocalReference(obj2, "file.py:43");
