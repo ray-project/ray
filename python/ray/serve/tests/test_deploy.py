@@ -7,6 +7,7 @@ import time
 
 from pydantic.error_wrappers import ValidationError
 import pytest
+from ray.serve.api import deployment
 import requests
 
 import ray
@@ -1210,6 +1211,36 @@ def test_http_proxy_request_cancellation(serve_instance):
     # Sending another request to verify that only one request has been
     # processed so far.
     assert requests.get(url).text == "2"
+
+
+class TestDeployGroup:
+
+    @serve.deployment
+    def f(request):
+        return "f reached"
+    
+    @serve.deployment
+    def g(request):
+        return "g reached"
+    
+    @serve.deployment
+    class C:
+        async def __call__(self):
+            return "C reached"
+    
+    @serve.deployment
+    class D:
+        async def __call__(self):
+            return "D reached"
+    
+    deployments = [f, g, C, D]
+    responses = ["f reached", "g reached", "C reached", "D reached"]
+
+    
+    def test_basic_deploy_group(self, serve_instance):
+        controller = serve_instance._controller
+        controller.deploy_group(TestDeployGroup.deployments)
+        pass
 
 
 if __name__ == "__main__":
