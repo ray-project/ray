@@ -13,12 +13,12 @@ class DistributedLearners:
     """Container class for n learning @ray.remote-turned policies."""
 
     def __init__(
-            self,
-            config,
-            max_num_policies: int,
-            replay_actor_class: Type[ActorHandle],
-            replay_actor_args: List[Any],
-            num_learner_shards: Union[str, int] = "auto",
+        self,
+        config,
+        max_num_policies: int,
+        replay_actor_class: Type[ActorHandle],
+        replay_actor_args: List[Any],
+        num_learner_shards: Union[str, int] = "auto",
     ):
         """Initializes a DistributedLearners instance.
 
@@ -53,9 +53,13 @@ class DistributedLearners:
         self.num_policies_per_shard = math.ceil(num_policies_per_shard)
 
         self.shards = [
-            _Shard(self.config, self.max_num_policies,
-                   self.num_gpus_per_policy, self.replay_actor_class,
-                   self.replay_actor_args)
+            _Shard(
+                self.config,
+                self.max_num_policies,
+                self.num_gpus_per_policy,
+                self.replay_actor_class,
+                self.replay_actor_args,
+            )
             for _ in range(self.num_learner_shards)
         ]
 
@@ -65,7 +69,8 @@ class DistributedLearners:
             if shard.max_num_policies > len(shard.policy_actors):
                 if shard.has_replay_buffer is False:
                     _, pol_actor = shard.add_replay_buffer_and_policy(
-                        policy_id, policy_spec)
+                        policy_id, policy_spec
+                    )
                 else:
                     pol_actor = shard.add_policy(policy_id, policy_spec)
                 return pol_actor
@@ -106,8 +111,14 @@ class DistributedLearners:
 
 
 class _Shard:
-    def __init__(self, config, max_num_policies, num_gpus_per_policy,
-                 replay_actor_class, replay_actor_args):
+    def __init__(
+        self,
+        config,
+        max_num_policies,
+        num_gpus_per_policy,
+        replay_actor_class,
+        replay_actor_args,
+    ):
         self.config = config
         self.has_replay_buffer = False
         self.max_num_policies = max_num_policies
@@ -118,8 +129,9 @@ class _Shard:
         self.replay_actor = None
         self.policy_actors = {}
 
-    def add_replay_buffer_and_policy(self, policy_id: PolicyID,
-                                     policy_spec: PolicySpec):
+    def add_replay_buffer_and_policy(
+        self, policy_id: PolicyID, policy_spec: PolicySpec
+    ):
         assert self.replay_actor is None
         assert len(self.policy_actors) == 0
 
@@ -128,23 +140,31 @@ class _Shard:
         # num_gpus, not the total number of GPUs).
         cfg = Trainer.merge_trainer_configs(
             self.config,
-            dict(policy_spec.config, **{"num_gpus": self.num_gpus_per_policy}))
+            dict(policy_spec.config, **{"num_gpus": self.num_gpus_per_policy}),
+        )
 
         colocated = create_colocated_actors(
             actor_specs=[
                 (self.replay_actor_class, self.replay_actor_args, {}, 1),
-            ] + [(
-                ray.remote(
-                    num_cpus=1,
-                    num_gpus=self.num_gpus_per_policy
-                    if not cfg["_fake_gpus"] else 0)(policy_spec.policy_class),
-                # Policy c'tor args.
-                (policy_spec.observation_space, policy_spec.action_space, cfg),
-                # Policy c'tor kwargs={}.
-                {},
-                # Count=1,
-                1)],
-            node=None)  # None
+            ]
+            + [
+                (
+                    ray.remote(
+                        num_cpus=1,
+                        num_gpus=self.num_gpus_per_policy
+                        if not cfg["_fake_gpus"]
+                        else 0,
+                    )(policy_spec.policy_class),
+                    # Policy c'tor args.
+                    (policy_spec.observation_space, policy_spec.action_space, cfg),
+                    # Policy c'tor kwargs={}.
+                    {},
+                    # Count=1,
+                    1,
+                )
+            ],
+            node=None,
+        )  # None
 
         self.replay_actor = colocated[0][0]
         self.policy_actors[policy_id] = colocated[1][0]
@@ -160,22 +180,29 @@ class _Shard:
         # num_gpus, not the total number of GPUs).
         cfg = Trainer.merge_trainer_configs(
             self.config,
-            dict(policy_spec.config, **{"num_gpus": self.num_gpus_per_policy}))
+            dict(policy_spec.config, **{"num_gpus": self.num_gpus_per_policy}),
+        )
 
         colocated = create_colocated_actors(
-            actor_specs=[(
-                ray.remote(
-                    num_cpus=1,
-                    num_gpus=self.num_gpus_per_policy
-                    if not cfg["_fake_gpus"] else 0)(policy_spec.policy_class),
-                # Policy c'tor args.
-                (policy_spec.observation_space, policy_spec.action_space, cfg),
-                # Policy c'tor kwargs={}.
-                {},
-                # Count=1,
-                1)],
+            actor_specs=[
+                (
+                    ray.remote(
+                        num_cpus=1,
+                        num_gpus=self.num_gpus_per_policy
+                        if not cfg["_fake_gpus"]
+                        else 0,
+                    )(policy_spec.policy_class),
+                    # Policy c'tor args.
+                    (policy_spec.observation_space, policy_spec.action_space, cfg),
+                    # Policy c'tor kwargs={}.
+                    {},
+                    # Count=1,
+                    1,
+                )
+            ],
             # Force co-locate on the already existing replay actor's node.
-            node=ray.get(self.replay_actor.get_host.remote()))
+            node=ray.get(self.replay_actor.get_host.remote()),
+        )
 
         self.policy_actors[policy_id] = colocated[0][0]
 

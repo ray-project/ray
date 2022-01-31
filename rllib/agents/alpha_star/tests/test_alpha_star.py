@@ -5,19 +5,21 @@ import unittest
 import ray
 import ray.rllib.agents.alpha_star as alpha_star
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
-from ray.rllib.utils.test_utils import check_compute_single_action, \
-    check_train_results, framework_iterator
+from ray.rllib.utils.test_utils import (
+    check_compute_single_action,
+    check_train_results,
+    framework_iterator,
+)
 from ray.tune import register_env
 
 # Connect-4 OpenSpiel env.
-register_env("connect_four",
-             lambda _: OpenSpielEnv(pyspiel.load_game("connect_four")))
+register_env("connect_four", lambda _: OpenSpielEnv(pyspiel.load_game("connect_four")))
 
 
 class TestAlphaStar(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()#num_cpus=20)
+        ray.init()  # num_cpus=20)
 
     @classmethod
     def tearDownClass(cls):
@@ -41,24 +43,22 @@ class TestAlphaStar(unittest.TestCase):
             "grad_clip": 10.0,
             "replay_buffer_capacity": 10,
             "replay_buffer_replay_ratio": 0.0,
-
             # Two GPUs -> 2 policies per GPU.
             "num_gpus": 1,
             "_fake_gpus": True,
-
             # Test with KL loss, just to cover that extra code.
             "use_kl_loss": True,
         }
 
         num_iterations = 200
 
-        for _ in framework_iterator(config, frameworks=("tf2", )):
+        for _ in framework_iterator(config, frameworks=("tf2",)):
             _config = config.copy()
             trainer = alpha_star.AlphaStarTrainer(config=_config)
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
-                #pprint.pprint(results)
+                # pprint.pprint(results)
             check_compute_single_action(trainer)
             trainer.stop()
 
@@ -66,4 +66,5 @@ class TestAlphaStar(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

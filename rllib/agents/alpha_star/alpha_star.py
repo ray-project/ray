@@ -15,19 +15,30 @@ import ray.rllib.agents.ppo.appo as appo
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
-from ray.rllib.execution.buffers.mixin_replay_buffer import \
-    MixInMultiAgentReplayBuffer
+from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, \
-    LEARN_ON_BATCH_TIMER, NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED, \
-    NUM_ENV_STEPS_SAMPLED, NUM_TARGET_UPDATES, \
-    SAMPLE_TIMER, SYNCH_WORKER_WEIGHTS_TIMER, TARGET_NET_UPDATE_TIMER
+from ray.rllib.utils.metrics import (
+    LAST_TARGET_UPDATE_TS,
+    LEARN_ON_BATCH_TIMER,
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_TARGET_UPDATES,
+    SAMPLE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+    TARGET_NET_UPDATE_TIMER,
+)
 from ray.rllib.utils.numpy import softmax
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.typing import PartialTrainerConfigDict,\
-    PolicyID, PolicyState, TrainerConfigDict, ResultDict
+from ray.rllib.utils.typing import (
+    PartialTrainerConfigDict,
+    PolicyID,
+    PolicyState,
+    TrainerConfigDict,
+    ResultDict,
+)
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.timer import _Timer
 
@@ -145,32 +156,47 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
         return PlacementGroupFactory(
-            bundles=[{
-                # Driver (no GPUs).
-                "CPU": cf["num_cpus_for_driver"],
-            }] + [
+            bundles=[
+                {
+                    # Driver (no GPUs).
+                    "CPU": cf["num_cpus_for_driver"],
+                }
+            ]
+            + [
                 {
                     # RolloutWorkers (no GPUs).
                     "CPU": cf["num_cpus_per_worker"],
-                } for _ in range(cf["num_workers"])
-            ] + [
+                }
+                for _ in range(cf["num_workers"])
+            ]
+            + [
                 {
                     # Policy learners (and Replay buffer shards).
                     "CPU": 1,
                     "GPU": num_gpus_per_shard,
-                } for _ in range(num_learner_shards)
-            ] + ([
-                {
-                    # Evaluation (remote) workers.
-                    # Note: The local eval worker is located on the driver
-                    # CPU or not even created iff >0 eval workers.
-                    "CPU": eval_config.get("num_cpus_per_worker",
-                                           cf["num_cpus_per_worker"]),
-                    "GPU": eval_config.get("num_gpus_per_worker",
-                                           cf["num_gpus_per_worker"]),
-                } for _ in range(cf["evaluation_num_workers"])
-            ] if cf["evaluation_interval"] else []),
-            strategy=config.get("placement_strategy", "PACK"))
+                }
+                for _ in range(num_learner_shards)
+            ]
+            + (
+                [
+                    {
+                        # Evaluation (remote) workers.
+                        # Note: The local eval worker is located on the driver
+                        # CPU or not even created iff >0 eval workers.
+                        "CPU": eval_config.get(
+                            "num_cpus_per_worker", cf["num_cpus_per_worker"]
+                        ),
+                        "GPU": eval_config.get(
+                            "num_gpus_per_worker", cf["num_gpus_per_worker"]
+                        ),
+                    }
+                    for _ in range(cf["evaluation_num_workers"])
+                ]
+                if cf["evaluation_interval"]
+                else []
+            ),
+            strategy=config.get("placement_strategy", "PACK"),
+        )
 
     @classmethod
     @override(appo.APPOTrainer)
@@ -200,14 +226,15 @@ class AlphaStarTrainer(appo.APPOTrainer):
         ReplayActor = ray.remote(
             num_cpus=1,
             num_gpus=0.01
-            if (self.config["num_gpus"] and not self.config["_fake_gpus"]) else
-            0)(MixInMultiAgentReplayBuffer)
+            if (self.config["num_gpus"] and not self.config["_fake_gpus"])
+            else 0,
+        )(MixInMultiAgentReplayBuffer)
 
         # Setup remote replay buffer shards and policy learner actors
         # (located on any GPU machine in the cluster):
         replay_actor_args = [
             self.config["replay_buffer_capacity"],
-            self.config["replay_buffer_replay_ratio"]
+            self.config["replay_buffer_replay_ratio"],
         ]
 
         # Create a DistributedLearners utility object and set it up with
@@ -228,10 +255,12 @@ class AlphaStarTrainer(appo.APPOTrainer):
         def _set_policy_learners(worker):
             worker._distributed_learners = distributed_learners
 
-        ray.get([
-            w.apply.remote(_set_policy_learners)
-            for w in self.workers.remote_workers()
-        ])
+        ray.get(
+            [
+                w.apply.remote(_set_policy_learners)
+                for w in self.workers.remote_workers()
+            ]
+        )
 
         self.distributed_learners = distributed_learners
 
@@ -261,8 +290,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
         with self._timers[SAMPLE_TIMER]:
             sample_results = asynchronous_parallel_requests(
                 remote_requests_in_flight=self.remote_requests_in_flight,
-                actors=self.workers.remote_workers()
-                or [self.workers.local_worker()],
+                actors=self.workers.remote_workers() or [self.workers.local_worker()],
                 ray_wait_timeout_s=0.01,
                 max_remote_requests_in_flight_per_actor=2,
                 remote_fn=self._sample_and_send_to_buffer,
@@ -277,8 +305,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
         with self._timers[LEARN_ON_BATCH_TIMER]:
             pol_actors = []
             args = []
-            for i, (pid, pol_actor,
-                    repl_actor) in enumerate(self.distributed_learners):
+            for i, (pid, pol_actor, repl_actor) in enumerate(self.distributed_learners):
                 pol_actors.append(pol_actor)
                 args.append([repl_actor, pid])
             train_results = asynchronous_parallel_requests(
@@ -294,7 +321,8 @@ class AlphaStarTrainer(appo.APPOTrainer):
         for result in train_results.values():
             if NUM_AGENT_STEPS_TRAINED in result:
                 self._counters[NUM_AGENT_STEPS_TRAINED] += result[
-                    NUM_AGENT_STEPS_TRAINED]
+                    NUM_AGENT_STEPS_TRAINED
+                ]
 
         # For those policies that have been updated in this iteration
         # (not all policies may have undergone an updated as we are
@@ -338,11 +366,10 @@ class AlphaStarTrainer(appo.APPOTrainer):
         else:
             hist_stats = result["hist_stats"]
 
-        trainable_policies = self.workers.local_worker().get_policies_to_train(
+        trainable_policies = self.workers.local_worker().get_policies_to_train()
+        non_trainable_policies = (
+            set(self.workers.local_worker().policy_map.keys()) - trainable_policies
         )
-        non_trainable_policies = \
-            set(self.workers.local_worker().policy_map.keys()) - \
-            trainable_policies
 
         # Calculate current win-rates.
         for policy_id, rew in hist_stats.items():
@@ -366,9 +393,9 @@ class AlphaStarTrainer(appo.APPOTrainer):
                 continue
 
             print(
-                f"Iter={self.iteration} {policy_id}'s "
-                f"win-rate={win_rate} -> ",
-                end="")
+                f"Iter={self.iteration} {policy_id}'s " f"win-rate={win_rate} -> ",
+                end="",
+            )
 
             # If win rate is good enough -> Snapshot current policy and decide,
             # whether to freeze the new snapshot or not.
@@ -376,26 +403,29 @@ class AlphaStarTrainer(appo.APPOTrainer):
                 is_main = re.match("^main(_\\d+)?$", policy_id)
 
                 # Probability that the new snapshot is trainable.
-                keep_training_p = \
-                    self.config["keep_new_snapshot_training_prob"]
+                keep_training_p = self.config["keep_new_snapshot_training_prob"]
                 # For main, new snapshots are never trainable, for all others
                 # use `config.keep_new_snapshot_training_prob` (default: 0.0!).
-                keep_training = False if is_main else np.random.choice(
-                    [True, False], p=[keep_training_p, 1.0 - keep_training_p])
+                keep_training = (
+                    False
+                    if is_main
+                    else np.random.choice(
+                        [True, False], p=[keep_training_p, 1.0 - keep_training_p]
+                    )
+                )
                 # New league-exploiter policy.
                 if policy_id.startswith("league_ex"):
-                    new_pol_id = re.sub("_\\d+$", f"_{self.league_exploiters}",
-                                        policy_id)
+                    new_pol_id = re.sub(
+                        "_\\d+$", f"_{self.league_exploiters}", policy_id
+                    )
                     self.league_exploiters += 1
                 # New main-exploiter policy.
                 elif policy_id.startswith("main_ex"):
-                    new_pol_id = re.sub("_\\d+$", f"_{self.main_exploiters}",
-                                        policy_id)
+                    new_pol_id = re.sub("_\\d+$", f"_{self.main_exploiters}", policy_id)
                     self.main_exploiters += 1
                 # New main policy snapshot.
                 else:
-                    new_pol_id = re.sub("_\\d+$", f"_{self.main_policies}",
-                                        policy_id)
+                    new_pol_id = re.sub("_\\d+$", f"_{self.main_policies}", policy_id)
                     self.main_policies += 1
 
                 if keep_training:
@@ -403,18 +433,22 @@ class AlphaStarTrainer(appo.APPOTrainer):
                 else:
                     non_trainable_policies.add(new_pol_id)
 
-                print(f"adding new opponents to the mix ({new_pol_id}; "
-                      f"trainable={keep_training}).")
+                print(
+                    f"adding new opponents to the mix ({new_pol_id}; "
+                    f"trainable={keep_training})."
+                )
 
                 num_main_policies = self.main_policies
                 probs_match_types = [
                     self.config["prob_league_exploiter_match"],
                     self.config["prob_main_exploiter_match"],
-                    1.0 - self.config["prob_league_exploiter_match"] -
-                    self.config["prob_main_exploiter_match"]
+                    1.0
+                    - self.config["prob_league_exploiter_match"]
+                    - self.config["prob_main_exploiter_match"],
                 ]
-                prob_playing_learning_main = \
-                    self.config["prob_main_exploiter_playing_against_learning_main"]
+                prob_playing_learning_main = self.config[
+                    "prob_main_exploiter_playing_against_learning_main"
+                ]
 
                 # Update our mapping function accordingly.
                 def policy_mapping_fn(agent_id, episode, worker, **kwargs):
@@ -423,40 +457,42 @@ class AlphaStarTrainer(appo.APPOTrainer):
                     # LE: league-exploiter vs snapshot.
                     # ME: main-exploiter vs (any) main.
                     # M: Learning main vs itself.
-                    type_ = np.random.choice(
-                        ["LE", "ME", "M"], p=probs_match_types)
+                    type_ = np.random.choice(["LE", "ME", "M"], p=probs_match_types)
 
                     # Learning league exploiter vs a snapshot.
                     # Opponent snapshots should be selected based on a win-rate-
                     # derived probability.
                     if type_ == "LE":
-                        league_exploiter = np.random.choice([
-                            p for p in trainable_policies
-                            if p.startswith("league_ex")
-                        ])
+                        league_exploiter = np.random.choice(
+                            [p for p in trainable_policies if p.startswith("league_ex")]
+                        )
                         # Play against any non-trainable policy (excluding itself).
                         all_opponents = list(non_trainable_policies)
                         probs = softmax(
-                            [worker.global_vars["win_rates"][pid] for pid in all_opponents])
-                        opponent = np.random.choice(all_opponents, p=probs)
-                        print(
-                            f"{league_exploiter} (training) vs {opponent} (frozen)"
+                            [
+                                worker.global_vars["win_rates"][pid]
+                                for pid in all_opponents
+                            ]
                         )
-                        return league_exploiter if \
-                            episode.episode_id % 2 == agent_id else opponent
+                        opponent = np.random.choice(all_opponents, p=probs)
+                        print(f"{league_exploiter} (training) vs {opponent} (frozen)")
+                        return (
+                            league_exploiter
+                            if episode.episode_id % 2 == agent_id
+                            else opponent
+                        )
 
                     # Learning main exploiter vs (learning main OR snapshot main).
                     elif type_ == "ME":
-                        main_exploiter = np.random.choice([
-                            p for p in trainable_policies
-                            if p.startswith("main_ex")
-                        ])
+                        main_exploiter = np.random.choice(
+                            [p for p in trainable_policies if p.startswith("main_ex")]
+                        )
                         # n% of the time, play against the learning main.
                         # Also always play againt learning main if no
                         # non-learning mains have been created yet.
-                        if num_main_policies == 1 or \
-                                (np.random.random() <
-                                 prob_playing_learning_main):
+                        if num_main_policies == 1 or (
+                            np.random.random() < prob_playing_learning_main
+                        ):
                             main = "main_0"
                             training = "training"
                         # 100-n% of the time, play against a non-learning
@@ -464,19 +500,22 @@ class AlphaStarTrainer(appo.APPOTrainer):
                         # based on a win-rate-derived probability.
                         else:
                             all_opponents = [
-                                f"main_{p}"
-                                for p in list(range(1, num_main_policies))
+                                f"main_{p}" for p in list(range(1, num_main_policies))
                             ]
-                            probs = softmax([
-                                worker.global_vars["win_rates"][pid] for pid in all_opponents
-                            ])
+                            probs = softmax(
+                                [
+                                    worker.global_vars["win_rates"][pid]
+                                    for pid in all_opponents
+                                ]
+                            )
                             main = np.random.choice(all_opponents, p=probs)
                             training = "frozen"
-                        print(
-                            f"{main_exploiter} (training) vs {main} ({training})"
+                        print(f"{main_exploiter} (training) vs {main} ({training})")
+                        return (
+                            main_exploiter
+                            if episode.episode_id % 2 == agent_id
+                            else main
                         )
-                        return main_exploiter if \
-                            episode.episode_id % 2 == agent_id else main
 
                     # Main policy: Self-play.
                     else:
@@ -498,15 +537,15 @@ class AlphaStarTrainer(appo.APPOTrainer):
 
     @override(Trainer)
     def add_policy(
-            self,
-            policy_id: PolicyID,
-            policy_cls: Type[Policy],
-            *,
-            observation_space: Optional[gym.spaces.Space] = None,
-            action_space: Optional[gym.spaces.Space] = None,
-            config: Optional[PartialTrainerConfigDict] = None,
-            policy_state: Optional[PolicyState] = None,
-            **kwargs,
+        self,
+        policy_id: PolicyID,
+        policy_cls: Type[Policy],
+        *,
+        observation_space: Optional[gym.spaces.Space] = None,
+        action_space: Optional[gym.spaces.Space] = None,
+        config: Optional[PartialTrainerConfigDict] = None,
+        policy_state: Optional[PolicyState] = None,
+        **kwargs,
     ) -> Policy:
         # Add the new policy to all our train- and eval RolloutWorkers
         # (including the local worker).
@@ -524,8 +563,13 @@ class AlphaStarTrainer(appo.APPOTrainer):
         if policy_id in kwargs.get("policies_to_train", []):
             new_policy_actor = self.distributed_learners.add_policy(
                 policy_id,
-                PolicySpec(policy_cls, new_policy.observation_space,
-                           new_policy.action_space, self.config))
+                PolicySpec(
+                    policy_cls,
+                    new_policy.observation_space,
+                    new_policy.action_space,
+                    self.config,
+                ),
+            )
             # Set state of new policy actor, if provided.
             if policy_state is not None:
                 ray.get(new_policy_actor.set_state.remote(policy_state))
@@ -546,42 +590,46 @@ class AlphaStarTrainer(appo.APPOTrainer):
             # - Data was generated by a main-exploiter playing against
             #   a league-exploiter.
             replay_actor, _ = worker._distributed_learners.get_replay_and_policy_actors(
-                pid)
+                pid
+            )
             if replay_actor is not None and (
-                    not pid.startswith("main_exploiter_")
-                    or next(iter(set(sample.policy_batches.keys()) -
-                                 {pid})).startswith("main_")):
+                not pid.startswith("main_exploiter_")
+                or next(iter(set(sample.policy_batches.keys()) - {pid})).startswith(
+                    "main_"
+                )
+            ):
                 ma_batch = MultiAgentBatch({pid: batch}, batch.count)
                 replay_actor.add_batch.remote(ma_batch)
         # Return counts (env-steps, agent-steps).
         return sample.count, sample.agent_steps()
 
     @staticmethod
-    def _update_policy(policy: Policy, replay_actor: ActorHandle,
-                       pid: PolicyID):
+    def _update_policy(policy: Policy, replay_actor: ActorHandle, pid: PolicyID):
         if not hasattr(policy, "_target_and_kl_stats"):
             policy._target_and_kl_stats = {
                 LAST_TARGET_UPDATE_TS: 0,
                 NUM_TARGET_UPDATES: 0,
                 NUM_AGENT_STEPS_TRAINED: 0,
-                TARGET_NET_UPDATE_TIMER: _Timer()
+                TARGET_NET_UPDATE_TIMER: _Timer(),
             }
 
         train_results = policy.learn_on_batch_from_replay_buffer(
-            replay_actor=replay_actor, policy_id=pid)
+            replay_actor=replay_actor, policy_id=pid
+        )
 
         if not train_results:
             return train_results
 
         # Update target net and KL.
         with policy._target_and_kl_stats[TARGET_NET_UPDATE_TIMER]:
-            policy._target_and_kl_stats[
-                NUM_AGENT_STEPS_TRAINED] += train_results[
-                    NUM_AGENT_STEPS_TRAINED]
-            target_update_freq = \
-                policy.config["num_sgd_iter"] * \
-                policy.config["replay_buffer_capacity"] * \
-                policy.config["train_batch_size"]
+            policy._target_and_kl_stats[NUM_AGENT_STEPS_TRAINED] += train_results[
+                NUM_AGENT_STEPS_TRAINED
+            ]
+            target_update_freq = (
+                policy.config["num_sgd_iter"]
+                * policy.config["replay_buffer_capacity"]
+                * policy.config["train_batch_size"]
+            )
             cur_ts = policy._target_and_kl_stats[NUM_AGENT_STEPS_TRAINED]
             last_update = policy._target_and_kl_stats[LAST_TARGET_UPDATE_TS]
 
