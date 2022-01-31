@@ -38,16 +38,18 @@ class Dashboard:
         log_dir(str): Log directory of dashboard.
     """
 
-    def __init__(self,
-                 host,
-                 port,
-                 port_retries,
-                 gcs_address,
-                 redis_address,
-                 redis_password=None,
-                 log_dir=None,
-                 temp_dir=None,
-                 minimal=False):
+    def __init__(
+        self,
+        host,
+        port,
+        port_retries,
+        gcs_address,
+        redis_address,
+        redis_password=None,
+        log_dir=None,
+        temp_dir=None,
+        minimal=False,
+    ):
         self.dashboard_head = dashboard_head.DashboardHead(
             http_host=host,
             http_port=port,
@@ -57,7 +59,8 @@ class Dashboard:
             redis_password=redis_password,
             log_dir=log_dir,
             temp_dir=temp_dir,
-            minimal=minimal)
+            minimal=minimal,
+        )
 
     async def run(self):
         await self.dashboard_head.run()
@@ -184,16 +187,18 @@ if __name__ == "__main__":
             redis_password=args.redis_password,
             log_dir=args.log_dir,
             temp_dir=args.temp_dir,
-            minimal=args.minimal)
+            minimal=args.minimal,
+        )
         loop = asyncio.get_event_loop()
         loop.run_until_complete(dashboard.run())
     except Exception as e:
         # logger.exception(e)
-        traceback_str = ray._private.utils.format_error_message(
-            traceback.format_exc())
-        message = f"The dashboard on node {platform.uname()[1]} " \
-                  f"failed with the following " \
-                  f"error:\n{traceback_str}"
+        traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
+        message = (
+            f"The dashboard on node {platform.uname()[1]} "
+            f"failed with the following "
+            f"error:\n{traceback_str}"
+        )
         if isinstance(e, dashboard_utils.FrontendNotFoundError):
             logger.warning(message)
         else:

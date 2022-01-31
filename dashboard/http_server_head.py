@@ -24,17 +24,21 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 
 def setup_static_dir():
     build_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "client", "build")
+        os.path.dirname(os.path.abspath(__file__)), "client", "build"
+    )
     module_name = os.path.basename(os.path.dirname(__file__))
     if not os.path.isdir(build_dir):
         raise dashboard_utils.FrontendNotFoundError(
-            errno.ENOENT, "Dashboard build directory not found. If installing "
+            errno.ENOENT,
+            "Dashboard build directory not found. If installing "
             "from source, please follow the additional steps "
             "required to build the dashboard"
             f"(cd python/ray/{module_name}/client "
             "&& npm install "
             "&& npm ci "
-            "&& npm run build)", build_dir)
+            "&& npm run build)",
+            build_dir,
+        )
 
     static_dir = os.path.join(build_dir, "static")
     routes.static("/static", static_dir, follow_symlinks=True)
@@ -69,8 +73,7 @@ class HttpServerDashboardHead:
         # Create a http session for all modules.
         # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
         if LooseVersion(aiohttp.__version__) < LooseVersion("4.0.0"):
-            self.http_session = aiohttp.ClientSession(
-                loop=asyncio.get_event_loop())
+            self.http_session = aiohttp.ClientSession(loop=asyncio.get_event_loop())
         else:
             self.http_session = aiohttp.ClientSession()
 
@@ -78,15 +81,17 @@ class HttpServerDashboardHead:
     async def get_index(self, req) -> aiohttp.web.FileResponse:
         return aiohttp.web.FileResponse(
             os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                "client/build/index.html"))
+                os.path.dirname(os.path.abspath(__file__)), "client/build/index.html"
+            )
+        )
 
     @routes.get("/favicon.ico")
     async def get_favicon(self, req) -> aiohttp.web.FileResponse:
         return aiohttp.web.FileResponse(
             os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                "client/build/favicon.ico"))
+                os.path.dirname(os.path.abspath(__file__)), "client/build/favicon.ico"
+            )
+        )
 
     def get_address(self):
         assert self.http_host and self.http_port
@@ -106,8 +111,7 @@ class HttpServerDashboardHead:
         last_ex = None
         for i in range(1 + self.http_port_retries):
             try:
-                site = aiohttp.web.TCPSite(self.runner, self.http_host,
-                                           self.http_port)
+                site = aiohttp.web.TCPSite(self.runner, self.http_host, self.http_port)
                 await site.start()
                 break
             except OSError as e:
@@ -115,18 +119,21 @@ class HttpServerDashboardHead:
                 self.http_port += 1
                 logger.warning("Try to use port %s: %s", self.http_port, e)
         else:
-            raise Exception(f"Failed to find a valid port for dashboard after "
-                            f"{self.http_port_retries} retries: {last_ex}")
-        self.http_host, self.http_port, *_ = site._server.sockets[
-            0].getsockname()
-        self.http_host = self.ip if ipaddress.ip_address(
-            self.http_host).is_unspecified else self.http_host
-        logger.info("Dashboard head http address: %s:%s", self.http_host,
-                    self.http_port)
+            raise Exception(
+                f"Failed to find a valid port for dashboard after "
+                f"{self.http_port_retries} retries: {last_ex}"
+            )
+        self.http_host, self.http_port, *_ = site._server.sockets[0].getsockname()
+        self.http_host = (
+            self.ip
+            if ipaddress.ip_address(self.http_host).is_unspecified
+            else self.http_host
+        )
+        logger.info(
+            "Dashboard head http address: %s:%s", self.http_host, self.http_port
+        )
         # Dump registered http routes.
-        dump_routes = [
-            r for r in app.router.routes() if r.method != hdrs.METH_HEAD
-        ]
+        dump_routes = [r for r in app.router.routes() if r.method != hdrs.METH_HEAD]
         for r in dump_routes:
             logger.info(r)
         logger.info("Registered %s routes.", len(dump_routes))

@@ -19,8 +19,7 @@ from ray.ray_constants import (
 )
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, \
-    GcsAioResourceUsageSubscriber
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsAioResourceUsageSubscriber
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray.dashboard.datacenter import DataSource
 
@@ -47,7 +46,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         if isinstance(dashboard_head.redis_address, tuple):
             redis_address = f"{redis_address[0]}:{redis_address[1]}"
         self.service_discovery = PrometheusServiceDiscoveryWriter(
-            redis_address, redis_password, gcs_address, temp_dir)
+            redis_address, redis_password, gcs_address, temp_dir
+        )
 
     async def _update_stubs(self, change):
         if change.old:

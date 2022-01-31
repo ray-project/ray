@@ -100,8 +100,18 @@ class GCSHealthCheckThread(threading.Thread):
 
 
 class DashboardHead:
-    def __init__(self, http_host, http_port, http_port_retries, gcs_address,
-                 redis_address, redis_password, log_dir, temp_dir, minimal):
+    def __init__(
+        self,
+        http_host,
+        http_port,
+        http_port_retries,
+        gcs_address,
+        redis_address,
+        redis_password,
+        log_dir,
+        temp_dir,
+        minimal,
+    ):
         self.minimal = minimal
         self.health_check_thread: GCSHealthCheckThread = None
         self._gcs_rpc_error_counter = 0
@@ -136,17 +146,19 @@ class DashboardHead:
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
-            self.server, f"{grpc_ip}:0")
-        logger.info("Dashboard head grpc address: %s:%s", grpc_ip,
-                    self.grpc_port)
+            self.server, f"{grpc_ip}:0"
+        )
+        logger.info("Dashboard head grpc address: %s:%s", grpc_ip, self.grpc_port)
         # If the dashboard is started as non-minimal version, http server should
         # be configured to communicate with the dashboard in a head node.
         self.http_server = None
 
     async def _configure_http_server(self, modules):
-        from ray.dashboard.http_server_head import (HttpServerDashboardHead)
+        from ray.dashboard.http_server_head import HttpServerDashboardHead
+
         http_server = HttpServerDashboardHead(
-            self.ip, self.http_host, self.http_port, self.http_port_retries)
+            self.ip, self.http_host, self.http_port, self.http_port_retries
+        )
         await http_server.run(modules)
         return http_server
 
@@ -264,7 +276,8 @@ class DashboardHead:
         internal_kv._internal_kv_put(
             ray_constants.DASHBOARD_ADDRESS,
             f"{http_host}:{http_port}",
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        )
 
         # TODO: Use async version if performance is an issue
         # Write the dashboard head port to gcs kv.
