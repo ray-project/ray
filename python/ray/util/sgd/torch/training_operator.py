@@ -9,10 +9,13 @@ import torch.nn as nn
 from filelock import FileLock
 
 from ray.util.annotations import Deprecated
-from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
-                                NUM_SAMPLES)
-from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH, NUM_STEPS,
-                                          SCHEDULER_STEP_BATCH, USE_FP16)
+from ray.util.sgd.utils import TimerCollection, AverageMeterCollection, NUM_SAMPLES
+from ray.util.sgd.torch.constants import (
+    SCHEDULER_STEP_EPOCH,
+    NUM_STEPS,
+    SCHEDULER_STEP_BATCH,
+    USE_FP16,
+)
 from ray.util.sgd.torch.utils import choose_amp_backend
 
 from torch.nn.parallel import DistributedDataParallel
@@ -124,18 +127,20 @@ class TrainingOperator:
             setup or implement custom training & validation.
     """
 
-    def __init__(self,
-                 config,
-                 world_rank,
-                 local_rank,
-                 is_distributed,
-                 use_gpu,
-                 device,
-                 use_fp16=False,
-                 use_tqdm=False,
-                 wrap_ddp=False,
-                 add_dist_sampler=False,
-                 scheduler_step_freq=None):
+    def __init__(
+        self,
+        config,
+        world_rank,
+        local_rank,
+        is_distributed,
+        use_gpu,
+        device,
+        use_fp16=False,
+        use_tqdm=False,
+        wrap_ddp=False,
+        add_dist_sampler=False,
+        scheduler_step_freq=None,
+    ):
 
         # You are not expected to override this method.
         self._world_rank = world_rank
@@ -193,14 +198,16 @@ class TrainingOperator:
         """
         raise NotImplementedError
 
-    def register(self,
-                 *,
-                 models,
-                 optimizers,
-                 criterion=None,
-                 schedulers=None,
-                 ddp_args=None,
-                 apex_args=None):
+    def register(
+        self,
+        *,
+        models,
+        optimizers,
+        criterion=None,
+        schedulers=None,
+        ddp_args=None,
+        apex_args=None,
+    ):
         """Registers parameters with Ray SGD and sets up training components.
 
         By calling this method to register your models, optimizers,
@@ -288,12 +295,10 @@ class TrainingOperator:
         if isinstance(self._original_models, torch.nn.Module):
             self._original_models = [self._original_models]
         assert all(
-            isinstance(model, nn.Module) for model in self._original_models), (
-                f"All models must be PyTorch models: {self._original_models}.")
+            isinstance(model, nn.Module) for model in self._original_models
+        ), f"All models must be PyTorch models: {self._original_models}."
         if self.use_gpu and torch.cuda.is_available():
-            self._original_models = [
-                model.cuda() for model in self._original_models
-            ]
+            self._original_models = [model.cuda() for model in self._original_models]
 
         logger.debug("Registering optimizers.")
         self._optimizers = optimizers
@@ -325,16 +330,17 @@ class TrainingOperator:
         if self._use_fp16:
             if self._use_fp16 == "apex":
                 if not apex_amp:
-                    raise ValueError("apex library must be installed to "
-                                     "use apex backend for fp16")
+                    raise ValueError(
+                        "apex library must be installed to " "use apex backend for fp16"
+                    )
                 logger.debug("Setting up Apex.")
                 self._amp = apex_amp
-                self._original_models, self._optimizers = (
-                    self._configure_apex_amp(
-                        self._amp,
-                        self._original_models,
-                        self._optimizers,
-                        apex_args=apex_args))
+                self._original_models, self._optimizers = self._configure_apex_amp(
+                    self._amp,
+                    self._original_models,
+                    self._optimizers,
+                    apex_args=apex_args,
+                )
             else:
                 logger.debug("Setting up native amp.")
                 self._amp = amp
@@ -345,7 +351,8 @@ class TrainingOperator:
             self._models = self._configure_ddp(
                 models=self._original_models,
                 device_ids=self.device_ids,
-                ddp_args=ddp_args)
+                ddp_args=ddp_args,
+            )
         else:
             self._models = self._original_models
 
@@ -357,13 +364,14 @@ class TrainingOperator:
 
         if self._schedulers is not None:
             if self.scheduler_step_freq is None:
-                raise ValueError("scheduler_step_freq passed into "
-                                 "TorchTrainer cannot be None if you "
-                                 "are registering schedulers. Set this to "
-                                 "'manual' if you will be manually stepping "
-                                 "the schedulers.")
-            return_vals.append(
-                self._return_items(self._schedulers, schedulers))
+                raise ValueError(
+                    "scheduler_step_freq passed into "
+                    "TorchTrainer cannot be None if you "
+                    "are registering schedulers. Set this to "
+                    "'manual' if you will be manually stepping "
+                    "the schedulers."
+                )
+            return_vals.append(self._return_items(self._schedulers, schedulers))
 
         return tuple(return_vals)
 
@@ -432,27 +440,30 @@ class TrainingOperator:
                     "drop_last": loader.drop_last,
                     "timeout": loader.timeout,
                     "worker_init_fn": loader.worker_init_fn,
-                    "sampler": DistributedSampler(loader.dataset)
+                    "sampler": DistributedSampler(loader.dataset),
                 }
                 return DataLoader(**data_loader_args)
 
             def should_wrap_dataloader(loader):
-                return (isinstance(loader, DataLoader)
-                        and not isinstance(loader.dataset, IterableDataset))
+                return isinstance(loader, DataLoader) and not isinstance(
+                    loader.dataset, IterableDataset
+                )
 
             if should_wrap_dataloader(self._train_loader):
                 if self._add_dist_sampler:
-                    logging.debug("Wrapping train data loader with "
-                                  "DistributedSampler.")
+                    logging.debug(
+                        "Wrapping train data loader with " "DistributedSampler."
+                    )
                     self._train_loader = with_sampler(self._train_loader)
 
             if self._validation_loader is not None and should_wrap_dataloader(
-                    self._validation_loader):
+                self._validation_loader
+            ):
                 if self._add_dist_sampler:
-                    logging.debug("Wrapping validation data loader with "
-                                  "DistributedSampler.")
-                    self._validation_loader = with_sampler(
-                        self._validation_loader)
+                    logging.debug(
+                        "Wrapping validation data loader with " "DistributedSampler."
+                    )
+                    self._validation_loader = with_sampler(self._validation_loader)
 
     def train_epoch(self, iterator, info=None, num_steps=None, epoch_idx=0):
         """Runs one standard training pass over the training dataloader.
@@ -496,17 +507,17 @@ class TrainingOperator:
             A dict of metrics from training.
         """
         if not hasattr(self, "model"):
-            raise RuntimeError("Either set self.model in setup function or "
-                               "override this method to implement a custom "
-                               "training loop.")
+            raise RuntimeError(
+                "Either set self.model in setup function or "
+                "override this method to implement a custom "
+                "training loop."
+            )
 
         info = info or {}
 
-        info.update({
-            NUM_STEPS: num_steps,
-            USE_FP16: self.use_fp16,
-            "epoch_idx": epoch_idx
-        })
+        info.update(
+            {NUM_STEPS: num_steps, USE_FP16: self.use_fp16, "epoch_idx": epoch_idx}
+        )
         model = self.model
         scheduler = None
         if hasattr(self, "scheduler"):
@@ -526,17 +537,13 @@ class TrainingOperator:
                 if hasattr(iterator, "__len__"):
                     total = len(iterator)
 
-            _progress_bar = tqdm(
-                total=total, desc=desc, unit="batch", leave=False)
+            _progress_bar = tqdm(total=total, desc=desc, unit="batch", leave=False)
 
         metric_meters = AverageMeterCollection()
 
         model.train()
         for batch_idx, batch in enumerate(iterator):
-            batch_info = {
-                "batch_idx": batch_idx,
-                "global_step": self.global_step
-            }
+            batch_info = {"batch_idx": batch_idx, "global_step": self.global_step}
             batch_info.update(info)
             metrics = self.train_batch(batch, batch_info=batch_info)
 
@@ -590,17 +597,23 @@ class TrainingOperator:
 
         """
         if not hasattr(self, "model"):
-            raise RuntimeError("Either set self.model in setup function or "
-                               "override this method to implement a custom "
-                               "training loop.")
+            raise RuntimeError(
+                "Either set self.model in setup function or "
+                "override this method to implement a custom "
+                "training loop."
+            )
         if not hasattr(self, "optimizer"):
-            raise RuntimeError("Either set self.optimizer in setup function "
-                               "or override this method to implement a custom "
-                               "training loop.")
+            raise RuntimeError(
+                "Either set self.optimizer in setup function "
+                "or override this method to implement a custom "
+                "training loop."
+            )
         if not hasattr(self, "criterion"):
-            raise RuntimeError("Either set self.criterion in setup function "
-                               "or override this method to implement a custom "
-                               "training loop.")
+            raise RuntimeError(
+                "Either set self.criterion in setup function "
+                "or override this method to implement a custom "
+                "training loop."
+            )
         model = self.model
         optimizer = self.optimizer
         criterion = self.criterion
@@ -608,9 +621,7 @@ class TrainingOperator:
         *features, target = batch
         # Create non_blocking tensors for distributed training
         if self.use_gpu:
-            features = [
-                feature.cuda(non_blocking=True) for feature in features
-            ]
+            features = [feature.cuda(non_blocking=True) for feature in features]
             target = target.cuda(non_blocking=True)
 
         # Compute output.
@@ -667,9 +678,11 @@ class TrainingOperator:
                 ``num_samples`` from all calls to ``self.validate_batch``.
         """
         if not hasattr(self, "model"):
-            raise RuntimeError("Either set self.model in setup function or "
-                               "override this method to implement a custom "
-                               "validation loop.")
+            raise RuntimeError(
+                "Either set self.model in setup function or "
+                "override this method to implement a custom "
+                "validation loop."
+            )
 
         info = info or {}
         model = self.model
@@ -709,21 +722,23 @@ class TrainingOperator:
                 calculate averages.
         """
         if not hasattr(self, "model"):
-            raise RuntimeError("Either set self.model in setup function or "
-                               "override this method to implement a custom "
-                               "training loop.")
+            raise RuntimeError(
+                "Either set self.model in setup function or "
+                "override this method to implement a custom "
+                "training loop."
+            )
         if not hasattr(self, "criterion"):
-            raise RuntimeError("Either set self.criterion in setup function "
-                               "or override this method to implement a custom "
-                               "training loop.")
+            raise RuntimeError(
+                "Either set self.criterion in setup function "
+                "or override this method to implement a custom "
+                "training loop."
+            )
         model = self.model
         criterion = self.criterion
         # unpack features into list to support multiple inputs model
         *features, target = batch
         if self.use_gpu:
-            features = [
-                feature.cuda(non_blocking=True) for feature in features
-            ]
+            features = [feature.cuda(non_blocking=True) for feature in features]
             target = target.cuda(non_blocking=True)
 
         # compute output
@@ -743,7 +758,7 @@ class TrainingOperator:
         return {
             "val_loss": loss.item(),
             "val_accuracy": num_correct / num_samples,
-            NUM_SAMPLES: num_samples
+            NUM_SAMPLES: num_samples,
         }
 
     def state_dict(self):
@@ -763,68 +778,73 @@ class TrainingOperator:
         Anything passed into self.register and self.register_data will
         automatically be loaded. Use this method to load any additional state.
         Args:
-            state_dict (dict): State dict as returned by the operator. """
+            state_dict (dict): State dict as returned by the operator."""
         pass
 
     def _get_original_models(self):
         if not hasattr(self, "_original_models"):
-            raise RuntimeError("Training Operator does not have any "
-                               "registered models. Are you calling "
-                               "self.register(...) inside the setup method "
-                               "of your Training Operator?")
+            raise RuntimeError(
+                "Training Operator does not have any "
+                "registered models. Are you calling "
+                "self.register(...) inside the setup method "
+                "of your Training Operator?"
+            )
         return self._original_models
 
     def _get_optimizers(self):
         if not hasattr(self, "_optimizers"):
-            raise RuntimeError("Training Operator does not have any "
-                               "registered optimizers. Are you calling "
-                               "self.register(...) inside the setup method "
-                               "of your Training Operator?")
+            raise RuntimeError(
+                "Training Operator does not have any "
+                "registered optimizers. Are you calling "
+                "self.register(...) inside the setup method "
+                "of your Training Operator?"
+            )
         return self._optimizers
 
     def _get_schedulers(self):
         if not hasattr(self, "_schedulers"):
-            raise RuntimeError("Training Operator does not have any "
-                               "registered schedulers. Are you calling "
-                               "self.register(...) inside the setup method "
-                               "of your Training Operator?")
+            raise RuntimeError(
+                "Training Operator does not have any "
+                "registered schedulers. Are you calling "
+                "self.register(...) inside the setup method "
+                "of your Training Operator?"
+            )
         return self._schedulers
 
     def _get_train_loader(self):
-        if not hasattr(self, "_train_loader") or \
-                self._train_loader is None:
+        if not hasattr(self, "_train_loader") or self._train_loader is None:
             raise RuntimeError(
                 "Training Operator does not have any "
                 "registered train loader. If this is "
                 "unexepected, make sure to call "
                 "self.register_data(...) inside the setup method "
-                "of your Training Operator.")
+                "of your Training Operator."
+            )
         return self._train_loader
 
     def _get_validation_loader(self):
-        if not hasattr(self, "_validation_loader") or \
-                self._validation_loader is None:
+        if not hasattr(self, "_validation_loader") or self._validation_loader is None:
             raise RuntimeError(
                 "Training Operator does not have any "
                 "registered validation loader. If this is "
                 "unexepected, make sure to call "
                 "self.register_data(...) inside the setup method "
-                "of your Training Operator.")
+                "of your Training Operator."
+            )
         return self._validation_loader
 
     def _get_criterion(self):
         if not hasattr(self, "_criterion"):
-            raise RuntimeError("Training Operator does not have any "
-                               "registered criterion. Are you calling "
-                               "self.register(...) inside the setup method "
-                               "of your Training Operator?")
+            raise RuntimeError(
+                "Training Operator does not have any "
+                "registered criterion. Are you calling "
+                "self.register(...) inside the setup method "
+                "of your Training Operator?"
+            )
         return self._criterion
 
     @classmethod
-    def from_ptl(cls,
-                 lightning_module_cls,
-                 train_dataloader=None,
-                 val_dataloader=None):
+    def from_ptl(cls, lightning_module_cls, train_dataloader=None, val_dataloader=None):
         """Create a custom TrainingOperator class from a LightningModule.
 
         .. code-block:: python
@@ -854,7 +874,8 @@ class TrainingOperator:
             "(https://github.com/ray-project/ray_lightning)"
             "instead for distributed PyTorch Lightning Training on"
             "Ray!",
-            category=FutureWarning)
+            category=FutureWarning,
+        )
         from ray.util.sgd.torch.lightning_operator import LightningOperator
 
         class CustomLightningOperator(LightningOperator):
@@ -865,13 +886,15 @@ class TrainingOperator:
         return CustomLightningOperator
 
     @classmethod
-    def from_creators(cls,
-                      model_creator,
-                      optimizer_creator,
-                      data_creator=None,
-                      loss_creator=None,
-                      scheduler_creator=None,
-                      serialize_data_creation=True):
+    def from_creators(
+        cls,
+        model_creator,
+        optimizer_creator,
+        data_creator=None,
+        loss_creator=None,
+        scheduler_creator=None,
+        serialize_data_creation=True,
+    ):
         """Create a custom TrainingOperator class from creator functions.
 
         This method is useful for backwards compatibility with
@@ -929,7 +952,8 @@ class TrainingOperator:
 
         if not (callable(model_creator) and callable(optimizer_creator)):
             raise ValueError(
-                "Must provide a callable model_creator and optimizer_creator.")
+                "Must provide a callable model_creator and optimizer_creator."
+            )
 
         class CustomCreatorOperator(CreatorOperator):
             _model_creator = model_creator
@@ -976,9 +1000,10 @@ class TrainingOperator:
     def use_fp16_apex(self):
         """bool: Whether FP16 is enabled and using Apex as a backend."""
         # second condition is for backwards compatibility
-        return self.use_fp16 and (self._use_fp16 == "apex" or
-                                  (self._use_fp16
-                                   and hasattr(self._amp, "scale_loss")))
+        return self.use_fp16 and (
+            self._use_fp16 == "apex"
+            or (self._use_fp16 and hasattr(self._amp, "scale_loss"))
+        )
 
     @property
     def use_fp16_native(self):
@@ -1037,8 +1062,7 @@ class CreatorOperator(TrainingOperator):
             elif len(loaders) == 2:
                 return loaders
             else:
-                raise ValueError(
-                    f"Number of loaders must be <= 2. Got {loaders}")
+                raise ValueError(f"Number of loaders must be <= 2. Got {loaders}")
         # No great way of checking type otherwise
         return loaders, None
 
@@ -1047,8 +1071,7 @@ class CreatorOperator(TrainingOperator):
         loaders = None
         if self._serialize_data_creation:
             logger.debug("Serializing the dataloading process.")
-            with FileLock(
-                    os.path.join(tempfile.gettempdir(), ".raydata.lock")):
+            with FileLock(os.path.join(tempfile.gettempdir(), ".raydata.lock")):
                 loaders = self.__class__._data_creator(config)
         else:
             loaders = self.__class__._data_creator(config)
@@ -1061,10 +1084,8 @@ class CreatorOperator(TrainingOperator):
         logger.debug("Loading data.")
         train_loader = None
         validation_loader = None
-        if self.__class__._data_creator and callable(
-                self.__class__._data_creator):
-            train_loader, validation_loader = self._initialize_dataloaders(
-                config)
+        if self.__class__._data_creator and callable(self.__class__._data_creator):
+            train_loader, validation_loader = self._initialize_dataloaders(config)
 
         logger.debug("Creating model")
         models = self.__class__._model_creator(config)
@@ -1084,7 +1105,8 @@ class CreatorOperator(TrainingOperator):
         if self.__class__._loss_creator:
             logger.debug("Creating loss.")
             if inspect.isclass(self.__class__._loss_creator) and issubclass(
-                    self.__class__._loss_creator, torch.nn.modules.loss._Loss):
+                self.__class__._loss_creator, torch.nn.modules.loss._Loss
+            ):
                 criterion = self.__class__._loss_creator()
             else:
                 criterion = self.__class__._loss_creator(config)
@@ -1093,17 +1115,21 @@ class CreatorOperator(TrainingOperator):
         state = self.register(**kwargs)
         self._registered_models, self._registered_optimizers = state[:2]
         if isinstance(self.models, (list, tuple)):
-            logger.info("Multiple models have been registered. If custom "
-                        "training methods are not provided, only the first "
-                        "model will be used.")
+            logger.info(
+                "Multiple models have been registered. If custom "
+                "training methods are not provided, only the first "
+                "model will be used."
+            )
             self._registered_model = self.models[0]
         else:
             self._registered_model = self.models
 
         if isinstance(self.optimizers, (list, tuple)):
-            logger.info("Multiple optimizers have been registered. If custom "
-                        "training methods are not provided, only the first "
-                        "optimizer will be used.")
+            logger.info(
+                "Multiple optimizers have been registered. If custom "
+                "training methods are not provided, only the first "
+                "optimizer will be used."
+            )
             self._reigstered_optimizer = self.optimizers[0]
         else:
             self._registered_optimizer = self.optimizers
@@ -1113,15 +1139,18 @@ class CreatorOperator(TrainingOperator):
         if len(state) == 4:
             self._registered_schedulers = state[3]
             if isinstance(self.schedulers, (list, tuple)):
-                logger.info("Multiple schedulers have been registered. If "
-                            "custom training methods are not provided, "
-                            "only the first scheduler will be used.")
+                logger.info(
+                    "Multiple schedulers have been registered. If "
+                    "custom training methods are not provided, "
+                    "only the first scheduler will be used."
+                )
                 self._registered_scheduler = self.schedulers[0]
             else:
                 self._registered_scheduler = self.schedulers
 
         self.register_data(
-            train_loader=train_loader, validation_loader=validation_loader)
+            train_loader=train_loader, validation_loader=validation_loader
+        )
 
     @property
     def model(self):
@@ -1182,15 +1211,15 @@ def get_test_metrics_operator(operator_cls):
             self.key = config["key"]
 
         def train_batch(self, batch, batch_info=None):
-            metrics = super(_TestMetricsOperator, self).train_batch(
-                batch, batch_info)
+            metrics = super(_TestMetricsOperator, self).train_batch(batch, batch_info)
             num_samples = metrics[NUM_SAMPLES]
             metrics.update({self.key: self._train_scores.pop(0) / num_samples})
             return metrics
 
         def validate_batch(self, batch, batch_info=None):
             metrics = super(_TestMetricsOperator, self).validate_batch(
-                batch, batch_info)
+                batch, batch_info
+            )
             num_samples = metrics[NUM_SAMPLES]
             metrics.update({self.key: self._val_scores.pop(0) / num_samples})
             return metrics

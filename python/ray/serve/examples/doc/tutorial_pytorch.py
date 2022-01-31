@@ -19,14 +19,17 @@ from torchvision.models import resnet18
 class ImageModel:
     def __init__(self):
         self.model = resnet18(pretrained=True).eval()
-        self.preprocessor = transforms.Compose([
-            transforms.Resize(224),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Lambda(lambda t: t[:3, ...]),  # remove alpha channel
-            transforms.Normalize(
-                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
+        self.preprocessor = transforms.Compose(
+            [
+                transforms.Resize(224),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Lambda(lambda t: t[:3, ...]),  # remove alpha channel
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
 
     async def __call__(self, starlette_request):
         image_payload_bytes = await starlette_request.body()
@@ -35,9 +38,9 @@ class ImageModel:
 
         pil_images = [pil_image]  # Our current batch size is one
         input_tensor = torch.cat(
-            [self.preprocessor(i).unsqueeze(0) for i in pil_images])
-        print("[2/3] Images transformed, tensor shape {}".format(
-            input_tensor.shape))
+            [self.preprocessor(i).unsqueeze(0) for i in pil_images]
+        )
+        print("[2/3] Images transformed, tensor shape {}".format(input_tensor.shape))
 
         with torch.no_grad():
             output_tensor = self.model(input_tensor)
@@ -56,10 +59,10 @@ ImageModel.deploy()
 # __doc_query_begin__
 ray_logo_bytes = requests.get(
     "https://github.com/ray-project/ray/raw/"
-    "master/doc/source/images/ray_header_logo.png").content
+    "master/doc/source/images/ray_header_logo.png"
+).content
 
-resp = requests.post(
-    "http://localhost:8000/image_predict", data=ray_logo_bytes)
+resp = requests.post("http://localhost:8000/image_predict", data=ray_logo_bytes)
 print(resp.json())
 # Output
 # {'class_index': 463}

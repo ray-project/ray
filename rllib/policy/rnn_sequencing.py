@@ -31,12 +31,12 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 def pad_batch_to_sequences_of_same_size(
-        batch: SampleBatch,
-        max_seq_len: int,
-        shuffle: bool = False,
-        batch_divisibility_req: int = 1,
-        feature_keys: Optional[List[str]] = None,
-        view_requirements: Optional[ViewRequirementsDict] = None,
+    batch: SampleBatch,
+    max_seq_len: int,
+    shuffle: bool = False,
+    batch_divisibility_req: int = 1,
+    feature_keys: Optional[List[str]] = None,
+    view_requirements: Optional[ViewRequirementsDict] = None,
 ):
     """Applies padding to `batch` so it's choppable into same-size sequences.
 
@@ -71,7 +71,8 @@ def pad_batch_to_sequences_of_same_size(
         meets_divisibility_reqs = (
             len(batch[SampleBatch.CUR_OBS]) % batch_divisibility_req == 0
             # not multiagent
-            and max(batch[SampleBatch.AGENT_INDEX]) == 0)
+            and max(batch[SampleBatch.AGENT_INDEX]) == 0
+        )
     else:
         meets_divisibility_reqs = True
 
@@ -82,8 +83,9 @@ def pad_batch_to_sequences_of_same_size(
     if "state_in_0" in batch or "state_out_0" in batch:
         # Check, whether the state inputs have already been reduced to their
         # init values at the beginning of each max_seq_len chunk.
-        if batch.get(SampleBatch.SEQ_LENS) is not None and \
-                len(batch["state_in_0"]) == len(batch[SampleBatch.SEQ_LENS]):
+        if batch.get(SampleBatch.SEQ_LENS) is not None and len(
+            batch["state_in_0"]
+        ) == len(batch[SampleBatch.SEQ_LENS]):
             states_already_reduced_to_init = True
 
         # RNN (or single timestep state-in): Set the max dynamically.
@@ -110,24 +112,26 @@ def pad_batch_to_sequences_of_same_size(
     for k, v in batch.items():
         if k.startswith("state_in_"):
             state_keys.append(k)
-        elif not feature_keys and not k.startswith("state_out_") and \
-                k not in ["infos", SampleBatch.SEQ_LENS]:
+        elif (
+            not feature_keys
+            and not k.startswith("state_out_")
+            and k not in ["infos", SampleBatch.SEQ_LENS]
+        ):
             feature_keys_.append(k)
 
-    feature_sequences, initial_states, seq_lens = \
-        chop_into_sequences(
-            feature_columns=[batch[k] for k in feature_keys_],
-            state_columns=[batch[k] for k in state_keys],
-            episode_ids=batch.get(SampleBatch.EPS_ID),
-            unroll_ids=batch.get(SampleBatch.UNROLL_ID),
-            agent_indices=batch.get(SampleBatch.AGENT_INDEX),
-            seq_lens=batch.get(SampleBatch.SEQ_LENS),
-            max_seq_len=max_seq_len,
-            dynamic_max=dynamic_max,
-            states_already_reduced_to_init=states_already_reduced_to_init,
-            shuffle=shuffle,
-            handle_nested_data=True,
-        )
+    feature_sequences, initial_states, seq_lens = chop_into_sequences(
+        feature_columns=[batch[k] for k in feature_keys_],
+        state_columns=[batch[k] for k in state_keys],
+        episode_ids=batch.get(SampleBatch.EPS_ID),
+        unroll_ids=batch.get(SampleBatch.UNROLL_ID),
+        agent_indices=batch.get(SampleBatch.AGENT_INDEX),
+        seq_lens=batch.get(SampleBatch.SEQ_LENS),
+        max_seq_len=max_seq_len,
+        dynamic_max=dynamic_max,
+        states_already_reduced_to_init=states_already_reduced_to_init,
+        shuffle=shuffle,
+        handle_nested_data=True,
+    )
 
     for i, k in enumerate(feature_keys_):
         batch[k] = tree.unflatten_as(batch[k], feature_sequences[i])
@@ -138,21 +142,28 @@ def pad_batch_to_sequences_of_same_size(
         batch.max_seq_len = max(seq_lens)
 
     if log_once("rnn_ma_feed_dict"):
-        logger.info("Padded input for RNN/Attn.Nets/MA:\n\n{}\n".format(
-            summarize({
-                "features": feature_sequences,
-                "initial_states": initial_states,
-                "seq_lens": seq_lens,
-                "max_seq_len": max_seq_len,
-            })))
+        logger.info(
+            "Padded input for RNN/Attn.Nets/MA:\n\n{}\n".format(
+                summarize(
+                    {
+                        "features": feature_sequences,
+                        "initial_states": initial_states,
+                        "seq_lens": seq_lens,
+                        "max_seq_len": max_seq_len,
+                    }
+                )
+            )
+        )
 
 
 @DeveloperAPI
-def add_time_dimension(padded_inputs: TensorType,
-                       *,
-                       max_seq_len: int,
-                       framework: str = "tf",
-                       time_major: bool = False):
+def add_time_dimension(
+    padded_inputs: TensorType,
+    *,
+    max_seq_len: int,
+    framework: str = "tf",
+    time_major: bool = False,
+):
     """Adds a time dimension to padded inputs.
 
     Args:
@@ -181,9 +192,11 @@ def add_time_dimension(padded_inputs: TensorType,
                 [
                     tf.expand_dims(new_batch_size, axis=0),
                     tf.expand_dims(max_seq_len, axis=0),
-                    tf.shape(padded_inputs)[1:]
+                    tf.shape(padded_inputs)[1:],
                 ],
-                axis=0))
+                axis=0,
+            )
+        )
         return tf.reshape(padded_inputs, new_shape)
     else:
         assert framework == "torch", "`framework` must be either tf or torch!"
@@ -200,19 +213,19 @@ def add_time_dimension(padded_inputs: TensorType,
 
 @DeveloperAPI
 def chop_into_sequences(
-        *,
-        feature_columns,
-        state_columns,
-        max_seq_len,
-        episode_ids=None,
-        unroll_ids=None,
-        agent_indices=None,
-        dynamic_max=True,
-        shuffle=False,
-        seq_lens=None,
-        states_already_reduced_to_init=False,
-        handle_nested_data=False,
-        _extra_padding=0,
+    *,
+    feature_columns,
+    state_columns,
+    max_seq_len,
+    episode_ids=None,
+    unroll_ids=None,
+    agent_indices=None,
+    dynamic_max=True,
+    shuffle=False,
+    seq_lens=None,
+    states_already_reduced_to_init=False,
+    handle_nested_data=False,
+    _extra_padding=0,
 ):
     """Truncate and pad experiences into fixed-length sequences.
 
@@ -266,10 +279,10 @@ def chop_into_sequences(
         seq_len = 0
         unique_ids = np.add(
             np.add(episode_ids, agent_indices),
-            np.array(unroll_ids, dtype=np.int64) << 32)
+            np.array(unroll_ids, dtype=np.int64) << 32,
+        )
         for uid in unique_ids:
-            if (prev_id is not None and uid != prev_id) or \
-                    seq_len >= max_seq_len:
+            if (prev_id is not None and uid != prev_id) or seq_len >= max_seq_len:
                 seq_lens.append(seq_len)
                 seq_len = 0
             seq_len += 1
@@ -298,7 +311,7 @@ def chop_into_sequences(
                 f_pad = [None] * length
             else:
                 # Make sure type doesn't change.
-                f_pad = np.zeros((length, ) + np.shape(f)[1:], dtype=f.dtype)
+                f_pad = np.zeros((length,) + np.shape(f)[1:], dtype=f.dtype)
             seq_base = 0
             i = 0
             for len_ in seq_lens:
@@ -346,11 +359,12 @@ def chop_into_sequences(
 
 
 def timeslice_along_seq_lens_with_overlap(
-        sample_batch,
-        seq_lens=None,
-        zero_pad_max_seq_len=0,
-        pre_overlap=0,
-        zero_init_states=True) -> List["SampleBatch"]:
+    sample_batch,
+    seq_lens=None,
+    zero_pad_max_seq_len=0,
+    pre_overlap=0,
+    zero_init_states=True,
+) -> List["SampleBatch"]:
     """Slices batch along `seq_lens` (each seq-len item produces one batch).
 
     Asserts that seq_lens is given or sample_batch["seq_lens"] is not None.
@@ -389,8 +403,9 @@ def timeslice_along_seq_lens_with_overlap(
     """
     if seq_lens is None:
         seq_lens = sample_batch.get(SampleBatch.SEQ_LENS)
-    assert seq_lens is not None and len(seq_lens) > 0, \
-        "Cannot timeslice along `seq_lens` when `seq_lens` is empty or None!"
+    assert (
+        seq_lens is not None and len(seq_lens) > 0
+    ), "Cannot timeslice along `seq_lens` when `seq_lens` is empty or None!"
     # Generate n slices based on seq_lens.
     start = 0
     slices = []
@@ -411,8 +426,7 @@ def timeslice_along_seq_lens_with_overlap(
             data_begin = slice_begin
             zero_init_states_ = True
         else:
-            eps_ids = sample_batch[SampleBatch.EPS_ID][begin if begin >= 0 else
-                                                       0:end]
+            eps_ids = sample_batch[SampleBatch.EPS_ID][begin if begin >= 0 else 0 : end]
             is_last_episode_ids = eps_ids == eps_ids[-1]
             if not is_last_episode_ids[0]:
                 zero_length = int(sum(1.0 - is_last_episode_ids))
@@ -421,17 +435,20 @@ def timeslice_along_seq_lens_with_overlap(
 
         if zero_length is not None:
             data = {
-                k: np.concatenate([
-                    np.zeros(
-                        shape=(zero_length, ) + v.shape[1:], dtype=v.dtype),
-                    v[data_begin:end]
-                ])
-                for k, v in sample_batch.items() if k != SampleBatch.SEQ_LENS
+                k: np.concatenate(
+                    [
+                        np.zeros(shape=(zero_length,) + v.shape[1:], dtype=v.dtype),
+                        v[data_begin:end],
+                    ]
+                )
+                for k, v in sample_batch.items()
+                if k != SampleBatch.SEQ_LENS
             }
         else:
             data = {
                 k: v[begin:end]
-                for k, v in sample_batch.items() if k != SampleBatch.SEQ_LENS
+                for k, v in sample_batch.items()
+                if k != SampleBatch.SEQ_LENS
             }
 
         if zero_init_states_:
@@ -449,8 +466,7 @@ def timeslice_along_seq_lens_with_overlap(
             i = 0
             key = "state_in_{}".format(i)
             while key in data:
-                data[key] = sample_batch["state_out_{}".format(i)][begin -
-                                                                   1:begin]
+                data[key] = sample_batch["state_out_{}".format(i)][begin - 1 : begin]
                 del data["state_out_{}".format(i)]
                 i += 1
                 key = "state_in_{}".format(i)
@@ -460,7 +476,6 @@ def timeslice_along_seq_lens_with_overlap(
     # Zero-pad each slice if necessary.
     if zero_pad_max_seq_len > 0:
         for ts in timeslices:
-            ts.right_zero_pad(
-                max_seq_len=zero_pad_max_seq_len, exclude_states=True)
+            ts.right_zero_pad(max_seq_len=zero_pad_max_seq_len, exclude_states=True)
 
     return timeslices
