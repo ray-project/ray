@@ -1396,8 +1396,8 @@ class RolloutWorker(ParallelIteratorWorker):
             `func([policy, pid, **kwargs])`.
         """
         return [
-            func(policy, pid, **kwargs)
-            for pid, policy in self.policy_map.items()
+            func(self.policy_map[pid], pid, **kwargs)
+            for pid in self.policy_map.keys()
             if self.is_policy_to_train(pid, None)
         ]
 
@@ -1510,8 +1510,8 @@ class RolloutWorker(ParallelIteratorWorker):
         policies = force_list(policies)
 
         return {
-            pid: policy.get_weights()
-            for pid, policy in self.policy_map.items()
+            pid: self.policy_map[pid].get_weights()
+            for pid in self.policy_map.keys()
             if pid in policies
         }
 
