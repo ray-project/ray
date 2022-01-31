@@ -48,7 +48,7 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
     def __init__(self):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
-        TableBlockBuilder.__init__(self, pyarrow.Table)
+        super().__init__(pyarrow.Table)
 
     def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
         return pyarrow.Table.from_pydict(columns)
@@ -65,7 +65,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def __init__(self, table: "pyarrow.Table"):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
-        TableBlockAccessor.__init__(self, table)
+        super().__init__(table)
 
     def _create_table_row(self, row: "pyarrow.Table") -> ArrowRow:
         return ArrowRow(row)
