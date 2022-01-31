@@ -987,101 +987,6 @@ class Dataset(Generic[T]):
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
-    def _check_and_normalize_agg_on(
-        self, on: Optional["AggregateOnTs"], skip_cols: Optional[List[str]] = None
-    ) -> Optional["AggregateOnTs"]:
-        """Checks whether the provided aggregation `on` arg is valid for this
-        type of dataset, and normalizes the value based on the Dataset type and
-        any provided columns to skip.
-        """
-        if on is not None and (
-            not isinstance(on, (str, Callable, list))
-            or (
-                isinstance(on, list)
-                and not (
-                    all(isinstance(on_, str) for on_ in on)
-                    or all(isinstance(on_, Callable) for on_ in on)
-                )
-            )
-        ):
-            from ray.data.grouped_dataset import AggregateOnTs
-
-            raise TypeError(f"`on` must be of type {AggregateOnTs}, but got {type(on)}")
-
-        if isinstance(on, list) and len(on) == 0:
-            raise ValueError("When giving a list for `on`, it must be nonempty.")
-
-        try:
-            dataset_format = self._dataset_format()
-        except ValueError:
-            # Dataset is empty/cleared, let downstream ops handle this.
-            return on
-
-        if dataset_format == "arrow" or dataset_format == "pandas":
-            # This should be cached from the ._dataset_format() check, so we
-            # don't fetch and we assert that the schema is not None.
-            schema = self.schema(fetch_if_missing=False)
-            assert schema is not None
-            if len(schema.names) == 0:
-                # Empty dataset, don't validate `on` since we generically
-                # handle empty datasets downstream.
-                return on
-
-            if on is None:
-                # If a null `on` is given for a table Dataset, coerce it to
-                # all columns sans any that we want to skip.
-                if skip_cols is None:
-                    skip_cols = []
-                elif not isinstance(skip_cols, list):
-                    skip_cols = [skip_cols]
-                on = [col for col in schema.names if col not in skip_cols]
-            # Check that column names refer to valid columns.
-            elif isinstance(on, str) and on not in schema.names:
-                raise ValueError(f"on={on} is not a valid column name: {schema.names}")
-            elif isinstance(on, list) and isinstance(on[0], str):
-                for on_ in on:
-                    if on_ not in schema.names:
-                        raise ValueError(
-                            f"on={on_} is not a valid column name: " f"{schema.names}"
-                        )
-        else:
-            if isinstance(on, str) or (isinstance(on, list) and isinstance(on[0], str)):
-                raise ValueError(
-                    "Can't aggregate on a column when using a simple Dataset; "
-                    "use a callable `on` argument or use an Arrow or Pandas"
-                    " Dataset instead of a simple Dataset."
-                )
-        return on
-
-    def _dataset_format(self) -> str:
-        """Determine the format of the dataset. Possible values are: "arrow",
-        "pandas", "simple".
-
-        This may block; if the schema is unknown, this will synchronously fetch
-        the schema for the first block.
-        """
-        # We need schema to properly validate, so synchronously
-        # fetch it if necessary.
-        schema = self.schema(fetch_if_missing=True)
-        if schema is None:
-            raise ValueError(
-                "Dataset is empty or cleared, can't determine the format of "
-                "the dataset."
-            )
-
-        try:
-            import pyarrow as pa
-
-            if isinstance(schema, pa.Schema):
-                return "arrow"
-        except ModuleNotFoundError:
-            pass
-        from ray.data.impl.pandas_block import PandasBlockSchema
-
-        if isinstance(schema, PandasBlockSchema):
-            return "pandas"
-        return "simple"
-
     def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
         if len(result) == 1:
             if isinstance(result, tuple):
@@ -2694,6 +2599,35 @@ Dict[str, List[str]]]): The names of the columns
         return Dataset(left, self._epoch, self._stats), Dataset(
             right, self._epoch, self._stats
         )
+
+    def _dataset_format(self) -> str:
+        """Determine the format of the dataset. Possible values are: "arrow",
+        "pandas", "simple".
+
+        This may block; if the schema is unknown, this will synchronously fetch
+        the schema for the first block.
+        """
+        # We need schema to properly validate, so synchronously
+        # fetch it if necessary.
+        schema = self.schema(fetch_if_missing=True)
+        if schema is None:
+            raise ValueError(
+                "Dataset is empty or cleared, can't determine the format of "
+                "the dataset."
+            )
+
+        try:
+            import pyarrow as pa
+
+            if isinstance(schema, pa.Schema):
+                return "arrow"
+        except ModuleNotFoundError:
+            pass
+        from ray.data.impl.pandas_block import PandasBlockSchema
+
+        if isinstance(schema, PandasBlockSchema):
+            return "pandas"
+        return "simple"
 
     def _aggregate_on(
         self, agg_cls: type, on: Union[KeyFn, List[KeyFn]], *args, **kwargs
