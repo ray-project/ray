@@ -215,10 +215,13 @@ class SlateQTrainer(Trainer):
         # (2) Read and train on experiences from the replay buffer. Every batch
         # returned from the LocalReplay() iterator is passed to TrainOneStep to
         # take a SGD step.
-        replay_op = Replay(local_buffer=kwargs["local_replay_buffer"]) \
-            .for_each(TrainOneStep(workers)) \
-            .for_each(UpdateTargetNetwork(
-                workers, config["target_network_update_freq"]))
+        replay_op = (
+            Replay(local_buffer=kwargs["local_replay_buffer"])
+            .for_each(TrainOneStep(workers))
+            .for_each(
+                UpdateTargetNetwork(workers, config["target_network_update_freq"])
+            )
+        )
 
         if config["slateq_strategy"] != "RANDOM":
             # Alternate deterministically between (1) and (2). Only return the

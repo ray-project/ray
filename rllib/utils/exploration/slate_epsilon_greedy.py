@@ -1,16 +1,10 @@
-import gym
-import tree  # pip install dm_tree
-import random
-from typing import Optional, Union
+from typing import Union
 
-from ray.rllib.models.torch.torch_action_dist \
-    import TorchMultiActionDistribution
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.epsilon_greedy import EpsilonGreedy
 from ray.rllib.utils.exploration.exploration import TensorType
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.schedules.schedule import Schedule
 from ray.rllib.utils.torch_utils import FLOAT_MIN
 
 tf1, tf, tfv = try_import_tf()
@@ -20,8 +14,11 @@ torch, _ = try_import_torch()
 class SlateEpsilonGreedy(EpsilonGreedy):
     @override(EpsilonGreedy)
     def _get_torch_exploration_action(
-            self, action_distribution: ActionDistribution, explore: bool,
-            timestep: Union[int, TensorType]) -> "torch.Tensor":
+        self,
+        action_distribution: ActionDistribution,
+        explore: bool,
+        timestep: Union[int, TensorType],
+    ) -> "torch.Tensor":
 
         per_slate_q_values = action_distribution.inputs
         all_slates = self.model.slates
@@ -43,20 +40,22 @@ class SlateEpsilonGreedy(EpsilonGreedy):
             random_valid_action_logits = torch.where(
                 per_slate_q_values <= FLOAT_MIN,
                 torch.ones_like(per_slate_q_values) * 0.0,
-                torch.ones_like(per_slate_q_values))
+                torch.ones_like(per_slate_q_values),
+            )
             # A random action.
             random_indices = torch.squeeze(
-                torch.multinomial(random_valid_action_logits, 1), axis=1)
+                torch.multinomial(random_valid_action_logits, 1), axis=1
+            )
             random_actions = all_slates[random_indices]
 
             # Pick either random or greedy.
             action = torch.where(
-                torch.empty(
-                    (batch_size, )).uniform_().to(self.device) < epsilon,
-                random_actions, exploit_action)
+                torch.empty((batch_size,)).uniform_().to(self.device) < epsilon,
+                random_actions,
+                exploit_action,
+            )
 
             return action, action_logp
         # Return the deterministic "sample" (argmax) over the logits.
         else:
             return exploit_action, action_logp
-

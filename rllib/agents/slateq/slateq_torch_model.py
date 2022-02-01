@@ -90,8 +90,8 @@ class UserChoiceModel(nn.Module):
     def __init__(self):
         """Initializes a UserChoiceModel instance."""
         super().__init__()
-        self.beta = nn.Parameter(torch.tensor(0., dtype=torch.float))
-        self.score_no_click = nn.Parameter(torch.tensor(0., dtype=torch.float))
+        self.beta = nn.Parameter(torch.tensor(0.0, dtype=torch.float))
+        self.score_no_click = nn.Parameter(torch.tensor(0.0, dtype=torch.float))
 
     def forward(self, user: TensorType, doc: TensorType) -> TensorType:
         """Evaluate the user choice model.
@@ -129,17 +129,17 @@ class SlateQModel(TorchModelV2, nn.Module):
     """
 
     def __init__(
-            self,
-            obs_space: gym.spaces.Space,
-            action_space: gym.spaces.Space,
-            model_config: ModelConfigDict,
-            name: str,
-            *,
-            user_embedding_size: int,
-            doc_embedding_size: int,
-            num_docs: int,
-            q_hiddens: Sequence[int],
-            double_q: bool = True,
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        model_config: ModelConfigDict,
+        name: str,
+        *,
+        user_embedding_size: int,
+        doc_embedding_size: int,
+        num_docs: int,
+        q_hiddens: Sequence[int],
+        double_q: bool = True,
     ):
         """Initializes a SlateQModel instance.
 
@@ -162,23 +162,27 @@ class SlateQModel(TorchModelV2, nn.Module):
             # real imact, and can be set arbitrarily. TODO: fix this.
             num_outputs=0,
             model_config=model_config,
-            name=name)
+            name=name,
+        )
         self.choice_model = UserChoiceModel()
-        self.q_model = QValueModel(user_embedding_size + doc_embedding_size,
-                                   q_hiddens)
+        self.q_model = QValueModel(user_embedding_size + doc_embedding_size, q_hiddens)
         self.slate_size = len(action_space.nvec)
         self.double_q = double_q
 
         self.num_docs = num_docs
-        self.indices = torch.arange(self.num_docs, dtype=torch.long)#, device=doc.device)
+        self.indices = torch.arange(
+            self.num_docs, dtype=torch.long
+        )  # , device=doc.device)
         # slates.shape = [num_slates, slate_size]
         self.slates = torch.combinations(self.indices, r=self.slate_size)
         self.num_slates, _ = self.slates.shape
 
-    def choose_slate(self, user: TensorType,
-                     doc: TensorType,
-                     target_slate_q_values: Optional[TensorType] = None,
-                     ) -> Tuple[TensorType, TensorType]:
+    def choose_slate(
+        self,
+        user: TensorType,
+        doc: TensorType,
+        target_slate_q_values: Optional[TensorType] = None,
+    ) -> Tuple[TensorType, TensorType]:
         """Build a slate by selecting from candidate documents
 
         Args:
@@ -200,7 +204,9 @@ class SlateQModel(TorchModelV2, nn.Module):
         if target_slate_q_values is not None:
             assert self.double_q
             max_values, best_target_indices = torch.max(target_slate_q_values, dim=1)
-            best_slate_q_value = torch.gather(slate_q_values, 1, best_target_indices.unsqueeze(1)).squeeze(1)
+            best_slate_q_value = torch.gather(
+                slate_q_values, 1, best_target_indices.unsqueeze(1)
+            ).squeeze(1)
             # slates_selected.shape: [batch_size, slate_size]
             slates_selected = self.slates[best_target_indices]
         else:
@@ -236,31 +242,36 @@ class SlateQModel(TorchModelV2, nn.Module):
             input=q_values_doc.unsqueeze(1).expand(-1, self.num_slates, -1),
             dim=2,
             # index.shape: [batch_size, num_slates, slate_size]
-            index=self.slates.unsqueeze(0).expand(batch_size, -1, -1))
+            index=self.slates.unsqueeze(0).expand(batch_size, -1, -1),
+        )
         # slate_scores.shape: [batch_size, num_slates, slate_size]
         slate_scores = torch.gather(
             # input.shape: [batch_size, num_slates, num_docs]
             input=scores_doc.unsqueeze(1).expand(-1, self.num_slates, -1),
             dim=2,
             # index.shape: [batch_size, num_slates, slate_size]
-            index=self.slates.unsqueeze(0).expand(batch_size, -1, -1))
+            index=self.slates.unsqueeze(0).expand(batch_size, -1, -1),
+        )
 
         # slate_q_values.shape: [batch_size, num_slates]
-        slate_q_values = ((slate_decomp_q_values * slate_scores).sum(dim=2) +
-                          (q_values_no_click * scores_no_click)) / (
-                              slate_scores.sum(dim=2) + scores_no_click)
+        slate_q_values = (
+            (slate_decomp_q_values * slate_scores).sum(dim=2)
+            + (q_values_no_click * scores_no_click)
+        ) / (slate_scores.sum(dim=2) + scores_no_click)
         return slate_q_values
 
-    def forward(self, input_dict: Dict[str, TensorType],
-                state: List[TensorType],
-                seq_lens: TensorType) -> Tuple[TensorType, List[TensorType]]:
+    def forward(
+        self,
+        input_dict: Dict[str, TensorType],
+        state: List[TensorType],
+        seq_lens: TensorType,
+    ) -> Tuple[TensorType, List[TensorType]]:
         # user.shape: [batch_size, embedding_size]
         user = input_dict[SampleBatch.OBS]["user"]
         # doc.shape: [batch_size, num_docs, embedding_size]
-        doc = torch.cat([
-            val.unsqueeze(1)
-            for val in input_dict[SampleBatch.OBS]["doc"].values()
-        ], 1)
+        doc = torch.cat(
+            [val.unsqueeze(1) for val in input_dict[SampleBatch.OBS]["doc"].values()], 1
+        )
 
         slates_selected, _, _ = self.choose_slate(user, doc)
 

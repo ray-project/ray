@@ -2,10 +2,14 @@ import unittest
 
 import ray
 import ray.rllib.agents.slateq as slateq
-from ray.rllib.examples.env.recsim_recommender_system_envs import \
-    LongTermSatisfactionRecSimEnv
-from ray.rllib.utils.test_utils import check_compute_single_action, \
-    check_train_results, framework_iterator
+from ray.rllib.examples.env.recsim_recommender_system_envs import (
+    LongTermSatisfactionRecSimEnv,
+)
+from ray.rllib.utils.test_utils import (
+    check_compute_single_action,
+    check_train_results,
+    framework_iterator,
+)
 
 
 class TestSlateQ(unittest.TestCase):
@@ -39,4 +43,5 @@ class TestSlateQ(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

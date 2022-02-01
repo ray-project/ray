@@ -177,8 +177,9 @@ def make_recsim_env(
         An RLlib-ready gym.Env class to use inside a Trainer.
     """
 
-    class _RecSimEnv(gym.Env):
+    class _RecSimEnv(gym.Wrapper):
         def __init__(self, config: Optional[EnvContext] = None):
+
             # Override with default values, in case they are not set by the user.
             default_config = {
                 "num_candidates": 10,
@@ -209,26 +210,10 @@ def make_recsim_env(
 
             # Fix observation space and - if necessary - convert to discrete
             # action space (from multi-discrete).
-            self.env = recsim_gym_wrapper(
+            env = recsim_gym_wrapper(
                 gym_env, config["convert_to_discrete_action_space"]
             )
-            self.observation_space = self.env.observation_space
-            self.action_space = self.env.action_space
-
-        @override(gym.Env)
-        def reset(self):
-            return self.env.reset()
-
-        @override(gym.Env)
-        def step(self, actions):
-            return self.env.step(actions)
-
-        @override(gym.Env)
-        def seed(self, seed=None):
-            return self.env.seed(seed)
-
-        @override(gym.Env)
-        def render(self, mode="human"):
-            return self.env.render(mode)
+            # Call the super (Wrapper constructor) passing it the created env.
+            super().__init__(env=env)
 
     return _RecSimEnv
