@@ -210,6 +210,7 @@ class _WrappedDataLoader(DataLoader):
             yield self._move_to_device(item)
 
 
+@PublicAPI(stability="beta")
 def get_device() -> torch.device:
     """Gets the correct torch device to use for training."""
     if torch.cuda.is_available():
