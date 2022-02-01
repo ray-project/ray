@@ -963,7 +963,7 @@ class TrialRunner:
         return trial
 
     def _process_trial_results(self, trial, results):
-        logger.info(f"process_trial_results {results}")
+        logger.debug(f"process_trial_results {results}")
         with warn_if_slow(
             "process_trial_results",
             message="Processing trial results took {duration:.3f} s, "

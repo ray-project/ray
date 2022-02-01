@@ -197,18 +197,12 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
     assert trial.last_result.get("training_iteration") == 1
 
     # Process result: discover failure, recover, _train (from scratch)
-    runner.step()
-
-    runner.step()
-    runner.step()  # Process result, invoke _train
-    assert trial.last_result.get("training_iteration") == 1
-    runner.step()  # Process result, invoke _save
-    assert trial.last_result.get("training_iteration") == 2
-    # process save, invoke _train
-    runner.step()
-    # process result
-    runner.step()
-    assert trial.status == Trial.TERMINATED
+    while trial.last_result.get("training_iteration") != 1:
+        runner.step()
+    while trial.last_result.get("training_iteration") != 2:
+        runner.step()
+    while trial.status != Trial.TERMINATED:
+        runner.step()
 
     with pytest.raises(TuneError):
         runner.step()
@@ -266,9 +260,8 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     t2 = Trial(trainable_id, **kwargs)
     runner.add_trial(t2)
     # Start trial, process result (x2), process save
-    for _ in range(4):
+    while not t2.has_checkpoint():
         runner.step()
-    assert t2.has_checkpoint()
     node3 = cluster.add_node(num_cpus=1)
     cluster.remove_node(node2)
     cluster.wait_for_nodes()
@@ -395,9 +388,8 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster, trainab
         runner.add_trial(t1)
 
         # Start trial, process result (x2), process save
-        for _ in range(4):
+        while not t1.has_checkpoint():
             runner.step()
-        assert t1.has_checkpoint()
 
         cluster.add_node(num_cpus=1)
         cluster.remove_node(node)
