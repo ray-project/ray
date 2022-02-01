@@ -142,7 +142,7 @@ class _ClientContext:
 
         if self.client_worker is not None:
             self.client_worker.close()
-        self.api = ClientAPI()
+        self.api.worker = None
         self.client_worker = None
 
     # remote can be called outside of a connection, which is why it
