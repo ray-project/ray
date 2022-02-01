@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 class TorchAccelerator(Accelerator):
     """An object that implements methods to accelerate PyTorch training."""
+
     def prepare_model(
         self,
         model: torch.nn.Module,
