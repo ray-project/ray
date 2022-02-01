@@ -621,6 +621,13 @@ class ActorClass:
                     scheduling_strategy=scheduling_strategy,
                 )
 
+            def _bind(self, *args, **kwargs):
+                from ray.experimental.dag.actor_node import ActorNode
+
+                return ActorNode(
+                    actor_cls.__ray_metadata__.modified_class, args, kwargs
+                )
+
         return ActorOptionWrapper()
 
     @_tracing_actor_creation
@@ -995,6 +1002,7 @@ class ActorClass:
 
     def _bind(self, *args, **kwargs):
         from ray.experimental.dag.actor_node import ActorNode
+
         return ActorNode(self.__ray_metadata__.modified_class, args, kwargs)
 
 

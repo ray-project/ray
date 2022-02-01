@@ -1,7 +1,7 @@
 import ray
 from ray.experimental.dag.py_obj_scanner import _PyObjScanner
 
-from typing import Union, List, Tuple, Dict, Any, TypeVar, Callable, Set
+from typing import Optional, Union, List, Tuple, Dict, Any, TypeVar, Callable, Set
 import uuid
 
 T = TypeVar("T")
@@ -15,11 +15,18 @@ class DAGNode:
     argument values).
     """
 
-    def __init__(self, args: Tuple[Any], kwargs: Dict[str, Any]):
-        # Bound node arguments.
+    def __init__(
+        self,
+        args: Tuple[Any],
+        kwargs: Dict[str, Any],
+        options: Optional[Dict[str, Any]] = None,
+    ):
+        # Bound node arguments, ex: func_or_class.bind(1)
         self._bound_args: Tuple[Any] = args
-        # Bound node keyword arguments.
+        # Bound node keyword arguments, ex: func_or_class.bind(a=1)
         self._bound_kwargs: Dict[str, Any] = kwargs
+        # Bound node options arguments, ex: func_or_class.options(num_cpus=2)
+        self._bound_options: Optional[Dict[str, Any]] = options
         # UUID that is not changed over copies of this node.
         self._stable_uuid = uuid.uuid4().hex
 
@@ -32,6 +39,11 @@ class DAGNode:
         """Return the dict of keyword arguments for this node."""
 
         return self._bound_kwargs.copy()
+
+    def get_options(self) -> Tuple[Any]:
+        """Return the dict of options arguments for this node."""
+
+        return self._bound_options.copy()
 
     def get_toplevel_child_nodes(self) -> Set["DAGNode"]:
         """Return the set of nodes specified as top-level args.
@@ -60,12 +72,13 @@ class DAGNode:
 
         f = _PyObjScanner(DAGNode)
         children = set()
-        for n in f.find_nodes([self._bound_args, self._bound_kwargs]):
+        for n in f.find_nodes(
+            [self._bound_args, self._bound_kwargs, self._bound_options]
+        ):
             children.add(n)
         return children
 
-    def replace_all_child_nodes(self,
-                                fn: "Callable[[DAGNode], T]") -> "DAGNode":
+    def replace_all_child_nodes(self, fn: "Callable[[DAGNode], T]") -> "DAGNode":
         """Replace all immediate child nodes using a given function.
 
         This is a shallow replacement only. To recursively transform nodes in
@@ -82,16 +95,18 @@ class DAGNode:
 
         # Find all first-level nested DAGNode children in args.
         f = _PyObjScanner(DAGNode)
-        children = f.find_nodes([self._bound_args, self._bound_kwargs])
+        children = f.find_nodes(
+            [self._bound_args, self._bound_kwargs, self._bound_options]
+        )
 
         # Update replacement table and execute the replace.
         for node in children:
             if node not in replace_table:
                 replace_table[node] = fn(node)
-        new_args, new_kwargs = f.replace_nodes(replace_table)
+        new_args, new_kwargs, new_options = f.replace_nodes(replace_table)
 
         # Return updated copy of self.
-        return self.copy(new_args, new_kwargs)
+        return self.copy(new_args, new_kwargs, new_options)
 
     def transform_up(self, visitor: "Callable[[DAGNode], T]") -> T:
         """Transform each node in this DAG in a bottom-up tree walk.
@@ -119,8 +134,8 @@ class DAGNode:
             visitor = _CachingVisitor(visitor)
 
         return visitor(
-            self.replace_all_child_nodes(
-                lambda node: node.transform_up(visitor)))
+            self.replace_all_child_nodes(lambda node: node.transform_up(visitor))
+        )
 
     def execute(self) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this DAG using the Ray default executor."""
@@ -130,15 +145,23 @@ class DAGNode:
         """Execute this node, assuming args have been transformed already."""
         raise NotImplementedError
 
-    def _copy(self, new_args: List[Any],
-              new_kwargs: Dict[str, Any]) -> "DAGNode":
+    def _copy(
+        self,
+        new_args: List[Any],
+        new_kwargs: Dict[str, Any],
+        new_options: Dict[str, Any],
+    ) -> "DAGNode":
         """Return a copy of this node with the given new args."""
         raise NotImplementedError
 
-    def copy(self, new_args: List[Any],
-             new_kwargs: Dict[str, Any]) -> "DAGNode":
+    def copy(
+        self,
+        new_args: List[Any],
+        new_kwargs: Dict[str, Any],
+        new_options: Dict[str, Any],
+    ) -> "DAGNode":
         """Return a copy of this node with the given new args."""
-        instance = self._copy(new_args, new_kwargs)
+        instance = self._copy(new_args, new_kwargs, new_options)
         instance._stable_uuid = self._stable_uuid
         return instance
 
@@ -184,11 +207,11 @@ class DAGNode:
                 node_repr_lines = str(val).split("\n")
                 for index, node_repr_line in enumerate(node_repr_lines):
                     if index == 0:
-                        kwargs_lines.append(f"{indent}{key}:" + f"{indent}" +
-                                            node_repr_line)
+                        kwargs_lines.append(
+                            f"{indent}{key}:" + f"{indent}" + node_repr_line
+                        )
                     else:
-                        kwargs_lines.append(f"{indent}{indent}" +
-                                            node_repr_line)
+                        kwargs_lines.append(f"{indent}{indent}" + node_repr_line)
 
             elif isinstance(val, list):
                 for ele in val:
@@ -214,17 +237,37 @@ class DAGNode:
 
         return kwargs_line
 
+    def _get_options_lines(self):
+        """Pretty prints .options() in DAGNode. Only prints non-empty values."""
+        if not self._bound_options:
+            return "{}"
+        indent = self._get_indentation()
+        options_lines = []
+        for key, val in self._bound_options.items():
+            if val:
+                options_lines.append(f"{indent}{key}: " + str(val))
+
+        options_line = "{"
+        for line in options_lines:
+            options_line += f"\n{indent}{line}"
+        options_line += f"\n{indent}}}"
+        return options_line
+
     def __str__(self):
         indent = self._get_indentation()
         args_line = self._get_args_lines()
         kwargs_line = self._get_kwargs_lines()
+        options_line = self._get_options_lines()
         node_type = f"{self.__class__.__name__}"
         # kwargs_children = self._bound_kwargs
-        return (f"({node_type})(\n"
-                f"{indent}body={str(self._body)}\n"
-                f"{indent}args={args_line}\n"
-                f"{indent}kwargs={kwargs_line}\n"
-                f")")
+        return (
+            f"({node_type})(\n"
+            f"{indent}body={str(self._body)}\n"
+            f"{indent}args={args_line}\n"
+            f"{indent}kwargs={kwargs_line}\n"
+            f"{indent}options={options_line}\n"
+            f")"
+        )
 
     def __reduce__(self):
         """We disallow serialization to prevent inadvertent closure-capture.

@@ -51,7 +51,7 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler):
     def reducer_override(self, obj):
         if isinstance(obj, self._dag_node_type):
             index = len(self._found)
-            res = (lambda i: _PyObjScanner._cur._replace_index(i)), (index, )
+            res = (lambda i: _PyObjScanner._cur._replace_index(i)), (index,)
             self._found.append(obj)
             return res
         else:

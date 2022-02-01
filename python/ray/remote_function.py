@@ -250,6 +250,35 @@ class RemoteFunction:
                     scheduling_strategy=scheduling_strategy,
                 )
 
+            def _bind(self, *args, **kwargs):
+                from ray.experimental.dag.task_node import TaskNode
+
+                task_options = dict(
+                    num_returns=num_returns,
+                    num_cpus=num_cpus,
+                    num_gpus=num_gpus,
+                    memory=memory,
+                    object_store_memory=object_store_memory,
+                    accelerator_type=accelerator_type,
+                    resources=resources,
+                    max_retries=max_retries,
+                    retry_exceptions=retry_exceptions,
+                    placement_group=placement_group,
+                    placement_group_bundle_index=placement_group_bundle_index,
+                    placement_group_capture_child_tasks=(
+                        placement_group_capture_child_tasks
+                    ),
+                    runtime_env=new_runtime_env,
+                    name=name,
+                    scheduling_strategy=scheduling_strategy,
+                )
+                return TaskNode(
+                    func_cls._function,
+                    args,
+                    kwargs,
+                    task_options=task_options,
+                )
+
         return FuncWrapper()
 
     @_tracing_task_invocation
@@ -448,4 +477,5 @@ class RemoteFunction:
 
     def _bind(self, *args, **kwargs):
         from ray.experimental.dag.task_node import TaskNode
+
         return TaskNode(self._function, args, kwargs)
