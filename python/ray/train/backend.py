@@ -36,8 +36,8 @@ class BackendConfig:
         raise NotImplementedError
 
     @property
-    def default_accelerator_factory(self) -> Callable[[], Accelerator]:
-        return Accelerator
+    def default_accelerator_factory(self) -> Optional[Callable[[], Accelerator]]:
+        return None
 
 
 @DeveloperAPI
@@ -387,10 +387,10 @@ class BackendExecutor:
             world_rank,
             local_rank,
             world_size,
-            default_accelerator_factory,
             checkpoint,
             dataset_shard,
             encode_data_fn,
+            default_accelerator_factory,
         ):
             try:
                 init_session(
@@ -398,11 +398,11 @@ class BackendExecutor:
                     world_rank=world_rank,
                     local_rank=local_rank,
                     world_size=world_size,
-                    default_accelerator_factory=default_accelerator_factory,
                     dataset_shard=dataset_shard,
                     checkpoint=checkpoint,
                     encode_data_fn=encode_data_fn,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
+                    default_accelerator_factory=default_accelerator_factory,
                 )
             except ValueError:
                 raise TrainBackendError(
@@ -427,10 +427,10 @@ class BackendExecutor:
                     local_rank=local_rank_map[index],
                     world_size=len(self.worker_group),
                     train_func=train_func,
-                    default_accelerator_factory=self._backend_config.default_accelerator_factory,  # noqa: E501
                     dataset_shard=self.dataset_shards[index],
                     checkpoint=checkpoint,
                     encode_data_fn=self._backend.encode_data,
+                    default_accelerator_factory=self._backend_config.default_accelerator_factory,  # noqa: E501
                 )
             )
 

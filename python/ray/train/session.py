@@ -48,11 +48,11 @@ class Session:
         world_rank: int,
         local_rank: int,
         world_size: int,
-        default_accelerator_factory: Callable[[], Accelerator],
         dataset_shard: Optional[RayDataset] = None,
         checkpoint: Optional[Dict] = None,
         encode_data_fn: Callable = None,
         detailed_autofilled_metrics: bool = False,
+        default_accelerator_factory: Optional[Callable[[], Accelerator]] = None,
     ):
 
         self.dataset_shard = dataset_shard
@@ -237,8 +237,8 @@ class Session:
         self.continue_lock.acquire()
 
     @property
-    def accelerator(self) -> Accelerator:
-        if not self._accelerator:
+    def accelerator(self) -> Optional[Accelerator]:
+        if not self._accelerator and self._default_accelerator_factory:
             self._accelerator = self._default_accelerator_factory()
         return self._accelerator
 
