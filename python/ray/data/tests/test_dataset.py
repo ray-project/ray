@@ -243,7 +243,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     expected_total_rows = sum(split_counts)
     # Check that the expected number of rows were dropped.
     assert total_rows - expected_total_rows == total_rows % num_splits
-    # Check that all rows are unique (content check).
+    # Check that all the rows are unique (content check).
     split_rows = [row for split in splits for row in split.take(total_rows)]
     assert len(set(split_rows)) == len(split_rows)
 
@@ -1969,12 +1969,12 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # Batch size larger than dataset.
     batch_size = 15
-    batches = list(
-        ds.iter_batches(batch_size=batch_size, batch_format="pandas"))
+    batches = list(ds.iter_batches(batch_size=batch_size, batch_format="pandas"))
     assert all(len(batch) == ds.count() for batch in batches)
     assert len(batches) == 1
-    assert pd.concat(
-        batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
+    assert pd.concat(batches, ignore_index=True).equals(
+        pd.concat(dfs, ignore_index=True)
+    )
 
     # Batch size drop partial.
     batch_size = 5
