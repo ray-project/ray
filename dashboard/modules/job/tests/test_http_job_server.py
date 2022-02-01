@@ -127,7 +127,11 @@ def test_http_bad_request(job_sdk_client):
     client = job_sdk_client
 
     # 400 - HTTPBadRequest
-    r = client._do_request("POST", "/api/jobs/", json_data={"key": "baaaad request"},)
+    r = client._do_request(
+        "POST",
+        "/api/jobs/",
+        json_data={"key": "baaaad request"},
+    )
 
     assert r.status_code == 400
     assert "TypeError: __init__() got an unexpected keyword argument" in r.text
@@ -224,14 +228,17 @@ def test_job_metadata(job_sdk_client):
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 
-    assert str(
-        {
-            "job_name": job_id,
-            "job_submission_id": job_id,
-            "key1": "val1",
-            "key2": "val2",
-        }
-    ) in client.get_job_logs(job_id)
+    assert (
+        str(
+            {
+                "job_name": job_id,
+                "job_submission_id": job_id,
+                "key1": "val1",
+                "key2": "val2",
+            }
+        )
+        in client.get_job_logs(job_id)
+    )
 
 
 def test_pass_job_id(job_sdk_client):
@@ -259,7 +266,11 @@ def test_submit_optional_args(job_sdk_client):
     """Check that job_id, runtime_env, and metadata are optional."""
     client = job_sdk_client
 
-    r = client._do_request("POST", "/api/jobs/", json_data={"entrypoint": "ls"},)
+    r = client._do_request(
+        "POST",
+        "/api/jobs/",
+        json_data={"entrypoint": "ls"},
+    )
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=r.json()["job_id"])
 
@@ -295,7 +306,11 @@ def test_request_headers(job_sdk_client):
     client = job_sdk_client
 
     with patch("requests.request") as mock_request:
-        _ = client._do_request("POST", "/api/jobs/", json_data={"entrypoint": "ls"},)
+        _ = client._do_request(
+            "POST",
+            "/api/jobs/",
+            json_data={"entrypoint": "ls"},
+        )
         mock_request.assert_called_with(
             "POST",
             "http://127.0.0.1:8265/api/jobs/",

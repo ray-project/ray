@@ -201,7 +201,10 @@ class JobSubmissionClient:
             headers=self._headers,
         )
 
-    def _package_exists(self, package_uri: str,) -> bool:
+    def _package_exists(
+        self,
+        package_uri: str,
+    ) -> bool:
         protocol, package_name = uri_to_http_components(package_uri)
         r = self._do_request("GET", f"/api/packages/{protocol}/{package_name}")
 
@@ -305,7 +308,10 @@ class JobSubmissionClient:
         else:
             self._raise_error(r)
 
-    def stop_job(self, job_id: str,) -> bool:
+    def stop_job(
+        self,
+        job_id: str,
+    ) -> bool:
         logger.debug(f"Stopping job with job_id={job_id}.")
         r = self._do_request("POST", f"/api/jobs/{job_id}/stop")
 
@@ -314,7 +320,10 @@ class JobSubmissionClient:
         else:
             self._raise_error(r)
 
-    def get_job_status(self, job_id: str,) -> JobStatusInfo:
+    def get_job_status(
+        self,
+        job_id: str,
+    ) -> JobStatusInfo:
         r = self._do_request("GET", f"/api/jobs/{job_id}")
 
         if r.status_code == 200:
