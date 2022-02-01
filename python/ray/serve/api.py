@@ -197,21 +197,7 @@ class Client:
     def _wait_for_goal(
         self, goal_id: Optional[GoalId], timeout: Optional[float] = None
     ) -> bool:
-        if goal_id is None:
-            return True
-
-        ready, _ = ray.wait(
-            [self._controller.wait_for_goal.remote(goal_id)], timeout=timeout
-        )
-        # AsyncGoal could return exception if set, ray.get()
-        # retrieves and throws it to user code explicitly.
-        if len(ready) == 1:
-            async_goal_exception = ray.get(ready)[0]
-            if async_goal_exception is not None:
-                raise async_goal_exception
-            return True
-        else:
-            return False
+        return wait_for_goal(goal_id, self._controller, timeout=timeout)
 
     @_ensure_connected
     def deploy(
@@ -248,15 +234,7 @@ class Client:
 
         if _blocking:
             self._wait_for_goal(goal_id)
-
-            if url is not None:
-                url_part = f" at `{url}`"
-            else:
-                url_part = ""
-            logger.info(
-                f"Deployment '{name}{':'+version if version else ''}' is ready"
-                f"{url_part}. {tag}"
-            )
+            log_deploy_ready(name, version, url, tag)
         else:
             return goal_id
 
@@ -1255,24 +1233,10 @@ def deploy_group(deployment_list: List[Tuple[Deployment, Dict]],
         goal_id = update_goals[i][0]
 
         if _blocking:
-            ready, _ = ray.wait([controller.wait_for_goal.remote(goal_id)])
-
-            if len(ready) == 1:
-                async_goal_exception = ray.get(ready)[0]
-                if async_goal_exception is not None:
-                    raise async_goal_exception
-
-            if url is not None:
-                url_part = f" at `{url}`"
-            else:
-                url_part = ""
-            logger.info(
-                f"Deployment '{name}{':'+version if version else ''}' is ready"
-                f"{url_part}. {tags[i]}"
-            )
-
+            wait_for_goal(goal_id, controller)
+            log_deploy_ready(name, version, url, tags[i])
         else:
-            return nonblocking_goal_ids.append(goal_id)
+            nonblocking_goal_ids.append(goal_id)
     
     return nonblocking_goal_ids
 
@@ -1360,3 +1324,34 @@ def log_deploy_update_status(name: str, version: str, updating: bool) -> str:
         )
     
     return tag
+
+def log_deploy_ready(name: str, version: str, url: str, tag: str) -> None:
+    if url is not None:
+        url_part = f" at `{url}`"
+    else:
+        url_part = ""
+    logger.info(
+        f"Deployment '{name}{':'+version if version else ''}' is ready"
+        f"{url_part}. {tag}"
+    )
+
+def wait_for_goal(
+    goal_id: Optional[GoalId],
+    controller: ServeController,
+    timeout: Optional[float] = None
+) -> bool:
+    if goal_id is None:
+        return True
+
+    ready, _ = ray.wait(
+        [controller.wait_for_goal.remote(goal_id)], timeout=timeout
+    )
+    # AsyncGoal could return exception if set, ray.get()
+    # retrieves and throws it to user code explicitly.
+    if len(ready) == 1:
+        async_goal_exception = ray.get(ready)[0]
+        if async_goal_exception is not None:
+            raise async_goal_exception
+        return True
+    else:
+        return False
