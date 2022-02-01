@@ -1198,11 +1198,11 @@ def test_http_proxy_request_cancellation(serve_instance):
 class TestDeployGroup:
 
     @serve.deployment
-    def f(request):
+    def f(request=None):
         return "f reached"
     
     @serve.deployment
-    def g(request):
+    def g(request=None):
         return "g reached"
     
     @serve.deployment
@@ -1220,13 +1220,13 @@ class TestDeployGroup:
 
     
     def test_basic_deploy_group(self, serve_instance):
-        controller: ServeController = serve_instance._controller
+        # controller: ServeController = serve_instance._controller
 
         deployment_list = [(d, {}) for d in self.deployments]
-        controller.execute_deploy_group(deployment_list)
+        serve.deploy_group(deployment_list)
         
         for deployment, response in zip(self.deployments, self.responses):
-            assert deployment.get_handle().remote() == response
+            assert ray.get(deployment.get_handle().remote()) == response
 
 
 

@@ -866,7 +866,7 @@ class Deployment:
     @property
     def init_kwargs(self) -> Tuple[Any]:
         """Keyword args passed to the underlying class's constructor."""
-        return self._init_args
+        return self._init_kwargs
 
     @property
     def url(self) -> Optional[str]:
@@ -1263,31 +1263,35 @@ def deploy_group(deployment_list: List[Tuple[Deployment, Dict]],
     # TODO: Escalate this function to the Ray dashboard
 
     # Apply options to deployments, store results in updated_deployments
-    updated_deployments: List[Deployment] = []
-    for deployment, options_dict in deployment_list:
-        if not isinstance(deployment, Deployment):
-            error_msg = (f"The deployment {deployment} should be a "
-                            f"Deployment class object. Instead, it was a "
-                            f"{type(deployment)} type. Make sure this "
-                            f"object is a class or function decorated with "
-                            f"@serve.deployment.")
-            logger.error(error_msg)
-            raise TypeError(error_msg)
+    # updated_deployments: List[Deployment] = []
+    # for deployment, options_dict in deployment_list:
+    #     if not isinstance(deployment, Deployment):
+    #         error_msg = (f"The deployment {deployment} should be a "
+    #                         f"Deployment class object. Instead, it was a "
+    #                         f"{type(deployment)} type. Make sure this "
+    #                         f"object is a class or function decorated with "
+    #                         f"@serve.deployment.")
+    #         logger.error(error_msg)
+    #         raise TypeError(error_msg)
 
-        try:
-            updated_deployment = deployment.options(**options_dict)
-        except TypeError as e:
-            error_msg = (f"Deployment {deployment.name} contained an "
-                            f"invalid option.")
-            logger.error(error_msg)
-            raise TypeError(error_msg) from e
+    #     try:
+    #         updated_deployment = deployment.options(**options_dict)
+    #     except TypeError as e:
+    #         error_msg = (f"Deployment {deployment.name} contained an "
+    #                         f"invalid option.")
+    #         logger.error(error_msg)
+    #         raise TypeError(error_msg) from e
         
-        updated_deployments.append(updated_deployment)
-    
+    #     updated_deployments.append(updated_deployment)
+
+    updated_deployments = [d for d, _ in deployment_list]
+    print("\ncheck\n", updated_deployments)
+
     deployment_args_list = []
     for deployment in updated_deployments:
+        print(f"\nhere are init kwargs: {deployment.init_kwargs}\n")
         deployment_args_list.append(
-            self.prepare_deployment(
+            prepare_deployment(
                 deployment._name,
                 deployment._func_or_class,
                 deployment.init_args,
@@ -1300,7 +1304,9 @@ def deploy_group(deployment_list: List[Tuple[Deployment, Dict]],
             )
         )
     
-    update_goals = self.deploy_group(deployment_args_list)
+    controller = _get_global_client()._controller
+    update_goals = ray.get(controller.deploy_group.remote(deployment_args_list))
+    print("\nfinished with update goals\n")
 
     # This section is adapted from api.py's Client's deploy
     for i in range(len(updated_deployments)):
@@ -1329,7 +1335,7 @@ def deploy_group(deployment_list: List[Tuple[Deployment, Dict]],
         goal_id = update_goals[i][0]
 
         if _blocking:
-            ready, _ = ray.wait([self.wait_for_goal(goal_id)])
+            ready, _ = ray.wait([controller.wait_for_goal.remote(goal_id)])
 
             if len(ready) == 1:
                 async_goal_exception = ray.get(ready)[0]
@@ -1351,7 +1357,6 @@ def deploy_group(deployment_list: List[Tuple[Deployment, Dict]],
     return nonblocking_goal_ids
 
 def prepare_deployment(
-    self,
     name: str,
     deployment_def: Union[Callable, Type[Callable], str],
     init_args: Tuple[Any],
