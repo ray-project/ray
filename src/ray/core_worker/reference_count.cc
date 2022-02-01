@@ -256,10 +256,14 @@ void ReferenceCounter::SetNestedRefInUseRecursive(ReferenceTable::iterator inner
 
 void ReferenceCounter::ReleaseAllLocalReferences() {
   absl::MutexLock lock(&mutex_);
+  std::vector<ObjectID> refs_to_remove;
   for (auto &ref : object_id_refs_) {
     for (int i = ref.second.local_ref_count; i > 0; --i) {
-      RemoveLocalReferenceInternal(ref.first, nullptr);
+      refs_to_remove.push_back(ref.first);
     }
+  }
+  for (const auto &object_id_to_remove : refs_to_remove) {
+    RemoveLocalReferenceInternal(object_id_to_remove, nullptr);
   }
 }
 
@@ -298,9 +302,13 @@ void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
 }
 
 void ReferenceCounter::UpdateSubmittedTaskReferences(
+    const std::vector<ObjectID> return_ids,
     const std::vector<ObjectID> &argument_ids_to_add,
     const std::vector<ObjectID> &argument_ids_to_remove, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
+  for (const auto &return_id : return_ids) {
+    UpdateObjectPendingCreation(return_id, true);
+  }
   for (const ObjectID &argument_id : argument_ids_to_add) {
     RAY_LOG(DEBUG) << "Increment ref count for submitted task argument " << argument_id;
     auto it = object_id_refs_.find(argument_id);
@@ -325,8 +333,11 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
 }
 
 void ReferenceCounter::UpdateResubmittedTaskReferences(
-    const std::vector<ObjectID> &argument_ids) {
+    const std::vector<ObjectID> return_ids, const std::vector<ObjectID> &argument_ids) {
   absl::MutexLock lock(&mutex_);
+  for (const auto &return_id : return_ids) {
+    UpdateObjectPendingCreation(return_id, true);
+  }
   for (const ObjectID &argument_id : argument_ids) {
     auto it = object_id_refs_.find(argument_id);
     RAY_CHECK(it != object_id_refs_.end());
@@ -339,10 +350,13 @@ void ReferenceCounter::UpdateResubmittedTaskReferences(
 }
 
 void ReferenceCounter::UpdateFinishedTaskReferences(
-    const std::vector<ObjectID> &argument_ids, bool release_lineage,
-    const rpc::Address &worker_addr, const ReferenceTableProto &borrowed_refs,
-    std::vector<ObjectID> *deleted) {
+    const std::vector<ObjectID> return_ids, const std::vector<ObjectID> &argument_ids,
+    bool release_lineage, const rpc::Address &worker_addr,
+    const ReferenceTableProto &borrowed_refs, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
+  for (const auto &return_id : return_ids) {
+    UpdateObjectPendingCreation(return_id, false);
+  }
   // Must merge the borrower refs before decrementing any ref counts. This is
   // to make sure that for serialized IDs, we increment the borrower count for
   // the inner ID before decrementing the submitted_task_ref_count for the
@@ -454,7 +468,7 @@ std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
           << " Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
              "(ObjectID.from_binary(...)) cannot be passed to ray.get(), ray.wait(), or "
              "as "
-             "a task argument because Ray does not know which task will create them. "
+             "a task argument because Ray does not know which task created them. "
              "If this was not how your object ID was generated, please file an issue "
              "at https://github.com/ray-project/ray/issues/";
       // TODO(swang): Java does not seem to keep the ref count properly, so the
@@ -546,6 +560,11 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 }
 
 void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
+  // NOTE(swang): We have to publish failure to subscribers in case they
+  // subscribe after the ref is already deleted.
+  object_info_publisher_->PublishFailure(
+      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, it->first.Binary());
+
   RAY_CHECK(it->second.ShouldDelete(lineage_pinning_enabled_));
   auto index_it = reconstructable_owned_objects_index_.find(it->first);
   if (index_it != reconstructable_owned_objects_index_.end()) {
@@ -619,6 +638,7 @@ std::vector<ObjectID> ReferenceCounter::ResetObjectsOnRemovedNode(
       lost_objects.push_back(object_id);
       ReleasePlasmaObject(it);
     }
+    RemoveObjectLocationInternal(it, raylet_id);
   }
   return lost_objects;
 }
@@ -1107,9 +1127,27 @@ bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
                       "object is already evicted.";
     return false;
   }
+  RemoveObjectLocationInternal(it, node_id);
+  return true;
+}
+
+void ReferenceCounter::RemoveObjectLocationInternal(ReferenceTable::iterator it,
+                                                    const NodeID &node_id) {
   it->second.locations.erase(node_id);
   PushToLocationSubscribers(it);
-  return true;
+}
+
+void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id,
+                                                   bool pending_creation) {
+  auto it = object_id_refs_.find(object_id);
+  bool push = false;
+  if (it != object_id_refs_.end()) {
+    push = (it->second.pending_creation != pending_creation);
+    it->second.pending_creation = pending_creation;
+  }
+  if (push) {
+    PushToLocationSubscribers(it);
+  }
 }
 
 absl::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations(
@@ -1255,6 +1293,15 @@ bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id,
   return it->second.is_reconstructable;
 }
 
+bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return false;
+  }
+  return it->second.pending_creation;
+}
+
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   const auto &object_id = it->first;
   const auto &locations = it->second.locations;
@@ -1267,7 +1314,8 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
                  << " locations, spilled url: [" << spilled_url
                  << "], spilled node ID: " << spilled_node_id
                  << ", and object size: " << object_size
-                 << ", and primary node ID: " << primary_node_id;
+                 << ", and primary node ID: " << primary_node_id << ", pending creation? "
+                 << it->second.pending_creation;
   rpc::PubMessage pub_message;
   pub_message.set_key_id(object_id.Binary());
   pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
@@ -1303,6 +1351,7 @@ void ReferenceCounter::FillObjectInformationInternal(
   object_info->set_spilled_node_id(it->second.spilled_node_id.Binary());
   auto primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
   object_info->set_primary_node_id(primary_node_id.Binary());
+  object_info->set_pending_creation(it->second.pending_creation);
 }
 
 void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) {

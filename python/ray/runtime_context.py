@@ -1,6 +1,7 @@
 import ray.worker
 import logging
 from ray._private.client_mode_hook import client_mode_hook
+from ray._private.runtime_env.validation import ParsedRuntimeEnv
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -90,9 +91,10 @@ class RuntimeContext(object):
             The current worker's task id. None if there's no task id.
         """
         # only worker mode has actor_id
-        assert self.worker.mode == ray.worker.WORKER_MODE, (
-            f"This method is only available when the process is a\
-                 worker. Current mode: {self.worker.mode}")
+        assert (
+            self.worker.mode == ray.worker.WORKER_MODE
+        ), f"This method is only available when the process is a\
+                 worker. Current mode: {self.worker.mode}"
         task_id = self.worker.current_task_id
         return task_id if not task_id.is_nil() else None
 
@@ -107,9 +109,10 @@ class RuntimeContext(object):
             The current actor id in this worker. None if there's no actor id.
         """
         # only worker mode has actor_id
-        assert self.worker.mode == ray.worker.WORKER_MODE, (
-            f"This method is only available when the process is a\
-                 worker. Current mode: {self.worker.mode}")
+        assert (
+            self.worker.mode == ray.worker.WORKER_MODE
+        ), f"This method is only available when the process is a\
+                 worker. Current mode: {self.worker.mode}"
         actor_id = self.worker.actor_id
         return actor_id if not actor_id.is_nil() else None
 
@@ -124,8 +127,9 @@ class RuntimeContext(object):
         Returns:
             Whether this actor has been ever restarted.
         """
-        assert not self.actor_id.is_nil(), (
-            "This method should't be called inside Ray tasks.")
+        assert (
+            not self.actor_id.is_nil()
+        ), "This method should't be called inside Ray tasks."
         actor_info = ray.state.actors(self.actor_id.hex())
         return actor_info and actor_info["NumRestarts"] != 0
 
@@ -150,14 +154,23 @@ class RuntimeContext(object):
         """
         return self.worker.should_capture_child_tasks_in_placement_group
 
-    @property
-    def runtime_env(self):
-        """Get the runtime env used for the current driver or worker.
+    def get_runtime_env_string(self):
+        """Get the runtime env string used for the current driver or worker.
 
         Returns:
-            The runtime env currently using by this worker.
+            The runtime env string currently using by this worker.
         """
         return self.worker.runtime_env
+
+    @property
+    def runtime_env(self):
+        """Get the runtime env dict used for the current driver or worker.
+
+        Returns:
+            The runtime env dict currently using by this worker.
+        """
+
+        return ParsedRuntimeEnv.deserialize(self.get_runtime_env_string())
 
     @property
     def current_actor(self):

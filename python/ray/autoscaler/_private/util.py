@@ -21,27 +21,24 @@ from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_WORKER, NODE_TYPE_LEGACY_HEAD
 
 REQUIRED, OPTIONAL = True, False
-RAY_SCHEMA_PATH = os.path.join(
-    os.path.dirname(ray.autoscaler.__file__), "ray-schema.json")
 
-# Internal kv keys for storing debug status.
-DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
-DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
-DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
 PLACEMENT_GROUP_RESOURCE_BUNDLED_PATTERN = re.compile(
-    r"(.+)_group_(\d+)_([0-9a-zA-Z]+)")
+    r"(.+)_group_(\d+)_([0-9a-zA-Z]+)"
+)
 PLACEMENT_GROUP_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]+)")
 
-HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE = "Setting `max_workers` for node type"\
-    " `{node_type}` to the global `max_workers` value of {max_workers}. To"\
-    " avoid spawning worker nodes of type `{node_type}`, explicitly set" \
-    " `max_workers: 0` for `{node_type}`.\n"\
-    "Note that `max_workers: 0` was the default value prior to Ray 1.3.0."\
-    " Your current version is Ray {version}.\n"\
-    "See the docs for more information:\n"\
-    "https://docs.ray.io/en/master/cluster/config.html"\
-    "#cluster-configuration-node-max-workers\n"\
+HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE = (
+    "Setting `max_workers` for node type"
+    " `{node_type}` to the global `max_workers` value of {max_workers}. To"
+    " avoid spawning worker nodes of type `{node_type}`, explicitly set"
+    " `max_workers: 0` for `{node_type}`.\n"
+    "Note that `max_workers: 0` was the default value prior to Ray 1.3.0."
+    " Your current version is Ray {version}.\n"
+    "See the docs for more information:\n"
+    "https://docs.ray.io/en/master/cluster/config.html"
+    "#cluster-configuration-node-max-workers\n"
     "https://docs.ray.io/en/master/cluster/config.html#full-configuration"
+)
 
 ResourceBundle = Dict[str, Union[int, float]]
 
@@ -79,7 +76,10 @@ def validate_config(config: Dict[str, Any]) -> None:
     if not isinstance(config, dict):
         raise ValueError("Config {} is not a dictionary".format(config))
 
-    with open(RAY_SCHEMA_PATH) as f:
+    schema_path = os.path.join(
+        os.path.dirname(ray.autoscaler.__file__), "ray-schema.json"
+    )
+    with open(schema_path) as f:
         schema = json.load(f)
 
     try:
@@ -103,24 +103,27 @@ def validate_config(config: Dict[str, Any]) -> None:
             "in the cluster {ray_version} is greater than the Ray version "
             "running on your laptop. Please try updating Ray on your local "
             "machine and make sure the versions match.".format(
-                ray_version=ray.__version__))
+                ray_version=ray.__version__
+            )
+        )
 
     if "available_node_types" in config:
         if "head_node_type" not in config:
             raise ValueError(
-                "You must specify `head_node_type` if `available_node_types "
-                "is set.")
+                "You must specify `head_node_type` if `available_node_types " "is set."
+            )
         if config["head_node_type"] not in config["available_node_types"]:
-            raise ValueError(
-                "`head_node_type` must be one of `available_node_types`.")
+            raise ValueError("`head_node_type` must be one of `available_node_types`.")
 
         sum_min_workers = sum(
             config["available_node_types"][node_type].get("min_workers", 0)
-            for node_type in config["available_node_types"])
+            for node_type in config["available_node_types"]
+        )
         if sum_min_workers > config["max_workers"]:
             raise ValueError(
                 "The specified global `max_workers` is smaller than the "
-                "sum of `min_workers` of all the available node types.")
+                "sum of `min_workers` of all the available node types."
+            )
 
 
 def check_legacy_fields(config: Dict[str, Any]) -> None:
@@ -135,12 +138,14 @@ def check_legacy_fields(config: Dict[str, Any]) -> None:
     if "head_node" in config and config["head_node"]:
         cli_logger.warning(
             "The `head_node` field is deprecated and will be ignored. "
-            "Use `head_node_type` and `available_node_types` instead.")
+            "Use `head_node_type` and `available_node_types` instead."
+        )
     # log warning if non-empty worker_nodes field
     if "worker_nodes" in config and config["worker_nodes"]:
         cli_logger.warning(
             "The `worker_nodes` field is deprecated and will be ignored. "
-            "Use `available_node_types` instead.")
+            "Use `available_node_types` instead."
+        )
     if "available_node_types" not in config:
         cli_logger.error("`available_node_types` not specified in config")
         raise ValueError("`available_node_types` not specified in config")
@@ -183,8 +188,9 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
 
     # A legacy config is one which doesn't have available_node_types,
     # but has at least one of head_node or worker_nodes.
-    is_legacy_config = (("available_node_types" not in config) and
-                        ("head_node" in config or "worker_nodes" in config))
+    is_legacy_config = ("available_node_types" not in config) and (
+        "head_node" in config or "worker_nodes" in config
+    )
     # Do merging logic for legacy configs.
     if is_legacy_config:
         merged_config = merge_legacy_yaml_with_defaults(merged_config)
@@ -195,8 +201,7 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     return merged_config
 
 
-def merge_legacy_yaml_with_defaults(
-        merged_config: Dict[str, Any]) -> Dict[str, Any]:
+def merge_legacy_yaml_with_defaults(merged_config: Dict[str, Any]) -> Dict[str, Any]:
     """Rewrite legacy config's available node types after it has been merged
     with defaults yaml.
     """
@@ -205,15 +210,17 @@ def merge_legacy_yaml_with_defaults(
         "config. Multi-node-type cluster configs are the recommended "
         "format for configuring Ray clusters. "
         "See the docs for more information:\n"
-        "https://docs.ray.io/en/master/cluster/config.html#full-configuration")
+        "https://docs.ray.io/en/master/cluster/config.html#full-configuration"
+    )
 
     # Get default head and worker types.
     default_head_type = merged_config["head_node_type"]
     # Default configs are assumed to have two node types -- one for the head
     # and one for the workers.
     assert len(merged_config["available_node_types"].keys()) == 2
-    default_worker_type = (merged_config["available_node_types"].keys() -
-                           {default_head_type}).pop()
+    default_worker_type = (
+        merged_config["available_node_types"].keys() - {default_head_type}
+    ).pop()
 
     if merged_config["head_node"]:
         # User specified a head node in legacy config.
@@ -226,8 +233,7 @@ def merge_legacy_yaml_with_defaults(
         }
     else:
         # Use default data for the head's node type.
-        head_node_info = merged_config["available_node_types"][
-            default_head_type]
+        head_node_info = merged_config["available_node_types"][default_head_type]
     if merged_config["worker_nodes"]:
         # User specified a worker node in legacy config.
         # Convert it into data for the workers' node type.
@@ -239,13 +245,12 @@ def merge_legacy_yaml_with_defaults(
         }
     else:
         # Use default data for the workers' node type.
-        worker_node_info = merged_config["available_node_types"][
-            default_worker_type]
+        worker_node_info = merged_config["available_node_types"][default_worker_type]
 
     # Rewrite available_node_types.
     merged_config["available_node_types"] = {
         NODE_TYPE_LEGACY_HEAD: head_node_info,
-        NODE_TYPE_LEGACY_WORKER: worker_node_info
+        NODE_TYPE_LEGACY_WORKER: worker_node_info,
     }
     merged_config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
 
@@ -258,9 +263,11 @@ def merge_legacy_yaml_with_defaults(
 
 def merge_setup_commands(config):
     config["head_setup_commands"] = (
-        config["setup_commands"] + config["head_setup_commands"])
+        config["setup_commands"] + config["head_setup_commands"]
+    )
     config["worker_setup_commands"] = (
-        config["setup_commands"] + config["worker_setup_commands"])
+        config["setup_commands"] + config["worker_setup_commands"]
+    )
     return config
 
 
@@ -283,8 +290,10 @@ def fill_node_type_min_max_workers(config):
                 node_type_data.setdefault("max_workers", 0)
             else:
                 global_max_workers = config["max_workers"]
-                logger.info(f"setting max workers for {node_type_name} to "
-                            f"{global_max_workers}")
+                logger.info(
+                    f"setting max workers for {node_type_name} to "
+                    f"{global_max_workers}"
+                )
                 node_type_data.setdefault("max_workers", global_max_workers)
 
 
@@ -308,8 +317,7 @@ def hash_launch_conf(node_conf, auth):
         if key_type in auth:
             with open(os.path.expanduser(auth[key_type])) as key:
                 full_auth[key_type] = key.read()
-    hasher.update(
-        json.dumps([node_conf, full_auth], sort_keys=True).encode("utf-8"))
+    hasher.update(json.dumps([node_conf, full_auth], sort_keys=True).encode("utf-8"))
     return hasher.hexdigest()
 
 
@@ -319,10 +327,12 @@ def hash_launch_conf(node_conf, auth):
 _hash_cache = {}
 
 
-def hash_runtime_conf(file_mounts,
-                      cluster_synced_files,
-                      extra_objs,
-                      generate_file_mounts_contents_hash=False):
+def hash_runtime_conf(
+    file_mounts,
+    cluster_synced_files,
+    extra_objs,
+    generate_file_mounts_contents_hash=False,
+):
     """Returns two hashes, a runtime hash and file_mounts_content hash.
 
     The runtime hash is used to determine if the configuration or file_mounts
@@ -339,7 +349,7 @@ def hash_runtime_conf(file_mounts,
     def add_content_hashes(path, allow_non_existing_paths: bool = False):
         def add_hash_of_file(fpath):
             with open(fpath, "rb") as f:
-                for chunk in iter(lambda: f.read(2**20), b""):
+                for chunk in iter(lambda: f.read(2 ** 20), b""):
                     contents_hasher.update(chunk)
 
         path = os.path.expanduser(path)
@@ -358,8 +368,9 @@ def hash_runtime_conf(file_mounts,
         else:
             add_hash_of_file(path)
 
-    conf_str = (json.dumps(file_mounts, sort_keys=True).encode("utf-8") +
-                json.dumps(extra_objs, sort_keys=True).encode("utf-8"))
+    conf_str = json.dumps(file_mounts, sort_keys=True).encode("utf-8") + json.dumps(
+        extra_objs, sort_keys=True
+    ).encode("utf-8")
 
     # Only generate a contents hash if generate_contents_hash is true or
     # if we need to generate the runtime_hash
@@ -415,7 +426,8 @@ def format_pg(pg):
 
 
 def parse_placement_group_resource_str(
-        placement_group_resource_str: str) -> Tuple[str, Optional[str]]:
+    placement_group_resource_str: str,
+) -> Tuple[str, Optional[str]]:
     """Parse placement group resource in the form of following 3 cases:
     {resource_name}_group_{bundle_id}_{group_name};
     -> This case is ignored as it is duplicated to the case below.
@@ -432,11 +444,11 @@ def parse_placement_group_resource_str(
         wildcard resources (resource name without bundle index).
     """
     result = PLACEMENT_GROUP_RESOURCE_BUNDLED_PATTERN.match(
-        placement_group_resource_str)
+        placement_group_resource_str
+    )
     if result:
         return (result.group(1), result.group(3), False)
-    result = PLACEMENT_GROUP_RESOURCE_PATTERN.match(
-        placement_group_resource_str)
+    result = PLACEMENT_GROUP_RESOURCE_PATTERN.match(placement_group_resource_str)
     if result:
         return (result.group(1), result.group(2), True)
     return (placement_group_resource_str, None, True)
@@ -447,8 +459,9 @@ def get_usage_report(lm_summary: LoadMetricsSummary) -> str:
     placement_group_resource_usage = {}
     placement_group_resource_total = collections.defaultdict(float)
     for resource, (used, total) in lm_summary.usage.items():
-        (pg_resource_name, pg_name,
-         is_countable) = parse_placement_group_resource_str(resource)
+        (pg_resource_name, pg_name, is_countable) = parse_placement_group_resource_str(
+            resource
+        )
         if pg_name:
             if pg_resource_name not in placement_group_resource_usage:
                 placement_group_resource_usage[pg_resource_name] = 0
@@ -479,26 +492,28 @@ def get_usage_report(lm_summary: LoadMetricsSummary) -> str:
             used = used - pg_total + pg_used
 
         if resource in ["memory", "object_store_memory"]:
-            to_GiB = 1 / 2**30
-            line = (f" {(used * to_GiB):.2f}/"
-                    f"{(total * to_GiB):.3f} GiB {resource}")
+            to_GiB = 1 / 2 ** 30
+            line = f" {(used * to_GiB):.2f}/" f"{(total * to_GiB):.3f} GiB {resource}"
             if used_in_pg:
-                line = line + (f" ({(pg_used * to_GiB):.2f} used of "
-                               f"{(pg_total * to_GiB):.2f} GiB " +
-                               "reserved in placement groups)")
+                line = line + (
+                    f" ({(pg_used * to_GiB):.2f} used of "
+                    f"{(pg_total * to_GiB):.2f} GiB " + "reserved in placement groups)"
+                )
             usage_lines.append(line)
         else:
             line = f" {used}/{total} {resource}"
             if used_in_pg:
-                line += (f" ({pg_used} used of "
-                         f"{pg_total} reserved in placement groups)")
+                line += (
+                    f" ({pg_used} used of " f"{pg_total} reserved in placement groups)"
+                )
             usage_lines.append(line)
     usage_report = "\n".join(usage_lines)
     return usage_report
 
 
 def format_resource_demand_summary(
-        resource_demand: List[Tuple[ResourceBundle, int]]) -> List[str]:
+    resource_demand: List[Tuple[ResourceBundle, int]]
+) -> List[str]:
     def filter_placement_group_from_bundle(bundle: ResourceBundle):
         """filter placement group from bundle resource name. returns
         filtered bundle and a bool indicate if the bundle is using
@@ -510,8 +525,9 @@ def format_resource_demand_summary(
         using_placement_group = False
         result_bundle = dict()
         for pg_resource_str, resource_count in bundle.items():
-            (resource_name, pg_name,
-             _) = parse_placement_group_resource_str(pg_resource_str)
+            (resource_name, pg_name, _) = parse_placement_group_resource_str(
+                pg_resource_str
+            )
             result_bundle[resource_name] = resource_count
             if pg_name:
                 using_placement_group = True
@@ -521,8 +537,10 @@ def format_resource_demand_summary(
     pg_bundle_demand = collections.defaultdict(int)
 
     for bundle, count in resource_demand:
-        (pg_filtered_bundle,
-         using_placement_group) = filter_placement_group_from_bundle(bundle)
+        (
+            pg_filtered_bundle,
+            using_placement_group,
+        ) = filter_placement_group_from_bundle(bundle)
 
         # bundle is a special keyword for placement group ready tasks
         # do not report the demand for this.
@@ -531,8 +549,7 @@ def format_resource_demand_summary(
 
         bundle_demand[tuple(sorted(pg_filtered_bundle.items()))] += count
         if using_placement_group:
-            pg_bundle_demand[tuple(sorted(
-                pg_filtered_bundle.items()))] += count
+            pg_bundle_demand[tuple(sorted(pg_filtered_bundle.items()))] += count
 
     demand_lines = []
     for bundle, count in bundle_demand.items():
@@ -546,8 +563,7 @@ def format_resource_demand_summary(
 def get_demand_report(lm_summary: LoadMetricsSummary):
     demand_lines = []
     if lm_summary.resource_demand:
-        demand_lines.extend(
-            format_resource_demand_summary(lm_summary.resource_demand))
+        demand_lines.extend(format_resource_demand_summary(lm_summary.resource_demand))
     for entry in lm_summary.pg_demand:
         pg, count = entry
         pg_str = format_pg(pg)
@@ -590,9 +606,7 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
     for ip, node_type in autoscaler_summary.failed_nodes:
         line = f" {ip}: {node_type}"
         failure_lines.append(line)
-    failure_lines = failure_lines[:
-                                  -constants.AUTOSCALER_MAX_FAILURES_DISPLAYED:
-                                  -1]
+    failure_lines = failure_lines[: -constants.AUTOSCALER_MAX_FAILURES_DISPLAYED : -1]
     failure_report = "Recent failures:\n"
     if failure_lines:
         failure_report += "\n".join(failure_lines)
@@ -630,8 +644,9 @@ def format_no_node_type_string(node_type: dict):
     placement_group_resource_usage = {}
     regular_resource_usage = collections.defaultdict(float)
     for resource, total in node_type.items():
-        (pg_resource_name, pg_name,
-         is_countable) = parse_placement_group_resource_str(resource)
+        (pg_resource_name, pg_name, is_countable) = parse_placement_group_resource_str(
+            resource
+        )
         if pg_name:
             if not is_countable:
                 continue

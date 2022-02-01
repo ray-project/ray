@@ -58,6 +58,13 @@ TrainingCallback
 .. autoclass:: ray.train.TrainingCallback
     :members:
 
+.. _train-api-print-callback:
+
+PrintCallback
+~~~~~~~~~~~~~
+
+.. autoclass:: ray.train.callbacks.PrintCallback
+
 .. _train-api-json-logger-callback:
 
 JsonLoggerCallback
@@ -71,6 +78,39 @@ TBXLoggerCallback
 ~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.train.callbacks.TBXLoggerCallback
+
+.. _train-api-mlflow-logger-callback:
+
+MLflowLoggerCallback
+~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.train.callbacks.MLflowLoggerCallback
+
+ResultsPreprocessors
+~~~~~~~~~~~~~~~~~~~~
+
+.. _train-api-results-preprocessor:
+
+ResultsPreprocessor
++++++++++++++++++++
+
+.. autoclass:: ray.train.callbacks.results_preprocessors.ResultsPreprocessor
+    :members:
+
+SequentialResultsPreprocessor
++++++++++++++++++++++++++++++++
+
+.. autoclass:: ray.train.callbacks.results_preprocessors.SequentialResultsPreprocessor
+
+IndexedResultsPreprocessor
++++++++++++++++++++++++++++++++
+
+.. autoclass:: ray.train.callbacks.results_preprocessors.IndexedResultsPreprocessor
+
+ExcludedKeysResultsPreprocessor
++++++++++++++++++++++++++++++++
+
+.. autoclass:: ray.train.callbacks.results_preprocessors.ExcludedKeysResultsPreprocessor
 
 Checkpointing
 -------------
@@ -115,6 +155,8 @@ train.world_size
 
 .. autofunction:: ray.train.world_size
 
+.. _train-api-torch-utils:
+
 PyTorch Training Function Utilities
 -----------------------------------
 
@@ -132,3 +174,11 @@ train.torch.get_device
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.get_device
+
+TensorFlow Training Function Utilities
+--------------------------------------
+
+train.tensorflow.prepare_dataset_shard
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.tensorflow.prepare_dataset_shard

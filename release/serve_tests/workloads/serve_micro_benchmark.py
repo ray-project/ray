@@ -8,7 +8,8 @@ from serve_test_cluster_utils import (
     setup_anyscale_cluster,
 )
 from serve_test_utils import (
-    save_test_results, )
+    save_test_results,
+)
 
 
 async def main():
@@ -23,8 +24,7 @@ async def main():
 
     result_json = await benchmark_main()
     logger.info(result_json)
-    save_test_results(
-        result_json, default_output_file="/tmp/micro_benchmark.json")
+    save_test_results(result_json, default_output_file="/tmp/micro_benchmark.json")
 
 
 if __name__ == "__main__":
