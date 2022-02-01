@@ -377,6 +377,9 @@ COMMON_CONFIG: TrainerConfigDict = {
     # This may be useful if Tune or some other meta controller needs access
     # to evaluation metrics all the time.
     "always_attach_evaluation_results": False,
+    #
+    #
+    "keep_per_episode_custom_metrics": False,
 
     # === Advanced Rollout Settings ===
     # Use a background thread for sampling (slightly off-policy, usually not
