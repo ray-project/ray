@@ -40,6 +40,9 @@ class TestAlphaStar(unittest.TestCase):
             "entropy_coeff": 0.004,
             "league_builder_config": {
                 "win_rate_threshold_for_new_snapshot": 0.8,
+                "num_random_policies": 2,
+                "num_learning_league_exploiters": 1,
+                "num_learning_main_exploiters": 1,
             },
             "grad_clip": 10.0,
             "replay_buffer_capacity": 10,
@@ -53,7 +56,7 @@ class TestAlphaStar(unittest.TestCase):
 
         num_iterations = 2
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, with_eager_tracing=True):
             _config = config.copy()
             trainer = alpha_star.AlphaStarTrainer(config=_config)
             for i in range(num_iterations):

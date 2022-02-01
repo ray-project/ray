@@ -13,7 +13,6 @@ from ray.rllib.agents.alpha_star.league_builder import AlphaStarLeagueBuilder
 from ray.rllib.agents.trainer import Trainer
 import ray.rllib.agents.ppo.appo as appo
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.policy.policy import Policy, PolicySpec
@@ -92,49 +91,8 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # trainable policies found in the `multiagent` config.
         "max_num_policies_to_train": None,
 
-        # Basic "multiagent" setup for league-building AlphaStar:
-        # Start with "main_0" (the policy we would like to use in the very end),
-        # "league_exploiter_0" (a random policy) and "main_exploiter_0"
-        # (also random).
-        # Once "main_0" reaches n% win-rate, we'll create a snapshot of it
-        # (main_1) as well as create learning "league_exploiter_1" and
-        # "main_exploiter_1" policies (cloned off "main_0").
-        "multiagent": {
-            # Initial policy map. This will be expanded
-            # to more policy snapshots inside the `build_league` method.
-            "policies": {
-                # Our main policy, we'd like to optimize.
-                "main_0": PolicySpec(),
-                # Initial main exploiters (1 of these is a random policy).
-                "main_exploiter_0": PolicySpec(policy_class=RandomPolicy),
-                "main_exploiter_1": PolicySpec(),
-                "main_exploiter_2": PolicySpec(),
-                "main_exploiter_3": PolicySpec(),
-                "main_exploiter_4": PolicySpec(),
-                # Initial league exploiter (1 of these is a random policy).
-                "league_exploiter_0": PolicySpec(policy_class=RandomPolicy),
-                "league_exploiter_1": PolicySpec(),
-                "league_exploiter_2": PolicySpec(),
-                "league_exploiter_3": PolicySpec(),
-                "league_exploiter_4": PolicySpec(),
-            },
-            "policy_mapping_fn":
-                (lambda aid, ep, worker, **kw: "main_0" if
-                 ep.episode_id % 2 == aid else "main_exploiter_0"),
-            # Train all non-random policies that exist at beginning.
-            "policies_to_train": [
-                "main_0",
-                "main_exploiter_1",
-                "main_exploiter_2",
-                "main_exploiter_3",
-                "main_exploiter_4",
-                "league_exploiter_1",
-                "league_exploiter_2",
-                "league_exploiter_3",
-                "league_exploiter_4",
-            ],
-        },
-
+        # By default, don't drop last timestep.
+        # TODO: We should do the same for IMPALA and APPO at some point.
         "vtrace_drop_last_ts": False,
 
         # Reporting interval.
@@ -228,6 +186,15 @@ class AlphaStarTrainer(appo.APPOTrainer):
         return DEFAULT_CONFIG
 
     @override(appo.APPOTrainer)
+    def validate_config(self, config: TrainerConfigDict):
+        # Create the LeagueBuilder object, allowing it to build the multiagent
+        # config as well.
+        self.league_builder = from_config(
+            config["league_builder_config"], trainer=self, trainer_config=config
+        )
+        super().validate_config(config)
+
+    @override(appo.APPOTrainer)
     def setup(self, config: PartialTrainerConfigDict):
         # Call super's setup to validate config, create RolloutWorkers
         # (train and eval), etc..
@@ -273,7 +240,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
             replay_actor_args=replay_actor_args,
         )
         for pid, policy_spec in ma_cfg["policies"].items():
-            if pid in self.workers.local_worker().policies_to_train:
+            if pid in self.workers.local_worker().get_policies_to_train():
                 distributed_learners.add_policy(pid, policy_spec)
 
         # Store distributed_learners on all RolloutWorkers
@@ -290,12 +257,6 @@ class AlphaStarTrainer(appo.APPOTrainer):
         )
 
         self.distributed_learners = distributed_learners
-
-        # Create the LeagueBuilder object.
-        self.league_builder = from_config(
-            self.config["league_builder_config"],
-            trainer=self,
-        )
 
         # Store the win rates for league overview printouts.
         self.win_rates: DefaultDict[PolicyID, float] = defaultdict(float)
@@ -421,6 +382,12 @@ class AlphaStarTrainer(appo.APPOTrainer):
 
         return new_policy
 
+    @override(Trainer)
+    def cleanup(self) -> None:
+        super().cleanup()
+        # Stop all policy- and replay actors.
+        self.distributed_learners.stop()
+
     @staticmethod
     def _sample_and_send_to_buffer(worker: RolloutWorker):
         # Generate a sample.
@@ -429,19 +396,11 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # depending on which policies participated in the episode.
         assert isinstance(sample, MultiAgentBatch)
         for pid, batch in sample.policy_batches.items():
-            # Don't send data, if:
-            # - Policy is not trainable.
-            # - Data was generated by a main-exploiter playing against
-            #   a league-exploiter.
+            # Don't send data, if policy is not trainable.
             replay_actor, _ = worker._distributed_learners.get_replay_and_policy_actors(
                 pid
             )
-            if replay_actor is not None and (
-                not pid.startswith("main_exploiter_")
-                or next(iter(set(sample.policy_batches.keys()) - {pid})).startswith(
-                    "main_"
-                )
-            ):
+            if replay_actor is not None:
                 ma_batch = MultiAgentBatch({pid: batch}, batch.count)
                 replay_actor.add_batch.remote(ma_batch)
         # Return counts (env-steps, agent-steps).

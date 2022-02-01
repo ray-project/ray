@@ -4,25 +4,30 @@ import numpy as np
 import re
 
 from ray.rllib.agents.trainer import Trainer
+from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.numpy import softmax
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.typing import TrainerConfigDict, ResultDict
 
 logger = logging.getLogger(__name__)
 
 
 @ExperimentalAPI
 class LeagueBuilder(metaclass=ABCMeta):
-    def __init__(self, trainer: Trainer):
+    def __init__(self, trainer: Trainer, trainer_config: TrainerConfigDict):
         """Initializes a LeagueBuilder instance.
 
         Args:
             trainer: The Trainer object by which this league builder is used.
                 Trainer calls `build_league()` after each training step.
+            trainer_config: The (not yet validated) config dict to be
+                used on the Trainer. Child classes of `LeagueBuilder`
+                should preprocess this to add e.g. multiagent settings
+                to this config.
         """
         self.trainer = trainer
-        self.config = self.trainer.config
-        self.local_worker = self.trainer.workers.local_worker()
+        self.config = trainer_config
 
     def build_league(self, result: ResultDict) -> None:
         """Method containing league-building logic. Called after train step.
@@ -51,6 +56,10 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
     def __init__(
         self,
         trainer: Trainer,
+        trainer_config: TrainerConfigDict,
+        num_random_policies: int = 2,
+        num_learning_league_exploiters: int = 4,
+        num_learning_main_exploiters: int = 4,
         win_rate_threshold_for_new_snapshot: float = 0.8,
         keep_new_snapshot_training_prob: float = 0.0,
         prob_league_exploiter_match: float = 0.33,
@@ -60,7 +69,19 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
         """Initializes a AlphaStarLeagueBuilder instance.
 
         Args:
-            trainer: The Trainer that holds this league builder.
+            trainer: The Trainer object by which this league builder is used.
+                Trainer calls `build_league()` after each training step.
+            trainer_config: The (not yet validated) config dict to be
+                used on the Trainer. Child classes of `LeagueBuilder`
+                should preprocess this to add e.g. multiagent settings
+                to this config.
+            num_random_policies: The number of random policies to add to the
+                league. This must be an even number (including 0) as these
+                will be evenly distributed amongst league- and main- exploiters.
+            num_learning_league_exploiters: The number of learning
+                league-exploiters to create.
+            num_learning_main_exploiters: The number of learning
+                main-exploiters to create.
             win_rate_threshold_for_new_snapshot: The win-rate to be achieved
                 for a learning policy to get snapshot'd (forked into `self` +
                 a new learning or non-learning copy of `self`).
@@ -74,7 +95,7 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
             prob_main_exploiter_playing_against_learning_main: Probability of
                 a main-exploiter vs (training!) main match.
         """
-        super().__init__(trainer)
+        super().__init__(trainer, trainer_config)
 
         self.win_rate_threshold_for_new_snapshot = win_rate_threshold_for_new_snapshot
         self.keep_new_snapshot_training_prob = keep_new_snapshot_training_prob
@@ -84,58 +105,68 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
             prob_main_exploiter_playing_against_learning_main
         )
 
-        # Make sure the multiagent config dict only contains valid policy IDs:
-        # 1) 1 main_0
-        # 2) n league_exploiter_x
-        # 3) n main_exploiter_x
-        self.main_policies = 0
-        self.league_exploiters = 0
-        self.main_exploiters = 0
-        for pid in sorted(self.config["multiagent"]["policies"].keys()):
-            if pid == "main_0":
-                self.main_policies += 1
-                continue
+        assert num_random_policies % 2 == 0, (
+            "ERROR: `num_random_policies` must be even number (we'll distribute "
+            "these evenly amongst league- and main-exploiters)!"
+        )
 
-            mo = re.match("^league_exploiter_(\\d+)$", pid)
-            if mo:
-                idx = int(mo.group(1))
-                self.league_exploiters += 1
-                assert self.league_exploiters == idx + 1, (
-                    f"ERROR: `league_exploiter_\\d` index wrong ({pid})! "
-                    f"Expected {idx + 1}."
-                )
-                continue
+        # Build trainer's multiagent config.
+        ma_config = self.config["multiagent"]
+        # Make sure the multiagent config dict has no policies defined:
+        assert not ma_config.get("policies"), (
+            "ERROR: `config.multiagent.policies` should not be pre-defined! "
+            "AlphaStarLeagueBuilder will construct this itself."
+        )
+        ma_config["policies"] = policies = {}
 
-            # Main exploiter.
-            mo = re.match("^main_exploiter_(\\d+)$", pid)
-            if mo:
-                idx = int(mo.group(1))
-                self.main_exploiters += 1
-                assert self.main_exploiters == idx + 1, (
-                    f"ERROR: `main_exploiter_\\d` index wrong ({pid})! "
-                    f"Expected {idx + 1}."
-                )
-                continue
+        self.main_policies = 1
+        self.league_exploiters = (
+            num_learning_league_exploiters + num_random_policies / 2
+        )
+        self.main_exploiters = num_learning_main_exploiters + num_random_policies / 2
 
-            # Not a valid ID
-            raise KeyError(
-                "Policy names must either be `main_0` or `main_exploiter_\\d` "
-                "or `league_exploiter_\\d`! "
-                "Exploiter IDs must also start with index 0 and then increase. "
-                f"Found {pid}."
-            )
+        # Add 1 initial (learning) main policy.
+        policies["main_0"] = PolicySpec()
+
+        # Train all non-random policies that exist at beginning.
+        ma_config["policies_to_train"] = ["main_0"]
+
+        # Add random policies.
+        i = -1
+        for i in range(num_random_policies // 2):
+            policies[f"league_exploiter_{i}"] = PolicySpec(policy_class=RandomPolicy)
+            policies[f"main_exploiter_{i}"] = PolicySpec(policy_class=RandomPolicy)
+        # Add initial (learning) league-exploiters.
+        for j in range(num_learning_league_exploiters):
+            pid = f"league_exploiter_{j + i + 1}"
+            policies[pid] = PolicySpec()
+            ma_config["policies_to_train"].append(pid)
+        # Add initial (learning) main-exploiters.
+        for j in range(num_learning_league_exploiters):
+            pid = f"main_exploiter_{j + i + 1}"
+            policies[pid] = PolicySpec()
+            ma_config["policies_to_train"].append(pid)
+
+        # Initial policy mapping function: main_0 vs main_exploiter_0.
+        ma_config["policy_mapping_fn"] = (
+            lambda aid, ep, worker, **kw: "main_0"
+            if ep.episode_id % 2 == aid
+            else "main_exploiter_0"
+        )
 
     @override(LeagueBuilder)
     def build_league(self, result: ResultDict) -> None:
+        local_worker = self.trainer.workers.local_worker()
+
         # If no evaluation results -> Use hist data gathered for training.
         if "evaluation" in result:
             hist_stats = result["evaluation"]["hist_stats"]
         else:
             hist_stats = result["hist_stats"]
 
-        trainable_policies = self.local_worker.get_policies_to_train()
+        trainable_policies = local_worker.get_policies_to_train()
         non_trainable_policies = (
-            set(self.local_worker.policy_map.keys()) - trainable_policies
+            set(local_worker.policy_map.keys()) - trainable_policies
         )
 
         logger.info(f"League building after iter {self.trainer.iteration}:")

@@ -288,9 +288,9 @@ def check_compute_single_action(
     # Some Trainers may not abide to the standard API.
     pid = DEFAULT_POLICY_ID
     try:
-        # Multi-agent: Pick any policy (or DEFAULT_POLICY if it's the only
+        # Multi-agent: Pick any learnable policy (or DEFAULT_POLICY if it's the only
         # one).
-        pid = next(iter(trainer.workers.local_worker().policy_map))
+        pid = next(iter(trainer.workers.local_worker().get_policies_to_train()))
         pol = trainer.get_policy(pid)
     except AttributeError:
         pol = trainer.policy
