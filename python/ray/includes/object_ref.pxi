@@ -163,7 +163,13 @@ cdef class ClientObjectRef(ObjectRef):
             raise TypeError("Unexpected type for id {}".format(id))
 
     def __dealloc__(self):
-        if self._connected():
+        def _connected():
+            try:
+                return self._worker is not None and self._worker.is_connected()
+            except Exception:
+                return False
+
+        if _connected():
             try:
                 self._wait_for_id()
             # cython would suppress this exception as well, but it tries to
@@ -247,12 +253,6 @@ cdef class ClientObjectRef(ObjectRef):
             py_callback(data)
 
         self._worker.register_callback(self, deserialize_obj)
-
-    def _connected(self) -> bool:
-        try:
-            return self._worker is not None and self._worker.is_connected()
-        except Exception:
-            return False
 
     cdef _set_id(self, id):
         check_id(id)
