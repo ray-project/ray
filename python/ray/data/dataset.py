@@ -180,100 +180,6 @@ class Dataset(Generic[T]):
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
         return Dataset(blocks, self._epoch, stats_builder.build(blocks))
 
-    def with_column(
-        self,
-        col: str,
-        fn: Callable[[T], Any],
-        *,
-        compute: Optional[str] = None,
-        **ray_remote_args,
-    ) -> "Dataset[T]":
-        """Add the given column to the dataset.
-
-        This is only supported for datasets convertible to Arrow records.
-        A function generating the new column value given the data record must
-        be specified.
-
-        Note that ``with_column()`` operates over individual records and
-        can be quite slow. Consider using `.map_batches()` for performance.
-
-        Examples:
-            >>> # Drop the "value" column after adding "new_col".
-            >>> ds = ray.data.range_arrow(100)
-            >>> ds = ds.with_column("new_col", lambda r: r["value"] * 2)
-            >>> # Overwrite the existing "value" with zeros.
-            >>> ds = ds.with_column("value", lambda r: 0)
-
-        Time complexity: O(dataset size / parallelism)
-
-        Args:
-            col: Name of the column to add. If the name already exists, the
-                column will be overwritten.
-            fn: Map function generating the column value given the old record.
-                This function takes the same input format as ``ds.map(fn)``.
-            compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or "actors" to use an autoscaling Ray actor pool.
-            ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
-        """
-
-        def process_batch(batch):
-            block = BlockAccessor.for_block(batch)
-            df = block.to_pandas()
-            df[col] = [fn(row) for row in block.iter_rows()]
-            return df
-
-        return self.map_batches(process_batch, compute=compute, **ray_remote_args)
-
-    def drop_columns(self, *cols: str) -> "Dataset[T]":
-        """Drop the given columns from the dataset.
-
-        This is only supported for datasets convertible to Arrow records.
-
-        Examples:
-            >>> # Drop the "f1" and "f2" columns.
-            >>> ds = ds.drop_columns("f1", "f2")
-
-        Time complexity: O(dataset size / parallelism)
-
-        Args:
-            cols: The list of columns to drop.
-        """
-
-        def process_batch(batch):
-            block = BlockAccessor.for_block(batch)
-            df = block.to_pandas()
-            for col in cols:
-                del df[col]
-            return df
-
-        return self.map_batches(process_batch)
-
-    def keep_columns(self, *cols: str) -> "Dataset[T]":
-        """Drop all but the given columns from the dataset.
-
-        This is only supported for datasets convertible to Arrow records.
-
-        Examples:
-            >>> # Drop all but the "f3" and "f4" columns.
-            >>> ds = ds.keep_columns("f3", "f4")
-
-        Time complexity: O(dataset size / parallelism)
-
-        Args:
-            cols: The list of columns to keep.
-        """
-
-        def process_batch(batch):
-            block = BlockAccessor.for_block(batch)
-            df = block.to_pandas()
-            for col in list(df.columns):
-                if col not in cols:
-                    del df[col]
-            return df
-
-        return self.map_batches(process_batch)
-
     def map_batches(
         self,
         fn: Union[CallableClass, Callable[[BatchType], BatchType]],
@@ -380,6 +286,50 @@ class Dataset(Generic[T]):
         compute = get_compute(compute)
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
         return Dataset(blocks, self._epoch, stats_builder.build(blocks))
+
+    def add_column(
+        self,
+        col: str,
+        fn: Callable[["pandas.DataFrame"], "pandas.Series"],
+        *,
+        compute: Optional[str] = None,
+        **ray_remote_args,
+    ) -> "Dataset[T]":
+        """Add the given column to the dataset.
+
+        This is only supported for datasets convertible to pandas format.
+        A function generating the new column values given the batch in pandas
+        format must be specified.
+
+        This is a convenience wrapper over ``.map_batches()``.
+
+        Examples:
+            >>> ds = ray.data.range_arrow(100)
+            >>> # Add a new column equal to value * 2.
+            >>> ds = ds.add_column("new_col", lambda r: r["value"] * 2)
+            >>> # Overwrite the existing "value" with zeros.
+            >>> ds = ds.add_column("value", lambda r: 0)
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            col: Name of the column to add. If the name already exists, the
+                column will be overwritten.
+            fn: Map function generating the column values given a batch of
+                records in pandas format.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or "actors" to use an autoscaling Ray actor pool.
+            ray_remote_args: Additional resource requirements to request from
+                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+        """
+
+        def process_batch(batch):
+            block = BlockAccessor.for_block(batch)
+            df = block.to_pandas()
+            df[col] = fn(df)
+            return df
+
+        return self.map_batches(process_batch, batch_format="pandas", compute=compute, **ray_remote_args)
 
     def flat_map(
         self,
