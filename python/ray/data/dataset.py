@@ -329,7 +329,9 @@ class Dataset(Generic[T]):
             df[col] = fn(df)
             return df
 
-        return self.map_batches(process_batch, batch_format="pandas", compute=compute, **ray_remote_args)
+        return self.map_batches(
+            process_batch, batch_format="pandas", compute=compute, **ray_remote_args
+        )
 
     def flat_map(
         self,
