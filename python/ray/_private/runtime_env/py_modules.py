@@ -153,7 +153,7 @@ class PyModulesManager:
                     "not exist on the cluster. Something may have gone wrong while "
                     "downloading or unpacking the py_modules files."
                 )
-            module_dirs.append(module_dir)
+            module_dirs.append(str(module_dir))
         # Insert the py_modules directories into the PYTHONPATH.
         python_path = os.pathsep.join(module_dirs)
         if "PYTHONPATH" in context.env_vars:
