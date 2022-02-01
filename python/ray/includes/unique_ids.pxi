@@ -325,7 +325,9 @@ cdef class ClientActorRef(ActorID):
 
     def __init__(self, id: Union[bytes, concurrent.futures.Future]):
         self._mutex = threading.Lock()
-        self._worker = client.ray.get_context().client_worker
+        # client worker might be cleaned up before __dealloc__ is called.
+        # so use a weakref to check whether it's alive or not.
+        self._client_worker_ref = weakref.ref(client.ray.get_context().client_worker)
         if isinstance(id, bytes):
             self._set_id(id)
         elif isinstance(id, Future):
@@ -334,7 +336,8 @@ cdef class ClientActorRef(ActorID):
             raise TypeError("Unexpected type for id {}".format(id))
 
     def __dealloc__(self):
-        if self._worker.is_connected():
+        client_worker = self._client_worker_ref()
+        if client_worker is not None and client_worker.is_connected():
             try:
                 self._wait_for_id()
             # cython would suppress this exception as well, but it tries to
@@ -347,7 +350,7 @@ cdef class ClientActorRef(ActorID):
                     "a method on the actor reference before its destructor "
                     "is run.")
             if not self.data.IsNil():
-                self._worker.call_release(self.id)
+                client_worker.call_release(self.id)
 
     def binary(self):
         self._wait_for_id()

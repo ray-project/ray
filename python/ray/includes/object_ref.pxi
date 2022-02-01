@@ -5,6 +5,7 @@ import concurrent.futures
 import functools
 import logging
 import threading
+import weakref
 from typing import Callable, Any, Union
 
 import ray
@@ -154,7 +155,9 @@ cdef class ClientObjectRef(ObjectRef):
     def __init__(self, id: Union[bytes, concurrent.futures.Future]):
         self.in_core_worker = False
         self._mutex = threading.Lock()
-        self._worker = client.ray.get_context().client_worker
+        # client worker might be cleaned up before __dealloc__ is called.
+        # so use a weakref to check whether it's alive or not.
+        self._client_worker_ref = weakref.ref(client.ray.get_context().client_worker)
         if isinstance(id, bytes):
             self._set_id(id)
         elif isinstance(id, concurrent.futures.Future):
@@ -163,7 +166,8 @@ cdef class ClientObjectRef(ObjectRef):
             raise TypeError("Unexpected type for id {}".format(id))
 
     def __dealloc__(self):
-        if self._worker.is_connected():
+        client_worker = self._client_worker_ref()
+        if client_worker is not None and client_worker.is_connected():
             try:
                 self._wait_for_id()
             # cython would suppress this exception as well, but it tries to
@@ -176,7 +180,7 @@ cdef class ClientObjectRef(ObjectRef):
                     "a method on the actor reference before its destructor "
                     "is run.")
             if not self.data.IsNil():
-                self._worker.call_release(self.id)
+                client_worker.call_release(self.id)
 
     cdef CObjectID native(self):
         self._wait_for_id()
@@ -245,13 +249,16 @@ cdef class ClientObjectRef(ObjectRef):
                     data = loads_from_server(resp.get.data)
 
             py_callback(data)
-
-        self._worker.register_callback(self, deserialize_obj)
+        client_worker = self._client_worker_ref()
+        assert client_worker is not None
+        client_worker.register_callback(self, deserialize_obj)
 
     cdef _set_id(self, id):
         check_id(id)
         self.data = CObjectID.FromBinary(<c_string>id)
-        self._worker.call_retain(id)
+        client_worker = self._client_worker_ref()
+        assert client_worker is not None
+        client_worker.call_retain(id)
 
     cdef inline _wait_for_id(self, timeout=None):
         if self._id_future:
