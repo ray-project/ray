@@ -73,6 +73,7 @@ def collect_metrics(
     remote_workers: Optional[List[ActorHandle]] = None,
     to_be_collected: Optional[List[ObjectRef]] = None,
     timeout_seconds: int = 180,
+    keep_custom_metrics: bool = False,
 ) -> ResultDict:
     """Gathers episode metrics from RolloutWorker instances."""
     if remote_workers is None:
@@ -84,7 +85,7 @@ def collect_metrics(
     episodes, to_be_collected = collect_episodes(
         local_worker, remote_workers, to_be_collected, timeout_seconds=timeout_seconds
     )
-    metrics = summarize_episodes(episodes, episodes)
+    metrics = summarize_episodes(episodes, episodes, keep_custom_metrics=keep_custom_metrics)
     return metrics
 
 

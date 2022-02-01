@@ -2957,7 +2957,7 @@ class Trainer(Trainable):
         self._episode_history = self._episode_history[
             -self.config["metrics_num_episodes_for_smoothing"] :
         ]
-        results["sampler_results"] = summarize_episodes(episodes, orig_episodes)
+        results["sampler_results"] = summarize_episodes(episodes, orig_episodes, self.config["keep_per_episode_custom_config"])
         # TODO: Don't dump sampler results into top-level.
         results.update(results["sampler_results"])
 
