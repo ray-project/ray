@@ -51,18 +51,17 @@ class LogstreamClient:
                 self.request_queue = queue.Queue()
                 if self.last_req:
                     self.request_queue.put(self.last_req)
-            stub = ray_client_pb2_grpc.RayletLogStreamerStub(
-                self.client_worker.channel)
+            stub = ray_client_pb2_grpc.RayletLogStreamerStub(self.client_worker.channel)
             try:
                 log_stream = stub.Logstream(
-                    iter(self.request_queue.get, None),
-                    metadata=self._metadata)
+                    iter(self.request_queue.get, None), metadata=self._metadata
+                )
             except ValueError:
                 # Trying to use the stub on a cancelled channel will raise
                 # ValueError. This should only happen when the data client
                 # is attempting to reset the connection -- sleep and try
                 # again.
-                time.sleep(.5)
+                time.sleep(0.5)
                 continue
             try:
                 for record in log_stream:
@@ -86,9 +85,10 @@ class LogstreamClient:
                     "Log channel is reconnecting. Logs produced while "
                     "the connection was down can be found on the head "
                     "node of the cluster in "
-                    "`ray_client_server_[port].out`")
+                    "`ray_client_server_[port].out`"
+                )
             logger.debug("Log channel dropped, retrying.")
-            time.sleep(.5)
+            time.sleep(0.5)
             return True
         logger.debug("Shutting down log channel.")
         if not self.client_worker._in_shutdown:

@@ -8,8 +8,12 @@ import time
 import psutil
 import pytest
 import requests
-from ray._private.test_utils import (run_string_as_driver, wait_for_condition,
-                                     get_error_message, get_log_batch)
+from ray._private.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+    get_error_message,
+    get_log_batch,
+)
 
 import ray
 from ray import ray_constants
@@ -36,8 +40,7 @@ def search_agents(cluster):
 def test_ray_start_default_port_conflict(call_ray_stop_only, shutdown_only):
     subprocess.check_call(["ray", "start", "--head"])
     ray.init(address="auto")
-    assert str(ray_constants.DEFAULT_DASHBOARD_PORT
-               ) in ray.worker.get_dashboard_url()
+    assert str(ray_constants.DEFAULT_DASHBOARD_PORT) in ray.worker.get_dashboard_url()
 
     error_raised = False
     try:
@@ -48,9 +51,10 @@ def test_ray_start_default_port_conflict(call_ray_stop_only, shutdown_only):
                 "--head",
                 "--port",
                 "9999",  # use a different gcs port
-                "--include-dashboard=True"
+                "--include-dashboard=True",
             ],
-            stderr=subprocess.PIPE)
+            stderr=subprocess.PIPE,
+        )
     except subprocess.CalledProcessError as e:
         assert b"already occupied" in e.stderr
         error_raised = True
@@ -71,7 +75,8 @@ def test_port_auto_increment(shutdown_only):
 
     wait_for_condition(dashboard_available)
 
-    run_string_as_driver(f"""
+    run_string_as_driver(
+        f"""
 import ray
 from ray._private.test_utils import wait_for_condition
 import requests
@@ -86,7 +91,8 @@ def dashboard_available():
         return False
 wait_for_condition(dashboard_available)
 ray.shutdown()
-        """)
+        """
+    )
 
 
 def test_port_conflict(call_ray_stop_only, shutdown_only):
@@ -98,10 +104,17 @@ def test_port_conflict(call_ray_stop_only, shutdown_only):
     try:
         subprocess.check_output(
             [
-                "ray", "start", "--head", "--port", "9989", "--dashboard-port",
-                "9999", "--include-dashboard=True"
+                "ray",
+                "start",
+                "--head",
+                "--port",
+                "9989",
+                "--dashboard-port",
+                "9999",
+                "--include-dashboard=True",
             ],
-            stderr=subprocess.PIPE)
+            stderr=subprocess.PIPE,
+        )
     except subprocess.CalledProcessError as e:
         assert b"already occupied" in e.stderr
 
@@ -132,12 +145,13 @@ def test_dashboard(shutdown_only):
             if time.time() > start_time + 30:
                 out_log = None
                 with open(
-                        "{}/logs/dashboard.log".format(
-                            addresses["session_dir"]), "r") as f:
+                    "{}/logs/dashboard.log".format(addresses["session_dir"]), "r"
+                ) as f:
                     out_log = f.read()
                 raise Exception(
                     "Timed out while waiting for dashboard to start. "
-                    f"Dashboard output log: {out_log}\n")
+                    f"Dashboard output log: {out_log}\n"
+                )
 
 
 @pytest.fixture
@@ -148,27 +162,33 @@ def set_agent_failure_env_var():
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "_system_config": {
-            "agent_restart_interval_ms": 10,
-            "agent_max_restart_count": 5
+    "ray_start_cluster_head",
+    [
+        {
+            "_system_config": {
+                "agent_restart_interval_ms": 10,
+                "agent_max_restart_count": 5,
+            }
         }
-    }],
-    indirect=True)
-def test_dashboard_agent_restart(set_agent_failure_env_var,
-                                 ray_start_cluster_head, error_pubsub,
-                                 log_pubsub):
+    ],
+    indirect=True,
+)
+def test_dashboard_agent_restart(
+    set_agent_failure_env_var, ray_start_cluster_head, error_pubsub, log_pubsub
+):
     """Test that when the agent fails to start many times in a row
     if the error message is suppressed correctly without spamming
     the driver.
     """
     # Choose a duplicated port for the agent so that it will crash.
     errors = get_error_message(
-        error_pubsub, 1, ray_constants.DASHBOARD_AGENT_DIED_ERROR, timeout=10)
+        error_pubsub, 1, ray_constants.DASHBOARD_AGENT_DIED_ERROR, timeout=10
+    )
     assert len(errors) == 1
     for e in errors:
-        assert ("There are 3 possible problems "
-                "if you see this error." in e.error_message)
+        assert (
+            "There are 3 possible problems " "if you see this error." in e.error_message
+        )
     # Make sure the agent process is not started anymore.
     cluster = ray_start_cluster_head
     wait_for_condition(lambda: search_agents(cluster) is None)
@@ -178,11 +198,12 @@ def test_dashboard_agent_restart(set_agent_failure_env_var,
         return log_batch["pid"] != "autoscaler"
 
     match = get_log_batch(log_pubsub, 1, timeout=5, matcher=matcher)
-    assert len(match) == 0, \
-        "There are spammy logs during Ray agent restart process. "\
-        f"Logs: {match}"
+    assert len(match) == 0, (
+        "There are spammy logs during Ray agent restart process. " f"Logs: {match}"
+    )
 
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

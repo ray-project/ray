@@ -21,8 +21,8 @@ def build_env():
 
 @pytest.mark.skipif(
     sys.platform == "darwin",
-    reason=(
-        "Cryptography (TLS dependency) doesn't install in Mac build pipeline"))
+    reason=("Cryptography (TLS dependency) doesn't install in Mac build pipeline"),
+)
 @pytest.mark.parametrize("use_tls", [True], indirect=True)
 def test_init_with_tls(use_tls):
     # Run as a new process to pick up environment variables set
@@ -35,13 +35,14 @@ try:
 finally:
     ray.shutdown()
     """,
-        env=build_env())
+        env=build_env(),
+    )
 
 
 @pytest.mark.skipif(
     sys.platform == "darwin",
-    reason=(
-        "Cryptography (TLS dependency) doesn't install in Mac build pipeline"))
+    reason=("Cryptography (TLS dependency) doesn't install in Mac build pipeline"),
+)
 @pytest.mark.parametrize("use_tls", [True], indirect=True)
 def test_put_get_with_tls(use_tls):
     run_string_as_driver(
@@ -75,13 +76,14 @@ try:
 finally:
     ray.shutdown()
     """,
-        env=build_env())
+        env=build_env(),
+    )
 
 
 @pytest.mark.skipif(
     sys.platform == "darwin",
-    reason=(
-        "Cryptography (TLS dependency) doesn't install in Mac build pipeline"))
+    reason=("Cryptography (TLS dependency) doesn't install in Mac build pipeline"),
+)
 @pytest.mark.parametrize("use_tls", [True], indirect=True, scope="module")
 def test_submit_with_tls(use_tls):
     run_string_as_driver(
@@ -112,13 +114,14 @@ id1, id2, id3, id4 = a.method._remote(
     args=["test"], kwargs={"b": 2}, num_returns=4)
 assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
     """,
-        env=build_env())
+        env=build_env(),
+    )
 
 
 @pytest.mark.skipif(
     sys.platform == "darwin",
-    reason=(
-        "Cryptography (TLS dependency) doesn't install in Mac build pipeline"))
+    reason=("Cryptography (TLS dependency) doesn't install in Mac build pipeline"),
+)
 @pytest.mark.parametrize("use_tls", [True], indirect=True)
 def test_client_connect_to_tls_server(use_tls, call_ray_start):
     tls_env = build_env()  # use_tls fixture sets TLS environment variables
@@ -131,7 +134,8 @@ def test_client_connect_to_tls_server(use_tls, call_ray_start):
 from ray.util.client import ray as ray_client
 ray_client.connect("localhost:10001")
      """,
-            env=without_tls_env)
+            env=without_tls_env,
+        )
     assert "ConnectionError" in exc_info.value.output.decode("utf-8")
 
     # Attempt to connect with TLS
@@ -142,7 +146,8 @@ from ray.util.client import ray as ray_client
 ray_client.connect("localhost:10001")
 print(ray.is_initialized())
      """,
-        env=tls_env)
+        env=tls_env,
+    )
     assert out.strip() == "True"
 
 

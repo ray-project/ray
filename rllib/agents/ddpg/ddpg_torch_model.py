@@ -24,19 +24,20 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
     implement forward() in a subclass."""
 
     def __init__(
-            self,
-            obs_space: gym.spaces.Space,
-            action_space: gym.spaces.Space,
-            num_outputs: int,
-            model_config: ModelConfigDict,
-            name: str,
-            # Extra DDPGActionModel args:
-            actor_hiddens: Optional[List[int]] = None,
-            actor_hidden_activation: str = "relu",
-            critic_hiddens: Optional[List[int]] = None,
-            critic_hidden_activation: str = "relu",
-            twin_q: bool = False,
-            add_layer_norm: bool = False):
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        num_outputs: int,
+        model_config: ModelConfigDict,
+        name: str,
+        # Extra DDPGActionModel args:
+        actor_hiddens: Optional[List[int]] = None,
+        actor_hidden_activation: str = "relu",
+        critic_hiddens: Optional[List[int]] = None,
+        critic_hidden_activation: str = "relu",
+        twin_q: bool = False,
+        add_layer_norm: bool = False,
+    ):
         """Initialize variables of this model.
 
         Extra model kwargs:
@@ -58,19 +59,20 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
             critic_hiddens = [256, 256]
 
         nn.Module.__init__(self)
-        super(DDPGTorchModel, self).__init__(obs_space, action_space,
-                                             num_outputs, model_config, name)
+        super(DDPGTorchModel, self).__init__(
+            obs_space, action_space, num_outputs, model_config, name
+        )
 
-        self.bounded = np.logical_and(self.action_space.bounded_above,
-                                      self.action_space.bounded_below).any()
+        self.bounded = np.logical_and(
+            self.action_space.bounded_above, self.action_space.bounded_below
+        ).any()
         self.action_dim = np.product(self.action_space.shape)
 
         # Build the policy network.
         self.policy_model = nn.Sequential()
         ins = num_outputs
         self.obs_ins = ins
-        activation = get_activation_fn(
-            actor_hidden_activation, framework="torch")
+        activation = get_activation_fn(actor_hidden_activation, framework="torch")
         for i, n in enumerate(actor_hiddens):
             self.policy_model.add_module(
                 "action_{}".format(i),
@@ -78,11 +80,14 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
                     ins,
                     n,
                     initializer=torch.nn.init.xavier_uniform_,
-                    activation_fn=activation))
+                    activation_fn=activation,
+                ),
+            )
             # Add LayerNorm after each Dense.
             if add_layer_norm:
-                self.policy_model.add_module("LayerNorm_A_{}".format(i),
-                                             nn.LayerNorm(n))
+                self.policy_model.add_module(
+                    "LayerNorm_A_{}".format(i), nn.LayerNorm(n)
+                )
             ins = n
 
         self.policy_model.add_module(
@@ -91,7 +96,9 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
                 ins,
                 self.action_dim,
                 initializer=torch.nn.init.xavier_uniform_,
-                activation_fn=None))
+                activation_fn=None,
+            ),
+        )
 
         # Use sigmoid to scale to [0,1], but also double magnitude of input to
         # emulate behaviour of tanh activation used in DDPG and TD3 papers.
@@ -100,12 +107,15 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
             def __init__(self_):
                 super().__init__()
                 low_action = nn.Parameter(
-                    torch.from_numpy(self.action_space.low).float())
+                    torch.from_numpy(self.action_space.low).float()
+                )
                 low_action.requires_grad = False
                 self_.register_parameter("low_action", low_action)
                 action_range = nn.Parameter(
-                    torch.from_numpy(self.action_space.high -
-                                     self.action_space.low).float())
+                    torch.from_numpy(
+                        self.action_space.high - self.action_space.low
+                    ).float()
+                )
                 action_range.requires_grad = False
                 self_.register_parameter("action_range", action_range)
 
@@ -120,8 +130,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
 
         # Build the Q-net(s), including target Q-net(s).
         def build_q_net(name_):
-            activation = get_activation_fn(
-                critic_hidden_activation, framework="torch")
+            activation = get_activation_fn(critic_hidden_activation, framework="torch")
             # For continuous actions: Feed obs and actions (concatenated)
             # through the NN. For discrete actions, only obs.
             q_net = nn.Sequential()
@@ -133,7 +142,9 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
                         ins,
                         n,
                         initializer=torch.nn.init.xavier_uniform_,
-                        activation_fn=activation))
+                        activation_fn=activation,
+                    ),
+                )
                 ins = n
 
             q_net.add_module(
@@ -142,7 +153,9 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
                     ins,
                     1,
                     initializer=torch.nn.init.xavier_uniform_,
-                    activation_fn=None))
+                    activation_fn=None,
+                ),
+            )
             return q_net
 
         self.q_model = build_q_net("q")
@@ -151,8 +164,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         else:
             self.twin_q_model = None
 
-    def get_q_values(self, model_out: TensorType,
-                     actions: TensorType) -> TensorType:
+    def get_q_values(self, model_out: TensorType, actions: TensorType) -> TensorType:
         """Return the Q estimates for the most recent forward pass.
 
         This implements Q(s, a).
@@ -168,8 +180,9 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         """
         return self.q_model(torch.cat([model_out, actions], -1))
 
-    def get_twin_q_values(self, model_out: TensorType,
-                          actions: TensorType) -> TensorType:
+    def get_twin_q_values(
+        self, model_out: TensorType, actions: TensorType
+    ) -> TensorType:
         """Same as get_q_values but using the twin Q net.
 
         This implements the twin Q(s, a).
@@ -200,20 +213,23 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         """
         return self.policy_model(model_out)
 
-    def policy_variables(self, as_dict: bool = False
-                         ) -> Union[List[TensorType], Dict[str, TensorType]]:
+    def policy_variables(
+        self, as_dict: bool = False
+    ) -> Union[List[TensorType], Dict[str, TensorType]]:
         """Return the list of variables for the policy net."""
         if as_dict:
             return self.policy_model.state_dict()
         return list(self.policy_model.parameters())
 
-    def q_variables(self, as_dict=False
-                    ) -> Union[List[TensorType], Dict[str, TensorType]]:
+    def q_variables(
+        self, as_dict=False
+    ) -> Union[List[TensorType], Dict[str, TensorType]]:
         """Return the list of variables for Q / twin Q nets."""
         if as_dict:
             return {
                 **self.q_model.state_dict(),
-                **(self.twin_q_model.state_dict() if self.twin_q_model else {})
+                **(self.twin_q_model.state_dict() if self.twin_q_model else {}),
             }
-        return list(self.q_model.parameters()) + \
-            (list(self.twin_q_model.parameters()) if self.twin_q_model else [])
+        return list(self.q_model.parameters()) + (
+            list(self.twin_q_model.parameters()) if self.twin_q_model else []
+        )

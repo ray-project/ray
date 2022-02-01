@@ -53,4 +53,5 @@ if __name__ == "__main__":
     tune.run(
         experiment,
         config=config,
-        resources_per_trial=ppo.PPOTrainer.default_resource_request(config))
+        resources_per_trial=ppo.PPOTrainer.default_resource_request(config),
+    )

@@ -23,8 +23,14 @@ def import_pb2_dependencies():
 GPy, has_sklearn = import_pb2_dependencies()
 
 if GPy and has_sklearn:
-    from ray.tune.schedulers.pb2_utils import normalize, optimize_acq, \
-            select_length, UCB, standardize, TV_SquaredExp
+    from ray.tune.schedulers.pb2_utils import (
+        normalize,
+        optimize_acq,
+        select_length,
+        UCB,
+        standardize,
+        TV_SquaredExp,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -59,9 +65,9 @@ def select_config(Xraw, yraw, current, newpoint, bounds, num_f):
 
     base_vals = np.array(list(bounds.values())).T
     oldpoints = Xraw[:, :num_f]
-    old_lims = np.concatenate((np.max(oldpoints, axis=0),
-                               np.min(oldpoints, axis=0))).reshape(
-                                   2, oldpoints.shape[1])
+    old_lims = np.concatenate(
+        (np.max(oldpoints, axis=0), np.min(oldpoints, axis=0))
+    ).reshape(2, oldpoints.shape[1])
     limits = np.concatenate((old_lims, base_vals), axis=1)
 
     X = normalize(Xraw, limits)
@@ -70,7 +76,8 @@ def select_config(Xraw, yraw, current, newpoint, bounds, num_f):
     fixed = normalize(newpoint, oldpoints)
 
     kernel = TV_SquaredExp(
-        input_dim=X.shape[1], variance=1., lengthscale=1., epsilon=0.1)
+        input_dim=X.shape[1], variance=1.0, lengthscale=1.0, epsilon=0.1
+    )
 
     try:
         m = GPy.models.GPRegression(X, y, kernel)
@@ -105,7 +112,8 @@ def select_config(Xraw, yraw, current, newpoint, bounds, num_f):
         # kernel = GPy.kern.RBF(input_dim=X.shape[1], variance=1.,
         # lengthscale=1.)
         kernel = TV_SquaredExp(
-            input_dim=X.shape[1], variance=1., lengthscale=1., epsilon=0.1)
+            input_dim=X.shape[1], variance=1.0, lengthscale=1.0, epsilon=0.1
+        )
         m1 = GPy.models.GPRegression(Xnew, ynew, kernel)
         m1.optimize()
 
@@ -113,10 +121,11 @@ def select_config(Xraw, yraw, current, newpoint, bounds, num_f):
 
     # convert back...
     xt = xt * (np.max(base_vals, axis=0) - np.min(base_vals, axis=0)) + np.min(
-        base_vals, axis=0)
+        base_vals, axis=0
+    )
 
     xt = xt.astype(np.float32)
-    return (xt)
+    return xt
 
 
 def explore(data, bounds, current, base, old, config):
@@ -160,11 +169,8 @@ def explore(data, bounds, current, base, old, config):
         t_r = df[["Time", "R_before"]]
         hparams = df[bounds.keys()]
         X = pd.concat([t_r, hparams], axis=1).values
-        newpoint = df[df["Trial"] == str(base)].iloc[-1, :][[
-            "Time", "R_before"
-        ]].values
-        new = select_config(
-            X, y, current, newpoint, bounds, num_f=len(t_r.columns))
+        newpoint = df[df["Trial"] == str(base)].iloc[-1, :][["Time", "R_before"]].values
+        new = select_config(X, y, current, newpoint, bounds, num_f=len(t_r.columns))
 
         new_config = config.copy()
         values = []
@@ -264,16 +270,18 @@ class PB2(PopulationBasedTraining):
         >>> tune.run({...}, num_samples=8, scheduler=pb2)
     """
 
-    def __init__(self,
-                 time_attr: str = "time_total_s",
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None,
-                 perturbation_interval: float = 60.0,
-                 hyperparam_bounds: Dict = None,
-                 quantile_fraction: float = 0.25,
-                 log_config: bool = True,
-                 require_attrs: bool = True,
-                 synch: bool = False):
+    def __init__(
+        self,
+        time_attr: str = "time_total_s",
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        perturbation_interval: float = 60.0,
+        hyperparam_bounds: Dict = None,
+        quantile_fraction: float = 0.25,
+        log_config: bool = True,
+        require_attrs: bool = True,
+        synch: bool = False,
+    ):
 
         gpy_available, sklearn_available = import_pb2_dependencies()
         if not gpy_available:
@@ -285,13 +293,16 @@ class PB2(PopulationBasedTraining):
         hyperparam_bounds = hyperparam_bounds or {}
         for value in hyperparam_bounds.values():
             if not isinstance(value, (list, tuple)) or len(value) != 2:
-                raise ValueError("`hyperparam_bounds` values must either be "
-                                 "a list or tuple of size 2, but got {} "
-                                 "instead".format(value))
+                raise ValueError(
+                    "`hyperparam_bounds` values must either be "
+                    "a list or tuple of size 2, but got {} "
+                    "instead".format(value)
+                )
 
         if not hyperparam_bounds:
-            raise TuneError("`hyperparam_bounds` must be specified to use "
-                            "PB2 scheduler.")
+            raise TuneError(
+                "`hyperparam_bounds` must be specified to use " "PB2 scheduler."
+            )
 
         super(PB2, self).__init__(
             time_attr=time_attr,
@@ -304,7 +315,8 @@ class PB2(PopulationBasedTraining):
             custom_explore_fn=explore,
             log_config=log_config,
             require_attrs=require_attrs,
-            synch=synch)
+            synch=synch,
+        )
 
         self.last_exploration_time = 0  # when we last explored
         self.data = pd.DataFrame()
@@ -344,9 +356,14 @@ class PB2(PopulationBasedTraining):
         if self.data["Time"].max() > self.last_exploration_time:
             self.current = None
 
-        new_config, data = explore(self.data, self._hyperparam_bounds,
-                                   self.current, trial_to_clone, trial,
-                                   trial_to_clone.config)
+        new_config, data = explore(
+            self.data,
+            self._hyperparam_bounds,
+            self.current,
+            trial_to_clone,
+            trial,
+            trial_to_clone.config,
+        )
 
         # Important to replace the old values, since we are copying across
         self.data = data.copy()
@@ -365,4 +382,4 @@ class PB2(PopulationBasedTraining):
             self.current = np.concatenate((self.current, new), axis=0)
             logger.debug(self.current)
 
-        return (new_config)
+        return new_config

@@ -29,10 +29,9 @@ class SegmentTree:
     `tree[0]` accesses `internal_array[4]` in the above example.
     """
 
-    def __init__(self,
-                 capacity: int,
-                 operation: Any,
-                 neutral_element: Optional[Any] = None):
+    def __init__(
+        self, capacity: int, operation: Any, neutral_element: Optional[Any] = None
+    ):
         """Initializes a Segment Tree object.
 
         Args:
@@ -46,12 +45,18 @@ class SegmentTree:
                 max: float("-inf"), min: float("inf"), sum: 0.0.
         """
 
-        assert capacity > 0 and capacity & (capacity - 1) == 0, \
-            "Capacity must be positive and a power of 2!"
+        assert (
+            capacity > 0 and capacity & (capacity - 1) == 0
+        ), "Capacity must be positive and a power of 2!"
         self.capacity = capacity
         if neutral_element is None:
-            neutral_element = 0.0 if operation is operator.add else \
-                float("-inf") if operation is max else float("inf")
+            neutral_element = (
+                0.0
+                if operation is operator.add
+                else float("-inf")
+                if operation is max
+                else float("inf")
+            )
         self.neutral_element = neutral_element
         self.value = [self.neutral_element for _ in range(2 * capacity)]
         self.operation = operation
@@ -147,8 +152,9 @@ class SegmentTree:
         while idx >= 1:
             update_idx = 2 * idx  # calculate only once
             # Update the reduction value at the correct "first half" idx.
-            self.value[idx] = self.operation(self.value[update_idx],
-                                             self.value[update_idx + 1])
+            self.value[idx] = self.operation(
+                self.value[update_idx], self.value[update_idx + 1]
+            )
             idx = idx >> 1  # Divide by 2 (faster than division).
 
     def __getitem__(self, idx: int) -> Any:
@@ -167,8 +173,7 @@ class SumSegmentTree(SegmentTree):
     """A SegmentTree with the reduction `operation`=operator.add."""
 
     def __init__(self, capacity: int):
-        super(SumSegmentTree, self).__init__(
-            capacity=capacity, operation=operator.add)
+        super(SumSegmentTree, self).__init__(capacity=capacity, operation=operator.add)
 
     def sum(self, start: int = 0, end: Optional[Any] = None) -> Any:
         """Returns the sum over a sub-segment of the tree."""

@@ -6,11 +6,7 @@ torch, _ = try_import_torch()
 
 
 class ExponentialSchedule(Schedule):
-    def __init__(self,
-                 schedule_timesteps,
-                 framework,
-                 initial_p=1.0,
-                 decay_rate=0.1):
+    def __init__(self, schedule_timesteps, framework, initial_p=1.0, decay_rate=0.1):
         """
         Exponential decay schedule from initial_p to final_p over
         schedule_timesteps. After this many time steps always `final_p` is
@@ -34,9 +30,7 @@ class ExponentialSchedule(Schedule):
 
     @override(Schedule)
     def _value(self, t):
-        """Returns the result of: initial_p * decay_rate ** (`t`/t_max)
-        """
+        """Returns the result of: initial_p * decay_rate ** (`t`/t_max)"""
         if self.framework == "torch" and torch and isinstance(t, torch.Tensor):
             t = t.float()
-        return self.initial_p * \
-            self.decay_rate ** (t / self.schedule_timesteps)
+        return self.initial_p * self.decay_rate ** (t / self.schedule_timesteps)

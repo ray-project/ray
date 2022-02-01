@@ -7,15 +7,16 @@ import numpy as np
 
 import ray
 from ray.rllib.models.modelv2 import ModelV2, restore_original_dimensions
-from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
-                                                      TorchDistributionWrapper)
+from ray.rllib.models.torch.torch_action_dist import (
+    TorchCategorical,
+    TorchDistributionWrapper,
+)
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import (ModelConfigDict, TensorType,
-                                    TrainerConfigDict)
+from ray.rllib.utils.typing import ModelConfigDict, TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
 F = None
@@ -75,8 +76,8 @@ class UserChoiceModel(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.beta = nn.Parameter(torch.tensor(0., dtype=torch.float))
-        self.score_no_click = nn.Parameter(torch.tensor(0., dtype=torch.float))
+        self.beta = nn.Parameter(torch.tensor(0.0, dtype=torch.float))
+        self.score_no_click = nn.Parameter(torch.tensor(0.0, dtype=torch.float))
 
     def forward(self, user: TensorType, doc: TensorType) -> TensorType:
         """Evaluate the user choice model
@@ -110,14 +111,14 @@ class SlateQModel(TorchModelV2, nn.Module):
     """
 
     def __init__(
-            self,
-            obs_space: gym.spaces.Space,
-            action_space: gym.spaces.Space,
-            model_config: ModelConfigDict,
-            name: str,
-            *,
-            embedding_size: int,
-            q_hiddens: Sequence[int],
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        model_config: ModelConfigDict,
+        name: str,
+        *,
+        embedding_size: int,
+        q_hiddens: Sequence[int],
     ):
         nn.Module.__init__(self)
         TorchModelV2.__init__(
@@ -128,13 +129,15 @@ class SlateQModel(TorchModelV2, nn.Module):
             # real imact, and can be set arbitrarily. TODO: fix this.
             num_outputs=0,
             model_config=model_config,
-            name=name)
+            name=name,
+        )
         self.choice_model = UserChoiceModel()
         self.q_model = QValueModel(embedding_size, q_hiddens)
         self.slate_size = len(action_space.nvec)
 
-    def choose_slate(self, user: TensorType,
-                     doc: TensorType) -> Tuple[TensorType, TensorType]:
+    def choose_slate(
+        self, user: TensorType, doc: TensorType
+    ) -> Tuple[TensorType, TensorType]:
         """Build a slate by selecting from candidate documents
 
         Args:
@@ -180,18 +183,21 @@ class SlateQModel(TorchModelV2, nn.Module):
             input=q_values_doc.unsqueeze(1).expand(-1, num_slates, -1),
             dim=2,
             # index.shape: [batch_size, num_slates, slate_size]
-            index=slates.unsqueeze(0).expand(batch_size, -1, -1))
+            index=slates.unsqueeze(0).expand(batch_size, -1, -1),
+        )
         # slate_scores.shape: [batch_size, num_slates, slate_size]
         slate_scores = torch.gather(
             # input.shape: [batch_size, num_slates, num_docs]
             input=scores_doc.unsqueeze(1).expand(-1, num_slates, -1),
             dim=2,
             # index.shape: [batch_size, num_slates, slate_size]
-            index=slates.unsqueeze(0).expand(batch_size, -1, -1))
+            index=slates.unsqueeze(0).expand(batch_size, -1, -1),
+        )
         # slate_q_values.shape: [batch_size, num_slates]
-        slate_q_values = ((slate_decomp_q_values * slate_scores).sum(dim=2) +
-                          (q_values_no_click * scores_no_click)) / (
-                              slate_scores.sum(dim=2) + scores_no_click)
+        slate_q_values = (
+            (slate_decomp_q_values * slate_scores).sum(dim=2)
+            + (q_values_no_click * scores_no_click)
+        ) / (slate_scores.sum(dim=2) + scores_no_click)
 
         # Step 5: find the slate that maximizes q value
         best_slate_q_value, max_idx = torch.max(slate_q_values, dim=1)
@@ -199,16 +205,18 @@ class SlateQModel(TorchModelV2, nn.Module):
         slates_selected = slates[max_idx]
         return slates_selected, best_slate_q_value
 
-    def forward(self, input_dict: Dict[str, TensorType],
-                state: List[TensorType],
-                seq_lens: TensorType) -> Tuple[TensorType, List[TensorType]]:
+    def forward(
+        self,
+        input_dict: Dict[str, TensorType],
+        state: List[TensorType],
+        seq_lens: TensorType,
+    ) -> Tuple[TensorType, List[TensorType]]:
         # user.shape: [batch_size, embedding_size]
         user = input_dict[SampleBatch.OBS]["user"]
         # doc.shape: [batch_size, num_docs, embedding_size]
-        doc = torch.cat([
-            val.unsqueeze(1)
-            for val in input_dict[SampleBatch.OBS]["doc"].values()
-        ], 1)
+        doc = torch.cat(
+            [val.unsqueeze(1) for val in input_dict[SampleBatch.OBS]["doc"].values()], 1
+        )
 
         slates_selected, _ = self.choose_slate(user, doc)
 
@@ -217,9 +225,11 @@ class SlateQModel(TorchModelV2, nn.Module):
 
 
 def build_slateq_model_and_distribution(
-        policy: Policy, obs_space: gym.spaces.Space,
-        action_space: gym.spaces.Space,
-        config: TrainerConfigDict) -> Tuple[ModelV2, TorchDistributionWrapper]:
+    policy: Policy,
+    obs_space: gym.spaces.Space,
+    action_space: gym.spaces.Space,
+    config: TrainerConfigDict,
+) -> Tuple[ModelV2, TorchDistributionWrapper]:
     """Build models for SlateQ
 
     Args:
@@ -242,8 +252,9 @@ def build_slateq_model_and_distribution(
     return model, TorchCategorical
 
 
-def build_slateq_losses(policy: Policy, model: SlateQModel, _,
-                        train_batch: SampleBatch) -> TensorType:
+def build_slateq_losses(
+    policy: Policy, model: SlateQModel, _, train_batch: SampleBatch
+) -> TensorType:
     """Constructs the losses for SlateQPolicy.
 
     Args:
@@ -255,9 +266,8 @@ def build_slateq_losses(policy: Policy, model: SlateQModel, _,
         TensorType: A single loss tensor.
     """
     obs = restore_original_dimensions(
-        train_batch[SampleBatch.OBS],
-        policy.observation_space,
-        tensorlib=torch)
+        train_batch[SampleBatch.OBS], policy.observation_space, tensorlib=torch
+    )
     # user.shape: [batch_size, embedding_size]
     user = obs["user"]
     # doc.shape: [batch_size, num_docs, embedding_size]
@@ -266,9 +276,8 @@ def build_slateq_losses(policy: Policy, model: SlateQModel, _,
     actions = train_batch[SampleBatch.ACTIONS]
 
     next_obs = restore_original_dimensions(
-        train_batch[SampleBatch.NEXT_OBS],
-        policy.observation_space,
-        tensorlib=torch)
+        train_batch[SampleBatch.NEXT_OBS], policy.observation_space, tensorlib=torch
+    )
 
     # Step 1: Build user choice model loss
     _, _, embedding_size = doc.shape
@@ -278,14 +287,14 @@ def build_slateq_losses(policy: Policy, model: SlateQModel, _,
         input=doc,
         dim=1,
         # index.shape: [batch_size, slate_size, embedding_size]
-        index=actions.unsqueeze(2).expand(-1, -1, embedding_size))
+        index=actions.unsqueeze(2).expand(-1, -1, embedding_size),
+    )
 
     scores = model.choice_model(user, selected_doc)
     choice_loss_fn = nn.CrossEntropyLoss()
 
     # clicks.shape: [batch_size, slate_size]
-    clicks = torch.stack(
-        [resp["click"][:, 1] for resp in next_obs["response"]], dim=1)
+    clicks = torch.stack([resp["click"][:, 1] for resp in next_obs["response"]], dim=1)
     no_clicks = 1 - torch.sum(clicks, 1, keepdim=True)
     # clicks.shape: [batch_size, slate_size+1]
     targets = torch.cat([clicks, no_clicks], dim=1)
@@ -301,8 +310,7 @@ def build_slateq_losses(policy: Policy, model: SlateQModel, _,
 
     if learning_strategy == "SARSA":
         # next_doc.shape: [batch_size, num_docs, embedding_size]
-        next_doc = torch.cat(
-            [val.unsqueeze(1) for val in next_obs["doc"].values()], 1)
+        next_doc = torch.cat([val.unsqueeze(1) for val in next_obs["doc"].values()], 1)
         next_actions = train_batch["next_actions"]
         _, _, embedding_size = next_doc.shape
         # selected_doc.shape: [batch_size, slate_size, embedding_size]
@@ -311,7 +319,8 @@ def build_slateq_losses(policy: Policy, model: SlateQModel, _,
             input=next_doc,
             dim=1,
             # index.shape: [batch_size, slate_size, embedding_size]
-            index=next_actions.unsqueeze(2).expand(-1, -1, embedding_size))
+            index=next_actions.unsqueeze(2).expand(-1, -1, embedding_size),
+        )
         next_user = next_obs["user"]
         dones = train_batch["dones"]
         with torch.no_grad():
@@ -322,16 +331,15 @@ def build_slateq_losses(policy: Policy, model: SlateQModel, _,
             max_raw_scores, _ = torch.max(raw_scores, dim=1, keepdim=True)
             scores = torch.exp(raw_scores - max_raw_scores)
             # next_q_values.shape: [batch_size]
-            next_q_values = torch.sum(
-                q_values * scores, dim=1) / torch.sum(
-                    scores, dim=1)
+            next_q_values = torch.sum(q_values * scores, dim=1) / torch.sum(
+                scores, dim=1
+            )
             next_q_values[dones] = 0.0
     elif learning_strategy == "MYOP":
-        next_q_values = 0.
+        next_q_values = 0.0
     elif learning_strategy == "QL":
         # next_doc.shape: [batch_size, num_docs, embedding_size]
-        next_doc = torch.cat(
-            [val.unsqueeze(1) for val in next_obs["doc"].values()], 1)
+        next_doc = torch.cat([val.unsqueeze(1) for val in next_obs["doc"].values()], 1)
         next_user = next_obs["user"]
         dones = train_batch["dones"]
         with torch.no_grad():
@@ -342,39 +350,41 @@ def build_slateq_losses(policy: Policy, model: SlateQModel, _,
     # target_q_values.shape: [batch_size]
     target_q_values = next_q_values + train_batch["rewards"]
 
-    q_values = model.q_model(user,
-                             selected_doc)  # shape: [batch_size, slate_size+1]
+    q_values = model.q_model(user, selected_doc)  # shape: [batch_size, slate_size+1]
     # raw_scores.shape: [batch_size, slate_size+1]
     raw_scores = model.choice_model(user, selected_doc)
     max_raw_scores, _ = torch.max(raw_scores, dim=1, keepdim=True)
     scores = torch.exp(raw_scores - max_raw_scores)
-    q_values = torch.sum(
-        q_values * scores, dim=1) / torch.sum(
-            scores, dim=1)  # shape=[batch_size]
+    q_values = torch.sum(q_values * scores, dim=1) / torch.sum(
+        scores, dim=1
+    )  # shape=[batch_size]
 
     q_value_loss = nn.MSELoss()(q_values, target_q_values)
     return [choice_loss, q_value_loss]
 
 
-def build_slateq_optimizers(policy: Policy, config: TrainerConfigDict
-                            ) -> List["torch.optim.Optimizer"]:
+def build_slateq_optimizers(
+    policy: Policy, config: TrainerConfigDict
+) -> List["torch.optim.Optimizer"]:
     optimizer_choice = torch.optim.Adam(
-        policy.model.choice_model.parameters(), lr=config["lr_choice_model"])
+        policy.model.choice_model.parameters(), lr=config["lr_choice_model"]
+    )
     optimizer_q_value = torch.optim.Adam(
         policy.model.q_model.parameters(),
         lr=config["lr_q_model"],
-        eps=config["adam_epsilon"])
+        eps=config["adam_epsilon"],
+    )
     return [optimizer_choice, optimizer_q_value]
 
 
-def action_sampler_fn(policy: Policy, model: SlateQModel, input_dict, state,
-                      explore, timestep):
+def action_sampler_fn(
+    policy: Policy, model: SlateQModel, input_dict, state, explore, timestep
+):
     """Determine which action to take"""
     # First, we transform the observation into its unflattened form
     obs = restore_original_dimensions(
-        input_dict[SampleBatch.CUR_OBS],
-        policy.observation_space,
-        tensorlib=torch)
+        input_dict[SampleBatch.CUR_OBS], policy.observation_space, tensorlib=torch
+    )
 
     # user.shape: [batch_size(=1), embedding_size]
     user = obs["user"]
@@ -389,16 +399,16 @@ def action_sampler_fn(policy: Policy, model: SlateQModel, input_dict, state,
     return action, logp, state_out
 
 
-def postprocess_fn_add_next_actions_for_sarsa(policy: Policy,
-                                              batch: SampleBatch,
-                                              other_agent=None,
-                                              episode=None) -> SampleBatch:
+def postprocess_fn_add_next_actions_for_sarsa(
+    policy: Policy, batch: SampleBatch, other_agent=None, episode=None
+) -> SampleBatch:
     """Add next_actions to SampleBatch for SARSA training"""
     if policy.config["slateq_strategy"] == "SARSA":
         if not batch["dones"][-1]:
             raise RuntimeError(
                 "Expected a complete episode in each sample batch. "
-                f"But this batch is not: {batch}.")
+                f"But this batch is not: {batch}."
+            )
         batch["next_actions"] = np.roll(batch["actions"], -1, axis=0)
     return batch
 
@@ -407,15 +417,12 @@ SlateQTorchPolicy = build_policy_class(
     name="SlateQTorchPolicy",
     framework="torch",
     get_default_config=lambda: ray.rllib.agents.slateq.slateq.DEFAULT_CONFIG,
-
     # build model, loss functions, and optimizers
     make_model_and_action_dist=build_slateq_model_and_distribution,
     optimizer_fn=build_slateq_optimizers,
     loss_fn=build_slateq_losses,
-
     # define how to act
     action_sampler_fn=action_sampler_fn,
-
     # post processing batch sampled data
     postprocess_fn=postprocess_fn_add_next_actions_for_sarsa,
 )

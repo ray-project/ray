@@ -15,8 +15,14 @@ from ray.experimental.raysort import constants
 from ray.experimental.raysort import logging_utils
 from ray.experimental.raysort import sortlib
 from ray.experimental.raysort import tracing_utils
-from ray.experimental.raysort.types import \
-    BlockInfo, ByteCount, RecordCount, PartId, PartInfo, Path
+from ray.experimental.raysort.types import (
+    BlockInfo,
+    ByteCount,
+    RecordCount,
+    PartId,
+    PartInfo,
+    Path,
+)
 
 Args = argparse.Namespace
 
@@ -89,7 +95,8 @@ def get_args(*args, **kwargs):
     )
     # Which tasks to run?
     tasks_group = parser.add_argument_group(
-        "tasks to run", "if no task is specified, will run all tasks")
+        "tasks to run", "if no task is specified, will run all tasks"
+    )
     tasks = ["generate_input", "sort", "validate_output"]
     for task in tasks:
         tasks_group.add_argument(f"--{task}", action="store_true")
@@ -142,13 +149,14 @@ def _get_part_path(mnt: Path, part_id: PartId, kind="input") -> Path:
 
 
 @ray.remote
-def generate_part(args: Args, part_id: PartId, size: RecordCount,
-                  offset: RecordCount) -> PartInfo:
+def generate_part(
+    args: Args, part_id: PartId, size: RecordCount, offset: RecordCount
+) -> PartInfo:
     logging_utils.init()
     pinfo = _part_info(args, part_id)
     subprocess.run(
-        [constants.GENSORT_PATH, f"-b{offset}", f"{size}", pinfo.path],
-        check=True)
+        [constants.GENSORT_PATH, f"-b{offset}", f"{size}", pinfo.path], check=True
+    )
     logging.info(f"Generated input {pinfo}")
     return pinfo
 
@@ -180,21 +188,20 @@ def _load_manifest(args: Args, path: Path) -> List[PartInfo]:
         return [PartInfo(i, None, None) for i in range(args.num_mappers)]
     with open(path) as fin:
         reader = csv.reader(fin)
-        return [
-            PartInfo(int(part_id), node, path)
-            for part_id, node, path in reader
-        ]
+        return [PartInfo(int(part_id), node, path) for part_id, node, path in reader]
 
 
 def _load_partition(args: Args, path: Path) -> np.ndarray:
     if args.skip_input:
         return np.frombuffer(
-            np.random.bytes(args.input_part_size), dtype=np.uint8).copy()
+            np.random.bytes(args.input_part_size), dtype=np.uint8
+        ).copy()
     return np.fromfile(path, dtype=np.uint8)
 
 
-def _dummy_sort_and_partition(part: np.ndarray,
-                              boundaries: List[int]) -> List[BlockInfo]:
+def _dummy_sort_and_partition(
+    part: np.ndarray, boundaries: List[int]
+) -> List[BlockInfo]:
     N = len(boundaries)
     offset = 0
     size = int(np.ceil(part.size / N))
@@ -207,19 +214,21 @@ def _dummy_sort_and_partition(part: np.ndarray,
 
 @ray.remote
 @tracing_utils.timeit("map")
-def mapper(args: Args, mapper_id: PartId, boundaries: List[int],
-           path: Path) -> List[np.ndarray]:
+def mapper(
+    args: Args, mapper_id: PartId, boundaries: List[int], path: Path
+) -> List[np.ndarray]:
     logging_utils.init()
     part = _load_partition(args, path)
-    sort_fn = _dummy_sort_and_partition \
-        if args.skip_sorting else sortlib.sort_and_partition
+    sort_fn = (
+        _dummy_sort_and_partition if args.skip_sorting else sortlib.sort_and_partition
+    )
     blocks = sort_fn(part, boundaries)
-    return [part[offset:offset + size] for offset, size in blocks]
+    return [part[offset : offset + size] for offset, size in blocks]
 
 
 def _dummy_merge(
-        num_blocks: int, _n: int,
-        get_block: Callable[[int, int], np.ndarray]) -> Iterable[np.ndarray]:
+    num_blocks: int, _n: int, get_block: Callable[[int, int], np.ndarray]
+) -> Iterable[np.ndarray]:
     blocks = [((i, 0), get_block(i, 0)) for i in range(num_blocks)]
     while len(blocks) > 0:
         (m, d), block = blocks.pop(random.randrange(len(blocks)))
@@ -231,11 +240,13 @@ def _dummy_merge(
         blocks.append(((m, d_), block))
 
 
-def _merge_impl(args: Args,
-                M: int,
-                pinfo: PartInfo,
-                get_block: Callable[[int, int], np.ndarray],
-                skip_output=False):
+def _merge_impl(
+    args: Args,
+    M: int,
+    pinfo: PartInfo,
+    get_block: Callable[[int, int], np.ndarray],
+    skip_output=False,
+):
     merge_fn = _dummy_merge if args.skip_sorting else sortlib.merge_partitions
     merger = merge_fn(M, get_block)
 
@@ -252,8 +263,9 @@ def _merge_impl(args: Args,
 # See worker_placement_groups() for why `num_cpus=0`.
 @ray.remote(num_cpus=0, resources={"worker": 1})
 @tracing_utils.timeit("merge")
-def merge_mapper_blocks(args: Args, reducer_id: PartId, mapper_id: PartId,
-                        *blocks: List[np.ndarray]) -> PartInfo:
+def merge_mapper_blocks(
+    args: Args, reducer_id: PartId, mapper_id: PartId, *blocks: List[np.ndarray]
+) -> PartInfo:
     part_id = constants.merge_part_ids(reducer_id, mapper_id)
     pinfo = _part_info(args, part_id, kind="temp")
     M = len(blocks)
@@ -269,8 +281,9 @@ def merge_mapper_blocks(args: Args, reducer_id: PartId, mapper_id: PartId,
 # See worker_placement_groups() for why `num_cpus=0`.
 @ray.remote(num_cpus=0, resources={"worker": 1})
 @tracing_utils.timeit("reduce")
-def final_merge(args: Args, reducer_id: PartId,
-                *merged_parts: List[PartInfo]) -> PartInfo:
+def final_merge(
+    args: Args, reducer_id: PartId, *merged_parts: List[PartInfo]
+) -> PartInfo:
     M = len(merged_parts)
 
     def _load_block_chunk(pinfo: PartInfo, d: int) -> np.ndarray:
@@ -278,7 +291,8 @@ def final_merge(args: Args, reducer_id: PartId,
             pinfo.path,
             dtype=np.uint8,
             count=args.reducer_input_chunk,
-            offset=d * args.reducer_input_chunk)
+            offset=d * args.reducer_input_chunk,
+        )
 
     def get_block(i, d):
         ret = _load_block_chunk(merged_parts[i], d)
@@ -303,11 +317,7 @@ def worker_placement_groups(args: Args) -> List[ray.PlacementGroupID]:
     automatically reserve CPU resources, so tasks must specify `num_cpus=0`
     in order to run in a placement group.
     """
-    pgs = [
-        ray.util.placement_group([{
-            "worker": 1
-        }]) for _ in range(args.num_reducers)
-    ]
+    pgs = [ray.util.placement_group([{"worker": 1}]) for _ in range(args.num_reducers)]
     ray.get([pg.ready() for pg in pgs])
     try:
         yield pgs
@@ -326,8 +336,7 @@ def sort_main(args: Args):
         "num_returns": args.num_reducers,
         "num_cpus": os.cpu_count() / args.num_concurrent_rounds,
     }  # Load balance across worker nodes by setting `num_cpus`.
-    merge_results = np.empty(
-        (args.num_rounds, args.num_reducers), dtype=object)
+    merge_results = np.empty((args.num_rounds, args.num_reducers), dtype=object)
 
     part_id = 0
     with worker_placement_groups(args) as pgs:
@@ -337,22 +346,26 @@ def sort_main(args: Args):
             if num_extra_rounds > 0:
                 ray.wait(
                     [f for f in merge_results.flatten() if f is not None],
-                    num_returns=num_extra_rounds * args.num_reducers)
+                    num_returns=num_extra_rounds * args.num_reducers,
+                )
 
             # Submit map tasks.
             mapper_results = np.empty(
-                (args.num_mappers_per_round, args.num_reducers), dtype=object)
+                (args.num_mappers_per_round, args.num_reducers), dtype=object
+            )
             for _ in range(args.num_mappers_per_round):
                 _, node, path = parts[part_id]
                 m = part_id % args.num_mappers_per_round
                 mapper_results[m, :] = mapper.options(**mapper_opt).remote(
-                    args, part_id, boundaries, path)
+                    args, part_id, boundaries, path
+                )
                 part_id += 1
 
             # Submit merge tasks.
             merge_results[round, :] = [
                 merge_mapper_blocks.options(placement_group=pgs[r]).remote(
-                    args, r, round, *mapper_results[:, r].tolist())
+                    args, r, round, *mapper_results[:, r].tolist()
+                )
                 for r in range(args.num_reducers)
             ]
 
@@ -362,7 +375,8 @@ def sort_main(args: Args):
         # Submit second-stage reduce tasks.
         reducer_results = [
             final_merge.options(placement_group=pgs[r]).remote(
-                args, r, *merge_results[:, r].tolist())
+                args, r, *merge_results[:, r].tolist()
+            )
             for r in range(args.num_reducers)
         ]
         reducer_results = ray.get(reducer_results)

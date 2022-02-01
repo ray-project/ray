@@ -11,6 +11,7 @@ import os
 
 class TuneCallback:
     """Base class for Tune's MXNet callbacks."""
+
     pass
 
 
@@ -45,8 +46,7 @@ class TuneReportCallback(TuneCallback):
 
     """
 
-    def __init__(self,
-                 metrics: Union[None, str, List[str], Dict[str, str]] = None):
+    def __init__(self, metrics: Union[None, str, List[str], Dict[str, str]] = None):
         if isinstance(metrics, str):
             metrics = [metrics]
         self._metrics = metrics
@@ -112,11 +112,16 @@ class TuneCheckpointCallback(TuneCallback):
         self._filename = filename
         self._frequency = frequency
 
-    def __call__(self, epoch: int, sym: mxnet.symbol.Symbol,
-                 arg: Dict[str, np.ndarray], aux: Dict[str, np.ndarray]):
+    def __call__(
+        self,
+        epoch: int,
+        sym: mxnet.symbol.Symbol,
+        arg: Dict[str, np.ndarray],
+        aux: Dict[str, np.ndarray],
+    ):
         if epoch % self._frequency != 0:
             return
         with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
             save_checkpoint(
-                os.path.join(checkpoint_dir, self._filename), epoch, sym, arg,
-                aux)
+                os.path.join(checkpoint_dir, self._filename), epoch, sym, arg, aux
+            )

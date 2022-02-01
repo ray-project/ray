@@ -51,7 +51,7 @@ class CustomGalleryItemDirective(Directive):
     option_spec = {
         "tooltip": directives.unchanged,
         "figure": directives.unchanged,
-        "description": directives.unchanged
+        "description": directives.unchanged,
     }
 
     has_content = False
@@ -64,8 +64,9 @@ class CustomGalleryItemDirective(Directive):
             if len(self.options["tooltip"]) > 195:
                 tooltip = tooltip[:195] + "..."
         else:
-            raise ValueError("Need to provide :tooltip: under "
-                             "`.. customgalleryitem::`.")
+            raise ValueError(
+                "Need to provide :tooltip: under " "`.. customgalleryitem::`."
+            )
 
         # Generate `thumbnail` used in the gallery.
         if "figure" in self.options:
@@ -86,11 +87,13 @@ class CustomGalleryItemDirective(Directive):
         if "description" in self.options:
             description = self.options["description"]
         else:
-            raise ValueError("Need to provide :description: under "
-                             "`customgalleryitem::`.")
+            raise ValueError(
+                "Need to provide :description: under " "`customgalleryitem::`."
+            )
 
         thumbnail_rst = GALLERY_TEMPLATE.format(
-            tooltip=tooltip, thumbnail=thumbnail, description=description)
+            tooltip=tooltip, thumbnail=thumbnail, description=description
+        )
         thumbnail = StringList(thumbnail_rst.split("\n"))
         thumb = nodes.paragraph()
         self.state.nested_parse(thumbnail, self.content_offset, thumb)

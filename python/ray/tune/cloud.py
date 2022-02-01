@@ -5,8 +5,12 @@ import tempfile
 from typing import Optional
 
 from ray import logger
-from ray.tune.sync_client import (S3_PREFIX, GS_PREFIX, HDFS_PREFIX,
-                                  ALLOWED_REMOTE_PREFIXES)
+from ray.tune.sync_client import (
+    S3_PREFIX,
+    GS_PREFIX,
+    HDFS_PREFIX,
+    ALLOWED_REMOTE_PREFIXES,
+)
 from ray.util import PublicAPI
 
 
@@ -18,31 +22,32 @@ def _clear_bucket(bucket: str):
     if not is_cloud_target(bucket):
         raise ValueError(
             f"Could not clear bucket contents: "
-            f"Bucket `{bucket}` is not a valid or supported cloud target.")
+            f"Bucket `{bucket}` is not a valid or supported cloud target."
+        )
 
     try:
         if bucket.startswith(S3_PREFIX):
-            subprocess.check_call(
-                ["aws", "s3", "rm", "--recursive", "--quiet", bucket])
+            subprocess.check_call(["aws", "s3", "rm", "--recursive", "--quiet", bucket])
         elif bucket.startswith(GS_PREFIX):
             subprocess.check_call(["gsutil", "-m", "rm", "-f", "-r", bucket])
         elif bucket.startswith(HDFS_PREFIX):
             subprocess.check_call(["hdfs", "dfs", "-rm", "-r", bucket])
 
     except Exception as e:
-        logger.warning(
-            f"Caught exception when clearing bucket `{bucket}`: {e}")
+        logger.warning(f"Caught exception when clearing bucket `{bucket}`: {e}")
 
 
 def _download_from_bucket(bucket: str, local_path: str):
     if not is_cloud_target(bucket):
         raise ValueError(
             f"Could not download from bucket: "
-            f"Bucket `{bucket}` is not a valid or supported cloud target.")
+            f"Bucket `{bucket}` is not a valid or supported cloud target."
+        )
 
     if bucket.startswith(S3_PREFIX):
         subprocess.check_call(
-            ["aws", "s3", "cp", "--recursive", "--quiet", bucket, local_path])
+            ["aws", "s3", "cp", "--recursive", "--quiet", bucket, local_path]
+        )
     elif bucket.startswith(GS_PREFIX):
         subprocess.check_call(["gsutil", "-m", "cp", "-r", bucket, local_path])
     elif bucket.startswith(HDFS_PREFIX):
@@ -53,11 +58,13 @@ def _upload_to_bucket(bucket: str, local_path: str):
     if not is_cloud_target(bucket):
         raise ValueError(
             f"Could not download from bucket: "
-            f"Bucket `{bucket}` is not a valid or supported cloud target.")
+            f"Bucket `{bucket}` is not a valid or supported cloud target."
+        )
 
     if bucket.startswith(S3_PREFIX):
         subprocess.check_call(
-            ["aws", "s3", "cp", "--recursive", "--quiet", local_path, bucket])
+            ["aws", "s3", "cp", "--recursive", "--quiet", local_path, bucket]
+        )
     elif bucket.startswith(GS_PREFIX):
         subprocess.check_call(["gsutil", "-m", "cp", "-r", local_path, bucket])
     elif bucket.startswith(HDFS_PREFIX):
@@ -66,9 +73,9 @@ def _upload_to_bucket(bucket: str, local_path: str):
 
 @PublicAPI(stability="beta")
 class TrialCheckpoint(os.PathLike):
-    def __init__(self,
-                 local_path: Optional[str] = None,
-                 cloud_path: Optional[str] = None):
+    def __init__(
+        self, local_path: Optional[str] = None, cloud_path: Optional[str] = None
+    ):
         self.local_path = local_path
         self.cloud_path = cloud_path
 
@@ -84,8 +91,10 @@ class TrialCheckpoint(os.PathLike):
         if isinstance(other, str):
             return self.local_path == other
         elif isinstance(other, TrialCheckpoint):
-            return (self.local_path == other.local_path
-                    and self.cloud_path == other.cloud_path)
+            return (
+                self.local_path == other.local_path
+                and self.cloud_path == other.cloud_path
+            )
 
     def __add__(self, other):
         if isinstance(other, str):
@@ -98,15 +107,19 @@ class TrialCheckpoint(os.PathLike):
         raise NotImplementedError
 
     def __repr__(self):
-        return (f"<TrialCheckpoint "
-                f"local_path={self.local_path}, "
-                f"cloud_path={self.cloud_path}"
-                f">")
+        return (
+            f"<TrialCheckpoint "
+            f"local_path={self.local_path}, "
+            f"cloud_path={self.cloud_path}"
+            f">"
+        )
 
-    def download(self,
-                 cloud_path: Optional[str] = None,
-                 local_path: Optional[str] = None,
-                 overwrite: bool = False) -> str:
+    def download(
+        self,
+        cloud_path: Optional[str] = None,
+        local_path: Optional[str] = None,
+        overwrite: bool = False,
+    ) -> str:
         """Download checkpoint from cloud.
 
         This will fetch the checkpoint directory from cloud storage
@@ -133,7 +146,8 @@ class TrialCheckpoint(os.PathLike):
                 "`cloud_path` to your call to `download()` or by "
                 "passing a `cloud_path` into the constructor. The latter "
                 "should automatically be done if you pass the correct "
-                "`tune.SyncConfig`.")
+                "`tune.SyncConfig`."
+            )
 
         local_path = local_path or self.local_path
 
@@ -142,14 +156,18 @@ class TrialCheckpoint(os.PathLike):
                 "Could not download trial checkpoint: No local "
                 "path is set. Fix this by either passing a "
                 "`local_path` to your call to `download()` or by "
-                "passing a `local_path` into the constructor.")
+                "passing a `local_path` into the constructor."
+            )
 
         # Only update local path if unset
         if not self.local_path:
             self.local_path = local_path
 
-        if (not overwrite and os.path.exists(local_path)
-                and len(os.listdir(local_path)) > 0):
+        if (
+            not overwrite
+            and os.path.exists(local_path)
+            and len(os.listdir(local_path)) > 0
+        ):
             # Local path already exists and we should not overwrite,
             # so return.
             return local_path
@@ -167,10 +185,12 @@ class TrialCheckpoint(os.PathLike):
         # Local dir exists and is not empty
         return local_path
 
-    def upload(self,
-               cloud_path: Optional[str] = None,
-               local_path: Optional[str] = None,
-               clean_before: bool = False):
+    def upload(
+        self,
+        cloud_path: Optional[str] = None,
+        local_path: Optional[str] = None,
+        clean_before: bool = False,
+    ):
         """Upload checkpoint to cloud.
 
         This will push the checkpoint directory from local storage
@@ -190,10 +210,12 @@ class TrialCheckpoint(os.PathLike):
         """
         local_path = local_path or self.local_path
         if not local_path:
-            raise RuntimeError("Could not upload trial checkpoint: No local "
-                               "path is set. Fix this by either passing a "
-                               "`local_path` to your call to `upload()` or by "
-                               "passing a `local_path` into the constructor.")
+            raise RuntimeError(
+                "Could not upload trial checkpoint: No local "
+                "path is set. Fix this by either passing a "
+                "`local_path` to your call to `upload()` or by "
+                "passing a `local_path` into the constructor."
+            )
 
         cloud_path = cloud_path or self.cloud_path
         if not cloud_path:
@@ -203,14 +225,14 @@ class TrialCheckpoint(os.PathLike):
                 "`cloud_path` to your call to `download()` or by "
                 "passing a `cloud_path` into the constructor. The latter "
                 "should automatically be done if you pass the correct "
-                "`tune.SyncConfig`.")
+                "`tune.SyncConfig`."
+            )
 
         if not self.cloud_path:
             self.cloud_path = cloud_path
 
         if clean_before:
-            logger.info(
-                f"Clearing bucket contents before upload: {cloud_path}")
+            logger.info(f"Clearing bucket contents before upload: {cloud_path}")
             _clear_bucket(cloud_path)
 
         # Actually upload
@@ -246,19 +268,22 @@ class TrialCheckpoint(os.PathLike):
                     "Cannot save trial checkpoint: No cloud path "
                     "found. If the checkpoint is already on the node, "
                     "you can pass a `path` argument to save it at another "
-                    "location.")
+                    "location."
+                )
             else:
                 # No self.local_path
                 raise RuntimeError(
                     "Cannot save trial checkpoint: No target path "
                     "specified and no default local directory available. "
-                    "Please pass a `path` argument to `save()`.")
+                    "Please pass a `path` argument to `save()`."
+                )
         elif not self.local_path and not self.cloud_path:
             raise RuntimeError(
                 f"Cannot save trial checkpoint to cloud target "
                 f"`{path}`: No existing local or cloud path was "
                 f"found. This indicates an error when loading "
-                f"the checkpoints. Please report this issue.")
+                f"the checkpoints. Please report this issue."
+            )
 
         if is_cloud_target(path):
             # Storing on cloud
@@ -272,23 +297,25 @@ class TrialCheckpoint(os.PathLike):
             if self.cloud_path:
                 # Do not update local path as it might be a temp file
                 local_path = self.download(
-                    local_path=local_path, overwrite=force_download)
+                    local_path=local_path, overwrite=force_download
+                )
 
                 # Remove pointer to a temporary directory
                 if self.local_path in temp_dirs:
                     self.local_path = None
 
             # We should now have a checkpoint available locally
-            if not os.path.exists(local_path) or len(
-                    os.listdir(local_path)) == 0:
+            if not os.path.exists(local_path) or len(os.listdir(local_path)) == 0:
                 raise RuntimeError(
                     f"No checkpoint found in directory `{local_path}` after "
                     f"download - maybe the bucket is empty or downloading "
-                    f"failed?")
+                    f"failed?"
+                )
 
             # Only update cloud path if it wasn't set before
             cloud_path = self.upload(
-                cloud_path=path, local_path=local_path, clean_before=True)
+                cloud_path=path, local_path=local_path, clean_before=True
+            )
 
             # Clean up temporary directories
             for temp_dir in temp_dirs:
@@ -296,8 +323,11 @@ class TrialCheckpoint(os.PathLike):
 
             return cloud_path
 
-        local_path_exists = self.local_path and os.path.exists(
-            self.local_path) and len(os.listdir(self.local_path)) > 0
+        local_path_exists = (
+            self.local_path
+            and os.path.exists(self.local_path)
+            and len(os.listdir(self.local_path)) > 0
+        )
 
         # Else: path is a local target
         if self.local_path and local_path_exists and not force_download:

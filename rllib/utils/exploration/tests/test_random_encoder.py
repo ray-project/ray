@@ -44,7 +44,7 @@ class TestRE3(unittest.TestCase):
             "beta_schedule": beta_schedule,
             "sub_exploration": {
                 "type": "StochasticSampling",
-            }
+            },
         }
 
         num_iterations = 30

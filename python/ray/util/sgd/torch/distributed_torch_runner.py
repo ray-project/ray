@@ -27,12 +27,9 @@ class DistributedTorchRunner(TorchRunner):
         kwargs: Keyword arguments for TorchRunner.
     """
 
-    def __init__(self,
-                 *args,
-                 backend="gloo",
-                 add_dist_sampler=True,
-                 wrap_ddp=False,
-                 **kwargs):
+    def __init__(
+        self, *args, backend="gloo", add_dist_sampler=True, wrap_ddp=False, **kwargs
+    ):
         super(DistributedTorchRunner, self).__init__(*args, **kwargs)
         if backend not in ("gloo", "nccl"):
             raise ValueError("Backend must be one of 'gloo' or 'nccl'.")
@@ -57,8 +54,7 @@ class DistributedTorchRunner(TorchRunner):
         """
         logger.info(f"Setting up process group for: {url} [rank={world_rank}]")
         self.world_rank = world_rank
-        setup_process_group(
-            url, world_rank, world_size, timeout, backend=self.backend)
+        setup_process_group(url, world_rank, world_size, timeout, backend=self.backend)
 
     def set_local_rank(self, local_rank):
         """Sets the local rank of this runner.
@@ -89,27 +85,27 @@ class DistributedTorchRunner(TorchRunner):
             use_tqdm=self.use_tqdm,
             wrap_ddp=self.wrap_ddp,
             add_dist_sampler=self.add_dist_sampler,
-            scheduler_step_freq=self.scheduler_step_freq)
+            scheduler_step_freq=self.scheduler_step_freq,
+        )
 
     def get_device(self):
         """Needed for SyncBatchNorm, which needs 1 GPU per process."""
         return torch.device("cuda:0")
 
-    def train_epoch(self,
-                    num_steps=None,
-                    profile=False,
-                    info=None,
-                    iterator=None):
+    def train_epoch(self, num_steps=None, profile=False, info=None, iterator=None):
         """Runs a training epoch and updates the model parameters.
 
         Automatically sets epoch of sampler if possible.
         """
-        if iterator is None and hasattr(self.train_loader, "sampler") and \
-            hasattr(
-                self.train_loader.sampler, "set_epoch"):
+        if (
+            iterator is None
+            and hasattr(self.train_loader, "sampler")
+            and hasattr(self.train_loader.sampler, "set_epoch")
+        ):
             self.train_loader.sampler.set_epoch(self.epochs)
         return super(DistributedTorchRunner, self).train_epoch(
-            num_steps=num_steps, profile=profile, info=info, iterator=iterator)
+            num_steps=num_steps, profile=profile, info=info, iterator=iterator
+        )
 
     def shutdown(self):
         """Attempts to shut down the worker."""
@@ -175,8 +171,8 @@ def reserve_resources(num_cpus, num_gpus, retries=20):
         global _dummy_cpu_actor
         if _dummy_cpu_actor is None:
             _dummy_cpu_actor = ray.remote(
-                num_cpus=num_cpus,
-                resources={"node:" + ip: 0.1})(_DummyActor).remote()
+                num_cpus=num_cpus, resources={"node:" + ip: 0.1}
+            )(_DummyActor).remote()
             assert ray.get(_dummy_cpu_actor.get.remote()) == 1
 
     if num_gpus == 0:
@@ -197,14 +193,17 @@ def reserve_resources(num_cpus, num_gpus, retries=20):
     for _ in range(retries):
         if _dummy_cuda_actor is None:
             _dummy_cuda_actor = ray.remote(
-                num_cpus=0, num_gpus=num_gpus,
-                resources={"node:" + ip: 0.1})(_DummyActor).remote()
+                num_cpus=0, num_gpus=num_gpus, resources={"node:" + ip: 0.1}
+            )(_DummyActor).remote()
 
         reserved_cuda_device = ray.get(_dummy_cuda_actor.cuda_devices.remote())
 
         if match_devices and reserved_cuda_device not in cuda_device_set:
-            logger.debug("Device %s not in list of visible devices %s",
-                         reserved_cuda_device, cuda_device_set)
+            logger.debug(
+                "Device %s not in list of visible devices %s",
+                reserved_cuda_device,
+                cuda_device_set,
+            )
             unused_actors.append(_dummy_cuda_actor)
             _dummy_cuda_actor = None
         else:
@@ -218,7 +217,8 @@ def reserve_resources(num_cpus, num_gpus, retries=20):
         raise RuntimeError(
             "Unable to reserve the set CUDA VISIBLE DEVICES on Ray. Please "
             "make sure that Ray has access to all the visible devices: "
-            "{}".format(os.environ.get("CUDA_VISIBLE_DEVICES")))
+            "{}".format(os.environ.get("CUDA_VISIBLE_DEVICES"))
+        )
 
     return reserved_cuda_device
 
@@ -268,8 +268,8 @@ class LocalDistributedRunner(DistributedTorchRunner):
                     "CUDA_VISIBLE_DEVICES {}. This may be because the "
                     "Ray cluster is not set with the right env vars. "
                     "If that is not the issue, please raise a Github "
-                    "issue.".format(reserved_cuda_device,
-                                    visible_cuda_devices))
+                    "issue.".format(reserved_cuda_device, visible_cuda_devices)
+                )
             devices = visible_cuda_devices.split(",")
             scoped_index = devices.index(reserved_cuda_device)
             self._set_cuda_device(str(scoped_index))
@@ -306,8 +306,7 @@ class LocalDistributedRunner(DistributedTorchRunner):
         global _dummy_cuda_actor
         if cleanup:
             if _dummy_cpu_actor or _dummy_cuda_actor:
-                assert not self.is_actor(), ("Actor shouldn't have a "
-                                             "dummy actor.")
+                assert not self.is_actor(), "Actor shouldn't have a " "dummy actor."
             if _dummy_cpu_actor:
                 ray.kill(_dummy_cpu_actor)
             if _dummy_cuda_actor:

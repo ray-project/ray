@@ -60,8 +60,7 @@ if __name__ == "__main__":
     config["target_network_update_freq"] = 1
     config["timesteps_per_iteration"] = 1000
     data_file = "/path/to/my/json_file.json"
-    print("data_file={} exists={}".format(data_file,
-                                          os.path.isfile(data_file)))
+    print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
     config["input"] = [data_file]
     config["log_level"] = "INFO"
     config["env"] = "Pendulum-v1"
@@ -94,8 +93,10 @@ if __name__ == "__main__":
                 learnt = True
                 break
     if not learnt:
-        raise ValueError("CQLTrainer did not reach {} reward from expert "
-                         "offline data!".format(min_reward))
+        raise ValueError(
+            "CQLTrainer did not reach {} reward from expert "
+            "offline data!".format(min_reward)
+        )
 
     # Get policy, model, and replay-buffer.
     pol = trainer.get_policy()
@@ -122,13 +123,11 @@ if __name__ == "__main__":
     # features, which then to pass through the Q-head.
     model_out, _ = cql_model({"obs": obs})
     # The estimated Q-values from the (historic) actions in the batch.
-    q_values_old = cql_model.get_q_values(model_out,
-                                          torch.from_numpy(batch["actions"]))
+    q_values_old = cql_model.get_q_values(model_out, torch.from_numpy(batch["actions"]))
     # The estimated Q-values for the new actions computed
     # by our trainer policy.
     actions_new = pol.compute_actions_from_input_dict({"obs": obs})[0]
-    q_values_new = cql_model.get_q_values(model_out,
-                                          torch.from_numpy(actions_new))
+    q_values_new = cql_model.get_q_values(model_out, torch.from_numpy(actions_new))
     print(f"Q-val batch={q_values_old}")
     print(f"Q-val policy={q_values_new}")
 

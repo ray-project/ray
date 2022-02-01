@@ -37,18 +37,20 @@ def _configure_resource_group(config):
     resource_client = _get_client(ResourceManagementClient, config)
 
     _, cli_subscription_id = get_azure_cli_credentials(
-        resource=ResourceManagementClient)
-    subscription_id = config["provider"].get("subscription_id",
-                                             cli_subscription_id)
+        resource=ResourceManagementClient
+    )
+    subscription_id = config["provider"].get("subscription_id", cli_subscription_id)
     logger.info("Using subscription id: %s", subscription_id)
     config["provider"]["subscription_id"] = subscription_id
 
-    assert "resource_group" in config["provider"], (
-        "Provider config must include resource_group field")
+    assert (
+        "resource_group" in config["provider"]
+    ), "Provider config must include resource_group field"
     resource_group = config["provider"]["resource_group"]
 
-    assert "location" in config["provider"], (
-        "Provider config must include location field")
+    assert (
+        "location" in config["provider"]
+    ), "Provider config must include location field"
     params = {"location": config["provider"]["location"]}
 
     if "tags" in config["provider"]:
@@ -56,7 +58,8 @@ def _configure_resource_group(config):
 
     logger.info("Creating/Updating Resource Group: %s", resource_group)
     resource_client.resource_groups.create_or_update(
-        resource_group_name=resource_group, parameters=params)
+        resource_group_name=resource_group, parameters=params
+    )
 
     # load the template file
     current_path = Path(__file__).parent
@@ -72,11 +75,7 @@ def _configure_resource_group(config):
         "properties": {
             "mode": DeploymentMode.incremental,
             "template": template,
-            "parameters": {
-                "subnet": {
-                    "value": subnet_mask
-                }
-            }
+            "parameters": {"subnet": {"value": subnet_mask}},
         }
     }
 
@@ -87,7 +86,8 @@ def _configure_resource_group(config):
     create_or_update(
         resource_group_name=resource_group,
         deployment_name="ray-config",
-        parameters=parameters).wait()
+        parameters=parameters,
+    ).wait()
 
     return config
 
@@ -104,8 +104,7 @@ def _configure_key_pair(config):
         except TypeError:
             raise Exception("Invalid config value for {}".format(key_type))
 
-        assert key_path.is_file(), (
-            "Could not find ssh key: {}".format(key_path))
+        assert key_path.is_file(), "Could not find ssh key: {}".format(key_path)
 
         if key_type == "ssh_public_key":
             with open(key_path, "r") as f:
@@ -113,7 +112,8 @@ def _configure_key_pair(config):
 
     for node_type in config["available_node_types"].values():
         azure_arm_parameters = node_type["node_config"].setdefault(
-            "azure_arm_parameters", {})
+            "azure_arm_parameters", {}
+        )
         azure_arm_parameters["adminUsername"] = ssh_user
         azure_arm_parameters["publicKey"] = public_key
 

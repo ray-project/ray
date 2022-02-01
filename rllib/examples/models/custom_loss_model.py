@@ -18,17 +18,12 @@ torch, nn = try_import_torch()
 class CustomLossModel(TFModelV2):
     """Custom model that adds an imitation loss on top of the policy loss."""
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        super().__init__(obs_space, action_space, num_outputs, model_config,
-                         name)
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        super().__init__(obs_space, action_space, num_outputs, model_config, name)
 
         self.fcnet = FullyConnectedNetwork(
-            self.obs_space,
-            self.action_space,
-            num_outputs,
-            model_config,
-            name="fcnet")
+            self.obs_space, self.action_space, num_outputs, model_config, name="fcnet"
+        )
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
@@ -43,13 +38,13 @@ class CustomLossModel(TFModelV2):
     @override(ModelV2)
     def custom_loss(self, policy_loss, loss_inputs):
         # Create a new input reader per worker.
-        reader = JsonReader(
-            self.model_config["custom_model_config"]["input_files"])
+        reader = JsonReader(self.model_config["custom_model_config"]["input_files"])
         input_ops = reader.tf_input_ops()
 
         # Define a secondary loss by building a graph copy with weight sharing.
         obs = restore_original_dimensions(
-            tf.cast(input_ops["obs"], tf.float32), self.obs_space)
+            tf.cast(input_ops["obs"], tf.float32), self.obs_space
+        )
         logits, _ = self.forward({"obs": obs}, [], None)
 
         # You can also add self-supervised losses easily by referencing tensors
@@ -62,8 +57,7 @@ class CustomLossModel(TFModelV2):
         # Compute the IL loss.
         action_dist = Categorical(logits, self.model_config)
         self.policy_loss = policy_loss
-        self.imitation_loss = tf.reduce_mean(
-            -action_dist.logp(input_ops["actions"]))
+        self.imitation_loss = tf.reduce_mean(-action_dist.logp(input_ops["actions"]))
         return policy_loss + 10 * self.imitation_loss
 
     def metrics(self):
@@ -76,21 +70,18 @@ class CustomLossModel(TFModelV2):
 class TorchCustomLossModel(TorchModelV2, nn.Module):
     """PyTorch version of the CustomLossModel above."""
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name, input_files):
-        super().__init__(obs_space, action_space, num_outputs, model_config,
-                         name)
+    def __init__(
+        self, obs_space, action_space, num_outputs, model_config, name, input_files
+    ):
+        super().__init__(obs_space, action_space, num_outputs, model_config, name)
         nn.Module.__init__(self)
 
         self.input_files = input_files
         # Create a new input reader per worker.
         self.reader = JsonReader(self.input_files)
         self.fcnet = TorchFC(
-            self.obs_space,
-            self.action_space,
-            num_outputs,
-            model_config,
-            name="fcnet")
+            self.obs_space, self.action_space, num_outputs, model_config, name="fcnet"
+        )
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
@@ -127,7 +118,8 @@ class TorchCustomLossModel(TorchModelV2, nn.Module):
         obs = restore_original_dimensions(
             torch.from_numpy(batch["obs"]).float().to(policy_loss[0].device),
             self.obs_space,
-            tensorlib="torch")
+            tensorlib="torch",
+        )
         logits, _ = self.forward({"obs": obs}, [], None)
 
         # You can also add self-supervised losses easily by referencing tensors
@@ -139,11 +131,13 @@ class TorchCustomLossModel(TorchModelV2, nn.Module):
 
         # Compute the IL loss.
         action_dist = TorchCategorical(logits, self.model_config)
-        imitation_loss = torch.mean(-action_dist.logp(
-            torch.from_numpy(batch["actions"]).to(policy_loss[0].device)))
+        imitation_loss = torch.mean(
+            -action_dist.logp(
+                torch.from_numpy(batch["actions"]).to(policy_loss[0].device)
+            )
+        )
         self.imitation_loss_metric = imitation_loss.item()
-        self.policy_loss_metric = np.mean(
-            [loss.item() for loss in policy_loss])
+        self.policy_loss_metric = np.mean([loss.item() for loss in policy_loss])
 
         # Add the imitation loss to each already calculated policy loss term.
         # Alternatively (if custom loss has its own optimizer):

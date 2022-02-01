@@ -11,13 +11,18 @@ import uuid
 
 import pytest
 from ray.ray_constants import KV_NAMESPACE_PACKAGE
-from ray.experimental.internal_kv import (_internal_kv_del,
-                                          _internal_kv_exists)
+from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_exists
 from ray._private.runtime_env.packaging import (
-    _dir_travel, get_uri_for_directory, _get_excludes,
-    upload_package_if_needed, parse_uri, Protocol,
+    _dir_travel,
+    get_uri_for_directory,
+    _get_excludes,
+    upload_package_if_needed,
+    parse_uri,
+    Protocol,
     get_top_level_dir_from_compressed_package,
-    extract_file_and_remove_top_level_dir, unzip_package)
+    extract_file_and_remove_top_level_dir,
+    unzip_package,
+)
 
 TOP_LEVEL_DIR_NAME = "top_level"
 ARCHIVE_NAME = "archive.zip"
@@ -52,7 +57,7 @@ def random_dir():
 @pytest.fixture
 def random_zip_file_without_top_level_dir(random_dir):
     path = Path(random_dir)
-    make_archive(path / ARCHIVE_NAME[:ARCHIVE_NAME.rfind(".")], "zip", path)
+    make_archive(path / ARCHIVE_NAME[: ARCHIVE_NAME.rfind(".")], "zip", path)
     yield str(path / ARCHIVE_NAME)
 
 
@@ -75,8 +80,12 @@ def random_zip_file_with_top_level_dir():
             dir2 = next_level_dir / random_string(15)
             dir2.mkdir(parents=True)
             next_level_dir = dir2
-        make_archive(path / ARCHIVE_NAME[:ARCHIVE_NAME.rfind(".")], "zip",
-                     path, TOP_LEVEL_DIR_NAME)
+        make_archive(
+            path / ARCHIVE_NAME[: ARCHIVE_NAME.rfind(".")],
+            "zip",
+            path,
+            TOP_LEVEL_DIR_NAME,
+        )
         yield str(path / ARCHIVE_NAME)
 
 
@@ -129,14 +138,13 @@ class TestGetURIForDirectory:
 
     def test_uri_hash_length(self, random_dir):
         uri = get_uri_for_directory(random_dir)
-        hex_hash = uri.split("_")[-1][:-len(".zip")]
+        hex_hash = uri.split("_")[-1][: -len(".zip")]
         assert len(hex_hash) == 16
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 class TestUploadPackageIfNeeded:
-    def test_create_upload_once(self, empty_dir, random_dir,
-                                ray_start_regular):
+    def test_create_upload_once(self, empty_dir, random_dir, ray_start_regular):
         uri = get_uri_for_directory(random_dir)
         uploaded = upload_package_if_needed(uri, empty_dir, random_dir)
         assert uploaded
@@ -157,13 +165,14 @@ class TestUploadPackageIfNeeded:
 class TestGetTopLevelDirFromCompressedPackage:
     def test_get_top_level_valid(self, random_zip_file_with_top_level_dir):
         top_level_dir_name = get_top_level_dir_from_compressed_package(
-            str(random_zip_file_with_top_level_dir))
+            str(random_zip_file_with_top_level_dir)
+        )
         assert top_level_dir_name == TOP_LEVEL_DIR_NAME
 
-    def test_get_top_level_invalid(self,
-                                   random_zip_file_without_top_level_dir):
+    def test_get_top_level_invalid(self, random_zip_file_without_top_level_dir):
         top_level_dir_name = get_top_level_dir_from_compressed_package(
-            str(random_zip_file_without_top_level_dir))
+            str(random_zip_file_without_top_level_dir)
+        )
         assert top_level_dir_name is None
 
 
@@ -171,12 +180,13 @@ class TestGetTopLevelDirFromCompressedPackage:
 class TestExtractFileAndRemoveTopLevelDir:
     def test_valid_extraction(self, random_zip_file_with_top_level_dir):
         archive_path = random_zip_file_with_top_level_dir
-        tmp_path = archive_path[:archive_path.rfind("/")]
+        tmp_path = archive_path[: archive_path.rfind("/")]
         rmtree(os.path.join(tmp_path, TOP_LEVEL_DIR_NAME))
         with ZipFile(archive_path, "r") as zf:
             for fname in zf.namelist():
                 extract_file_and_remove_top_level_dir(
-                    base_dir=tmp_path, fname=fname, zip_ref=zf)
+                    base_dir=tmp_path, fname=fname, zip_ref=zf
+                )
         rmtree(os.path.join(tmp_path, TOP_LEVEL_DIR_NAME))
         with ZipFile(archive_path, "r") as zf:
             zf.extractall(tmp_path)
@@ -198,23 +208,26 @@ class TestExtractFileAndRemoveTopLevelDir:
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("remove_top_level_directory", [False, True])
 @pytest.mark.parametrize("unlink_zip", [False, True])
-def test_unzip_package(random_zip_file_with_top_level_dir,
-                       remove_top_level_directory, unlink_zip):
+def test_unzip_package(
+    random_zip_file_with_top_level_dir, remove_top_level_directory, unlink_zip
+):
     archive_path = random_zip_file_with_top_level_dir
-    tmp_path = archive_path[:archive_path.rfind("/")]
+    tmp_path = archive_path[: archive_path.rfind("/")]
     tmp_subdir = f"{tmp_path}/{TOP_LEVEL_DIR_NAME}_tmp"
     unzip_package(
         package_path=archive_path,
         target_dir=tmp_subdir,
         remove_top_level_directory=remove_top_level_directory,
-        unlink_zip=unlink_zip)
+        unlink_zip=unlink_zip,
+    )
 
     dcmp = None
     if remove_top_level_directory:
         dcmp = dircmp(f"{tmp_subdir}", f"{tmp_path}/{TOP_LEVEL_DIR_NAME}")
     else:
-        dcmp = dircmp(f"{tmp_subdir}/{TOP_LEVEL_DIR_NAME}",
-                      f"{tmp_path}/{TOP_LEVEL_DIR_NAME}")
+        dcmp = dircmp(
+            f"{tmp_subdir}/{TOP_LEVEL_DIR_NAME}", f"{tmp_path}/{TOP_LEVEL_DIR_NAME}"
+        )
     assert len(dcmp.left_only) == 0
     assert len(dcmp.right_only) == 0
 
@@ -263,8 +276,7 @@ def test_travel():
                     f.write(str(v))
                     if not excluded:
                         if random.randint(0, 5) == 0:
-                            excludes.append(
-                                str((path / uid).relative_to(root)))
+                            excludes.append(str((path / uid).relative_to(root)))
                         else:
                             file_paths.add((str(path / uid), str(v)))
                 item_num += 1
@@ -288,10 +300,13 @@ def test_travel():
 
 @pytest.mark.parametrize(
     "parsing_tuple",
-    [("gcs://file.zip", Protocol.GCS, "file.zip"),
-     ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
-     ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
-     ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip")])
+    [
+        ("gcs://file.zip", Protocol.GCS, "file.zip"),
+        ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
+        ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
+        ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
+    ],
+)
 def test_parsing(parsing_tuple):
     uri, protocol, package_name = parsing_tuple
     parsed_protocol, parsed_package_name = parse_uri(uri)

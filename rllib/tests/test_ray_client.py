@@ -31,6 +31,7 @@ class TestRayClient(unittest.TestCase):
             }
             resources = ppo.PPOTrainer.default_resource_request(config)
             from ray.rllib.examples.custom_train_fn import my_train_fn
+
             tune.run(my_train_fn, resources_per_trial=resources, config=config)
 
     def test_cartpole_lstm(self):
@@ -58,11 +59,12 @@ class TestRayClient(unittest.TestCase):
             config["env"] = "CartPole-v0"
 
             from ray.rllib.examples.custom_experiment import experiment
+
             tune.run(
                 experiment,
                 config=config,
-                resources_per_trial=ppo.PPOTrainer.default_resource_request(
-                    config))
+                resources_per_trial=ppo.PPOTrainer.default_resource_request(config),
+            )
 
 
 if __name__ == "__main__":

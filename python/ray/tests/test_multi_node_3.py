@@ -5,9 +5,15 @@ import sys
 
 import ray
 from ray._private.test_utils import (
-    check_call_ray, run_string_as_driver, run_string_as_driver_nonblocking,
-    wait_for_children_of_pid, wait_for_children_of_pid_to_exit,
-    wait_for_children_names_of_pid, kill_process_by_name, Semaphore)
+    check_call_ray,
+    run_string_as_driver,
+    run_string_as_driver_nonblocking,
+    wait_for_children_of_pid,
+    wait_for_children_of_pid_to_exit,
+    wait_for_children_names_of_pid,
+    kill_process_by_name,
+    Semaphore,
+)
 
 
 def test_calling_start_ray_head(call_ray_stop_only):
@@ -21,30 +27,51 @@ def test_calling_start_ray_head(call_ray_stop_only):
     check_call_ray(["stop"])
 
     # Test starting Ray with a node IP address specified.
-    check_call_ray(
-        ["start", "--head", "--node-ip-address", "127.0.0.1", "--port", "0"])
+    check_call_ray(["start", "--head", "--node-ip-address", "127.0.0.1", "--port", "0"])
     check_call_ray(["stop"])
 
     # Test starting Ray with a system config parameter set.
-    check_call_ray([
-        "start", "--head", "--system-config",
-        "{\"metrics_report_interval_ms\":100}", "--port", "0"
-    ])
+    check_call_ray(
+        [
+            "start",
+            "--head",
+            "--system-config",
+            '{"metrics_report_interval_ms":100}',
+            "--port",
+            "0",
+        ]
+    )
     check_call_ray(["stop"])
 
     # Test starting Ray with the object manager and node manager ports
     # specified.
-    check_call_ray([
-        "start", "--head", "--object-manager-port", "22345",
-        "--node-manager-port", "54321", "--port", "0"
-    ])
+    check_call_ray(
+        [
+            "start",
+            "--head",
+            "--object-manager-port",
+            "22345",
+            "--node-manager-port",
+            "54321",
+            "--port",
+            "0",
+        ]
+    )
     check_call_ray(["stop"])
 
     # Test starting Ray with the worker port range specified.
-    check_call_ray([
-        "start", "--head", "--min-worker-port", "51000", "--max-worker-port",
-        "51050", "--port", "0"
-    ])
+    check_call_ray(
+        [
+            "start",
+            "--head",
+            "--min-worker-port",
+            "51000",
+            "--max-worker-port",
+            "51050",
+            "--port",
+            "0",
+        ]
+    )
     check_call_ray(["stop"])
 
     # Test starting Ray with a worker port list.
@@ -70,29 +97,39 @@ def test_calling_start_ray_head(call_ray_stop_only):
     check_call_ray(["stop"])
 
     # Test starting Ray with redis shard ports specified.
-    check_call_ray([
-        "start", "--head", "--redis-shard-ports", "6380,6381,6382", "--port",
-        "0"
-    ])
+    check_call_ray(
+        ["start", "--head", "--redis-shard-ports", "6380,6381,6382", "--port", "0"]
+    )
     check_call_ray(["stop"])
 
     # Test starting Ray with all arguments specified.
-    check_call_ray([
-        "start", "--head", "--redis-shard-ports", "6380,6381,6382",
-        "--object-manager-port", "22345", "--num-cpus", "2", "--num-gpus", "0",
-        "--resources", "{\"Custom\": 1}", "--port", "0"
-    ])
+    check_call_ray(
+        [
+            "start",
+            "--head",
+            "--redis-shard-ports",
+            "6380,6381,6382",
+            "--object-manager-port",
+            "22345",
+            "--num-cpus",
+            "2",
+            "--num-gpus",
+            "0",
+            "--resources",
+            '{"Custom": 1}',
+            "--port",
+            "0",
+        ]
+    )
     check_call_ray(["stop"])
 
     # Test starting Ray with invalid external address.
     # It will fall back to creating a new one.
-    check_call_ray(
-        ["start", "--head", "--address", "127.0.0.1:6379", "--port", "0"])
+    check_call_ray(["start", "--head", "--address", "127.0.0.1:6379", "--port", "0"])
     check_call_ray(["stop"])
 
     # Test --block. Killing a child process should cause the command to exit.
-    blocked = subprocess.Popen(
-        ["ray", "start", "--head", "--block", "--port", "0"])
+    blocked = subprocess.Popen(["ray", "start", "--head", "--block", "--port", "0"])
 
     wait_for_children_names_of_pid(blocked.pid, ["raylet"], timeout=30)
 
@@ -105,8 +142,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
     # Test --block. Killing the command should clean up all child processes.
-    blocked = subprocess.Popen(
-        ["ray", "start", "--head", "--block", "--port", "0"])
+    blocked = subprocess.Popen(["ray", "start", "--head", "--block", "--port", "0"])
     blocked.poll()
     assert blocked.returncode is None
 
@@ -121,7 +157,8 @@ def test_calling_start_ray_head(call_ray_stop_only):
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head --num-cpus=1 " + "--node-ip-address=localhost"],
-    indirect=True)
+    indirect=True,
+)
 def test_using_hostnames(call_ray_start):
     ray.init(_node_ip_address="localhost", address="localhost:6379")
 
@@ -140,7 +177,9 @@ def test_connecting_in_local_case(ray_start_regular):
 import ray
 ray.init(address="{}")
 print("success")
-""".format(address_info["redis_address"])
+""".format(
+        address_info["redis_address"]
+    )
 
     out = run_string_as_driver(driver_script)
     # Make sure the other driver succeeded.
@@ -184,7 +223,9 @@ tune.run_experiments({{
     }}
 }})
 print("success")
-""".format(address_info["redis_address"])
+""".format(
+        address_info["redis_address"]
+    )
 
     for i in range(2):
         out = run_string_as_driver(driver_script)
@@ -214,7 +255,9 @@ def g():
 g.remote()
 time.sleep(1)
 print("success")
-""".format(address)
+""".format(
+        address
+    )
 
     # Create some drivers and let them exit and make sure everything is
     # still alive.
@@ -238,7 +281,9 @@ def g():
 g.remote()
 time.sleep(1)
 print("success")
-""".format(address)
+""".format(
+        address
+    )
 
     # Create some drivers and let them exit and make sure everything is
     # still alive.
@@ -265,8 +310,7 @@ print("success")
     # still alive.
     for _ in range(3):
         nonexistent_id = ray.ObjectRef.from_random()
-        driver_script = driver_script_template.format(address,
-                                                      nonexistent_id.hex())
+        driver_script = driver_script_template.format(address, nonexistent_id.hex())
         out = run_string_as_driver(driver_script)
         # Simulate the nonexistent dependency becoming available.
         ray.worker.global_worker.put_object(None, nonexistent_id)
@@ -290,8 +334,7 @@ print("success")
     # still alive.
     for _ in range(3):
         nonexistent_id = ray.ObjectRef.from_random()
-        driver_script = driver_script_template.format(address,
-                                                      nonexistent_id.hex())
+        driver_script = driver_script_template.format(address, nonexistent_id.hex())
         out = run_string_as_driver(driver_script)
         # Simulate the nonexistent dependency becoming available.
         ray.worker.global_worker.put_object(None, nonexistent_id)
@@ -353,9 +396,11 @@ ray.get(main_wait.release.remote())
     """
 
     p1 = run_string_as_driver_nonblocking(
-        driver_script_template.format(address, "driver1_wait", "1", "2"))
+        driver_script_template.format(address, "driver1_wait", "1", "2")
+    )
     p2 = run_string_as_driver_nonblocking(
-        driver_script_template.format(address, "driver2_wait", "3", "4"))
+        driver_script_template.format(address, "driver2_wait", "3", "4")
+    )
 
     ray.get(main_wait.acquire.remote())
     ray.get(main_wait.acquire.remote())
@@ -391,6 +436,7 @@ ray.get(main_wait.release.remote())
 
 if __name__ == "__main__":
     import pytest
+
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"

@@ -34,9 +34,13 @@ class CollectionCollector(Collector):
 
 
 class OutputCollector(Collector):
-    def __init__(self, writer: DataWriter, channel_ids: typing.List[str],
-                 target_actors: typing.List[ActorHandle],
-                 partition_func: partition.Partition):
+    def __init__(
+        self,
+        writer: DataWriter,
+        channel_ids: typing.List[str],
+        target_actors: typing.List[ActorHandle],
+        partition_func: partition.Partition,
+    ):
         self._writer = writer
         self._channel_ids = [ChannelID(id_str) for id_str in channel_ids]
         self._target_languages = []
@@ -46,35 +50,36 @@ class OutputCollector(Collector):
             elif actor._ray_actor_language == Language.JAVA:
                 self._target_languages.append(function.Language.JAVA)
             else:
-                raise Exception("Unsupported language {}"
-                                .format(actor._ray_actor_language))
+                raise Exception(
+                    "Unsupported language {}".format(actor._ray_actor_language)
+                )
         self._partition_func = partition_func
         self.python_serializer = serialization.PythonSerializer()
         self.cross_lang_serializer = serialization.CrossLangSerializer()
         logger.info(
             "Create OutputCollector, channel_ids {}, partition_func {}".format(
-                channel_ids, partition_func))
+                channel_ids, partition_func
+            )
+        )
 
     def collect(self, record):
-        partitions = self._partition_func \
-            .partition(record, len(self._channel_ids))
+        partitions = self._partition_func.partition(record, len(self._channel_ids))
         python_buffer = None
         cross_lang_buffer = None
         for partition_index in partitions:
-            if self._target_languages[partition_index] == \
-                    function.Language.PYTHON:
+            if self._target_languages[partition_index] == function.Language.PYTHON:
                 # avoid repeated serialization
                 if python_buffer is None:
                     python_buffer = self.python_serializer.serialize(record)
                 self._writer.write(
                     self._channel_ids[partition_index],
-                    bytes([serialization.PYTHON_TYPE_ID]) + python_buffer)
+                    bytes([serialization.PYTHON_TYPE_ID]) + python_buffer,
+                )
             else:
                 # avoid repeated serialization
                 if cross_lang_buffer is None:
-                    cross_lang_buffer = self.cross_lang_serializer.serialize(
-                        record)
+                    cross_lang_buffer = self.cross_lang_serializer.serialize(record)
                 self._writer.write(
                     self._channel_ids[partition_index],
-                    bytes([serialization.CROSS_LANG_TYPE_ID]) +
-                    cross_lang_buffer)
+                    bytes([serialization.CROSS_LANG_TYPE_ID]) + cross_lang_buffer,
+                )

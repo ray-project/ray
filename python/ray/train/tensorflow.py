@@ -32,20 +32,14 @@ def setup_tensorflow_environment(worker_addresses: List[str], index: int):
         index (int): Index (i.e. world rank) of the current worker.
     """
     tf_config = {
-        "cluster": {
-            "worker": worker_addresses
-        },
-        "task": {
-            "type": "worker",
-            "index": index
-        }
+        "cluster": {"worker": worker_addresses},
+        "task": {"type": "worker", "index": index},
     }
     os.environ["TF_CONFIG"] = json.dumps(tf_config)
 
 
 class TensorflowBackend(Backend):
-    def on_start(self, worker_group: WorkerGroup,
-                 backend_config: TensorflowConfig):
+    def on_start(self, worker_group: WorkerGroup, backend_config: TensorflowConfig):
         # Compute URL for initializing distributed setup.
         def get_url():
             address, port = get_address_and_port()
@@ -58,15 +52,17 @@ class TensorflowBackend(Backend):
         for i in range(len(worker_group)):
             setup_futures.append(
                 worker_group.execute_single_async(
-                    i,
-                    setup_tensorflow_environment,
-                    worker_addresses=urls,
-                    index=i))
+                    i, setup_tensorflow_environment, worker_addresses=urls, index=i
+                )
+            )
         ray.get(setup_futures)
 
-    def handle_failure(self, worker_group: WorkerGroup,
-                       failed_worker_indexes: List[int],
-                       backend_config: BackendConfig):
+    def handle_failure(
+        self,
+        worker_group: WorkerGroup,
+        failed_worker_indexes: List[int],
+        backend_config: BackendConfig,
+    ):
         """Failure handling for Tensorflow.
 
         Instead of restarting all workers, the failed workers are

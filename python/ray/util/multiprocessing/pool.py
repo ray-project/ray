@@ -10,6 +10,7 @@ import queue
 import copy
 import gc
 import sys
+
 try:
     from joblib.parallel import BatchedCalls, parallel_backend
     from joblib._parallel_backends import SafeFunction
@@ -27,8 +28,8 @@ RAY_ADDRESS_ENV = "RAY_ADDRESS"
 
 
 def _put_in_dict_registry(
-        obj: Any,
-        registry_hashable: Dict[Hashable, ray.ObjectRef]) -> ray.ObjectRef:
+    obj: Any, registry_hashable: Dict[Hashable, ray.ObjectRef]
+) -> ray.ObjectRef:
     if obj not in registry_hashable:
         ret = ray.put(obj)
         registry_hashable[obj] = ret
@@ -38,7 +39,8 @@ def _put_in_dict_registry(
 
 
 def _put_in_list_registry(
-        obj: Any, registry: List[Tuple[Any, ray.ObjectRef]]) -> ray.ObjectRef:
+    obj: Any, registry: List[Tuple[Any, ray.ObjectRef]]
+) -> ray.ObjectRef:
     try:
         ret = next((ref for o, ref in registry if o is obj))
     except StopIteration:
@@ -48,9 +50,9 @@ def _put_in_list_registry(
 
 
 def ray_put_if_needed(
-        obj: Any,
-        registry: Optional[List[Tuple[Any, ray.ObjectRef]]] = None,
-        registry_hashable: Optional[Dict[Hashable, ray.ObjectRef]] = None
+    obj: Any,
+    registry: Optional[List[Tuple[Any, ray.ObjectRef]]] = None,
+    registry_hashable: Optional[Dict[Hashable, ray.ObjectRef]] = None,
 ) -> ray.ObjectRef:
     """ray.put obj in object store if it's not an ObjRef and bigger than 100 bytes,
     with support for list and dict registries"""
@@ -85,10 +87,10 @@ if BatchedCalls is not None:
         and their ObjectRefs."""
 
         def put_items_in_object_store(
-                self,
-                registry: Optional[List[Tuple[Any, ray.ObjectRef]]] = None,
-                registry_hashable: Optional[Dict[Hashable,
-                                                 ray.ObjectRef]] = None):
+            self,
+            registry: Optional[List[Tuple[Any, ray.ObjectRef]]] = None,
+            registry_hashable: Optional[Dict[Hashable, ray.ObjectRef]] = None,
+        ):
             """Puts all applicable (kw)args in self.items in object store
 
             Takes two registries - list for unhashable objects and dict
@@ -102,8 +104,7 @@ if BatchedCalls is not None:
             new_items = []
             for func, args, kwargs in self.items:
                 args = [
-                    ray_put_if_needed(arg, registry, registry_hashable)
-                    for arg in args
+                    ray_put_if_needed(arg, registry, registry_hashable) for arg in args
                 ]
                 kwargs = {
                     k: ray_put_if_needed(v, registry, registry_hashable)
@@ -124,8 +125,8 @@ if BatchedCalls is not None:
                 return [
                     func(
                         *[ray_get_if_needed(arg) for arg in args],
-                        **{k: ray_get_if_needed(v)
-                           for k, v in kwargs.items()})
+                        **{k: ray_get_if_needed(v) for k, v in kwargs.items()},
+                    )
                     for func, args, kwargs in self.items
                 ]
 
@@ -136,9 +137,11 @@ if BatchedCalls is not None:
             if self._reducer_callback is not None:
                 self._reducer_callback()
             # no need pickle the callback.
-            return (RayBatchedCalls, (self.items, (self._backend,
-                                                   self._n_jobs), None,
-                                      self._pickle_cache))
+            return (
+                RayBatchedCalls,
+                (self.items, (self._backend, self._n_jobs), None, self._pickle_cache),
+            )
+
 else:
     RayBatchedCalls = None
 
@@ -154,12 +157,14 @@ class PoolTaskError(Exception):
 
 
 class ResultThread(threading.Thread):
-    def __init__(self,
-                 object_refs,
-                 single_result=False,
-                 callback=None,
-                 error_callback=None,
-                 total_object_refs=None):
+    def __init__(
+        self,
+        object_refs,
+        single_result=False,
+        callback=None,
+        error_callback=None,
+        total_object_refs=None,
+    ):
         threading.Thread.__init__(self, daemon=True)
         self._got_error = False
         self._object_refs = []
@@ -265,14 +270,13 @@ class AsyncResult:
     This should not be constructed directly.
     """
 
-    def __init__(self,
-                 chunk_object_refs,
-                 callback=None,
-                 error_callback=None,
-                 single_result=False):
+    def __init__(
+        self, chunk_object_refs, callback=None, error_callback=None, single_result=False
+    ):
         self._single_result = single_result
-        self._result_thread = ResultThread(chunk_object_refs, single_result,
-                                           callback, error_callback)
+        self._result_thread = ResultThread(
+            chunk_object_refs, single_result, callback, error_callback
+        )
         self._result_thread.start()
 
     def wait(self, timeout=None):
@@ -340,8 +344,7 @@ class IMapIterator:
         self._iterator = iter(iterable)
         self._chunksize = chunksize or pool._calculate_chunksize(iterable)
         self._total_chunks = div_round_up(len(iterable), chunksize)
-        self._result_thread = ResultThread(
-            [], total_object_refs=self._total_chunks)
+        self._result_thread = ResultThread([], total_object_refs=self._total_chunks)
         self._result_thread.start()
 
         for _ in range(len(self._pool._actor_pool)):
@@ -353,8 +356,9 @@ class IMapIterator:
             return
 
         actor_index = len(self._submitted_chunks) % len(self._pool._actor_pool)
-        new_chunk_id = self._pool._submit_chunk(self._func, self._iterator,
-                                                self._chunksize, actor_index)
+        new_chunk_id = self._pool._submit_chunk(
+            self._func, self._iterator, self._chunksize, actor_index
+        )
         self._submitted_chunks.append(False)
         self._result_thread.add_object_ref(new_chunk_id)
 
@@ -395,11 +399,11 @@ class OrderedIMapIterator(IMapIterator):
                 if timeout is not None:
                     timeout = max(0, timeout - (time.time() - start))
 
-            while self._next_chunk_index < len(
-                    self._submitted_chunks
-            ) and self._submitted_chunks[self._next_chunk_index]:
-                for result in self._result_thread.result(
-                        self._next_chunk_index):
+            while (
+                self._next_chunk_index < len(self._submitted_chunks)
+                and self._submitted_chunks[self._next_chunk_index]
+            ):
+                for result in self._result_thread.result(self._next_chunk_index):
                     self._ready_objects.append(result)
                 self._next_chunk_index += 1
 
@@ -475,13 +479,15 @@ class Pool:
             also be specified using the `RAY_ADDRESS` environment variable.
     """
 
-    def __init__(self,
-                 processes=None,
-                 initializer=None,
-                 initargs=None,
-                 maxtasksperchild=None,
-                 context=None,
-                 ray_address=None):
+    def __init__(
+        self,
+        processes=None,
+        initializer=None,
+        initargs=None,
+        maxtasksperchild=None,
+        context=None,
+        ray_address=None,
+    ):
         self._closed = False
         self._initializer = initializer
         self._initargs = initargs
@@ -491,9 +497,11 @@ class Pool:
         self._registry_hashable: Dict[Hashable, ray.ObjectRef] = {}
 
         if context and log_once("context_argument_warning"):
-            logger.warning("The 'context' argument is not supported using "
-                           "ray. Please refer to the documentation for how "
-                           "to control ray initialization.")
+            logger.warning(
+                "The 'context' argument is not supported using "
+                "ray. Please refer to the documentation for how "
+                "to control ray initialization."
+            )
 
         processes = self._init_ray(processes, ray_address)
         self._start_actor_pool(processes)
@@ -505,12 +513,14 @@ class Pool:
         if not ray.is_initialized():
             # Cluster mode.
             if ray_address is None and RAY_ADDRESS_ENV in os.environ:
-                logger.info("Connecting to ray cluster at address='{}'".format(
-                    os.environ[RAY_ADDRESS_ENV]))
+                logger.info(
+                    "Connecting to ray cluster at address='{}'".format(
+                        os.environ[RAY_ADDRESS_ENV]
+                    )
+                )
                 ray.init()
             elif ray_address is not None:
-                logger.info(
-                    f"Connecting to ray cluster at address='{ray_address}'")
+                logger.info(f"Connecting to ray cluster at address='{ray_address}'")
                 ray.init(address=ray_address)
             # Local mode.
             else:
@@ -523,10 +533,11 @@ class Pool:
         if processes <= 0:
             raise ValueError("Processes in the pool must be >0.")
         if ray_cpus < processes:
-            raise ValueError("Tried to start a pool with {} processes on an "
-                             "existing ray cluster, but there are only {} "
-                             "CPUs in the ray cluster.".format(
-                                 processes, ray_cpus))
+            raise ValueError(
+                "Tried to start a pool with {} processes on an "
+                "existing ray cluster, but there are only {} "
+                "CPUs in the ray cluster.".format(processes, ray_cpus)
+            )
 
         return processes
 
@@ -543,7 +554,8 @@ class Pool:
         _, deleting = ray.wait(
             self._actor_deletion_ids,
             num_returns=len(self._actor_deletion_ids),
-            timeout=timeout)
+            timeout=timeout,
+        )
         self._actor_deletion_ids = deleting
 
     def _stop_actor(self, actor):
@@ -589,12 +601,14 @@ class Pool:
 
         return self.apply_async(func, args, kwargs).get()
 
-    def apply_async(self,
-                    func,
-                    args=None,
-                    kwargs=None,
-                    callback: Callable[[Any], None] = None,
-                    error_callback: Callable[[Exception], None] = None):
+    def apply_async(
+        self,
+        func,
+        args=None,
+        kwargs=None,
+        callback: Callable[[Any], None] = None,
+        error_callback: Callable[[Exception], None] = None,
+    ):
         """Run the given function on a random actor process and return an
         asynchronous interface to the result.
 
@@ -614,13 +628,10 @@ class Pool:
 
         self._check_running()
         func = self._convert_to_ray_batched_calls_if_needed(func)
-        object_ref = self._run_batch(self._random_actor_index(), func,
-                                     [(args, kwargs)])
-        return AsyncResult(
-            [object_ref], callback, error_callback, single_result=True)
+        object_ref = self._run_batch(self._random_actor_index(), func, [(args, kwargs)])
+        return AsyncResult([object_ref], callback, error_callback, single_result=True)
 
-    def _convert_to_ray_batched_calls_if_needed(self,
-                                                func: Callable) -> Callable:
+    def _convert_to_ray_batched_calls_if_needed(self, func: Callable) -> Callable:
         """Convert joblib's BatchedCalls to RayBatchedCalls for ObjectRef caching.
 
         This converts joblib's BatchedCalls callable, which is a collection of
@@ -643,12 +654,15 @@ class Pool:
         if isinstance(func, SafeFunction):
             func = func.func
         if isinstance(func, BatchedCalls):
-            func = RayBatchedCalls(func.items, (func._backend, func._n_jobs),
-                                   func._reducer_callback, func._pickle_cache)
+            func = RayBatchedCalls(
+                func.items,
+                (func._backend, func._n_jobs),
+                func._reducer_callback,
+                func._pickle_cache,
+            )
             # go through all the items and replace args and kwargs with
             # ObjectRefs, caching them in registries
-            func.put_items_in_object_store(self._registry,
-                                           self._registry_hashable)
+            func.put_items_in_object_store(self._registry, self._registry_hashable)
         else:
             func = orginal_func
         return func
@@ -659,18 +673,13 @@ class Pool:
             chunksize += 1
         return chunksize
 
-    def _submit_chunk(self,
-                      func,
-                      iterator,
-                      chunksize,
-                      actor_index,
-                      unpack_args=False):
+    def _submit_chunk(self, func, iterator, chunksize, actor_index, unpack_args=False):
         chunk = []
         while len(chunk) < chunksize:
             try:
                 args = next(iterator)
                 if not unpack_args:
-                    args = (args, )
+                    args = (args,)
                 chunk.append((args, {}))
             except StopIteration:
                 break
@@ -680,8 +689,7 @@ class Pool:
 
         return self._run_batch(actor_index, func, chunk)
 
-    def _chunk_and_run(self, func, iterable, chunksize=None,
-                       unpack_args=False):
+    def _chunk_and_run(self, func, iterable, chunksize=None, unpack_args=False):
         if not hasattr(iterable, "__len__"):
             iterable = list(iterable)
 
@@ -694,24 +702,25 @@ class Pool:
             actor_index = len(chunk_object_refs) % len(self._actor_pool)
             chunk_object_refs.append(
                 self._submit_chunk(
-                    func,
-                    iterator,
-                    chunksize,
-                    actor_index,
-                    unpack_args=unpack_args))
+                    func, iterator, chunksize, actor_index, unpack_args=unpack_args
+                )
+            )
 
         return chunk_object_refs
 
-    def _map_async(self,
-                   func,
-                   iterable,
-                   chunksize=None,
-                   unpack_args=False,
-                   callback=None,
-                   error_callback=None):
+    def _map_async(
+        self,
+        func,
+        iterable,
+        chunksize=None,
+        unpack_args=False,
+        callback=None,
+        error_callback=None,
+    ):
         self._check_running()
         object_refs = self._chunk_and_run(
-            func, iterable, chunksize=chunksize, unpack_args=unpack_args)
+            func, iterable, chunksize=chunksize, unpack_args=unpack_args
+        )
         return AsyncResult(object_refs, callback, error_callback)
 
     def map(self, func, iterable, chunksize=None):
@@ -730,14 +739,17 @@ class Pool:
         """
 
         return self._map_async(
-            func, iterable, chunksize=chunksize, unpack_args=False).get()
+            func, iterable, chunksize=chunksize, unpack_args=False
+        ).get()
 
-    def map_async(self,
-                  func,
-                  iterable,
-                  chunksize=None,
-                  callback: Callable[[List], None] = None,
-                  error_callback: Callable[[Exception], None] = None):
+    def map_async(
+        self,
+        func,
+        iterable,
+        chunksize=None,
+        callback: Callable[[List], None] = None,
+        error_callback: Callable[[Exception], None] = None,
+    ):
         """Run the given function on each element in the iterable round-robin
         on the actor processes and return an asynchronous interface to the
         results.
@@ -765,7 +777,8 @@ class Pool:
             chunksize=chunksize,
             unpack_args=False,
             callback=callback,
-            error_callback=error_callback)
+            error_callback=error_callback,
+        )
 
     def starmap(self, func, iterable, chunksize=None):
         """Same as `map`, but unpacks each element of the iterable as the
@@ -773,13 +786,16 @@ class Pool:
         """
 
         return self._map_async(
-            func, iterable, chunksize=chunksize, unpack_args=True).get()
+            func, iterable, chunksize=chunksize, unpack_args=True
+        ).get()
 
-    def starmap_async(self,
-                      func,
-                      iterable,
-                      callback: Callable[[List], None] = None,
-                      error_callback: Callable[[Exception], None] = None):
+    def starmap_async(
+        self,
+        func,
+        iterable,
+        callback: Callable[[List], None] = None,
+        error_callback: Callable[[Exception], None] = None,
+    ):
         """Same as `map_async`, but unpacks each element of the iterable as the
         arguments to func like: [func(*args) for args in iterable].
         """
@@ -789,7 +805,8 @@ class Pool:
             iterable,
             unpack_args=True,
             callback=callback,
-            error_callback=error_callback)
+            error_callback=error_callback,
+        )
 
     def imap(self, func, iterable, chunksize=1):
         """Same as `map`, but only submits one batch of tasks to each actor

@@ -11,12 +11,15 @@ def parse_script_args():
         "--no-start",
         action="store_true",
         default=False,
-        help=("If set, node killer won't be starting to kill nodes when "
-              "the script is done. Driver needs to manually "
-              "obtain the node killer handle and invoke run method to "
-              "start killing nodes. If not set, as soon as "
-              "the script is done, nodes will be killed every "
-              "--node-kill-interval seconds."))
+        help=(
+            "If set, node killer won't be starting to kill nodes when "
+            "the script is done. Driver needs to manually "
+            "obtain the node killer handle and invoke run method to "
+            "start killing nodes. If not set, as soon as "
+            "the script is done, nodes will be killed every "
+            "--node-kill-interval seconds."
+        ),
+    )
     return parser.parse_known_args()
 
 
@@ -31,7 +34,8 @@ def main():
         args.node_kill_interval,
         namespace="release_test_namespace",
         lifetime="detached",
-        no_start=args.no_start)
+        no_start=args.no_start,
+    )
     print("Successfully deployed a node killer.")
 
 

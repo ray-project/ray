@@ -20,8 +20,12 @@ import ray
 from lightgbm_ray import RayParams
 
 
-from ray.util.lightgbm.release_test_util import train_ray, \
-    FailureState, FailureInjection, TrackingCallback
+from ray.util.lightgbm.release_test_util import (
+    train_ray,
+    FailureState,
+    FailureInjection,
+    TrackingCallback,
+)
 
 if __name__ == "__main__":
     ray.init(address="auto")
@@ -29,7 +33,8 @@ if __name__ == "__main__":
     failure_state = FailureState.remote()
 
     ray_params = RayParams(
-        max_actor_restarts=2, num_actors=4, cpus_per_actor=4, gpus_per_actor=0)
+        max_actor_restarts=2, num_actors=4, cpus_per_actor=4, gpus_per_actor=0
+    )
 
     _, additional_results, _ = train_ray(
         path="/data/classification.parquet",
@@ -43,9 +48,12 @@ if __name__ == "__main__":
         callbacks=[
             TrackingCallback(),
             FailureInjection(
-                id="first_fail", state=failure_state, ranks=[1], iteration=14),
+                id="first_fail", state=failure_state, ranks=[1], iteration=14
+            ),
             FailureInjection(
-                id="second_fail", state=failure_state, ranks=[0], iteration=34)
-        ])
+                id="second_fail", state=failure_state, ranks=[0], iteration=34
+            ),
+        ],
+    )
 
     print("PASSED.")

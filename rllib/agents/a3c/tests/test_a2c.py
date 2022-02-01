@@ -2,8 +2,11 @@ import unittest
 
 import ray
 import ray.rllib.agents.a3c as a3c
-from ray.rllib.utils.test_utils import check_compute_single_action, \
-    check_train_results, framework_iterator
+from ray.rllib.utils.test_utils import (
+    check_compute_single_action,
+    check_train_results,
+    framework_iterator,
+)
 
 
 class TestA2C(unittest.TestCase):
@@ -61,4 +64,5 @@ class TestA2C(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -10,8 +10,7 @@ import torch.optim as optim
 import ray
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
-from ray.tune.examples.mnist_pytorch import (train, test, get_data_loaders,
-                                             ConvNet)
+from ray.tune.examples.mnist_pytorch import train, test, get_data_loaders, ConvNet
 
 # Change these values if you want the training to run quicker or slower.
 EPOCH_SIZE = 512
@@ -20,14 +19,12 @@ TEST_SIZE = 256
 # Training settings
 parser = argparse.ArgumentParser(description="PyTorch MNIST Example")
 parser.add_argument(
-    "--use-gpu",
-    action="store_true",
-    default=False,
-    help="enables CUDA training")
+    "--use-gpu", action="store_true", default=False, help="enables CUDA training"
+)
+parser.add_argument("--ray-address", type=str, help="The Redis address of the cluster.")
 parser.add_argument(
-    "--ray-address", type=str, help="The Redis address of the cluster.")
-parser.add_argument(
-    "--smoke-test", action="store_true", help="Finish quickly for testing")
+    "--smoke-test", action="store_true", help="Finish quickly for testing"
+)
 
 
 # Below comments are for documentation purposes only.
@@ -75,10 +72,7 @@ if __name__ == "__main__":
             "mean_accuracy": 0.95,
             "training_iteration": 3 if args.smoke_test else 20,
         },
-        resources_per_trial={
-            "cpu": 3,
-            "gpu": int(args.use_gpu)
-        },
+        resources_per_trial={"cpu": 3, "gpu": int(args.use_gpu)},
         num_samples=1 if args.smoke_test else 20,
         checkpoint_at_end=True,
         checkpoint_freq=3,
@@ -86,6 +80,7 @@ if __name__ == "__main__":
             "args": args,
             "lr": tune.uniform(0.001, 0.1),
             "momentum": tune.uniform(0.1, 0.9),
-        })
+        },
+    )
 
     print("Best config is:", analysis.best_config)

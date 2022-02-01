@@ -24,18 +24,19 @@ class TestPerf(unittest.TestCase):
             ev = RolloutWorker(
                 env_creator=lambda _: gym.make("CartPole-v0"),
                 policy_spec=MockPolicy,
-                rollout_fragment_length=100)
+                rollout_fragment_length=100,
+            )
             start = time.time()
             count = 0
             while time.time() - start < 1:
                 count += ev.sample().count
             print()
-            print("Samples per second {}".format(
-                count / (time.time() - start)))
+            print("Samples per second {}".format(count / (time.time() - start)))
             print()
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

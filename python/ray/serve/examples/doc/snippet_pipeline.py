@@ -2,9 +2,11 @@
 
 # __import_start__
 from ray.serve import pipeline
+
 # __import_end__
 
 import ray
+
 ray.init(num_cpus=16)
 
 
@@ -30,7 +32,7 @@ def add_one(inp):
 
 @pipeline.step
 def double(inp):
-    return inp**2
+    return inp ** 2
 
 
 my_node = double(add_one(pipeline.INPUT))
@@ -79,14 +81,15 @@ def preprocess(img_bytes):
     import PIL.Image
     import io
 
-    preprocessor = transforms.Compose([
-        transforms.Resize(224),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Lambda(lambda t: t[:3, ...]),  # remove alpha channel
-        transforms.Normalize(
-            mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
+    preprocessor = transforms.Compose(
+        [
+            transforms.Resize(224),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Lambda(lambda t: t[:3, ...]),  # remove alpha channel
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
     return preprocessor(PIL.Image.open(io.BytesIO(img_bytes))).unsqueeze(0)
 
 
@@ -94,17 +97,18 @@ def preprocess(img_bytes):
 class ClassificationModel:
     def __init__(self, model_name):
         import torchvision.models.resnet
-        self.model = getattr(torchvision.models.resnet,
-                             model_name)(pretrained=True)
+
+        self.model = getattr(torchvision.models.resnet, model_name)(pretrained=True)
 
     def __call__(self, inp_tensor):
         import torch
+
         with torch.no_grad():
             output = self.model(inp_tensor).squeeze()
             sorted_value, sorted_idx = output.sort()
         return {
             "top_5_categories": sorted_idx.numpy().tolist()[-5:],
-            "top_5_scores": sorted_value.numpy().tolist()[-5:]
+            "top_5_scores": sorted_value.numpy().tolist()[-5:],
         }
 
 
@@ -114,12 +118,12 @@ import numpy as np
 
 # Generate dummy input
 _buffer = io.BytesIO()
-PIL.Image.fromarray(
-    np.zeros((720, 720, 3), int), mode="RGB").save(_buffer, "png")
+PIL.Image.fromarray(np.zeros((720, 720, 3), int), mode="RGB").save(_buffer, "png")
 dummy_png_bytes = _buffer.getvalue()
 
-sequential_pipeline = (ClassificationModel("resnet18")(preprocess(
-    pipeline.INPUT)).deploy())
+sequential_pipeline = ClassificationModel("resnet18")(
+    preprocess(pipeline.INPUT)
+).deploy()
 result = sequential_pipeline.call(dummy_png_bytes)
 assert result["top_5_categories"] == [898, 412, 600, 731, 463]
 # __preprocessing_pipeline_example_end__
@@ -140,8 +144,7 @@ def combine_output(*classifier_outputs):
 
 preprocess_node = preprocess(pipeline.INPUT)
 model_nodes = [
-    ClassificationModel(model)(preprocess_node)
-    for model in ["resnet18", "resnet34"]
+    ClassificationModel(model)(preprocess_node) for model in ["resnet18", "resnet34"]
 ]
 ensemble_pipeline = combine_output(*model_nodes).deploy()
 result = ensemble_pipeline.call(dummy_png_bytes)
@@ -162,7 +165,8 @@ def dynamic_weighting_combine(*classifier_outputs):
     weighted_output = average(classifier_outputs, my_weights)
     my_logger.log(weighted_output)
     my_api_response = my_response_model.reshape(
-        [out.astype("int") for out in weighted_output])
+        [out.astype("int") for out in weighted_output]
+    )
     return my_api_response
 
 

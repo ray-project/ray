@@ -55,7 +55,8 @@ def run(smoke_test=False):
             },
             sort_by_metric=True,
             max_report_frequency=30,
-        ))
+        ),
+    )
 
 
 if __name__ == "__main__":
@@ -63,13 +64,15 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
         description="Tune+RLlib Example",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
 
     parser.add_argument(
         "--smoke-test",
         action="store_true",
         default=False,
-        help="Finish quickly for testing.")
+        help="Finish quickly for testing.",
+    )
 
     args = parser.parse_args()
 

@@ -116,7 +116,8 @@ class FunctionStopper(Stopper):
         if is_function and hasattr(fn, "stop_all"):
             raise ValueError(
                 "Stop object must be ray.tune.Stopper subclass to be detected "
-                "correctly.")
+                "correctly."
+            )
         return is_function
 
 
@@ -170,17 +171,18 @@ class ExperimentPlateauStopper(Stopper):
 
     def __init__(self, metric, std=0.001, top=10, mode="min", patience=0):
         if mode not in ("min", "max"):
-            raise ValueError("The mode parameter can only be"
-                             " either min or max.")
+            raise ValueError("The mode parameter can only be" " either min or max.")
         if not isinstance(top, int) or top <= 1:
-            raise ValueError("Top results to consider must be"
-                             " a positive integer greater than one.")
+            raise ValueError(
+                "Top results to consider must be"
+                " a positive integer greater than one."
+            )
         if not isinstance(patience, int) or patience < 0:
-            raise ValueError("Patience must be"
-                             " a strictly positive integer.")
+            raise ValueError("Patience must be" " a strictly positive integer.")
         if not isinstance(std, float) or std <= 0:
-            raise ValueError("The standard deviation must be"
-                             " a strictly positive float number.")
+            raise ValueError(
+                "The standard deviation must be" " a strictly positive float number."
+            )
         self._mode = mode
         self._metric = metric
         self._patience = patience
@@ -193,9 +195,9 @@ class ExperimentPlateauStopper(Stopper):
         """Return a boolean representing if the tuning has to stop."""
         self._top_values.append(result[self._metric])
         if self._mode == "min":
-            self._top_values = sorted(self._top_values)[:self._top]
+            self._top_values = sorted(self._top_values)[: self._top]
         else:
-            self._top_values = sorted(self._top_values)[-self._top:]
+            self._top_values = sorted(self._top_values)[-self._top :]
 
         # If the current iteration has to stop
         if self.has_plateaued():
@@ -210,8 +212,9 @@ class ExperimentPlateauStopper(Stopper):
         return self.stop_all()
 
     def has_plateaued(self):
-        return (len(self._top_values) == self._top
-                and np.std(self._top_values) <= self._std)
+        return (
+            len(self._top_values) == self._top and np.std(self._top_values) <= self._std
+        )
 
     def stop_all(self):
         """Return whether to stop and prevent trials from starting."""
@@ -244,13 +247,15 @@ class TrialPlateauStopper(Stopper):
             be lower than `metric_threshold` in order to early stop.
     """
 
-    def __init__(self,
-                 metric: str,
-                 std: float = 0.01,
-                 num_results: int = 4,
-                 grace_period: int = 4,
-                 metric_threshold: Optional[float] = None,
-                 mode: Optional[str] = None):
+    def __init__(
+        self,
+        metric: str,
+        std: float = 0.01,
+        num_results: int = 4,
+        grace_period: int = 4,
+        metric_threshold: Optional[float] = None,
+        mode: Optional[str] = None,
+    ):
         self._metric = metric
         self._mode = mode
 
@@ -264,11 +269,11 @@ class TrialPlateauStopper(Stopper):
                 raise ValueError(
                     f"When specifying a `metric_threshold`, the `mode` "
                     f"argument has to be one of [min, max]. "
-                    f"Got: {mode}")
+                    f"Got: {mode}"
+                )
 
         self._iter = defaultdict(lambda: 0)
-        self._trial_results = defaultdict(
-            lambda: deque(maxlen=self._num_results))
+        self._trial_results = defaultdict(lambda: deque(maxlen=self._num_results))
 
     def __call__(self, trial_id: str, result: Dict):
         metric_result = result.get(self._metric)
@@ -287,8 +292,7 @@ class TrialPlateauStopper(Stopper):
         if self._metric_threshold is not None:
             if self._mode == "min" and metric_result > self._metric_threshold:
                 return False
-            elif self._mode == "max" and \
-                    metric_result < self._metric_threshold:
+            elif self._mode == "max" and metric_result < self._metric_threshold:
                 return False
 
         # Calculate stdev of last `num_results` results
@@ -318,6 +322,7 @@ class TimeoutStopper(Stopper):
 
     def __init__(self, timeout):
         from datetime import timedelta
+
         if isinstance(timeout, timedelta):
             self._timeout_seconds = timeout.total_seconds()
         elif isinstance(timeout, (int, float)):
@@ -325,7 +330,8 @@ class TimeoutStopper(Stopper):
         else:
             raise ValueError(
                 "`timeout` parameter has to be either a number or a "
-                "`datetime.timedelta` object. Found: {}".format(type(timeout)))
+                "`datetime.timedelta` object. Found: {}".format(type(timeout))
+            )
 
         # To account for setup overhead, set the start time only after
         # the first call to `stop_all()`.
@@ -341,7 +347,9 @@ class TimeoutStopper(Stopper):
 
         now = time.time()
         if now - self._start >= self._timeout_seconds:
-            logger.info(f"Reached timeout of {self._timeout_seconds} seconds. "
-                        f"Stopping all trials.")
+            logger.info(
+                f"Reached timeout of {self._timeout_seconds} seconds. "
+                f"Stopping all trials."
+            )
             return True
         return False

@@ -6,8 +6,7 @@ from enum import Enum
 
 from ray.actor import ActorHandle
 from ray.streaming.generated import remote_call_pb2
-from ray.streaming.runtime.command\
-    import WorkerCommitReport, WorkerRollbackRequest
+from ray.streaming.runtime.command import WorkerCommitReport, WorkerRollbackRequest
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +57,9 @@ class RemoteCallMst:
     """
 
     @staticmethod
-    def request_job_worker_rollback(master: ActorHandle,
-                                    request: WorkerRollbackRequest):
+    def request_job_worker_rollback(
+        master: ActorHandle, request: WorkerRollbackRequest
+    ):
         logger.info("Remote call mst: request job worker rollback start.")
         request_pb = remote_call_pb2.BaseWorkerCmd()
         request_pb.actor_id = request.from_actor_id
@@ -69,16 +69,16 @@ class RemoteCallMst:
         rollback_request_pb.worker_hostname = os.uname()[1]
         rollback_request_pb.worker_pid = str(os.getpid())
         request_pb.detail.Pack(rollback_request_pb)
-        return_ids = master.requestJobWorkerRollback\
-            .remote(request_pb.SerializeToString())
+        return_ids = master.requestJobWorkerRollback.remote(
+            request_pb.SerializeToString()
+        )
         result = remote_call_pb2.BoolResult()
         result.ParseFromString(ray.get(return_ids))
         logger.info("Remote call mst: request job worker rollback finish.")
         return result.boolRes
 
     @staticmethod
-    def report_job_worker_commit(master: ActorHandle,
-                                 report: WorkerCommitReport):
+    def report_job_worker_commit(master: ActorHandle, report: WorkerCommitReport):
         logger.info("Remote call mst: report job worker commit start.")
         report_pb = remote_call_pb2.BaseWorkerCmd()
 
@@ -87,8 +87,7 @@ class RemoteCallMst:
         wk_commit = remote_call_pb2.WorkerCommitReport()
         wk_commit.commit_checkpoint_id = report.commit_checkpoint_id
         report_pb.detail.Pack(wk_commit)
-        return_id = master.reportJobWorkerCommit\
-            .remote(report_pb.SerializeToString())
+        return_id = master.reportJobWorkerCommit.remote(report_pb.SerializeToString())
         result = remote_call_pb2.BoolResult()
         result.ParseFromString(ray.get(return_id))
         logger.info("Remote call mst: report job worker commit finish.")

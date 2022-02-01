@@ -7,16 +7,22 @@ from ray._private.runtime_env.utils import RuntimeEnv
 from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
-    download_and_unpack_package, delete_package, get_uri_for_directory,
-    parse_uri, Protocol, upload_package_if_needed)
+    download_and_unpack_package,
+    delete_package,
+    get_uri_for_directory,
+    parse_uri,
+    Protocol,
+    upload_package_if_needed,
+)
 
 default_logger = logging.getLogger(__name__)
 
 
 def upload_working_dir_if_needed(
-        runtime_env: Dict[str, Any],
-        scratch_dir: str,
-        logger: Optional[logging.Logger] = default_logger) -> Dict[str, Any]:
+    runtime_env: Dict[str, Any],
+    scratch_dir: str,
+    logger: Optional[logging.Logger] = default_logger,
+) -> Dict[str, Any]:
     """Uploads the working_dir and replaces it with a URI.
 
     If the working_dir is already a URI, this is a no-op.
@@ -28,7 +34,8 @@ def upload_working_dir_if_needed(
     if not isinstance(working_dir, str) and not isinstance(working_dir, Path):
         raise TypeError(
             "working_dir must be a string or Path (either a local path "
-            f"or remote URI), got {type(working_dir)}.")
+            f"or remote URI), got {type(working_dir)}."
+        )
 
     if isinstance(working_dir, Path):
         working_dir = str(working_dir)
@@ -40,8 +47,7 @@ def upload_working_dir_if_needed(
         protocol, path = None, None
 
     if protocol is not None:
-        if protocol in Protocol.remote_protocols(
-        ) and not path.endswith(".zip"):
+        if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
             raise ValueError("Only .zip files supported for remote URIs.")
         return runtime_env
 
@@ -53,7 +59,8 @@ def upload_working_dir_if_needed(
         working_dir,
         include_parent_dir=False,
         excludes=excludes,
-        logger=logger)
+        logger=logger,
+    )
     runtime_env["working_dir"] = working_dir_uri
     return runtime_env
 
@@ -65,9 +72,9 @@ class WorkingDirManager:
             os.makedirs(self._resources_dir)
         assert _internal_kv_initialized()
 
-    def delete_uri(self,
-                   uri: str,
-                   logger: Optional[logging.Logger] = default_logger) -> bool:
+    def delete_uri(
+        self, uri: str, logger: Optional[logging.Logger] = default_logger
+    ) -> bool:
 
         deleted = delete_package(uri, self._resources_dir)
         if not deleted:
@@ -75,16 +82,19 @@ class WorkingDirManager:
 
         return deleted
 
-    def setup(self,
-              runtime_env: RuntimeEnv,
-              context: RuntimeEnvContext,
-              logger: Optional[logging.Logger] = default_logger):
+    def setup(
+        self,
+        runtime_env: RuntimeEnv,
+        context: RuntimeEnvContext,
+        logger: Optional[logging.Logger] = default_logger,
+    ):
         if not runtime_env.working_dir():
             return
 
         logger.info(f"Setup working dir for {runtime_env.working_dir()}")
         working_dir = download_and_unpack_package(
-            runtime_env.working_dir(), self._resources_dir, logger=logger)
+            runtime_env.working_dir(), self._resources_dir, logger=logger
+        )
         context.command_prefix += [f"cd {working_dir}"]
 
         # Insert the working_dir as the first entry in PYTHONPATH. This is

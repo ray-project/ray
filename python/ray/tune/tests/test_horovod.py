@@ -7,7 +7,10 @@ pytest.importorskip("horovod")
 
 try:
     from ray.tune.integration.horovod import (
-        DistributedTrainableCreator, _train_simple, _train_validate_session)
+        DistributedTrainableCreator,
+        _train_simple,
+        _train_validate_session,
+    )
 except ImportError:
     pass  # This shouldn't be reached - the test should be skipped.
 
@@ -40,16 +43,14 @@ def ray_connect_cluster():
 
 
 def test_single_step(ray_start_2_cpus):
-    trainable_cls = DistributedTrainableCreator(
-        _train_simple, num_hosts=1, num_slots=2)
+    trainable_cls = DistributedTrainableCreator(_train_simple, num_hosts=1, num_slots=2)
     trainer = trainable_cls()
     trainer.train()
     trainer.stop()
 
 
 def test_step_after_completion(ray_start_2_cpus):
-    trainable_cls = DistributedTrainableCreator(
-        _train_simple, num_hosts=1, num_slots=2)
+    trainable_cls = DistributedTrainableCreator(_train_simple, num_hosts=1, num_slots=2)
     trainer = trainable_cls(config={"epochs": 1})
     with pytest.raises(RuntimeError):
         for i in range(10):
@@ -80,7 +81,8 @@ def test_simple_tune(ray_start_4_cpus, enabled_checkpoint):
         trainable_cls,
         config={"enable_checkpoint": enabled_checkpoint},
         num_samples=2,
-        stop={"training_iteration": 2})
+        stop={"training_iteration": 2},
+    )
     assert analysis.trials[0].last_result["training_iteration"] == 2
     assert analysis.trials[0].has_checkpoint() == enabled_checkpoint
 
@@ -90,9 +92,9 @@ def test_resource_tune(ray_connect_cluster, use_gpu):
     if use_gpu and ray.cluster_resources().get("GPU", 0) == 0:
         pytest.skip("No GPU available.")
     trainable_cls = DistributedTrainableCreator(
-        _train_simple, num_slots=2, use_gpu=use_gpu)
-    analysis = tune.run(
-        trainable_cls, num_samples=2, stop={"training_iteration": 2})
+        _train_simple, num_slots=2, use_gpu=use_gpu
+    )
+    analysis = tune.run(trainable_cls, num_samples=2, stop={"training_iteration": 2})
     assert analysis.trials[0].last_result["training_iteration"] == 2
 
 
@@ -104,4 +106,5 @@ def test_validate_session(ray_start_2_cpus):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

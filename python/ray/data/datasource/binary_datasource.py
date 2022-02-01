@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.data.datasource.file_based_datasource import (FileBasedDatasource)
+from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
 
 class BinaryDatasource(FileBasedDatasource):

@@ -9,8 +9,12 @@ import torch.distributed as dist
 from pytorch_lightning import LightningModule
 from ray.util.sgd import TorchTrainer
 from ray.util.sgd.torch import TrainingOperator
-from ray.util.sgd.torch.examples.train_example import \
-    optimizer_creator, data_creator, scheduler_creator, model_creator
+from ray.util.sgd.torch.examples.train_example import (
+    optimizer_creator,
+    data_creator,
+    scheduler_creator,
+    model_creator,
+)
 from torch import nn
 import numpy as np
 
@@ -90,7 +94,8 @@ def test_single_step(ray_start_2_cpus, use_local):  # noqa: F811
         training_operator_cls=Operator,
         num_workers=1,
         use_local=use_local,
-        use_gpu=False)
+        use_gpu=False,
+    )
     metrics = trainer.train(num_steps=1)
     assert metrics[BATCH_COUNT] == 1
 
@@ -106,7 +111,8 @@ def test_train(ray_start_2_cpus, num_workers, use_local):  # noqa: F811
         training_operator_cls=Operator,
         num_workers=num_workers,
         use_local=use_local,
-        use_gpu=False)
+        use_gpu=False,
+    )
     for i in range(3):
         train_loss1 = trainer.train()["train_loss"]
     validation_loss1 = trainer.validate()["val_loss"]
@@ -116,19 +122,18 @@ def test_train(ray_start_2_cpus, num_workers, use_local):  # noqa: F811
     validation_loss2 = trainer.validate()["val_loss"]
 
     assert train_loss2 <= train_loss1, (train_loss2, train_loss1)
-    assert validation_loss2 <= validation_loss1, (validation_loss2,
-                                                  validation_loss1)
+    assert validation_loss2 <= validation_loss1, (validation_loss2, validation_loss1)
     trainer.shutdown()
 
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
-def test_save_and_restore(ray_start_2_cpus, num_workers, use_local,
-                          tmp_path):  # noqa: F811
+def test_save_and_restore(
+    ray_start_2_cpus, num_workers, use_local, tmp_path
+):  # noqa: F811
     trainer1 = TorchTrainer(
-        training_operator_cls=Operator,
-        num_workers=num_workers,
-        use_local=use_local)
+        training_operator_cls=Operator, num_workers=num_workers, use_local=use_local
+    )
     trainer1.train()
     checkpoint_path = os.path.join(tmp_path, "checkpoint")
     trainer1.save(checkpoint_path)
@@ -139,9 +144,8 @@ def test_save_and_restore(ray_start_2_cpus, num_workers, use_local,
     trainer1.shutdown()
 
     trainer2 = TorchTrainer(
-        training_operator_cls=Operator,
-        num_workers=num_workers,
-        use_local=use_local)
+        training_operator_cls=Operator, num_workers=num_workers, use_local=use_local
+    )
     trainer2.load(checkpoint_path)
 
     model2 = trainer2.get_model()
@@ -164,14 +168,12 @@ class CorrectnessOperator(TrainingOperator):
         model = PTL_Module(config)
         opt = optimizer_creator(model, config)
         scheduler = scheduler_creator(opt, config)
-        self.model, self.optimizer, self.criterion, self.scheduler = \
-            self.register(
-                models=model, optimizers=opt, criterion=nn.MSELoss(),
-                schedulers=scheduler)
+        self.model, self.optimizer, self.criterion, self.scheduler = self.register(
+            models=model, optimizers=opt, criterion=nn.MSELoss(), schedulers=scheduler
+        )
 
         train_loader, val_loader = data_creator(config)
-        self.register_data(
-            train_loader=train_loader, validation_loader=val_loader)
+        self.register_data(train_loader=train_loader, validation_loader=val_loader)
 
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
@@ -181,13 +183,10 @@ def test_correctness(ray_start_2_cpus, num_workers, use_local):
     ptl_op = TrainingOperator.from_ptl(PTL_Module)
     trainer1 = TorchTrainer(
         training_operator_cls=ptl_op,
-        config={
-            "layer": layer,
-            "data_size": 3,
-            "batch_size": 1
-        },
+        config={"layer": layer, "data_size": 3, "batch_size": 1},
         num_workers=num_workers,
-        use_local=use_local)
+        use_local=use_local,
+    )
     train1_stats = trainer1.train()
     val1_stats = trainer1.validate()
     trainer1.shutdown()
@@ -195,13 +194,10 @@ def test_correctness(ray_start_2_cpus, num_workers, use_local):
     trainer2 = TorchTrainer(
         training_operator_cls=CorrectnessOperator,
         scheduler_step_freq="manual",
-        config={
-            "layer": layer,
-            "data_size": 3,
-            "batch_size": 1
-        },
+        config={"layer": layer, "data_size": 3, "batch_size": 1},
         num_workers=num_workers,
-        use_local=use_local)
+        use_local=use_local,
+    )
     train2_stats = trainer2.train()
     val2_stats = trainer2.validate()
     trainer2.shutdown()
@@ -214,4 +210,5 @@ def test_correctness(ray_start_2_cpus, num_workers, use_local):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(sys.argv[1:] + ["-v", __file__]))

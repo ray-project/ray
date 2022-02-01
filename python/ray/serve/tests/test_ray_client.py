@@ -17,10 +17,17 @@ MAX_DYNAMIC_PORT = 65535
 @pytest.fixture
 def ray_client_instance(scope="module"):
     port = random.randint(MIN_DYNAMIC_PORT, MAX_DYNAMIC_PORT)
-    subprocess.check_output([
-        "ray", "start", "--head", "--num-cpus", "16",
-        "--ray-client-server-port", f"{port}"
-    ])
+    subprocess.check_output(
+        [
+            "ray",
+            "start",
+            "--head",
+            "--num-cpus",
+            "16",
+            "--ray-client-server-port",
+            f"{port}",
+        ]
+    )
     try:
         yield f"localhost:{port}"
     finally:
@@ -49,7 +56,9 @@ ray.util.connect("{}", namespace="default_test_namespace")
 from ray import serve
 
 serve.start(detached=True)
-""".format(ray_client_instance)
+""".format(
+        ray_client_instance
+    )
     run_string_as_driver(start)
 
     deploy = """
@@ -63,7 +72,9 @@ def f(*args):
     return "hello"
 
 f.deploy()
-""".format(ray_client_instance)
+""".format(
+        ray_client_instance
+    )
     run_string_as_driver(deploy)
 
     assert "test1" in serve.list_deployments()
@@ -76,7 +87,9 @@ ray.util.connect("{}", namespace="default_test_namespace")
 from ray import serve
 
 serve.get_deployment("test1").delete()
-""".format(ray_client_instance)
+""".format(
+        ray_client_instance
+    )
     run_string_as_driver(delete)
 
     assert "test1" not in serve.list_deployments()
@@ -100,7 +113,9 @@ class A:
     pass
 
 A.deploy()
-""".format(ray_client_instance)
+""".format(
+        ray_client_instance
+    )
     run_string_as_driver(fastapi)
 
     assert requests.get("http://localhost:8000/A").json() == "hello"
@@ -151,4 +166,5 @@ def test_quickstart_counter(serve_with_client):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

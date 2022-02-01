@@ -12,8 +12,9 @@ import ray
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
-HTTPS_PACKAGE_URI = ("https://github.com/shrekris-anyscale/"
-                     "test_module/archive/HEAD.zip")
+HTTPS_PACKAGE_URI = (
+    "https://github.com/shrekris-anyscale/" "test_module/archive/HEAD.zip"
+)
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 REMOTE_URIS = [HTTPS_PACKAGE_URI, S3_PACKAGE_URI]
@@ -46,6 +47,7 @@ def test_remote_package_uri(start_cluster, remote_uri, option, per_task_actor):
     @ray.remote
     def test_import():
         import test_module
+
         return test_module.one()
 
     if option != "failure" and per_task_actor:
@@ -61,6 +63,7 @@ def test_remote_package_uri(start_cluster, remote_uri, option, per_task_actor):
     class Actor:
         def test_import(self):
             import test_module
+
             return test_module.one()
 
     if option != "failure" and per_task_actor:
@@ -76,15 +79,13 @@ def test_remote_package_uri(start_cluster, remote_uri, option, per_task_actor):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-@pytest.mark.parametrize(
-    "source", [*REMOTE_URIS, lazy_fixture("tmp_working_dir")])
+@pytest.mark.parametrize("source", [*REMOTE_URIS, lazy_fixture("tmp_working_dir")])
 def test_multi_node(start_cluster, option: str, source: str):
     """Tests that the working_dir is propagated across multi-node clusters."""
     NUM_NODES = 3
     cluster, address = start_cluster
     for i in range(NUM_NODES - 1):  # Head node already added.
-        cluster.add_node(
-            num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
+        cluster.add_node(num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
 
     if option == "working_dir":
         ray.init(address, runtime_env={"working_dir": source})
@@ -97,6 +98,7 @@ def test_multi_node(start_cluster, option: str, source: str):
     class A:
         def check_and_get_node_id(self):
             import test_module
+
             test_module.one()
             return ray.get_runtime_context().node_id
 
@@ -107,9 +109,7 @@ def test_multi_node(start_cluster, option: str, source: str):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize(
-    "working_dir",
-    [*REMOTE_URIS, lazy_fixture("tmp_working_dir")])
+@pytest.mark.parametrize("working_dir", [*REMOTE_URIS, lazy_fixture("tmp_working_dir")])
 def test_runtime_context(start_cluster, working_dir):
     """Tests that the working_dir is propagated in the runtime_context."""
     cluster, address = start_cluster

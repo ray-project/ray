@@ -25,6 +25,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 from gym import core, spaces
+
 try:
     from dm_env import specs
 except ImportError:
@@ -32,6 +33,7 @@ except ImportError:
 try:
     # Suppress MuJoCo warning (dm_control uses absl logging).
     import absl.logging
+
     absl.logging.set_verbosity("error")
     from dm_control import suite
 except (ImportError, OSError):
@@ -70,19 +72,21 @@ def _flatten_obs(obs):
 
 
 class DMCEnv(core.Env):
-    def __init__(self,
-                 domain_name,
-                 task_name,
-                 task_kwargs=None,
-                 visualize_reward=False,
-                 from_pixels=False,
-                 height=64,
-                 width=64,
-                 camera_id=0,
-                 frame_skip=2,
-                 environment_kwargs=None,
-                 channels_first=True,
-                 preprocess=True):
+    def __init__(
+        self,
+        domain_name,
+        task_name,
+        task_kwargs=None,
+        visualize_reward=False,
+        from_pixels=False,
+        height=64,
+        width=64,
+        camera_id=0,
+        frame_skip=2,
+        environment_kwargs=None,
+        channels_first=True,
+        preprocess=True,
+    ):
         self._from_pixels = from_pixels
         self._height = height
         self._width = width
@@ -92,15 +96,21 @@ class DMCEnv(core.Env):
         self.preprocess = preprocess
 
         if specs is None:
-            raise RuntimeError((
-                "The `specs` module from `dm_env` was not imported. Make sure "
-                "`dm_env` is installed and visible in the current python "
-                "environment."))
+            raise RuntimeError(
+                (
+                    "The `specs` module from `dm_env` was not imported. Make sure "
+                    "`dm_env` is installed and visible in the current python "
+                    "environment."
+                )
+            )
         if suite is None:
             raise RuntimeError(
-                ("The `suite` module from `dm_control` was not imported. Make "
-                 "sure `dm_control` is installed and visible in the current "
-                 "python enviornment."))
+                (
+                    "The `suite` module from `dm_control` was not imported. Make "
+                    "sure `dm_control` is installed and visible in the current "
+                    "python enviornment."
+                )
+            )
 
         # create task
         self._env = suite.load(
@@ -108,28 +118,29 @@ class DMCEnv(core.Env):
             task_name=task_name,
             task_kwargs=task_kwargs,
             visualize_reward=visualize_reward,
-            environment_kwargs=environment_kwargs)
+            environment_kwargs=environment_kwargs,
+        )
 
         # true and normalized action spaces
         self._true_action_space = _spec_to_box([self._env.action_spec()])
         self._norm_action_space = spaces.Box(
-            low=-1.0,
-            high=1.0,
-            shape=self._true_action_space.shape,
-            dtype=np.float32)
+            low=-1.0, high=1.0, shape=self._true_action_space.shape, dtype=np.float32
+        )
 
         # create observation space
         if from_pixels:
-            shape = [3, height,
-                     width] if channels_first else [height, width, 3]
+            shape = [3, height, width] if channels_first else [height, width, 3]
             self._observation_space = spaces.Box(
-                low=0, high=255, shape=shape, dtype=np.uint8)
+                low=0, high=255, shape=shape, dtype=np.uint8
+            )
             if preprocess:
                 self._observation_space = spaces.Box(
-                    low=-0.5, high=0.5, shape=shape, dtype=np.float32)
+                    low=-0.5, high=0.5, shape=shape, dtype=np.float32
+                )
         else:
             self._observation_space = _spec_to_box(
-                self._env.observation_spec().values())
+                self._env.observation_spec().values()
+            )
 
         self._state_space = _spec_to_box(self._env.observation_spec().values())
 
@@ -141,9 +152,8 @@ class DMCEnv(core.Env):
     def _get_obs(self, time_step):
         if self._from_pixels:
             obs = self.render(
-                height=self._height,
-                width=self._width,
-                camera_id=self._camera_id)
+                height=self._height, width=self._width, camera_id=self._camera_id
+            )
             if self._channels_first:
                 obs = obs.transpose(2, 0, 1).copy()
             if self.preprocess:
@@ -202,5 +212,4 @@ class DMCEnv(core.Env):
         height = height or self._height
         width = width or self._width
         camera_id = camera_id or self._camera_id
-        return self._env.physics.render(
-            height=height, width=width, camera_id=camera_id)
+        return self._env.physics.render(height=height, width=width, camera_id=camera_id)

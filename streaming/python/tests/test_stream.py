@@ -21,8 +21,9 @@ def test_data_stream():
 def test_key_data_stream():
     ray.init(job_config=ray.job_config.JobConfig(code_search_path=sys.path))
     ctx = StreamingContext.Builder().build()
-    key_stream = ctx.from_values(
-        "a", "b", "c").map(lambda x: (x, 1)).key_by(lambda x: x[0])
+    key_stream = (
+        ctx.from_values("a", "b", "c").map(lambda x: (x, 1)).key_by(lambda x: x[0])
+    )
     java_stream = key_stream.as_java_stream()
     python_stream = java_stream.as_python_stream()
     assert key_stream.get_id() == java_stream.get_id()

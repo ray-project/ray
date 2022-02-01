@@ -15,11 +15,13 @@ class OpCheckpointInfo:
     operator checkpoint info
     """
 
-    def __init__(self,
-                 operator_point=None,
-                 input_points=None,
-                 output_points=None,
-                 checkpoint_id=None):
+    def __init__(
+        self,
+        operator_point=None,
+        input_points=None,
+        output_points=None,
+        checkpoint_id=None,
+    ):
         if input_points is None:
             input_points = {}
         if output_points is None:

@@ -12,7 +12,7 @@ from zoopt import ValueType  # noqa: F401
 
 def evaluation_fn(step, width, height):
     time.sleep(0.1)
-    return (0.1 + width * step / 100)**(-1) + height * 0.1
+    return (0.1 + width * step / 100) ** (-1) + height * 0.1
 
 
 def easy_objective(config):
@@ -31,14 +31,15 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using " "Ray Client.",
+    )
     args, _ = parser.parse_known_args()
 
     if args.server_address:
@@ -66,7 +67,8 @@ if __name__ == "__main__":
         algo="Asracos",  # only support ASRacos currently
         budget=num_samples,
         # dim_dict=space,  # If you want to set the space yourself
-        **zoopt_search_config)
+        **zoopt_search_config,
+    )
 
     scheduler = AsyncHyperBandScheduler()
 
@@ -81,6 +83,7 @@ if __name__ == "__main__":
         config={
             "steps": 10,
             "height": tune.quniform(-10, 10, 1e-2),
-            "width": tune.randint(0, 10)
-        })
+            "width": tune.randint(0, 10),
+        },
+    )
     print("Best config found: ", analysis.best_config)

@@ -1,7 +1,12 @@
 import ray
 from ray.dashboard.memory_utils import (
-    ReferenceType, decode_object_ref_if_needed, MemoryTableEntry, MemoryTable,
-    SortingType)
+    ReferenceType,
+    decode_object_ref_if_needed,
+    MemoryTableEntry,
+    MemoryTable,
+    SortingType,
+)
+
 """Memory Table Unit Test"""
 
 NODE_ADDRESS = "127.0.0.1"
@@ -14,15 +19,17 @@ DECODED_ID = decode_object_ref_if_needed(OBJECT_ID)
 OBJECT_SIZE = 100
 
 
-def build_memory_entry(*,
-                       local_ref_count,
-                       pinned_in_memory,
-                       submitted_task_reference_count,
-                       contained_in_owned,
-                       object_size,
-                       pid,
-                       object_id=OBJECT_ID,
-                       node_address=NODE_ADDRESS):
+def build_memory_entry(
+    *,
+    local_ref_count,
+    pinned_in_memory,
+    submitted_task_reference_count,
+    contained_in_owned,
+    object_size,
+    pid,
+    object_id=OBJECT_ID,
+    node_address=NODE_ADDRESS
+):
     object_ref = {
         "objectId": object_id,
         "callSite": "(task call) /Users:458",
@@ -30,18 +37,16 @@ def build_memory_entry(*,
         "localRefCount": local_ref_count,
         "pinnedInMemory": pinned_in_memory,
         "submittedTaskRefCount": submitted_task_reference_count,
-        "containedInOwned": contained_in_owned
+        "containedInOwned": contained_in_owned,
     }
     return MemoryTableEntry(
-        object_ref=object_ref,
-        node_address=node_address,
-        is_driver=IS_DRIVER,
-        pid=pid)
+        object_ref=object_ref, node_address=node_address, is_driver=IS_DRIVER, pid=pid
+    )
 
 
-def build_local_reference_entry(object_size=OBJECT_SIZE,
-                                pid=PID,
-                                node_address=NODE_ADDRESS):
+def build_local_reference_entry(
+    object_size=OBJECT_SIZE, pid=PID, node_address=NODE_ADDRESS
+):
     return build_memory_entry(
         local_ref_count=1,
         pinned_in_memory=False,
@@ -49,12 +54,13 @@ def build_local_reference_entry(object_size=OBJECT_SIZE,
         contained_in_owned=[],
         object_size=object_size,
         pid=pid,
-        node_address=node_address)
+        node_address=node_address,
+    )
 
 
-def build_used_by_pending_task_entry(object_size=OBJECT_SIZE,
-                                     pid=PID,
-                                     node_address=NODE_ADDRESS):
+def build_used_by_pending_task_entry(
+    object_size=OBJECT_SIZE, pid=PID, node_address=NODE_ADDRESS
+):
     return build_memory_entry(
         local_ref_count=0,
         pinned_in_memory=False,
@@ -62,12 +68,13 @@ def build_used_by_pending_task_entry(object_size=OBJECT_SIZE,
         contained_in_owned=[],
         object_size=object_size,
         pid=pid,
-        node_address=node_address)
+        node_address=node_address,
+    )
 
 
-def build_captured_in_object_entry(object_size=OBJECT_SIZE,
-                                   pid=PID,
-                                   node_address=NODE_ADDRESS):
+def build_captured_in_object_entry(
+    object_size=OBJECT_SIZE, pid=PID, node_address=NODE_ADDRESS
+):
     return build_memory_entry(
         local_ref_count=0,
         pinned_in_memory=False,
@@ -75,12 +82,13 @@ def build_captured_in_object_entry(object_size=OBJECT_SIZE,
         contained_in_owned=[OBJECT_ID],
         object_size=object_size,
         pid=pid,
-        node_address=node_address)
+        node_address=node_address,
+    )
 
 
-def build_actor_handle_entry(object_size=OBJECT_SIZE,
-                             pid=PID,
-                             node_address=NODE_ADDRESS):
+def build_actor_handle_entry(
+    object_size=OBJECT_SIZE, pid=PID, node_address=NODE_ADDRESS
+):
     return build_memory_entry(
         local_ref_count=1,
         pinned_in_memory=False,
@@ -89,12 +97,13 @@ def build_actor_handle_entry(object_size=OBJECT_SIZE,
         object_size=object_size,
         pid=pid,
         node_address=node_address,
-        object_id=ACTOR_ID)
+        object_id=ACTOR_ID,
+    )
 
 
-def build_pinned_in_memory_entry(object_size=OBJECT_SIZE,
-                                 pid=PID,
-                                 node_address=NODE_ADDRESS):
+def build_pinned_in_memory_entry(
+    object_size=OBJECT_SIZE, pid=PID, node_address=NODE_ADDRESS
+):
     return build_memory_entry(
         local_ref_count=0,
         pinned_in_memory=True,
@@ -102,28 +111,36 @@ def build_pinned_in_memory_entry(object_size=OBJECT_SIZE,
         contained_in_owned=[],
         object_size=object_size,
         pid=pid,
-        node_address=node_address)
+        node_address=node_address,
+    )
 
 
-def build_entry(object_size=OBJECT_SIZE,
-                pid=PID,
-                node_address=NODE_ADDRESS,
-                reference_type=ReferenceType.PINNED_IN_MEMORY):
+def build_entry(
+    object_size=OBJECT_SIZE,
+    pid=PID,
+    node_address=NODE_ADDRESS,
+    reference_type=ReferenceType.PINNED_IN_MEMORY,
+):
     if reference_type == ReferenceType.USED_BY_PENDING_TASK:
         return build_used_by_pending_task_entry(
-            pid=pid, object_size=object_size, node_address=node_address)
+            pid=pid, object_size=object_size, node_address=node_address
+        )
     elif reference_type == ReferenceType.LOCAL_REFERENCE:
         return build_local_reference_entry(
-            pid=pid, object_size=object_size, node_address=node_address)
+            pid=pid, object_size=object_size, node_address=node_address
+        )
     elif reference_type == ReferenceType.PINNED_IN_MEMORY:
         return build_pinned_in_memory_entry(
-            pid=pid, object_size=object_size, node_address=node_address)
+            pid=pid, object_size=object_size, node_address=node_address
+        )
     elif reference_type == ReferenceType.ACTOR_HANDLE:
         return build_actor_handle_entry(
-            pid=pid, object_size=object_size, node_address=node_address)
+            pid=pid, object_size=object_size, node_address=node_address
+        )
     elif reference_type == ReferenceType.CAPTURED_IN_OBJECT:
         return build_captured_in_object_entry(
-            pid=pid, object_size=object_size, node_address=node_address)
+            pid=pid, object_size=object_size, node_address=node_address
+        )
 
 
 def test_invalid_memory_entry():
@@ -133,7 +150,8 @@ def test_invalid_memory_entry():
         submitted_task_reference_count=0,
         contained_in_owned=[],
         object_size=OBJECT_SIZE,
-        pid=PID)
+        pid=PID,
+    )
     assert memory_entry.is_valid() is False
     memory_entry = build_memory_entry(
         local_ref_count=0,
@@ -141,7 +159,8 @@ def test_invalid_memory_entry():
         submitted_task_reference_count=0,
         contained_in_owned=[],
         object_size=-1,
-        pid=PID)
+        pid=PID,
+    )
     assert memory_entry.is_valid() is False
 
 
@@ -149,7 +168,8 @@ def test_valid_reference_memory_entry():
     memory_entry = build_local_reference_entry()
     assert memory_entry.reference_type == ReferenceType.LOCAL_REFERENCE
     assert memory_entry.object_ref == ray.ObjectRef(
-        decode_object_ref_if_needed(OBJECT_ID))
+        decode_object_ref_if_needed(OBJECT_ID)
+    )
     assert memory_entry.is_valid() is True
 
 
@@ -178,15 +198,14 @@ def test_memory_table_summary():
         build_captured_in_object_entry(),
         build_actor_handle_entry(),
         build_local_reference_entry(),
-        build_local_reference_entry()
+        build_local_reference_entry(),
     ]
     memory_table = MemoryTable(entries)
     assert len(memory_table.group) == 1
     assert memory_table.summary["total_actor_handles"] == 1
     assert memory_table.summary["total_captured_in_objects"] == 1
     assert memory_table.summary["total_local_ref_count"] == 2
-    assert memory_table.summary[
-        "total_object_size"] == len(entries) * OBJECT_SIZE
+    assert memory_table.summary["total_object_size"] == len(entries) * OBJECT_SIZE
     assert memory_table.summary["total_pinned_in_memory"] == 1
     assert memory_table.summary["total_used_by_pending_task"] == 1
 
@@ -202,14 +221,13 @@ def test_memory_table_sort_by_pid():
 
 def test_memory_table_sort_by_reference_type():
     unsort = [
-        ReferenceType.USED_BY_PENDING_TASK, ReferenceType.LOCAL_REFERENCE,
-        ReferenceType.LOCAL_REFERENCE, ReferenceType.PINNED_IN_MEMORY
+        ReferenceType.USED_BY_PENDING_TASK,
+        ReferenceType.LOCAL_REFERENCE,
+        ReferenceType.LOCAL_REFERENCE,
+        ReferenceType.PINNED_IN_MEMORY,
     ]
-    entries = [
-        build_entry(reference_type=reference_type) for reference_type in unsort
-    ]
-    memory_table = MemoryTable(
-        entries, sort_by_type=SortingType.REFERENCE_TYPE)
+    entries = [build_entry(reference_type=reference_type) for reference_type in unsort]
+    memory_table = MemoryTable(entries, sort_by_type=SortingType.REFERENCE_TYPE)
     sort = sorted(unsort)
     for reference_type, entry in zip(sort, memory_table.table):
         assert reference_type == entry.reference_type
@@ -231,7 +249,7 @@ def test_group_by():
         build_entry(node_address=node_second, pid=2),
         build_entry(node_address=node_second, pid=1),
         build_entry(node_address=node_first, pid=2),
-        build_entry(node_address=node_first, pid=1)
+        build_entry(node_address=node_first, pid=1),
     ]
     memory_table = MemoryTable(entries)
 
@@ -250,4 +268,5 @@ def test_group_by():
 if __name__ == "__main__":
     import sys
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

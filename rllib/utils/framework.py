@@ -31,9 +31,11 @@ def try_import_jax(error: bool = False):
         import flax
     except ImportError:
         if error:
-            raise ImportError("Could not import JAX! RLlib requires you to "
-                              "install at least one deep-learning framework: "
-                              "`pip install [torch|tensorflow|jax]`.")
+            raise ImportError(
+                "Could not import JAX! RLlib requires you to "
+                "install at least one deep-learning framework: "
+                "`pip install [torch|tensorflow|jax]`."
+            )
         return None, None
 
     return jax, flax
@@ -79,7 +81,8 @@ def try_import_tf(error: bool = False):
                 raise ImportError(
                     "Could not import TensorFlow! RLlib requires you to "
                     "install at least one deep-learning framework: "
-                    "`pip install [torch|tensorflow|jax]`.")
+                    "`pip install [torch|tensorflow|jax]`."
+                )
             return None, None, None
 
     # Try "reducing" tf to tf.compat.v1.
@@ -131,12 +134,12 @@ def try_import_tfp(error: bool = False):
         ImportError: If error=True and tfp is not installed.
     """
     if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
-        logger.warning("Not importing TensorFlow Probability for test "
-                       "purposes.")
+        logger.warning("Not importing TensorFlow Probability for test " "purposes.")
         return None
 
     try:
         import tensorflow_probability as tfp
+
         return tfp
     except ImportError as e:
         if error:
@@ -177,13 +180,15 @@ def try_import_torch(error: bool = False):
     try:
         import torch
         import torch.nn as nn
+
         return torch, nn
     except ImportError:
         if error:
             raise ImportError(
                 "Could not import PyTorch! RLlib requires you to "
                 "install at least one deep-learning framework: "
-                "`pip install [torch|tensorflow|jax]`.")
+                "`pip install [torch|tensorflow|jax]`."
+            )
         return _torch_stubs()
 
 
@@ -192,14 +197,16 @@ def _torch_stubs():
     return None, nn
 
 
-def get_variable(value: Any,
-                 framework: str = "tf",
-                 trainable: bool = False,
-                 tf_name: str = "unnamed-variable",
-                 torch_tensor: bool = False,
-                 device: Optional[str] = None,
-                 shape: Optional[TensorShape] = None,
-                 dtype: Optional[TensorType] = None) -> Any:
+def get_variable(
+    value: Any,
+    framework: str = "tf",
+    trainable: bool = False,
+    tf_name: str = "unnamed-variable",
+    torch_tensor: bool = False,
+    device: Optional[str] = None,
+    shape: Optional[TensorShape] = None,
+    dtype: Optional[TensorType] = None,
+) -> Any:
     """Creates a tf variable, a torch tensor, or a python primitive.
 
     Args:
@@ -227,18 +234,23 @@ def get_variable(value: Any,
     """
     if framework in ["tf2", "tf", "tfe"]:
         import tensorflow as tf
+
         dtype = dtype or getattr(
-            value, "dtype", tf.float32
-            if isinstance(value, float) else tf.int32
-            if isinstance(value, int) else None)
+            value,
+            "dtype",
+            tf.float32
+            if isinstance(value, float)
+            else tf.int32
+            if isinstance(value, int)
+            else None,
+        )
         return tf.compat.v1.get_variable(
             tf_name,
             initializer=value,
             dtype=dtype,
             trainable=trainable,
-            **({} if shape is None else {
-                "shape": shape
-            }))
+            **({} if shape is None else {"shape": shape})
+        )
     elif framework == "torch" and torch_tensor is True:
         torch, _ = try_import_torch()
         var_ = torch.from_numpy(value)
@@ -260,7 +272,8 @@ def get_variable(value: Any,
 @Deprecated(
     old="rllib/utils/framework.py::get_activation_fn",
     new="rllib/models/utils.py::get_activation_fn",
-    error=False)
+    error=False,
+)
 def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     """Returns a framework specific activation function, given a name string.
 
@@ -281,6 +294,7 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
             return None
         if name in ["swish", "silu"]:
             from ray.rllib.utils.torch_utils import Swish
+
             return Swish
         _, nn = try_import_torch()
         if name == "relu":
@@ -307,5 +321,6 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
         if fn is not None:
             return fn
 
-    raise ValueError("Unknown activation ({}) for framework={}!".format(
-        name, framework))
+    raise ValueError(
+        "Unknown activation ({}) for framework={}!".format(name, framework)
+    )

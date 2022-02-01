@@ -15,40 +15,40 @@ from ray.util.sgd.torch import TrainingOperator
 # Benchmark settings
 parser = argparse.ArgumentParser(
     description="PyTorch Synthetic Benchmark",
-    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+)
 parser.add_argument(
-    "--smoke-test", action="store_true", default=False, help="finish quickly.")
+    "--smoke-test", action="store_true", default=False, help="finish quickly."
+)
 parser.add_argument(
-    "--fp16", action="store_true", default=False, help="use fp16 training")
+    "--fp16", action="store_true", default=False, help="use fp16 training"
+)
 
-parser.add_argument(
-    "--model", type=str, default="resnet50", help="model to benchmark")
-parser.add_argument(
-    "--batch-size", type=int, default=32, help="input batch size")
+parser.add_argument("--model", type=str, default="resnet50", help="model to benchmark")
+parser.add_argument("--batch-size", type=int, default=32, help="input batch size")
 
 parser.add_argument(
     "--num-warmup-batches",
     type=int,
     default=10,
-    help="number of warm-up batches that don't count towards benchmark")
+    help="number of warm-up batches that don't count towards benchmark",
+)
 parser.add_argument(
     "--num-batches-per-iter",
     type=int,
     default=10,
-    help="number of batches per benchmark iteration")
+    help="number of batches per benchmark iteration",
+)
 parser.add_argument(
-    "--num-iters", type=int, default=10, help="number of benchmark iterations")
+    "--num-iters", type=int, default=10, help="number of benchmark iterations"
+)
 
 parser.add_argument(
-    "--no-cuda",
-    action="store_true",
-    default=False,
-    help="Disables CUDA training")
+    "--no-cuda", action="store_true", default=False, help="Disables CUDA training"
+)
 parser.add_argument(
-    "--local",
-    action="store_true",
-    default=False,
-    help="Disables cluster training")
+    "--local", action="store_true", default=False, help="Disables cluster training"
+)
 
 args = parser.parse_args()
 
@@ -67,16 +67,15 @@ device = "GPU" if args.cuda else "CPU"
 
 def init_hook():
     import torch.backends.cudnn as cudnn
+
     cudnn.benchmark = True
 
 
 class Training(TrainingOperator):
     def setup(self, config):
         model = getattr(models, config.get("model"))()
-        optimizer = optim.SGD(
-            model.parameters(), lr=0.01 * config["lr_scaler"])
-        train_data = LinearDataset(4,
-                                   2)  # Have to use dummy data for training.
+        optimizer = optim.SGD(model.parameters(), lr=0.01 * config["lr_scaler"])
+        train_data = LinearDataset(4, 2)  # Have to use dummy data for training.
 
         self.model, self.optimizer = self.register(
             models=model,
@@ -123,10 +122,7 @@ if __name__ == "__main__":
     trainer = TorchTrainer(
         training_operator_cls=Training,
         initialization_hook=init_hook,
-        config={
-            "lr_scaler": num_workers,
-            "model": args.model
-        },
+        config={"lr_scaler": num_workers, "model": args.model},
         num_workers=num_workers,
         use_gpu=args.cuda,
         use_fp16=args.fp16,
@@ -144,6 +140,7 @@ if __name__ == "__main__":
     img_sec_mean = np.mean(img_secs)
     img_sec_conf = 1.96 * np.std(img_secs)
     print(f"Img/sec per {device}: {img_sec_mean:.1f} +-{img_sec_conf:.1f}")
-    print("Total img/sec on %d %s(s): %.1f +-%.1f" %
-          (num_workers, device, num_workers * img_sec_mean,
-           num_workers * img_sec_conf))
+    print(
+        "Total img/sec on %d %s(s): %.1f +-%.1f"
+        % (num_workers, device, num_workers * img_sec_mean, num_workers * img_sec_conf)
+    )

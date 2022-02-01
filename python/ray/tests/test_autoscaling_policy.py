@@ -10,9 +10,13 @@ import unittest
 import pytest
 
 import ray
-from ray.tests.test_autoscaler import (MockProvider, MockProcessRunner,
-                                       MockNodeInfoStub, mock_raylet_id,
-                                       MockAutoscaler)
+from ray.tests.test_autoscaler import (
+    MockProvider,
+    MockProcessRunner,
+    MockNodeInfoStub,
+    mock_raylet_id,
+    MockAutoscaler,
+)
 from ray.tests.test_resource_demand_scheduler import MULTI_WORKER_CLUSTER
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.providers import (
@@ -21,8 +25,11 @@ from ray.autoscaler._private.providers import (
 )
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.node_launcher import NodeLauncher
-from ray.autoscaler.tags import (TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND,
-                                 NODE_KIND_HEAD)
+from ray.autoscaler.tags import (
+    TAG_RAY_USER_NODE_TYPE,
+    TAG_RAY_NODE_KIND,
+    NODE_KIND_HEAD,
+)
 from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
@@ -31,11 +38,11 @@ from ray._private.gcs_utils import PlacementGroupTableData
 
 class Task:
     def __init__(
-            self,
-            duration: float,
-            resources: Dict[str, float],
-            start_callback: Callable[[None], None] = None,
-            done_callback: Callable[[None], None] = None,
+        self,
+        duration: float,
+        resources: Dict[str, float],
+        start_callback: Callable[[None], None] = None,
+        done_callback: Callable[[None], None] = None,
     ):
         self.duration = duration
         self.resources = resources
@@ -52,12 +59,12 @@ class Actor(Task):
 
 class PlacementGroup:
     def __init__(
-            self,
-            duration: float,
-            bundles: List[Dict[str, float]],
-            strategy: int,
-            start_callback: Callable[[None], None] = None,
-            done_callback: Callable[[None], None] = None,
+        self,
+        duration: float,
+        bundles: List[Dict[str, float]],
+        strategy: int,
+        start_callback: Callable[[None], None] = None,
+        done_callback: Callable[[None], None] = None,
     ):
         self.duration = duration
         self.bundles = bundles
@@ -152,11 +159,11 @@ class Simulator:
     """
 
     def __init__(
-            self,
-            config_path,
-            provider,
-            autoscaler_update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S,
-            node_startup_delay_s=120,
+        self,
+        config_path,
+        provider,
+        autoscaler_update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S,
+        node_startup_delay_s=120,
     ):
         self.config_path = config_path
         self.provider = provider
@@ -223,14 +230,15 @@ class Simulator:
             if TAG_RAY_USER_NODE_TYPE in node_tags:
                 node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
                 resources = self.config["available_node_types"][node_type].get(
-                    "resources", {})
-                node = Node(resources, join_immediately, node_type,
-                            self.virtual_time)
+                    "resources", {}
+                )
+                node = Node(resources, join_immediately, node_type, self.virtual_time)
                 self.ip_to_nodes[ip] = node
                 if not join_immediately:
                     join_time = self.virtual_time + self.node_startup_delay_s
                     self.event_queue.put(
-                        Event(join_time, SIMULATOR_EVENT_NODE_JOINED, node))
+                        Event(join_time, SIMULATOR_EVENT_NODE_JOINED, node)
+                    )
 
     def submit(self, work):
         if isinstance(work, list):
@@ -248,8 +256,10 @@ class Simulator:
         # This scheduling algorithm is bad, but it is approximately as bad as
         # the real placement group scheduler.
         to_allocate = []
-        if (pg.strategy == PlacementStrategy.STRICT_PACK
-                or pg.strategy == PlacementStrategy.PACK):
+        if (
+            pg.strategy == PlacementStrategy.STRICT_PACK
+            or pg.strategy == PlacementStrategy.PACK
+        ):
             combined = collections.defaultdict(float)
             for bundle in pg.bundles:
                 for k, v in bundle.items():
@@ -258,13 +268,14 @@ class Simulator:
             if node_to_run is None:
                 return False
             to_allocate.append((combined, ip))
-        elif (pg.strategy == PlacementStrategy.STRICT_SPREAD
-              or pg.strategy == PlacementStrategy.SPREAD):
+        elif (
+            pg.strategy == PlacementStrategy.STRICT_SPREAD
+            or pg.strategy == PlacementStrategy.SPREAD
+        ):
             # TODO (Alex): More accurate handling of non-STRICT_PACK groups.
             remaining_nodes = nodes.copy()
             for bundle in pg.bundles:
-                ip, node_to_run = self._get_node_to_run(
-                    bundle, remaining_nodes)
+                ip, node_to_run = self._get_node_to_run(bundle, remaining_nodes)
                 if node_to_run is None:
                     return False
                 del remaining_nodes[ip]
@@ -276,7 +287,8 @@ class Simulator:
         pg.start_time = self.virtual_time
         end_time = self.virtual_time + pg.duration
         self.event_queue.put(
-            Event(end_time, SIMULATOR_EVENT_PG_DONE, (pg, to_allocate)))
+            Event(end_time, SIMULATOR_EVENT_PG_DONE, (pg, to_allocate))
+        )
         if pg.start_callback:
             pg.start_callback()
         return True
@@ -302,8 +314,7 @@ class Simulator:
             if isinstance(work, Task):
                 scheduled = self._schedule_task(work, self.ip_to_nodes)
             elif isinstance(work, PlacementGroup):
-                scheduled = self._schedule_placement_group(
-                    work, self.ip_to_nodes)
+                scheduled = self._schedule_placement_group(work, self.ip_to_nodes)
             else:
                 assert False, "Unknown work object!"
 
@@ -348,10 +359,10 @@ class Simulator:
                         state=PlacementGroupTableData.PENDING,
                         strategy=work.strategy,
                         bundles=[
-                            Bundle(unit_resources=bundle)
-                            for bundle in work.bundles
+                            Bundle(unit_resources=bundle) for bundle in work.bundles
                         ],
-                    ))
+                    )
+                )
 
         for ip, node in self.ip_to_nodes.items():
             if not node.in_cluster:
@@ -375,8 +386,7 @@ class Simulator:
         if event.event_type == SIMULATOR_EVENT_AUTOSCALER_UPDATE:
             self.run_autoscaler()
             next_update = self.virtual_time + self.autoscaler_update_interval_s
-            self.event_queue.put(
-                Event(next_update, SIMULATOR_EVENT_AUTOSCALER_UPDATE))
+            self.event_queue.put(Event(next_update, SIMULATOR_EVENT_AUTOSCALER_UPDATE))
         elif event.event_type == SIMULATOR_EVENT_TASK_DONE:
             task = event.data
             task.node.free(task.resources)
@@ -419,22 +429,23 @@ class Simulator:
 
     def info_string(self):
         num_connected_nodes = len(
-            [node for node in self.ip_to_nodes.values() if node.in_cluster])
+            [node for node in self.ip_to_nodes.values() if node.in_cluster]
+        )
         num_pending_nodes = len(self.ip_to_nodes) - num_connected_nodes
-        return (f"[t={self.virtual_time}] "
-                f"Connected: {num_connected_nodes}, "
-                f"Pending: {num_pending_nodes}, "
-                f"Remaining: {len(self.work_queue)}")
+        return (
+            f"[t={self.virtual_time}] "
+            f"Connected: {num_connected_nodes}, "
+            f"Pending: {num_pending_nodes}, "
+            f"Remaining: {len(self.work_queue)}"
+        )
 
 
 SAMPLE_CLUSTER_CONFIG = copy.deepcopy(MULTI_WORKER_CLUSTER)
 SAMPLE_CLUSTER_CONFIG["min_workers"] = 0
 SAMPLE_CLUSTER_CONFIG["max_workers"] = 9999
 SAMPLE_CLUSTER_CONFIG["target_utilization_fraction"] = 0.5
-SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.16xlarge"][
-    "max_workers"] = 100
-SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.4xlarge"][
-    "max_workers"] = 10000
+SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.16xlarge"]["max_workers"] = 100
+SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.4xlarge"]["max_workers"] = 10000
 
 
 class AutoscalingPolicyTest(unittest.TestCase):
@@ -449,8 +460,7 @@ class AutoscalingPolicyTest(unittest.TestCase):
         def do_nothing(*args, **kwargs):
             pass
 
-        cli_logger._print = type(cli_logger._print)(do_nothing,
-                                                    type(cli_logger))
+        cli_logger._print = type(cli_logger._print)(do_nothing, type(cli_logger))
 
     def tearDown(self):
         self.provider = None
@@ -482,10 +492,8 @@ class AutoscalingPolicyTest(unittest.TestCase):
             done_count += 1
 
         tasks = [
-            Task(
-                duration=200,
-                resources={"CPU": 1},
-                done_callback=done_callback) for _ in range(5000)
+            Task(duration=200, resources={"CPU": 1}, done_callback=done_callback)
+            for _ in range(5000)
         ]
         simulator.submit(tasks)
 
@@ -498,10 +506,12 @@ class AutoscalingPolicyTest(unittest.TestCase):
         assert simulator.node_costs()
 
         # Check event logs contain add/remove node events.
-        assert any("Adding" in x
-                   for x in simulator.autoscaler.event_summarizer.summary())
-        assert any("Removing" in x
-                   for x in simulator.autoscaler.event_summarizer.summary())
+        assert any(
+            "Adding" in x for x in simulator.autoscaler.event_summarizer.summary()
+        )
+        assert any(
+            "Removing" in x for x in simulator.autoscaler.event_summarizer.summary()
+        )
 
     def testManyActors(self):
         config = copy.deepcopy(SAMPLE_CLUSTER_CONFIG)
@@ -520,7 +530,8 @@ class AutoscalingPolicyTest(unittest.TestCase):
                 duration=float("inf"),
                 resources={"CPU": 1},
                 start_callback=start_callback,
-            ) for _ in range(5000)
+            )
+            for _ in range(5000)
         ]
         simulator.submit(tasks)
 
@@ -531,10 +542,12 @@ class AutoscalingPolicyTest(unittest.TestCase):
         assert time < 650
 
         # Check event logs contain add/remove node events.
-        assert any("Adding" in x
-                   for x in simulator.autoscaler.event_summarizer.summary())
-        assert any("Removing" in x
-                   for x in simulator.autoscaler.event_summarizer.summary())
+        assert any(
+            "Adding" in x for x in simulator.autoscaler.event_summarizer.summary()
+        )
+        assert any(
+            "Removing" in x for x in simulator.autoscaler.event_summarizer.summary()
+        )
 
     def testManyPlacementGroups(self):
         config = copy.deepcopy(SAMPLE_CLUSTER_CONFIG)
@@ -554,27 +567,21 @@ class AutoscalingPolicyTest(unittest.TestCase):
             placement_group_requests.append(
                 PlacementGroup(
                     duration=float("inf"),
-                    bundles=[{
-                        "CPU": 1
-                    }, {
-                        "CPU": 2
-                    }],
+                    bundles=[{"CPU": 1}, {"CPU": 2}],
                     strategy=PlacementStrategy.STRICT_PACK,
                     start_callback=start_callback,
-                ))
+                )
+            )
 
         for _ in range(500):
             placement_group_requests.append(
                 PlacementGroup(
                     duration=float("inf"),
-                    bundles=[{
-                        "CPU": 1
-                    }, {
-                        "CPU": 2
-                    }],
+                    bundles=[{"CPU": 1}, {"CPU": 2}],
                     strategy=PlacementStrategy.STRICT_SPREAD,
                     start_callback=start_callback,
-                ))
+                )
+            )
 
         # SPREAD and PACK tests fail, but under the real GCS placement group
         # scheduling algorithm we could also be left in a situation in which
@@ -603,12 +610,15 @@ class AutoscalingPolicyTest(unittest.TestCase):
         assert time < 630
 
         # Check event logs contain add/remove node events.
-        assert any("Adding" in x
-                   for x in simulator.autoscaler.event_summarizer.summary())
-        assert any("Removing" in x
-                   for x in simulator.autoscaler.event_summarizer.summary())
+        assert any(
+            "Adding" in x for x in simulator.autoscaler.event_summarizer.summary()
+        )
+        assert any(
+            "Removing" in x for x in simulator.autoscaler.event_summarizer.summary()
+        )
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

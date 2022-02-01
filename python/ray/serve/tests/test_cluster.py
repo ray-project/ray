@@ -134,8 +134,7 @@ def test_replica_startup_status_transitions(ray_cluster):
 
     def get_replicas(replica_state):
         controller = serve_instance._controller
-        replicas = ray.get(
-            controller._dump_replica_states_for_testing.remote(E.name))
+        replicas = ray.get(controller._dump_replica_states_for_testing.remote(E.name))
         return replicas.get([replica_state])
 
     # wait for serve to start the replica, and catch a reference to it.

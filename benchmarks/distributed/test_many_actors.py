@@ -46,8 +46,10 @@ test_utils.wait_for_condition(no_resource_leaks)
 
 rate = MAX_ACTORS_IN_CLUSTER / (end_time - start_time)
 
-print(f"Success! Started {MAX_ACTORS_IN_CLUSTER} actors in "
-      f"{end_time - start_time}s. ({rate} actors/s)")
+print(
+    f"Success! Started {MAX_ACTORS_IN_CLUSTER} actors in "
+    f"{end_time - start_time}s. ({rate} actors/s)"
+)
 
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
@@ -55,6 +57,6 @@ if "TEST_OUTPUT_JSON" in os.environ:
         "actors_per_second": rate,
         "num_actors": MAX_ACTORS_IN_CLUSTER,
         "time": end_time - start_time,
-        "success": "1"
+        "success": "1",
     }
     json.dump(results, out_file)

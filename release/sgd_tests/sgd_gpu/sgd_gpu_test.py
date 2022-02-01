@@ -18,22 +18,16 @@ if __name__ == "__main__":
 
     try:
         train_cifar(
-            num_workers=1,
-            use_gpu=True,
-            num_epochs=5,
-            fp16=True,
-            test_mode=False)
+            num_workers=1, use_gpu=True, num_epochs=5, fp16=True, test_mode=False
+        )
     except Exception as e:
         print(f"(native fp16) The test failed with {e}")
         success = False
 
     try:
         train_cifar(
-            num_workers=1,
-            use_gpu=True,
-            num_epochs=5,
-            fp16="apex",
-            test_mode=False)
+            num_workers=1, use_gpu=True, num_epochs=5, fp16="apex", test_mode=False
+        )
     except Exception as e:
         print(f"(apex fp16) The test failed with {e}")
         success = False

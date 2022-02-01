@@ -26,4 +26,5 @@ async def test_wait_for_goals():
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

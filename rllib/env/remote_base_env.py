@@ -26,12 +26,14 @@ class RemoteBaseEnv(BaseEnv):
     Trainer's config.
     """
 
-    def __init__(self,
-                 make_env: Callable[[int], EnvType],
-                 num_envs: int,
-                 multiagent: bool,
-                 remote_env_batch_wait_ms: int,
-                 existing_envs: Optional[List[ray.actor.ActorHandle]] = None):
+    def __init__(
+        self,
+        make_env: Callable[[int], EnvType],
+        num_envs: int,
+        multiagent: bool,
+        remote_env_batch_wait_ms: int,
+        existing_envs: Optional[List[ray.actor.ActorHandle]] = None,
+    ):
         """Initializes a RemoteVectorEnv instance.
 
         Args:
@@ -74,12 +76,14 @@ class RemoteBaseEnv(BaseEnv):
         self.pending: Optional[Dict[ray.actor.ActorHandle]] = None
 
     @override(BaseEnv)
-    def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
-                            MultiEnvDict, MultiEnvDict]:
+    def poll(
+        self,
+    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
         if self.actors is None:
             # `self.make_env` already produces Actors: Use it directly.
             if len(self.existing_envs) > 0 and isinstance(
-                    self.existing_envs[0], ray.actor.ActorHandle):
+                self.existing_envs[0], ray.actor.ActorHandle
+            ):
                 self.make_env_creates_actors = True
                 self.actors = []
                 while len(self.actors) < self.num_envs:
@@ -100,13 +104,11 @@ class RemoteBaseEnv(BaseEnv):
                     else:
                         return _RemoteSingleAgentEnv.remote(self.make_env, i)
 
-                self.actors = [
-                    make_remote_env(i) for i in range(self.num_envs)
-                ]
+                self.actors = [make_remote_env(i) for i in range(self.num_envs)]
                 self._observation_space = ray.get(
-                    self.actors[0].observation_space.remote())
-                self._action_space = ray.get(
-                    self.actors[0].action_space.remote())
+                    self.actors[0].observation_space.remote()
+                )
+                self._action_space = ray.get(self.actors[0].action_space.remote())
 
         # Lazy initialization. Call `reset()` on all @ray.remote
         # sub-environment actors at the beginning.
@@ -124,7 +126,8 @@ class RemoteBaseEnv(BaseEnv):
             ready, _ = ray.wait(
                 list(self.pending),
                 num_returns=len(self.pending),
-                timeout=self.poll_timeout)
+                timeout=self.poll_timeout,
+            )
 
         # Get and return observations for each of the ready envs
         env_ids = set()
@@ -193,8 +196,7 @@ class RemoteBaseEnv(BaseEnv):
 
     @override(BaseEnv)
     @PublicAPI
-    def try_reset(self,
-                  env_id: Optional[EnvID] = None) -> Optional[MultiEnvDict]:
+    def try_reset(self, env_id: Optional[EnvID] = None) -> Optional[MultiEnvDict]:
         actor = self.actors[env_id]
         obj_ref = actor.reset.remote()
         self.pending[obj_ref] = actor
@@ -270,9 +272,7 @@ class _RemoteSingleAgentEnv:
 
     def step(self, action):
         obs, rew, done, info = self.env.step(action[_DUMMY_AGENT_ID])
-        obs, rew, done, info = [{
-            _DUMMY_AGENT_ID: x
-        } for x in [obs, rew, done, info]]
+        obs, rew, done, info = [{_DUMMY_AGENT_ID: x} for x in [obs, rew, done, info]]
         done["__all__"] = done[_DUMMY_AGENT_ID]
         return obs, rew, done, info
 

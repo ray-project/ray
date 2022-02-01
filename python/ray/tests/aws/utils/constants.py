@@ -2,19 +2,25 @@ import copy
 import ray
 from datetime import datetime
 
-from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_KIND, \
-    NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE
+from ray.autoscaler.tags import (
+    TAG_RAY_LAUNCH_CONFIG,
+    TAG_RAY_NODE_KIND,
+    NODE_KIND_HEAD,
+    TAG_RAY_USER_NODE_TYPE,
+)
 
 # Override global constants used in AWS autoscaler config artifact names.
 # This helps ensure that any unmocked test doesn't alter non-test artifacts.
-ray.autoscaler._private.aws.config.RAY = \
-    "ray-autoscaler-aws-test"
-ray.autoscaler._private.aws.config.DEFAULT_RAY_INSTANCE_PROFILE = \
+ray.autoscaler._private.aws.config.RAY = "ray-autoscaler-aws-test"
+ray.autoscaler._private.aws.config.DEFAULT_RAY_INSTANCE_PROFILE = (
     ray.autoscaler._private.aws.config.RAY + "-v1"
-ray.autoscaler._private.aws.config.DEFAULT_RAY_IAM_ROLE = \
+)
+ray.autoscaler._private.aws.config.DEFAULT_RAY_IAM_ROLE = (
     ray.autoscaler._private.aws.config.RAY + "-v1"
-ray.autoscaler._private.aws.config.SECURITY_GROUP_TEMPLATE = \
+)
+ray.autoscaler._private.aws.config.SECURITY_GROUP_TEMPLATE = (
     ray.autoscaler._private.aws.config.RAY + "-{}"
+)
 
 # Default IAM instance profile to expose to tests.
 DEFAULT_INSTANCE_PROFILE = {
@@ -32,7 +38,7 @@ DEFAULT_INSTANCE_PROFILE = {
             "RoleId": "AROA0000000000EXAMPLE",
             "RoleName": "Test-Role",
         },
-    ]
+    ],
 }
 
 # Default EC2 key pair to expose to tests.
@@ -96,21 +102,20 @@ DEFAULT_CLUSTER_NAME = "test-cluster-name"
 # (prior to inbound rule configuration).
 DEFAULT_SG = {
     "Description": "Auto-created security group for Ray workers",
-    "GroupName": ray.autoscaler._private.aws.config.RAY + "-" +
-    DEFAULT_CLUSTER_NAME,
+    "GroupName": ray.autoscaler._private.aws.config.RAY + "-" + DEFAULT_CLUSTER_NAME,
     "OwnerId": "test-owner",
     "GroupId": "sg-1234abcd",
     "VpcId": DEFAULT_SUBNET["VpcId"],
     "IpPermissions": [],
-    "IpPermissionsEgress": [{
-        "FromPort": -1,
-        "ToPort": -1,
-        "IpProtocol": "-1",
-        "IpRanges": [{
-            "CidrIp": "0.0.0.0/0"
-        }]
-    }],
-    "Tags": []
+    "IpPermissionsEgress": [
+        {
+            "FromPort": -1,
+            "ToPort": -1,
+            "IpProtocol": "-1",
+            "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+        }
+    ],
+    "Tags": [],
 }
 
 # Secondary security group settings after creation
@@ -125,21 +130,20 @@ DEFAULT_SG_AUX_SUBNET = copy.deepcopy(DEFAULT_SG)
 DEFAULT_SG_AUX_SUBNET["VpcId"] = AUX_SUBNET["VpcId"]
 DEFAULT_SG_AUX_SUBNET["GroupId"] = AUX_SG["GroupId"]
 
-DEFAULT_IN_BOUND_RULES = [{
-    "FromPort": -1,
-    "ToPort": -1,
-    "IpProtocol": "-1",
-    "UserIdGroupPairs": [{
-        "GroupId": DEFAULT_SG["GroupId"]
-    }]
-}, {
-    "FromPort": 22,
-    "ToPort": 22,
-    "IpProtocol": "tcp",
-    "IpRanges": [{
-        "CidrIp": "0.0.0.0/0"
-    }]
-}]
+DEFAULT_IN_BOUND_RULES = [
+    {
+        "FromPort": -1,
+        "ToPort": -1,
+        "IpProtocol": "-1",
+        "UserIdGroupPairs": [{"GroupId": DEFAULT_SG["GroupId"]}],
+    },
+    {
+        "FromPort": 22,
+        "ToPort": 22,
+        "IpProtocol": "tcp",
+        "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+    },
+]
 # Default security group settings once default inbound rules are applied
 # (if used by both head and worker nodes)
 DEFAULT_SG_WITH_RULES = copy.deepcopy(DEFAULT_SG)
@@ -148,9 +152,9 @@ DEFAULT_SG_WITH_RULES["IpPermissions"] = DEFAULT_IN_BOUND_RULES
 # Default security group once default inbound rules are applied
 # (if using separate security groups for head and worker nodes).
 DEFAULT_SG_DUAL_GROUP_RULES = copy.deepcopy(DEFAULT_SG_WITH_RULES)
-DEFAULT_SG_DUAL_GROUP_RULES["IpPermissions"][0]["UserIdGroupPairs"].append({
-    "GroupId": AUX_SG["GroupId"]
-})
+DEFAULT_SG_DUAL_GROUP_RULES["IpPermissions"][0]["UserIdGroupPairs"].append(
+    {"GroupId": AUX_SG["GroupId"]}
+)
 
 # Default security group on aux subnet once default inbound rules are applied.
 DEFAULT_SG_WITH_RULES_AUX_SUBNET = copy.deepcopy(DEFAULT_SG_DUAL_GROUP_RULES)
@@ -161,27 +165,27 @@ DEFAULT_SG_WITH_RULES_AUX_SUBNET["GroupId"] = AUX_SG["GroupId"]
 DEFAULT_SG_WITH_NAME = copy.deepcopy(DEFAULT_SG)
 DEFAULT_SG_WITH_NAME["GroupName"] = "test_security_group_name"
 
-CUSTOM_IN_BOUND_RULES = [{
-    "FromPort": 443,
-    "ToPort": 443,
-    "IpProtocol": "TCP",
-    "IpRanges": [{
-        "CidrIp": "0.0.0.0/0"
-    }]
-}, {
-    "FromPort": 8265,
-    "ToPort": 8265,
-    "IpProtocol": "TCP",
-    "IpRanges": [{
-        "CidrIp": "0.0.0.0/0"
-    }]
-}]
+CUSTOM_IN_BOUND_RULES = [
+    {
+        "FromPort": 443,
+        "ToPort": 443,
+        "IpProtocol": "TCP",
+        "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+    },
+    {
+        "FromPort": 8265,
+        "ToPort": 8265,
+        "IpProtocol": "TCP",
+        "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+    },
+]
 
 # Default security group with custom name once...
 # default and custom in bound rules are applied
 DEFAULT_SG_WITH_NAME_AND_RULES = copy.deepcopy(DEFAULT_SG_WITH_NAME)
-DEFAULT_SG_WITH_NAME_AND_RULES[
-    "IpPermissions"] = DEFAULT_IN_BOUND_RULES + CUSTOM_IN_BOUND_RULES
+DEFAULT_SG_WITH_NAME_AND_RULES["IpPermissions"] = (
+    DEFAULT_IN_BOUND_RULES + CUSTOM_IN_BOUND_RULES
+)
 
 # Default launch template to expose to tests.
 DEFAULT_LT = {
@@ -193,30 +197,27 @@ DEFAULT_LT = {
     "DefaultVersion": True,
     "LaunchTemplateData": {
         "EbsOptimized": False,
-        "IamInstanceProfile": {
-            "Arn": DEFAULT_INSTANCE_PROFILE["Arn"]
-        },
-        "NetworkInterfaces": [{
-            "DeviceIndex": 0,
-            "Groups": [DEFAULT_SG["GroupId"]],
-            "SubnetId": DEFAULT_SUBNET["SubnetId"]
-        }],
+        "IamInstanceProfile": {"Arn": DEFAULT_INSTANCE_PROFILE["Arn"]},
+        "NetworkInterfaces": [
+            {
+                "DeviceIndex": 0,
+                "Groups": [DEFAULT_SG["GroupId"]],
+                "SubnetId": DEFAULT_SUBNET["SubnetId"],
+            }
+        ],
         "ImageId": "ami-00000000000000000",
         "InstanceType": "m5.large",
-        "TagSpecifications": [{
-            "ResourceType": "instance",
-            "Tags": [{
-                "Key": "test-key",
-                "Value": "test-value"
-            }]
-        }, {
-            "ResourceType": "volume",
-            "Tags": [{
-                "Key": "test-key",
-                "Value": "test-value"
-            }]
-        }]
-    }
+        "TagSpecifications": [
+            {
+                "ResourceType": "instance",
+                "Tags": [{"Key": "test-key", "Value": "test-value"}],
+            },
+            {
+                "ResourceType": "volume",
+                "Tags": [{"Key": "test-key", "Value": "test-value"}],
+            },
+        ],
+    },
 }
 
 # Default node provider tags to expose to tests.

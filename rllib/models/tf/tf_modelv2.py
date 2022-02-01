@@ -20,9 +20,14 @@ class TFModelV2(ModelV2):
     Note that this class by itself is not a valid model unless you
     implement forward() in a subclass."""
 
-    def __init__(self, obs_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space, num_outputs: int,
-                 model_config: ModelConfigDict, name: str):
+    def __init__(
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        num_outputs: int,
+        model_config: ModelConfigDict,
+        name: str,
+    ):
         """Initializes a TFModelV2 instance.
 
         Here is an example implementation for a subclass
@@ -38,12 +43,8 @@ class TFModelV2(ModelV2):
                     input_layer, [output_layer, value_layer])
         """
         super().__init__(
-            obs_space,
-            action_space,
-            num_outputs,
-            model_config,
-            name,
-            framework="tf")
+            obs_space, action_space, num_outputs, model_config, name, framework="tf"
+        )
 
         # Deprecated: TFModelV2 now automatically track their variables.
         self.var_list = []
@@ -69,13 +70,13 @@ class TFModelV2(ModelV2):
     def register_variables(self, variables: List[TensorType]) -> None:
         """Register the given list of variables with this model."""
         if log_once("deprecated_tfmodelv2_register_variables"):
-            deprecation_warning(
-                old="TFModelV2.register_variables", error=False)
+            deprecation_warning(old="TFModelV2.register_variables", error=False)
         self.var_list.extend(variables)
 
     @override(ModelV2)
-    def variables(self, as_dict: bool = False) -> \
-            Union[List[TensorType], Dict[str, TensorType]]:
+    def variables(
+        self, as_dict: bool = False
+    ) -> Union[List[TensorType], Dict[str, TensorType]]:
         if as_dict:
             # Old way using `register_variables`.
             if self.var_list:
@@ -92,12 +93,12 @@ class TFModelV2(ModelV2):
             return list(self.variables(as_dict=True).values())
 
     @override(ModelV2)
-    def trainable_variables(self, as_dict: bool = False) -> \
-            Union[List[TensorType], Dict[str, TensorType]]:
+    def trainable_variables(
+        self, as_dict: bool = False
+    ) -> Union[List[TensorType], Dict[str, TensorType]]:
         if as_dict:
             return {
-                k: v
-                for k, v in self.variables(as_dict=True).items() if v.trainable
+                k: v for k, v in self.variables(as_dict=True).items() if v.trainable
             }
         return [v for v in self.variables() if v.trainable]
 
@@ -125,7 +126,8 @@ class TFModelV2(ModelV2):
             ret = {}
             for i, value in enumerate(struct):
                 sub_vars = TFModelV2._find_sub_modules(
-                    current_key + "_{}".format(i), value)
+                    current_key + "_{}".format(i), value
+                )
                 ret.update(sub_vars)
             return ret
         # Dict.
@@ -134,8 +136,7 @@ class TFModelV2(ModelV2):
                 current_key += "_"
             ret = {}
             for key, value in struct.items():
-                sub_vars = TFModelV2._find_sub_modules(current_key + str(key),
-                                                       value)
+                sub_vars = TFModelV2._find_sub_modules(current_key + str(key), value)
                 ret.update(sub_vars)
             return ret
         return {}

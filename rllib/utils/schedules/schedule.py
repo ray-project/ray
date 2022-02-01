@@ -40,8 +40,7 @@ class Schedule(metaclass=ABCMeta):
         return self._value(t)
 
     def __call__(self, t):
-        """Simply calls self.value(t). Implemented to make Schedules callable.
-        """
+        """Simply calls self.value(t). Implemented to make Schedules callable."""
         return self.value(t)
 
     @DeveloperAPI

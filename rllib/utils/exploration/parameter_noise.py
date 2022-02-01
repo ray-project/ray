@@ -6,13 +6,14 @@ from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical, Deterministic
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
-    TorchDeterministic
+from ray.rllib.models.torch.torch_action_dist import (
+    TorchCategorical,
+    TorchDeterministic,
+)
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import get_variable, try_import_tf, \
-    try_import_torch
+from ray.rllib.utils.framework import get_variable, try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.numpy import softmax, SMALL_NUMBER
 from ray.rllib.utils.typing import TensorType
@@ -37,16 +38,18 @@ class ParameterNoise(Exploration):
     noise's stddev for the next episode.
     """
 
-    def __init__(self,
-                 action_space,
-                 *,
-                 framework: str,
-                 policy_config: dict,
-                 model: ModelV2,
-                 initial_stddev: float = 1.0,
-                 random_timesteps: int = 10000,
-                 sub_exploration: Optional[dict] = None,
-                 **kwargs):
+    def __init__(
+        self,
+        action_space,
+        *,
+        framework: str,
+        policy_config: dict,
+        model: ModelV2,
+        initial_stddev: float = 1.0,
+        random_timesteps: int = 10000,
+        sub_exploration: Optional[dict] = None,
+        **kwargs
+    ):
         """Initializes a ParameterNoise Exploration object.
 
         Args:
@@ -62,17 +65,20 @@ class ParameterNoise(Exploration):
             policy_config=policy_config,
             model=model,
             framework=framework,
-            **kwargs)
+            **kwargs
+        )
 
         self.stddev = get_variable(
-            initial_stddev, framework=self.framework, tf_name="stddev")
+            initial_stddev, framework=self.framework, tf_name="stddev"
+        )
         self.stddev_val = initial_stddev  # Out-of-graph tf value holder.
 
         # The weight variables of the Model where noise should be applied to.
         # This excludes any variable, whose name contains "LayerNorm" (those
         # are BatchNormalization layers, which should not be perturbed).
         self.model_variables = [
-            v for k, v in self.model.trainable_variables(as_dict=True).items()
+            v
+            for k, v in self.model.trainable_variables(as_dict=True).items()
             if "LayerNorm" not in k
         ]
         # Our noise to be added to the weights. Each item in `self.noise`
@@ -87,16 +93,15 @@ class ParameterNoise(Exploration):
                     framework=self.framework,
                     tf_name=name_,
                     torch_tensor=True,
-                    device=self.device))
+                    device=self.device,
+                )
+            )
 
         # tf-specific ops to sample, assign and remove noise.
         if self.framework == "tf" and not tf.executing_eagerly():
-            self.tf_sample_new_noise_op = \
-                self._tf_sample_new_noise_op()
-            self.tf_add_stored_noise_op = \
-                self._tf_add_stored_noise_op()
-            self.tf_remove_noise_op = \
-                self._tf_remove_noise_op()
+            self.tf_sample_new_noise_op = self._tf_sample_new_noise_op()
+            self.tf_add_stored_noise_op = self._tf_add_stored_noise_op()
+            self.tf_remove_noise_op = self._tf_remove_noise_op()
             # Create convenience sample+add op for tf.
             with tf1.control_dependencies([self.tf_sample_new_noise_op]):
                 add_op = self._tf_add_stored_noise_op()
@@ -116,10 +121,13 @@ class ParameterNoise(Exploration):
                     "epsilon_schedule": {
                         "type": "PiecewiseSchedule",
                         # Step function (see [2]).
-                        "endpoints": [(0, 1.0), (random_timesteps + 1, 1.0),
-                                      (random_timesteps + 2, 0.01)],
-                        "outside_value": 0.01
-                    }
+                        "endpoints": [
+                            (0, 1.0),
+                            (random_timesteps + 1, 1.0),
+                            (random_timesteps + 2, 0.01),
+                        ],
+                        "outside_value": 0.01,
+                    },
                 }
             elif isinstance(self.action_space, Box):
                 sub_exploration = {
@@ -137,20 +145,22 @@ class ParameterNoise(Exploration):
             action_space=self.action_space,
             policy_config=self.policy_config,
             model=self.model,
-            **kwargs)
+            **kwargs
+        )
 
         # Whether we need to call `self._delayed_on_episode_start` before
         # the forward pass.
         self.episode_started = False
 
     @override(Exploration)
-    def before_compute_actions(self,
-                               *,
-                               timestep: Optional[int] = None,
-                               explore: Optional[bool] = None,
-                               tf_sess: Optional["tf.Session"] = None):
-        explore = explore if explore is not None else \
-            self.policy_config["explore"]
+    def before_compute_actions(
+        self,
+        *,
+        timestep: Optional[int] = None,
+        explore: Optional[bool] = None,
+        tf_sess: Optional["tf.Session"] = None
+    ):
+        explore = explore if explore is not None else self.policy_config["explore"]
 
         # Is this the first forward pass in the new episode? If yes, do the
         # noise re-sampling and add to weights.
@@ -165,24 +175,28 @@ class ParameterNoise(Exploration):
             self._remove_noise(tf_sess=tf_sess)
 
     @override(Exploration)
-    def get_exploration_action(self, *,
-                               action_distribution: ActionDistribution,
-                               timestep: Union[TensorType, int],
-                               explore: Union[TensorType, bool]):
+    def get_exploration_action(
+        self,
+        *,
+        action_distribution: ActionDistribution,
+        timestep: Union[TensorType, int],
+        explore: Union[TensorType, bool]
+    ):
         # Use our sub-exploration object to handle the final exploration
         # action (depends on the algo-type/action-space/etc..).
         return self.sub_exploration.get_exploration_action(
-            action_distribution=action_distribution,
-            timestep=timestep,
-            explore=explore)
+            action_distribution=action_distribution, timestep=timestep, explore=explore
+        )
 
     @override(Exploration)
-    def on_episode_start(self,
-                         policy: "Policy",
-                         *,
-                         environment: BaseEnv = None,
-                         episode: int = None,
-                         tf_sess: Optional["tf.Session"] = None):
+    def on_episode_start(
+        self,
+        policy: "Policy",
+        *,
+        environment: BaseEnv = None,
+        episode: int = None,
+        tf_sess: Optional["tf.Session"] = None
+    ):
         # We have to delay the noise-adding step by one forward call.
         # This is due to the fact that the optimizer does it's step right
         # after the episode was reset (and hence the noise was already added!).
@@ -199,28 +213,26 @@ class ParameterNoise(Exploration):
         self.episode_started = False
 
     @override(Exploration)
-    def on_episode_end(self,
-                       policy,
-                       *,
-                       environment=None,
-                       episode=None,
-                       tf_sess=None):
+    def on_episode_end(self, policy, *, environment=None, episode=None, tf_sess=None):
         # Remove stored noise from weights (only if currently noisy).
         if self.weights_are_currently_noisy:
             self._remove_noise(tf_sess=tf_sess)
 
     @override(Exploration)
-    def postprocess_trajectory(self,
-                               policy: "Policy",
-                               sample_batch: SampleBatch,
-                               tf_sess: Optional["tf.Session"] = None):
+    def postprocess_trajectory(
+        self,
+        policy: "Policy",
+        sample_batch: SampleBatch,
+        tf_sess: Optional["tf.Session"] = None,
+    ):
         noisy_action_dist = noise_free_action_dist = None
         # Adjust the stddev depending on the action (pi)-distance.
         # Also see [1] for details.
         # TODO(sven): Find out whether this can be scrapped by simply using
         #  the `sample_batch` to get the noisy/noise-free action dist.
         _, _, fetches = policy.compute_actions_from_input_dict(
-            input_dict=sample_batch, explore=self.weights_are_currently_noisy)
+            input_dict=sample_batch, explore=self.weights_are_currently_noisy
+        )
 
         # Categorical case (e.g. DQN).
         if policy.dist_class in (Categorical, TorchCategorical):
@@ -237,8 +249,8 @@ class ParameterNoise(Exploration):
             noise_free_action_dist = action_dist
 
         _, _, fetches = policy.compute_actions_from_input_dict(
-            input_dict=sample_batch,
-            explore=not self.weights_are_currently_noisy)
+            input_dict=sample_batch, explore=not self.weights_are_currently_noisy
+        )
 
         # Categorical case (e.g. DQN).
         if policy.dist_class in (Categorical, TorchCategorical):
@@ -260,21 +272,24 @@ class ParameterNoise(Exploration):
             #  Distribution classes (don't support off-graph/numpy yet).
             distance = np.nanmean(
                 np.sum(
-                    noise_free_action_dist *
-                    np.log(noise_free_action_dist /
-                           (noisy_action_dist + SMALL_NUMBER)), 1))
-            current_epsilon = self.sub_exploration.get_state(
-                sess=tf_sess)["cur_epsilon"]
-            delta = -np.log(1 - current_epsilon +
-                            current_epsilon / self.action_space.n)
+                    noise_free_action_dist
+                    * np.log(
+                        noise_free_action_dist / (noisy_action_dist + SMALL_NUMBER)
+                    ),
+                    1,
+                )
+            )
+            current_epsilon = self.sub_exploration.get_state(sess=tf_sess)[
+                "cur_epsilon"
+            ]
+            delta = -np.log(1 - current_epsilon + current_epsilon / self.action_space.n)
         elif policy.dist_class in [Deterministic, TorchDeterministic]:
             # Calculate MSE between noisy and non-noisy output (see [2]).
             distance = np.sqrt(
-                np.mean(np.square(noise_free_action_dist - noisy_action_dist)))
-            current_scale = self.sub_exploration.get_state(
-                sess=tf_sess)["cur_scale"]
-            delta = getattr(self.sub_exploration, "ou_sigma", 0.2) * \
-                current_scale
+                np.mean(np.square(noise_free_action_dist - noisy_action_dist))
+            )
+            current_scale = self.sub_exploration.get_state(sess=tf_sess)["cur_scale"]
+            delta = getattr(self.sub_exploration, "ou_sigma", 0.2) * current_scale
 
         # Adjust stddev according to the calculated action-distance.
         if distance <= delta:
@@ -296,8 +311,8 @@ class ParameterNoise(Exploration):
         else:
             for i in range(len(self.noise)):
                 self.noise[i] = torch.normal(
-                    mean=torch.zeros(self.noise[i].size()),
-                    std=self.stddev).to(self.device)
+                    mean=torch.zeros(self.noise[i].size()), std=self.stddev
+                ).to(self.device)
 
     def _tf_sample_new_noise_op(self):
         added_noises = []
@@ -306,9 +321,10 @@ class ParameterNoise(Exploration):
                 tf1.assign(
                     noise,
                     tf.random.normal(
-                        shape=noise.shape,
-                        stddev=self.stddev,
-                        dtype=tf.float32)))
+                        shape=noise.shape, stddev=self.stddev, dtype=tf.float32
+                    ),
+                )
+            )
         return tf.group(*added_noises)
 
     def _sample_new_noise_and_add(self, *, tf_sess=None, override=False):
@@ -412,8 +428,7 @@ class ParameterNoise(Exploration):
         return {"cur_stddev": self.stddev_val}
 
     @override(Exploration)
-    def set_state(self, state: dict,
-                  sess: Optional["tf.Session"] = None) -> None:
+    def set_state(self, state: dict, sess: Optional["tf.Session"] = None) -> None:
         self.stddev_val = state["cur_stddev"]
         # Set self.stddev to calculated value.
         if self.framework == "tf":

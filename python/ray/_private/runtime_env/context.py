@@ -14,12 +14,14 @@ logger = logging.getLogger(__name__)
 class RuntimeEnvContext:
     """A context used to describe the created runtime env."""
 
-    def __init__(self,
-                 command_prefix: List[str] = None,
-                 env_vars: Dict[str, str] = None,
-                 py_executable: Optional[str] = None,
-                 resources_dir: Optional[str] = None,
-                 container: Dict[str, Any] = None):
+    def __init__(
+        self,
+        command_prefix: List[str] = None,
+        env_vars: Dict[str, str] = None,
+        py_executable: Optional[str] = None,
+        resources_dir: Optional[str] = None,
+        container: Dict[str, Any] = None,
+    ):
         self.command_prefix = command_prefix or []
         self.env_vars = env_vars or {}
         self.py_executable = py_executable or sys.executable

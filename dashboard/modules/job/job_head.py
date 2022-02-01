@@ -10,8 +10,7 @@ from dataclasses import dataclass
 
 import ray
 import ray.dashboard.utils as dashboard_utils
-from ray._private.runtime_env.packaging import (package_exists,
-                                                upload_package_to_gcs)
+from ray._private.runtime_env.packaging import package_exists, upload_package_to_gcs
 from ray.dashboard.modules.job.common import (
     CURRENT_VERSION,
     http_uri_components_to_uri,
@@ -42,12 +41,15 @@ def _init_ray_and_catch_exceptions(f: Callable) -> Callable:
                 try:
                     address = self._redis_address
                     redis_pw = self._redis_password
-                    logger.info(f"Connecting to ray with address={address}, "
-                                f"redis_pw={redis_pw}")
+                    logger.info(
+                        f"Connecting to ray with address={address}, "
+                        f"redis_pw={redis_pw}"
+                    )
                     ray.init(
                         address=address,
                         namespace=RAY_INTERNAL_JOBS_NAMESPACE,
-                        _redis_password=redis_pw)
+                        _redis_password=redis_pw,
+                    )
                 except Exception as e:
                     ray.shutdown()
                     raise e from None
@@ -57,7 +59,8 @@ def _init_ray_and_catch_exceptions(f: Callable) -> Callable:
             logger.exception(f"Unexpected error in handler: {e}")
             return Response(
                 text=traceback.format_exc(),
-                status=aiohttp.web.HTTPInternalServerError.status_code)
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
 
     return check
 
@@ -71,8 +74,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         self._redis_password = dashboard_head.redis_password
         self._job_manager = None
 
-    async def _parse_and_validate_request(self, req: Request,
-                                          request_type: dataclass) -> Any:
+    async def _parse_and_validate_request(
+        self, req: Request, request_type: dataclass
+    ) -> Any:
         """Parse request and cast to request type. If parsing failed, return a
         Response object with status 400 and stacktrace instead.
         """
@@ -82,7 +86,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             logger.info(f"Got invalid request type: {e}")
             return Response(
                 text=traceback.format_exc(),
-                status=aiohttp.web.HTTPBadRequest.status_code)
+                status=aiohttp.web.HTTPBadRequest.status_code,
+            )
 
     def job_exists(self, job_id: str) -> bool:
         status = self._job_manager.get_job_status(job_id)
@@ -95,7 +100,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         resp = VersionResponse(
             version=CURRENT_VERSION,
             ray_version=ray.__version__,
-            ray_commit=ray.__commit__)
+            ray_commit=ray.__commit__,
+        )
         return Response(
             text=json.dumps(dataclasses.asdict(resp)),
             content_type="application/json",
@@ -107,12 +113,14 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def get_package(self, req: Request) -> Response:
         package_uri = http_uri_components_to_uri(
             protocol=req.match_info["protocol"],
-            package_name=req.match_info["package_name"])
+            package_name=req.match_info["package_name"],
+        )
 
         if not package_exists(package_uri):
             return Response(
                 text=f"Package {package_uri} does not exist",
-                status=aiohttp.web.HTTPNotFound.status_code)
+                status=aiohttp.web.HTTPNotFound.status_code,
+            )
 
         return Response()
 
@@ -121,14 +129,16 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def upload_package(self, req: Request):
         package_uri = http_uri_components_to_uri(
             protocol=req.match_info["protocol"],
-            package_name=req.match_info["package_name"])
+            package_name=req.match_info["package_name"],
+        )
         logger.info(f"Uploading package {package_uri} to the GCS.")
         try:
             upload_package_to_gcs(package_uri, await req.read())
         except Exception:
             return Response(
                 text=traceback.format_exc(),
-                status=aiohttp.web.HTTPInternalServerError.status_code)
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
 
         return Response(status=aiohttp.web.HTTPOk.status_code)
 
@@ -147,17 +157,20 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 entrypoint=submit_request.entrypoint,
                 job_id=submit_request.job_id,
                 runtime_env=submit_request.runtime_env,
-                metadata=submit_request.metadata)
+                metadata=submit_request.metadata,
+            )
 
             resp = JobSubmitResponse(job_id=job_id)
         except (TypeError, ValueError):
             return Response(
                 text=traceback.format_exc(),
-                status=aiohttp.web.HTTPBadRequest.status_code)
+                status=aiohttp.web.HTTPBadRequest.status_code,
+            )
         except Exception:
             return Response(
                 text=traceback.format_exc(),
-                status=aiohttp.web.HTTPInternalServerError.status_code)
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
 
         return Response(
             text=json.dumps(dataclasses.asdict(resp)),
@@ -172,7 +185,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         if not self.job_exists(job_id):
             return Response(
                 text=f"Job {job_id} does not exist",
-                status=aiohttp.web.HTTPNotFound.status_code)
+                status=aiohttp.web.HTTPNotFound.status_code,
+            )
 
         try:
             stopped = self._job_manager.stop_job(job_id)
@@ -180,11 +194,12 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         except Exception:
             return Response(
                 text=traceback.format_exc(),
-                status=aiohttp.web.HTTPInternalServerError.status_code)
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
 
         return Response(
-            text=json.dumps(dataclasses.asdict(resp)),
-            content_type="application/json")
+            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
+        )
 
     @routes.get("/api/jobs/{job_id}")
     @_init_ray_and_catch_exceptions
@@ -193,13 +208,14 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         if not self.job_exists(job_id):
             return Response(
                 text=f"Job {job_id} does not exist",
-                status=aiohttp.web.HTTPNotFound.status_code)
+                status=aiohttp.web.HTTPNotFound.status_code,
+            )
 
         status: JobStatusInfo = self._job_manager.get_job_status(job_id)
         resp = JobStatusResponse(status=status.status, message=status.message)
         return Response(
-            text=json.dumps(dataclasses.asdict(resp)),
-            content_type="application/json")
+            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
+        )
 
     @routes.get("/api/jobs/{job_id}/logs")
     @_init_ray_and_catch_exceptions
@@ -208,14 +224,15 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         if not self.job_exists(job_id):
             return Response(
                 text=f"Job {job_id} does not exist",
-                status=aiohttp.web.HTTPNotFound.status_code)
+                status=aiohttp.web.HTTPNotFound.status_code,
+            )
 
         logs: str = self._job_manager.get_job_logs(job_id)
         # TODO(jiaodong): Support log streaming #19415
         resp = JobLogsResponse(logs=logs)
         return Response(
-            text=json.dumps(dataclasses.asdict(resp)),
-            content_type="application/json")
+            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
+        )
 
     async def run(self, server):
         if not self._job_manager:

@@ -47,15 +47,12 @@ def set_allow_interactive(val: bool):
 
 
 class ProcessRunnerError(Exception):
-    def __init__(self,
-                 msg,
-                 msg_type,
-                 code=None,
-                 command=None,
-                 special_case=None):
+    def __init__(self, msg, msg_type, code=None, command=None, special_case=None):
         super(ProcessRunnerError, self).__init__(
             "{} (discovered={}): type={}, code={}, command={}".format(
-                msg, special_case, msg_type, code, command))
+                msg, special_case, msg_type, code, command
+            )
+        )
 
         self.msg_type = msg_type
         self.code = code
@@ -66,13 +63,15 @@ class ProcessRunnerError(Exception):
 
 _ssh_output_regexes = {
     "known_host_update": re.compile(
-        r"\s*Warning: Permanently added '.+' \(.+\) "
-        r"to the list of known hosts.\s*"),
+        r"\s*Warning: Permanently added '.+' \(.+\) " r"to the list of known hosts.\s*"
+    ),
     "connection_closed": re.compile(r"\s*Shared connection to .+ closed.\s*"),
-    "timeout": re.compile(r"\s*ssh: connect to host .+ port .+: "
-                          r"Operation timed out\s*"),
+    "timeout": re.compile(
+        r"\s*ssh: connect to host .+ port .+: " r"Operation timed out\s*"
+    ),
     "conn_refused": re.compile(
-        r"\s*ssh: connect to host .+ port .+: Connection refused\s*")
+        r"\s*ssh: connect to host .+ port .+: Connection refused\s*"
+    )
     # todo: check for other connection failures for better error messages?
 }
 
@@ -118,8 +117,7 @@ def _read_subprocess_stream(f, output_file, is_stdout=False):
             line = line[:-1]
 
         if not is_stdout:
-            if _ssh_output_regexes["connection_closed"]\
-                    .fullmatch(line) is not None:
+            if _ssh_output_regexes["connection_closed"].fullmatch(line) is not None:
                 # Do not log "connection closed" messages which SSH
                 # puts in stderr for no reason.
                 #
@@ -133,15 +131,15 @@ def _read_subprocess_stream(f, output_file, is_stdout=False):
                 # network conditions/nodes in the early stages of boot
                 # are expected to sometimes cause connection timeouts.
                 if detected_special_case is not None:
-                    raise ValueError("Bug: ssh_timeout conflicts with another "
-                                     "special codition: " +
-                                     detected_special_case)
+                    raise ValueError(
+                        "Bug: ssh_timeout conflicts with another "
+                        "special codition: " + detected_special_case
+                    )
 
                 detected_special_case = "ssh_timeout"
                 continue
 
-            if _ssh_output_regexes["conn_refused"]\
-                    .fullmatch(line) is not None:
+            if _ssh_output_regexes["conn_refused"].fullmatch(line) is not None:
                 # Connection refused is not really an error but
                 # rather a special condition. It should be handled by
                 # the caller, since network conditions/nodes in the
@@ -150,13 +148,13 @@ def _read_subprocess_stream(f, output_file, is_stdout=False):
                 if detected_special_case is not None:
                     raise ValueError(
                         "Bug: ssh_conn_refused conflicts with another "
-                        "special codition: " + detected_special_case)
+                        "special codition: " + detected_special_case
+                    )
 
                 detected_special_case = "ssh_conn_refused"
                 continue
 
-            if _ssh_output_regexes["known_host_update"]\
-                    .fullmatch(line) is not None:
+            if _ssh_output_regexes["known_host_update"].fullmatch(line) is not None:
                 # Since we ignore SSH host control anyway
                 # (-o UserKnownHostsFile=/dev/null),
                 # we should silence the host control warnings.
@@ -170,11 +168,13 @@ def _read_subprocess_stream(f, output_file, is_stdout=False):
     return detected_special_case
 
 
-def _run_and_process_output(cmd,
-                            stdout_file,
-                            process_runner=subprocess,
-                            stderr_file=None,
-                            use_login_shells=False):
+def _run_and_process_output(
+    cmd,
+    stdout_file,
+    process_runner=subprocess,
+    stderr_file=None,
+    use_login_shells=False,
+):
     """Run a command and process its output for special cases.
 
     Calls a standard 'check_call' if process_runner is not subprocess.
@@ -229,10 +229,12 @@ def _run_and_process_output(cmd,
     """
     stdin_overwrite = subprocess.PIPE
     # This already should be validated in a higher place of the stack.
-    assert not (does_allow_interactive() and is_output_redirected()), (
-        "Cannot redirect output while in interactive mode.")
-    if process_runner != subprocess or (does_allow_interactive()
-                                        and not is_output_redirected()):
+    assert not (
+        does_allow_interactive() and is_output_redirected()
+    ), "Cannot redirect output while in interactive mode."
+    if process_runner != subprocess or (
+        does_allow_interactive() and not is_output_redirected()
+    ):
         stdin_overwrite = None
 
     # See implementation note #1
@@ -243,16 +245,17 @@ def _run_and_process_output(cmd,
             # See implementation note #2
             stdin=stdin_overwrite,
             stdout=stdout_file,
-            stderr=stderr_file)
+            stderr=stderr_file,
+        )
 
     with subprocess.Popen(
-            cmd,
-            # See implementation note #2
-            stdin=stdin_overwrite,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            bufsize=1,  # line buffering
-            universal_newlines=True  # text mode outputs
+        cmd,
+        # See implementation note #2
+        stdin=stdin_overwrite,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=1,  # line buffering
+        universal_newlines=True,  # text mode outputs
     ) as p:
         from concurrent.futures import ThreadPoolExecutor
 
@@ -262,14 +265,12 @@ def _run_and_process_output(cmd,
 
         # See implementation note #3
         with ThreadPoolExecutor(max_workers=2) as executor:
-            stdout_future = \
-                executor.submit(_read_subprocess_stream,
-                                p.stdout, stdout_file,
-                                is_stdout=True)
-            stderr_future = \
-                executor.submit(_read_subprocess_stream,
-                                p.stderr, stderr_file,
-                                is_stdout=False)
+            stdout_future = executor.submit(
+                _read_subprocess_stream, p.stdout, stdout_file, is_stdout=True
+            )
+            stderr_future = executor.submit(
+                _read_subprocess_stream, p.stderr, stderr_file, is_stdout=False
+            )
             # Wait for completion.
             executor.shutdown()
 
@@ -286,7 +287,8 @@ def _run_and_process_output(cmd,
                     raise ValueError(
                         "Bug: found a special case in both stdout and "
                         "stderr. This is not valid behavior at the time "
-                        "of writing this code.")
+                        "of writing this code."
+                    )
                 detected_special_case = stderr_future.result()
 
             if p.returncode > 0:
@@ -297,7 +299,8 @@ def _run_and_process_output(cmd,
                     "ssh_command_failed",
                     code=p.returncode,
                     command=cmd,
-                    special_case=detected_special_case)
+                    special_case=detected_special_case,
+                )
             elif p.returncode < 0:
                 # Process failed due to a signal, since signals
                 # set the exit code to a negative value.
@@ -306,15 +309,15 @@ def _run_and_process_output(cmd,
                     "ssh_command_failed",
                     code=p.returncode,
                     command=cmd,
-                    special_case="died_to_signal")
+                    special_case="died_to_signal",
+                )
 
             return p.returncode
 
 
-def run_cmd_redirected(cmd,
-                       process_runner=subprocess,
-                       silent=False,
-                       use_login_shells=False):
+def run_cmd_redirected(
+    cmd, process_runner=subprocess, silent=False, use_login_shells=False
+):
     """Run a command and optionally redirect output to a file.
 
     Args:
@@ -331,7 +334,8 @@ def run_cmd_redirected(cmd,
             process_runner=process_runner,
             stdout_file=process_runner.DEVNULL,
             stderr_file=process_runner.DEVNULL,
-            use_login_shells=use_login_shells)
+            use_login_shells=use_login_shells,
+        )
 
     if not is_output_redirected():
         return _run_and_process_output(
@@ -339,25 +343,27 @@ def run_cmd_redirected(cmd,
             process_runner=process_runner,
             stdout_file=sys.stdout,
             stderr_file=sys.stderr,
-            use_login_shells=use_login_shells)
+            use_login_shells=use_login_shells,
+        )
     else:
         tmpfile_path = os.path.join(
-            tempfile.gettempdir(), "ray-up-{}-{}.txt".format(
-                cmd[0], time.time()))
+            tempfile.gettempdir(), "ray-up-{}-{}.txt".format(cmd[0], time.time())
+        )
         with open(
-                tmpfile_path,
-                mode="w",
-                # line buffering
-                buffering=1) as tmp:
-            cli_logger.verbose("Command stdout is redirected to {}",
-                               cf.bold(tmp.name))
+            tmpfile_path,
+            mode="w",
+            # line buffering
+            buffering=1,
+        ) as tmp:
+            cli_logger.verbose("Command stdout is redirected to {}", cf.bold(tmp.name))
 
             return _run_and_process_output(
                 cmd,
                 process_runner=process_runner,
                 stdout_file=tmp,
                 stderr_file=tmp,
-                use_login_shells=use_login_shells)
+                use_login_shells=use_login_shells,
+            )
 
 
 def handle_ssh_fails(e, first_conn_refused_time, retry_interval):
@@ -378,28 +384,36 @@ def handle_ssh_fails(e, first_conn_refused_time, retry_interval):
         return
 
     if e.special_case == "ssh_conn_refused":
-        if first_conn_refused_time is not None and \
-            time.time() - first_conn_refused_time > \
-                CONN_REFUSED_PATIENCE:
+        if (
+            first_conn_refused_time is not None
+            and time.time() - first_conn_refused_time > CONN_REFUSED_PATIENCE
+        ):
             cli_logger.error(
                 "SSH connection was being refused "
                 "for {} seconds. Head node assumed "
-                "unreachable.", cf.bold(str(CONN_REFUSED_PATIENCE)))
-            cli_logger.abort("Check the node's firewall settings "
-                             "and the cloud network configuration.")
+                "unreachable.",
+                cf.bold(str(CONN_REFUSED_PATIENCE)),
+            )
+            cli_logger.abort(
+                "Check the node's firewall settings "
+                "and the cloud network configuration."
+            )
 
         cli_logger.warning("SSH connection was refused.")
-        cli_logger.warning("This might mean that the SSH daemon is "
-                           "still setting up, or that "
-                           "the host is inaccessable (e.g. due to "
-                           "a firewall).")
+        cli_logger.warning(
+            "This might mean that the SSH daemon is "
+            "still setting up, or that "
+            "the host is inaccessable (e.g. due to "
+            "a firewall)."
+        )
 
         return time.time()
 
     if e.special_case in ["ssh_timeout", "ssh_conn_refused"]:
-        cli_logger.print("SSH still not available, "
-                         "retrying in {} seconds.", cf.bold(
-                             str(retry_interval)))
+        cli_logger.print(
+            "SSH still not available, " "retrying in {} seconds.",
+            cf.bold(str(retry_interval)),
+        )
     else:
         raise e
 

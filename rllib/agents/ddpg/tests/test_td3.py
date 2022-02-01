@@ -4,8 +4,12 @@ import unittest
 import ray
 import ray.rllib.agents.ddpg.td3 as td3
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    check_train_results, framework_iterator
+from ray.rllib.utils.test_utils import (
+    check,
+    check_compute_single_action,
+    check_train_results,
+    framework_iterator,
+)
 
 tf1, tf, tfv = try_import_tf()
 
@@ -72,14 +76,12 @@ class TestTD3(unittest.TestCase):
             }
             trainer = td3.TD3Trainer(config=lcl_config, env="Pendulum-v1")
             # ts=0 (get a deterministic action as per explore=False).
-            deterministic_action = trainer.compute_single_action(
-                obs, explore=False)
+            deterministic_action = trainer.compute_single_action(obs, explore=False)
             self.assertEqual(trainer.get_policy().global_timestep, 1)
             # ts=1-29 (in random window).
             random_a = []
             for i in range(1, 30):
-                random_a.append(
-                    trainer.compute_single_action(obs, explore=True))
+                random_a.append(trainer.compute_single_action(obs, explore=True))
                 self.assertEqual(trainer.get_policy().global_timestep, i + 1)
                 check(random_a[-1], deterministic_action, false=True)
             self.assertTrue(np.std(random_a) > 0.3)
@@ -101,4 +103,5 @@ class TestTD3(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

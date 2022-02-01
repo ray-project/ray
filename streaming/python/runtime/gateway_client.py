@@ -9,12 +9,12 @@ import ray
 class GatewayClient:
     """GatewayClient is used to interact with `PythonGateway` java actor"""
 
-    _PYTHON_GATEWAY_CLASSNAME = \
-        b"io.ray.streaming.runtime.python.PythonGateway"
+    _PYTHON_GATEWAY_CLASSNAME = b"io.ray.streaming.runtime.python.PythonGateway"
 
     def __init__(self):
         self._python_gateway_actor = ray.java_actor_class(
-            GatewayClient._PYTHON_GATEWAY_CLASSNAME).remote()
+            GatewayClient._PYTHON_GATEWAY_CLASSNAME
+        ).remote()
 
     def create_streaming_context(self):
         call = self._python_gateway_actor.createStreamingContext.remote()
@@ -30,8 +30,9 @@ class GatewayClient:
 
     def create_py_stream_source(self, serialized_func):
         assert isinstance(serialized_func, bytes)
-        call = self._python_gateway_actor.createPythonStreamSource \
-            .remote(serialized_func)
+        call = self._python_gateway_actor.createPythonStreamSource.remote(
+            serialized_func
+        )
         return deserialize(ray.get(call))
 
     def create_py_func(self, serialized_func):
@@ -41,14 +42,12 @@ class GatewayClient:
 
     def create_py_partition(self, serialized_partition):
         assert isinstance(serialized_partition, bytes)
-        call = self._python_gateway_actor.createPyPartition \
-            .remote(serialized_partition)
+        call = self._python_gateway_actor.createPyPartition.remote(serialized_partition)
         return deserialize(ray.get(call))
 
     def union(self, *streams):
         serialized_streams = serialize(streams)
-        call = self._python_gateway_actor.union \
-            .remote(serialized_streams)
+        call = self._python_gateway_actor.union.remote(serialized_streams)
         return deserialize(ray.get(call))
 
     def call_function(self, java_class, java_function, *args):
@@ -62,14 +61,12 @@ class GatewayClient:
         return deserialize(ray.get(call))
 
     def new_instance(self, java_class_name):
-        call = self._python_gateway_actor.newInstance.remote(
-            serialize(java_class_name))
+        call = self._python_gateway_actor.newInstance.remote(serialize(java_class_name))
         return deserialize(ray.get(call))
 
 
 def serialize(obj) -> bytes:
-    """Serialize a python object which can be deserialized by `PythonGateway`
-    """
+    """Serialize a python object which can be deserialized by `PythonGateway`"""
     return msgpack.packb(obj, use_bin_type=True)
 
 

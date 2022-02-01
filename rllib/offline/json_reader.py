@@ -16,8 +16,11 @@ except ImportError:
 
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch, \
-    SampleBatch
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    MultiAgentBatch,
+    SampleBatch,
+)
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.compression import unpack_if_needed
 from ray.rllib.utils.spaces.space_utils import clip_action, normalize_action
@@ -36,9 +39,9 @@ class JsonReader(InputReader):
     """
 
     @PublicAPI
-    def __init__(self,
-                 inputs: Union[str, List[str]],
-                 ioctx: Optional[IOContext] = None):
+    def __init__(
+        self, inputs: Union[str, List[str]], ioctx: Optional[IOContext] = None
+    ):
         """Initializes a JsonReader instance.
 
         Args:
@@ -51,26 +54,20 @@ class JsonReader(InputReader):
         self.ioctx = ioctx or IOContext()
         self.default_policy = None
         if self.ioctx.worker is not None:
-            self.default_policy = \
-                self.ioctx.worker.policy_map.get(DEFAULT_POLICY_ID)
+            self.default_policy = self.ioctx.worker.policy_map.get(DEFAULT_POLICY_ID)
         if isinstance(inputs, str):
             inputs = os.path.abspath(os.path.expanduser(inputs))
             if os.path.isdir(inputs):
-                inputs = [
-                    os.path.join(inputs, "*.json"),
-                    os.path.join(inputs, "*.zip")
-                ]
-                logger.warning(
-                    f"Treating input directory as glob patterns: {inputs}")
+                inputs = [os.path.join(inputs, "*.json"), os.path.join(inputs, "*.zip")]
+                logger.warning(f"Treating input directory as glob patterns: {inputs}")
             else:
                 inputs = [inputs]
 
-            if any(
-                    urlparse(i).scheme not in [""] + WINDOWS_DRIVES
-                    for i in inputs):
+            if any(urlparse(i).scheme not in [""] + WINDOWS_DRIVES for i in inputs):
                 raise ValueError(
-                    "Don't know how to glob over `{}`, ".format(inputs) +
-                    "please specify a list of files to read instead.")
+                    "Don't know how to glob over `{}`, ".format(inputs)
+                    + "please specify a list of files to read instead."
+                )
             else:
                 self.files = []
                 for i in inputs:
@@ -79,7 +76,8 @@ class JsonReader(InputReader):
             self.files = list(inputs)
         else:
             raise ValueError(
-                "type of inputs must be list or str, not {}".format(inputs))
+                "type of inputs must be list or str, not {}".format(inputs)
+            )
         if self.files:
             logger.info("Found {} input files.".format(len(self.files)))
         else:
@@ -97,7 +95,9 @@ class JsonReader(InputReader):
         if not batch:
             raise ValueError(
                 "Failed to read valid experience batch from file: {}".format(
-                    self.cur_file))
+                    self.cur_file
+                )
+            )
 
         return self._postprocess_if_needed(batch)
 
@@ -121,29 +121,29 @@ class JsonReader(InputReader):
                     break
                 yield batch
 
-    def _postprocess_if_needed(self,
-                               batch: SampleBatchType) -> SampleBatchType:
+    def _postprocess_if_needed(self, batch: SampleBatchType) -> SampleBatchType:
         if not self.ioctx.config.get("postprocess_inputs"):
             return batch
 
         if isinstance(batch, SampleBatch):
             out = []
             for sub_batch in batch.split_by_episode():
-                out.append(
-                    self.default_policy.postprocess_trajectory(sub_batch))
+                out.append(self.default_policy.postprocess_trajectory(sub_batch))
             return SampleBatch.concat_samples(out)
         else:
             # TODO(ekl) this is trickier since the alignments between agent
             #  trajectories in the episode are not available any more.
             raise NotImplementedError(
-                "Postprocessing of multi-agent data not implemented yet.")
+                "Postprocessing of multi-agent data not implemented yet."
+            )
 
     def _try_open_file(self, path):
         if urlparse(path).scheme not in [""] + WINDOWS_DRIVES:
             if smart_open is None:
                 raise ValueError(
                     "You must install the `smart_open` module to read "
-                    "from URIs like {}".format(path))
+                    "from URIs like {}".format(path)
+                )
             ctx = smart_open
         else:
             # Allow shortcut for home directory ("~/" -> env[HOME]).
@@ -175,8 +175,9 @@ class JsonReader(InputReader):
         try:
             batch = _from_json(line)
         except Exception:
-            logger.exception("Ignoring corrupt json record in {}: {}".format(
-                self.cur_file, line))
+            logger.exception(
+                "Ignoring corrupt json record in {}: {}".format(self.cur_file, line)
+            )
             return None
 
         # Clip actions (from any values into env's bounds), if necessary.
@@ -184,25 +185,29 @@ class JsonReader(InputReader):
         if cfg.get("clip_actions"):
             if isinstance(batch, SampleBatch):
                 batch[SampleBatch.ACTIONS] = clip_action(
-                    batch[SampleBatch.ACTIONS], self.ioctx.worker.policy_map[
-                        "default_policy"].action_space_struct)
+                    batch[SampleBatch.ACTIONS],
+                    self.ioctx.worker.policy_map["default_policy"].action_space_struct,
+                )
             else:
                 for pid, b in batch.policy_batches.items():
                     b[SampleBatch.ACTIONS] = clip_action(
                         b[SampleBatch.ACTIONS],
-                        self.ioctx.worker.policy_map[pid].action_space_struct)
+                        self.ioctx.worker.policy_map[pid].action_space_struct,
+                    )
         # Re-normalize actions (from env's bounds to 0.0 centered), if
         # necessary.
         if cfg.get("actions_in_input_normalized") is False:
             if isinstance(batch, SampleBatch):
                 batch[SampleBatch.ACTIONS] = normalize_action(
-                    batch[SampleBatch.ACTIONS], self.ioctx.worker.policy_map[
-                        "default_policy"].action_space_struct)
+                    batch[SampleBatch.ACTIONS],
+                    self.ioctx.worker.policy_map["default_policy"].action_space_struct,
+                )
             else:
                 for pid, b in batch.policy_batches.items():
                     b[SampleBatch.ACTIONS] = normalize_action(
                         b[SampleBatch.ACTIONS],
-                        self.ioctx.worker.policy_map[pid].action_space_struct)
+                        self.ioctx.worker.policy_map[pid].action_space_struct,
+                    )
         return batch
 
     def _next_line(self) -> str:
@@ -219,8 +224,9 @@ class JsonReader(InputReader):
             if not line:
                 logger.debug("Ignoring empty file {}".format(self.cur_file))
         if not line:
-            raise ValueError("Failed to read next line from files: {}".format(
-                self.files))
+            raise ValueError(
+                "Failed to read next line from files: {}".format(self.files)
+            )
         return line
 
     def _next_file(self) -> FileType:
@@ -260,5 +266,5 @@ def _from_json(batch: str) -> SampleBatchType:
         return MultiAgentBatch(policy_batches, data["count"])
     else:
         raise ValueError(
-            "Type field must be one of ['SampleBatch', 'MultiAgentBatch']",
-            data_type)
+            "Type field must be one of ['SampleBatch', 'MultiAgentBatch']", data_type
+        )

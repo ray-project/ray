@@ -43,7 +43,8 @@ def main():
         results_per_second=results_per_second,
         trial_length_s=trial_length_s,
         max_runtime=max_runtime,
-        sync_config=tune.SyncConfig(syncer=None))  # Tweak!
+        sync_config=tune.SyncConfig(syncer=None),
+    )  # Tweak!
 
 
 if __name__ == "__main__":

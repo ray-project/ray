@@ -106,10 +106,11 @@ class TuneInterruptionTest(unittest.TestCase):
                 _train,
                 local_dir=local_dir,
                 name="interrupt",
-                callbacks=[SteppingCallback()])
+                callbacks=[SteppingCallback()],
+            )
 
         local_dir = tempfile.mkdtemp()
-        process = multiprocessing.Process(target=_run, args=(local_dir, ))
+        process = multiprocessing.Process(target=_run, args=(local_dir,))
         process.daemon = False
         process.start()
 
@@ -189,9 +190,12 @@ class TuneFailResumeGridTest(unittest.TestCase):
             if not self._checked and iteration >= self._check_after:
                 for trial in trials:
                     if trial.status == Trial.PENDING:
-                        assert (trial.
-                                placement_group_factory.required_resources.get(
-                                    "CPU", 0) == self._expected_cpu)
+                        assert (
+                            trial.placement_group_factory.required_resources.get(
+                                "CPU", 0
+                            )
+                            == self._expected_cpu
+                        )
                 self._checked = True
 
     def setUp(self):
@@ -208,6 +212,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
         ray.init(local_mode=False, num_cpus=2)
 
         from ray.tune import register_trainable
+
         register_trainable("trainable", MyTrainableClass)
 
     def tearDown(self):
@@ -227,19 +232,15 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             local_dir=self.logdir,
-            verbose=1)
+            verbose=1,
+        )
 
         with self.assertRaises(RuntimeError):
-            tune.run(
-                "trainable",
-                callbacks=[self.FailureInjectorCallback()],
-                **config)
+            tune.run("trainable", callbacks=[self.FailureInjectorCallback()], **config)
 
         analysis = tune.run(
-            "trainable",
-            resume=True,
-            callbacks=[self.CheckStateCallback()],
-            **config)
+            "trainable", resume=True, callbacks=[self.CheckStateCallback()], **config
+        )
         assert len(analysis.trials) == 27
         test_counter = Counter([t.config["test"] for t in analysis.trials])
         assert all(v == 9 for v in test_counter.values())
@@ -259,36 +260,34 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             local_dir=self.logdir,
-            verbose=1)
+            verbose=1,
+        )
 
         with self.assertRaises(RuntimeError):
             tune.run(
                 "trainable",
                 callbacks=[
                     self.FailureInjectorCallback(),
-                    self.CheckTrialResourcesCallback(1)
+                    self.CheckTrialResourcesCallback(1),
                 ],
-                **config)
+                **config,
+            )
 
         analysis = tune.run(
             "trainable",
             resume=True,
             resources_per_trial={"cpu": 2},
             callbacks=[self.CheckTrialResourcesCallback(2)],
-            **config)
+            **config,
+        )
         assert len(analysis.trials) == 27
 
     def testFailResumeWithPreset(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
-        search_alg = BasicVariantGenerator(points_to_evaluate=[{
-            "test": -1,
-            "test2": -1
-        }, {
-            "test": -1
-        }, {
-            "test2": -1
-        }])
+        search_alg = BasicVariantGenerator(
+            points_to_evaluate=[{"test": -1, "test2": -1}, {"test": -1}, {"test2": -1}]
+        )
 
         config = dict(
             num_samples=3 + 3,  # 3 preset, 3 samples
@@ -299,20 +298,23 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             local_dir=self.logdir,
-            verbose=1)
+            verbose=1,
+        )
         with self.assertRaises(RuntimeError):
             tune.run(
                 "trainable",
                 callbacks=[self.FailureInjectorCallback(5)],
                 search_alg=search_alg,
-                **config)
+                **config,
+            )
 
         analysis = tune.run(
             "trainable",
             resume=True,
             callbacks=[self.CheckStateCallback(expected_trials=5)],
             search_alg=search_alg,
-            **config)
+            **config,
+        )
         assert len(analysis.trials) == 34
         test_counter = Counter([t.config["test"] for t in analysis.trials])
         assert test_counter.pop(-1) == 4
@@ -324,14 +326,9 @@ class TuneFailResumeGridTest(unittest.TestCase):
     def testFailResumeAfterPreset(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
-        search_alg = BasicVariantGenerator(points_to_evaluate=[{
-            "test": -1,
-            "test2": -1
-        }, {
-            "test": -1
-        }, {
-            "test2": -1
-        }])
+        search_alg = BasicVariantGenerator(
+            points_to_evaluate=[{"test": -1, "test2": -1}, {"test": -1}, {"test2": -1}]
+        )
 
         config = dict(
             num_samples=3 + 3,  # 3 preset, 3 samples
@@ -342,21 +339,24 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             local_dir=self.logdir,
-            verbose=1)
+            verbose=1,
+        )
 
         with self.assertRaises(RuntimeError):
             tune.run(
                 "trainable",
                 callbacks=[self.FailureInjectorCallback(15)],
                 search_alg=search_alg,
-                **config)
+                **config,
+            )
 
         analysis = tune.run(
             "trainable",
             resume=True,
             callbacks=[self.CheckStateCallback(expected_trials=15)],
             search_alg=search_alg,
-            **config)
+            **config,
+        )
         assert len(analysis.trials) == 34
         test_counter = Counter([t.config["test"] for t in analysis.trials])
         assert test_counter.pop(-1) == 4
@@ -379,19 +379,23 @@ class TuneFailResumeGridTest(unittest.TestCase):
                         "test": tune.grid_search([1, 2, 3]),
                     },
                     stop={"training_iteration": 1},
-                    local_dir=self.logdir))
+                    local_dir=self.logdir,
+                )
+            )
 
         with self.assertRaises(RuntimeError):
             tune.run(
                 experiments,
                 callbacks=[self.FailureInjectorCallback(10)],
-                fail_fast=True)
+                fail_fast=True,
+            )
 
         analysis = tune.run(
             experiments,
             resume=True,
             callbacks=[self.CheckStateCallback(expected_trials=10)],
-            fail_fast=True)
+            fail_fast=True,
+        )
         assert len(analysis.trials) == 18
 
     def testWarningLargeGrid(self):
@@ -407,14 +411,13 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             local_dir=self.logdir,
-            verbose=1)
-        with self.assertWarnsRegex(UserWarning,
-                                   "exceeds the serialization threshold"):
+            verbose=1,
+        )
+        with self.assertWarnsRegex(UserWarning, "exceeds the serialization threshold"):
             with self.assertRaises(RuntimeError):
                 tune.run(
-                    "trainable",
-                    callbacks=[self.FailureInjectorCallback(10)],
-                    **config)
+                    "trainable", callbacks=[self.FailureInjectorCallback(10)], **config
+                )
 
 
 class TuneExampleTest(unittest.TestCase):
@@ -428,6 +431,7 @@ class TuneExampleTest(unittest.TestCase):
     def testPBTKeras(self):
         from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
         from tensorflow.python.keras.datasets import cifar10
+
         cifar10.load_data()
         validate_save_restore(Cifar10Model)
         validate_save_restore(Cifar10Model, use_object_store=True)
@@ -435,6 +439,7 @@ class TuneExampleTest(unittest.TestCase):
     def testPyTorchMNIST(self):
         from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
         from torchvision import datasets
+
         datasets.MNIST("~/data", train=True, download=True)
         validate_save_restore(TrainMNIST)
         validate_save_restore(TrainMNIST, use_object_store=True)
@@ -485,4 +490,5 @@ class SearcherTest(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

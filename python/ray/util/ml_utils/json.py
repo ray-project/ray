@@ -10,8 +10,7 @@ class SafeFallbackEncoder(json.JSONEncoder):
 
     def default(self, value):
         try:
-            if (type(value).__module__ == np.__name__
-                    and isinstance(value, np.ndarray)):
+            if type(value).__module__ == np.__name__ and isinstance(value, np.ndarray):
                 return value.tolist()
 
             if isinstance(value, np.bool_):

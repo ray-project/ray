@@ -12,10 +12,12 @@ class ExternalMultiAgentEnv(ExternalEnv):
     """This is the multi-agent version of ExternalEnv."""
 
     @PublicAPI
-    def __init__(self,
-                 action_space: gym.Space,
-                 observation_space: gym.Space,
-                 max_concurrent: int = 100):
+    def __init__(
+        self,
+        action_space: gym.Space,
+        observation_space: gym.Space,
+        max_concurrent: int = 100,
+    ):
         """Initializes an ExternalMultiAgentEnv instance.
 
         Args:
@@ -24,17 +26,19 @@ class ExternalMultiAgentEnv(ExternalEnv):
             max_concurrent: Max number of active episodes to allow at
                 once. Exceeding this limit raises an error.
         """
-        ExternalEnv.__init__(self, action_space, observation_space,
-                             max_concurrent)
+        ExternalEnv.__init__(self, action_space, observation_space, max_concurrent)
 
         # We require to know all agents' spaces.
         if isinstance(self.action_space, dict) or isinstance(
-                self.observation_space, dict):
+            self.observation_space, dict
+        ):
             if not (self.action_space.keys() == self.observation_space.keys()):
-                raise ValueError("Agent ids disagree for action space and obs "
-                                 "space dict: {} {}".format(
-                                     self.action_space.keys(),
-                                     self.observation_space.keys()))
+                raise ValueError(
+                    "Agent ids disagree for action space and obs "
+                    "space dict: {} {}".format(
+                        self.action_space.keys(), self.observation_space.keys()
+                    )
+                )
 
     @PublicAPI
     def run(self):
@@ -55,32 +59,29 @@ class ExternalMultiAgentEnv(ExternalEnv):
 
     @PublicAPI
     @override(ExternalEnv)
-    def start_episode(self,
-                      episode_id: Optional[str] = None,
-                      training_enabled: bool = True) -> str:
+    def start_episode(
+        self, episode_id: Optional[str] = None, training_enabled: bool = True
+    ) -> str:
         if episode_id is None:
             episode_id = uuid.uuid4().hex
 
         if episode_id in self._finished:
-            raise ValueError(
-                "Episode {} has already completed.".format(episode_id))
+            raise ValueError("Episode {} has already completed.".format(episode_id))
 
         if episode_id in self._episodes:
-            raise ValueError(
-                "Episode {} is already started".format(episode_id))
+            raise ValueError("Episode {} is already started".format(episode_id))
 
         self._episodes[episode_id] = _ExternalEnvEpisode(
-            episode_id,
-            self._results_avail_condition,
-            training_enabled,
-            multiagent=True)
+            episode_id, self._results_avail_condition, training_enabled, multiagent=True
+        )
 
         return episode_id
 
     @PublicAPI
     @override(ExternalEnv)
-    def get_action(self, episode_id: str,
-                   observation_dict: MultiAgentDict) -> MultiAgentDict:
+    def get_action(
+        self, episode_id: str, observation_dict: MultiAgentDict
+    ) -> MultiAgentDict:
         """Record an observation and get the on-policy action.
 
         Thereby, observation_dict is expected to contain the observation
@@ -99,8 +100,12 @@ class ExternalMultiAgentEnv(ExternalEnv):
 
     @PublicAPI
     @override(ExternalEnv)
-    def log_action(self, episode_id: str, observation_dict: MultiAgentDict,
-                   action_dict: MultiAgentDict) -> None:
+    def log_action(
+        self,
+        episode_id: str,
+        observation_dict: MultiAgentDict,
+        action_dict: MultiAgentDict,
+    ) -> None:
         """Record an observation and (off-policy) action taken.
 
         Args:
@@ -114,11 +119,13 @@ class ExternalMultiAgentEnv(ExternalEnv):
 
     @PublicAPI
     @override(ExternalEnv)
-    def log_returns(self,
-                    episode_id: str,
-                    reward_dict: MultiAgentDict,
-                    info_dict: MultiAgentDict = None,
-                    multiagent_done_dict: MultiAgentDict = None) -> None:
+    def log_returns(
+        self,
+        episode_id: str,
+        reward_dict: MultiAgentDict,
+        info_dict: MultiAgentDict = None,
+        multiagent_done_dict: MultiAgentDict = None,
+    ) -> None:
         """Record returns from the environment.
 
         The reward will be attributed to the previous action taken by the
@@ -151,8 +158,7 @@ class ExternalMultiAgentEnv(ExternalEnv):
 
     @PublicAPI
     @override(ExternalEnv)
-    def end_episode(self, episode_id: str,
-                    observation_dict: MultiAgentDict) -> None:
+    def end_episode(self, episode_id: str, observation_dict: MultiAgentDict) -> None:
         """Record the end of an episode.
 
         Args:

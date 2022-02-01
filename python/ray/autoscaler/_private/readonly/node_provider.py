@@ -1,9 +1,14 @@
 from typing import Tuple, List
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, NODE_KIND_HEAD,
-                                 TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_NAME,
-                                 TAG_RAY_NODE_STATUS, STATUS_UP_TO_DATE)
+from ray.autoscaler.tags import (
+    TAG_RAY_NODE_KIND,
+    NODE_KIND_HEAD,
+    TAG_RAY_USER_NODE_TYPE,
+    TAG_RAY_NODE_NAME,
+    TAG_RAY_NODE_STATUS,
+    STATUS_UP_TO_DATE,
+)
 from ray.autoscaler._private.util import format_readonly_node_type
 
 
@@ -51,7 +56,7 @@ class ReadOnlyNodeProvider(NodeProvider):
             TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
             TAG_RAY_USER_NODE_TYPE: self.nodes[node_id]["node_type"],
             TAG_RAY_NODE_NAME: node_id,
-            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
         }
         return tags
 

@@ -8,10 +8,12 @@ from ray.tune import TuneError
 from ray.train import Trainer
 from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import TUNE_CHECKPOINT_FILE_NAME
-from ray.train.examples.tensorflow_mnist_example import train_func as \
-    tensorflow_mnist_train_func
-from ray.train.examples.train_fashion_mnist_example import train_func \
-    as fashion_mnist_train_func
+from ray.train.examples.tensorflow_mnist_example import (
+    train_func as tensorflow_mnist_train_func,
+)
+from ray.train.examples.train_fashion_mnist_example import (
+    train_func as fashion_mnist_train_func,
+)
 from ray.train.worker_group import WorkerGroup
 
 
@@ -41,8 +43,7 @@ class TestBackend(Backend):
     def on_start(self, worker_group: WorkerGroup, backend_config: TestConfig):
         pass
 
-    def on_shutdown(self, worker_group: WorkerGroup,
-                    backend_config: TestConfig):
+    def on_shutdown(self, worker_group: WorkerGroup, backend_config: TestConfig):
         pass
 
 
@@ -58,8 +59,9 @@ def torch_fashion_mnist(num_workers, use_gpu, num_samples):
         config={
             "lr": tune.loguniform(1e-4, 1e-1),
             "batch_size": tune.choice([32, 64, 128]),
-            "epochs": epochs
-        })
+            "epochs": epochs,
+        },
+    )
 
     # Check that loss decreases in each trial.
     for path, df in analysis.trial_dataframes.items():
@@ -81,8 +83,9 @@ def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
         config={
             "lr": tune.loguniform(1e-4, 1e-1),
             "batch_size": tune.choice([32, 64, 128]),
-            "epochs": epochs
-        })
+            "epochs": epochs,
+        },
+    )
 
     # Check that loss decreases in each trial.
     for path, df in analysis.trial_dataframes.items():
@@ -114,8 +117,7 @@ def test_tune_checkpoint(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     [trial] = tune.run(TestTrainable).trials
-    checkpoint_file = os.path.join(trial.checkpoint.value,
-                                   TUNE_CHECKPOINT_FILE_NAME)
+    checkpoint_file = os.path.join(trial.checkpoint.value, TUNE_CHECKPOINT_FILE_NAME)
     assert os.path.exists(checkpoint_file)
     with open(checkpoint_file, "rb") as f:
         checkpoint = cloudpickle.load(f)
@@ -143,8 +145,7 @@ def test_reuse_checkpoint(ray_start_2_cpus):
     with open(checkpoint_file, "rb") as f:
         checkpoint = cloudpickle.load(f)
         assert checkpoint["iter"] == 4
-    analysis = tune.run(
-        TestTrainable, config={"max_iter": 10}, restore=last_ckpt)
+    analysis = tune.run(TestTrainable, config={"max_iter": 10}, restore=last_ckpt)
     trial_dfs = list(analysis.trial_dataframes.values())
     assert len(trial_dfs[0]["training_iteration"]) == 5
 

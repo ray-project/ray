@@ -10,8 +10,13 @@ from ray.util.debug import log_once
 from ray.util.ml_utils.dict import flatten_dict
 from ray.util.ml_utils.json import SafeFallbackEncoder
 from ray.train.callbacks import TrainingCallback
-from ray.train.constants import (RESULT_FILE_JSON, TRAINING_ITERATION,
-                                 TIME_TOTAL_S, TIMESTAMP, PID)
+from ray.train.constants import (
+    RESULT_FILE_JSON,
+    TRAINING_ITERATION,
+    TIME_TOTAL_S,
+    TIMESTAMP,
+    PID,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +42,8 @@ class TrainingLogdirMixin:
 
 
 class TrainingSingleFileLoggingCallback(
-        TrainingLogdirMixin, TrainingCallback, metaclass=abc.ABCMeta):
+    TrainingLogdirMixin, TrainingCallback, metaclass=abc.ABCMeta
+):
     """Abstract Train logging callback class.
 
     Args:
@@ -53,10 +59,12 @@ class TrainingSingleFileLoggingCallback(
     # in a subclass - otherwise an exception will be raised
     _default_filename: Union[str, Path]
 
-    def __init__(self,
-                 logdir: Optional[str] = None,
-                 filename: Optional[str] = None,
-                 workers_to_log: Optional[Union[int, List[int]]] = 0) -> None:
+    def __init__(
+        self,
+        logdir: Optional[str] = None,
+        filename: Optional[str] = None,
+        workers_to_log: Optional[Union[int, List[int]]] = 0,
+    ) -> None:
         self._logdir = logdir
         self._filename = filename
         self._workers_to_log = self._validate_workers_to_log(workers_to_log)
@@ -68,14 +76,16 @@ class TrainingSingleFileLoggingCallback(
 
         if workers_to_log is not None:
             if not isinstance(workers_to_log, Iterable):
-                raise TypeError("workers_to_log must be an Iterable, got "
-                                f"{type(workers_to_log)}.")
-            if not all(isinstance(worker, int) for worker in workers_to_log):
                 raise TypeError(
-                    "All elements of workers_to_log must be integers.")
+                    "workers_to_log must be an Iterable, got "
+                    f"{type(workers_to_log)}."
+                )
+            if not all(isinstance(worker, int) for worker in workers_to_log):
+                raise TypeError("All elements of workers_to_log must be integers.")
             if len(workers_to_log) < 1:
                 raise ValueError(
-                    "At least one worker must be specified in workers_to_log.")
+                    "At least one worker must be specified in workers_to_log."
+                )
         return workers_to_log
 
     def _create_log_path(self, logdir_path: Path, filename: Path) -> Path:
@@ -129,18 +139,17 @@ class JsonLoggerCallback(TrainingSingleFileLoggingCallback):
             results_to_log = results
         else:
             results_to_log = [
-                result for i, result in enumerate(results)
-                if i in self._workers_to_log
+                result for i, result in enumerate(results) if i in self._workers_to_log
             ]
         with open(self._log_path, "r+") as f:
             loaded_results = json.load(f)
             f.seek(0)
-            json.dump(
-                loaded_results + [results_to_log], f, cls=SafeFallbackEncoder)
+            json.dump(loaded_results + [results_to_log], f, cls=SafeFallbackEncoder)
 
 
 class TrainingSingleWorkerLoggingCallback(
-        TrainingLogdirMixin, TrainingCallback, metaclass=abc.ABCMeta):
+    TrainingLogdirMixin, TrainingCallback, metaclass=abc.ABCMeta
+):
     """Abstract Train logging callback class.
 
     Allows only for single-worker logging.
@@ -152,8 +161,7 @@ class TrainingSingleWorkerLoggingCallback(
             worker with index 0.
     """
 
-    def __init__(self, logdir: Optional[str] = None,
-                 worker_to_log: int = 0) -> None:
+    def __init__(self, logdir: Optional[str] = None, worker_to_log: int = 0) -> None:
         self._logdir = logdir
         self._workers_to_log = self._validate_worker_to_log(worker_to_log)
         self._log_path = None
@@ -164,10 +172,12 @@ class TrainingSingleWorkerLoggingCallback(
             if len(worker_to_log) > 1:
                 raise ValueError(
                     f"{self.__class__.__name__} only supports logging "
-                    "from a single worker.")
+                    "from a single worker."
+                )
             elif len(worker_to_log) < 1:
                 raise ValueError(
-                    "At least one worker must be specified in workers_to_log.")
+                    "At least one worker must be specified in workers_to_log."
+                )
             worker_to_log = worker_to_log[0]
         if not isinstance(worker_to_log, int):
             raise TypeError("workers_to_log must be an integer.")
@@ -184,8 +194,14 @@ class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
             worker with index 0.
     """
 
-    VALID_SUMMARY_TYPES: Tuple[type] = (int, float, np.float32, np.float64,
-                                        np.int32, np.int64)
+    VALID_SUMMARY_TYPES: Tuple[type] = (
+        int,
+        float,
+        np.float32,
+        np.float64,
+        np.int32,
+        np.int64,
+    )
     IGNORE_KEYS: Set[str] = {PID, TIMESTAMP, TIME_TOTAL_S, TRAINING_ITERATION}
 
     def start_training(self, logdir: str, **info):
@@ -195,8 +211,7 @@ class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
             from tensorboardX import SummaryWriter
         except ImportError:
             if log_once("tbx-install"):
-                warnings.warn(
-                    "pip install 'tensorboardX' to see TensorBoard files.")
+                warnings.warn("pip install 'tensorboardX' to see TensorBoard files.")
             raise
 
         self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
@@ -211,30 +226,29 @@ class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
         # same logic as in ray.tune.logger.TBXLogger
         for attr, value in flat_result.items():
             full_attr = "/".join(path + [attr])
-            if (isinstance(value, self.VALID_SUMMARY_TYPES)
-                    and not np.isnan(value)):
-                self._file_writer.add_scalar(
-                    full_attr, value, global_step=step)
-            elif ((isinstance(value, list) and len(value) > 0)
-                  or (isinstance(value, np.ndarray) and value.size > 0)):
+            if isinstance(value, self.VALID_SUMMARY_TYPES) and not np.isnan(value):
+                self._file_writer.add_scalar(full_attr, value, global_step=step)
+            elif (isinstance(value, list) and len(value) > 0) or (
+                isinstance(value, np.ndarray) and value.size > 0
+            ):
 
                 # Must be video
                 if isinstance(value, np.ndarray) and value.ndim == 5:
                     self._file_writer.add_video(
-                        full_attr, value, global_step=step, fps=20)
+                        full_attr, value, global_step=step, fps=20
+                    )
                     continue
 
                 try:
-                    self._file_writer.add_histogram(
-                        full_attr, value, global_step=step)
+                    self._file_writer.add_histogram(full_attr, value, global_step=step)
                 # In case TensorboardX still doesn't think it's a valid value
                 # (e.g. `[[]]`), warn and move on.
                 except (ValueError, TypeError):
                     if log_once("invalid_tbx_value"):
                         warnings.warn(
                             "You are trying to log an invalid value ({}={}) "
-                            "via {}!".format(full_attr, value,
-                                             type(self).__name__))
+                            "via {}!".format(full_attr, value, type(self).__name__)
+                        )
         self._file_writer.flush()
 
     def finish_training(self, error: bool = False, **info):

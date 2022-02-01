@@ -38,7 +38,8 @@ def model_vector_env(env: EnvType) -> BaseEnv:
         make_env=worker.make_sub_env_fn,
         num_envs=worker.num_envs,
         remote_envs=False,
-        remote_env_batch_wait_ms=0)
+        remote_env_batch_wait_ms=0,
+    )
 
 
 class _VectorizedModelGymEnv(VectorEnv):
@@ -51,14 +52,16 @@ class _VectorizedModelGymEnv(VectorEnv):
     that episodes in the env do not terminate, ever.
     """
 
-    def __init__(self,
-                 make_env=None,
-                 existing_envs=None,
-                 num_envs=1,
-                 *,
-                 observation_space=None,
-                 action_space=None,
-                 env_config=None):
+    def __init__(
+        self,
+        make_env=None,
+        existing_envs=None,
+        num_envs=1,
+        *,
+        observation_space=None,
+        action_space=None,
+        env_config=None
+    ):
         self.make_env = make_env
         self.envs = existing_envs
         self.num_envs = num_envs
@@ -66,25 +69,24 @@ class _VectorizedModelGymEnv(VectorEnv):
             self.envs.append(self.make_env(len(self.envs)))
 
         super().__init__(
-            observation_space=observation_space
-            or self.envs[0].observation_space,
+            observation_space=observation_space or self.envs[0].observation_space,
             action_space=action_space or self.envs[0].action_space,
-            num_envs=num_envs)
+            num_envs=num_envs,
+        )
         worker = get_global_worker()
         self.model, self.device = worker.foreach_policy(
-            lambda x, y: (x.dynamics_model, x.device))[0]
+            lambda x, y: (x.dynamics_model, x.device)
+        )[0]
 
     @override(VectorEnv)
     def vector_reset(self):
-        """Override parent to store actual env obs for upcoming predictions.
-        """
+        """Override parent to store actual env obs for upcoming predictions."""
         self.cur_obs = [e.reset() for e in self.envs]
         return self.cur_obs
 
     @override(VectorEnv)
     def reset_at(self, index):
-        """Override parent to store actual env obs for upcoming predictions.
-        """
+        """Override parent to store actual env obs for upcoming predictions."""
         obs = self.envs[index].reset()
         self.cur_obs[index] = obs
         return obs
@@ -107,13 +109,13 @@ class _VectorizedModelGymEnv(VectorEnv):
         # Predict the next observation, given previous a) real obs
         # (after a reset), b) predicted obs (any other time).
         next_obs_batch = self.model.predict_model_batches(
-            obs_batch, action_batch, device=self.device)
+            obs_batch, action_batch, device=self.device
+        )
         next_obs_batch = np.clip(next_obs_batch, -1000, 1000)
 
         # Call env's reward function.
         # Note: Each actual env must implement one to output exact rewards.
-        rew_batch = self.envs[0].reward(obs_batch, action_batch,
-                                        next_obs_batch)
+        rew_batch = self.envs[0].reward(obs_batch, action_batch, next_obs_batch)
 
         # If env has a `done` method, use it.
         if hasattr(self.envs[0], "done"):
@@ -126,8 +128,7 @@ class _VectorizedModelGymEnv(VectorEnv):
 
         self.cur_obs = next_obs_batch
 
-        return list(next_obs_batch), list(rew_batch), list(
-            dones_batch), info_batch
+        return list(next_obs_batch), list(rew_batch), list(dones_batch), info_batch
 
     @override(VectorEnv)
     def get_sub_environments(self):

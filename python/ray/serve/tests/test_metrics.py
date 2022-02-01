@@ -45,7 +45,7 @@ def test_serve_metrics(serve_instance):
             # handle
             "serve_handle_request_counter",
             # ReplicaSet
-            "deployment_queued_queries"
+            "deployment_queued_queries",
         ]
         for metric in expected_metrics:
             # For the final error round
@@ -90,4 +90,5 @@ def test_deployment_logger(serve_instance):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -8,7 +8,7 @@ from ray.rllib.utils.test_utils import framework_iterator
 
 def test_dont_import_tf_error():
     """Check that an error is thrown when tf isn't installed
-        but we try to run a tf experiment.
+    but we try to run a tf experiment.
     """
     # Do not import tf for testing purposes.
     os.environ["RLLIB_TEST_NO_TF_IMPORT"] = "1"
@@ -16,20 +16,19 @@ def test_dont_import_tf_error():
     config = {}
     for _ in framework_iterator(config, frameworks=("tf", "tf2", "tfe")):
         with pytest.raises(
-                ImportError,
-                match="However, there was no installation found."):
+            ImportError, match="However, there was no installation found."
+        ):
             ppo.PPOTrainer(config, env="CartPole-v1")
 
 
 def test_dont_import_torch_error():
     """Check that an error is thrown when torch isn't installed
-        but we try to run a torch experiment.
+    but we try to run a torch experiment.
     """
     # Do not import tf for testing purposes.
     os.environ["RLLIB_TEST_NO_TORCH_IMPORT"] = "1"
     config = {"framework": "torch"}
-    with pytest.raises(
-            ImportError, match="However, there was no installation found."):
+    with pytest.raises(ImportError, match="However, there was no installation found."):
         ppo.PPOTrainer(config, env="CartPole-v1")
 
 

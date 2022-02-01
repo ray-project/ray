@@ -7,10 +7,11 @@ from ray.rllib.policy.sample_batch import SampleBatch
 
 
 def post_process_advantages(
-        policy: Policy,
-        sample_batch: SampleBatch,
-        other_agent_batches: Optional[List[SampleBatch]] = None,
-        episode: Optional[Episode] = None) -> SampleBatch:
+    policy: Policy,
+    sample_batch: SampleBatch,
+    other_agent_batches: Optional[List[SampleBatch]] = None,
+    episode: Optional[Episode] = None,
+) -> SampleBatch:
     """Adds the "advantages" column to `sample_batch`.
 
     Args:
@@ -33,4 +34,5 @@ def post_process_advantages(
         last_r=0.0,
         gamma=policy.config["gamma"],
         use_gae=False,
-        use_critic=False)
+        use_critic=False,
+    )

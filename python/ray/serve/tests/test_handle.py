@@ -203,7 +203,7 @@ def test_handle_across_loops(serve_instance):
 
     async def refresh_get():
         handle = A.get_handle(sync=False)
-        assert (await (await handle.exists.remote()))
+        assert await (await handle.exists.remote())
 
     for _ in range(10):
         asyncio.set_event_loop(asyncio.new_event_loop())
@@ -212,7 +212,7 @@ def test_handle_across_loops(serve_instance):
     handle = A.get_handle(sync=False)
 
     async def cache_get():
-        assert (await (await handle.exists.remote()))
+        assert await (await handle.exists.remote())
 
     for _ in range(10):
         asyncio.set_event_loop(asyncio.new_event_loop())
@@ -222,4 +222,5 @@ def test_handle_across_loops(serve_instance):
 if __name__ == "__main__":
     import sys
     import pytest
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

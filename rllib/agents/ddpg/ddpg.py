@@ -185,10 +185,10 @@ class DDPGTrainer(SimpleQTrainer):
         return DEFAULT_CONFIG
 
     @override(SimpleQTrainer)
-    def get_default_policy_class(self,
-                                 config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.agents.ddpg.ddpg_torch_policy import DDPGTorchPolicy
+
             return DDPGTorchPolicy
         else:
             return DDPGTFPolicy
@@ -201,7 +201,8 @@ class DDPGTrainer(SimpleQTrainer):
         if config["model"]["custom_model"]:
             logger.warning(
                 "Setting use_state_preprocessor=True since a custom model "
-                "was specified.")
+                "was specified."
+            )
             config["use_state_preprocessor"] = True
 
         if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
@@ -212,15 +213,18 @@ class DDPGTrainer(SimpleQTrainer):
                 logger.warning(
                     "ParameterNoise Exploration requires `batch_mode` to be "
                     "'complete_episodes'. Setting "
-                    "batch_mode=complete_episodes.")
+                    "batch_mode=complete_episodes."
+                )
                 config["batch_mode"] = "complete_episodes"
 
         if config.get("prioritized_replay"):
             if config["multiagent"]["replay_mode"] == "lockstep":
-                raise ValueError("Prioritized replay is not supported when "
-                                 "replay_mode=lockstep.")
+                raise ValueError(
+                    "Prioritized replay is not supported when " "replay_mode=lockstep."
+                )
         else:
             if config.get("worker_side_prioritization"):
                 raise ValueError(
                     "Worker side prioritization is not supported when "
-                    "prioritized_replay=False.")
+                    "prioritized_replay=False."
+                )

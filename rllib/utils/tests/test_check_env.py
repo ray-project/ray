@@ -5,15 +5,13 @@ from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.pre_checks import check_gym_environments
 
 
-class TestGymCheckEnv():
+class TestGymCheckEnv:
     def test_has_observation_and_action_space(self):
         env = Mock(spec=[])
-        with pytest.raises(
-                AttributeError, match="Env must have observation_space."):
+        with pytest.raises(AttributeError, match="Env must have observation_space."):
             check_gym_environments(env)
         env = Mock(spec=["observation_space"])
-        with pytest.raises(
-                AttributeError, match="Env must have action_space."):
+        with pytest.raises(AttributeError, match="Env must have action_space."):
             check_gym_environments(env)
         del env
 
@@ -21,13 +19,11 @@ class TestGymCheckEnv():
         env = RandomEnv()
         observation_space = env.observation_space
         env.observation_space = "not a gym space"
-        with pytest.raises(
-                ValueError, match="Observation space must be a gym.space"):
+        with pytest.raises(ValueError, match="Observation space must be a gym.space"):
             check_gym_environments(env)
         env.observation_space = observation_space
         env.action_space = "not an action space"
-        with pytest.raises(
-                ValueError, match="Action space must be a gym.space"):
+        with pytest.raises(ValueError, match="Action space must be a gym.space"):
             check_gym_environments(env)
         del env
 
@@ -88,22 +84,19 @@ class TestGymCheckEnv():
         # check step that returns reward of non float/int fails
         step = MagicMock(return_value=(1, "Not a valid reward", True, {}))
         env.step = step
-        error = ("Your step function must return a reward that is integer or "
-                 "float.")
+        error = "Your step function must return a reward that is integer or " "float."
         with pytest.raises(AssertionError, match=error):
             check_gym_environments(env)
 
         # check step that returns a non bool fails
-        step = MagicMock(
-            return_value=(1, float(5), "not a valid done signal", {}))
+        step = MagicMock(return_value=(1, float(5), "not a valid done signal", {}))
         env.step = step
         error = "Your step function must return a done that is a boolean."
         with pytest.raises(AssertionError, match=error):
             check_gym_environments(env)
 
         # check step that returns a non dict fails
-        step = MagicMock(
-            return_value=(1, float(5), True, "not a valid env info"))
+        step = MagicMock(return_value=(1, float(5), True, "not a valid env info"))
         env.step = step
         error = "Your step function must return a info that is a dict."
         with pytest.raises(AssertionError, match=error):

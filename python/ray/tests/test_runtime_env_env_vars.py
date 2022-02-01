@@ -12,12 +12,18 @@ def test_environment_variables_task(ray_start_regular):
     def get_env(key):
         return os.environ.get(key)
 
-    assert (ray.get(
-        get_env.options(runtime_env={
-            "env_vars": {
-                "a": "b",
-            }
-        }).remote("a")) == "b")
+    assert (
+        ray.get(
+            get_env.options(
+                runtime_env={
+                    "env_vars": {
+                        "a": "b",
+                    }
+                }
+            ).remote("a")
+        )
+        == "b"
+    )
 
 
 def test_environment_variables_actor(ray_start_regular):
@@ -26,15 +32,17 @@ def test_environment_variables_actor(ray_start_regular):
         def get(self, key):
             return os.environ.get(key)
 
-    a = EnvGetter.options(runtime_env={
-        "env_vars": {
-            "a": "b",
-            "c": "d",
+    a = EnvGetter.options(
+        runtime_env={
+            "env_vars": {
+                "a": "b",
+                "c": "d",
+            }
         }
-    }).remote()
+    ).remote()
 
-    assert (ray.get(a.get.remote("a")) == "b")
-    assert (ray.get(a.get.remote("c")) == "d")
+    assert ray.get(a.get.remote("a")) == "b"
+    assert ray.get(a.get.remote("c")) == "d"
 
 
 def test_environment_variables_nested_task(ray_start_regular):
@@ -46,19 +54,29 @@ def test_environment_variables_nested_task(ray_start_regular):
     def get_env_wrapper(key):
         return ray.get(get_env.remote(key))
 
-    assert (ray.get(
-        get_env_wrapper.options(runtime_env={
-            "env_vars": {
-                "a": "b",
-            }
-        }).remote("a")) == "b")
+    assert (
+        ray.get(
+            get_env_wrapper.options(
+                runtime_env={
+                    "env_vars": {
+                        "a": "b",
+                    }
+                }
+            ).remote("a")
+        )
+        == "b"
+    )
 
 
 def test_environment_variables_multitenancy(shutdown_only):
-    ray.init(runtime_env={"env_vars": {
-        "foo1": "bar1",
-        "foo2": "bar2",
-    }})
+    ray.init(
+        runtime_env={
+            "env_vars": {
+                "foo1": "bar1",
+                "foo2": "bar2",
+            }
+        }
+    )
 
     @ray.remote
     def get_env(key):
@@ -66,27 +84,42 @@ def test_environment_variables_multitenancy(shutdown_only):
 
     assert ray.get(get_env.remote("foo1")) == "bar1"
     assert ray.get(get_env.remote("foo2")) == "bar2"
-    assert ray.get(
-        get_env.options(runtime_env={
-            "env_vars": {
-                "foo1": "baz1",
-            }
-        }).remote("foo1")) == "baz1"
-    assert ray.get(
-        get_env.options(runtime_env={
-            "env_vars": {
-                "foo1": "baz1",
-            }
-        }).remote("foo2")) == "bar2"
+    assert (
+        ray.get(
+            get_env.options(
+                runtime_env={
+                    "env_vars": {
+                        "foo1": "baz1",
+                    }
+                }
+            ).remote("foo1")
+        )
+        == "baz1"
+    )
+    assert (
+        ray.get(
+            get_env.options(
+                runtime_env={
+                    "env_vars": {
+                        "foo1": "baz1",
+                    }
+                }
+            ).remote("foo2")
+        )
+        == "bar2"
+    )
 
 
 def test_environment_variables_complex(shutdown_only):
     ray.init(
-        runtime_env={"env_vars": {
-            "a": "job_a",
-            "b": "job_b",
-            "z": "job_z",
-        }})
+        runtime_env={
+            "env_vars": {
+                "a": "job_a",
+                "b": "job_b",
+                "z": "job_z",
+            }
+        }
+    )
 
     @ray.remote
     def get_env(key):
@@ -109,42 +142,58 @@ def test_environment_variables_complex(shutdown_only):
             return ray.get(get_env.remote(key))
 
         def nested_get(self, key):
-            aa = NestedEnvGetter.options(runtime_env={
-                "env_vars": {
-                    "c": "e",
-                    "d": "dd",
+            aa = NestedEnvGetter.options(
+                runtime_env={
+                    "env_vars": {
+                        "c": "e",
+                        "d": "dd",
+                    }
                 }
-            }).remote()
+            ).remote()
             return ray.get(aa.get.remote(key))
 
-    a = EnvGetter.options(runtime_env={
-        "env_vars": {
-            "a": "b",
-            "c": "d",
+    a = EnvGetter.options(
+        runtime_env={
+            "env_vars": {
+                "a": "b",
+                "c": "d",
+            }
         }
-    }).remote()
+    ).remote()
 
-    assert (ray.get(a.get.remote("a")) == "b")
-    assert (ray.get(a.get_task.remote("a")) == "b")
-    assert (ray.get(a.nested_get.remote("a")) == "b")
-    assert (ray.get(a.nested_get.remote("c")) == "e")
-    assert (ray.get(a.nested_get.remote("d")) == "dd")
-    assert (ray.get(
-        get_env.options(runtime_env={
-            "env_vars": {
-                "a": "b",
-            }
-        }).remote("a")) == "b")
+    assert ray.get(a.get.remote("a")) == "b"
+    assert ray.get(a.get_task.remote("a")) == "b"
+    assert ray.get(a.nested_get.remote("a")) == "b"
+    assert ray.get(a.nested_get.remote("c")) == "e"
+    assert ray.get(a.nested_get.remote("d")) == "dd"
+    assert (
+        ray.get(
+            get_env.options(
+                runtime_env={
+                    "env_vars": {
+                        "a": "b",
+                    }
+                }
+            ).remote("a")
+        )
+        == "b"
+    )
 
-    assert (ray.get(a.get.remote("z")) == "job_z")
-    assert (ray.get(a.get_task.remote("z")) == "job_z")
-    assert (ray.get(a.nested_get.remote("z")) == "job_z")
-    assert (ray.get(
-        get_env.options(runtime_env={
-            "env_vars": {
-                "a": "b",
-            }
-        }).remote("z")) == "job_z")
+    assert ray.get(a.get.remote("z")) == "job_z"
+    assert ray.get(a.get_task.remote("z")) == "job_z"
+    assert ray.get(a.nested_get.remote("z")) == "job_z"
+    assert (
+        ray.get(
+            get_env.options(
+                runtime_env={
+                    "env_vars": {
+                        "a": "b",
+                    }
+                }
+            ).remote("z")
+        )
+        == "job_z"
+    )
 
 
 def test_environment_variables_reuse(shutdown_only):
@@ -165,20 +214,16 @@ def test_environment_variables_reuse(shutdown_only):
         return os.environ.get(env_var_name)
 
     assert ray.get(f.remote()) is None
-    assert ray.get(
-        f.options(runtime_env={
-            "env_vars": {
-                env_var_name: val1
-            }
-        }).remote()) == val1
+    assert (
+        ray.get(f.options(runtime_env={"env_vars": {env_var_name: val1}}).remote())
+        == val1
+    )
     assert ray.get(f.remote()) is None
     assert ray.get(g.remote()) is None
-    assert ray.get(
-        f.options(runtime_env={
-            "env_vars": {
-                env_var_name: val2
-            }
-        }).remote()) == val2
+    assert (
+        ray.get(f.options(runtime_env={"env_vars": {env_var_name: val2}}).remote())
+        == val2
+    )
     assert ray.get(g.remote()) is None
     assert ray.get(f.remote()) is None
 
@@ -256,4 +301,5 @@ def test_environment_variables_env_caching(shutdown_only):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

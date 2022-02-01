@@ -40,8 +40,7 @@ def test_log(disable_aiohttp_cache, ray_start_with_dashboard):
 
     test_log_text = "test_log_text"
     ray.get(write_log.remote(test_log_text))
-    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
-            is True)
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
     node_id = ray_start_with_dashboard["node_id"]
@@ -82,8 +81,8 @@ def test_log(disable_aiohttp_cache, ray_start_with_dashboard):
 
             # Test range request.
             response = requests.get(
-                webui_url + "/logs/dashboard.log",
-                headers={"Range": "bytes=44-52"})
+                webui_url + "/logs/dashboard.log", headers={"Range": "bytes=44-52"}
+            )
             response.raise_for_status()
             assert response.text == "Dashboard"
 
@@ -100,16 +99,19 @@ def test_log(disable_aiohttp_cache, ray_start_with_dashboard):
             last_ex = ex
         finally:
             if time.time() > start_time + timeout_seconds:
-                ex_stack = traceback.format_exception(
-                    type(last_ex), last_ex,
-                    last_ex.__traceback__) if last_ex else []
+                ex_stack = (
+                    traceback.format_exception(
+                        type(last_ex), last_ex, last_ex.__traceback__
+                    )
+                    if last_ex
+                    else []
+                )
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
 
 def test_log_proxy(ray_start_with_dashboard):
-    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
-            is True)
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
 
@@ -122,21 +124,27 @@ def test_log_proxy(ray_start_with_dashboard):
             # Test range request.
             response = requests.get(
                 f"{webui_url}/log_proxy?url={webui_url}/logs/dashboard.log",
-                headers={"Range": "bytes=44-52"})
+                headers={"Range": "bytes=44-52"},
+            )
             response.raise_for_status()
             assert response.text == "Dashboard"
             # Test 404.
-            response = requests.get(f"{webui_url}/log_proxy?"
-                                    f"url={webui_url}/logs/not_exist_file.log")
+            response = requests.get(
+                f"{webui_url}/log_proxy?" f"url={webui_url}/logs/not_exist_file.log"
+            )
             assert response.status_code == 404
             break
         except Exception as ex:
             last_ex = ex
         finally:
             if time.time() > start_time + timeout_seconds:
-                ex_stack = traceback.format_exception(
-                    type(last_ex), last_ex,
-                    last_ex.__traceback__) if last_ex else []
+                ex_stack = (
+                    traceback.format_exception(
+                        type(last_ex), last_ex, last_ex.__traceback__
+                    )
+                    if last_ex
+                    else []
+                )
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
 

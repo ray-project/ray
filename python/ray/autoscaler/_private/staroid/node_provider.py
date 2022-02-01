@@ -26,7 +26,8 @@ def _try_import_requests():
             "'requests' was not found, which is needed for "
             "this cluster configuration. "
             "Download this dependency by running `pip install requests` "
-            "or `pip install \"ray[default]\"`.") from None
+            'or `pip install "ray[default]"`.'
+        ) from None
     return requests
 
 
@@ -53,12 +54,13 @@ class StaroidNodeProvider(NodeProvider):
 
         self.__star = Staroid(
             access_token=provider_config["access_token"],
-            account=provider_config["account"])
+            account=provider_config["account"],
+        )
 
-        self.__ske = self._get_config_or_env(provider_config, "ske",
-                                             "STAROID_SKE")
+        self.__ske = self._get_config_or_env(provider_config, "ske", "STAROID_SKE")
         self.__ske_region = self._get_config_or_env(
-            provider_config, "ske_region", "STAROID_SKE_REGION")
+            provider_config, "ske_region", "STAROID_SKE_REGION"
+        )
 
         self._requests_lib = _try_import_requests()
 
@@ -80,14 +82,12 @@ class StaroidNodeProvider(NodeProvider):
         kube_conf = config.load_incluster_config()
         kube_client = client.ApiClient(kube_conf)
 
-        with open("/var/run/secrets/kubernetes.io/serviceaccount/namespace",
-                  "r") as file:
+        with open(
+            "/var/run/secrets/kubernetes.io/serviceaccount/namespace", "r"
+        ) as file:
             namespace = file.read().replace("\n", "")
 
-        self.__cached[instance_name] = {
-            "kube_client": kube_client,
-            "api_server": None
-        }
+        self.__cached[instance_name] = {"kube_client": kube_client, "api_server": None}
         self.namespace = namespace
         return kube_client
 
@@ -142,7 +142,8 @@ class StaroidNodeProvider(NodeProvider):
 
         # start a secure tunnel
         ns_api.start_tunnel(
-            instance_name, ["{}:localhost:{}".format(local_port, remote_port)])
+            instance_name, ["{}:localhost:{}".format(local_port, remote_port)]
+        )
 
         # wait for tunnel to be established by checking /version
         local_kube_api_addr = "http://localhost:{}".format(local_port)
@@ -151,7 +152,8 @@ class StaroidNodeProvider(NodeProvider):
         while time.time() - start_time < timeout:
             try:
                 r = self._requests_lib.get(
-                    "{}/version".format(local_kube_api_addr), timeout=(3, 5))
+                    "{}/version".format(local_kube_api_addr), timeout=(3, 5)
+                )
                 if r.status_code == 200:
                     established = True
                     break
@@ -165,7 +167,7 @@ class StaroidNodeProvider(NodeProvider):
             kube_client = client.ApiClient(kube_conf)
             self.__cached[instance_name] = {
                 "kube_client": kube_client,
-                "api_server": local_kube_api_addr
+                "api_server": local_kube_api_addr,
             }
             self.namespace = ns.namespace()
             return kube_client
@@ -184,19 +186,20 @@ class StaroidNodeProvider(NodeProvider):
         # Match pods that are in the 'Pending' or 'Running' phase.
         # Unfortunately there is no OR operator in field selectors, so we
         # have to match on NOT any of the other phases.
-        field_selector = ",".join([
-            "status.phase!=Failed",
-            "status.phase!=Unknown",
-            "status.phase!=Succeeded",
-            "status.phase!=Terminating",
-        ])
+        field_selector = ",".join(
+            [
+                "status.phase!=Failed",
+                "status.phase!=Unknown",
+                "status.phase!=Succeeded",
+                "status.phase!=Terminating",
+            ]
+        )
 
         tag_filters[TAG_RAY_CLUSTER_NAME] = self.cluster_name
         label_selector = to_label_selector(tag_filters)
         pod_list = core_api.list_namespaced_pod(
-            self.namespace,
-            field_selector=field_selector,
-            label_selector=label_selector)
+            self.namespace, field_selector=field_selector, label_selector=label_selector
+        )
 
         return [pod.metadata.name for pod in pod_list.items]
 
@@ -263,25 +266,27 @@ class StaroidNodeProvider(NodeProvider):
             cluster_api = self.__star.cluster()
             ske = cluster_api.create(self.__ske, self.__ske_region)
             if ske is None:
-                raise Exception("Failed to create an SKE '{}' in '{}' region"
-                                .format(self.__ske, self.__ske_region))
+                raise Exception(
+                    "Failed to create an SKE '{}' in '{}' region".format(
+                        self.__ske, self.__ske_region
+                    )
+                )
 
             # create a namespace
             ns_api = self.__star.namespace(ske)
             ns = ns_api.create(
                 instance_name,
                 self.provider_config["project"],
-
                 # Configure 'start-head' param to 'false'.
                 # head node will be created using Kubernetes api.
-                params=[{
-                    "group": "Misc",
-                    "name": "start-head",
-                    "value": "false"
-                }])
+                params=[{"group": "Misc", "name": "start-head", "value": "false"}],
+            )
             if ns is None:
-                raise Exception("Failed to create a cluster '{}' in SKE '{}'"
-                                .format(instance_name, self.__ske))
+                raise Exception(
+                    "Failed to create a cluster '{}' in SKE '{}'".format(
+                        instance_name, self.__ske
+                    )
+                )
 
             # 'ray down' will change staroid namespace status to "PAUSE"
             # in this case we need to start namespace again.
@@ -297,7 +302,8 @@ class StaroidNodeProvider(NodeProvider):
         image = None
         if self.provider_config["image_from_project"]:
             ray_images = apps_api.read_namespaced_deployment(
-                name="ray-images", namespace=self.namespace)
+                name="ray-images", namespace=self.namespace
+            )
             py_ver = self.provider_config["python_version"].replace(".", "-")
             containers = ray_images.spec.template.spec.containers
             for c in containers:
@@ -320,12 +326,14 @@ class StaroidNodeProvider(NodeProvider):
             pod_spec["metadata"]["labels"] = tags
 
         if "generateName" not in pod_spec["metadata"]:
-            pod_spec["metadata"]["generateName"] = \
+            pod_spec["metadata"]["generateName"] = (
                 "ray-" + pod_spec["metadata"]["labels"]["ray-node-type"] + "-"
+            )
 
         if "component" not in pod_spec["metadata"]["labels"]:
-            pod_spec["metadata"]["labels"]["component"] = \
+            pod_spec["metadata"]["labels"]["component"] = (
                 "ray-" + pod_spec["metadata"]["labels"]["ray-node-type"]
+            )
 
         if image is not None:
             containers = pod_spec["spec"]["containers"]
@@ -336,23 +344,30 @@ class StaroidNodeProvider(NodeProvider):
                     node_type = pod_spec["metadata"]["labels"]["ray-node-type"]
                     if node_type == "head":
                         if "STAROID_ACCESS_TOKEN" in os.environ:
-                            c["env"].append({
-                                "name": "STAROID_ACCESS_TOKEN",
-                                "value": os.environ["STAROID_ACCESS_TOKEN"]
-                            })
+                            c["env"].append(
+                                {
+                                    "name": "STAROID_ACCESS_TOKEN",
+                                    "value": os.environ["STAROID_ACCESS_TOKEN"],
+                                }
+                            )
                         if "STAROID_ACCOUNT" in os.environ:
-                            c["env"].append({
-                                "name": "STAROID_ACCOUNT",
-                                "value": os.environ["STAROID_ACCOUNT"]
-                            })
+                            c["env"].append(
+                                {
+                                    "name": "STAROID_ACCOUNT",
+                                    "value": os.environ["STAROID_ACCOUNT"],
+                                }
+                            )
                         if "STAROID_SKE" in os.environ:
-                            c["env"].append({
-                                "name": "STAROID_SKE",
-                                "value": os.environ["STAROID_SKE"]
-                            })
+                            c["env"].append(
+                                {
+                                    "name": "STAROID_SKE",
+                                    "value": os.environ["STAROID_SKE"],
+                                }
+                            )
 
-        logger.info(log_prefix + "calling create_namespaced_pod "
-                    "(count={}).".format(count))
+        logger.info(
+            log_prefix + "calling create_namespaced_pod " "(count={}).".format(count)
+        )
         new_nodes = []
         for _ in range(count):
             pod = core_api.create_namespaced_pod(self.namespace, pod_spec)
@@ -360,16 +375,17 @@ class StaroidNodeProvider(NodeProvider):
 
         new_svcs = []
         if service_spec is not None:
-            logger.info(log_prefix + "calling create_namespaced_service "
-                        "(count={}).".format(count))
+            logger.info(
+                log_prefix + "calling create_namespaced_service "
+                "(count={}).".format(count)
+            )
 
             for new_node in new_nodes:
                 metadata = service_spec.get("metadata", {})
                 metadata["name"] = new_node.metadata.name
                 service_spec["metadata"] = metadata
                 service_spec["spec"]["selector"] = {"ray-node-uuid": node_uuid}
-                svc = core_api.create_namespaced_service(
-                    self.namespace, service_spec)
+                svc = core_api.create_namespaced_service(self.namespace, service_spec)
                 new_svcs.append(svc)
 
     def terminate_node(self, node_id):
@@ -402,22 +418,29 @@ class StaroidNodeProvider(NodeProvider):
         for node_id in node_ids:
             self.terminate_node(node_id)
 
-    def get_command_runner(self,
-                           log_prefix,
-                           node_id,
-                           auth_config,
-                           cluster_name,
-                           process_runner,
-                           use_internal_ip,
-                           docker_config=None):
+    def get_command_runner(
+        self,
+        log_prefix,
+        node_id,
+        auth_config,
+        cluster_name,
+        process_runner,
+        use_internal_ip,
+        docker_config=None,
+    ):
         instance_name = self.cluster_name
 
         # initialize connection
         self._connect_kubeapi(instance_name)
 
         command_runner = StaroidCommandRunner(
-            log_prefix, self.namespace, node_id, auth_config, process_runner,
-            self.__cached[cluster_name]["api_server"])
+            log_prefix,
+            self.namespace,
+            node_id,
+            auth_config,
+            process_runner,
+            self.__cached[cluster_name]["api_server"],
+        )
         return command_runner
 
     @staticmethod

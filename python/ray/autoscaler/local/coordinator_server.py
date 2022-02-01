@@ -46,15 +46,17 @@ def runner_handler(node_provider):
         def do_GET(self):
             """Processes requests from remote CoordinatorSenderNodeProvider."""
             if self.headers["content-length"]:
-                raw_data = (self.rfile.read(
-                    int(self.headers["content-length"]))).decode("utf-8")
-                logger.info("OnPremCoordinatorServer received request: " +
-                            str(raw_data))
+                raw_data = (
+                    self.rfile.read(int(self.headers["content-length"]))
+                ).decode("utf-8")
+                logger.info(
+                    "OnPremCoordinatorServer received request: " + str(raw_data)
+                )
                 request = json.loads(raw_data)
-                response = getattr(node_provider,
-                                   request["type"])(*request["args"])
-                logger.info("OnPremCoordinatorServer response content: " +
-                            str(raw_data))
+                response = getattr(node_provider, request["type"])(*request["args"])
+                logger.info(
+                    "OnPremCoordinatorServer response content: " + str(raw_data)
+                )
                 response_code = 200
                 message = json.dumps(response)
                 self._do_header(response_code=response_code)
@@ -73,8 +75,9 @@ class OnPremCoordinatorServer(threading.Thread):
     def __init__(self, list_of_node_ips, host, port):
         """Initialize HTTPServer and serve forever by invoking self.run()."""
 
-        logger.info("Running on prem coordinator server on address " + host +
-                    ":" + str(port))
+        logger.info(
+            "Running on prem coordinator server on address " + host + ":" + str(port)
+        )
         threading.Thread.__init__(self)
         self._port = port
         self._list_of_node_ips = list_of_node_ips
@@ -97,14 +100,17 @@ class OnPremCoordinatorServer(threading.Thread):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Please provide a list of node ips and port.")
+        description="Please provide a list of node ips and port."
+    )
     parser.add_argument(
-        "--ips", required=True, help="Comma separated list of node ips.")
+        "--ips", required=True, help="Comma separated list of node ips."
+    )
     parser.add_argument(
         "--port",
         type=int,
         required=True,
-        help="The port on which the coordinator listens.")
+        help="The port on which the coordinator listens.",
+    )
     args = parser.parse_args()
     list_of_node_ips = args.ips.split(",")
     OnPremCoordinatorServer(

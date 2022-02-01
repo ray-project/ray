@@ -29,19 +29,18 @@ class Generator(nn.Module):
         self.latent_vector_size = latent_vector_size
         self.main = nn.Sequential(
             # input is Z, going into a convolution
-            nn.ConvTranspose2d(
-                latent_vector_size, features * 4, 4, 1, 0, bias=False),
+            nn.ConvTranspose2d(latent_vector_size, features * 4, 4, 1, 0, bias=False),
             nn.BatchNorm2d(features * 4),
             nn.ReLU(True),
-            nn.ConvTranspose2d(
-                features * 4, features * 2, 4, 2, 1, bias=False),
+            nn.ConvTranspose2d(features * 4, features * 2, 4, 2, 1, bias=False),
             nn.BatchNorm2d(features * 2),
             nn.ReLU(True),
             nn.ConvTranspose2d(features * 2, features, 4, 2, 1, bias=False),
             nn.BatchNorm2d(features),
             nn.ReLU(True),
             nn.ConvTranspose2d(features, num_channels, 4, 2, 1, bias=False),
-            nn.Tanh())
+            nn.Tanh(),
+        )
 
     def forward(self, x):
         return self.main(x)
@@ -54,10 +53,14 @@ class Discriminator(nn.Module):
             nn.Conv2d(num_channels, features, 4, 2, 1, bias=False),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(features, features * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(features * 2), nn.LeakyReLU(0.2, inplace=True),
+            nn.BatchNorm2d(features * 2),
+            nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(features * 2, features * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(features * 4), nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(features * 4, 1, 4, 1, 0, bias=False), nn.Sigmoid())
+            nn.BatchNorm2d(features * 4),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(features * 4, 1, 4, 1, 0, bias=False),
+            nn.Sigmoid(),
+        )
 
     def forward(self, x):
         return self.main(x)
@@ -98,46 +101,46 @@ class GANOperator(TrainingOperator):
         discriminator = Discriminator()
         discriminator.apply(weights_init)
 
-        generator = Generator(
-            latent_vector_size=config.get("latent_vector_size", 100))
+        generator = Generator(latent_vector_size=config.get("latent_vector_size", 100))
         generator.apply(weights_init)
         models = (discriminator, generator)
 
         discriminator_opt = optim.Adam(
-            discriminator.parameters(),
-            lr=config.get("lr", 0.01),
-            betas=(0.5, 0.999))
+            discriminator.parameters(), lr=config.get("lr", 0.01), betas=(0.5, 0.999)
+        )
         generator_opt = optim.Adam(
-            generator.parameters(),
-            lr=config.get("lr", 0.01),
-            betas=(0.5, 0.999))
+            generator.parameters(), lr=config.get("lr", 0.01), betas=(0.5, 0.999)
+        )
         optimizers = (discriminator_opt, generator_opt)
 
         with FileLock(".ray.lock"):
             dataset = datasets.MNIST(
                 root=config.get("data_dir", "~/data/"),
                 download=True,
-                transform=transforms.Compose([
-                    transforms.Resize(32),
-                    transforms.ToTensor(),
-                    transforms.Normalize((0.5, ), (0.5, )),
-                ]))
+                transform=transforms.Compose(
+                    [
+                        transforms.Resize(32),
+                        transforms.ToTensor(),
+                        transforms.Normalize((0.5,), (0.5,)),
+                    ]
+                ),
+            )
         if config.get("test_mode"):
             dataset = torch.utils.data.Subset(dataset, list(range(64)))
         train_dataloader = torch.utils.data.DataLoader(
-            dataset, batch_size=config.get("batch_size", 32))
+            dataset, batch_size=config.get("batch_size", 32)
+        )
 
         self.models, self.optimizers, self.criterion = self.register(
-            models=models, optimizers=optimizers, criterion=nn.BCELoss())
-        self.register_data(
-            train_loader=train_dataloader, validation_loader=None)
+            models=models, optimizers=optimizers, criterion=nn.BCELoss()
+        )
+        self.register_data(train_loader=train_dataloader, validation_loader=None)
 
         self.model = self.models[0]
         self.optimizer = self.optimizers[0]
 
         self.classifier = LeNet()
-        self.classifier.load_state_dict(
-            torch.load(config["classification_model_path"]))
+        self.classifier.load_state_dict(torch.load(config["classification_model_path"]))
         self.classifier.eval()
 
     def inception_score(self, imgs, batch_size=32, splits=1):
@@ -147,7 +150,7 @@ class GANOperator(TrainingOperator):
         up = nn.Upsample(
             size=(28, 28),
             mode="bilinear",
-            align_corners=False  # This is to reduce user warnings from torch.
+            align_corners=False,  # This is to reduce user warnings from torch.
         ).type(torch.FloatTensor)
 
         def get_pred(x):
@@ -161,13 +164,12 @@ class GANOperator(TrainingOperator):
             batch = batch.type(torch.FloatTensor)
             batchv = Variable(batch)
             batch_size_i = batch.size()[0]
-            preds[i * batch_size:i * batch_size +
-                  batch_size_i] = get_pred(batchv)
+            preds[i * batch_size : i * batch_size + batch_size_i] = get_pred(batchv)
 
         # Now compute the mean kl-div
         split_scores = []
         for k in range(splits):
-            part = preds[k * (N // splits):(k + 1) * (N // splits), :]
+            part = preds[k * (N // splits) : (k + 1) * (N // splits), :]
             py = np.mean(part, axis=0)
             scores = []
             for i in range(part.shape[0]):
@@ -181,7 +183,7 @@ class GANOperator(TrainingOperator):
     def train_batch(self, batch, batch_info):
         """Trains on one batch of data from the data creator."""
         real_label = 1.0
-        fake_label = 0.
+        fake_label = 0.0
         discriminator, generator = self.models
         optimD, optimG = self.optimizers
 
@@ -190,7 +192,7 @@ class GANOperator(TrainingOperator):
         # self.device is set automatically
         real_cpu = batch[0].to(self.device)
         batch_size = real_cpu.size(0)
-        label = torch.full((batch_size, ), real_label, device=self.device)
+        label = torch.full((batch_size,), real_label, device=self.device)
         output = discriminator(real_cpu).view(-1)
         errD_real = self.criterion(output, label)
         errD_real.backward()
@@ -201,7 +203,8 @@ class GANOperator(TrainingOperator):
             self.config.get("latent_vector_size", 100),
             1,
             1,
-            device=self.device)
+            device=self.device,
+        )
         fake = generator(noise)
         label.fill_(fake_label)
         output = discriminator(fake.detach()).view(-1)
@@ -226,13 +229,14 @@ class GANOperator(TrainingOperator):
             "loss_g": errG.item(),
             "loss_d": errD.item(),
             "inception": is_score,
-            "num_samples": batch_size
+            "num_samples": batch_size,
         }
 
 
 def download_model():
     model_path = os.path.expanduser("~/.ray/models/mnist_cnn.pt")
     import urllib.request
+
     # Download a pre-trained MNIST model for inception score calculation.
     # This is a tiny model (<100kb).
     if not os.path.exists(model_path):
@@ -240,14 +244,13 @@ def download_model():
         os.makedirs(os.path.dirname(model_path), exist_ok=True)
         urllib.request.urlretrieve(
             "https://github.com/ray-project/ray/raw/master/python/ray/tune/"
-            "examples/pbt_dcgan_mnist/mnist_cnn.pt", model_path)
+            "examples/pbt_dcgan_mnist/mnist_cnn.pt",
+            model_path,
+        )
     return model_path
 
 
-def train_example(num_workers=1,
-                  use_gpu=False,
-                  test_mode=False,
-                  data_dir="~/data/"):
+def train_example(num_workers=1, use_gpu=False, test_mode=False, data_dir="~/data/"):
     if ray.util.client.ray.is_connected():
         # If using Ray Client, make sure model is downloaded on the Server.
         model_path = ray.get(ray.remote(download_model).remote())
@@ -258,16 +261,18 @@ def train_example(num_workers=1,
         "test_mode": test_mode,
         "batch_size": 16 if test_mode else 512 // num_workers,
         "classification_model_path": model_path,
-        "data_dir": data_dir
+        "data_dir": data_dir,
     }
     trainer = TorchTrainer(
         training_operator_cls=GANOperator,
         num_workers=num_workers,
         config=config,
         use_gpu=use_gpu,
-        use_tqdm=True)
+        use_tqdm=True,
+    )
 
     from tabulate import tabulate
+
     pbar = trange(5, unit="epoch")
     for itr in pbar:
         stats = trainer.train(info=dict(epoch_idx=itr, num_epochs=5))
@@ -283,35 +288,34 @@ def train_example(num_workers=1,
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     parser.add_argument(
         "--address",
         required=False,
         type=str,
-        help="the address to use to connect to a cluster.")
+        help="the address to use to connect to a cluster.",
+    )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using " "Ray Client.",
+    )
     parser.add_argument(
         "--num-workers",
         "-n",
         type=int,
         default=1,
-        help="Sets number of workers for training.")
+        help="Sets number of workers for training.",
+    )
     parser.add_argument(
-        "--use-gpu",
-        action="store_true",
-        default=False,
-        help="Enables GPU training")
+        "--use-gpu", action="store_true", default=False, help="Enables GPU training"
+    )
     parser.add_argument(
-        "--data-dir",
-        type=str,
-        default="~/data/",
-        help="Set the path of the dataset.")
+        "--data-dir", type=str, default="~/data/", help="Set the path of the dataset."
+    )
     args = parser.parse_args()
     if args.smoke_test:
         ray.init(num_cpus=2)
@@ -324,5 +328,6 @@ if __name__ == "__main__":
         num_workers=args.num_workers,
         use_gpu=args.use_gpu,
         test_mode=args.smoke_test,
-        data_dir=args.data_dir)
+        data_dir=args.data_dir,
+    )
     models = trainer.get_model()

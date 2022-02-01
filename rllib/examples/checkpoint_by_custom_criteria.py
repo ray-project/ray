@@ -6,16 +6,15 @@ from ray import tune
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--run",
-    type=str,
-    default="PPO",
-    help="The RLlib-registered algorithm to use.")
+    "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
+)
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 parser.add_argument("--stop-reward", type=float, default=150.0)
@@ -59,26 +58,31 @@ if __name__ == "__main__":
     metric = "episodes_this_iter"
     best_trial = results.get_best_trial(metric=metric, mode="min", scope="all")
     value_best_metric = best_trial.metric_analysis[metric]["min"]
-    print("Best trial's lowest episode length (over all "
-          "iterations): {}".format(value_best_metric))
+    print(
+        "Best trial's lowest episode length (over all "
+        "iterations): {}".format(value_best_metric)
+    )
 
     # Confirm, we picked the right trial.
-    assert all(value_best_metric <= results.results[t][metric]
-               for t in results.results.keys())
+    assert all(
+        value_best_metric <= results.results[t][metric] for t in results.results.keys()
+    )
 
     # Get the best checkpoints from the trial, based on different metrics.
     # Checkpoint with the lowest policy loss value:
     ckpt = results.get_best_checkpoint(
         best_trial,
         metric="info/learner/default_policy/learner_stats/policy_loss",
-        mode="min")
+        mode="min",
+    )
     print("Lowest pol-loss: {}".format(ckpt))
 
     # Checkpoint with the highest value-function loss:
     ckpt = results.get_best_checkpoint(
         best_trial,
         metric="info/learner/default_policy/learner_stats/vf_loss",
-        mode="max")
+        mode="max",
+    )
     print("Highest vf-loss: {}".format(ckpt))
 
     ray.shutdown()

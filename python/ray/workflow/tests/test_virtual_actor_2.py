@@ -65,11 +65,14 @@ class IndirectCounter:
 
 @pytest.mark.parametrize(
     "workflow_start_regular",
-    [{
-        "num_cpus": 4
-        # We need more CPUs, otherwise 'create()' blocks 'get()'
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 4
+            # We need more CPUs, otherwise 'create()' blocks 'get()'
+        }
+    ],
+    indirect=True,
+)
 def test_indirect_actor_writer(workflow_start_regular):
     actor = IndirectCounter.get_or_create("indirect_counter", 0)
     ray.get(actor.ready())
@@ -91,11 +94,14 @@ def test_indirect_actor_writer(workflow_start_regular):
 
 @pytest.mark.parametrize(
     "workflow_start_regular",
-    [{
-        "num_cpus": 4
-        # We need more CPUs, otherwise 'create()' blocks 'get()'
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 4
+            # We need more CPUs, otherwise 'create()' blocks 'get()'
+        }
+    ],
+    indirect=True,
+)
 def test_wf_in_actor(workflow_start_regular, tmp_path):
     fail_flag = tmp_path / "fail"
     cnt = tmp_path / "count"
@@ -135,7 +141,8 @@ def test_wf_in_actor(workflow_start_regular, tmp_path):
         def session_start_with_status(self):
             self._session_status = "STARTING"
             return self.update_session.step(
-                start_session.options(catch_exceptions=True).step())
+                start_session.options(catch_exceptions=True).step()
+            )
 
         def __getstate__(self):
             return self._session_status
@@ -180,11 +187,14 @@ def test_wf_in_actor(workflow_start_regular, tmp_path):
 
 @pytest.mark.parametrize(
     "workflow_start_regular",
-    [{
-        "num_cpus": 4
-        # We need more CPUs, otherwise 'create()' blocks 'get()'
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 4
+            # We need more CPUs, otherwise 'create()' blocks 'get()'
+        }
+    ],
+    indirect=True,
+)
 @pytest.mark.repeat(5)
 def test_wf_in_actor_chain(workflow_start_regular, tmp_path):
     file_lock = [str(tmp_path / str(i)) for i in range(5)]
@@ -257,13 +267,15 @@ def test_wf_in_actor_chain(workflow_start_regular, tmp_path):
 
 @pytest.mark.parametrize(
     "workflow_start_regular",
-    [{
-        "num_cpus": 4
-        # We need more CPUs, otherwise 'create()' blocks 'get()'
-    }],
-    indirect=True)
-@pytest.mark.skip(
-    reason="Return a list of virtual actor sub method is not supported.")
+    [
+        {
+            "num_cpus": 4
+            # We need more CPUs, otherwise 'create()' blocks 'get()'
+        }
+    ],
+    indirect=True,
+)
+@pytest.mark.skip(reason="Return a list of virtual actor sub method is not supported.")
 def test_wf_in_actor_seq(workflow_start_regular, tmp_path):
     record = tmp_path / "record"
     record.touch()
@@ -295,11 +307,14 @@ def test_wf_in_actor_seq(workflow_start_regular, tmp_path):
 
 @pytest.mark.parametrize(
     "workflow_start_regular",
-    [{
-        "num_cpus": 4
-        # We need more CPUs, otherwise 'create()' blocks 'get()'
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 4
+            # We need more CPUs, otherwise 'create()' blocks 'get()'
+        }
+    ],
+    indirect=True,
+)
 def test_wf_in_actor_seq_2(workflow_start_regular, tmp_path):
     record = tmp_path / "record"
     record.touch()
@@ -335,11 +350,14 @@ def test_wf_in_actor_seq_2(workflow_start_regular, tmp_path):
 
 @pytest.mark.parametrize(
     "workflow_start_regular",
-    [{
-        "num_cpus": 4
-        # We need more CPUs, otherwise 'create()' blocks 'get()'
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 4
+            # We need more CPUs, otherwise 'create()' blocks 'get()'
+        }
+    ],
+    indirect=True,
+)
 def test_wf_in_actor_seq_3(workflow_start_regular, tmp_path):
     @workflow.virtual_actor
     class Counter:
@@ -372,4 +390,5 @@ def test_wf_in_actor_seq_3(workflow_start_regular, tmp_path):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

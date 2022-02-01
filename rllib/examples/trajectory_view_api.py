@@ -4,8 +4,10 @@ import numpy as np
 import ray
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
-from ray.rllib.examples.models.trajectory_view_utilizing_models import \
-    FrameStackingCartPoleModel, TorchFrameStackingCartPoleModel
+from ray.rllib.examples.models.trajectory_view_utilizing_models import (
+    FrameStackingCartPoleModel,
+    TorchFrameStackingCartPoleModel,
+)
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -15,35 +17,29 @@ tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--run",
-    type=str,
-    default="PPO",
-    help="The RLlib-registered algorithm to use.")
+    "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
+)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument(
     "--as-test",
     action="store_true",
     help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.")
+    "be achieved within --stop-timesteps AND --stop-iters.",
+)
 parser.add_argument(
-    "--stop-iters",
-    type=int,
-    default=50,
-    help="Number of iterations to train.")
+    "--stop-iters", type=int, default=50, help="Number of iterations to train."
+)
 parser.add_argument(
-    "--stop-timesteps",
-    type=int,
-    default=200000,
-    help="Number of timesteps to train.")
+    "--stop-timesteps", type=int, default=200000, help="Number of timesteps to train."
+)
 parser.add_argument(
-    "--stop-reward",
-    type=float,
-    default=150.0,
-    help="Reward at which we stop training.")
+    "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -52,8 +48,11 @@ if __name__ == "__main__":
     num_frames = 16
 
     ModelCatalog.register_custom_model(
-        "frame_stack_model", FrameStackingCartPoleModel
-        if args.framework != "torch" else TorchFrameStackingCartPoleModel)
+        "frame_stack_model",
+        FrameStackingCartPoleModel
+        if args.framework != "torch"
+        else TorchFrameStackingCartPoleModel,
+    )
 
     config = {
         "env": StatelessCartPole,
@@ -63,12 +62,10 @@ if __name__ == "__main__":
             "custom_model_config": {
                 "num_frames": num_frames,
             },
-
             # To compare against a simple LSTM:
             # "use_lstm": True,
             # "lstm_use_prev_action": True,
             # "lstm_use_prev_reward": True,
-
             # To compare against a simple attention net:
             # "use_attention": True,
             # "attention_use_n_prev_actions": 1,
@@ -85,14 +82,16 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
     results = tune.run(
-        args.run, config=config, stop=stop, verbose=2, checkpoint_at_end=True)
+        args.run, config=config, stop=stop, verbose=2, checkpoint_at_end=True
+    )
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
 
     checkpoints = results.get_trial_checkpoints_paths(
         trial=results.get_best_trial("episode_reward_mean", mode="max"),
-        metric="episode_reward_mean")
+        metric="episode_reward_mean",
+    )
 
     checkpoint_path = checkpoints[0][0]
     trainer = PPOTrainer(config)
@@ -116,10 +115,10 @@ if __name__ == "__main__":
                     "obs": obs,
                     "prev_n_obs": np.stack([obs for _ in range(num_frames)]),
                     "prev_n_actions": np.stack([0 for _ in range(num_frames)]),
-                    "prev_n_rewards": np.stack(
-                        [1.0 for _ in range(num_frames)]),
+                    "prev_n_rewards": np.stack([1.0 for _ in range(num_frames)]),
                 },
-                full_fetch=True)
+                full_fetch=True,
+            )
             obs, reward, done, info = env.step(action)
             episode_reward += reward
 

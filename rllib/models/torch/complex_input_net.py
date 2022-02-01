@@ -4,8 +4,10 @@ import tree  # pip install dm_tree
 
 # TODO (sven): add IMPALA-style option.
 # from ray.rllib.examples.models.impala_vision_nets import TorchImpalaVisionNet
-from ray.rllib.models.torch.misc import normc_initializer as \
-    torch_normc_initializer, SlimFC
+from ray.rllib.models.torch.misc import (
+    normc_initializer as torch_normc_initializer,
+    SlimFC,
+)
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2, restore_original_dimensions
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -33,19 +35,26 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
     `out2` -> action (logits) and vaulue heads.
     """
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        self.original_space = obs_space.original_space if \
-            hasattr(obs_space, "original_space") else obs_space
-        assert isinstance(self.original_space, (Dict, Tuple)), \
-            "`obs_space.original_space` must be [Dict|Tuple]!"
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        self.original_space = (
+            obs_space.original_space
+            if hasattr(obs_space, "original_space")
+            else obs_space
+        )
+        assert isinstance(
+            self.original_space, (Dict, Tuple)
+        ), "`obs_space.original_space` must be [Dict|Tuple]!"
 
-        self.processed_obs_space = self.original_space if \
-            model_config.get("_disable_preprocessor_api") else obs_space
+        self.processed_obs_space = (
+            self.original_space
+            if model_config.get("_disable_preprocessor_api")
+            else obs_space
+        )
 
         nn.Module.__init__(self)
-        TorchModelV2.__init__(self, self.original_space, action_space,
-                              num_outputs, model_config, name)
+        TorchModelV2.__init__(
+            self, self.original_space, action_space, num_outputs, model_config, name
+        )
 
         self.flattened_input_space = flatten_space(self.original_space)
 
@@ -63,8 +72,8 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
             if len(component.shape) == 3:
                 config = {
                     "conv_filters": model_config["conv_filters"]
-                    if "conv_filters" in model_config else
-                    get_filter_config(obs_space.shape),
+                    if "conv_filters" in model_config
+                    else get_filter_config(obs_space.shape),
                     "conv_activation": model_config.get("conv_activation"),
                     "post_fcnet_hiddens": [],
                 }
@@ -75,7 +84,8 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                     num_outputs=None,
                     model_config=config,
                     framework="torch",
-                    name="cnn_{}".format(i))
+                    name="cnn_{}".format(i),
+                )
                 # TODO (sven): add IMPALA-style option.
                 # else:
                 #    cnn = TorchImpalaVisionNet(
@@ -103,19 +113,16 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
         # Optional post-concat FC-stack.
         post_fc_stack_config = {
             "fcnet_hiddens": model_config.get("post_fcnet_hiddens", []),
-            "fcnet_activation": model_config.get("post_fcnet_activation",
-                                                 "relu")
+            "fcnet_activation": model_config.get("post_fcnet_activation", "relu"),
         }
         self.post_fc_stack = ModelCatalog.get_model_v2(
-            Box(float("-inf"),
-                float("inf"),
-                shape=(concat_size, ),
-                dtype=np.float32),
+            Box(float("-inf"), float("inf"), shape=(concat_size,), dtype=np.float32),
             self.action_space,
             None,
             post_fc_stack_config,
             framework="torch",
-            name="post_fc_stack")
+            name="post_fc_stack",
+        )
 
         # Actions and value heads.
         self.logits_layer = None
@@ -134,7 +141,8 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 in_size=self.post_fc_stack.num_outputs,
                 out_size=1,
                 activation_fn=None,
-                initializer=torch_normc_initializer(0.01))
+                initializer=torch_normc_initializer(0.01),
+            )
         else:
             self.num_outputs = concat_size
 
@@ -144,9 +152,8 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
             orig_obs = input_dict[SampleBatch.OBS]
         else:
             orig_obs = restore_original_dimensions(
-                input_dict[SampleBatch.OBS],
-                self.processed_obs_space,
-                tensorlib="torch")
+                input_dict[SampleBatch.OBS], self.processed_obs_space, tensorlib="torch"
+            )
         # Push image observations through our CNNs.
         outs = []
         for i, component in enumerate(tree.flatten(orig_obs)):
@@ -155,8 +162,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 outs.append(cnn_out)
             elif i in self.one_hot:
                 if component.dtype in [torch.int32, torch.int64, torch.uint8]:
-                    outs.append(
-                        one_hot(component, self.flattened_input_space[i]))
+                    outs.append(one_hot(component, self.flattened_input_space[i]))
                 else:
                     outs.append(component)
             else:

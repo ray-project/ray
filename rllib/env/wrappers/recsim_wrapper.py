@@ -34,24 +34,27 @@ class RecSimObservationSpaceWrapper(gym.ObservationWrapper):
         obs_space = self.env.observation_space
         doc_space = spaces.Dict(
             OrderedDict(
-                [(str(k), doc)
-                 for k, (_,
-                         doc) in enumerate(obs_space["doc"].spaces.items())]))
+                [
+                    (str(k), doc)
+                    for k, (_, doc) in enumerate(obs_space["doc"].spaces.items())
+                ]
+            )
+        )
         self.observation_space = spaces.Dict(
-            OrderedDict([
-                ("user", obs_space["user"]),
-                ("doc", doc_space),
-                ("response", obs_space["response"]),
-            ]))
+            OrderedDict(
+                [
+                    ("user", obs_space["user"]),
+                    ("doc", doc_space),
+                    ("response", obs_space["response"]),
+                ]
+            )
+        )
         self._sampled_obs = self.observation_space.sample()
 
     def observation(self, obs):
         new_obs = OrderedDict()
         new_obs["user"] = obs["user"]
-        new_obs["doc"] = {
-            str(k): v
-            for k, (_, v) in enumerate(obs["doc"].items())
-        }
+        new_obs["doc"] = {str(k): v for k, (_, v) in enumerate(obs["doc"].items())}
         new_obs["response"] = obs["response"]
         new_obs = convert_element_to_space_type(new_obs, self._sampled_obs)
         return new_obs
@@ -95,10 +98,10 @@ class MultiDiscreteToDiscreteActionWrapper(gym.ActionWrapper):
         if not isinstance(env.action_space, spaces.MultiDiscrete):
             raise UnsupportedSpaceException(
                 f"Action space {env.action_space} "
-                f"is not supported by {self.__class__.__name__}")
+                f"is not supported by {self.__class__.__name__}"
+            )
         self.action_space_dimensions = env.action_space.nvec
-        self.action_space = spaces.Discrete(
-            np.prod(self.action_space_dimensions))
+        self.action_space = spaces.Discrete(np.prod(self.action_space_dimensions))
 
     def action(self, action: int) -> List[int]:
         """Convert a Discrete action to a MultiDiscrete action"""

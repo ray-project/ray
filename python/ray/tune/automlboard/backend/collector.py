@@ -5,12 +5,19 @@ import time
 from threading import Thread
 
 from ray.tune.automlboard.common.exception import CollectorError
-from ray.tune.automlboard.common.utils import parse_json, \
-    parse_multiple_json, timestamp2date
-from ray.tune.automlboard.models.models import JobRecord, \
-    TrialRecord, ResultRecord
-from ray.tune.result import DEFAULT_RESULTS_DIR, JOB_META_FILE, \
-    EXPR_PARAM_FILE, EXPR_RESULT_FILE, EXPR_META_FILE
+from ray.tune.automlboard.common.utils import (
+    parse_json,
+    parse_multiple_json,
+    timestamp2date,
+)
+from ray.tune.automlboard.models.models import JobRecord, TrialRecord, ResultRecord
+from ray.tune.result import (
+    DEFAULT_RESULTS_DIR,
+    JOB_META_FILE,
+    EXPR_PARAM_FILE,
+    EXPR_RESULT_FILE,
+    EXPR_META_FILE,
+)
 
 
 class CollectorService:
@@ -20,11 +27,13 @@ class CollectorService:
     trials information in db.
     """
 
-    def __init__(self,
-                 log_dir=DEFAULT_RESULTS_DIR,
-                 reload_interval=30,
-                 standalone=True,
-                 log_level="INFO"):
+    def __init__(
+        self,
+        log_dir=DEFAULT_RESULTS_DIR,
+        reload_interval=30,
+        standalone=True,
+        log_level="INFO",
+    ):
         """Initialize the collector service.
 
         Args:
@@ -36,9 +45,8 @@ class CollectorService:
         self.logger = self.init_logger(log_level)
         self.standalone = standalone
         self.collector = Collector(
-            reload_interval=reload_interval,
-            logdir=log_dir,
-            logger=self.logger)
+            reload_interval=reload_interval, logdir=log_dir, logger=self.logger
+        )
 
     def run(self):
         """Start the collector worker thread.
@@ -59,9 +67,9 @@ class CollectorService:
         """Initialize logger settings."""
         logger = logging.getLogger("AutoMLBoard")
         handler = logging.StreamHandler()
-        formatter = logging.Formatter("[%(levelname)s %(asctime)s] "
-                                      "%(filename)s: %(lineno)d  "
-                                      "%(message)s")
+        formatter = logging.Formatter(
+            "[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s"
+        )
         handler.setFormatter(formatter)
         logger.setLevel(log_level)
         logger.addHandler(handler)
@@ -118,8 +126,10 @@ class Collector(Thread):
         if not os.path.exists(self._logdir):
             raise CollectorError("Log directory %s not exists" % self._logdir)
 
-        self.logger.info("Collector started, taking %s as parent directory"
-                         "for all job logs." % self._logdir)
+        self.logger.info(
+            "Collector started, taking %s as parent directory"
+            "for all job logs." % self._logdir
+        )
 
         # clear old records
         JobRecord.objects.filter().delete()
@@ -129,7 +139,8 @@ class Collector(Thread):
     def _do_collect(self):
         sub_dirs = os.listdir(self._logdir)
         job_names = filter(
-            lambda d: os.path.isdir(os.path.join(self._logdir, d)), sub_dirs)
+            lambda d: os.path.isdir(os.path.join(self._logdir, d)), sub_dirs
+        )
         for job_name in job_names:
             self.sync_job_info(job_name)
 
@@ -152,8 +163,9 @@ class Collector(Thread):
         else:
             self._update_job_info(job_path)
 
-        expr_dirs = filter(lambda d: os.path.isdir(os.path.join(job_path, d)),
-                           os.listdir(job_path))
+        expr_dirs = filter(
+            lambda d: os.path.isdir(os.path.join(job_path, d)), os.listdir(job_path)
+        )
 
         for expr_dir_name in expr_dirs:
             self.sync_trial_info(job_path, expr_dir_name)
@@ -214,9 +226,9 @@ class Collector(Thread):
 
         if meta:
             logging.debug("Update job info for %s" % meta["job_id"])
-            JobRecord.objects \
-                .filter(job_id=meta["job_id"]) \
-                .update(end_time=timestamp2date(meta["end_time"]))
+            JobRecord.objects.filter(job_id=meta["job_id"]).update(
+                end_time=timestamp2date(meta["end_time"])
+            )
 
     def _create_trial_info(self, expr_dir):
         """Create information for given trial.
@@ -255,26 +267,26 @@ class Collector(Thread):
         self._result_offsets[trial_id] = new_offset
 
         if meta:
-            TrialRecord.objects \
-                .filter(trial_id=trial_id) \
-                .update(trial_status=meta["status"],
-                        end_time=timestamp2date(meta.get("end_time", None)))
+            TrialRecord.objects.filter(trial_id=trial_id).update(
+                trial_status=meta["status"],
+                end_time=timestamp2date(meta.get("end_time", None)),
+            )
         elif len(results) > 0:
             metrics = {
                 "episode_reward": results[-1].get("episode_reward_mean", None),
                 "accuracy": results[-1].get("mean_accuracy", None),
-                "loss": results[-1].get("loss", None)
+                "loss": results[-1].get("loss", None),
             }
             if results[-1].get("done"):
-                TrialRecord.objects \
-                    .filter(trial_id=trial_id) \
-                    .update(trial_status="TERMINATED",
-                            end_time=results[-1].get("date", None),
-                            metrics=str(metrics))
+                TrialRecord.objects.filter(trial_id=trial_id).update(
+                    trial_status="TERMINATED",
+                    end_time=results[-1].get("date", None),
+                    metrics=str(metrics),
+                )
             else:
-                TrialRecord.objects \
-                    .filter(trial_id=trial_id) \
-                    .update(metrics=str(metrics))
+                TrialRecord.objects.filter(trial_id=trial_id).update(
+                    metrics=str(metrics)
+                )
 
     @classmethod
     def _build_job_meta(cls, job_dir):
@@ -333,7 +345,7 @@ class Collector(Thread):
                 "end_time": None,
                 "progress_offset": 0,
                 "result_offset": 0,
-                "params": params
+                "params": params,
             }
 
         if not meta.get("start_time", None):

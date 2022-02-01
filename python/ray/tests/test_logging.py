@@ -8,8 +8,12 @@ import pytest
 
 import ray
 from ray import ray_constants
-from ray._private.test_utils import (get_log_batch, wait_for_condition,
-                                     init_log_pubsub, get_log_message)
+from ray._private.test_utils import (
+    get_log_batch,
+    wait_for_condition,
+    init_log_pubsub,
+    get_log_message,
+)
 
 
 def set_logging_config(max_bytes, backup_count):
@@ -79,8 +83,8 @@ def test_log_rotation(shutdown_only):
 
     def component_file_size_small_enough(component):
         """Although max_bytes is 1, the file can have size that is big.
-            For example, if the logger prints the traceback, it can be
-            much bigger. So, we shouldn't make the assertion too tight.
+        For example, if the logger prints the traceback, it can be
+        much bigger. So, we shouldn't make the assertion too tight.
         """
         small_enough_bytes = 512  # 512 bytes.
         for path in paths:
@@ -106,16 +110,15 @@ def test_log_rotation(shutdown_only):
         # EX) *.log, *.log.* (as many as backup count).
         assert file_cnt <= backup_count + 1, (
             f"{filename} has files that are more than "
-            f"backup count {backup_count}, file count: {file_cnt}")
+            f"backup count {backup_count}, file count: {file_cnt}"
+        )
 
 
 def test_periodic_event_stats(shutdown_only):
     ray.init(
         num_cpus=1,
-        _system_config={
-            "event_stats_print_interval_ms": 100,
-            "event_stats": True
-        })
+        _system_config={"event_stats_print_interval_ms": 100, "event_stats": True},
+    )
     session_dir = ray.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
@@ -151,10 +154,8 @@ def test_periodic_event_stats(shutdown_only):
 def test_worker_id_names(shutdown_only):
     ray.init(
         num_cpus=1,
-        _system_config={
-            "event_stats_print_interval_ms": 100,
-            "event_stats": True
-        })
+        _system_config={"event_stats_print_interval_ms": 100, "event_stats": True},
+    )
     session_dir = ray.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
@@ -267,7 +268,8 @@ def test_ignore_windows_access_violation(ray_start_regular_shared):
     p = init_log_pubsub()
     print_after.remote(print_msg.remote())
     msgs = get_log_message(
-        p, num=3, timeout=1, job_id=ray.get_runtime_context().job_id.hex())
+        p, num=3, timeout=1, job_id=ray.get_runtime_context().job_id.hex()
+    )
 
     assert len(msgs) == 1, msgs
     assert msgs.pop() == "done"
@@ -306,22 +308,26 @@ def test_segfault_stack_trace(ray_start_cluster, capsys):
     @ray.remote
     def f():
         import ctypes
+
         ctypes.string_at(0)
 
     with pytest.raises(
-            ray.exceptions.WorkerCrashedError,
-            match="The worker died unexpectedly"):
+        ray.exceptions.WorkerCrashedError, match="The worker died unexpectedly"
+    ):
         ray.get(f.remote())
 
     stderr = capsys.readouterr().err
-    assert "*** SIGSEGV received at" in stderr, \
-        f"C++ stack trace not found in stderr: {stderr}"
-    assert "Fatal Python error: Segmentation fault" in stderr, \
-        f"Python stack trace not found in stderr: {stderr}"
+    assert (
+        "*** SIGSEGV received at" in stderr
+    ), f"C++ stack trace not found in stderr: {stderr}"
+    assert (
+        "Fatal Python error: Segmentation fault" in stderr
+    ), f"Python stack trace not found in stderr: {stderr}"
 
 
 if __name__ == "__main__":
     import sys
+
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"

@@ -4,13 +4,20 @@ import ray
 from ray.util.annotations import PublicAPI
 from ray.data.dataset import Dataset
 from ray.data.impl import sort
-from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, \
-    Mean, Std, AggregateOnT
+from ray.data.aggregate import (
+    AggregateFn,
+    Count,
+    Sum,
+    Max,
+    Min,
+    Mean,
+    Std,
+    AggregateOnT,
+)
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.block import Block, BlockAccessor, BlockMetadata, \
-    T, U, KeyType
+from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, KeyType
 
 GroupKeyBaseT = Union[Callable[[T], KeyType], str]
 GroupKeyT = Optional[Union[GroupKeyBaseT, List[GroupKeyBaseT]]]
@@ -36,8 +43,7 @@ class GroupedDataset(Generic[T]):
         if isinstance(key, list):
             if len(key) > 1:
                 # TODO(jjyao) Support multi-key groupby.
-                raise NotImplementedError(
-                    "Multi-key groupby is not supported yet")
+                raise NotImplementedError("Multi-key groupby is not supported yet")
             else:
                 self._key = key[0]
         else:
@@ -84,18 +90,23 @@ class GroupedDataset(Generic[T]):
             boundaries = []
         else:
             boundaries = sort.sample_boundaries(
-                blocks, [(self._key, "ascending")]
-                if isinstance(self._key, str) else self._key, num_reducers)
+                blocks,
+                [(self._key, "ascending")] if isinstance(self._key, str) else self._key,
+                num_reducers,
+            )
 
         partition_and_combine_block = cached_remote_fn(
-            _partition_and_combine_block).options(num_returns=num_reducers)
+            _partition_and_combine_block
+        ).options(num_returns=num_reducers)
         aggregate_combined_blocks = cached_remote_fn(
-            _aggregate_combined_blocks, num_returns=2)
+            _aggregate_combined_blocks, num_returns=2
+        )
 
         map_results = np.empty((num_mappers, num_reducers), dtype=object)
         for i, block in enumerate(blocks):
             map_results[i, :] = partition_and_combine_block.remote(
-                block, boundaries, self._key, aggs)
+                block, boundaries, self._key, aggs
+            )
         map_bar = ProgressBar("GroupBy Map", len(map_results))
         map_bar.block_until_complete([ret[0] for ret in map_results])
         map_bar.close()
@@ -104,7 +115,8 @@ class GroupedDataset(Generic[T]):
         metadata = []
         for j in range(num_reducers):
             block, meta = aggregate_combined_blocks.remote(
-                num_reducers, self._key, aggs, *map_results[:, j].tolist())
+                num_reducers, self._key, aggs, *map_results[:, j].tolist()
+            )
             blocks.append(block)
             metadata.append(meta)
         reduce_bar = ProgressBar("GroupBy Reduce", len(blocks))
@@ -113,11 +125,14 @@ class GroupedDataset(Generic[T]):
 
         metadata = ray.get(metadata)
         return Dataset(
-            BlockList(blocks, metadata), self._dataset._epoch,
-            self._dataset._stats.child_TODO("groupby"))
+            BlockList(blocks, metadata),
+            self._dataset._epoch,
+            self._dataset._stats.child_TODO("groupby"),
+        )
 
-    def _aggregate_on(self, agg_cls: type, on: Optional[AggregateOnTs], *args,
-                      **kwargs):
+    def _aggregate_on(
+        self, agg_cls: type, on: Optional[AggregateOnTs], *args, **kwargs
+    ):
         """Helper for aggregating on a particular subset of the dataset.
 
         This validates the `on` argument, and converts a list of column names
@@ -126,7 +141,8 @@ class GroupedDataset(Generic[T]):
         aggregation on the entire row for a simple Dataset.
         """
         aggs = self._dataset._build_multicolumn_aggs(
-            agg_cls, on, *args, skip_cols=self._key, **kwargs)
+            agg_cls, on, *args, skip_cols=self._key, **kwargs
+        )
         return self.aggregate(*aggs)
 
     def count(self) -> Dataset[U]:
@@ -361,8 +377,7 @@ class GroupedDataset(Generic[T]):
         """
         return self._aggregate_on(Mean, on)
 
-    def std(self, on: Optional[AggregateOnTs] = None,
-            ddof: int = 1) -> Dataset[U]:
+    def std(self, on: Optional[AggregateOnTs] = None, ddof: int = 1) -> Dataset[U]:
         """Compute grouped standard deviation aggregation.
 
         This is a blocking operation.
@@ -426,24 +441,30 @@ class GroupedDataset(Generic[T]):
         return self._aggregate_on(Std, on, ddof=ddof)
 
 
-def _partition_and_combine_block(block: Block[T], boundaries: List[KeyType],
-                                 key: GroupKeyT,
-                                 aggs: Tuple[AggregateFn]) -> List[Block]:
+def _partition_and_combine_block(
+    block: Block[T], boundaries: List[KeyType], key: GroupKeyT, aggs: Tuple[AggregateFn]
+) -> List[Block]:
     """Partition the block and combine rows with the same key."""
     if key is None:
         partitions = [block]
     else:
         partitions = BlockAccessor.for_block(block).sort_and_partition(
-            boundaries, [(key, "ascending")] if isinstance(key, str) else key,
-            descending=False)
+            boundaries,
+            [(key, "ascending")] if isinstance(key, str) else key,
+            descending=False,
+        )
     return [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]
 
 
 def _aggregate_combined_blocks(
-        num_reducers: int, key: GroupKeyT, aggs: Tuple[AggregateFn],
-        *blocks: Tuple[Block, ...]) -> Tuple[Block[U], BlockMetadata]:
+    num_reducers: int,
+    key: GroupKeyT,
+    aggs: Tuple[AggregateFn],
+    *blocks: Tuple[Block, ...]
+) -> Tuple[Block[U], BlockMetadata]:
     """Aggregate sorted and partially combined blocks."""
     if num_reducers == 1:
         blocks = [b[0] for b in blocks]  # Ray weirdness
     return BlockAccessor.for_block(blocks[0]).aggregate_combined_blocks(
-        list(blocks), key, aggs)
+        list(blocks), key, aggs
+    )

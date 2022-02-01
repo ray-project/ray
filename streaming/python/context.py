@@ -90,7 +90,7 @@ class StreamingContext:
 
     def read_text_file(self, filename: str):
         """Reads the given file line-by-line and creates a data stream that
-         contains a string with the contents of each such line."""
+        contains a string with the contents of each such line."""
         func = LocalFileSourceFunction(filename)
         return self.source(func)
 

@@ -12,7 +12,7 @@ import logging
 import os
 import ray
 
-from ray.util.placement_group import (placement_group, remove_placement_group)
+from ray.util.placement_group import placement_group, remove_placement_group
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
     pgs_unremoved = []
     # Randomly choose placement groups to remove.
     for pg in pgs:
-        if random() < .5:
+        if random() < 0.5:
             pgs_removed.append(pg)
         else:
             pgs_unremoved.append(pg)
@@ -66,7 +66,7 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
     for pg in pgs_unremoved:
         # TODO(sang): Comment in this line causes GCS actor management
         # failure. We need to fix it.
-        if random() < .5:
+        if random() < 0.5:
             tasks.append(mock_task.options(placement_group=pg).remote())
         else:
             if actor_cnt < max_actor_cnt:
@@ -96,8 +96,9 @@ if __name__ == "__main__":
         if num_nodes >= NUM_NODES + 1:
             break
         time.sleep(5)
-    logger.info("Nodes have all joined. There are %s resources.",
-                ray.cluster_resources())
+    logger.info(
+        "Nodes have all joined. There are %s resources.", ray.cluster_resources()
+    )
 
     # Scenario 1: Create bunch of placement groups and measure how long
     # it takes.
@@ -115,7 +116,7 @@ if __name__ == "__main__":
             pgs.append(placement_group(BUNDLES, strategy="PACK"))
             end = perf_counter()
             logger.info(f"append_group iteration {i}")
-            total_creating_time += (end - start)
+            total_creating_time += end - start
 
         ray.get([pg.ready() for pg in pgs])
 
@@ -124,11 +125,10 @@ if __name__ == "__main__":
             remove_placement_group(pg)
             end = perf_counter()
             logger.info(f"remove_group iteration {i}")
-            total_removing_time += (end - start)
+            total_removing_time += end - start
 
     # Validate the correctness.
-    assert ray.cluster_resources()[
-        "pg_custom"] == NUM_NODES * RESOURCE_QUANTITY
+    assert ray.cluster_resources()["pg_custom"] == NUM_NODES * RESOURCE_QUANTITY
 
     # Scenario 2:
     # - Launch 30% of placement group in the driver and pass them.
@@ -147,20 +147,22 @@ if __name__ == "__main__":
             placement_group(BUNDLES, strategy="STRICT_SPREAD")
             for _ in range(pre_created_num_pgs // 3)
         ]
-        pg_launchers.append(
-            pg_launcher.remote(pre_created_pgs, num_pgs_to_create // 3))
+        pg_launchers.append(pg_launcher.remote(pre_created_pgs, num_pgs_to_create // 3))
 
     ray.get(pg_launchers)
-    assert ray.cluster_resources()[
-        "pg_custom"] == NUM_NODES * RESOURCE_QUANTITY
+    assert ray.cluster_resources()["pg_custom"] == NUM_NODES * RESOURCE_QUANTITY
 
     result["avg_pg_create_time_ms"] = total_creating_time / total_trial * 1000
     result["avg_pg_remove_time_ms"] = total_removing_time / total_trial * 1000
     result["success"] = 1
-    print("Avg placement group creating time: "
-          f"{total_creating_time / total_trial * 1000} ms")
-    print("Avg placement group removing time: "
-          f"{total_removing_time / total_trial* 1000} ms")
+    print(
+        "Avg placement group creating time: "
+        f"{total_creating_time / total_trial * 1000} ms"
+    )
+    print(
+        "Avg placement group removing time: "
+        f"{total_removing_time / total_trial* 1000} ms"
+    )
     print("PASSED.")
 
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_put:

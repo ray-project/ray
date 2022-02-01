@@ -4,8 +4,12 @@ from typing import Dict, List, Optional, Tuple
 
 import gym
 import ray
-from ray.rllib.agents.dqn.dqn_tf_policy import clip_gradients, \
-    compute_q_values, PRIO_WEIGHTS, postprocess_nstep_and_prio
+from ray.rllib.agents.dqn.dqn_tf_policy import (
+    clip_gradients,
+    compute_q_values,
+    PRIO_WEIGHTS,
+    postprocess_nstep_and_prio,
+)
 from ray.rllib.agents.dqn.dqn_tf_policy import build_q_model
 from ray.rllib.agents.dqn.simple_q_tf_policy import TargetNetworkMixin
 from ray.rllib.models.action_dist import ActionDistribution
@@ -18,15 +22,17 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import huber_loss
-from ray.rllib.utils.typing import ModelInputDict, TensorType, \
-    TrainerConfigDict
+from ray.rllib.utils.typing import ModelInputDict, TensorType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
 
 
-def build_r2d2_model(policy: Policy, obs_space: gym.spaces.Space,
-                     action_space: gym.spaces.Space, config: TrainerConfigDict
-                     ) -> Tuple[ModelV2, ActionDistribution]:
+def build_r2d2_model(
+    policy: Policy,
+    obs_space: gym.spaces.Space,
+    action_space: gym.spaces.Space,
+    config: TrainerConfigDict,
+) -> Tuple[ModelV2, ActionDistribution]:
     """Build q_model and target_model for DQN
 
     Args:
@@ -48,17 +54,19 @@ def build_r2d2_model(policy: Policy, obs_space: gym.spaces.Space,
     # For attention nets: These don't necessarily publish their init state via
     # Model.get_initial_state, but may only use the trajectory view API
     # (view_requirements).
-    assert (model.get_initial_state() != [] or
-            model.view_requirements.get("state_in_0") is not None), \
-        "R2D2 requires its model to be a recurrent one! Try using " \
-        "`model.use_lstm` or `model.use_attention` in your config " \
+    assert (
+        model.get_initial_state() != []
+        or model.view_requirements.get("state_in_0") is not None
+    ), (
+        "R2D2 requires its model to be a recurrent one! Try using "
+        "`model.use_lstm` or `model.use_attention` in your config "
         "to auto-wrap your model with an LSTM- or attention net."
+    )
 
     return model
 
 
-def r2d2_loss(policy: Policy, model, _,
-              train_batch: SampleBatch) -> TensorType:
+def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
     """Constructs the loss for R2D2TFPolicy.
 
     Args:
@@ -87,7 +95,8 @@ def r2d2_loss(policy: Policy, model, _,
         state_batches=state_batches,
         seq_lens=train_batch.get(SampleBatch.SEQ_LENS),
         explore=False,
-        is_training=True)
+        is_training=True,
+    )
 
     # Target Q-network evaluation (at t+1).
     q_target, _, _, _ = compute_q_values(
@@ -97,7 +106,8 @@ def r2d2_loss(policy: Policy, model, _,
         state_batches=state_batches,
         seq_lens=train_batch.get(SampleBatch.SEQ_LENS),
         explore=False,
-        is_training=True)
+        is_training=True,
+    )
 
     if not hasattr(policy, "target_q_func_vars"):
         policy.target_q_func_vars = policy.target_model.variables()
@@ -113,8 +123,8 @@ def r2d2_loss(policy: Policy, model, _,
     # Q scores for actions which we know were selected in the given state.
     one_hot_selection = tf.one_hot(actions, policy.action_space.n)
     q_selected = tf.reduce_sum(
-        tf.where(q > tf.float32.min, q, tf.zeros_like(q)) * one_hot_selection,
-        axis=1)
+        tf.where(q > tf.float32.min, q, tf.zeros_like(q)) * one_hot_selection, axis=1
+    )
 
     if config["double_q"]:
         best_actions = tf.argmax(q, axis=1)
@@ -125,35 +135,38 @@ def r2d2_loss(policy: Policy, model, _,
     q_target_best = tf.reduce_sum(
         tf.where(q_target > tf.float32.min, q_target, tf.zeros_like(q_target))
         * best_actions_one_hot,
-        axis=1)
+        axis=1,
+    )
 
     if config["num_atoms"] > 1:
         raise ValueError("Distributional R2D2 not supported yet!")
     else:
         q_target_best_masked_tp1 = (1.0 - dones) * tf.concat(
-            [q_target_best[1:], tf.constant([0.0])], axis=0)
+            [q_target_best[1:], tf.constant([0.0])], axis=0
+        )
 
         if config["use_h_function"]:
-            h_inv = h_inverse(q_target_best_masked_tp1,
-                              config["h_function_epsilon"])
+            h_inv = h_inverse(q_target_best_masked_tp1, config["h_function_epsilon"])
             target = h_function(
-                rewards + config["gamma"]**config["n_step"] * h_inv,
-                config["h_function_epsilon"])
+                rewards + config["gamma"] ** config["n_step"] * h_inv,
+                config["h_function_epsilon"],
+            )
         else:
-            target = rewards + \
-                config["gamma"] ** config["n_step"] * q_target_best_masked_tp1
+            target = (
+                rewards + config["gamma"] ** config["n_step"] * q_target_best_masked_tp1
+            )
 
         # Seq-mask all loss-related terms.
-        seq_mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS],
-                                    T)[:, :-1]
+        seq_mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], T)[:, :-1]
         # Mask away also the burn-in sequence at the beginning.
         burn_in = policy.config["burn_in"]
         # Making sure, this works for both static graph and eager.
         if burn_in > 0:
             seq_mask = tf.cond(
                 pred=tf.convert_to_tensor(burn_in, tf.int32) < T,
-                true_fn=lambda: tf.concat([tf.fill([B, burn_in], False),
-                                           seq_mask[:, burn_in:]], 1),
+                true_fn=lambda: tf.concat(
+                    [tf.fill([B, burn_in], False), seq_mask[:, burn_in:]], 1
+                ),
                 false_fn=lambda: seq_mask,
             )
 
@@ -163,8 +176,7 @@ def r2d2_loss(policy: Policy, model, _,
         # Make sure to use the correct time indices:
         # Q(t) - [gamma * r + Q^(t+1)]
         q_selected = tf.reshape(q_selected, [B, T])[:, :-1]
-        td_error = q_selected - tf.stop_gradient(
-            tf.reshape(target, [B, T])[:, :-1])
+        td_error = q_selected - tf.stop_gradient(tf.reshape(target, [B, T])[:, :-1])
         td_error = td_error * tf.cast(seq_mask, tf.float32)
         weights = tf.reshape(weights, [B, T])[:, :-1]
         policy._total_loss = reduce_mean_valid(weights * huber_loss(td_error))
@@ -204,12 +216,16 @@ def h_inverse(x, epsilon=1.0):
         (2 * eps^2)
     """
     two_epsilon = epsilon * 2
-    if_x_pos = (two_epsilon * x + (two_epsilon + 1.0) -
-                tf.sqrt(4.0 * epsilon * x +
-                        (two_epsilon + 1.0)**2)) / (2.0 * epsilon**2)
-    if_x_neg = (two_epsilon * x - (two_epsilon + 1.0) +
-                tf.sqrt(-4.0 * epsilon * x +
-                        (two_epsilon + 1.0)**2)) / (2.0 * epsilon**2)
+    if_x_pos = (
+        two_epsilon * x
+        + (two_epsilon + 1.0)
+        - tf.sqrt(4.0 * epsilon * x + (two_epsilon + 1.0) ** 2)
+    ) / (2.0 * epsilon ** 2)
+    if_x_neg = (
+        two_epsilon * x
+        - (two_epsilon + 1.0)
+        + tf.sqrt(-4.0 * epsilon * x + (two_epsilon + 1.0) ** 2)
+    ) / (2.0 * epsilon ** 2)
     return tf.where(x < 0.0, if_x_neg, if_x_pos)
 
 
@@ -220,8 +236,9 @@ class ComputeTDErrorMixin:
     """
 
     def __init__(self):
-        def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
-                             importance_weights):
+        def compute_td_error(
+            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights
+        ):
             input_dict = self._lazy_tensor_dict({SampleBatch.CUR_OBS: obs_t})
             input_dict[SampleBatch.ACTIONS] = act_t
             input_dict[SampleBatch.REWARDS] = rew_t
@@ -238,57 +255,70 @@ class ComputeTDErrorMixin:
 
 
 def get_distribution_inputs_and_class(
-        policy: Policy,
-        model: ModelV2,
-        *,
-        input_dict: ModelInputDict,
-        state_batches: Optional[List[TensorType]] = None,
-        seq_lens: Optional[TensorType] = None,
-        explore: bool = True,
-        is_training: bool = False,
-        **kwargs) -> Tuple[TensorType, type, List[TensorType]]:
+    policy: Policy,
+    model: ModelV2,
+    *,
+    input_dict: ModelInputDict,
+    state_batches: Optional[List[TensorType]] = None,
+    seq_lens: Optional[TensorType] = None,
+    explore: bool = True,
+    is_training: bool = False,
+    **kwargs
+) -> Tuple[TensorType, type, List[TensorType]]:
 
     if policy.config["framework"] == "torch":
-        from ray.rllib.agents.dqn.r2d2_torch_policy import \
-            compute_q_values as torch_compute_q_values
+        from ray.rllib.agents.dqn.r2d2_torch_policy import (
+            compute_q_values as torch_compute_q_values,
+        )
+
         func = torch_compute_q_values
     else:
         func = compute_q_values
 
     q_vals, logits, probs_or_logits, state_out = func(
-        policy, model, input_dict, state_batches, seq_lens, explore,
-        is_training)
+        policy, model, input_dict, state_batches, seq_lens, explore, is_training
+    )
 
     policy.q_values = q_vals
     if not hasattr(policy, "q_func_vars"):
         policy.q_func_vars = model.variables()
 
-    action_dist_class = TorchCategorical if \
-        policy.config["framework"] == "torch" else Categorical
+    action_dist_class = (
+        TorchCategorical if policy.config["framework"] == "torch" else Categorical
+    )
 
     return policy.q_values, action_dist_class, state_out
 
 
-def adam_optimizer(policy: Policy, config: TrainerConfigDict
-                   ) -> "tf.keras.optimizers.Optimizer":
+def adam_optimizer(
+    policy: Policy, config: TrainerConfigDict
+) -> "tf.keras.optimizers.Optimizer":
     return tf1.train.AdamOptimizer(
-        learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
+        learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"]
+    )
 
 
 def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
-    return dict({
-        "cur_lr": policy.cur_lr,
-    }, **policy._loss_stats)
+    return dict(
+        {
+            "cur_lr": policy.cur_lr,
+        },
+        **policy._loss_stats
+    )
 
 
-def setup_early_mixins(policy: Policy, obs_space, action_space,
-                       config: TrainerConfigDict) -> None:
+def setup_early_mixins(
+    policy: Policy, obs_space, action_space, config: TrainerConfigDict
+) -> None:
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-def before_loss_init(policy: Policy, obs_space: gym.spaces.Space,
-                     action_space: gym.spaces.Space,
-                     config: TrainerConfigDict) -> None:
+def before_loss_init(
+    policy: Policy,
+    obs_space: gym.spaces.Space,
+    action_space: gym.spaces.Space,
+    config: TrainerConfigDict,
+) -> None:
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
@@ -311,4 +341,5 @@ R2D2TFPolicy = build_tf_policy(
         TargetNetworkMixin,
         ComputeTDErrorMixin,
         LearningRateSchedule,
-    ])
+    ],
+)

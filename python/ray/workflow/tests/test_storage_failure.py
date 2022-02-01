@@ -63,10 +63,13 @@ def _locate_initial_commit(debug_store: DebugStorage) -> int:
 
 @pytest.mark.parametrize(
     "workflow_start_regular",
-    [{
-        "num_cpus": 4,  # increase CPUs to add pressure
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 4,  # increase CPUs to add pressure
+        }
+    ],
+    indirect=True,
+)
 def test_failure_with_storage(workflow_start_regular):
     with tempfile.TemporaryDirectory() as temp_dir:
         debug_store = DebugStorage(get_global_storage(), temp_dir)
@@ -106,4 +109,5 @@ def test_failure_with_storage(workflow_start_regular):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

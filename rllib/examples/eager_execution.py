@@ -48,22 +48,17 @@ parser.add_argument(
     "--as-test",
     action="store_true",
     help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.")
+    "be achieved within --stop-timesteps AND --stop-iters.",
+)
 parser.add_argument(
-    "--stop-iters",
-    type=int,
-    default=200,
-    help="Number of iterations to train.")
+    "--stop-iters", type=int, default=200, help="Number of iterations to train."
+)
 parser.add_argument(
-    "--stop-timesteps",
-    type=int,
-    default=100000,
-    help="Number of timesteps to train.")
+    "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
+)
 parser.add_argument(
-    "--stop-reward",
-    type=float,
-    default=150.0,
-    help="Reward at which we stop training.")
+    "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
+)
 
 
 def policy_gradient_loss(policy, model, dist_class, train_batch):
@@ -85,8 +80,7 @@ def policy_gradient_loss(policy, model, dist_class, train_batch):
 
     actions = train_batch[SampleBatch.ACTIONS]
     rewards = train_batch[SampleBatch.REWARDS]
-    penalty = tf.py_function(
-        compute_penalty, [actions, rewards], Tout=tf.float32)
+    penalty = tf.py_function(compute_penalty, [actions, rewards], Tout=tf.float32)
 
     return penalty - tf.reduce_mean(action_dist.logp(actions) * rewards)
 
@@ -113,9 +107,7 @@ if __name__ == "__main__":
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
-        "model": {
-            "custom_model": "eager_model"
-        },
+        "model": {"custom_model": "eager_model"},
         # Alternatively, use "tf2" here for enforcing TF version 2.x.
         "framework": "tfe",
     }

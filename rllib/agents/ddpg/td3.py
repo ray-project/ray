@@ -3,8 +3,7 @@
 By default, this uses a near-identical configuration to that reported in the
 TD3 paper.
 """
-from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, \
-    DEFAULT_CONFIG as DDPG_CONFIG
+from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, DEFAULT_CONFIG as DDPG_CONFIG
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 
@@ -33,9 +32,8 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
             # By default, do not anneal over time (fixed 1.0).
             "initial_scale": 1.0,
             "final_scale": 1.0,
-            "scale_timesteps": 1
+            "scale_timesteps": 1,
         },
-
         # other changes & things we want to keep fixed:
         # larger actor learning rate, no l2 regularisation, no Huber loss, etc.
         "learning_starts": 10000,
@@ -57,7 +55,8 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "prioritized_replay": False,
         "clip_rewards": False,
         "use_state_preprocessor": False,
-    })
+    },
+)
 
 
 class TD3Trainer(DDPGTrainer):

@@ -15,7 +15,8 @@ class TestRecordEnvWrapper(unittest.TestCase):
             log_dir="",
             policy_config={
                 "in_evaluation": False,
-            })
+            },
+        )
         # Type is wrappers.Monitor.
         self.assertTrue(isinstance(wrapped, wrappers.Monitor))
         self.assertFalse(isinstance(wrapped, VideoMonitor))
@@ -36,7 +37,8 @@ class TestRecordEnvWrapper(unittest.TestCase):
             log_dir="",
             policy_config={
                 "in_evaluation": False,
-            })
+            },
+        )
         # Type is VideoMonitor.
         self.assertTrue(isinstance(wrapped, wrappers.Monitor))
         self.assertTrue(isinstance(wrapped, VideoMonitor))
@@ -54,4 +56,5 @@ class TestRecordEnvWrapper(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

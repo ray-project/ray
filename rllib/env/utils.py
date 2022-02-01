@@ -31,17 +31,20 @@ def gym_env_creator(env_context: EnvContext, env_descriptor: str):
         gym.error.Error: If the env cannot be constructed.
     """
     import gym
+
     # Allow for PyBullet or VizdoomGym envs to be used as well
     # (via string). This allows for doing things like
     # `env=CartPoleContinuousBulletEnv-v0` or
     # `env=VizdoomBasic-v0`.
     try:
         import pybullet_envs
+
         pybullet_envs.getList()
     except (ModuleNotFoundError, ImportError):
         pass
     try:
         import vizdoomgym
+
         vizdoomgym.__name__  # trick LINTer.
     except (ModuleNotFoundError, ImportError):
         pass
@@ -83,8 +86,9 @@ def record_env_wrapper(env, record_env, log_dir, policy_config):
         if not os.path.isabs(path_):
             path_ = os.path.join(log_dir, path_)
         print(f"Setting the path for recording to {path_}")
-        wrapper_cls = VideoMonitor if isinstance(env, MultiAgentEnv) \
-            else wrappers.Monitor
+        wrapper_cls = (
+            VideoMonitor if isinstance(env, MultiAgentEnv) else wrappers.Monitor
+        )
         wrapper_cls = add_mixins(wrapper_cls, [MultiAgentEnv], reversed=True)
         env = wrapper_cls(
             env,
@@ -92,6 +96,6 @@ def record_env_wrapper(env, record_env, log_dir, policy_config):
             resume=True,
             force=True,
             video_callable=lambda _: True,
-            mode="evaluation"
-            if policy_config["in_evaluation"] else "training")
+            mode="evaluation" if policy_config["in_evaluation"] else "training",
+        )
     return env

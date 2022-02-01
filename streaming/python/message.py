@@ -26,8 +26,11 @@ class KeyRecord(Record):
 
     def __eq__(self, other):
         if type(self) is type(other):
-            return (self.stream, self.key, self.value) ==\
-                   (other.stream, other.key, other.value)
+            return (self.stream, self.key, self.value) == (
+                other.stream,
+                other.key,
+                other.value,
+            )
         return False
 
     def __hash__(self):

@@ -8,7 +8,7 @@ from ray import workflow
 
 @workflow.step
 def large_input():
-    return np.arange(2**24)
+    return np.arange(2 ** 24)
 
 
 @workflow.step
@@ -37,4 +37,5 @@ def test_simple_large_intermediate(workflow_start_regular_shared):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

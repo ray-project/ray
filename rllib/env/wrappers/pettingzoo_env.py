@@ -81,27 +81,29 @@ class PettingZooEnv(MultiAgentEnv):
         # Get first action space, assuming all agents have equal space
         self.action_space = self.action_spaces[self.agents[0]]
 
-        assert all(obs_space == self.observation_space
-                   for obs_space
-                   in self.env.observation_spaces.values()), \
-            "Observation spaces for all agents must be identical. Perhaps " \
-            "SuperSuit's pad_observations wrapper can help (useage: " \
+        assert all(
+            obs_space == self.observation_space
+            for obs_space in self.env.observation_spaces.values()
+        ), (
+            "Observation spaces for all agents must be identical. Perhaps "
+            "SuperSuit's pad_observations wrapper can help (useage: "
             "`supersuit.aec_wrappers.pad_observations(env)`"
+        )
 
-        assert all(act_space == self.action_space
-                   for act_space in self.env.action_spaces.values()), \
-            "Action spaces for all agents must be identical. Perhaps " \
-            "SuperSuit's pad_action_space wrapper can help (useage: " \
+        assert all(
+            act_space == self.action_space
+            for act_space in self.env.action_spaces.values()
+        ), (
+            "Action spaces for all agents must be identical. Perhaps "
+            "SuperSuit's pad_action_space wrapper can help (useage: "
             "`supersuit.aec_wrappers.pad_action_space(env)`"
+        )
 
         self.reset()
 
     def reset(self):
         self.env.reset()
-        return {
-            self.env.agent_selection: self.env.observe(
-                self.env.agent_selection)
-        }
+        return {self.env.agent_selection: self.env.observe(self.env.agent_selection)}
 
     def step(self, action):
         self.env.step(action[self.env.agent_selection])
@@ -152,18 +154,23 @@ class ParallelPettingZooEnv(MultiAgentEnv):
         # Get first action space, assuming all agents have equal space
         self.action_space = self.action_spaces[self.agents[0]]
 
-        assert all(obs_space == self.observation_space
-                   for obs_space
-                   in self.par_env.observation_spaces.values()), \
-            "Observation spaces for all agents must be identical. Perhaps " \
-            "SuperSuit's pad_observations wrapper can help (useage: " \
+        assert all(
+            obs_space == self.observation_space
+            for obs_space in self.par_env.observation_spaces.values()
+        ), (
+            "Observation spaces for all agents must be identical. Perhaps "
+            "SuperSuit's pad_observations wrapper can help (useage: "
             "`supersuit.aec_wrappers.pad_observations(env)`"
+        )
 
-        assert all(act_space == self.action_space
-                   for act_space in self.par_env.action_spaces.values()), \
-            "Action spaces for all agents must be identical. Perhaps " \
-            "SuperSuit's pad_action_space wrapper can help (useage: " \
+        assert all(
+            act_space == self.action_space
+            for act_space in self.par_env.action_spaces.values()
+        ), (
+            "Action spaces for all agents must be identical. Perhaps "
+            "SuperSuit's pad_action_space wrapper can help (useage: "
             "`supersuit.aec_wrappers.pad_action_space(env)`"
+        )
 
         self.reset()
 

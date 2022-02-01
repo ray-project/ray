@@ -29,7 +29,7 @@ def parse_request_item(request_item):
         if request_item.metadata.http_arg_is_pickled:
             assert isinstance(arg, bytes)
             arg: HTTPRequestWrapper = pickle.loads(arg)
-            return (build_starlette_request(arg.scope, arg.body), ), {}
+            return (build_starlette_request(arg.scope, arg.body),), {}
 
     return request_item.args, request_item.kwargs
 
@@ -73,10 +73,10 @@ logger = _get_logger()
 
 class ServeEncoder(json.JSONEncoder):
     """Ray.Serve's utility JSON encoder. Adds support for:
-        - bytes
-        - Pydantic types
-        - Exceptions
-        - numpy.ndarray
+    - bytes
+    - Pydantic types
+    - Exceptions
+    - numpy.ndarray
     """
 
     def default(self, o):  # pylint: disable=E0202
@@ -96,10 +96,9 @@ class ServeEncoder(json.JSONEncoder):
 
 
 @ray.remote(num_cpus=0)
-def block_until_http_ready(http_endpoint,
-                           backoff_time_s=1,
-                           check_ready=None,
-                           timeout=HTTP_PROXY_TIMEOUT):
+def block_until_http_ready(
+    http_endpoint, backoff_time_s=1, check_ready=None, timeout=HTTP_PROXY_TIMEOUT
+):
     http_is_ready = False
     start_time = time.time()
 
@@ -115,8 +114,7 @@ def block_until_http_ready(http_endpoint,
             pass
 
         if 0 < timeout < time.time() - start_time:
-            raise TimeoutError(
-                "HTTP proxy not ready after {} seconds.".format(timeout))
+            raise TimeoutError("HTTP proxy not ready after {} seconds.".format(timeout))
 
         time.sleep(backoff_time_s)
 
@@ -160,12 +158,10 @@ def get_all_node_ids():
 def get_node_id_for_actor(actor_handle):
     """Given an actor handle, return the node id it's placed on."""
 
-    return ray.state.actors()[actor_handle._actor_id.hex()]["Address"][
-        "NodeID"]
+    return ray.state.actors()[actor_handle._actor_id.hex()]["Address"]["NodeID"]
 
 
-def compute_iterable_delta(old: Iterable,
-                           new: Iterable) -> Tuple[set, set, set]:
+def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]:
     """Given two iterables, return the entries that's (added, removed, updated).
 
     Usage:
@@ -191,14 +187,12 @@ def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
         ({"d": 4}, {"b": 2}, {"a": 3})
     """
     added_keys, removed_keys, updated_keys = compute_iterable_delta(
-        old_dict.keys(), new_dict.keys())
+        old_dict.keys(), new_dict.keys()
+    )
     return (
-        {k: new_dict[k]
-         for k in added_keys},
-        {k: old_dict[k]
-         for k in removed_keys},
-        {k: new_dict[k]
-         for k in updated_keys},
+        {k: new_dict[k] for k in added_keys},
+        {k: old_dict[k] for k in removed_keys},
+        {k: new_dict[k] for k in updated_keys},
     )
 
 
@@ -225,14 +219,12 @@ def ensure_serialization_context():
     ray.serialization_addons.apply(ctx)
 
 
-def wrap_to_ray_error(function_name: str,
-                      exception: Exception) -> RayTaskError:
+def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
     """Utility method to wrap exceptions in user code."""
 
     try:
         # Raise and catch so we can access traceback.format_exc()
         raise exception
     except Exception as e:
-        traceback_str = ray._private.utils.format_error_message(
-            traceback.format_exc())
+        traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
         return ray.exceptions.RayTaskError(function_name, traceback_str, e)

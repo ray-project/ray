@@ -29,7 +29,8 @@ def fn_trainable(config, checkpoint_dir=None):
 
         tune.report(
             score=i * 10 * config["score_multiplied"],
-            internal_iter=state["internal_iter"])
+            internal_iter=state["internal_iter"],
+        )
 
 
 class RLLibCallback(DefaultCallbacks):
@@ -46,12 +47,14 @@ class IndicatorCallback(tune.Callback):
             fp.write("1")
 
 
-def run_tune(no_syncer: bool,
-             upload_dir: Optional[str] = None,
-             experiment_name: str = "cloud_test",
-             indicator_file: str = "/tmp/tune_cloud_indicator",
-             trainable: str = "function",
-             num_cpus_per_trial: int = 2):
+def run_tune(
+    no_syncer: bool,
+    upload_dir: Optional[str] = None,
+    experiment_name: str = "cloud_test",
+    indicator_file: str = "/tmp/tune_cloud_indicator",
+    trainable: str = "function",
+    num_cpus_per_trial: int = 2,
+):
     if trainable == "function":
         train = fn_trainable
         config = {
@@ -71,12 +74,10 @@ def run_tune(no_syncer: bool,
             "env": "CartPole-v1",
             "num_workers": 1,
             "num_envs_per_worker": 1,
-            "callbacks": RLLibCallback
+            "callbacks": RLLibCallback,
         }
         kwargs = {
-            "stop": {
-                "training_iteration": 100
-            },
+            "stop": {"training_iteration": 100},
             "checkpoint_freq": 2,
             "checkpoint_at_end": True,
         }
@@ -98,7 +99,8 @@ def run_tune(no_syncer: bool,
         keep_checkpoints_num=2,
         callbacks=[IndicatorCallback(indicator_file=indicator_file)],
         verbose=2,
-        **kwargs)
+        **kwargs,
+    )
 
 
 if __name__ == "__main__":
@@ -108,14 +110,14 @@ if __name__ == "__main__":
 
     parser.add_argument("--upload-dir", required=False, default=None, type=str)
 
-    parser.add_argument(
-        "--experiment-name", required=False, default=None, type=str)
+    parser.add_argument("--experiment-name", required=False, default=None, type=str)
 
     parser.add_argument(
         "--indicator-file",
         required=False,
         default="/tmp/tune_cloud_indicator",
-        type=str)
+        type=str,
+    )
 
     args = parser.parse_args()
 

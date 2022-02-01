@@ -9,8 +9,7 @@ import ray
 from ray import tune
 from ray.rllib.agents.callbacks import DefaultCallbacks
 import ray.rllib.agents.ppo as ppo
-from ray.rllib.utils.test_utils import check_learning_achieved, \
-    framework_iterator
+from ray.rllib.utils.test_utils import check_learning_achieved, framework_iterator
 from ray.rllib.utils.numpy import one_hot
 from ray.tune import register_env
 
@@ -20,12 +19,21 @@ class MyCallBack(DefaultCallbacks):
         super().__init__()
         self.deltas = []
 
-    def on_postprocess_trajectory(self, *, worker, episode, agent_id,
-                                  policy_id, policies, postprocessed_batch,
-                                  original_batches, **kwargs):
+    def on_postprocess_trajectory(
+        self,
+        *,
+        worker,
+        episode,
+        agent_id,
+        policy_id,
+        policies,
+        postprocessed_batch,
+        original_batches,
+        **kwargs
+    ):
         pos = np.argmax(postprocessed_batch["obs"], -1)
         x, y = pos % 8, pos // 8
-        self.deltas.extend((x**2 + y**2)**0.5)
+        self.deltas.extend((x ** 2 + y ** 2) ** 0.5)
 
     def on_sample_end(self, *, worker, samples, **kwargs):
         print("mean. distance from origin={}".format(np.mean(self.deltas)))
@@ -47,27 +55,31 @@ class OneHotWrapper(gym.core.ObservationWrapper):
         self.vector_index = vector_index
         self.frame_buffer = deque(maxlen=self.framestack)
         for _ in range(self.framestack):
-            self.frame_buffer.append(np.zeros((self.single_frame_dim, )))
+            self.frame_buffer.append(np.zeros((self.single_frame_dim,)))
 
         self.observation_space = gym.spaces.Box(
-            0.0,
-            1.0,
-            shape=(self.single_frame_dim * self.framestack, ),
-            dtype=np.float32)
+            0.0, 1.0, shape=(self.single_frame_dim * self.framestack,), dtype=np.float32
+        )
 
     def observation(self, obs):
         # Debug output: max-x/y positions to watch exploration progress.
         if self.step_count == 0:
             for _ in range(self.framestack):
-                self.frame_buffer.append(np.zeros((self.single_frame_dim, )))
+                self.frame_buffer.append(np.zeros((self.single_frame_dim,)))
             if self.vector_index == 0:
                 if self.x_positions:
                     max_diff = max(
-                        np.sqrt((np.array(self.x_positions) - self.init_x)**2 +
-                                (np.array(self.y_positions) - self.init_y)**2))
+                        np.sqrt(
+                            (np.array(self.x_positions) - self.init_x) ** 2
+                            + (np.array(self.y_positions) - self.init_y) ** 2
+                        )
+                    )
                     self.x_y_delta_buffer.append(max_diff)
-                    print("100-average dist travelled={}".format(
-                        np.mean(self.x_y_delta_buffer)))
+                    print(
+                        "100-average dist travelled={}".format(
+                            np.mean(self.x_y_delta_buffer)
+                        )
+                    )
                     self.x_positions = []
                     self.y_positions = []
                 self.init_x = self.agent_pos[0]
@@ -91,9 +103,8 @@ class OneHotWrapper(gym.core.ObservationWrapper):
         #            print("Door OPEN!!")
 
         all_ = np.concatenate([objects, colors, states], -1)
-        all_flat = np.reshape(all_, (-1, ))
-        direction = one_hot(
-            np.array(self.agent_dir), depth=4).astype(np.float32)
+        all_flat = np.reshape(all_, (-1,))
+        direction = one_hot(np.array(self.agent_dir), depth=4).astype(np.float32)
         single_frame = np.concatenate([all_flat, direction])
         self.frame_buffer.append(single_frame)
         return np.concatenate(self.frame_buffer)
@@ -108,7 +119,8 @@ def env_maker(config):
     env = OneHotWrapper(
         env,
         config.vector_index if hasattr(config, "vector_index") else 0,
-        framestack=framestack)
+        framestack=framestack,
+    )
     return env
 
 
@@ -141,7 +153,7 @@ class TestCuriosity(unittest.TestCase):
                 "FFFFFFFF",
                 "FFFFFFFG",
             ],
-            "is_slippery": False
+            "is_slippery": False,
         }
         # Print out observations to see how far we already get inside the Env.
         config["callbacks"] = MyCallBack
@@ -166,7 +178,7 @@ class TestCuriosity(unittest.TestCase):
                 },
                 "sub_exploration": {
                     "type": "StochasticSampling",
-                }
+                },
             }
             trainer = ppo.PPOTrainer(config=config)
             learnt = False
@@ -229,7 +241,7 @@ class TestCuriosity(unittest.TestCase):
             },
             "sub_exploration": {
                 "type": "StochasticSampling",
-            }
+            },
         }
 
         min_reward = 0.001
@@ -270,4 +282,5 @@ class TestCuriosity(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

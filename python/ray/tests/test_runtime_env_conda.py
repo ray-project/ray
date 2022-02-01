@@ -18,14 +18,17 @@ def check_local_files_gced(cluster):
     for node in cluster.list_all_nodes():
         for subdir in ["conda"]:
             all_files = os.listdir(
-                os.path.join(node.get_runtime_env_dir_path(), subdir))
+                os.path.join(node.get_runtime_env_dir_path(), subdir)
+            )
             # Check that there are no files remaining except for .lock files
             # and generated requirements.txt files.
             # TODO(architkulkarni): these files should get cleaned up too!
-            if len(
-                    list(
-                        filter(lambda f: not f.endswith((".lock", ".txt")),
-                               all_files))) > 0:
+            if (
+                len(
+                    list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
+                )
+                > 0
+            ):
                 print(str(all_files))
                 return False
 
@@ -34,11 +37,7 @@ def check_local_files_gced(cluster):
 
 def generate_runtime_env_dict(field, spec_format, tmp_path):
     if field == "conda":
-        conda_dict = {
-            "dependencies": ["pip", {
-                "pip": ["pip-install-test==0.5"]
-            }]
-        }
+        conda_dict = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
         if spec_format == "file":
             conda_file = tmp_path / "environment.yml"
             conda_file.write_text(yaml.dump(conda_dict))
@@ -59,7 +58,8 @@ def generate_runtime_env_dict(field, spec_format, tmp_path):
 
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
-    reason="Requires PR wheels built in CI, so only run on linux CI machines.")
+    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
+)
 @pytest.mark.parametrize("field", ["conda", "pip"])
 def test_files_remote_cluster(start_cluster, field):
     """Test that requirements files are parsed on the driver, not the cluster.
@@ -76,11 +76,7 @@ def test_files_remote_cluster(start_cluster, field):
     # this test should fail because the relative path won't make sense.
     with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
         if field == "conda":
-            conda_dict = {
-                "dependencies": ["pip", {
-                    "pip": ["pip-install-test==0.5"]
-                }]
-            }
+            conda_dict = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
             relative_filepath = "environment.yml"
             conda_file = Path(relative_filepath)
             conda_file.write_text(yaml.dump(conda_dict))
@@ -97,6 +93,7 @@ def test_files_remote_cluster(start_cluster, field):
         @ray.remote
         def f():
             import pip_install_test  # noqa: F401
+
             return True
 
         # Ensure that the runtime env has been installed.
@@ -105,7 +102,8 @@ def test_files_remote_cluster(start_cluster, field):
 
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
-    reason="Requires PR wheels built in CI, so only run on linux CI machines.")
+    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
+)
 @pytest.mark.parametrize("field", ["conda", "pip"])
 @pytest.mark.parametrize("spec_format", ["file", "python_object"])
 def test_job_level_gc(start_cluster, field, spec_format, tmp_path):
@@ -116,12 +114,13 @@ def test_job_level_gc(start_cluster, field, spec_format, tmp_path):
     cluster, address = start_cluster
 
     ray.init(
-        address,
-        runtime_env=generate_runtime_env_dict(field, spec_format, tmp_path))
+        address, runtime_env=generate_runtime_env_dict(field, spec_format, tmp_path)
+    )
 
     @ray.remote
     def f():
         import pip_install_test  # noqa: F401
+
         return True
 
     # Ensure that the runtime env has been installed.
@@ -138,15 +137,16 @@ def test_job_level_gc(start_cluster, field, spec_format, tmp_path):
     # state that prevents reinstalling the same conda env.)
 
     ray.init(
-        address,
-        runtime_env=generate_runtime_env_dict(field, spec_format, tmp_path))
+        address, runtime_env=generate_runtime_env_dict(field, spec_format, tmp_path)
+    )
 
     assert ray.get(f.remote())
 
 
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
-    reason="Requires PR wheels built in CI, so only run on linux CI machines.")
+    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
+)
 @pytest.mark.parametrize("field", ["conda", "pip"])
 @pytest.mark.parametrize("spec_format", ["file", "python_object"])
 def test_detached_actor_gc(start_cluster, field, spec_format, tmp_path):
@@ -156,12 +156,14 @@ def test_detached_actor_gc(start_cluster, field, spec_format, tmp_path):
     ray.init(
         address,
         namespace="test",
-        runtime_env=generate_runtime_env_dict(field, spec_format, tmp_path))
+        runtime_env=generate_runtime_env_dict(field, spec_format, tmp_path),
+    )
 
     @ray.remote
     class A:
         def test_import(self):
             import pip_install_test  # noqa: F401
+
             return True
 
     a = A.options(name="test", lifetime="detached").remote()
@@ -186,7 +188,8 @@ def test_detached_actor_gc(start_cluster, field, spec_format, tmp_path):
 @pytest.mark.skip("Currently failing")
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
-    reason="Requires PR wheels built in CI, so only run on linux CI machines.")
+    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
+)
 @pytest.mark.parametrize("field", ["conda", "pip"])
 @pytest.mark.parametrize("spec_format", ["file", "python_object"])
 def test_actor_level_gc(start_cluster, field, spec_format, tmp_path):
@@ -201,12 +204,11 @@ def test_actor_level_gc(start_cluster, field, spec_format, tmp_path):
     class A:
         def test_import(self):
             import pip_install_test  # noqa: F401
+
             return True
 
     NUM_ACTORS = 5
-    actors = [
-        A.options(runtime_env=runtime_env).remote() for _ in range(NUM_ACTORS)
-    ]
+    actors = [A.options(runtime_env=runtime_env).remote() for _ in range(NUM_ACTORS)]
     ray.get([a.test_import.remote() for a in actors])
     for i in range(5):
         assert not check_local_files_gced(cluster)

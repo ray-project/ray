@@ -8,8 +8,11 @@ import shutil
 from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlparse
 from zipfile import ZipFile
-from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
-                                          _internal_kv_exists)
+from ray.experimental.internal_kv import (
+    _internal_kv_put,
+    _internal_kv_get,
+    _internal_kv_exists,
+)
 from ray._private.thirdparty.pathspec import PathSpec
 
 default_logger = logging.getLogger(__name__)
@@ -23,7 +26,7 @@ RAY_PKG_PREFIX = "_ray_pkg_"
 
 
 def _mib_string(num_bytes: float) -> str:
-    size_mib = float(num_bytes / 1024**2)
+    size_mib = float(num_bytes / 1024 ** 2)
     return f"{size_mib:.2f}MiB"
 
 
@@ -40,11 +43,13 @@ class Protocol(Enum):
 
     GCS = "gcs", "For packages dynamically uploaded and managed by the GCS."
     CONDA = "conda", "For conda environments installed locally on each node."
-    HTTPS = "https", ("Remote https path, "
-                      "assumes everything packed in one zip file.")
+    HTTPS = "https", (
+        "Remote https path, " "assumes everything packed in one zip file."
+    )
     S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
-    GS = "gs", ("Remote google storage path, "
-                "assumes everything packed in one zip file.")
+    GS = "gs", (
+        "Remote google storage path, " "assumes everything packed in one zip file."
+    )
 
     @classmethod
     def remote_protocols(cls):
@@ -60,10 +65,10 @@ def _xor_bytes(left: bytes, right: bytes) -> bytes:
 
 
 def _dir_travel(
-        path: Path,
-        excludes: List[Callable],
-        handler: Callable,
-        logger: Optional[logging.Logger] = default_logger,
+    path: Path,
+    excludes: List[Callable],
+    handler: Callable,
+    logger: Optional[logging.Logger] = default_logger,
 ):
     """Travels the path recursively, calling the handler on each subpath.
 
@@ -90,10 +95,10 @@ def _dir_travel(
 
 
 def _hash_directory(
-        root: Path,
-        relative_path: Path,
-        excludes: Optional[Callable],
-        logger: Optional[logging.Logger] = default_logger,
+    root: Path,
+    relative_path: Path,
+    excludes: Optional[Callable],
+    logger: Optional[logging.Logger] = default_logger,
 ) -> bytes:
     """Helper function to create hash of a directory.
 
@@ -168,12 +173,11 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
     if protocol == Protocol.S3 or protocol == Protocol.GS:
-        return (protocol,
-                f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
+        return (protocol, f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
     elif protocol == Protocol.HTTPS:
         return (
             protocol,
-            f"https_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}"
+            f"https_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}",
         )
     else:
         return (protocol, uri.netloc)
@@ -207,19 +211,18 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
 
 
 def _store_package_in_gcs(
-        pkg_uri: str,
-        data: bytes,
-        logger: Optional[logging.Logger] = default_logger) -> int:
+    pkg_uri: str, data: bytes, logger: Optional[logging.Logger] = default_logger
+) -> int:
     file_size = len(data)
     size_str = _mib_string(file_size)
     if len(data) >= GCS_STORAGE_MAX_SIZE:
         raise RuntimeError(
             f"Package size ({size_str}) exceeds the maximum size of "
             f"{_mib_string(GCS_STORAGE_MAX_SIZE)}. You can exclude large "
-            "files using the 'excludes' option to the runtime_env.")
+            "files using the 'excludes' option to the runtime_env."
+        )
 
-    logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to "
-                "Ray cluster...")
+    logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to " "Ray cluster...")
     _internal_kv_put(pkg_uri, data)
     logger.info(f"Successfully pushed file package '{pkg_uri}'.")
     return len(data)
@@ -230,18 +233,20 @@ def _get_local_path(base_directory: str, pkg_uri: str) -> str:
     return os.path.join(base_directory, pkg_name)
 
 
-def _zip_directory(directory: str,
-                   excludes: List[str],
-                   output_path: str,
-                   include_parent_dir: bool = False,
-                   logger: Optional[logging.Logger] = default_logger) -> None:
+def _zip_directory(
+    directory: str,
+    excludes: List[str],
+    output_path: str,
+    include_parent_dir: bool = False,
+    logger: Optional[logging.Logger] = default_logger,
+) -> None:
     """Zip the target directory and write it to the output_path.
 
-        directory (str): The directory to zip.
-        excludes (List(str)): The directories or file to be excluded.
-        output_path (str): The output path for the zip file.
-        include_parent_dir: If true, includes the top-level directory as a
-            directory inside the zip file.
+    directory (str): The directory to zip.
+    excludes (List(str)): The directories or file to be excluded.
+    output_path (str): The output path for the zip file.
+    include_parent_dir: If true, includes the top-level directory as a
+        directory inside the zip file.
     """
     pkg_file = Path(output_path).absolute()
     with ZipFile(pkg_file, "w") as zip_handler:
@@ -250,8 +255,7 @@ def _zip_directory(directory: str,
 
         def handler(path: Path):
             # Pack this path if it's an empty directory or it's a file.
-            if path.is_dir() and next(path.iterdir(),
-                                      None) is None or path.is_file():
+            if path.is_dir() and next(path.iterdir(), None) is None or path.is_file():
                 file_size = path.stat().st_size
                 if file_size >= FILE_SIZE_WARNING:
                     logger.warning(
@@ -259,7 +263,8 @@ def _zip_directory(directory: str,
                         f"({_mib_string(file_size)}). Consider adding this "
                         "file to the 'excludes' list to skip uploading it: "
                         "`ray.init(..., "
-                        f"runtime_env={{'excludes': ['{path}']}})`")
+                        f"runtime_env={{'excludes': ['{path}']}})`"
+                    )
                 to_path = path.relative_to(dir_path)
                 if include_parent_dir:
                     to_path = dir_path.name / to_path
@@ -285,8 +290,7 @@ def package_exists(pkg_uri: str) -> bool:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
-def get_uri_for_directory(directory: str,
-                          excludes: Optional[List[str]] = None) -> str:
+def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) -> str:
     """Get a content-addressable URI from a directory's contents.
 
     This function will generate the name of the package by the directory.
@@ -316,14 +320,13 @@ def get_uri_for_directory(directory: str,
 
     directory = Path(directory).absolute()
     if not directory.exists() or not directory.is_dir():
-        raise ValueError(f"directory {directory} must be an existing"
-                         " directory")
+        raise ValueError(f"directory {directory} must be an existing" " directory")
 
-    hash_val = _hash_directory(directory, directory,
-                               _get_excludes(directory, excludes))
+    hash_val = _hash_directory(directory, directory, _get_excludes(directory, excludes))
 
     return "{protocol}://{pkg_name}.zip".format(
-        protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val.hex())
+        protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val.hex()
+    )
 
 
 def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes):
@@ -331,17 +334,18 @@ def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes):
     if protocol == Protocol.GCS:
         _store_package_in_gcs(pkg_uri, pkg_bytes)
     elif protocol in Protocol.remote_protocols():
-        raise RuntimeError(
-            "push_package should not be called with remote path.")
+        raise RuntimeError("push_package should not be called with remote path.")
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
-def create_package(directory: str,
-                   target_path: Path,
-                   include_parent_dir: bool = False,
-                   excludes: Optional[List[str]] = None,
-                   logger: Optional[logging.Logger] = default_logger):
+def create_package(
+    directory: str,
+    target_path: Path,
+    include_parent_dir: bool = False,
+    excludes: Optional[List[str]] = None,
+    logger: Optional[logging.Logger] = default_logger,
+):
     if excludes is None:
         excludes = []
 
@@ -349,23 +353,24 @@ def create_package(directory: str,
         logger = default_logger
 
     if not target_path.exists():
-        logger.info(
-            f"Creating a file package for local directory '{directory}'.")
+        logger.info(f"Creating a file package for local directory '{directory}'.")
         _zip_directory(
             directory,
             excludes,
             target_path,
             include_parent_dir=include_parent_dir,
-            logger=logger)
+            logger=logger,
+        )
 
 
 def upload_package_if_needed(
-        pkg_uri: str,
-        base_directory: str,
-        directory: str,
-        include_parent_dir: bool = False,
-        excludes: Optional[List[str]] = None,
-        logger: Optional[logging.Logger] = default_logger) -> bool:
+    pkg_uri: str,
+    base_directory: str,
+    directory: str,
+    include_parent_dir: bool = False,
+    excludes: Optional[List[str]] = None,
+    logger: Optional[logging.Logger] = default_logger,
+) -> bool:
     """Upload the contents of the directory under the given URI.
 
     This will first create a temporary zip file under the passed
@@ -395,7 +400,8 @@ def upload_package_if_needed(
         directory,
         package_file,
         include_parent_dir=include_parent_dir,
-        excludes=excludes)
+        excludes=excludes,
+    )
 
     upload_package_to_gcs(pkg_uri, package_file.read_bytes())
 
@@ -406,9 +412,9 @@ def upload_package_if_needed(
 
 
 def download_and_unpack_package(
-        pkg_uri: str,
-        base_directory: str,
-        logger: Optional[logging.Logger] = default_logger,
+    pkg_uri: str,
+    base_directory: str,
+    logger: Optional[logging.Logger] = default_logger,
 ) -> str:
     """Download the package corresponding to this URI and unpack it.
 
@@ -439,7 +445,8 @@ def download_and_unpack_package(
                     target_dir=local_dir,
                     remove_top_level_directory=False,
                     unlink_zip=True,
-                    logger=logger)
+                    logger=logger,
+                )
             elif protocol in Protocol.remote_protocols():
                 # Download package from remote URI
                 tp = None
@@ -452,7 +459,8 @@ def download_and_unpack_package(
                         raise ImportError(
                             "You must `pip install smart_open` and "
                             "`pip install boto3` to fetch URIs in s3 "
-                            "bucket.")
+                            "bucket."
+                        )
                     tp = {"client": boto3.client("s3")}
                 elif protocol == Protocol.GS:
                     try:
@@ -462,14 +470,16 @@ def download_and_unpack_package(
                         raise ImportError(
                             "You must `pip install smart_open` and "
                             "`pip install google-cloud-storage` "
-                            "to fetch URIs in Google Cloud Storage bucket.")
+                            "to fetch URIs in Google Cloud Storage bucket."
+                        )
                 else:
                     try:
                         from smart_open import open
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` "
-                            f"to fetch {protocol.value.upper()} URIs.")
+                            f"to fetch {protocol.value.upper()} URIs."
+                        )
 
                 with open(pkg_uri, "rb", transport_params=tp) as package_zip:
                     with open(pkg_file, "wb") as fin:
@@ -480,10 +490,10 @@ def download_and_unpack_package(
                     target_dir=local_dir,
                     remove_top_level_directory=True,
                     unlink_zip=True,
-                    logger=logger)
+                    logger=logger,
+                )
             else:
-                raise NotImplementedError(
-                    f"Protocol {protocol} is not supported")
+                raise NotImplementedError(f"Protocol {protocol} is not supported")
 
         return str(local_dir)
 
@@ -509,15 +519,13 @@ def get_top_level_dir_from_compressed_package(package_path: str):
         else:
             # Confirm that all other files
             # belong to the same top_level_directory
-            if "/" not in file_name or \
-                    file_name.split("/")[0] != top_level_directory:
+            if "/" not in file_name or file_name.split("/")[0] != top_level_directory:
                 return None
 
     return top_level_directory
 
 
-def extract_file_and_remove_top_level_dir(base_dir: str, fname: str,
-                                          zip_ref: ZipFile):
+def extract_file_and_remove_top_level_dir(base_dir: str, fname: str, zip_ref: ZipFile):
     """
     Extracts fname file from zip_ref zip file, removes the top level directory
     from fname's file path, and stores fname in the base_dir.
@@ -531,14 +539,17 @@ def extract_file_and_remove_top_level_dir(base_dir: str, fname: str,
         zip_ref.extract(fname, base_dir)
         os.rename(
             os.path.join(base_dir, fname),
-            os.path.join(base_dir, fname_without_top_level_dir))
+            os.path.join(base_dir, fname_without_top_level_dir),
+        )
 
 
-def unzip_package(package_path: str,
-                  target_dir: str,
-                  remove_top_level_directory: bool,
-                  unlink_zip: bool,
-                  logger: Optional[logging.Logger] = default_logger):
+def unzip_package(
+    package_path: str,
+    target_dir: str,
+    remove_top_level_directory: bool,
+    unlink_zip: bool,
+    logger: Optional[logging.Logger] = default_logger,
+):
     """
     Unzip the compressed package contained at package_path and store the
     contents in target_dir. If remove_top_level_directory is True, the function
@@ -554,22 +565,23 @@ def unzip_package(package_path: str,
     logger.debug(f"Unpacking {package_path} to {target_dir}")
 
     if remove_top_level_directory:
-        top_level_directory = get_top_level_dir_from_compressed_package(
-            package_path)
+        top_level_directory = get_top_level_dir_from_compressed_package(package_path)
         if top_level_directory is None:
-            raise ValueError("The package at package_path must contain "
-                             "a single top level directory. Make sure there "
-                             "are no hidden files at the same level as the "
-                             "top level directory.")
+            raise ValueError(
+                "The package at package_path must contain "
+                "a single top level directory. Make sure there "
+                "are no hidden files at the same level as the "
+                "top level directory."
+            )
         with ZipFile(str(package_path), "r") as zip_ref:
             for fname in zip_ref.namelist():
                 extract_file_and_remove_top_level_dir(
-                    base_dir=target_dir, fname=fname, zip_ref=zip_ref)
+                    base_dir=target_dir, fname=fname, zip_ref=zip_ref
+                )
 
             # Remove now-empty top_level_directory and any empty subdirectories
             # left over from extract_file_and_remove_top_level_dir operations
-            leftover_top_level_directory = os.path.join(
-                target_dir, top_level_directory)
+            leftover_top_level_directory = os.path.join(target_dir, top_level_directory)
             if os.path.isdir(leftover_top_level_directory):
                 shutil.rmtree(leftover_top_level_directory)
     else:

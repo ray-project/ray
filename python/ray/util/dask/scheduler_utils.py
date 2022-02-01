@@ -8,8 +8,7 @@ from queue import Queue, Empty
 
 from dask import config
 from dask.callbacks import local_callbacks, unpack_callbacks
-from dask.core import (_execute_task, flatten, get_dependencies, has_tasks,
-                       reverse_dict)
+from dask.core import _execute_task, flatten, get_dependencies, has_tasks, reverse_dict
 from dask.order import order
 
 if os.name == "nt":
@@ -67,10 +66,7 @@ def start_state_from_dask(dsk, cache=None, sortkey=None):
     dsk2.update(cache)
 
     dependencies = {k: get_dependencies(dsk2, k) for k in dsk}
-    waiting = {
-        k: v.copy()
-        for k, v in dependencies.items() if k not in data_keys
-    }
+    waiting = {k: v.copy() for k, v in dependencies.items() if k not in data_keys}
 
     dependents = reverse_dict(dependencies)
     for a in cache:
@@ -135,13 +131,9 @@ def release_data(key, state, delete=True):
 DEBUG = False
 
 
-def finish_task(dsk,
-                key,
-                state,
-                results,
-                sortkey,
-                delete=True,
-                release_data=release_data):
+def finish_task(
+    dsk, key, state, results, sortkey, delete=True, release_data=release_data
+):
     """
     Update execution state after a task finishes
     Mutates.  This should run atomically (with a lock).
@@ -161,9 +153,10 @@ def finish_task(dsk,
                 if DEBUG:
                     from chest.core import nbytes
 
-                    print("Key: %s\tDep: %s\t NBytes: %.2f\t Release" %
-                          (key, dep,
-                           sum(map(nbytes, state["cache"].values()) / 1e6)))
+                    print(
+                        "Key: %s\tDep: %s\t NBytes: %.2f\t Release"
+                        % (key, dep, sum(map(nbytes, state["cache"].values()) / 1e6))
+                    )
                 release_data(dep, state, delete=delete)
         elif delete and dep not in results:
             release_data(dep, state, delete=delete)
@@ -214,19 +207,21 @@ def identity(x):
     return x
 
 
-def get_async(apply_async,
-              num_workers,
-              dsk,
-              result,
-              cache=None,
-              get_id=default_get_id,
-              rerun_exceptions_locally=None,
-              pack_exception=default_pack_exception,
-              raise_exception=reraise,
-              callbacks=None,
-              dumps=identity,
-              loads=identity,
-              **kwargs):
+def get_async(
+    apply_async,
+    num_workers,
+    dsk,
+    result,
+    cache=None,
+    get_id=default_get_id,
+    rerun_exceptions_locally=None,
+    pack_exception=default_pack_exception,
+    raise_exception=reraise,
+    callbacks=None,
+    dumps=identity,
+    loads=identity,
+    **kwargs
+):
     """Asynchronous get function
     This is a general version of various asynchronous schedulers for dask.  It
     takes a an apply_async function as found on Pool objects to form a more
@@ -293,22 +288,20 @@ def get_async(apply_async,
 
             keyorder = order(dsk)
 
-            state = start_state_from_dask(
-                dsk, cache=cache, sortkey=keyorder.get)
+            state = start_state_from_dask(dsk, cache=cache, sortkey=keyorder.get)
 
             for _, start_state, _, _, _ in callbacks:
                 if start_state:
                     start_state(dsk, state)
 
             if rerun_exceptions_locally is None:
-                rerun_exceptions_locally = config.get(
-                    "rerun_exceptions_locally", False)
+                rerun_exceptions_locally = config.get("rerun_exceptions_locally", False)
 
             if state["waiting"] and not state["ready"]:
                 raise ValueError("Found no accessible jobs in dask")
 
             def fire_task():
-                """ Fire off a task to the thread pool """
+                """Fire off a task to the thread pool"""
                 # Choose a good task to compute
                 key = state["ready"].pop()
                 state["running"].add(key)
@@ -316,10 +309,7 @@ def get_async(apply_async,
                     f(key, dsk, state)
 
                 # Prep data to send
-                data = {
-                    dep: state["cache"][dep]
-                    for dep in get_dependencies(dsk, key)
-                }
+                data = {dep: state["cache"][dep] for dep in get_dependencies(dsk, key)}
                 # Submit
                 apply_async(
                     execute_task,
@@ -372,7 +362,7 @@ def get_async(apply_async,
 
 
 def apply_sync(func, args=(), kwds=None, callback=None):
-    """ A naive synchronous version of apply_async """
+    """A naive synchronous version of apply_async"""
     if kwds is None:
         kwds = {}
 

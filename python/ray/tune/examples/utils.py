@@ -22,5 +22,6 @@ def set_keras_threads(threads):
 
 
 def TuneKerasCallback(*args, **kwargs):
-    raise DeprecationWarning("TuneKerasCallback is now "
-                             "tune.integration.keras.TuneReporterCallback.")
+    raise DeprecationWarning(
+        "TuneKerasCallback is now " "tune.integration.keras.TuneReporterCallback."
+    )

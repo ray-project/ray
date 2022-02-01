@@ -17,14 +17,13 @@ def check_env(env: EnvType) -> None:
         ValueError: If env is not an instance of SUPPORTED_ENVIRONMENT_TYPES.
         ValueError: See check_gym_env docstring for details.
     """
-    from ray.rllib.env import BaseEnv, MultiAgentEnv, RemoteBaseEnv, \
-        VectorEnv
+    from ray.rllib.env import BaseEnv, MultiAgentEnv, RemoteBaseEnv, VectorEnv
 
-    if not isinstance(
-            env, (BaseEnv, gym.Env, MultiAgentEnv, RemoteBaseEnv, VectorEnv)):
+    if not isinstance(env, (BaseEnv, gym.Env, MultiAgentEnv, RemoteBaseEnv, VectorEnv)):
         raise ValueError(
             "Env must be one of the supported types: BaseEnv, gym.Env, "
-            "MultiAgentEnv, VectorEnv, RemoteVectorEnv")
+            "MultiAgentEnv, VectorEnv, RemoteVectorEnv"
+        )
 
     if isinstance(env, gym.Env):
         check_gym_environments(env)
@@ -75,27 +74,30 @@ def check_gym_environments(env: gym.Env) -> None:
 
     # raise a warning if there isn't a max_episode_steps attribute
     if not hasattr(env, "spec") or not hasattr(env.spec, "max_episode_steps"):
-        logger.warning("Your env doesn't have a .spec.max_episode_steps "
-                       "attribute. This is fine if you have set 'horizon' "
-                       "in your config dictionary, or `soft_horizon`. "
-                       "However, if you haven't, 'horizon' will default "
-                       "to infinity, and your environment will not be "
-                       "reset.")
+        logger.warning(
+            "Your env doesn't have a .spec.max_episode_steps "
+            "attribute. This is fine if you have set 'horizon' "
+            "in your config dictionary, or `soft_horizon`. "
+            "However, if you haven't, 'horizon' will default "
+            "to infinity, and your environment will not be "
+            "reset."
+        )
     # check if sampled actions and observations are contained within their
     # respective action and observation spaces.
 
     def contains_error(action_or_observation, sample, space):
-        string_type = "observation" if not action_or_observation else \
-            "action"
+        string_type = "observation" if not action_or_observation else "action"
         sample_type = get_type(sample)
         _space_type = space.dtype
-        ret = (f"A sampled {string_type} from your env wasn't contained "
-               f"within your env's {string_type} space. Its possible that "
-               f"there was a type mismatch, or that one of the "
-               f"sub-{string_type} was out of bounds:\n\nsampled_obs: "
-               f"{sample}\nenv.{string_type}_space: {space}"
-               f"\nsampled_obs's dtype: {sample_type}"
-               f"\nenv.{sample_type}'s dtype: {_space_type}")
+        ret = (
+            f"A sampled {string_type} from your env wasn't contained "
+            f"within your env's {string_type} space. Its possible that "
+            f"there was a type mismatch, or that one of the "
+            f"sub-{string_type} was out of bounds:\n\nsampled_obs: "
+            f"{sample}\nenv.{string_type}_space: {space}"
+            f"\nsampled_obs's dtype: {sample_type}"
+            f"\nenv.{sample_type}'s dtype: {_space_type}"
+        )
         return ret
 
     def get_type(var):
@@ -105,10 +107,10 @@ def check_gym_environments(env: gym.Env) -> None:
     sampled_observation = env.observation_space.sample()
     if not env.observation_space.contains(sampled_observation):
         raise ValueError(
-            contains_error(False, sampled_observation, env.observation_space))
+            contains_error(False, sampled_observation, env.observation_space)
+        )
     if not env.action_space.contains(sampled_action):
-        raise ValueError(
-            contains_error(True, sampled_action, env.action_space))
+        raise ValueError(contains_error(True, sampled_action, env.action_space))
 
     # check if observation generated from stepping the environment is
     # contained within the observation space
@@ -124,7 +126,8 @@ def check_gym_environments(env: gym.Env) -> None:
             f"{reset_obs}\n\n env.observation_space: "
             f"{env.observation_space}\n\n reset_obs's dtype: "
             f"{reset_obs_type}\n\n env.observation_space's dtype: "
-            f"{space_type}")
+            f"{space_type}"
+        )
         raise ValueError(error)
     # check if env.step can run, and generates observations rewards, done
     # signals and infos that are within their respective spaces and are of
@@ -140,11 +143,15 @@ def check_gym_environments(env: gym.Env) -> None:
             f"sub-observations was out of bounds:\n\n next_obs: {next_obs}"
             f"\n\n env.observation_space: {env.observation_space}"
             f"\n\n next_obs's dtype: {next_obs_type}"
-            f"\n\n env.observation_space's dtype: {space_type}")
+            f"\n\n env.observation_space's dtype: {space_type}"
+        )
         raise ValueError(error)
-    assert isinstance(reward, (float, int)), \
-        "Your step function must return a reward that is integer or float."
     assert isinstance(
-        done, bool), "Your step function must return a done that is a boolean."
+        reward, (float, int)
+    ), "Your step function must return a reward that is integer or float."
     assert isinstance(
-        info, dict), "Your step function must return a info that is a dict."
+        done, bool
+    ), "Your step function must return a done that is a boolean."
+    assert isinstance(
+        info, dict
+    ), "Your step function must return a info that is a dict."

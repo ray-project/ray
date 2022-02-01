@@ -53,9 +53,17 @@ else:
 # NOTE(barakmich): These PickleStubs are really close to
 # the data for an execution, with no arguments. Combine the two?
 class PickleStub(
-        NamedTuple("PickleStub", [("type", str), ("client_id", str),
-                                  ("ref_id", bytes), ("name", Optional[str]),
-                                  ("baseline_options", Optional[Dict])])):
+    NamedTuple(
+        "PickleStub",
+        [
+            ("type", str),
+            ("client_id", str),
+            ("ref_id", bytes),
+            ("name", Optional[str]),
+            ("baseline_options", Optional[Dict]),
+        ],
+    )
+):
     def __reduce__(self):
         # PySpark's namedtuple monkey patch breaks compatibility with
         # cloudpickle. Thus we revert this patch here if it exists.
@@ -137,8 +145,7 @@ class ClientPickler(cloudpickle.CloudPickler):
                 baseline_options=None,
             )
         elif isinstance(obj, OptionWrapper):
-            raise NotImplementedError(
-                "Sending a partial option is unimplemented")
+            raise NotImplementedError("Sending a partial option is unimplemented")
         return None
 
 
@@ -160,17 +167,15 @@ def dumps_from_client(obj: Any, client_id: str, protocol=None) -> bytes:
         return file.getvalue()
 
 
-def loads_from_server(data: bytes,
-                      *,
-                      fix_imports=True,
-                      encoding="ASCII",
-                      errors="strict") -> Any:
+def loads_from_server(
+    data: bytes, *, fix_imports=True, encoding="ASCII", errors="strict"
+) -> Any:
     if isinstance(data, str):
         raise TypeError("Can't load pickle from unicode string")
     file = io.BytesIO(data)
     return ServerUnpickler(
-        file, fix_imports=fix_imports, encoding=encoding,
-        errors=errors).load()
+        file, fix_imports=fix_imports, encoding=encoding, errors=errors
+    ).load()
 
 
 def convert_to_arg(val: Any, client_id: str) -> ray_client_pb2.Arg:

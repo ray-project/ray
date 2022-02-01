@@ -8,9 +8,11 @@ from dataclasses import dataclass, field
 import ray
 
 
-def start_metrics_pusher(interval_s: float,
-                         collection_callback: Callable[[], Dict[str, float]],
-                         controller_handle):
+def start_metrics_pusher(
+    interval_s: float,
+    collection_callback: Callable[[], Dict[str, float]],
+    controller_handle,
+):
     """Start a background thread to push metrics to controller.
 
     We use this background so it will be not blocked by user's code and ensure
@@ -29,7 +31,8 @@ def start_metrics_pusher(interval_s: float,
         data = collection_callback()
         # TODO(simon): maybe wait for ack or handle controller failure?
         return controller_handle.record_autoscaling_metrics.remote(
-            data=data, send_timestamp=time.time())
+            data=data, send_timestamp=time.time()
+        )
 
     def send_forever():
         last_ref: Optional[ray.ObjectRef] = None
@@ -68,8 +71,7 @@ class InMemoryMetricsStore:
     def __init__(self):
         self.data: DefaultDict[str, List[TimeStampedValue]] = defaultdict(list)
 
-    def add_metrics_point(self, data_points: Dict[str, float],
-                          timestamp: float):
+    def add_metrics_point(self, data_points: Dict[str, float], timestamp: float):
         """Push new data points to the store.
 
         Args:
@@ -81,13 +83,11 @@ class InMemoryMetricsStore:
         """
         for name, value in data_points.items():
             # Using in-sort to insert while maintaining sorted ordering.
-            bisect.insort(
-                a=self.data[name], x=TimeStampedValue(timestamp, value))
+            bisect.insort(a=self.data[name], x=TimeStampedValue(timestamp, value))
 
-    def window_average(self,
-                       key: str,
-                       window_start_timestamp_s: float,
-                       do_compact: bool = True) -> Optional[float]:
+    def window_average(
+        self, key: str, window_start_timestamp_s: float, do_compact: bool = True
+    ) -> Optional[float]:
         """Perform a window average operation for metric `key`
 
         Args:
@@ -107,9 +107,9 @@ class InMemoryMetricsStore:
         idx = bisect.bisect(
             a=datapoints,
             x=TimeStampedValue(
-                timestamp=window_start_timestamp_s,
-                value=0  # dummy value
-            ))
+                timestamp=window_start_timestamp_s, value=0  # dummy value
+            ),
+        )
         points_after_idx = datapoints[idx:]
 
         if do_compact:
@@ -117,5 +117,4 @@ class InMemoryMetricsStore:
 
         if len(points_after_idx) == 0:
             return
-        return sum(point.value
-                   for point in points_after_idx) / len(points_after_idx)
+        return sum(point.value for point in points_after_idx) / len(points_after_idx)

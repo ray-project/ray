@@ -28,8 +28,10 @@ class TestInMemoryMetricsStore:
 
         s.add_metrics_point({"m1": 1}, timestamp=2)
         assert s.window_average("m1", window_start_timestamp_s=0) == 1
-        assert s.window_average(
-            "m1", window_start_timestamp_s=10, do_compact=False) is None
+        assert (
+            s.window_average("m1", window_start_timestamp_s=10, do_compact=False)
+            is None
+        )
 
     def test_compaction(self):
         s = InMemoryMetricsStore()
@@ -37,12 +39,12 @@ class TestInMemoryMetricsStore:
         s.add_metrics_point({"m1": 1}, timestamp=1)
         s.add_metrics_point({"m1": 2}, timestamp=2)
 
-        assert s.window_average(
-            "m1", window_start_timestamp_s=0, do_compact=False) == 1.5
+        assert (
+            s.window_average("m1", window_start_timestamp_s=0, do_compact=False) == 1.5
+        )
         s.window_average("m1", window_start_timestamp_s=1.1, do_compact=True)
         # First record should be removed.
-        assert s.window_average(
-            "m1", window_start_timestamp_s=0, do_compact=False) == 2
+        assert s.window_average("m1", window_start_timestamp_s=0, do_compact=False) == 2
 
     def test_multiple_metrics(self):
         s = InMemoryMetricsStore()
@@ -57,13 +59,14 @@ def test_e2e(serve_instance):
         _autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 1,
-            "max_replicas": 1
+            "max_replicas": 1,
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
         _graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
-        version="v1")
+        version="v1",
+    )
     class A:
         def __call__(self):
             time.sleep(0.5)
@@ -74,8 +77,9 @@ def test_e2e(serve_instance):
 
     # Wait for metrics to propagate
     def get_data():
-        return ray.get(serve_instance._controller.
-                       _dump_autoscaling_metrics_for_testing.remote())
+        return ray.get(
+            serve_instance._controller._dump_autoscaling_metrics_for_testing.remote()
+        )
 
     wait_for_condition(lambda: len(get_data()) > 0)
 
@@ -92,4 +96,5 @@ def test_e2e(serve_instance):
 if __name__ == "__main__":
     import sys
     import pytest
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -46,7 +46,8 @@ class LinearModel(object):
         y_ = tf.placeholder(tf.float32, [None, shape[1]])
         self.y_ = y_
         cross_entropy = tf.reduce_mean(
-            -tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
+            -tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1])
+        )
         self.cross_entropy = cross_entropy
         self.cross_entropy_grads = tf.gradients(cross_entropy, [w, b])
         self.sess = tf.Session()
@@ -54,24 +55,20 @@ class LinearModel(object):
         # Ray's TensorFlowVariables to automatically create methods to modify
         # the weights.
         self.variables = ray.experimental.tf_utils.TensorFlowVariables(
-            cross_entropy, self.sess)
+            cross_entropy, self.sess
+        )
 
     def loss(self, xs, ys):
         """Computes the loss of the network."""
         return float(
-            self.sess.run(
-                self.cross_entropy, feed_dict={
-                    self.x: xs,
-                    self.y_: ys
-                }))
+            self.sess.run(self.cross_entropy, feed_dict={self.x: xs, self.y_: ys})
+        )
 
     def grad(self, xs, ys):
         """Computes the gradients of the network."""
         return self.sess.run(
-            self.cross_entropy_grads, feed_dict={
-                self.x: xs,
-                self.y_: ys
-            })
+            self.cross_entropy_grads, feed_dict={self.x: xs, self.y_: ys}
+        )
 
 
 @ray.remote
@@ -143,4 +140,5 @@ if __name__ == "__main__":
     # Use L-BFGS to minimize the loss function.
     print("Running L-BFGS.")
     result = scipy.optimize.fmin_l_bfgs_b(
-        full_loss, theta_init, maxiter=10, fprime=full_grad, disp=True)
+        full_loss, theta_init, maxiter=10, fprime=full_grad, disp=True
+    )

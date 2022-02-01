@@ -13,8 +13,7 @@ from kubernetes.client.rest import ApiException
 
 from ray import ray_constants
 from ray.autoscaler._private._kubernetes import custom_objects_api
-from ray.autoscaler._private._kubernetes.node_provider import\
-    head_service_selector
+from ray.autoscaler._private._kubernetes.node_provider import head_service_selector
 from ray.autoscaler._private.providers import _get_default_config
 
 RAY_API_GROUP = "cluster.ray.io"
@@ -28,15 +27,16 @@ STATUS_UPDATING = "Running"
 AUTOSCALER_RETRIES_FIELD = "autoscalerRetries"
 
 MAX_STATUS_RETRIES = 3
-DELAY_BEFORE_STATUS_RETRY = .5
+DELAY_BEFORE_STATUS_RETRY = 0.5
 
 OPERATOR_NAMESPACE = os.environ.get("RAY_OPERATOR_POD_NAMESPACE", "")
 # Operator is namespaced if the above environment variable is set,
 # cluster-scoped otherwise:
 NAMESPACED_OPERATOR = OPERATOR_NAMESPACE != ""
 
-RAY_CONFIG_DIR = os.environ.get("RAY_CONFIG_DIR") or \
-    os.path.expanduser("~/ray_cluster_configs")
+RAY_CONFIG_DIR = os.environ.get("RAY_CONFIG_DIR") or os.path.expanduser(
+    "~/ray_cluster_configs"
+)
 
 CONFIG_SUFFIX = "_config.yaml"
 
@@ -50,7 +50,7 @@ CONFIG_FIELDS = {
     "podTypes": "available_node_types",
     "headSetupCommands": "head_setup_commands",
     "workerSetupCommands": "worker_setup_commands",
-    "SetupCommands": "setup_commands"
+    "SetupCommands": "setup_commands",
 }
 
 NODE_TYPE_FIELDS = {
@@ -59,7 +59,7 @@ NODE_TYPE_FIELDS = {
     "podConfig": "node_config",
     "rayResources": "resources",
     "setupCommands": "worker_setup_commands",
-    "workerSetupCommands": "worker_setup_commands"
+    "workerSetupCommands": "worker_setup_commands",
 }
 
 root_logger = logging.getLogger("ray")
@@ -87,7 +87,8 @@ def cluster_scoped_cr_stream() -> Iterator:
         custom_objects_api().list_cluster_custom_object,
         group=RAY_API_GROUP,
         version=RAY_API_VERSION,
-        plural=RAYCLUSTER_PLURAL)
+        plural=RAYCLUSTER_PLURAL,
+    )
 
 
 def namespaced_cr_stream(namespace) -> Iterator:
@@ -97,7 +98,8 @@ def namespaced_cr_stream(namespace) -> Iterator:
         namespace=namespace,
         group=RAY_API_GROUP,
         version=RAY_API_VERSION,
-        plural=RAYCLUSTER_PLURAL)
+        plural=RAYCLUSTER_PLURAL,
+    )
 
 
 def cr_to_config(cluster_resource: Dict[str, Any]) -> Dict[str, Any]:
@@ -107,18 +109,24 @@ def cr_to_config(cluster_resource: Dict[str, Any]) -> Dict[str, Any]:
     cluster_name = cluster_resource["metadata"]["name"]
     namespace = cluster_resource["metadata"]["namespace"]
     cluster_owner_reference = get_cluster_owner_reference(
-        cluster_resource, cluster_name)
+        cluster_resource, cluster_name
+    )
     config["available_node_types"] = get_node_types(
-        cluster_resource, cluster_name, cluster_owner_reference)
+        cluster_resource, cluster_name, cluster_owner_reference
+    )
     config["cluster_name"] = cluster_name
     head_service_ports = cluster_resource["spec"].get("headServicePorts", None)
     config["provider"] = get_provider_config(
-        cluster_name, namespace, cluster_owner_reference, head_service_ports)
+        cluster_name, namespace, cluster_owner_reference, head_service_ports
+    )
     return config
 
 
-def get_node_types(cluster_resource: Dict[str, Any], cluster_name: str,
-                   cluster_owner_reference: Dict[str, Any]) -> Dict[str, Any]:
+def get_node_types(
+    cluster_resource: Dict[str, Any],
+    cluster_name: str,
+    cluster_owner_reference: Dict[str, Any],
+) -> Dict[str, Any]:
     node_types = {}
     for pod_type in cluster_resource["spec"]["podTypes"]:
         name = pod_type["name"]
@@ -136,16 +144,16 @@ def get_node_types(cluster_resource: Dict[str, Any], cluster_name: str,
     return node_types
 
 
-def get_provider_config(cluster_name, namespace, cluster_owner_reference,
-                        head_service_ports):
+def get_provider_config(
+    cluster_name, namespace, cluster_owner_reference, head_service_ports
+):
 
     provider_conf = {}
     provider_conf["type"] = "kubernetes"
     provider_conf["use_internal_ips"] = True
     provider_conf["namespace"] = namespace
     provider_conf["services"] = [
-        get_head_service(cluster_name, cluster_owner_reference,
-                         head_service_ports)
+        get_head_service(cluster_name, cluster_owner_reference, head_service_ports)
     ]
     # Signal to autoscaler that the Operator is in use:
     provider_conf["_operator"] = True
@@ -153,8 +161,7 @@ def get_provider_config(cluster_name, namespace, cluster_owner_reference,
     return provider_conf
 
 
-def get_head_service(cluster_name, cluster_owner_reference,
-                     head_service_ports):
+def get_head_service(cluster_name, cluster_owner_reference, head_service_ports):
     # Configure head service for dashboard, client, and Ray Serve.
 
     # Pull the default head service from
@@ -209,23 +216,26 @@ def port_dict_to_list(port_dict: Dict) -> List[Dict]:
     return out_list
 
 
-def get_cluster_owner_reference(cluster_resource: Dict[str, Any],
-                                cluster_name: str) -> Dict[str, Any]:
+def get_cluster_owner_reference(
+    cluster_resource: Dict[str, Any], cluster_name: str
+) -> Dict[str, Any]:
     return {
         "apiVersion": cluster_resource["apiVersion"],
         "kind": cluster_resource["kind"],
         "blockOwnerDeletion": True,
         "controller": True,
         "name": cluster_name,
-        "uid": cluster_resource["metadata"]["uid"]
+        "uid": cluster_resource["metadata"]["uid"],
     }
 
 
-def translate(configuration: Dict[str, Any],
-              dictionary: Dict[str, str]) -> Dict[str, Any]:
+def translate(
+    configuration: Dict[str, Any], dictionary: Dict[str, str]
+) -> Dict[str, Any]:
     return {
         dictionary[field]: configuration[field]
-        for field in dictionary if field in configuration
+        for field in dictionary
+        if field in configuration
     }
 
 
@@ -248,8 +258,9 @@ def set_status(cluster_name: str, cluster_namespace: str, status: str) -> None:
             return
         except ApiException as e:
             if e.status == 409:
-                logger.info("Caught a 409 error while setting"
-                            " RayCluster status. Retrying...")
+                logger.info(
+                    "Caught a 409 error while setting" " RayCluster status. Retrying..."
+                )
                 time.sleep(DELAY_BEFORE_STATUS_RETRY)
                 continue
             else:
@@ -259,28 +270,29 @@ def set_status(cluster_name: str, cluster_namespace: str, status: str) -> None:
 
 
 def _set_status(cluster_name: str, cluster_namespace: str, phase: str) -> None:
-    cluster_cr = custom_objects_api()\
-        .get_namespaced_custom_object(
-            namespace=cluster_namespace,
-            group=RAY_API_GROUP,
-            version=RAY_API_VERSION,
-            plural=RAYCLUSTER_PLURAL,
-            name=cluster_name)
+    cluster_cr = custom_objects_api().get_namespaced_custom_object(
+        namespace=cluster_namespace,
+        group=RAY_API_GROUP,
+        version=RAY_API_VERSION,
+        plural=RAYCLUSTER_PLURAL,
+        name=cluster_name,
+    )
     status = cluster_cr.get("status", {})
     autoscaler_retries = status.get(AUTOSCALER_RETRIES_FIELD, 0)
     if phase == STATUS_AUTOSCALING_EXCEPTION:
         autoscaler_retries += 1
     cluster_cr["status"] = {
         "phase": phase,
-        AUTOSCALER_RETRIES_FIELD: autoscaler_retries
+        AUTOSCALER_RETRIES_FIELD: autoscaler_retries,
     }
-    custom_objects_api()\
-        .patch_namespaced_custom_object_status(namespace=cluster_namespace,
-                                               group=RAY_API_GROUP,
-                                               version=RAY_API_VERSION,
-                                               plural=RAYCLUSTER_PLURAL,
-                                               name=cluster_name,
-                                               body=cluster_cr)
+    custom_objects_api().patch_namespaced_custom_object_status(
+        namespace=cluster_namespace,
+        group=RAY_API_GROUP,
+        version=RAY_API_VERSION,
+        plural=RAYCLUSTER_PLURAL,
+        name=cluster_name,
+        body=cluster_cr,
+    )
 
 
 def infer_head_port(cluster_config: Dict[str, Any]) -> str:
@@ -315,6 +327,8 @@ def check_redis_password_not_specified(cluster_config, name, namespace):
     head_start_commands = cluster_config.get("head_start_ray_commands", [])
     if any("redis-password" in cmd for cmd in head_start_commands):
         prefix = ",".join([name, namespace]) + ":"
-        raise ValueError(f"{prefix}The Ray Kubernetes Operator does not"
-                         " support setting a custom Redis password in Ray"
-                         " start commands.")
+        raise ValueError(
+            f"{prefix}The Ray Kubernetes Operator does not"
+            " support setting a custom Redis password in Ray"
+            " start commands."
+        )

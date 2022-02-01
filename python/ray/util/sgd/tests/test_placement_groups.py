@@ -8,11 +8,15 @@ from ray.cluster_utils import Cluster
 from ray.tune.utils import merge_dicts
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.examples.train_example import (
-    model_creator, optimizer_creator, data_creator)
+    model_creator,
+    optimizer_creator,
+    data_creator,
+)
 from ray.util.sgd.torch.training_operator import TrainingOperator
 
 Operator = TrainingOperator.from_creators(
-    model_creator, optimizer_creator, data_creator, loss_creator=nn.MSELoss)
+    model_creator, optimizer_creator, data_creator, loss_creator=nn.MSELoss
+)
 
 
 @pytest.fixture
@@ -105,17 +109,11 @@ def test_tune_train_pack(ray_4_node_8_cpu, num_workers):
             "num_workers": num_workers,
             "use_gpu": False,
             "backend": "gloo",
-            "config": {
-                "batch_size": 512,
-                "lr": 0.001
-            }
-        })
+            "config": {"batch_size": 512, "lr": 0.001},
+        }
+    )
 
-    tune.run(
-        TorchTrainable,
-        num_samples=1,
-        stop={"training_iteration": 2},
-        verbose=1)
+    tune.run(TorchTrainable, num_samples=1, stop={"training_iteration": 2}, verbose=1)
 
 
 def test_shutdown(ray_8_node_2_cpu):
@@ -195,7 +193,8 @@ def test_timeout(ray_4_node_1_cpu):
     """Tests that an error is thrown when placement group setup times out."""
     with pytest.raises(TimeoutError):
         trainer = TorchTrainer(
-            training_operator_cls=Operator, num_workers=7, use_gpu=False)
+            training_operator_cls=Operator, num_workers=7, use_gpu=False
+        )
         trainer.shutdown()
 
 

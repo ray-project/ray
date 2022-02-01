@@ -18,17 +18,18 @@ class AsyncGoal:
     A trade-off between providing asyncio.Future-like functionalities without
     introducing its complexities of testing without clear value added.
     """
+
     goal_id: GoalId
     event: asyncio.Event
     result: Optional[Any]
     exception: Optional[Exception]
 
     def __init__(
-            self,
-            goal_id: GoalId,
-            event: asyncio.Event,
-            result: Optional[Any] = None,
-            exception: Optional[Exception] = None,
+        self,
+        goal_id: GoalId,
+        event: asyncio.Event,
+        result: Optional[Any] = None,
+        exception: Optional[Exception] = None,
     ):
         self.goal_id = goal_id
         self.event = event
@@ -38,16 +39,18 @@ class AsyncGoal:
     # TODO: (jiaodong) Setup proper result and exception handling flow later
     def set_result(self, result: Any) -> None:
         assert not self.done(), "Can only set result once with unset Event"
-        assert self.result is None and self.exception is None, \
-            "Can only set result or exception once on the same AsyncGoal."
+        assert (
+            self.result is None and self.exception is None
+        ), "Can only set result or exception once on the same AsyncGoal."
 
         self.result = result
         self.event.set()
 
     def set_exception(self, exception: Exception) -> None:
         assert not self.done(), "Can only set result once with unset Event"
-        assert self.result is None and self.exception is None, \
-            "Can only set result or exception once on the same AsyncGoal."
+        assert (
+            self.result is None and self.exception is None
+        ), "Can only set result or exception once on the same AsyncGoal."
 
         self.exception = exception
         self.event.set()
@@ -112,9 +115,9 @@ class AsyncGoalManager:
         """
         return self._pending_goals.get(goal_id)
 
-    def complete_goal(self,
-                      goal_id: GoalId,
-                      exception: Optional[Exception] = None) -> None:
+    def complete_goal(
+        self, goal_id: GoalId, exception: Optional[Exception] = None
+    ) -> None:
         """
         Mark given goal as completed, if an exception object is provided,
         set exception instead.
@@ -157,8 +160,7 @@ class AsyncGoalManager:
 
         async_goal = self._pending_goals[goal_id]
         await async_goal.wait()
-        logger.debug(
-            f"Waiting for goal {goal_id} took {time.time() - start} seconds")
+        logger.debug(f"Waiting for goal {goal_id} took {time.time() - start} seconds")
 
         if async_goal.exception is not None:
             return async_goal.exception

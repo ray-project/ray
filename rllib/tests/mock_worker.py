@@ -11,16 +11,12 @@ class _MockWorker:
         self._sample_count = sample_count
         self.obs_filter = MeanStdFilter(())
         self.rew_filter = MeanStdFilter(())
-        self.filters = {
-            "obs_filter": self.obs_filter,
-            "rew_filter": self.rew_filter
-        }
+        self.filters = {"obs_filter": self.obs_filter, "rew_filter": self.rew_filter}
 
     def sample(self):
         samples_dict = {"observations": [], "rewards": []}
         for i in range(self._sample_count):
-            samples_dict["observations"].append(
-                self.obs_filter(np.random.randn()))
+            samples_dict["observations"].append(self.obs_filter(np.random.randn()))
             samples_dict["rewards"].append(self.rew_filter(np.random.randn()))
         return SampleBatch(samples_dict)
 

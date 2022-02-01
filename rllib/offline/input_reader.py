@@ -16,8 +16,7 @@ logger = logging.getLogger(__name__)
 
 @PublicAPI
 class InputReader(metaclass=ABCMeta):
-    """API for collecting and returning experiences during policy evaluation.
-    """
+    """API for collecting and returning experiences during policy evaluation."""
 
     @abstractmethod
     @PublicAPI
@@ -63,23 +62,21 @@ class InputReader(metaclass=ABCMeta):
         if hasattr(self, "_queue_runner"):
             raise ValueError(
                 "A queue runner already exists for this input reader. "
-                "You can only call tf_input_ops() once per reader.")
+                "You can only call tf_input_ops() once per reader."
+            )
 
         logger.info("Reading initial batch of data from input reader.")
         batch = self.next()
         if isinstance(batch, MultiAgentBatch):
             raise NotImplementedError(
-                "tf_input_ops() is not implemented for multi agent batches")
+                "tf_input_ops() is not implemented for multi agent batches"
+            )
 
         keys = [
-            k for k in sorted(batch.keys())
-            if np.issubdtype(batch[k].dtype, np.number)
+            k for k in sorted(batch.keys()) if np.issubdtype(batch[k].dtype, np.number)
         ]
         dtypes = [batch[k].dtype for k in keys]
-        shapes = {
-            k: (-1, ) + s[1:]
-            for (k, s) in [(k, batch[k].shape) for k in keys]
-        }
+        shapes = {k: (-1,) + s[1:] for (k, s) in [(k, batch[k].shape) for k in keys]}
         queue = tf1.FIFOQueue(capacity=queue_size, dtypes=dtypes, names=keys)
         tensors = queue.dequeue()
 
@@ -95,8 +92,13 @@ class InputReader(metaclass=ABCMeta):
 class _QueueRunner(threading.Thread):
     """Thread that feeds a TF queue from a InputReader."""
 
-    def __init__(self, input_reader: InputReader, queue: "tf1.FIFOQueue",
-                 keys: List[str], dtypes: "tf.dtypes.DType"):
+    def __init__(
+        self,
+        input_reader: InputReader,
+        queue: "tf1.FIFOQueue",
+        keys: List[str],
+        dtypes: "tf.dtypes.DType",
+    ):
         threading.Thread.__init__(self)
         self.sess = tf1.get_default_session()
         self.daemon = True
@@ -107,10 +109,7 @@ class _QueueRunner(threading.Thread):
         self.enqueue_op = queue.enqueue(dict(zip(keys, self.placeholders)))
 
     def enqueue(self, batch: SampleBatchType):
-        data = {
-            self.placeholders[i]: batch[key]
-            for i, key in enumerate(self.keys)
-        }
+        data = {self.placeholders[i]: batch[key] for i, key in enumerate(self.keys)}
         self.sess.run(self.enqueue_op, feed_dict=data)
 
     def run(self):

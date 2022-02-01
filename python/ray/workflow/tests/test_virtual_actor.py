@@ -47,10 +47,9 @@ def init_virtual_actor(x):
 
 @pytest.mark.parametrize(
     "workflow_start_regular",
-    [{
-        "num_cpus": 4  # We need more CPUs, otherwise 'create()' blocks 'get()'
-    }],
-    indirect=True)
+    [{"num_cpus": 4}],  # We need more CPUs, otherwise 'create()' blocks 'get()'
+    indirect=True,
+)
 def test_readonly_actor(workflow_start_regular):
     actor = Counter.get_or_create("Counter", 42)
     ray.get(actor.ready())
@@ -61,15 +60,18 @@ def test_readonly_actor(workflow_start_regular):
     # test get actor
     readonly_actor = workflow.get_actor("Counter")
     # test concurrency
-    assert ray.get([
-        readonly_actor.readonly_get.run_async() for _ in range(10)
-    ]) == [42] * 10
-    assert ray.get([
-        readonly_actor.readonly_incr.run_async() for _ in range(10)
-    ]) == [43] * 10
-    assert ray.get([
-        readonly_actor.readonly_get.run_async() for _ in range(10)
-    ]) == [42] * 10
+    assert (
+        ray.get([readonly_actor.readonly_get.run_async() for _ in range(10)])
+        == [42] * 10
+    )
+    assert (
+        ray.get([readonly_actor.readonly_incr.run_async() for _ in range(10)])
+        == [43] * 10
+    )
+    assert (
+        ray.get([readonly_actor.readonly_get.run_async() for _ in range(10)])
+        == [42] * 10
+    )
     start = time.time()
     ray.get([readonly_actor.readonly_workload.run_async() for _ in range(10)])
     end = time.time()
@@ -95,10 +97,9 @@ class SlowInit:
 
 @pytest.mark.parametrize(
     "workflow_start_regular",
-    [{
-        "num_cpus": 4  # We need more CPUs, otherwise 'create()' blocks 'get()'
-    }],
-    indirect=True)
+    [{"num_cpus": 4}],  # We need more CPUs, otherwise 'create()' blocks 'get()'
+    indirect=True,
+)
 def test_actor_ready(workflow_start_regular):
     actor = SlowInit.get_or_create("SlowInit", 42)
     with pytest.raises(virtual_actor_class.VirtualActorNotInitializedError):
@@ -109,11 +110,14 @@ def test_actor_ready(workflow_start_regular):
 
 @pytest.mark.parametrize(
     "workflow_start_regular",
-    [{
-        "num_cpus": 4
-        # We need more CPUs, otherwise 'create()' blocks 'get()'
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 4
+            # We need more CPUs, otherwise 'create()' blocks 'get()'
+        }
+    ],
+    indirect=True,
+)
 def test_actor_writer_1(workflow_start_regular):
     actor = Counter.get_or_create("Counter", 0)
     ray.get(actor.ready())
@@ -135,10 +139,9 @@ def test_actor_writer_1(workflow_start_regular):
 
 @pytest.mark.parametrize(
     "workflow_start_regular",
-    [{
-        "num_cpus": 4  # We need more CPUs, otherwise 'create()' blocks 'get()'
-    }],
-    indirect=True)
+    [{"num_cpus": 4}],  # We need more CPUs, otherwise 'create()' blocks 'get()'
+    indirect=True,
+)
 def test_actor_writer_2(workflow_start_regular, tmp_path):
     g_lock = str(Path(tmp_path / "g.lock"))
     incr_lock = str(Path(tmp_path / "incr.lock"))
@@ -149,8 +152,14 @@ def test_actor_writer_2(workflow_start_regular, tmp_path):
 
     @workflow.virtual_actor
     class SyncCounter:
-        def __init__(self, val_lock: str, incr_lock: str, g_lock: str,
-                     val_err: str, incr_err: str):
+        def __init__(
+            self,
+            val_lock: str,
+            incr_lock: str,
+            g_lock: str,
+            val_err: str,
+            incr_err: str,
+        ):
             self.val_lock = val_lock
             self.incr_lock = incr_lock
             self.g_lock = g_lock
@@ -178,23 +187,35 @@ def test_actor_writer_2(workflow_start_regular, tmp_path):
                 return self.v
 
         def __getstate__(self):
-            return (self.v, self.val_lock, self.incr_lock, self.g_lock,
-                    self.val_err, self.incr_err)
+            return (
+                self.v,
+                self.val_lock,
+                self.incr_lock,
+                self.g_lock,
+                self.val_err,
+                self.incr_err,
+            )
 
         def __setstate__(self, state):
-            (self.v, self.val_lock, self.incr_lock, self.g_lock, self.val_err,
-             self.incr_err) = state
+            (
+                self.v,
+                self.val_lock,
+                self.incr_lock,
+                self.g_lock,
+                self.val_err,
+                self.incr_err,
+            ) = state
 
     # trigger error in init
     Path(val_err).touch()
-    actor = SyncCounter.get_or_create("sync_counter", val_lock, incr_lock,
-                                      g_lock, val_err, incr_err)
+    actor = SyncCounter.get_or_create(
+        "sync_counter", val_lock, incr_lock, g_lock, val_err, incr_err
+    )
     with pytest.raises(Exception):
         actor.incr.run()
     Path(val_err).unlink()
 
-    assert ray.get([actor.incr.run_async() for _ in range(9)]) == list(
-        range(2, 11))
+    assert ray.get([actor.incr.run_async() for _ in range(9)]) == list(range(2, 11))
     incr_lock = FileLock(incr_lock)
     incr_lock.acquire()
 
@@ -225,10 +246,13 @@ def test_actor_writer_2(workflow_start_regular, tmp_path):
 
 @pytest.mark.parametrize(
     "workflow_start_regular",
-    [{
-        "num_cpus": 8,  # increase CPUs to add pressure
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 8,  # increase CPUs to add pressure
+        }
+    ],
+    indirect=True,
+)
 def test_writer_actor_pressure_test(workflow_start_regular):
     actor = Counter.get_or_create("Counter", 0)
     array = []
@@ -242,10 +266,13 @@ def test_writer_actor_pressure_test(workflow_start_regular):
 
 @pytest.mark.parametrize(
     "workflow_start_regular",
-    [{
-        "num_cpus": 8,  # increase CPUs to add pressure
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 8,  # increase CPUs to add pressure
+        }
+    ],
+    indirect=True,
+)
 def test_default_getset(workflow_start_regular):
     @workflow.virtual_actor
     class ActorWithoutSetGetState:
@@ -288,6 +315,7 @@ def test_default_getset(workflow_start_regular):
     class ActorHavingComplicatedStructure:
         def __init__(self):
             import numpy
+
             self.x = {"A": numpy.ones(10)}
 
         def set(self, x):
@@ -302,4 +330,5 @@ def test_default_getset(workflow_start_regular):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

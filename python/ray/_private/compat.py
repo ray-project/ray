@@ -34,8 +34,10 @@ def patch_psutil():
     psutil._pslinux.virtual_memory().
     Workaround: We ensure there is a space following each colon.
     """
-    assert (platform.system() == "Linux"
-            and "Microsoft".lower() in platform.release().lower())
+    assert (
+        platform.system() == "Linux"
+        and "Microsoft".lower() in platform.release().lower()
+    )
 
     try:
         import psutil._pslinux

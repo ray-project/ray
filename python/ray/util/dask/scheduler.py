@@ -172,16 +172,16 @@ def _apply_async_wrapper(apply_async, real_func, *extra_args, **extra_kwargs):
 
 
 def _rayify_task_wrapper(
-        key,
-        task_info,
-        dumps,
-        loads,
-        get_id,
-        pack_exception,
-        ray_presubmit_cbs,
-        ray_postsubmit_cbs,
-        ray_pretask_cbs,
-        ray_posttask_cbs,
+    key,
+    task_info,
+    dumps,
+    loads,
+    get_id,
+    pack_exception,
+    ray_presubmit_cbs,
+    ray_postsubmit_cbs,
+    ray_pretask_cbs,
+    ray_posttask_cbs,
 ):
     """
     The core Ray-Dask task execution wrapper, to be given to the thread pool's
@@ -226,13 +226,13 @@ def _rayify_task_wrapper(
 
 
 def _rayify_task(
-        task,
-        key,
-        deps,
-        ray_presubmit_cbs,
-        ray_postsubmit_cbs,
-        ray_pretask_cbs,
-        ray_posttask_cbs,
+    task,
+    key,
+    deps,
+    ray_presubmit_cbs,
+    ray_postsubmit_cbs,
+    ray_pretask_cbs,
+    ray_posttask_cbs,
 ):
     """
     Rayifies the given task, submitting it as a Ray task to the Ray cluster.
@@ -263,15 +263,14 @@ def _rayify_task(
                 ray_postsubmit_cbs,
                 ray_pretask_cbs,
                 ray_posttask_cbs,
-            ) for t in task
+            )
+            for t in task
         ]
     elif istask(task):
         # Unpacks and repacks Ray object references and submits the task to the
         # Ray cluster for execution.
         if ray_presubmit_cbs is not None:
-            alternate_returns = [
-                cb(task, key, deps) for cb in ray_presubmit_cbs
-            ]
+            alternate_returns = [cb(task, key, deps) for cb in ray_presubmit_cbs]
             for alternate_return in alternate_returns:
                 # We don't submit a Ray task if a presubmit callback returns
                 # a non-`None` value, instead we return said value.
@@ -290,8 +289,9 @@ def _rayify_task(
         # Submit the task using a wrapper function.
         object_refs = dask_task_wrapper.options(
             name=f"dask:{key!s}",
-            num_returns=(1 if not isinstance(func, MultipleReturnFunc) else
-                         func.num_returns),
+            num_returns=(
+                1 if not isinstance(func, MultipleReturnFunc) else func.num_returns
+            ),
         ).remote(
             func,
             repack,
@@ -315,8 +315,7 @@ def _rayify_task(
 
 
 @ray.remote
-def dask_task_wrapper(func, repack, key, ray_pretask_cbs, ray_posttask_cbs,
-                      *args):
+def dask_task_wrapper(func, repack, key, ray_pretask_cbs, ray_posttask_cbs, *args):
     """
     A Ray remote function acting as a Dask task wrapper. This function will
     repackage the given flat `args` into its original data structures using
@@ -359,6 +358,7 @@ def dask_task_wrapper(func, repack, key, ray_pretask_cbs, ray_posttask_cbs,
 
 def render_progress_bar(tracker, object_refs):
     from tqdm import tqdm
+
     # At this time, every task should be submitted.
     total, finished = ray.get(tracker.result.remote())
     reported_finished_so_far = 0
@@ -372,19 +372,19 @@ def render_progress_bar(tracker, object_refs):
         pb_bar.update(finished - reported_finished_so_far)
         reported_finished_so_far = finished
         ready_refs, _ = ray.wait(
-            object_refs,
-            timeout=0,
-            num_returns=len(object_refs),
-            fetch_local=False)
-        if (len(ready_refs) == len(object_refs)):
+            object_refs, timeout=0, num_returns=len(object_refs), fetch_local=False
+        )
+        if len(ready_refs) == len(object_refs):
             break
         import time
+
         time.sleep(0.1)
     pb_bar.close()
     submitted, finished = ray.get(tracker.result.remote())
     if submitted != finished:
         print("Completed. There was state inconsistency.")
     from pprint import pprint
+
     pprint(ray.get(tracker.report.remote()))
 
 
@@ -410,8 +410,9 @@ def ray_get_unpack(object_refs, progress_bar_actor=None):
     if isinstance(object_refs, tuple):
         object_refs = list(object_refs)
 
-    if isinstance(object_refs, list) and any(not isinstance(x, ray.ObjectRef)
-                                             for x in object_refs):
+    if isinstance(object_refs, list) and any(
+        not isinstance(x, ray.ObjectRef) for x in object_refs
+    ):
         # We flatten the object references before calling ray.get(), since Dask
         # loves to nest collections in nested tuples and Ray expects a flat
         # list of object references. We repack the results after ray.get()

@@ -30,8 +30,7 @@ class ChannelID:
             channel_id_str: string representation of channel id
         """
         self.channel_id_str = channel_id_str
-        self.object_qid = ray.ObjectRef(
-            channel_id_str_to_bytes(channel_id_str))
+        self.object_qid = ray.ObjectRef(channel_id_str_to_bytes(channel_id_str))
 
     def __eq__(self, other):
         if other is None:
@@ -49,8 +48,7 @@ class ChannelID:
 
     @staticmethod
     def gen_random_id():
-        """Generate a random channel id string
-        """
+        """Generate a random channel id string"""
         res = ""
         for i in range(CHANNEL_ID_LEN * 2):
             res += str(chr(random.randint(0, 5) + ord("A")))
@@ -61,12 +59,12 @@ class ChannelID:
         """Generate channel id, which is `CHANNEL_ID_LEN` character"""
         channel_id = bytearray(CHANNEL_ID_LEN)
         for i in range(11, 7, -1):
-            channel_id[i] = ts & 0xff
+            channel_id[i] = ts & 0xFF
             ts >>= 8
-        channel_id[16] = (from_index & 0xffff) >> 8
-        channel_id[17] = (from_index & 0xff)
-        channel_id[18] = (to_index & 0xffff) >> 8
-        channel_id[19] = (to_index & 0xff)
+        channel_id[16] = (from_index & 0xFFFF) >> 8
+        channel_id[17] = from_index & 0xFF
+        channel_id[18] = (to_index & 0xFFFF) >> 8
+        channel_id[19] = to_index & 0xFF
         return channel_bytes_to_str(bytes(channel_id))
 
 
@@ -110,8 +108,7 @@ class Message(ABC):
     @property
     @abstractmethod
     def timestamp(self):
-        """Get timestamp when item is written by upstream DataWriter
-        """
+        """Get timestamp when item is written by upstream DataWriter"""
         pass
 
     @property
@@ -132,12 +129,7 @@ class DataMessage(Message):
     DataMessage represents data between upstream and downstream operator.
     """
 
-    def __init__(self,
-                 body,
-                 timestamp,
-                 message_id,
-                 channel_id,
-                 is_empty_message=False):
+    def __init__(self, body, timestamp, message_id, channel_id, is_empty_message=False):
         self.__body = body
         self.__timestamp = timestamp
         self.__channel_id = channel_id
@@ -180,8 +172,16 @@ class CheckpointBarrier(Message):
      records it pushed in front of it.
     """
 
-    def __init__(self, barrier_data, timestamp, message_id, channel_id,
-                 offsets, barrier_id, barrier_type):
+    def __init__(
+        self,
+        barrier_data,
+        timestamp,
+        message_id,
+        channel_id,
+        offsets,
+        barrier_id,
+        barrier_type,
+    ):
         self.__barrier_data = barrier_data
         self.__timestamp = timestamp
         self.__message_id = message_id
@@ -217,26 +217,31 @@ class ChannelCreationParametersBuilder:
     """
     wrap initial parameters needed by a streaming queue
     """
+
     _java_reader_async_function_descriptor = JavaFunctionDescriptor(
-        "io.ray.streaming.runtime.worker.JobWorker", "onReaderMessage",
-        "([B)V")
+        "io.ray.streaming.runtime.worker.JobWorker", "onReaderMessage", "([B)V"
+    )
     _java_reader_sync_function_descriptor = JavaFunctionDescriptor(
-        "io.ray.streaming.runtime.worker.JobWorker", "onReaderMessageSync",
-        "([B)[B")
+        "io.ray.streaming.runtime.worker.JobWorker", "onReaderMessageSync", "([B)[B"
+    )
     _java_writer_async_function_descriptor = JavaFunctionDescriptor(
-        "io.ray.streaming.runtime.worker.JobWorker", "onWriterMessage",
-        "([B)V")
+        "io.ray.streaming.runtime.worker.JobWorker", "onWriterMessage", "([B)V"
+    )
     _java_writer_sync_function_descriptor = JavaFunctionDescriptor(
-        "io.ray.streaming.runtime.worker.JobWorker", "onWriterMessageSync",
-        "([B)[B")
+        "io.ray.streaming.runtime.worker.JobWorker", "onWriterMessageSync", "([B)[B"
+    )
     _python_reader_async_function_descriptor = PythonFunctionDescriptor(
-        "ray.streaming.runtime.worker", "on_reader_message", "JobWorker")
+        "ray.streaming.runtime.worker", "on_reader_message", "JobWorker"
+    )
     _python_reader_sync_function_descriptor = PythonFunctionDescriptor(
-        "ray.streaming.runtime.worker", "on_reader_message_sync", "JobWorker")
+        "ray.streaming.runtime.worker", "on_reader_message_sync", "JobWorker"
+    )
     _python_writer_async_function_descriptor = PythonFunctionDescriptor(
-        "ray.streaming.runtime.worker", "on_writer_message", "JobWorker")
+        "ray.streaming.runtime.worker", "on_writer_message", "JobWorker"
+    )
     _python_writer_sync_function_descriptor = PythonFunctionDescriptor(
-        "ray.streaming.runtime.worker", "on_writer_message_sync", "JobWorker")
+        "ray.streaming.runtime.worker", "on_writer_message_sync", "JobWorker"
+    )
 
     def get_parameters(self):
         return self._parameters
@@ -245,56 +250,66 @@ class ChannelCreationParametersBuilder:
         self._parameters = []
 
     def build_input_queue_parameters(self, from_actors):
-        self.build_parameters(from_actors,
-                              self._java_writer_async_function_descriptor,
-                              self._java_writer_sync_function_descriptor,
-                              self._python_writer_async_function_descriptor,
-                              self._python_writer_sync_function_descriptor)
+        self.build_parameters(
+            from_actors,
+            self._java_writer_async_function_descriptor,
+            self._java_writer_sync_function_descriptor,
+            self._python_writer_async_function_descriptor,
+            self._python_writer_sync_function_descriptor,
+        )
         return self
 
     def build_output_queue_parameters(self, to_actors):
-        self.build_parameters(to_actors,
-                              self._java_reader_async_function_descriptor,
-                              self._java_reader_sync_function_descriptor,
-                              self._python_reader_async_function_descriptor,
-                              self._python_reader_sync_function_descriptor)
+        self.build_parameters(
+            to_actors,
+            self._java_reader_async_function_descriptor,
+            self._java_reader_sync_function_descriptor,
+            self._python_reader_async_function_descriptor,
+            self._python_reader_sync_function_descriptor,
+        )
         return self
 
-    def build_parameters(self, actors, java_async_func, java_sync_func,
-                         py_async_func, py_sync_func):
+    def build_parameters(
+        self, actors, java_async_func, java_sync_func, py_async_func, py_sync_func
+    ):
         for handle in actors:
             parameter = None
             if handle._ray_actor_language == Language.PYTHON:
                 parameter = _streaming.ChannelCreationParameter(
-                    handle._ray_actor_id, py_async_func, py_sync_func)
+                    handle._ray_actor_id, py_async_func, py_sync_func
+                )
             else:
                 parameter = _streaming.ChannelCreationParameter(
-                    handle._ray_actor_id, java_async_func, java_sync_func)
+                    handle._ray_actor_id, java_async_func, java_sync_func
+                )
             self._parameters.append(parameter)
         return self
 
     @staticmethod
     def set_python_writer_function_descriptor(async_function, sync_function):
-        ChannelCreationParametersBuilder. \
-            _python_writer_async_function_descriptor = async_function
-        ChannelCreationParametersBuilder. \
-            _python_writer_sync_function_descriptor = sync_function
+        ChannelCreationParametersBuilder._python_writer_async_function_descriptor = (
+            async_function
+        )
+        ChannelCreationParametersBuilder._python_writer_sync_function_descriptor = (
+            sync_function
+        )
 
     @staticmethod
     def set_python_reader_function_descriptor(async_function, sync_function):
-        ChannelCreationParametersBuilder. \
-            _python_reader_async_function_descriptor = async_function
-        ChannelCreationParametersBuilder. \
-            _python_reader_sync_function_descriptor = sync_function
+        ChannelCreationParametersBuilder._python_reader_async_function_descriptor = (
+            async_function
+        )
+        ChannelCreationParametersBuilder._python_reader_sync_function_descriptor = (
+            sync_function
+        )
 
 
 class DataWriter:
     """Data Writer is a wrapper of streaming c++ DataWriter, which sends data
-     to downstream workers
+    to downstream workers
     """
 
-    def __init__(self, output_channels, to_actors: List[ActorHandle],
-                 conf: dict):
+    def __init__(self, output_channels, to_actors: List[ActorHandle], conf: dict):
         """Get DataWriter of output channels
         Args:
             output_channels: output channels ids
@@ -308,14 +323,18 @@ class DataWriter:
         ]
         creation_parameters = ChannelCreationParametersBuilder()
         creation_parameters.build_output_queue_parameters(to_actors)
-        channel_size = conf.get(Config.CHANNEL_SIZE,
-                                Config.CHANNEL_SIZE_DEFAULT)
+        channel_size = conf.get(Config.CHANNEL_SIZE, Config.CHANNEL_SIZE_DEFAULT)
         py_msg_ids = [0 for _ in range(len(output_channels))]
         config_bytes = _to_native_conf(conf)
         is_mock = conf[Config.CHANNEL_TYPE] == Config.MEMORY_CHANNEL
         self.writer = _streaming.DataWriter.create(
-            py_output_channels, creation_parameters.get_parameters(),
-            channel_size, py_msg_ids, config_bytes, is_mock)
+            py_output_channels,
+            creation_parameters.get_parameters(),
+            channel_size,
+            py_msg_ids,
+            config_bytes,
+            is_mock,
+        )
 
         logger.info("create DataWriter succeed")
 
@@ -347,8 +366,9 @@ class DataWriter:
         return self.writer.get_output_checkpoints()
 
     def clear_checkpoint(self, checkpoint_id):
-        logger.info("producer start to clear checkpoint, checkpoint_id={}"
-                    .format(checkpoint_id))
+        logger.info(
+            "producer start to clear checkpoint, checkpoint_id={}".format(checkpoint_id)
+        )
         self.writer.clear_checkpoint(checkpoint_id)
 
     def stop(self):
@@ -366,8 +386,9 @@ class DataReader:
     from channels of upstream workers
     """
 
-    def __init__(self, input_channels: List, from_actors: List[ActorHandle],
-                 conf: dict):
+    def __init__(
+        self, input_channels: List, from_actors: List[ActorHandle], conf: dict
+    ):
         """Get DataReader of input channels
         Args:
             input_channels:  input channels
@@ -387,14 +408,22 @@ class DataReader:
         self.__queue = Queue(10000)
         is_mock = conf[Config.CHANNEL_TYPE] == Config.MEMORY_CHANNEL
         self.reader, queues_creation_status = _streaming.DataReader.create(
-            py_input_channels, creation_parameters.get_parameters(),
-            py_msg_ids, timer_interval, config_bytes, is_mock)
+            py_input_channels,
+            creation_parameters.get_parameters(),
+            py_msg_ids,
+            timer_interval,
+            config_bytes,
+            is_mock,
+        )
 
         self.__creation_status = {}
         for q, status in queues_creation_status.items():
             self.__creation_status[q] = ChannelCreationStatus(status)
-        logger.info("create DataReader succeed, creation_status={}".format(
-            self.__creation_status))
+        logger.info(
+            "create DataReader succeed, creation_status={}".format(
+                self.__creation_status
+            )
+        )
 
     def read(self, timeout_millis):
         """Read data from channel
@@ -436,19 +465,15 @@ def _to_native_conf(conf):
         config.op_name = conf[Config.STREAMING_OP_NAME]
     # TODO set operator type
     if Config.STREAMING_RING_BUFFER_CAPACITY in conf:
-        config.ring_buffer_capacity = \
-            conf[Config.STREAMING_RING_BUFFER_CAPACITY]
+        config.ring_buffer_capacity = conf[Config.STREAMING_RING_BUFFER_CAPACITY]
     if Config.STREAMING_EMPTY_MESSAGE_INTERVAL in conf:
-        config.empty_message_interval = \
-            conf[Config.STREAMING_EMPTY_MESSAGE_INTERVAL]
+        config.empty_message_interval = conf[Config.STREAMING_EMPTY_MESSAGE_INTERVAL]
     if Config.FLOW_CONTROL_TYPE in conf:
         conf.flow_control_type = conf[Config.FLOW_CONTROL_TYPE]
     if Config.WRITER_CONSUMED_STEP in conf:
-        conf.writer_consumed_step = \
-            conf[Config.WRITER_CONSUMED_STEP]
+        conf.writer_consumed_step = conf[Config.WRITER_CONSUMED_STEP]
     if Config.READER_CONSUMED_STEP in conf:
-        conf.reader_consumed_step = \
-            conf[Config.READER_CONSUMED_STEP]
+        conf.reader_consumed_step = conf[Config.READER_CONSUMED_STEP]
     logger.info("conf: %s", str(config))
     return config.SerializeToString()
 
@@ -481,8 +506,7 @@ class ChannelRecoverInfo:
         return data_lost_queues
 
     def __str__(self):
-        return "QueueRecoverInfo [dataLostQueues=%s]" \
-               % (self.get_data_lost_queues())
+        return "QueueRecoverInfo [dataLostQueues=%s]" % (self.get_data_lost_queues())
 
 
 class ChannelCreationStatus(Enum):

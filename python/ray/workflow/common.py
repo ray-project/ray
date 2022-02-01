@@ -4,8 +4,7 @@ from collections import deque
 from enum import Enum, unique
 import hashlib
 import re
-from typing import (Dict, Generic, List, Optional, Callable, Set, TypeVar,
-                    Iterator, Any)
+from typing import Dict, Generic, List, Optional, Callable, Set, TypeVar, Iterator, Any
 import unicodedata
 
 from dataclasses import dataclass
@@ -29,8 +28,7 @@ def get_module(f):
 
 
 def get_qualname(f):
-    return f.__qualname__ if hasattr(f,
-                                     "__qualname__") else "__anonymous_func__"
+    return f.__qualname__ if hasattr(f, "__qualname__") else "__anonymous_func__"
 
 
 def ensure_ray_initialized():
@@ -53,11 +51,12 @@ class WorkflowRef:
 
     See 'step_executor._resolve_dynamic_workflow_refs' for how we handle
     workflow refs."""
+
     # The ID of the step that produces the output of the workflow.
     step_id: StepID
 
     def __reduce__(self):
-        return WorkflowRef, (self.step_id, )
+        return WorkflowRef, (self.step_id,)
 
     def __hash__(self):
         return hash(self.step_id)
@@ -71,7 +70,8 @@ class _RefBypass:
 
     def __reduce__(self):
         from ray import cloudpickle
-        return cloudpickle.loads, (cloudpickle.dumps(self._ref), )
+
+        return cloudpickle.loads, (cloudpickle.dumps(self._ref),)
 
 
 @dataclass
@@ -87,6 +87,7 @@ class WorkflowStaticRef:
     returned by 'workflow.wait' contains a static ref to these
     pending workflows.
     """
+
     # The ID of the step that produces the output of the workflow.
     step_id: StepID
     # The ObjectRef of the output.
@@ -119,6 +120,7 @@ class WorkflowStatus(str, Enum):
 @unique
 class StepType(str, Enum):
     """All step types."""
+
     FUNCTION = "FUNCTION"
     ACTOR_METHOD = "ACTOR_METHOD"
     READONLY_ACTOR_METHOD = "READONLY_ACTOR_METHOD"
@@ -163,6 +165,7 @@ def calculate_identifier(obj: Any) -> str:
 @dataclass
 class WorkflowStepRuntimeOptions:
     """Options that will affect a workflow step at runtime."""
+
     # Type of the step.
     step_type: "StepType"
     # Whether the user want to handle the exception manually.
@@ -175,13 +178,15 @@ class WorkflowStepRuntimeOptions:
     ray_options: Dict[str, Any]
 
     @classmethod
-    def make(cls,
-             *,
-             step_type,
-             catch_exceptions=None,
-             max_retries=None,
-             allow_inplace=False,
-             ray_options=None):
+    def make(
+        cls,
+        *,
+        step_type,
+        catch_exceptions=None,
+        max_retries=None,
+        allow_inplace=False,
+        ray_options=None,
+    ):
         if max_retries is None:
             max_retries = 3
         elif not isinstance(max_retries, int) or max_retries < 1:
@@ -199,7 +204,8 @@ class WorkflowStepRuntimeOptions:
             catch_exceptions=catch_exceptions,
             max_retries=max_retries,
             allow_inplace=allow_inplace,
-            ray_options=ray_options)
+            ray_options=ray_options,
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -253,14 +259,14 @@ class WorkflowData:
 @dataclass
 class WorkflowExecutionResult:
     """Dataclass for holding workflow execution result."""
+
     # Part of result to persist in a storage and pass to the next step.
     persisted_output: "ObjectRef"
     # Part of result to return to the user but does not require persistence.
     volatile_output: "ObjectRef"
 
     def __reduce__(self):
-        return WorkflowExecutionResult, (self.persisted_output,
-                                         self.volatile_output)
+        return WorkflowExecutionResult, (self.persisted_output, self.volatile_output)
 
 
 @dataclass
@@ -280,8 +286,11 @@ def slugify(value: str, allow_unicode=False) -> str:
     if allow_unicode:
         value = unicodedata.normalize("NFKC", value)
     else:
-        value = unicodedata.normalize("NFKD", value).encode(
-            "ascii", "ignore").decode("ascii")
+        value = (
+            unicodedata.normalize("NFKD", value)
+            .encode("ascii", "ignore")
+            .decode("ascii")
+        )
     value = re.sub(r"[^\w.\-]", "", value).strip()
     return re.sub(r"[-\s]+", "-", value)
 
@@ -296,9 +305,9 @@ class Workflow(Generic[T]):
     to a running workflow when 'workflow.ref' is not None.
     """
 
-    def __init__(self,
-                 workflow_data: WorkflowData,
-                 prepare_inputs: Optional[Callable] = None):
+    def __init__(
+        self, workflow_data: WorkflowData, prepare_inputs: Optional[Callable] = None
+    ):
         if workflow_data.step_options.ray_options.get("num_returns", 1) > 1:
             raise ValueError("Workflow steps can only have one return.")
         self._data: WorkflowData = workflow_data
@@ -313,8 +322,8 @@ class Workflow(Generic[T]):
 
     @property
     def _workflow_id(self):
-        from ray.workflow.workflow_context import \
-            get_current_workflow_id
+        from ray.workflow.workflow_context import get_current_workflow_id
+
         return get_current_workflow_id()
 
     @property
@@ -343,11 +352,10 @@ class Workflow(Generic[T]):
         if self._ref is not None:
             return self._ref.step_id
 
-        from ray.workflow.workflow_access import \
-            get_or_create_management_actor
+        from ray.workflow.workflow_access import get_or_create_management_actor
+
         mgr = get_or_create_management_actor()
-        self._step_id = ray.get(
-            mgr.gen_step_id.remote(self._workflow_id, self._name))
+        self._step_id = ray.get(mgr.gen_step_id.remote(self._workflow_id, self._name))
         return self._step_id
 
     def _iter_workflows_in_dag(self) -> Iterator["Workflow"]:
@@ -384,9 +392,9 @@ class Workflow(Generic[T]):
             func_body=None,
             inputs=inputs,
             name=None,
-            step_options=WorkflowStepRuntimeOptions.make(
-                step_type=StepType.FUNCTION),
-            user_metadata={})
+            step_options=WorkflowStepRuntimeOptions.make(step_type=StepType.FUNCTION),
+            user_metadata={},
+        )
         wf = Workflow(data)
         wf._ref = workflow_ref
         return wf
@@ -404,13 +412,16 @@ class Workflow(Generic[T]):
             raise ValueError(
                 "Workflow[T] objects are not serializable. "
                 "This means they cannot be passed or returned from Ray "
-                "remote, or stored in Ray objects.")
-        return Workflow.from_ref, (self._ref, )
+                "remote, or stored in Ray objects."
+            )
+        return Workflow.from_ref, (self._ref,)
 
     @PublicAPI(stability="beta")
-    def run(self,
-            workflow_id: Optional[str] = None,
-            metadata: Optional[Dict[str, Any]] = None) -> Any:
+    def run(
+        self,
+        workflow_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Any:
         """Run a workflow.
 
         If the workflow with the given id already exists, it will be resumed.
@@ -446,9 +457,11 @@ class Workflow(Generic[T]):
         return ray.get(self.run_async(workflow_id, metadata))
 
     @PublicAPI(stability="beta")
-    def run_async(self,
-                  workflow_id: Optional[str] = None,
-                  metadata: Optional[Dict[str, Any]] = None) -> ObjectRef:
+    def run_async(
+        self,
+        workflow_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> ObjectRef:
         """Run a workflow asynchronously.
 
         If the workflow with the given id already exists, it will be resumed.
@@ -484,6 +497,7 @@ class Workflow(Generic[T]):
         """
         # TODO(suquark): avoid cyclic importing
         from ray.workflow.execution import run
+
         self._step_id = None
         return run(self, workflow_id, metadata)
 
@@ -491,14 +505,17 @@ class Workflow(Generic[T]):
 @PublicAPI(stability="beta")
 class WorkflowNotFoundError(Exception):
     def __init__(self, workflow_id: str):
-        self.message = f"Workflow[id={workflow_id}] was referenced but " \
-                        "doesn't exist."
+        self.message = (
+            f"Workflow[id={workflow_id}] was referenced but " "doesn't exist."
+        )
         super().__init__(self.message)
 
 
 @PublicAPI(stability="beta")
 class WorkflowRunningError(Exception):
     def __init__(self, operation: str, workflow_id: str):
-        self.message = f"{operation} couldn't be completed becasue " \
-                       f"Workflow[id={workflow_id}] is still running."
+        self.message = (
+            f"{operation} couldn't be completed becasue "
+            f"Workflow[id={workflow_id}] is still running."
+        )
         super().__init__(self.message)

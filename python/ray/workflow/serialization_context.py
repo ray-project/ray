@@ -5,7 +5,7 @@ import ray
 import ray.cloudpickle
 from ray.util.serialization import register_serializer, deregister_serializer
 
-from ray.workflow.common import (Workflow, WorkflowInputs, WorkflowRef)
+from ray.workflow.common import Workflow, WorkflowInputs, WorkflowRef
 
 
 def _resolve_workflow_outputs(index: int) -> Any:
@@ -18,7 +18,8 @@ def _resolve_workflow_refs(index: int) -> Any:
 
 @contextlib.contextmanager
 def workflow_args_serialization_context(
-        workflows: List[Workflow], workflow_refs: List[WorkflowRef]) -> None:
+    workflows: List[Workflow], workflow_refs: List[WorkflowRef]
+) -> None:
     """
     This serialization context reduces workflow input arguments to three
     parts:
@@ -58,9 +59,8 @@ def workflow_args_serialization_context(
         return i
 
     register_serializer(
-        Workflow,
-        serializer=workflow_serializer,
-        deserializer=_resolve_workflow_outputs)
+        Workflow, serializer=workflow_serializer, deserializer=_resolve_workflow_outputs
+    )
 
     def workflow_ref_serializer(workflow_ref):
         if workflow_ref in workflowref_deduplicator:
@@ -73,7 +73,8 @@ def workflow_args_serialization_context(
     register_serializer(
         WorkflowRef,
         serializer=workflow_ref_serializer,
-        deserializer=_resolve_workflow_refs)
+        deserializer=_resolve_workflow_refs,
+    )
 
     try:
         yield
@@ -84,8 +85,9 @@ def workflow_args_serialization_context(
 
 
 @contextlib.contextmanager
-def workflow_args_resolving_context(workflow_output_mapping: List[Any],
-                                    workflow_ref_mapping: List[Any]) -> None:
+def workflow_args_resolving_context(
+    workflow_output_mapping: List[Any], workflow_ref_mapping: List[Any]
+) -> None:
     """
     This context resolves workflows and objectrefs inside workflow
     arguments into correct values.
@@ -114,7 +116,7 @@ class _KeepWorkflowOutputs:
         self._index = index
 
     def __reduce__(self):
-        return _resolve_workflow_outputs, (self._index, )
+        return _resolve_workflow_outputs, (self._index,)
 
 
 class _KeepWorkflowRefs:
@@ -122,7 +124,7 @@ class _KeepWorkflowRefs:
         self._index = index
 
     def __reduce__(self):
-        return _resolve_workflow_refs, (self._index, )
+        return _resolve_workflow_refs, (self._index,)
 
 
 @contextlib.contextmanager

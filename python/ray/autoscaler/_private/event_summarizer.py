@@ -18,8 +18,9 @@ class EventSummarizer:
         # by node launcher child threads.
         self.lock = RLock()
 
-    def add(self, template: str, *, quantity: Any,
-            aggregate: Callable[[Any, Any], Any]) -> None:
+    def add(
+        self, template: str, *, quantity: Any, aggregate: Callable[[Any, Any], Any]
+    ) -> None:
         """Add a log message, which will be combined by template.
 
         Args:
@@ -35,7 +36,8 @@ class EventSummarizer:
                 template += "."
             if template in self.events_by_key:
                 self.events_by_key[template] = aggregate(
-                    self.events_by_key[template], quantity)
+                    self.events_by_key[template], quantity
+                )
             else:
                 self.events_by_key[template] = quantity
 

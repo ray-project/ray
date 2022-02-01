@@ -40,8 +40,9 @@ class MemoryContextBackend(ContextBackend):
 class LocalFileContextBackend(ContextBackend):
     def __init__(self, conf):
         self.__dir = ConfigHelper.get_cp_local_file_root_dir(conf)
-        logger.info("Start init local file state backend, root_dir={}.".format(
-            self.__dir))
+        logger.info(
+            "Start init local file state backend, root_dir={}.".format(self.__dir)
+        )
         try:
             os.mkdir(self.__dir)
         except FileExistsError:

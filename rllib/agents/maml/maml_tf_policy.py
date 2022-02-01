@@ -1,10 +1,16 @@
 import logging
 
 import ray
-from ray.rllib.agents.ppo.ppo_tf_policy import vf_preds_fetches, \
-    compute_and_clip_gradients, setup_config, ValueNetworkMixin
-from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
-    Postprocessing
+from ray.rllib.agents.ppo.ppo_tf_policy import (
+    vf_preds_fetches,
+    compute_and_clip_gradients,
+    setup_config,
+    ValueNetworkMixin,
+)
+from ray.rllib.evaluation.postprocessing import (
+    compute_gae_for_sample_batch,
+    Postprocessing,
+)
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
@@ -15,22 +21,25 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-def PPOLoss(dist_class,
-            actions,
-            curr_logits,
-            behaviour_logits,
-            advantages,
-            value_fn,
-            value_targets,
-            vf_preds,
-            cur_kl_coeff,
-            entropy_coeff,
-            clip_param,
-            vf_clip_param,
-            vf_loss_coeff,
-            clip_loss=False):
-    def surrogate_loss(actions, curr_dist, prev_dist, advantages, clip_param,
-                       clip_loss):
+def PPOLoss(
+    dist_class,
+    actions,
+    curr_logits,
+    behaviour_logits,
+    advantages,
+    value_fn,
+    value_targets,
+    vf_preds,
+    cur_kl_coeff,
+    entropy_coeff,
+    clip_param,
+    vf_clip_param,
+    vf_loss_coeff,
+    clip_loss=False,
+):
+    def surrogate_loss(
+        actions, curr_dist, prev_dist, advantages, clip_param, clip_loss
+    ):
         pi_new_logp = curr_dist.logp(actions)
         pi_old_logp = prev_dist.logp(actions)
 
@@ -38,8 +47,9 @@ def PPOLoss(dist_class,
         if clip_loss:
             return tf.minimum(
                 advantages * logp_ratio,
-                advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
-                                              1 + clip_param))
+                advantages
+                * tf.clip_by_value(logp_ratio, 1 - clip_param, 1 + clip_param),
+            )
         return advantages * logp_ratio
 
     def kl_loss(curr_dist, prev_dist):
@@ -51,8 +61,9 @@ def PPOLoss(dist_class,
     def vf_loss(value_fn, value_targets, vf_preds, vf_clip_param=0.1):
         # GAE Value Function Loss
         vf_loss1 = tf.math.square(value_fn - value_targets)
-        vf_clipped = vf_preds + tf.clip_by_value(value_fn - vf_preds,
-                                                 -vf_clip_param, vf_clip_param)
+        vf_clipped = vf_preds + tf.clip_by_value(
+            value_fn - vf_preds, -vf_clip_param, vf_clip_param
+        )
         vf_loss2 = tf.math.square(vf_clipped - value_targets)
         vf_loss = tf.maximum(vf_loss1, vf_loss2)
         return vf_loss
@@ -61,11 +72,12 @@ def PPOLoss(dist_class,
     pi_old_dist = dist_class(behaviour_logits, None)
 
     surr_loss = tf.reduce_mean(
-        surrogate_loss(actions, pi_new_dist, pi_old_dist, advantages,
-                       clip_param, clip_loss))
+        surrogate_loss(
+            actions, pi_new_dist, pi_old_dist, advantages, clip_param, clip_loss
+        )
+    )
     kl_loss = tf.reduce_mean(kl_loss(pi_new_dist, pi_old_dist))
-    vf_loss = tf.reduce_mean(
-        vf_loss(value_fn, value_targets, vf_preds, vf_clip_param))
+    vf_loss = tf.reduce_mean(vf_loss(value_fn, value_targets, vf_preds, vf_clip_param))
     entropy_loss = tf.reduce_mean(entropy_loss(pi_new_dist))
 
     total_loss = -surr_loss + cur_kl_coeff * kl_loss
@@ -75,21 +87,23 @@ def PPOLoss(dist_class,
 
 # This is the computation graph for workers (inner adaptation steps)
 class WorkerLoss(object):
-    def __init__(self,
-                 dist_class,
-                 actions,
-                 curr_logits,
-                 behaviour_logits,
-                 advantages,
-                 value_fn,
-                 value_targets,
-                 vf_preds,
-                 cur_kl_coeff,
-                 entropy_coeff,
-                 clip_param,
-                 vf_clip_param,
-                 vf_loss_coeff,
-                 clip_loss=False):
+    def __init__(
+        self,
+        dist_class,
+        actions,
+        curr_logits,
+        behaviour_logits,
+        advantages,
+        value_fn,
+        value_targets,
+        vf_preds,
+        cur_kl_coeff,
+        entropy_coeff,
+        clip_param,
+        vf_clip_param,
+        vf_loss_coeff,
+        clip_loss=False,
+    ):
         self.loss, surr_loss, kl_loss, vf_loss, ent_loss = PPOLoss(
             dist_class=dist_class,
             actions=actions,
@@ -104,32 +118,35 @@ class WorkerLoss(object):
             clip_param=clip_param,
             vf_clip_param=vf_clip_param,
             vf_loss_coeff=vf_loss_coeff,
-            clip_loss=clip_loss)
+            clip_loss=clip_loss,
+        )
         self.loss = tf1.Print(self.loss, ["Worker Adapt Loss", self.loss])
 
 
 # This is the Meta-Update computation graph for main (meta-update step)
 class MAMLLoss(object):
-    def __init__(self,
-                 model,
-                 config,
-                 dist_class,
-                 value_targets,
-                 advantages,
-                 actions,
-                 behaviour_logits,
-                 vf_preds,
-                 cur_kl_coeff,
-                 policy_vars,
-                 obs,
-                 num_tasks,
-                 split,
-                 inner_adaptation_steps=1,
-                 entropy_coeff=0,
-                 clip_param=0.3,
-                 vf_clip_param=0.1,
-                 vf_loss_coeff=1.0,
-                 use_gae=True):
+    def __init__(
+        self,
+        model,
+        config,
+        dist_class,
+        value_targets,
+        advantages,
+        actions,
+        behaviour_logits,
+        vf_preds,
+        cur_kl_coeff,
+        policy_vars,
+        obs,
+        num_tasks,
+        split,
+        inner_adaptation_steps=1,
+        entropy_coeff=0,
+        clip_param=0.3,
+        vf_clip_param=0.1,
+        vf_loss_coeff=1.0,
+        use_gae=True,
+    ):
 
         self.config = config
         self.num_tasks = num_tasks
@@ -141,8 +158,7 @@ class MAMLLoss(object):
         # Split episode tensors into [inner_adaptation_steps+1, num_tasks, -1]
         self.obs = self.split_placeholders(obs, split)
         self.actions = self.split_placeholders(actions, split)
-        self.behaviour_logits = self.split_placeholders(
-            behaviour_logits, split)
+        self.behaviour_logits = self.split_placeholders(behaviour_logits, split)
         self.advantages = self.split_placeholders(advantages, split)
         self.value_targets = self.split_placeholders(value_targets, split)
         self.vf_preds = self.split_placeholders(vf_preds, split)
@@ -156,9 +172,8 @@ class MAMLLoss(object):
         pi_new_logits, current_policy_vars, value_fns = [], [], []
         for i in range(self.num_tasks):
             pi_new, value_fn = self.feed_forward(
-                self.obs[0][i],
-                self.policy_vars,
-                policy_config=config["model"])
+                self.obs[0][i], self.policy_vars, policy_config=config["model"]
+            )
             pi_new_logits.append(pi_new)
             value_fns.append(value_fn)
             current_policy_vars.append(self.policy_vars)
@@ -185,13 +200,16 @@ class MAMLLoss(object):
                     clip_param=clip_param,
                     vf_clip_param=vf_clip_param,
                     vf_loss_coeff=vf_loss_coeff,
-                    clip_loss=False)
+                    clip_loss=False,
+                )
                 adapted_policy_vars = self.compute_updated_variables(
-                    ppo_loss, current_policy_vars[i])
+                    ppo_loss, current_policy_vars[i]
+                )
                 pi_new_logits[i], value_fns[i] = self.feed_forward(
                     self.obs[step + 1][i],
                     adapted_policy_vars,
-                    policy_config=config["model"])
+                    policy_config=config["model"],
+                )
                 current_policy_vars[i] = adapted_policy_vars
                 kls.append(kl_loss)
                 inner_ppo_loss.append(ppo_loss)
@@ -200,7 +218,8 @@ class MAMLLoss(object):
             inner_kls.append(kls)
 
         mean_inner_kl = tf.stack(
-            [tf.reduce_mean(tf.stack(inner_kl)) for inner_kl in inner_kls])
+            [tf.reduce_mean(tf.stack(inner_kl)) for inner_kl in inner_kls]
+        )
         self.mean_inner_kl = mean_inner_kl
 
         ppo_obj = []
@@ -209,37 +228,37 @@ class MAMLLoss(object):
                 dist_class=dist_class,
                 actions=self.actions[self.inner_adaptation_steps][i],
                 curr_logits=pi_new_logits[i],
-                behaviour_logits=self.behaviour_logits[
-                    self.inner_adaptation_steps][i],
+                behaviour_logits=self.behaviour_logits[self.inner_adaptation_steps][i],
                 advantages=self.advantages[self.inner_adaptation_steps][i],
                 value_fn=value_fns[i],
-                value_targets=self.value_targets[self.inner_adaptation_steps][
-                    i],
+                value_targets=self.value_targets[self.inner_adaptation_steps][i],
                 vf_preds=self.vf_preds[self.inner_adaptation_steps][i],
                 cur_kl_coeff=0.0,
                 entropy_coeff=entropy_coeff,
                 clip_param=clip_param,
                 vf_clip_param=vf_clip_param,
                 vf_loss_coeff=vf_loss_coeff,
-                clip_loss=True)
+                clip_loss=True,
+            )
             ppo_obj.append(ppo_loss)
         self.mean_policy_loss = surr_loss
         self.mean_kl = kl_loss
         self.mean_vf_loss = val_loss
         self.mean_entropy = entropy_loss
         self.inner_kl_loss = tf.reduce_mean(
-            tf.multiply(self.cur_kl_coeff, mean_inner_kl))
-        self.loss = tf.reduce_mean(tf.stack(ppo_obj,
-                                            axis=0)) + self.inner_kl_loss
+            tf.multiply(self.cur_kl_coeff, mean_inner_kl)
+        )
+        self.loss = tf.reduce_mean(tf.stack(ppo_obj, axis=0)) + self.inner_kl_loss
         self.loss = tf1.Print(
-            self.loss,
-            ["Meta-Loss", self.loss, "Inner KL", self.mean_inner_kl])
+            self.loss, ["Meta-Loss", self.loss, "Inner KL", self.mean_inner_kl]
+        )
 
     def feed_forward(self, obs, policy_vars, policy_config):
         # Hacky for now, reconstruct FC network with adapted weights
         # @mluo: TODO for any network
-        def fc_network(inp, network_vars, hidden_nonlinearity,
-                       output_nonlinearity, policy_config):
+        def fc_network(
+            inp, network_vars, hidden_nonlinearity, output_nonlinearity, policy_config
+        ):
             bias_added = False
             x = inp
             for name, param in network_vars.items():
@@ -273,16 +292,16 @@ class MAMLLoss(object):
                 policyn_vars[name] = param
 
         output_nonlinearity = tf.identity
-        hidden_nonlinearity = get_activation_fn(
-            policy_config["fcnet_activation"])
+        hidden_nonlinearity = get_activation_fn(policy_config["fcnet_activation"])
 
-        pi_new_logits = fc_network(obs, policyn_vars, hidden_nonlinearity,
-                                   output_nonlinearity, policy_config)
+        pi_new_logits = fc_network(
+            obs, policyn_vars, hidden_nonlinearity, output_nonlinearity, policy_config
+        )
         if log_std is not None:
-            pi_new_logits = tf.concat(
-                [pi_new_logits, 0.0 * pi_new_logits + log_std], 1)
-        value_fn = fc_network(obs, valuen_vars, hidden_nonlinearity,
-                              output_nonlinearity, policy_config)
+            pi_new_logits = tf.concat([pi_new_logits, 0.0 * pi_new_logits + log_std], 1)
+        value_fn = fc_network(
+            obs, valuen_vars, hidden_nonlinearity, output_nonlinearity, policy_config
+        )
 
         return pi_new_logits, tf.reshape(value_fn, [-1])
 
@@ -299,11 +318,11 @@ class MAMLLoss(object):
 
     def split_placeholders(self, placeholder, split):
         inner_placeholder_list = tf.split(
-            placeholder, tf.math.reduce_sum(split, axis=1), axis=0)
+            placeholder, tf.math.reduce_sum(split, axis=1), axis=0
+        )
         placeholder_list = []
         for index, split_placeholder in enumerate(inner_placeholder_list):
-            placeholder_list.append(
-                tf.split(split_placeholder, split[index], axis=0))
+            placeholder_list.append(tf.split(split_placeholder, split[index], axis=0))
         return placeholder_list
 
 
@@ -326,10 +345,12 @@ def maml_loss(policy, model, dist_class, train_batch):
             clip_param=policy.config["clip_param"],
             vf_clip_param=policy.config["vf_clip_param"],
             vf_loss_coeff=policy.config["vf_loss_coeff"],
-            clip_loss=False)
+            clip_loss=False,
+        )
     else:
-        policy.var_list = tf1.get_collection(tf1.GraphKeys.TRAINABLE_VARIABLES,
-                                             tf1.get_variable_scope().name)
+        policy.var_list = tf1.get_collection(
+            tf1.GraphKeys.TRAINABLE_VARIABLES, tf1.get_variable_scope().name
+        )
         policy.loss_obj = MAMLLoss(
             model=model,
             dist_class=dist_class,
@@ -349,7 +370,8 @@ def maml_loss(policy, model, dist_class, train_batch):
             clip_param=policy.config["clip_param"],
             vf_clip_param=policy.config["vf_clip_param"],
             vf_loss_coeff=policy.config["vf_loss_coeff"],
-            use_gae=policy.config["use_gae"])
+            use_gae=policy.config["use_gae"],
+        )
 
     return policy.loss_obj.loss
 
@@ -372,15 +394,15 @@ def maml_stats(policy, train_batch):
 
 class KLCoeffMixin:
     def __init__(self, config):
-        self.kl_coeff_val = [config["kl_coeff"]
-                             ] * config["inner_adaptation_steps"]
+        self.kl_coeff_val = [config["kl_coeff"]] * config["inner_adaptation_steps"]
         self.kl_target = self.config["kl_target"]
         self.kl_coeff = tf1.get_variable(
             initializer=tf.keras.initializers.Constant(self.kl_coeff_val),
             name="kl_coeff",
             shape=(config["inner_adaptation_steps"]),
             trainable=False,
-            dtype=tf.float32)
+            dtype=tf.float32,
+        )
 
     def update_kls(self, sampled_kls):
         for i, kl in enumerate(sampled_kls):
@@ -411,8 +433,11 @@ def setup_mixins(policy, obs_space, action_space, config):
     policy._loss_input_dict["split"] = tf1.placeholder(
         tf.int32,
         name="Meta-Update-Splitting",
-        shape=(policy.config["inner_adaptation_steps"] + 1,
-               policy.config["num_workers"]))
+        shape=(
+            policy.config["inner_adaptation_steps"] + 1,
+            policy.config["num_workers"],
+        ),
+    )
 
 
 MAMLTFPolicy = build_tf_policy(
@@ -426,4 +451,5 @@ MAMLTFPolicy = build_tf_policy(
     compute_gradients_fn=compute_and_clip_gradients,
     before_init=setup_config,
     before_loss_init=setup_mixins,
-    mixins=[KLCoeffMixin])
+    mixins=[KLCoeffMixin],
+)

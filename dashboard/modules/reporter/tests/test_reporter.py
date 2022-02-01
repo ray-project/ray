@@ -10,9 +10,13 @@ from ray import ray_constants
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
 from ray.dashboard.modules.reporter.reporter_agent import ReporterAgent
-from ray._private.test_utils import (format_web_url, RayTestTimeoutException,
-                                     wait_until_server_available,
-                                     wait_for_condition, fetch_prometheus)
+from ray._private.test_utils import (
+    format_web_url,
+    RayTestTimeoutException,
+    wait_until_server_available,
+    wait_for_condition,
+    fetch_prometheus,
+)
 
 try:
     import prometheus_client
@@ -34,7 +38,7 @@ def test_profiling(shutdown_only):
     actor_pid = ray.get(c.getpid.remote())
 
     webui_url = addresses["webui_url"]
-    assert (wait_until_server_available(webui_url) is True)
+    assert wait_until_server_available(webui_url) is True
     webui_url = format_web_url(webui_url)
 
     start_time = time.time()
@@ -44,14 +48,16 @@ def test_profiling(shutdown_only):
         if time.time() - start_time > 15:
             raise RayTestTimeoutException(
                 "Timed out while collecting profiling stats, "
-                f"launch_profiling: {launch_profiling}")
+                f"launch_profiling: {launch_profiling}"
+            )
         launch_profiling = requests.get(
             webui_url + "/api/launch_profiling",
             params={
                 "ip": ray.nodes()[0]["NodeManagerAddress"],
                 "pid": actor_pid,
-                "duration": 5
-            }).json()
+                "duration": 5,
+            },
+        ).json()
         if launch_profiling["result"]:
             profiling_info = launch_profiling["data"]["profilingInfo"]
             break
@@ -72,13 +78,12 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
     actor_pids = set(actor_pids)
 
     webui_url = addresses["webui_url"]
-    assert (wait_until_server_available(webui_url) is True)
+    assert wait_until_server_available(webui_url) is True
     webui_url = format_web_url(webui_url)
 
     def _check_workers():
         try:
-            resp = requests.get(webui_url +
-                                "/test/dump?key=node_physical_stats")
+            resp = requests.get(webui_url + "/test/dump?key=node_physical_stats")
             resp.raise_for_status()
             result = resp.json()
             assert result["result"] is True
@@ -101,8 +106,7 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
     wait_for_condition(_check_workers, timeout=10)
 
 
-@pytest.mark.skipif(
-    prometheus_client is None, reason="prometheus_client not installed")
+@pytest.mark.skipif(prometheus_client is None, reason="prometheus_client not installed")
 def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     metrics_export_port = addresses["metrics_export_port"]
@@ -110,29 +114,31 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
     prom_addresses = [f"{addr}:{metrics_export_port}"]
 
     def test_case_stats_exist():
-        components_dict, metric_names, metric_samples = fetch_prometheus(
-            prom_addresses)
-        return all([
-            "ray_node_cpu_utilization" in metric_names,
-            "ray_node_cpu_count" in metric_names,
-            "ray_node_mem_used" in metric_names,
-            "ray_node_mem_available" in metric_names,
-            "ray_node_mem_total" in metric_names,
-            "ray_raylet_cpu" in metric_names, "ray_raylet_mem" in metric_names,
-            "ray_node_disk_usage" in metric_names,
-            "ray_node_disk_free" in metric_names,
-            "ray_node_disk_utilization_percentage" in metric_names,
-            "ray_node_network_sent" in metric_names,
-            "ray_node_network_received" in metric_names,
-            "ray_node_network_send_speed" in metric_names,
-            "ray_node_network_receive_speed" in metric_names
-        ])
+        components_dict, metric_names, metric_samples = fetch_prometheus(prom_addresses)
+        return all(
+            [
+                "ray_node_cpu_utilization" in metric_names,
+                "ray_node_cpu_count" in metric_names,
+                "ray_node_mem_used" in metric_names,
+                "ray_node_mem_available" in metric_names,
+                "ray_node_mem_total" in metric_names,
+                "ray_raylet_cpu" in metric_names,
+                "ray_raylet_mem" in metric_names,
+                "ray_node_disk_usage" in metric_names,
+                "ray_node_disk_free" in metric_names,
+                "ray_node_disk_utilization_percentage" in metric_names,
+                "ray_node_network_sent" in metric_names,
+                "ray_node_network_received" in metric_names,
+                "ray_node_network_send_speed" in metric_names,
+                "ray_node_network_receive_speed" in metric_names,
+            ]
+        )
 
     def test_case_ip_correct():
-        components_dict, metric_names, metric_samples = fetch_prometheus(
-            prom_addresses)
+        components_dict, metric_names, metric_samples = fetch_prometheus(prom_addresses)
         raylet_proc = ray.worker._global_node.all_processes[
-            ray_constants.PROCESS_TYPE_RAYLET][0]
+            ray_constants.PROCESS_TYPE_RAYLET
+        ][0]
         raylet_pid = None
         # Find the raylet pid recorded in the tag.
         for sample in metric_samples:
@@ -159,24 +165,25 @@ def test_report_stats():
         "cpu": 57.4,
         "cpus": (8, 4),
         "mem": (17179869184, 5723353088, 66.7, 9234341888),
-        "workers": [{
-            "memory_info": Bunch(
-                rss=55934976, vms=7026937856, pfaults=15354, pageins=0),
-            "cpu_percent": 0.0,
-            "cmdline": [
-                "ray::IDLE", "", "", "", "", "", "", "", "", "", "", ""
-            ],
-            "create_time": 1614826391.338613,
-            "pid": 7174,
-            "cpu_times": Bunch(
-                user=0.607899328,
-                system=0.274044032,
-                children_user=0.0,
-                children_system=0.0)
-        }],
+        "workers": [
+            {
+                "memory_info": Bunch(
+                    rss=55934976, vms=7026937856, pfaults=15354, pageins=0
+                ),
+                "cpu_percent": 0.0,
+                "cmdline": ["ray::IDLE", "", "", "", "", "", "", "", "", "", "", ""],
+                "create_time": 1614826391.338613,
+                "pid": 7174,
+                "cpu_times": Bunch(
+                    user=0.607899328,
+                    system=0.274044032,
+                    children_user=0.0,
+                    children_system=0.0,
+                ),
+            }
+        ],
         "raylet": {
-            "memory_info": Bunch(
-                rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
+            "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
             "cpu_percent": 0.0,
             "cmdline": ["fake raylet cmdline"],
             "create_time": 1614826390.274854,
@@ -185,22 +192,18 @@ def test_report_stats():
                 user=0.03683138,
                 system=0.035913716,
                 children_user=0.0,
-                children_system=0.0)
+                children_system=0.0,
+            ),
         },
         "bootTime": 1612934656.0,
-        "loadAvg": ((4.4521484375, 3.61083984375, 3.5400390625), (0.56, 0.45,
-                                                                  0.44)),
+        "loadAvg": ((4.4521484375, 3.61083984375, 3.5400390625), (0.56, 0.45, 0.44)),
         "disk": {
             "/": Bunch(
-                total=250790436864,
-                used=11316781056,
-                free=22748921856,
-                percent=33.2),
+                total=250790436864, used=11316781056, free=22748921856, percent=33.2
+            ),
             "/tmp": Bunch(
-                total=250790436864,
-                used=209532035072,
-                free=22748921856,
-                percent=90.2)
+                total=250790436864, used=209532035072, free=22748921856, percent=90.2
+            ),
         },
         "gpus": [],
         "network": (13621160960, 11914936320),
@@ -209,13 +212,10 @@ def test_report_stats():
 
     cluster_stats = {
         "autoscaler_report": {
-            "active_nodes": {
-                "head_node": 1,
-                "worker-node-0": 2
-            },
+            "active_nodes": {"head_node": 1, "worker-node-0": 2},
             "failed_nodes": [],
             "pending_launches": {},
-            "pending_nodes": []
+            "pending_nodes": [],
         }
     }
 
@@ -226,11 +226,9 @@ def test_report_stats():
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
     assert len(records) == 14
     # Test stats with gpus
-    test_stats["gpus"] = [{
-        "utilization_gpu": 1,
-        "memory_used": 100,
-        "memory_total": 1000
-    }]
+    test_stats["gpus"] = [
+        {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000}
+    ]
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
     assert len(records) == 18
     # Test stats without autoscaler report

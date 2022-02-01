@@ -14,14 +14,16 @@ class _MockTrainer(Trainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return with_common_config({
-            "mock_error": False,
-            "persistent_error": False,
-            "test_variable": 1,
-            "num_workers": 0,
-            "user_checkpoint_freq": 0,
-            "framework": "tf",
-        })
+        return with_common_config(
+            {
+                "mock_error": False,
+                "persistent_error": False,
+                "test_variable": 1,
+                "num_workers": 0,
+                "user_checkpoint_freq": 0,
+                "framework": "tf",
+            }
+        )
 
     @classmethod
     def default_resource_request(cls, config):
@@ -32,14 +34,15 @@ class _MockTrainer(Trainer):
         self.restored = False
 
     def step(self):
-        if self.config["mock_error"] and self.iteration == 1 \
-                and (self.config["persistent_error"] or not self.restored):
+        if (
+            self.config["mock_error"]
+            and self.iteration == 1
+            and (self.config["persistent_error"] or not self.restored)
+        ):
             raise Exception("mock error")
         result = dict(
-            episode_reward_mean=10,
-            episode_len_mean=10,
-            timesteps_this_iter=10,
-            info={})
+            episode_reward_mean=10, episode_len_mean=10, timesteps_this_iter=10, info={}
+        )
         if self.config["user_checkpoint_freq"] > 0 and self.iteration > 0:
             if self.iteration % self.config["user_checkpoint_freq"] == 0:
                 result.update({tune_result.SHOULD_CHECKPOINT: True})
@@ -76,14 +79,16 @@ class _SigmoidFakeData(_MockTrainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return with_common_config({
-            "width": 100,
-            "height": 100,
-            "offset": 0,
-            "iter_time": 10,
-            "iter_timesteps": 1,
-            "num_workers": 0,
-        })
+        return with_common_config(
+            {
+                "width": 100,
+                "height": 100,
+                "offset": 0,
+                "iter_time": 10,
+                "iter_timesteps": 1,
+                "num_workers": 0,
+            }
+        )
 
     def step(self):
         i = max(0, self.iteration - self.config["offset"])
@@ -94,21 +99,24 @@ class _SigmoidFakeData(_MockTrainer):
             episode_len_mean=v,
             timesteps_this_iter=self.config["iter_timesteps"],
             time_this_iter_s=self.config["iter_time"],
-            info={})
+            info={},
+        )
 
 
 class _ParameterTuningTrainer(_MockTrainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return with_common_config({
-            "reward_amt": 10,
-            "dummy_param": 10,
-            "dummy_param2": 15,
-            "iter_time": 10,
-            "iter_timesteps": 1,
-            "num_workers": 0,
-        })
+        return with_common_config(
+            {
+                "reward_amt": 10,
+                "dummy_param": 10,
+                "dummy_param2": 15,
+                "iter_time": 10,
+                "iter_timesteps": 1,
+                "num_workers": 0,
+            }
+        )
 
     def step(self):
         return dict(
@@ -116,7 +124,8 @@ class _ParameterTuningTrainer(_MockTrainer):
             episode_len_mean=self.config["reward_amt"],
             timesteps_this_iter=self.config["iter_timesteps"],
             time_this_iter_s=self.config["iter_time"],
-            info={})
+            info={},
+        )
 
 
 def _trainer_import_failed(trace):

@@ -8,25 +8,30 @@ import time
 import ray
 from ray.workflow import execution
 from ray.workflow.step_function import WorkflowStepFunction
+
 # avoid collision with arguments & APIs
 
 from ray.workflow import virtual_actor_class
 from ray.workflow import storage as storage_base
-from ray.workflow.common import (WorkflowStatus, ensure_ray_initialized,
-                                 Workflow, Event, WorkflowRunningError,
-                                 WorkflowNotFoundError,
-                                 WorkflowStepRuntimeOptions, StepType)
+from ray.workflow.common import (
+    WorkflowStatus,
+    ensure_ray_initialized,
+    Workflow,
+    Event,
+    WorkflowRunningError,
+    WorkflowNotFoundError,
+    WorkflowStepRuntimeOptions,
+    StepType,
+)
 from ray.workflow import serialization
-from ray.workflow.event_listener import (EventListener, EventListenerType,
-                                         TimerListener)
+from ray.workflow.event_listener import EventListener, EventListenerType, TimerListener
 from ray.workflow.storage import Storage
 from ray.workflow import workflow_access
 from ray.workflow.workflow_storage import get_workflow_storage
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.workflow.virtual_actor_class import (VirtualActorClass,
-                                                  VirtualActor)
+    from ray.workflow.virtual_actor_class import VirtualActorClass, VirtualActor
 
 logger = logging.getLogger(__name__)
 
@@ -62,22 +67,25 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
         # we have to use the 'else' branch because we would raise a
         # runtime error, but we do not want to be captured by 'except'
         if _storage.storage_url == storage.storage_url:
-            logger.warning("Calling 'workflow.init()' again with the same "
-                           "storage.")
+            logger.warning("Calling 'workflow.init()' again with the same " "storage.")
         else:
-            raise RuntimeError("Calling 'workflow.init()' again with a "
-                               "different storage")
+            raise RuntimeError(
+                "Calling 'workflow.init()' again with a " "different storage"
+            )
     storage_base.set_global_storage(storage)
     workflow_access.init_management_actor()
     serialization.init_manager()
 
 
-def make_step_decorator(step_options: "WorkflowStepRuntimeOptions",
-                        name: Optional[str] = None,
-                        metadata: Optional[Dict[str, Any]] = None):
+def make_step_decorator(
+    step_options: "WorkflowStepRuntimeOptions",
+    name: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+):
     def decorator(func):
         return WorkflowStepFunction(
-            func, step_options=step_options, name=name, metadata=metadata)
+            func, step_options=step_options, name=name, metadata=metadata
+        )
 
     return decorator
 
@@ -113,7 +121,8 @@ def step(*args, **kwargs):
         catch_exceptions=catch_exceptions,
         max_retries=max_retries,
         allow_inplace=allow_inplace,
-        ray_options=ray_options)
+        ray_options=ray_options,
+    )
     return make_step_decorator(options, name, metadata)
 
 
@@ -158,8 +167,10 @@ class _VirtualActorDecorator:
     @classmethod
     def readonly(cls, method: types.FunctionType) -> types.FunctionType:
         if not isinstance(method, types.FunctionType):
-            raise TypeError("The @workflow.virtual_actor.readonly "
-                            "decorator can only wrap a method.")
+            raise TypeError(
+                "The @workflow.virtual_actor.readonly "
+                "decorator can only wrap a method."
+            )
         method.__virtual_actor_readonly__ = True
         return method
 
@@ -178,8 +189,7 @@ def get_actor(actor_id: str) -> "VirtualActor":
         A virtual actor.
     """
     ensure_ray_initialized()
-    return virtual_actor_class.get_actor(actor_id,
-                                         storage_base.get_global_storage())
+    return virtual_actor_class.get_actor(actor_id, storage_base.get_global_storage())
 
 
 @PublicAPI(stability="beta")
@@ -207,8 +217,7 @@ def resume(workflow_id: str) -> ray.ObjectRef:
 
 
 @PublicAPI(stability="beta")
-def get_output(workflow_id: str, *,
-               name: Optional[str] = None) -> ray.ObjectRef:
+def get_output(workflow_id: str, *, name: Optional[str] = None) -> ray.ObjectRef:
     """Get the output of a running workflow.
 
     Args:
@@ -233,9 +242,11 @@ def get_output(workflow_id: str, *,
 
 
 @PublicAPI(stability="beta")
-def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
-        Union[WorkflowStatus, str]]]] = None
-             ) -> List[Tuple[str, WorkflowStatus]]:
+def list_all(
+    status_filter: Optional[
+        Union[Union[WorkflowStatus, str], Set[Union[WorkflowStatus, str]]]
+    ] = None
+) -> List[Tuple[str, WorkflowStatus]]:
     """List all workflows matching a given status filter.
 
     Args:
@@ -267,14 +278,17 @@ def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
         if all(isinstance(s, str) for s in status_filter):
             status_filter = {WorkflowStatus(s) for s in status_filter}
         elif not all(isinstance(s, WorkflowStatus) for s in status_filter):
-            raise TypeError("status_filter contains element which is not"
-                            " a type of `WorkflowStatus or str`."
-                            f" {status_filter}")
+            raise TypeError(
+                "status_filter contains element which is not"
+                " a type of `WorkflowStatus or str`."
+                f" {status_filter}"
+            )
     elif status_filter is None:
         status_filter = set(WorkflowStatus.__members__.keys())
     else:
         raise TypeError(
-            "status_filter must be WorkflowStatus or a set of WorkflowStatus.")
+            "status_filter must be WorkflowStatus or a set of WorkflowStatus."
+        )
     return execution.list_all(status_filter)
 
 
@@ -328,32 +342,33 @@ def get_status(workflow_id: str) -> WorkflowStatus:
 
 
 @PublicAPI(stability="beta")
-def wait_for_event(event_listener_type: EventListenerType, *args,
-                   **kwargs) -> Workflow[Event]:
+def wait_for_event(
+    event_listener_type: EventListenerType, *args, **kwargs
+) -> Workflow[Event]:
     if not issubclass(event_listener_type, EventListener):
         raise TypeError(
             f"Event listener type is {event_listener_type.__name__}"
-            ", which is not a subclass of workflow.EventListener")
+            ", which is not a subclass of workflow.EventListener"
+        )
 
     @step
-    def get_message(event_listener_type: EventListenerType, *args,
-                    **kwargs) -> Event:
+    def get_message(event_listener_type: EventListenerType, *args, **kwargs) -> Event:
         event_listener = event_listener_type()
         loop = asyncio.get_event_loop()
-        return loop.run_until_complete(
-            event_listener.poll_for_event(*args, **kwargs))
+        return loop.run_until_complete(event_listener.poll_for_event(*args, **kwargs))
 
     @step
-    def message_committed(event_listener_type: EventListenerType,
-                          event: Event) -> Event:
+    def message_committed(
+        event_listener_type: EventListenerType, event: Event
+    ) -> Event:
         event_listener = event_listener_type()
         loop = asyncio.get_event_loop()
         loop.run_until_complete(event_listener.event_checkpointed(event))
         return event
 
     return message_committed.step(
-        event_listener_type,
-        get_message.step(event_listener_type, *args, **kwargs))
+        event_listener_type, get_message.step(event_listener_type, *args, **kwargs)
+    )
 
 
 @PublicAPI(stability="beta")
@@ -370,8 +385,7 @@ def sleep(duration: float) -> Workflow[Event]:
 
 
 @PublicAPI(stability="beta")
-def get_metadata(workflow_id: str,
-                 name: Optional[str] = None) -> Dict[str, Any]:
+def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]:
     """Get the metadata of the workflow.
 
     This will return a dict of metadata of either the workflow (
@@ -482,9 +496,9 @@ WaitResult = Tuple[List[Any], List[Workflow]]
 
 
 @PublicAPI(stability="beta")
-def wait(workflows: List[Workflow],
-         num_returns: int = 1,
-         timeout: Optional[float] = None) -> Workflow[WaitResult]:
+def wait(
+    workflows: List[Workflow], num_returns: int = 1, timeout: Optional[float] = None
+) -> Workflow[WaitResult]:
     """Return a list of result of workflows that are ready and a list of
     workflows that are pending.
 
@@ -529,10 +543,12 @@ def wait(workflows: List[Workflow],
     """
     from ray.workflow import serialization_context
     from ray.workflow.common import WorkflowData
+
     for w in workflows:
         if not isinstance(w, Workflow):
-            raise TypeError("The input of workflow.wait should be a list "
-                            "of workflows.")
+            raise TypeError(
+                "The input of workflow.wait should be a list " "of workflows."
+            )
     wait_inputs = serialization_context.make_workflow_inputs(workflows)
     step_options = WorkflowStepRuntimeOptions.make(
         step_type=StepType.WAIT,
@@ -551,9 +567,19 @@ def wait(workflows: List[Workflow],
         inputs=wait_inputs,
         step_options=step_options,
         name="workflow.wait",
-        user_metadata={})
+        user_metadata={},
+    )
     return Workflow(workflow_data)
 
 
-__all__ = ("step", "virtual_actor", "resume", "get_output", "get_actor",
-           "resume_all", "get_status", "get_metadata", "cancel")
+__all__ = (
+    "step",
+    "virtual_actor",
+    "resume",
+    "get_output",
+    "get_actor",
+    "resume_all",
+    "get_status",
+    "get_metadata",
+    "cancel",
+)

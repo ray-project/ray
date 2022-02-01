@@ -169,8 +169,7 @@ def test_workflow_output_resolving(workflow_start_regular_shared):
     # involving named actor
     workflow_access._resolve_workflow_output = _resolve_workflow_output
     try:
-        ref = workflow_access.flatten_workflow_output("fake_workflow_id",
-                                                      nested_ref)
+        ref = workflow_access.flatten_workflow_output("fake_workflow_id", nested_ref)
     finally:
         # restore the function
         workflow_access._resolve_workflow_output = original_func
@@ -204,12 +203,14 @@ def test_step_failure(workflow_start_regular_shared, tmp_path):
         unstable_step.options(max_retries=3).step().run()
     assert 10 == unstable_step.options(max_retries=8).step().run()
     (tmp_path / "test").write_text("0")
-    (ret, err) = unstable_step.options(
-        max_retries=3, catch_exceptions=True).step().run()
+    (ret, err) = (
+        unstable_step.options(max_retries=3, catch_exceptions=True).step().run()
+    )
     assert ret is None
     assert isinstance(err, ValueError)
-    (ret, err) = unstable_step.options(
-        max_retries=8, catch_exceptions=True).step().run()
+    (ret, err) = (
+        unstable_step.options(max_retries=8, catch_exceptions=True).step().run()
+    )
     assert ret == 10
     assert err is None
 
@@ -284,4 +285,5 @@ def test_nested_catch_exception_2(workflow_start_regular_shared, tmp_path):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

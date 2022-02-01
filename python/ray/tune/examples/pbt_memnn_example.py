@@ -7,8 +7,7 @@ from __future__ import print_function
 
 from tensorflow.keras.models import Sequential, Model, load_model
 from tensorflow.keras.layers import Embedding
-from tensorflow.keras.layers import (Input, Activation, Dense, Permute,
-                                     Dropout)
+from tensorflow.keras.layers import Input, Activation, Dense, Permute, Dropout
 from tensorflow.keras.layers import add, dot, concatenate
 from tensorflow.keras.layers import LSTM
 from tensorflow.keras.optimizers import RMSprop
@@ -79,8 +78,11 @@ def get_stories(f, only_supporting=False, max_length=None):
         return sum(data, [])
 
     data = parse_stories(f.readlines(), only_supporting=only_supporting)
-    data = [(flatten(story), q, answer) for story, q, answer in data
-            if not max_length or len(flatten(story)) < max_length]
+    data = [
+        (flatten(story), q, answer)
+        for story, q, answer in data
+        if not max_length or len(flatten(story)) < max_length
+    ]
     return data
 
 
@@ -90,8 +92,11 @@ def vectorize_stories(word_idx, story_maxlen, query_maxlen, data):
         inputs.append([word_idx[w] for w in story])
         queries.append([word_idx[w] for w in query])
         answers.append(word_idx[answer])
-    return (pad_sequences(inputs, maxlen=story_maxlen),
-            pad_sequences(queries, maxlen=query_maxlen), np.array(answers))
+    return (
+        pad_sequences(inputs, maxlen=story_maxlen),
+        pad_sequences(queries, maxlen=query_maxlen),
+        np.array(answers),
+    )
 
 
 def read_data(finish_fast=False):
@@ -100,7 +105,8 @@ def read_data(finish_fast=False):
         path = get_file(
             "babi-tasks-v1-2.tar.gz",
             origin="https://s3.amazonaws.com/text-datasets/"
-            "babi_tasks_1-20_v1-2.tar.gz")
+            "babi_tasks_1-20_v1-2.tar.gz",
+        )
     except Exception:
         print(
             "Error downloading dataset, please download it manually:\n"
@@ -141,22 +147,20 @@ class MemNNModel(tune.Trainable):
 
         # Reserve 0 for masking via pad_sequences
         vocab_size = len(vocab) + 1
-        story_maxlen = max(
-            len(x) for x, _, _ in self.train_stories + self.test_stories)
-        query_maxlen = max(
-            len(x) for _, x, _ in self.train_stories + self.test_stories)
+        story_maxlen = max(len(x) for x, _, _ in self.train_stories + self.test_stories)
+        query_maxlen = max(len(x) for _, x, _ in self.train_stories + self.test_stories)
 
         word_idx = {c: i + 1 for i, c in enumerate(vocab)}
-        self.inputs_train, self.queries_train, self.answers_train = (
-            vectorize_stories(word_idx, story_maxlen, query_maxlen,
-                              self.train_stories))
-        self.inputs_test, self.queries_test, self.answers_test = (
-            vectorize_stories(word_idx, story_maxlen, query_maxlen,
-                              self.test_stories))
+        self.inputs_train, self.queries_train, self.answers_train = vectorize_stories(
+            word_idx, story_maxlen, query_maxlen, self.train_stories
+        )
+        self.inputs_test, self.queries_test, self.answers_test = vectorize_stories(
+            word_idx, story_maxlen, query_maxlen, self.test_stories
+        )
 
         # placeholders
-        input_sequence = Input((story_maxlen, ))
-        question = Input((query_maxlen, ))
+        input_sequence = Input((story_maxlen,))
+        question = Input((query_maxlen,))
 
         # encoders
         # embed the input sequence into a sequence of vectors
@@ -167,17 +171,15 @@ class MemNNModel(tune.Trainable):
 
         # embed the input into a sequence of vectors of size query_maxlen
         input_encoder_c = Sequential()
-        input_encoder_c.add(
-            Embedding(input_dim=vocab_size, output_dim=query_maxlen))
+        input_encoder_c.add(Embedding(input_dim=vocab_size, output_dim=query_maxlen))
         input_encoder_c.add(Dropout(self.config.get("dropout", 0.3)))
         # output: (samples, story_maxlen, query_maxlen)
 
         # embed the question into a sequence of vectors
         question_encoder = Sequential()
         question_encoder.add(
-            Embedding(
-                input_dim=vocab_size, output_dim=64,
-                input_length=query_maxlen))
+            Embedding(input_dim=vocab_size, output_dim=64, input_length=query_maxlen)
+        )
         question_encoder.add(Dropout(self.config.get("dropout", 0.3)))
         # output: (samples, query_maxlen, embedding_dim)
 
@@ -195,9 +197,9 @@ class MemNNModel(tune.Trainable):
 
         # add the match matrix with the second input vector sequence
         response = add(
-            [match, input_encoded_c])  # (samples, story_maxlen, query_maxlen)
-        response = Permute(
-            (2, 1))(response)  # (samples, query_maxlen, story_maxlen)
+            [match, input_encoded_c]
+        )  # (samples, story_maxlen, query_maxlen)
+        response = Permute((2, 1))(response)  # (samples, query_maxlen, story_maxlen)
 
         # concatenate the match matrix with the question vector sequence
         answer = concatenate([response, question_encoded])
@@ -218,15 +220,16 @@ class MemNNModel(tune.Trainable):
 
     def setup(self, config):
         with FileLock(os.path.expanduser("~/.tune.lock")):
-            self.train_stories, self.test_stories = read_data(
-                config["finish_fast"])
+            self.train_stories, self.test_stories = read_data(config["finish_fast"])
         model = self.build_model()
         rmsprop = RMSprop(
-            lr=self.config.get("lr", 1e-3), rho=self.config.get("rho", 0.9))
+            lr=self.config.get("lr", 1e-3), rho=self.config.get("rho", 0.9)
+        )
         model.compile(
             optimizer=rmsprop,
             loss="sparse_categorical_crossentropy",
-            metrics=["accuracy"])
+            metrics=["accuracy"],
+        )
         self.model = model
 
     def step(self):
@@ -236,13 +239,12 @@ class MemNNModel(tune.Trainable):
             self.answers_train,
             batch_size=self.config.get("batch_size", 32),
             epochs=self.config.get("epochs", 1),
-            validation_data=([self.inputs_test, self.queries_test],
-                             self.answers_test),
-            verbose=0)
+            validation_data=([self.inputs_test, self.queries_test], self.answers_test),
+            verbose=0,
+        )
         _, accuracy = self.model.evaluate(
-            [self.inputs_train, self.queries_train],
-            self.answers_train,
-            verbose=0)
+            [self.inputs_train, self.queries_train], self.answers_train, verbose=0
+        )
         return {"mean_accuracy": accuracy}
 
     def save_checkpoint(self, checkpoint_dir):
@@ -262,14 +264,15 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using " "Ray Client.",
+    )
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
@@ -281,9 +284,10 @@ if __name__ == "__main__":
         perturbation_interval=2,
         hyperparam_mutations={
             "dropout": lambda: np.random.uniform(0, 1),
-            "lr": lambda: 10**np.random.randint(-10, 0),
-            "rho": lambda: np.random.uniform(0, 1)
-        })
+            "lr": lambda: 10 ** np.random.randint(-10, 0),
+            "rho": lambda: np.random.uniform(0, 1),
+        },
+    )
 
     results = tune.run(
         MemNNModel,
@@ -299,5 +303,6 @@ if __name__ == "__main__":
             "epochs": 1,
             "dropout": 0.3,
             "lr": 0.01,
-            "rho": 0.9
-        })
+            "rho": 0.9,
+        },
+    )

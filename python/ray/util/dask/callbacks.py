@@ -27,8 +27,7 @@ CBS_DONT_DROP = {"ray_pretask", "ray_posttask"}
 RayCallback = namedtuple("RayCallback", " ".join(CBS))
 
 # The Ray-specific callbacks for one or more RayDaskCallbacks.
-RayCallbacks = namedtuple("RayCallbacks",
-                          " ".join([field + "_cbs" for field in CBS]))
+RayCallbacks = namedtuple("RayCallbacks", " ".join([field + "_cbs" for field in CBS]))
 
 
 class RayDaskCallback(Callback):
@@ -137,8 +136,7 @@ class RayDaskCallback(Callback):
 
     @property
     def _ray_callback(self):
-        return RayCallback(
-            *[getattr(self, field, None) for field in CB_FIELDS])
+        return RayCallback(*[getattr(self, field, None) for field in CB_FIELDS])
 
     def __enter__(self):
         self._ray_cm = add_ray_callbacks(self)
@@ -179,17 +177,20 @@ def normalize_ray_callback(cb):
         return cb
     else:
         raise TypeError(
-            "Callbacks must be either 'RayDaskCallback' or 'RayCallback' "
-            "namedtuple")
+            "Callbacks must be either 'RayDaskCallback' or 'RayCallback' " "namedtuple"
+        )
 
 
 def unpack_ray_callbacks(cbs):
     """Take an iterable of callbacks, return a list of each callback."""
     if cbs:
         # Only drop callback methods that aren't in CBS_DONT_DROP.
-        return RayCallbacks(*(
-            [cb for cb in cbs_ if cb or CBS[idx] in CBS_DONT_DROP] or None
-            for idx, cbs_ in enumerate(zip(*cbs))))
+        return RayCallbacks(
+            *(
+                [cb for cb in cbs_ if cb or CBS[idx] in CBS_DONT_DROP] or None
+                for idx, cbs_ in enumerate(zip(*cbs))
+            )
+        )
     else:
         return RayCallbacks(*([()] * len(CBS)))
 
@@ -204,8 +205,7 @@ def local_ray_callbacks(callbacks=None):
     """
     global_callbacks = callbacks is None
     if global_callbacks:
-        callbacks, RayDaskCallback.ray_active = (RayDaskCallback.ray_active,
-                                                 set())
+        callbacks, RayDaskCallback.ray_active = (RayDaskCallback.ray_active, set())
     try:
         yield callbacks or ()
     finally:
@@ -244,14 +244,16 @@ class ProgressBarCallback(RayDaskCallback):
                     scheduled = self.scheduled[key]
                     # deps = self.deps[key]
                     result[key]["execution_time"] = (
-                        finished - scheduled).total_seconds()
+                        finished - scheduled
+                    ).total_seconds()
                     # Calculate the scheduling time.
                     # This is inaccurate.
                     # We should subtract scheduled - (last dep completed).
                     # But currently it is not easy because
                     # of how getitem is implemented in dask on ray sort.
                     result[key]["scheduling_time"] = (
-                        scheduled - submitted).total_seconds()
+                        scheduled - submitted
+                    ).total_seconds()
                 result["submission_order"] = self.submission_queue
                 return result
 

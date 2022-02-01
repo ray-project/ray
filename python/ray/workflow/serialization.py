@@ -30,20 +30,23 @@ def get_or_create_manager(warn_on_creation: bool = True) -> "ActorHandle":
     # aliveness detection for an actor.
     try:
         return ray.get_actor(
-            common.STORAGE_ACTOR_NAME,
-            namespace=common.MANAGEMENT_ACTOR_NAMESPACE)
+            common.STORAGE_ACTOR_NAME, namespace=common.MANAGEMENT_ACTOR_NAMESPACE
+        )
     except ValueError:
         store = storage.get_global_storage()
         if warn_on_creation:
-            logger.warning("Cannot access workflow serialization manager. It "
-                           "could be because "
-                           "the workflow manager exited unexpectedly. A new "
-                           "workflow manager is being created with storage "
-                           f"'{store}'.")
+            logger.warning(
+                "Cannot access workflow serialization manager. It "
+                "could be because "
+                "the workflow manager exited unexpectedly. A new "
+                "workflow manager is being created with storage "
+                f"'{store}'."
+            )
         handle = Manager.options(
             name=common.STORAGE_ACTOR_NAME,
             namespace=common.MANAGEMENT_ACTOR_NAMESPACE,
-            lifetime="detached").remote(store)
+            lifetime="detached",
+        ).remote(store)
         ray.get(handle.ping.remote())
         return handle
 
@@ -72,8 +75,8 @@ class Manager:
         return None
 
     async def save_objectref(
-            self, ref_tuple: Tuple[ray.ObjectRef],
-            workflow_id: "str") -> Tuple[List[str], ray.ObjectRef]:
+        self, ref_tuple: Tuple[ray.ObjectRef], workflow_id: "str"
+    ) -> Tuple[List[str], ray.ObjectRef]:
         """Serialize and upload an object reference exactly once.
 
         Args:
@@ -83,17 +86,19 @@ class Manager:
             A pair. The first element is the paths the ref will be uploaded to.
             The second is an object reference to the upload task.
         """
-        ref, = ref_tuple
+        (ref,) = ref_tuple
         # Use the hex as the key to avoid holding a reference to the object.
         key = (ref.hex(), workflow_id)
 
         if key not in self._uploads:
             # TODO(Alex): We should probably eventually free these refs.
             identifier_ref = common.calculate_identifier.remote(ref)
-            upload_task = _put_helper.remote(identifier_ref, ref, workflow_id,
-                                             self._storage)
+            upload_task = _put_helper.remote(
+                identifier_ref, ref, workflow_id, self._storage
+            )
             self._uploads[key] = Upload(
-                identifier_ref=identifier_ref, upload_task=upload_task)
+                identifier_ref=identifier_ref, upload_task=upload_task
+            )
             self._num_uploads += 1
 
         info = self._uploads[key]
@@ -113,24 +118,28 @@ def obj_id_to_paths(workflow_id: str, object_id: str) -> List[str]:
 
 
 @ray.remote(num_cpus=0)
-def _put_helper(identifier: str, obj: Any, workflow_id: str,
-                storage: storage.Storage) -> None:
+def _put_helper(
+    identifier: str, obj: Any, workflow_id: str, storage: storage.Storage
+) -> None:
     # TODO (Alex): This check isn't sufficient, it only works for directly
     # nested object refs.
     if isinstance(obj, ray.ObjectRef):
-        raise NotImplementedError("Workflow does not support checkpointing "
-                                  "nested object references yet.")
+        raise NotImplementedError(
+            "Workflow does not support checkpointing " "nested object references yet."
+        )
     paths = obj_id_to_paths(workflow_id, identifier)
-    promise = dump_to_storage(
-        paths, obj, workflow_id, storage, update_existing=False)
+    promise = dump_to_storage(paths, obj, workflow_id, storage, update_existing=False)
     return asyncio.get_event_loop().run_until_complete(promise)
 
 
-def _reduce_objectref(workflow_id: str, storage: storage.Storage,
-                      obj_ref: ObjectRef, tasks: List[ObjectRef]):
+def _reduce_objectref(
+    workflow_id: str,
+    storage: storage.Storage,
+    obj_ref: ObjectRef,
+    tasks: List[ObjectRef],
+):
     manager = get_or_create_manager()
-    paths, task = ray.get(
-        manager.save_objectref.remote((obj_ref, ), workflow_id))
+    paths, task = ray.get(manager.save_objectref.remote((obj_ref,), workflow_id))
 
     assert task
     tasks.append(task)
@@ -138,11 +147,13 @@ def _reduce_objectref(workflow_id: str, storage: storage.Storage,
     return _load_object_ref, (paths, storage)
 
 
-async def dump_to_storage(paths: List[str],
-                          obj: Any,
-                          workflow_id: str,
-                          storage: storage.Storage,
-                          update_existing=True) -> None:
+async def dump_to_storage(
+    paths: List[str],
+    obj: Any,
+    workflow_id: str,
+    storage: storage.Storage,
+    update_existing=True,
+) -> None:
     """Serializes and puts arbitrary object, handling references. The object will
         be uploaded at `paths`. Any object references will be uploaded to their
         global, remote storage.
@@ -172,10 +183,12 @@ async def dump_to_storage(paths: List[str],
     class ObjectRefPickler(cloudpickle.CloudPickler):
         _object_ref_reducer = {
             ray.ObjectRef: lambda ref: _reduce_objectref(
-                workflow_id, storage, ref, tasks)
+                workflow_id, storage, ref, tasks
+            )
         }
-        dispatch_table = ChainMap(_object_ref_reducer,
-                                  cloudpickle.CloudPickler.dispatch_table)
+        dispatch_table = ChainMap(
+            _object_ref_reducer, cloudpickle.CloudPickler.dispatch_table
+        )
         dispatch = dispatch_table
 
     key = storage.make_key(*paths)
@@ -202,8 +215,7 @@ def _load_ref_helper(key: str, storage: storage.Storage):
 _object_cache: Optional[Dict[str, ray.ObjectRef]] = None
 
 
-def _load_object_ref(paths: List[str],
-                     storage: storage.Storage) -> ray.ObjectRef:
+def _load_object_ref(paths: List[str], storage: storage.Storage) -> ray.ObjectRef:
     global _object_cache
     key = storage.make_key(*paths)
     if _object_cache is None:
@@ -220,7 +232,7 @@ def _load_object_ref(paths: List[str],
 
 @contextlib.contextmanager
 def objectref_cache() -> Generator:
-    """ A reentrant caching context for object refs."""
+    """A reentrant caching context for object refs."""
     global _object_cache
     clear_cache = _object_cache is None
     if clear_cache:

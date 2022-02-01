@@ -39,8 +39,9 @@ def test_read_parquet(ray_start_regular_shared, tmp_path):
 def test_from_parallel_it(ray_start_regular_shared):
     para_it = parallel_it.from_range(4).for_each(lambda x: [x])
     ds = ml_data.from_parallel_iter(para_it, batch_size=2)
-    assert repr(ds) == ("MLDataset[from_range[4, shards=2]"
-                        ".for_each().batch(2).to_pandas()]")
+    assert repr(ds) == (
+        "MLDataset[from_range[4, shards=2]" ".for_each().batch(2).to_pandas()]"
+    )
     collected = list(ds.gather_sync())
     assert len(collected) == 2
     assert all(d.shape == (2, 1) for d in collected)
@@ -57,8 +58,10 @@ def test_batch(ray_start_regular_shared):
     assert all(d.shape == (2, 1) for d in collected)
 
     ds = ds.batch(4)
-    assert repr(ds) == ("MLDataset[from_range[16, shards=2]"
-                        ".for_each().batch(2).to_pandas().batch(4)]")
+    assert repr(ds) == (
+        "MLDataset[from_range[16, shards=2]"
+        ".for_each().batch(2).to_pandas().batch(4)]"
+    )
     collected = list(ds.gather_sync())
     assert len(collected) == 4
     assert all(d.shape == (4, 1) for d in collected)
@@ -123,7 +126,8 @@ def test_union(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(
-    True, reason="Broken on all platforms (incorrect use of gather_sync())")
+    True, reason="Broken on all platforms (incorrect use of gather_sync())"
+)
 def test_from_modin(ray_start_regular_shared):
     try:
         import modin.pandas as pd
@@ -131,8 +135,7 @@ def test_from_modin(ray_start_regular_shared):
         pytest.mark.skip(reason="Modin is not installed")
         return
 
-    df = pd.DataFrame(np.random.randint(0, 100, size=(2**8,
-                                                      16))).add_prefix("col")
+    df = pd.DataFrame(np.random.randint(0, 100, size=(2 ** 8, 16))).add_prefix("col")
     ds = ml_data.MLDataset.from_modin(df, 2)
     # Not guaranteed to maintain order, so sort to ensure equality
     assert df._to_pandas().sort_index().equals(ds.gather_sync().sort_index())
@@ -140,4 +143,5 @@ def test_from_modin(ray_start_regular_shared):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

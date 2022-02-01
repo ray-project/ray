@@ -2,8 +2,7 @@ import unittest
 
 import ray
 import ray.rllib.agents.es as es
-from ray.rllib.utils.test_utils import check_compute_single_action, \
-    framework_iterator
+from ray.rllib.utils.test_utils import check_compute_single_action, framework_iterator
 
 
 class TestES(unittest.TestCase):
@@ -40,4 +39,5 @@ class TestES(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

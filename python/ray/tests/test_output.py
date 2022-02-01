@@ -350,8 +350,8 @@ ray.get(b.f.remote())
 def test_output():
     # Use subprocess to execute the __main__ below.
     outputs = subprocess.check_output(
-        [sys.executable, __file__, "_ray_instance"],
-        stderr=subprocess.STDOUT).decode()
+        [sys.executable, __file__, "_ray_instance"], stderr=subprocess.STDOUT
+    ).decode()
     lines = outputs.split("\n")
     for line in lines:
         print(line)
@@ -367,7 +367,8 @@ def test_output():
 # TODO: fix this test to support minimal installation
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test currently fails with minimal install.")
+    reason="This test currently fails with minimal install.",
+)
 def test_output_on_driver_shutdown(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=16)
@@ -440,7 +441,7 @@ if __name__ == "__main__":
         # about low shm memory in Linux environment.
         # The test failures currently complain it only has 2 GB memory,
         # so let's set it much lower than that.
-        MB = 1000**2
+        MB = 1000 ** 2
         ray.init(num_cpus=1, object_store_memory=(100 * MB))
         ray.shutdown()
     else:

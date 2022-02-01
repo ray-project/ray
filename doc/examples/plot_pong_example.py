@@ -197,7 +197,7 @@ class Model(object):
         """Applies the gradients to the model parameters with RMSProp."""
         for k, v in self.weights.items():
             g = grad_buffer[k]
-            rmsprop_cache[k] = (decay * rmsprop_cache[k] + (1 - decay) * g**2)
+            rmsprop_cache[k] = decay * rmsprop_cache[k] + (1 - decay) * g ** 2
             self.weights[k] += lr * g / (np.sqrt(rmsprop_cache[k]) + 1e-5)
 
 
@@ -278,20 +278,24 @@ for i in range(1, 1 + iterations):
     gradient_ids = []
     # Launch tasks to compute gradients from multiple rollouts in parallel.
     start_time = time.time()
-    gradient_ids = [
-        actor.compute_gradient.remote(model_id) for actor in actors
-    ]
+    gradient_ids = [actor.compute_gradient.remote(model_id) for actor in actors]
     for batch in range(batch_size):
         [grad_id], gradient_ids = ray.wait(gradient_ids)
         grad, reward_sum = ray.get(grad_id)
         # Accumulate the gradient over batch.
         for k in model.weights:
             grad_buffer[k] += grad[k]
-        running_reward = (reward_sum if running_reward is None else
-                          running_reward * 0.99 + reward_sum * 0.01)
+        running_reward = (
+            reward_sum
+            if running_reward is None
+            else running_reward * 0.99 + reward_sum * 0.01
+        )
     end_time = time.time()
-    print("Batch {} computed {} rollouts in {} seconds, "
-          "running mean is {}".format(i, batch_size, end_time - start_time,
-                                      running_reward))
+    print(
+        "Batch {} computed {} rollouts in {} seconds, "
+        "running mean is {}".format(
+            i, batch_size, end_time - start_time, running_reward
+        )
+    )
     model.update(grad_buffer, rmsprop_cache, learning_rate, decay_rate)
     zero_grads(grad_buffer)

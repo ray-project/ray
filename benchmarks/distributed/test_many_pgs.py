@@ -72,8 +72,10 @@ test_utils.wait_for_condition(no_resource_leaks)
 
 rate = MAX_PLACEMENT_GROUPS / (end_time - start_time)
 
-print(f"Success! Started {MAX_PLACEMENT_GROUPS} pgs in "
-      f"{end_time - start_time}s. ({rate} pgs/s)")
+print(
+    f"Success! Started {MAX_PLACEMENT_GROUPS} pgs in "
+    f"{end_time - start_time}s. ({rate} pgs/s)"
+)
 
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
@@ -81,6 +83,6 @@ if "TEST_OUTPUT_JSON" in os.environ:
         "pgs_per_second": rate,
         "num_pgs": MAX_PLACEMENT_GROUPS,
         "time": end_time - start_time,
-        "success": "1"
+        "success": "1",
     }
     json.dump(results, out_file)

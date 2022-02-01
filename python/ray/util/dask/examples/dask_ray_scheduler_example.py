@@ -20,9 +20,9 @@ d_arr.mean().compute(scheduler=ray_dask_get)
 dask.config.set(scheduler=ray_dask_get)
 
 df = dd.from_pandas(
-    pd.DataFrame(
-        np.random.randint(0, 100, size=(1024, 2)), columns=["age", "grade"]),
-    npartitions=2)
+    pd.DataFrame(np.random.randint(0, 100, size=(1024, 2)), columns=["age", "grade"]),
+    npartitions=2,
+)
 df.groupby(["age"]).mean().compute()
 
 ray.shutdown()

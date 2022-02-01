@@ -6,8 +6,7 @@ import os
 import numpy as np
 import torch
 import torch.optim as optim
-from ray.tune.examples.mnist_pytorch import train, test, ConvNet,\
-    get_data_loaders
+from ray.tune.examples.mnist_pytorch import train, test, ConvNet, get_data_loaders
 
 from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
@@ -25,7 +24,8 @@ def train_convnet(config, checkpoint_dir=None):
     optimizer = optim.SGD(
         model.parameters(),
         lr=config.get("lr", 0.01),
-        momentum=config.get("momentum", 0.9))
+        momentum=config.get("momentum", 0.9),
+    )
 
     # If checkpoint_dir is not None, then we are resuming from a checkpoint.
     # Load model state and iteration step from checkpoint.
@@ -47,11 +47,14 @@ def train_convnet(config, checkpoint_dir=None):
                 path = os.path.join(checkpoint_dir, "checkpoint")
                 # Save state to checkpoint file.
                 # No need to save optimizer for SGD.
-                torch.save({
-                    "step": step,
-                    "model_state_dict": model.state_dict(),
-                    "mean_accuracy": acc
-                }, path)
+                torch.save(
+                    {
+                        "step": step,
+                        "model_state_dict": model.state_dict(),
+                        "mean_accuracy": acc,
+                    },
+                    path,
+                )
         step += 1
         tune.report(mean_accuracy=acc)
 
@@ -63,8 +66,7 @@ def test_best_model(analysis):
     """Test the best model given output of tune.run"""
     best_checkpoint_path = analysis.best_checkpoint
     best_model = ConvNet()
-    best_checkpoint = torch.load(
-        os.path.join(best_checkpoint_path, "checkpoint"))
+    best_checkpoint = torch.load(os.path.join(best_checkpoint_path, "checkpoint"))
     best_model.load_state_dict(best_checkpoint["model_state_dict"])
     # Note that test only runs on a small random set of the test data, thus the
     # accuracy may be different from metrics shown in tuning process.
@@ -75,18 +77,20 @@ def test_best_model(analysis):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using " "Ray Client.",
+    )
     args, _ = parser.parse_known_args()
 
     if args.server_address:
         import ray
+
         ray.init(f"ray://{args.server_address}")
 
     # __pbt_begin__
@@ -98,7 +102,8 @@ if __name__ == "__main__":
             "lr": lambda: np.random.uniform(0.0001, 1),
             # allow perturbations within this set of categorical values
             "momentum": [0.8, 0.9, 0.99],
-        })
+        },
+    )
 
     # __pbt_end__
 
@@ -133,7 +138,8 @@ if __name__ == "__main__":
         config={
             "lr": tune.uniform(0.001, 1),
             "momentum": tune.uniform(0.001, 1),
-        })
+        },
+    )
     # __tune_end__
 
     if args.server_address:

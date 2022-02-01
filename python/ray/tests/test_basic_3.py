@@ -10,8 +10,7 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, \
-    GcsFunctionKeySubscriber
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsFunctionKeySubscriber
 from ray._private.test_utils import (
     dicts_equal,
     wait_for_pid_to_exit,
@@ -35,6 +34,7 @@ def test_auto_global_gc(shutdown_only):
         def __init__(self):
             self.collected = False
             import gc
+
             gc.disable()
 
             def gc_called(phase, info):
@@ -100,26 +100,29 @@ def test_many_fractional_resources(shutdown_only):
         result_ids.append(f._remote([False, resource_set], num_gpus=rand1))
 
         resource_set = {"CPU": 1, "Custom": int(rand1 * 10000) / 10000}
-        result_ids.append(
-            f._remote([False, resource_set], resources={"Custom": rand1}))
+        result_ids.append(f._remote([False, resource_set], resources={"Custom": rand1}))
 
         resource_set = {
             "CPU": int(rand1 * 10000) / 10000,
             "GPU": int(rand2 * 10000) / 10000,
-            "Custom": int(rand3 * 10000) / 10000
+            "Custom": int(rand3 * 10000) / 10000,
         }
         result_ids.append(
             f._remote(
                 [False, resource_set],
                 num_cpus=rand1,
                 num_gpus=rand2,
-                resources={"Custom": rand3}))
+                resources={"Custom": rand3},
+            )
+        )
         result_ids.append(
             f._remote(
                 [True, resource_set],
                 num_cpus=rand1,
                 num_gpus=rand2,
-                resources={"Custom": rand3}))
+                resources={"Custom": rand3},
+            )
+        )
     assert all(ray.get(result_ids))
 
     # Check that the available resources at the end are the same as the
@@ -128,12 +131,14 @@ def test_many_fractional_resources(shutdown_only):
     correct_available_resources = False
     while time.time() < stop_time:
         available_resources = ray.available_resources()
-        if ("CPU" in available_resources
-                and ray.available_resources()["CPU"] == 2.0
-                and "GPU" in available_resources
-                and ray.available_resources()["GPU"] == 2.0
-                and "Custom" in available_resources
-                and ray.available_resources()["Custom"] == 2.0):
+        if (
+            "CPU" in available_resources
+            and ray.available_resources()["CPU"] == 2.0
+            and "GPU" in available_resources
+            and ray.available_resources()["GPU"] == 2.0
+            and "Custom" in available_resources
+            and ray.available_resources()["Custom"] == 2.0
+        ):
             correct_available_resources = True
             break
     if not correct_available_resources:
@@ -146,11 +151,12 @@ def test_background_tasks_with_max_calls(shutdown_only):
         # TODO (Alex): We need to fix
         # https://github.com/ray-project/ray/issues/20203 to remove this flag.
         num_cpus=2,
-        _system_config={"worker_cap_initial_backoff_delay_ms": 0})
+        _system_config={"worker_cap_initial_backoff_delay_ms": 0},
+    )
 
     @ray.remote
     def g():
-        time.sleep(.1)
+        time.sleep(0.1)
         return 0
 
     @ray.remote(max_calls=1, max_retries=0)
@@ -189,7 +195,8 @@ def test_fair_queueing(shutdown_only):
             # before we can execute the first h task.
             "max_pending_lease_requests_per_scheduling_category": 1,
             "worker_cap_enabled": True,
-        })
+        },
+    )
 
     @ray.remote
     def h():
@@ -207,7 +214,8 @@ def test_fair_queueing(shutdown_only):
     # https://github.com/ray-project/ray/issues/3644
     timeout = 510.0 if sys.platform == "win32" else 60.0
     ready, _ = ray.wait(
-        [f.remote() for _ in range(1000)], timeout=timeout, num_returns=1000)
+        [f.remote() for _ in range(1000)], timeout=timeout, num_returns=1000
+    )
     assert len(ready) == 1000, len(ready)
 
 
@@ -215,6 +223,7 @@ def test_fair_queueing(shutdown_only):
 def test_actor_killing(shutdown_only):
     # This is to test create and kill an actor immediately
     import ray
+
     ray.init(num_cpus=1)
 
     @ray.remote(num_cpus=1)
@@ -261,9 +270,11 @@ def test_worker_startup_count(ray_start_cluster):
     cluster = ray_start_cluster
     # Cluster total cpu resources is 4.
     cluster.add_node(
-        num_cpus=4, _system_config={
+        num_cpus=4,
+        _system_config={
             "debug_dump_period_milliseconds": 100,
-        })
+        },
+    )
     ray.init(address=cluster.address)
 
     # A slow function never returns. It will hold cpu resources all the way.
@@ -290,7 +301,7 @@ def test_worker_startup_count(ray_start_cluster):
             for line in f.readlines():
                 num_workers_prefix = "- num PYTHON workers: "
                 if num_workers_prefix in line:
-                    num_workers = int(line[len(num_workers_prefix):])
+                    num_workers = int(line[len(num_workers_prefix) :])
                     return num_workers
         return None
 
@@ -327,7 +338,8 @@ def test_function_unique_export(ray_start_regular):
 
     if gcs_pubsub_enabled():
         subscriber = GcsFunctionKeySubscriber(
-            channel=ray.worker.global_worker.gcs_channel.channel())
+            channel=ray.worker.global_worker.gcs_channel.channel()
+        )
         subscriber.subscribe()
 
         ray.get(g.remote())
@@ -350,17 +362,17 @@ def test_function_unique_export(ray_start_regular):
         ray.get(g.remote())
         num_exports = ray.worker.global_worker.redis_client.llen("Exports")
         ray.get([g.remote() for _ in range(5)])
-        assert ray.worker.global_worker.redis_client.llen("Exports") == \
-               num_exports
+        assert ray.worker.global_worker.redis_client.llen("Exports") == num_exports
 
 
 @pytest.mark.skipif(
     sys.platform not in ["win32", "darwin"],
-    reason="Only listen on localhost by default on mac and windows.")
+    reason="Only listen on localhost by default on mac and windows.",
+)
 @pytest.mark.parametrize("start_ray", ["ray_start_regular", "call_ray_start"])
 def test_listen_on_localhost(start_ray, request):
     """All ray processes should listen on localhost by default
-       on mac and windows to prevent security popups.
+    on mac and windows to prevent security popups.
     """
     request.getfixturevalue(start_ray)
 
@@ -374,8 +386,9 @@ def test_listen_on_localhost(start_ray, request):
     for keyword, filter_by_cmd in RAY_PROCESSES:
         for candidate in process_infos:
             proc, proc_cmd, proc_cmdline = candidate
-            corpus = (proc_cmd if filter_by_cmd else
-                      subprocess.list2cmdline(proc_cmdline))
+            corpus = (
+                proc_cmd if filter_by_cmd else subprocess.list2cmdline(proc_cmdline)
+            )
             if keyword not in corpus:
                 continue
 
@@ -422,6 +435,7 @@ def test_job_id_consistency(ray_start_regular):
                     exc.append(e)
 
             import threading
+
             t = threading.Thread(target=run)
             t.start()
             t.join()
