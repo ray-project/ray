@@ -526,6 +526,7 @@ class Workflow(Generic[T]):
             return ray.get(ret)
         else:
             from ray.workflow.execution import run
+
             return run(self, workflow_id, metadata)
 
 
