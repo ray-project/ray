@@ -3,17 +3,28 @@ import datetime
 from typing import Dict, Optional
 
 
-def handle_result(created_on: datetime.datetime, category: str,
-                  test_suite: str, test_name: str, status: str, results: Dict,
-                  artifacts: Dict, last_logs: str, team: str) -> Optional[str]:
+def handle_result(
+    created_on: datetime.datetime,
+    category: str,
+    test_suite: str,
+    test_name: str,
+    status: str,
+    results: Dict,
+    artifacts: Dict,
+    last_logs: str,
+    team: str,
+    commit_url: str,
+    session_url: str,
+    runtime: float,
+    stable: bool,
+    return_code: int,
+) -> Optional[str]:
     assert test_suite == "xgboost_tests"
 
     time_taken = results.get("time_taken", float("inf"))
     num_terminated = results.get("trial_states", {}).get("TERMINATED", 0)
 
-    if test_name in [
-            "distributed_api_test", "ft_small_elastic", "ft_small_nonelastic"
-    ]:
+    if test_name in ["distributed_api_test", "ft_small_elastic", "ft_small_nonelastic"]:
         if not status == "finished":
             return f"Test script did not finish successfully ({status})."
 
@@ -33,11 +44,15 @@ def handle_result(created_on: datetime.datetime, category: str,
             return None
 
         if num_terminated < target_terminated:
-            msg += f"Some trials failed " \
-                   f"(num_terminated={num_terminated} < {target_terminated}). "
+            msg += (
+                f"Some trials failed "
+                f"(num_terminated={num_terminated} < {target_terminated}). "
+            )
         if time_taken > target_time:
-            msg += f"Took too long to complete " \
-                   f"(time_taken={time_taken} > {target_time}). "
+            msg += (
+                f"Took too long to complete "
+                f"(time_taken={time_taken} > {target_time}). "
+            )
 
         return msg or None
     else:
@@ -54,7 +69,9 @@ def handle_result(created_on: datetime.datetime, category: str,
             return None
 
         if time_taken > target_time:
-            return f"Took too long to complete " \
-                   f"(time_taken={time_taken:.2f} > {target_time}). "
+            return (
+                f"Took too long to complete "
+                f"(time_taken={time_taken:.2f} > {target_time}). "
+            )
 
     return None

@@ -6,6 +6,7 @@ import json
 import logging
 import sys
 import time
+from typing import Optional
 import threading
 import traceback
 from collections import (
@@ -30,20 +31,28 @@ from ray.util.inspect import (
     is_static_method,
 )
 
-FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
-                                   ["function", "function_name", "max_calls"])
+FunctionExecutionInfo = namedtuple(
+    "FunctionExecutionInfo", ["function", "function_name", "max_calls"]
+)
 """FunctionExecutionInfo: A named tuple storing remote function information."""
 
 logger = logging.getLogger(__name__)
 
 
+def make_function_table_key(key_type: bytes, job_id: JobID, key: Optional[bytes]):
+    if key is None:
+        return b":".join([key_type, job_id.hex().encode()])
+    else:
+        return b":".join([key_type, job_id.hex().encode(), key])
+
+
 def make_exports_prefix(job_id: JobID) -> bytes:
-    return b"IsolatedExports:" + job_id.hex().encode()
+    return make_function_table_key(b"IsolatedExports", job_id)
 
 
 def make_export_key(pos: int, job_id: JobID) -> bytes:
     # big-endian for ordering in binary
-    return make_exports_prefix(job_id) + b":" + pos.to_bytes(8, "big")
+    return make_function_table_key(b"IsolatedExports", job_id, pos.to_bytes(8, "big"))
 
 
 class FunctionActorManager:
@@ -118,19 +127,18 @@ class FunctionActorManager:
                 behavior won't change.
         """
         import io
+
         string_file = io.StringIO()
         if sys.version_info[1] >= 7:
             dis.dis(function_or_class, file=string_file, depth=2)
         else:
             dis.dis(function_or_class, file=string_file)
-        collision_identifier = (
-            function_or_class.__name__ + ":" + string_file.getvalue())
+        collision_identifier = function_or_class.__name__ + ":" + string_file.getvalue()
 
         # Return a hash of the identifier in case it is too large.
         return hashlib.sha1(collision_identifier.encode("utf-8")).digest()
 
-    def load_function_or_class_from_local(self, module_name,
-                                          function_or_class_name):
+    def load_function_or_class_from_local(self, module_name, function_or_class_name):
         """Try to load a function or class in the module from local."""
         module = importlib.import_module(module_name)
         parts = [part for part in function_or_class_name.split(".") if part]
@@ -150,16 +158,22 @@ class FunctionActorManager:
         # One optimization is that we can use importer counter since
         # it's sure keys before this counter has been allocated.
         with self._export_lock:
-            self._num_exported = max(self._num_exported,
-                                     self._worker.import_thread.num_imported)
+            self._num_exported = max(
+                self._num_exported, self._worker.import_thread.num_imported
+            )
             while True:
                 self._num_exported += 1
-                holder = make_export_key(self._num_exported,
-                                         self._worker.current_job_id)
+                holder = make_export_key(
+                    self._num_exported, self._worker.current_job_id
+                )
                 # This step is atomic since internal kv is a single thread
                 # atomic db.
-                if self._worker.gcs_client.internal_kv_put(
-                        holder, key, False, KV_NAMESPACE_FUNCTION_TABLE) > 0:
+                if (
+                    self._worker.gcs_client.internal_kv_put(
+                        holder, key, False, KV_NAMESPACE_FUNCTION_TABLE
+                    )
+                    > 0
+                ):
                     break
         # Notify all subscribers that there is a new function exported. Note
         # that the notification doesn't include any actual data.
@@ -168,7 +182,8 @@ class FunctionActorManager:
             self._worker.gcs_publisher.publish_function_key(key)
         else:
             self._worker.redis_client.lpush(
-                make_exports_prefix(self._worker.current_job_id), "a")
+                make_exports_prefix(self._worker.current_job_id), "a"
+            )
 
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.
@@ -183,50 +198,66 @@ class FunctionActorManager:
             )
             # If the function is dynamic, we still export it to GCS
             # even if load_code_from_local is set True.
-            if self.load_function_or_class_from_local(
-                    module_name, function_name) is not None:
+            if (
+                self.load_function_or_class_from_local(module_name, function_name)
+                is not None
+            ):
                 return
         function = remote_function._function
         pickled_function = remote_function._pickled_function
 
-        check_oversized_function(pickled_function,
-                                 remote_function._function_name,
-                                 "remote function", self._worker)
-        key = (
-            b"RemoteFunction:" + self._worker.current_job_id.hex().encode() +
-            b":" + remote_function._function_descriptor.function_id.binary())
-        if self._worker.gcs_client.internal_kv_exists(
-                key, KV_NAMESPACE_FUNCTION_TABLE):
+        check_oversized_function(
+            pickled_function,
+            remote_function._function_name,
+            "remote function",
+            self._worker,
+        )
+        key = make_function_table_key(
+            b"RemoteFunction",
+            self._worker.current_job_id,
+            remote_function._function_descriptor.function_id.binary(),
+        )
+        if self._worker.gcs_client.internal_kv_exists(key, KV_NAMESPACE_FUNCTION_TABLE):
             return
-        val = pickle.dumps({
-            "job_id": self._worker.current_job_id.binary(),
-            "function_id": remote_function._function_descriptor.function_id.
-            binary(),
-            "function_name": remote_function._function_name,
-            "module": function.__module__,
-            "function": pickled_function,
-            "collision_identifier": self.compute_collision_identifier(
-                function),
-            "max_calls": remote_function._max_calls
-        })
-        self._worker.gcs_client.internal_kv_put(key, val, True,
-                                                KV_NAMESPACE_FUNCTION_TABLE)
+        val = pickle.dumps(
+            {
+                "job_id": self._worker.current_job_id.binary(),
+                "function_id": remote_function._function_descriptor.function_id.binary(),  # noqa: E501
+                "function_name": remote_function._function_name,
+                "module": function.__module__,
+                "function": pickled_function,
+                "collision_identifier": self.compute_collision_identifier(function),
+                "max_calls": remote_function._max_calls,
+            }
+        )
+        self._worker.gcs_client.internal_kv_put(
+            key, val, True, KV_NAMESPACE_FUNCTION_TABLE
+        )
         self.export_key(key)
 
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
-        vals = self._worker.gcs_client.internal_kv_get(
-            key, KV_NAMESPACE_FUNCTION_TABLE)
+        vals = self._worker.gcs_client.internal_kv_get(key, KV_NAMESPACE_FUNCTION_TABLE)
         if vals is None:
             vals = {}
         else:
             vals = pickle.loads(vals)
         fields = [
-            "job_id", "function_id", "function_name", "function", "module",
-            "max_calls"
+            "job_id",
+            "function_id",
+            "function_name",
+            "function",
+            "module",
+            "max_calls",
         ]
-        (job_id_str, function_id_str, function_name, serialized_function,
-         module, max_calls) = (vals.get(field) for field in fields)
+        (
+            job_id_str,
+            function_id_str,
+            function_name,
+            serialized_function,
+            module,
+            max_calls,
+        ) = (vals.get(field) for field in fields)
 
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
@@ -252,23 +283,24 @@ class FunctionActorManager:
                         "The remote function failed to import on the "
                         "worker. This may be because needed library "
                         "dependencies are not installed in the worker "
-                        "environment:\n\n{}".format(traceback_str))
+                        "environment:\n\n{}".format(traceback_str)
+                    )
 
                 # Use a placeholder method when function pickled failed
-                self._function_execution_info[function_id] = (
-                    FunctionExecutionInfo(
-                        function=f,
-                        function_name=function_name,
-                        max_calls=max_calls))
+                self._function_execution_info[function_id] = FunctionExecutionInfo(
+                    function=f, function_name=function_name, max_calls=max_calls
+                )
 
                 # Log the error message. Log at DEBUG level to avoid overly
                 # spamming the log on import failure. The user gets the error
                 # via the RuntimeError message above.
-                logger.debug("Failed to unpickle the remote function "
-                             f"'{function_name}' with "
-                             f"function ID {function_id.hex()}. "
-                             f"Job ID:{job_id}."
-                             f"Traceback:\n{traceback_str}. ")
+                logger.debug(
+                    "Failed to unpickle the remote function "
+                    f"'{function_name}' with "
+                    f"function ID {function_id.hex()}. "
+                    f"Job ID:{job_id}."
+                    f"Traceback:\n{traceback_str}. "
+                )
             else:
                 # The below line is necessary. Because in the driver process,
                 # if the function is defined in the file where the python
@@ -276,11 +308,9 @@ class FunctionActorManager:
                 # However in the worker process, the `__main__` module is a
                 # different module, which is `default_worker.py`
                 function.__module__ = module
-                self._function_execution_info[function_id] = (
-                    FunctionExecutionInfo(
-                        function=function,
-                        function_name=function_name,
-                        max_calls=max_calls))
+                self._function_execution_info[function_id] = FunctionExecutionInfo(
+                    function=function, function_name=function_name, max_calls=max_calls
+                )
 
     def get_execution_info(self, job_id, function_descriptor):
         """Get the FunctionExecutionInfo of a remote function.
@@ -315,9 +345,11 @@ class FunctionActorManager:
             function_id = function_descriptor.function_id
             info = self._function_execution_info[function_id]
         except KeyError as e:
-            message = ("Error occurs in get_execution_info: "
-                       "job_id: %s, function_descriptor: %s. Message: %s" %
-                       (job_id, function_descriptor, e))
+            message = (
+                "Error occurs in get_execution_info: "
+                "job_id: %s, function_descriptor: %s. Message: %s"
+                % (job_id, function_descriptor, e)
+            )
             raise KeyError(message)
         return info
 
@@ -330,16 +362,14 @@ class FunctionActorManager:
             function_descriptor.function_name,
         )
 
-        object = self.load_function_or_class_from_local(
-            module_name, function_name)
+        object = self.load_function_or_class_from_local(module_name, function_name)
         if object is not None:
             function = object._function
-            self._function_execution_info[function_id] = (
-                FunctionExecutionInfo(
-                    function=function,
-                    function_name=function_name,
-                    max_calls=0,
-                ))
+            self._function_execution_info[function_id] = FunctionExecutionInfo(
+                function=function,
+                function_name=function_name,
+                max_calls=0,
+            )
             self._num_task_executions[function_id] = 0
             return True
         else:
@@ -363,24 +393,28 @@ class FunctionActorManager:
         warning_sent = False
         while True:
             with self.lock:
-                if (self._worker.actor_id.is_nil()
-                        and (function_descriptor.function_id in
-                             self._function_execution_info)):
+                if self._worker.actor_id.is_nil() and (
+                    function_descriptor.function_id in self._function_execution_info
+                ):
                     break
                 elif not self._worker.actor_id.is_nil() and (
-                        self._worker.actor_id in self._worker.actors):
+                    self._worker.actor_id in self._worker.actors
+                ):
                     break
             if time.time() - start_time > timeout:
-                warning_message = ("This worker was asked to execute a "
-                                   "function that it does not have "
-                                   "registered. You may have to restart "
-                                   "Ray.")
+                warning_message = (
+                    "This worker was asked to execute a "
+                    "function that it does not have "
+                    "registered. You may have to restart "
+                    "Ray."
+                )
                 if not warning_sent:
                     ray._private.utils.push_error_to_driver(
                         self._worker,
                         ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
                         warning_message,
-                        job_id=job_id)
+                        job_id=job_id,
+                    )
                 warning_sent = True
             time.sleep(0.001)
 
@@ -395,22 +429,25 @@ class FunctionActorManager:
         """
         # We set the driver ID here because it may not have been available when
         # the actor class was defined.
-        self._worker.gcs_client.internal_kv_put(key,
-                                                pickle.dumps(actor_class_info),
-                                                True,
-                                                KV_NAMESPACE_FUNCTION_TABLE)
+        self._worker.gcs_client.internal_kv_put(
+            key, pickle.dumps(actor_class_info), True, KV_NAMESPACE_FUNCTION_TABLE
+        )
         self.export_key(key)
 
-    def export_actor_class(self, Class, actor_creation_function_descriptor,
-                           actor_method_names):
+    def export_actor_class(
+        self, Class, actor_creation_function_descriptor, actor_method_names
+    ):
         if self._worker.load_code_from_local:
             module_name, class_name = (
                 actor_creation_function_descriptor.module_name,
-                actor_creation_function_descriptor.class_name)
+                actor_creation_function_descriptor.class_name,
+            )
             # If the class is dynamic, we still export it to GCS
             # even if load_code_from_local is set True.
-            if self.load_function_or_class_from_local(module_name,
-                                                      class_name) is not None:
+            if (
+                self.load_function_or_class_from_local(module_name, class_name)
+                is not None
+            ):
                 return
 
         # `current_job_id` shouldn't be NIL, unless:
@@ -421,10 +458,14 @@ class FunctionActorManager:
         assert not self._worker.current_job_id.is_nil(), (
             "You might have started a background thread in a non-actor "
             "task, please make sure the thread finishes before the "
-            "task finishes.")
+            "task finishes."
+        )
         job_id = self._worker.current_job_id
-        key = (b"ActorClass:" + job_id.hex().encode() + b":" +
-               actor_creation_function_descriptor.function_id.binary())
+        key = make_function_table_key(
+            b"ActorClass",
+            job_id,
+            actor_creation_function_descriptor.function_id.binary(),
+        )
         try:
             serialized_actor_class = pickle.dumps(Class)
         except TypeError as e:
@@ -432,21 +473,24 @@ class FunctionActorManager:
                 "Could not serialize the actor class "
                 f"{actor_creation_function_descriptor.repr}. "
                 "Check https://docs.ray.io/en/master/serialization.html#troubleshooting "  # noqa
-                "for more information.")
+                "for more information."
+            )
             raise TypeError(msg) from e
         actor_class_info = {
-            "class_name": actor_creation_function_descriptor.class_name.split(
-                ".")[-1],
+            "class_name": actor_creation_function_descriptor.class_name.split(".")[-1],
             "module": actor_creation_function_descriptor.module_name,
             "class": serialized_actor_class,
             "job_id": job_id.binary(),
             "collision_identifier": self.compute_collision_identifier(Class),
-            "actor_method_names": json.dumps(list(actor_method_names))
+            "actor_method_names": json.dumps(list(actor_method_names)),
         }
 
-        check_oversized_function(actor_class_info["class"],
-                                 actor_class_info["class_name"], "actor",
-                                 self._worker)
+        check_oversized_function(
+            actor_class_info["class"],
+            actor_class_info["class_name"],
+            "actor",
+            self._worker,
+        )
 
         self._publish_actor_class_to_key(key, actor_class_info)
         # TODO(rkn): Currently we allow actor classes to be defined
@@ -470,18 +514,21 @@ class FunctionActorManager:
             if self._worker.load_code_from_local:
                 # Load actor class from local code first.
                 actor_class = self._load_actor_class_from_local(
-                    actor_creation_function_descriptor)
+                    actor_creation_function_descriptor
+                )
                 # If the actor is unable to be loaded
                 # from local, try to load it
                 # from GCS even if load_code_from_local is set True
                 if actor_class is None:
                     actor_class = self._load_actor_class_from_gcs(
-                        job_id, actor_creation_function_descriptor)
+                        job_id, actor_creation_function_descriptor
+                    )
 
             else:
                 # Load actor class from GCS.
                 actor_class = self._load_actor_class_from_gcs(
-                    job_id, actor_creation_function_descriptor)
+                    job_id, actor_creation_function_descriptor
+                )
             # Save the loaded actor class in cache.
             self._loaded_actor_classes[function_id] = actor_class
 
@@ -489,7 +536,8 @@ class FunctionActorManager:
             module_name = actor_creation_function_descriptor.module_name
             actor_class_name = actor_creation_function_descriptor.class_name
             actor_methods = inspect.getmembers(
-                actor_class, predicate=is_function_or_method)
+                actor_class, predicate=is_function_or_method
+            )
             for actor_method_name, actor_method in actor_methods:
                 # Actor creation function descriptor use a unique function
                 # hash to solve actor name conflict. When constructing an
@@ -501,19 +549,19 @@ class FunctionActorManager:
                     method_descriptor = actor_creation_function_descriptor
                 else:
                     method_descriptor = PythonFunctionDescriptor(
-                        module_name, actor_method_name, actor_class_name)
+                        module_name, actor_method_name, actor_class_name
+                    )
                 method_id = method_descriptor.function_id
                 executor = self._make_actor_method_executor(
                     actor_method_name,
                     actor_method,
                     actor_imported=True,
                 )
-                self._function_execution_info[method_id] = (
-                    FunctionExecutionInfo(
-                        function=executor,
-                        function_name=actor_method_name,
-                        max_calls=0,
-                    ))
+                self._function_execution_info[method_id] = FunctionExecutionInfo(
+                    function=executor,
+                    function_name=actor_method_name,
+                    max_calls=0,
+                )
                 self._num_task_executions[method_id] = 0
             self._num_task_executions[function_id] = 0
         return actor_class
@@ -522,10 +570,10 @@ class FunctionActorManager:
         """Load actor class from local code."""
         module_name, class_name = (
             actor_creation_function_descriptor.module_name,
-            actor_creation_function_descriptor.class_name)
+            actor_creation_function_descriptor.class_name,
+        )
 
-        object = self.load_function_or_class_from_local(
-            module_name, class_name)
+        object = self.load_function_or_class_from_local(module_name, class_name)
 
         if object is not None:
             if isinstance(object, ray.actor.ActorClass):
@@ -535,8 +583,9 @@ class FunctionActorManager:
         else:
             return None
 
-    def _create_fake_actor_class(self, actor_class_name, actor_method_names,
-                                 traceback_str):
+    def _create_fake_actor_class(
+        self, actor_class_name, actor_method_names, traceback_str
+    ):
         class TemporaryActor:
             pass
 
@@ -545,18 +594,21 @@ class FunctionActorManager:
                 f"The actor with name {actor_class_name} "
                 "failed to import on the worker. This may be because "
                 "needed library dependencies are not installed in the "
-                f"worker environment:\n\n{traceback_str}")
+                f"worker environment:\n\n{traceback_str}"
+            )
 
         for method in actor_method_names:
             setattr(TemporaryActor, method, temporary_actor_method)
 
         return TemporaryActor
 
-    def _load_actor_class_from_gcs(self, job_id,
-                                   actor_creation_function_descriptor):
+    def _load_actor_class_from_gcs(self, job_id, actor_creation_function_descriptor):
         """Load actor class from GCS."""
-        key = (b"ActorClass:" + job_id.hex().encode() + b":" +
-               actor_creation_function_descriptor.function_id.binary())
+        key = make_function_table_key(
+            b"ActorClass",
+            job_id,
+            actor_creation_function_descriptor.function_id.binary(),
+        )
         # Only wait for the actor class if it was exported from the same job.
         # It will hang if the job id mismatches, since we isolate actor class
         # exports from the import thread. It's important to wait since this
@@ -580,17 +632,15 @@ class FunctionActorManager:
                     time.sleep(0.001)
 
         # Fetch raw data from GCS.
-        vals = self._worker.gcs_client.internal_kv_get(
-            key, KV_NAMESPACE_FUNCTION_TABLE)
-        fields = [
-            "job_id", "class_name", "module", "class", "actor_method_names"
-        ]
+        vals = self._worker.gcs_client.internal_kv_get(key, KV_NAMESPACE_FUNCTION_TABLE)
+        fields = ["job_id", "class_name", "module", "class", "actor_method_names"]
         if vals is None:
             vals = {}
         else:
             vals = pickle.loads(vals)
-        (job_id_str, class_name, module, pickled_class,
-         actor_method_names) = (vals.get(field) for field in fields)
+        (job_id_str, class_name, module, pickled_class, actor_method_names) = (
+            vals.get(field) for field in fields
+        )
 
         class_name = ensure_str(class_name)
         module_name = ensure_str(module)
@@ -610,7 +660,8 @@ class FunctionActorManager:
             # class instead (just to produce error messages and to prevent
             # the driver from hanging).
             actor_class = self._create_fake_actor_class(
-                class_name, actor_method_names, traceback_str)
+                class_name, actor_method_names, traceback_str
+            )
 
         # The below line is necessary. Because in the driver process,
         # if the function is defined in the file where the python script
@@ -640,8 +691,9 @@ class FunctionActorManager:
 
         def actor_method_executor(__ray_actor, *args, **kwargs):
             # Execute the assigned method.
-            is_bound = (is_class_method(method)
-                        or is_static_method(type(__ray_actor), method_name))
+            is_bound = is_class_method(method) or is_static_method(
+                type(__ray_actor), method_name
+            )
             if is_bound:
                 return method(*args, **kwargs)
             else:

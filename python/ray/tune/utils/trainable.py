@@ -19,8 +19,9 @@ logger = logging.getLogger(__name__)
 
 class TrainableUtil:
     @staticmethod
-    def process_checkpoint(checkpoint: Union[Dict, str], parent_dir: str,
-                           trainable_state: Dict) -> str:
+    def process_checkpoint(
+        checkpoint: Union[Dict, str], parent_dir: str, trainable_state: Dict
+    ) -> str:
         """Creates checkpoint file structure and writes metadata
         under `parent_dir`.
 
@@ -40,8 +41,8 @@ class TrainableUtil:
             if not checkpoint.startswith(parent_dir):
                 raise ValueError(
                     "The returned checkpoint path must be within the "
-                    "given checkpoint dir {}: {}".format(
-                        parent_dir, checkpoint))
+                    "given checkpoint dir {}: {}".format(parent_dir, checkpoint)
+                )
             checkpoint_path = checkpoint
             if os.path.isdir(checkpoint_path):
                 # Add trailing slash to prevent tune metadata from
@@ -53,8 +54,10 @@ class TrainableUtil:
             with open(checkpoint_path, "wb") as f:
                 pickle.dump(checkpoint, f)
         else:
-            raise ValueError("Returned unexpected type {}. "
-                             "Expected str or dict.".format(type(checkpoint)))
+            raise ValueError(
+                "Returned unexpected type {}. "
+                "Expected str or dict.".format(type(checkpoint))
+            )
 
         with open(checkpoint_path + ".tune_metadata", "wb") as f:
             trainable_state["saved_as_dict"] = saved_as_dict
@@ -72,13 +75,14 @@ class TrainableUtil:
                 with open(path, "rb") as f:
                     data[os.path.relpath(path, checkpoint_dir)] = f.read()
         # Use normpath so that a directory path isn't mapped to empty string.
-        name = os.path.relpath(
-            os.path.normpath(checkpoint_path), checkpoint_dir)
+        name = os.path.relpath(os.path.normpath(checkpoint_path), checkpoint_dir)
         name += os.path.sep if os.path.isdir(checkpoint_path) else ""
-        data_dict = pickle.dumps({
-            "checkpoint_name": name,
-            "data": data,
-        })
+        data_dict = pickle.dumps(
+            {
+                "checkpoint_name": name,
+                "data": data,
+            }
+        )
         return data_dict
 
     @staticmethod
@@ -109,8 +113,8 @@ class TrainableUtil:
             checkpoint_dir = os.path.dirname(checkpoint_dir)
         else:
             raise FileNotFoundError(
-                "Checkpoint directory not found for {}".format(
-                    checkpoint_path))
+                "Checkpoint directory not found for {}".format(checkpoint_path)
+            )
         return os.path.normpath(checkpoint_dir)
 
     @staticmethod
@@ -122,7 +126,8 @@ class TrainableUtil:
         For example, returns `checkpoint00000/`.
         """
         assert checkpoint_path.startswith(
-            logdir), "expecting `logdir` to be a prefix of `checkpoint_path`"
+            logdir
+        ), "expecting `logdir` to be a prefix of `checkpoint_path`"
         rel_path = os.path.relpath(checkpoint_path, logdir)
         tokens = rel_path.split(os.sep)
         return os.path.join(tokens[0], "")
@@ -140,8 +145,7 @@ class TrainableUtil:
         """
         suffix = "checkpoint"
         if index is not None:
-            suffix += f"_{index:06d}" if isinstance(index,
-                                                    int) else f"_{index}"
+            suffix += f"_{index:06d}" if isinstance(index, int) else f"_{index}"
         checkpoint_dir = os.path.join(checkpoint_dir, suffix)
 
         if override and os.path.exists(checkpoint_dir):
@@ -168,7 +172,7 @@ class TrainableUtil:
 
     @staticmethod
     def get_checkpoints_paths(logdir):
-        """ Finds the checkpoints within a specific folder.
+        """Finds the checkpoints within a specific folder.
 
         Returns a pandas DataFrame of training iterations and checkpoint
         paths within a specific folder.
@@ -177,38 +181,45 @@ class TrainableUtil:
             FileNotFoundError if the directory is not found.
         """
         marker_paths = glob.glob(
-            os.path.join(glob.escape(logdir), "checkpoint_*/.is_checkpoint"))
+            os.path.join(glob.escape(logdir), "checkpoint_*/.is_checkpoint")
+        )
         iter_chkpt_pairs = []
         for marker_path in marker_paths:
             chkpt_dir = os.path.dirname(marker_path)
             metadata_file = glob.glob(
-                os.path.join(glob.escape(chkpt_dir), "*.tune_metadata"))
+                os.path.join(glob.escape(chkpt_dir), "*.tune_metadata")
+            )
             # glob.glob: filenames starting with a dot are special cases
             # that are not matched by '*' and '?' patterns.
             metadata_file += glob.glob(
-                os.path.join(glob.escape(chkpt_dir), ".tune_metadata"))
+                os.path.join(glob.escape(chkpt_dir), ".tune_metadata")
+            )
             metadata_file = list(set(metadata_file))  # avoid duplication
             if len(metadata_file) != 1:
                 raise ValueError(
-                    "{} has zero or more than one tune_metadata.".format(
-                        chkpt_dir))
+                    "{} has zero or more than one tune_metadata.".format(chkpt_dir)
+                )
 
-            chkpt_path = metadata_file[0][:-len(".tune_metadata")]
-            chkpt_iter = int(chkpt_dir[chkpt_dir.rfind("_") + 1:])
+            chkpt_path = metadata_file[0][: -len(".tune_metadata")]
+            chkpt_iter = int(chkpt_dir[chkpt_dir.rfind("_") + 1 :])
             iter_chkpt_pairs.append([chkpt_iter, chkpt_path])
 
         chkpt_df = pd.DataFrame(
-            iter_chkpt_pairs, columns=["training_iteration", "chkpt_path"])
+            iter_chkpt_pairs, columns=["training_iteration", "chkpt_path"]
+        )
         return chkpt_df
 
 
 class PlacementGroupUtil:
     @staticmethod
     def get_remote_worker_options(
-            num_workers, num_cpus_per_worker, num_gpus_per_worker,
-            num_workers_per_host,
-            timeout_s) -> (Dict[str, Any], placement_group):
-        """ Returns the option for remote workers.
+        num_workers,
+        num_cpus_per_worker,
+        num_gpus_per_worker,
+        num_workers_per_host,
+        timeout_s,
+    ) -> (Dict[str, Any], placement_group):
+        """Returns the option for remote workers.
 
         Args:
             num_workers (int): Number of training workers to include in
@@ -231,13 +242,11 @@ class PlacementGroupUtil:
             pg(placement_group): return a reference to the placement group
         """
         pg = None
-        options = dict(
-            num_cpus=num_cpus_per_worker, num_gpus=num_gpus_per_worker)
+        options = dict(num_cpus=num_cpus_per_worker, num_gpus=num_gpus_per_worker)
         if num_workers_per_host:
             num_hosts = int(num_workers / num_workers_per_host)
             cpus_per_node = num_cpus_per_worker * num_workers_per_host
-            gpus_per_node = \
-                num_gpus_per_worker * num_workers_per_host
+            gpus_per_node = num_gpus_per_worker * num_workers_per_host
             bundle = {"CPU": cpus_per_node, "GPU": gpus_per_node}
 
             all_bundles = [bundle] * num_hosts
@@ -321,12 +330,14 @@ def with_parameters(trainable, **kwargs):
     """
     from ray.tune.trainable import Trainable
 
-    if not callable(trainable) or (inspect.isclass(trainable)
-                                   and not issubclass(trainable, Trainable)):
+    if not callable(trainable) or (
+        inspect.isclass(trainable) and not issubclass(trainable, Trainable)
+    ):
         raise ValueError(
             f"`tune.with_parameters() only works with function trainables "
             f"or classes that inherit from `tune.Trainable()`. Got type: "
-            f"{type(trainable)}.")
+            f"{type(trainable)}."
+        )
 
     parameter_registry = _ParameterRegistry()
     ray.worker._post_init_hooks.append(parameter_registry.flush)
@@ -362,8 +373,7 @@ def with_parameters(trainable, **kwargs):
                 default = checkpoint_dir
                 sig = inspect.signature(trainable)
                 if "checkpoint_dir" in sig.parameters:
-                    default = sig.parameters["checkpoint_dir"].default \
-                              or default
+                    default = sig.parameters["checkpoint_dir"].default or default
                 fn_kwargs["checkpoint_dir"] = default
 
             for k in keys:

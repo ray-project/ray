@@ -13,8 +13,7 @@ def mock_create_tags(provider, batch_updates):
     # Increment batches sent.
     provider.batch_counter += 1
     # Increment tags updated.
-    provider.tag_update_counter += sum(
-        len(batch_updates[x]) for x in batch_updates)
+    provider.tag_update_counter += sum(len(batch_updates[x]) for x in batch_updates)
 
 
 def batch_test(num_threads, delay):
@@ -24,11 +23,12 @@ def batch_test(num_threads, delay):
     Return the number of batches of tag updates and the number of tags
     updated.
     """
-    with mock.patch("ray.autoscaler._private.aws.node_provider.make_ec2_client"
-                    ), mock.patch.object(AWSNodeProvider, "_create_tags",
-                                         mock_create_tags):
+    with mock.patch(
+        "ray.autoscaler._private.aws.node_provider.make_ec2_client"
+    ), mock.patch.object(AWSNodeProvider, "_create_tags", mock_create_tags):
         provider = AWSNodeProvider(
-            provider_config={"region": "nowhere"}, cluster_name="default")
+            provider_config={"region": "nowhere"}, cluster_name="default"
+        )
         provider.batch_counter = 0
         provider.tag_update_counter = 0
         provider.tag_cache = {str(x): {} for x in range(num_threads)}
@@ -36,9 +36,8 @@ def batch_test(num_threads, delay):
         threads = []
         for x in range(num_threads):
             thread = threading.Thread(
-                target=provider.set_node_tags, args=(str(x), {
-                    "foo": "bar"
-                }))
+                target=provider.set_node_tags, args=(str(x), {"foo": "bar"})
+            )
             threads.append(thread)
 
         for thread in threads:
@@ -67,4 +66,5 @@ class TagBatchTest(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))
