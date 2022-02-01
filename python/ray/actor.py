@@ -624,8 +624,33 @@ class ActorClass:
             def _bind(self, *args, **kwargs):
                 from ray.experimental.dag.actor_node import ActorNode
 
+                cls_options = dict(
+                    num_cpus=num_cpus,
+                    num_gpus=num_gpus,
+                    memory=memory,
+                    object_store_memory=object_store_memory,
+                    resources=resources,
+                    accelerator_type=accelerator_type,
+                    max_concurrency=max_concurrency,
+                    max_restarts=max_restarts,
+                    max_task_retries=max_task_retries,
+                    name=name,
+                    namespace=namespace,
+                    lifetime=lifetime,
+                    placement_group=placement_group,
+                    placement_group_bundle_index=placement_group_bundle_index,
+                    placement_group_capture_child_tasks=(
+                        placement_group_capture_child_tasks
+                    ),
+                    runtime_env=new_runtime_env,
+                    max_pending_calls=max_pending_calls,
+                    scheduling_strategy=scheduling_strategy,
+                )
                 return ActorNode(
-                    actor_cls.__ray_metadata__.modified_class, args, kwargs
+                    actor_cls.__ray_metadata__.modified_class,
+                    args,
+                    kwargs,
+                    cls_options=cls_options,
                 )
 
         return ActorOptionWrapper()

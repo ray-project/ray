@@ -8,10 +8,10 @@ class ActorNode(DAGNode):
     """Represents an actor creation in a Ray task DAG."""
 
     # TODO(ekl) support actor options
-    def __init__(self, actor_cls: type, cls_args, cls_kwargs):
+    def __init__(self, actor_cls: type, cls_args, cls_kwargs, cls_options=None):
         self._actor_cls = actor_cls
         self._last_call: Optional["ActorMethodNode"] = None
-        DAGNode.__init__(self, cls_args, cls_kwargs)
+        DAGNode.__init__(self, cls_args, cls_kwargs, options=cls_options)
 
     def _copy(
         self,
@@ -19,12 +19,19 @@ class ActorNode(DAGNode):
         new_kwargs: Dict[str, Any],
         new_options: Dict[str, Any],
     ):
-        return ActorNode(self._actor_cls, new_args, new_kwargs)
+        return ActorNode(self._actor_cls, new_args, new_kwargs, new_options)
 
     def _execute(self):
-        return ray.remote(self._actor_cls).remote(
-            *self._bound_args, **self._bound_kwargs
-        )
+        if self._bound_options:
+            return (
+                ray.remote(self._actor_cls)
+                .options(**self._bound_options)
+                .remote(*self._bound_args, **self._bound_kwargs)
+            )
+        else:
+            return ray.remote(self._actor_cls).remote(
+                *self._bound_args, **self._bound_kwargs
+            )
 
     def __getattr__(self, method_name: str):
         # Raise an error if the method is invalid.
@@ -62,16 +69,32 @@ class ActorMethodNode(DAGNode):
         method_name: str,
         method_args,
         method_kwargs,
+        method_options: Optional[Dict[str, Any]] = None,
     ):
         self._method_name: str = method_name
         # The actor creation task dependency is encoded as the first argument,
         # and the ordering dependency as the second, which ensures they are
         # executed prior to this node.
-        DAGNode.__init__(self, (actor, prev_call) + method_args, method_kwargs)
+        DAGNode.__init__(
+            self,
+            (actor, prev_call) + method_args,
+            method_kwargs,
+            options=method_options,
+        )
 
-    def _copy(self, new_args, new_kwargs):
+    def _copy(
+        self,
+        new_args: List[Any],
+        new_kwargs: Dict[str, Any],
+        new_options: Dict[str, Any],
+    ):
         return ActorMethodNode(
-            new_args[0], new_args[1], self._method_name, new_args[2:], new_kwargs
+            new_args[0],
+            new_args[1],
+            self._method_name,
+            new_args[2:],
+            new_kwargs,
+            method_options=new_options,
         )
 
     def _execute(self):
