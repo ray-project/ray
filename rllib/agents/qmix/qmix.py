@@ -37,8 +37,9 @@ DEFAULT_CONFIG = with_common_config({
         "type": "EpsilonGreedy",
         # Config for the Exploration class' constructor:
         "initial_epsilon": 1.0,
-        "final_epsilon": 0.02,
-        "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
+        "final_epsilon": 0.01,
+        # Timesteps over which to anneal epsilon.
+        "epsilon_timesteps": 40000,
 
         # For soft_q, use:
         # "exploration_config" = {
@@ -94,8 +95,8 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 0,
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
-    # Prevent iterations from going lower than this time span
-    "min_iter_time_s": 1,
+    # Prevent reporting frequency from going lower than this time span.
+    "min_time_s_per_reporting": 1,
 
     # === Model ===
     "model": {
@@ -117,6 +118,7 @@ class QMixTrainer(SimpleQTrainer):
 
     @override(SimpleQTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["framework"] != "torch":

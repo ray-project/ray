@@ -10,8 +10,6 @@ post_build_cmds:
   - pip uninstall -y ray
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - pip3 install ray[tune]
-  - /home/ray/anaconda3/bin/python -m pip uninstall -y numpy
-  - rm -rf /home/ray/anaconda3/lib/python3.7/site-packages/numpy
   - /home/ray/anaconda3/bin/pip install numpy==1.19.5
   - git clone https://github.com/NVIDIA/apex && cd apex && pip install -v --no-cache-dir  ./
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

@@ -4,9 +4,22 @@ import gym
 from gym.spaces import Box
 import logging
 import numpy as np
+import platform
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Type, TYPE_CHECKING
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TYPE_CHECKING,
+    Union,
+)
 
+import ray
+from ray.actor import ActorHandle
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -30,11 +43,12 @@ from ray.rllib.utils.typing import (
     AgentID,
     ModelGradients,
     ModelWeights,
+    PolicyID,
+    PolicyState,
+    T,
     TensorType,
     TensorStructType,
     TrainerConfigDict,
-    Tuple,
-    Union,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -117,9 +131,10 @@ class Policy(metaclass=ABCMeta):
         """
         self.observation_space: gym.Space = observation_space
         self.action_space: gym.Space = action_space
-        # The base struct of the action space.
+        # The base struct of the observation/action spaces.
         # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
         # action_space_struct = {"a": Discrete(2)}
+        self.observation_space_struct = get_base_struct_from_space(observation_space)
         self.action_space_struct = get_base_struct_from_space(action_space)
 
         self.config: TrainerConfigDict = config
@@ -473,6 +488,36 @@ class Policy(metaclass=ABCMeta):
         self.apply_gradients(grads)
         return grad_info
 
+    @ExperimentalAPI
+    def learn_on_batch_from_replay_buffer(
+        self, replay_actor: ActorHandle, policy_id: PolicyID
+    ) -> Dict[str, TensorType]:
+        """Samples a batch from given replay actor and performs an update.
+
+        Args:
+            replay_actor: The replay buffer actor to sample from.
+            policy_id: The ID of this policy.
+
+        Returns:
+            Dictionary of extra metadata from `compute_gradients()`.
+        """
+        # Sample a batch from the given replay actor.
+        # Note that for better performance (less data sent through the
+        # network), this policy should be co-located on the same node
+        # as `replay_actor`. Such a co-location step is usually done during
+        # the Trainer's `setup()` phase.
+        batch = ray.get(replay_actor.replay.remote(policy_id=policy_id))
+        if batch is None:
+            return {}
+
+        # Send to own learn_on_batch method for updating.
+        # TODO: hack w/ `hasattr`
+        if hasattr(self, "devices") and len(self.devices) > 1:
+            self.load_batch_into_buffer(batch, buffer_index=0)
+            return self.learn_on_loaded_batch(offset=0, buffer_index=0)
+        else:
+            return self.learn_on_batch(batch)
+
     @DeveloperAPI
     def load_batch_into_buffer(self, batch: SampleBatch, buffer_index: int = 0) -> int:
         """Bulk-loads the given SampleBatch into the devices' memories.
@@ -628,7 +673,7 @@ class Policy(metaclass=ABCMeta):
         return []
 
     @DeveloperAPI
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    def get_state(self) -> PolicyState:
         """Returns the entire current state of this Policy.
 
         Note: Not to be confused with an RNN model's internal state.
@@ -648,10 +693,7 @@ class Policy(metaclass=ABCMeta):
         return state
 
     @DeveloperAPI
-    def set_state(
-        self,
-        state: Union[Dict[str, TensorType], List[TensorType]],
-    ) -> None:
+    def set_state(self, state: PolicyState) -> None:
         """Restores the entire current state of this Policy from `state`.
 
         Args:
@@ -660,6 +702,30 @@ class Policy(metaclass=ABCMeta):
         """
         self.set_weights(state["weights"])
         self.global_timestep = state["global_timestep"]
+
+    @ExperimentalAPI
+    def apply(
+        self,
+        func: Callable[["Policy", Optional[Any], Optional[Any]], T],
+        *args,
+        **kwargs,
+    ) -> T:
+        """Calls the given function with this Policy instance.
+
+        Useful for when the Policy class has been converted into a ActorHandle
+        and the user needs to execute some functionality (e.g. add a property)
+        on the underlying policy object.
+
+        Args:
+            func: The function to call, with this Policy as first
+                argument, followed by args, and kwargs.
+            args: Optional additional args to pass to the function call.
+            kwargs: Optional additional kwargs to pass to the function call.
+
+        Returns:
+            The return value of the function call.
+        """
+        return func(self, *args, **kwargs)
 
     @DeveloperAPI
     def on_global_var_update(self, global_vars: Dict[str, TensorType]) -> None:
@@ -718,6 +784,15 @@ class Policy(metaclass=ABCMeta):
                 this policy or None.
         """
         return None
+
+    def get_host(self) -> str:
+        """Returns the computer's network name.
+
+        Returns:
+            The computer's networks name or an empty string, if the network
+            name could not be determined.
+        """
+        return platform.node()
 
     def _create_exploration(self) -> Exploration:
         """Creates the Policy's Exploration object.
@@ -957,13 +1032,23 @@ class Policy(metaclass=ABCMeta):
         """
         ret = {}
         for view_col, view_req in self.view_requirements.items():
-            if not self.config["_disable_preprocessor_api"] and isinstance(
-                view_req.space, (gym.spaces.Dict, gym.spaces.Tuple)
+            data_col = view_req.data_col or view_col
+            # Flattened dummy batch.
+            if (isinstance(view_req.space, (gym.spaces.Tuple, gym.spaces.Dict))) and (
+                (
+                    data_col == SampleBatch.OBS
+                    and not self.config["_disable_preprocessor_api"]
+                )
+                or (
+                    data_col == SampleBatch.ACTIONS
+                    and not self.config.get("_disable_action_flattening")
+                )
             ):
                 _, shape = ModelCatalog.get_action_shape(
                     view_req.space, framework=self.config["framework"]
                 )
                 ret[view_col] = np.zeros((batch_size,) + shape[1:], np.float32)
+            # Non-flattened dummy batch.
             else:
                 # Range of indices on time-axis, e.g. "-50:-1".
                 if view_req.shift_from is not None:

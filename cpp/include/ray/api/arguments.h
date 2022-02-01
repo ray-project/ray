@@ -26,7 +26,8 @@ namespace internal {
 class Arguments {
  public:
   template <typename OriginArgType, typename InputArgTypes>
-  static void WrapArgsImpl(std::vector<TaskArg> *task_args, InputArgTypes &&arg) {
+  static void WrapArgsImpl(bool cross_lang, std::vector<TaskArg> *task_args,
+                           InputArgTypes &&arg) {
     if constexpr (is_object_ref_v<OriginArgType>) {
       PushReferenceArg(task_args, std::forward<InputArgTypes>(arg));
     } else if constexpr (is_object_ref_v<InputArgTypes>) {
@@ -40,28 +41,48 @@ class Arguments {
         PushReferenceArg(task_args, std::forward<InputArgTypes>(arg));
       }
     } else {
-      msgpack::sbuffer buffer = Serializer::Serialize(std::forward<InputArgTypes>(arg));
-      PushValueArg(task_args, std::move(buffer));
+      if (cross_lang) {
+        msgpack::sbuffer dummy_buf(METADATA_STR_DUMMY.size());
+        dummy_buf.write(METADATA_STR_DUMMY.data(), METADATA_STR_DUMMY.size());
+
+        auto data_buf = Serializer::Serialize(std::forward<InputArgTypes>(arg));
+        auto len_buf = Serializer::Serialize(data_buf.size());
+
+        msgpack::sbuffer buffer(XLANG_HEADER_LEN + data_buf.size());
+        buffer.write(len_buf.data(), len_buf.size());
+        for (size_t i = 0; i < XLANG_HEADER_LEN - len_buf.size(); ++i) {
+          buffer.write("", 1);
+        }
+        buffer.write(data_buf.data(), data_buf.size());
+
+        PushValueArg(task_args, std::move(dummy_buf), METADATA_STR_RAW);
+        PushValueArg(task_args, std::move(buffer), METADATA_STR_XLANG);
+      } else {
+        msgpack::sbuffer buffer = Serializer::Serialize(std::forward<InputArgTypes>(arg));
+        PushValueArg(task_args, std::move(buffer));
+      }
     }
   }
 
   template <typename OriginArgsTuple, size_t... I, typename... InputArgTypes>
-  static void WrapArgs(std::vector<TaskArg> *task_args, std::index_sequence<I...>,
-                       InputArgTypes &&...args) {
+  static void WrapArgs(bool cross_lang, std::vector<TaskArg> *task_args,
+                       std::index_sequence<I...>, InputArgTypes &&...args) {
     (void)std::initializer_list<int>{
         (WrapArgsImpl<std::tuple_element_t<I, OriginArgsTuple>>(
-             task_args, std::forward<InputArgTypes>(args)),
+             cross_lang, task_args, std::forward<InputArgTypes>(args)),
          0)...};
     /// Silence gcc warning error.
     (void)task_args;
+    (void)cross_lang;
   }
 
  private:
-  template <typename TaskArg>
-  static void PushValueArg(std::vector<TaskArg> *task_args, msgpack::sbuffer &&buffer) {
+  static void PushValueArg(std::vector<TaskArg> *task_args, msgpack::sbuffer &&buffer,
+                           std::string_view meta_str = "") {
     /// Pass by value.
     TaskArg task_arg;
     task_arg.buf = std::move(buffer);
+    if (!meta_str.empty()) task_arg.meta_str = std::move(meta_str);
     task_args->emplace_back(std::move(task_arg));
   }
 

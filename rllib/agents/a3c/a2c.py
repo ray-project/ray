@@ -21,7 +21,7 @@ A2C_DEFAULT_CONFIG = merge_dicts(
     A3C_CONFIG,
     {
         "rollout_fragment_length": 20,
-        "min_iter_time_s": 10,
+        "min_time_s_per_reporting": 10,
         "sample_async": False,
         # A2C supports microbatching, in which we accumulate gradients over
         # batch of this size until the train batch size is reached. This allows
@@ -80,9 +80,7 @@ class A2CTrainer(A3CTrainer):
                     sgd_minibatch_size=config["train_batch_size"],
                     num_sgd_iter=1,
                     num_gpus=config["num_gpus"],
-                    shuffle_sequences=True,
                     _fake_gpus=config["_fake_gpus"],
-                    framework=config.get("framework"),
                 )
 
             train_op = rollouts.combine(

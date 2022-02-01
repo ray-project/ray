@@ -40,7 +40,7 @@ class GroupAgentsWrapper(MultiAgentEnv):
             act_space (Space): Optional action space for the grouped env.
                 Must be a tuple space.
         """
-
+        super().__init__()
         self.env = env
         self.groups = groups
         self.agent_id_to_group = {}

@@ -15,7 +15,7 @@ from ray.cluster_utils import Cluster
 def test_isolation(shutdown_only):
     info = ray.init(namespace="namespace")
 
-    address = info["redis_address"]
+    address = info["address"]
 
     # First param of template is the namespace. Second is the redis address.
     driver_template = """
@@ -76,7 +76,7 @@ ray.get(actor.ping.remote())
 def test_placement_groups(shutdown_only):
     info = ray.init(namespace="namespace")
 
-    address = info["redis_address"]
+    address = info["address"]
 
     # First param of template is the namespace. Second is the redis address.
     driver_template = """
@@ -118,7 +118,7 @@ ray.get(pg.ready())
 def test_default_namespace(shutdown_only):
     info = ray.init(namespace="namespace")
 
-    address = info["redis_address"]
+    address = info["address"]
 
     # First param of template is the namespace. Second is the redis address.
     driver_template = """
@@ -148,7 +148,7 @@ def test_namespace_in_job_config(shutdown_only):
     job_config = ray.job_config.JobConfig(ray_namespace="namespace")
     info = ray.init(job_config=job_config)
 
-    address = info["redis_address"]
+    address = info["address"]
 
     # First param of template is the namespace. Second is the redis address.
     driver_template = """

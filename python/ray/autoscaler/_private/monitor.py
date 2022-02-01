@@ -28,17 +28,17 @@ from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
-from ray.autoscaler._private.util import (
-    DEBUG_AUTOSCALING_STATUS,
-    DEBUG_AUTOSCALING_ERROR,
-    format_readonly_node_type,
-)
+from ray.autoscaler._private.util import format_readonly_node_type
 
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 import ray.ray_constants as ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
-from ray._private.gcs_utils import GcsClient, get_gcs_address_from_redis
+from ray._private.gcs_utils import (
+    GcsClient,
+    get_gcs_address_from_redis,
+    use_gcs_for_bootstrap,
+)
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_put,
@@ -138,27 +138,26 @@ class Monitor:
 
     def __init__(
         self,
-        redis_address,
+        address,
         autoscaling_config,
         redis_password=None,
         prefix_cluster_info=False,
         monitor_ip=None,
         stop_event: Optional[Event] = None,
     ):
-        # Initialize the Redis clients.
-        ray.state.state._initialize_global_state(
-            redis_address, redis_password=redis_password
-        )
-        self.redis = ray._private.services.create_redis_client(
-            redis_address, password=redis_password
-        )
-        if monitor_ip:
-            self.redis.set(
-                "AutoscalerMetricsAddress", f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
+        if not use_gcs_for_bootstrap():
+            # Initialize the Redis clients.
+            redis_address = address
+            self.redis = ray._private.services.create_redis_client(
+                redis_address, password=redis_password
             )
-        (ip, port) = redis_address.split(":")
-        # Initialize the gcs stub for getting all node resource usage.
-        gcs_address = self.redis.get("GcsServerAddress").decode("utf-8")
+            (ip, port) = address.split(":")
+            # Initialize the gcs stub for getting all node resource usage.
+            gcs_address = get_gcs_address_from_redis(self.redis)
+        else:
+            gcs_address = address
+            redis_address = None
+
         options = (("grpc.enable_http_proxy", 0),)
         gcs_channel = ray._private.utils.init_grpc_channel(gcs_address, options)
         # TODO: Use gcs client for this
@@ -171,13 +170,37 @@ class Monitor:
 
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray.worker.global_worker
-        worker.redis_client = self.redis
-        gcs_client = GcsClient.create_from_redis(self.redis)
+        if use_gcs_for_bootstrap():
+            gcs_client = GcsClient(address=gcs_address)
+        else:
+            worker.redis_client = self.redis
+            gcs_client = GcsClient.create_from_redis(self.redis)
+
+        if monitor_ip:
+            monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
+            if use_gcs_for_bootstrap():
+                gcs_client.internal_kv_put(
+                    b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
+                )
+            else:
+                self.redis.set("AutoscalerMetricsAddress", monitor_addr)
         _initialize_internal_kv(gcs_client)
+        if monitor_ip:
+            monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
+            if use_gcs_for_bootstrap():
+                gcs_client.internal_kv_put(
+                    b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
+                )
+            else:
+                self.redis.set("AutoscalerMetricsAddress", monitor_addr)
         worker.mode = 0
-        head_node_ip = redis_address.split(":")[0]
-        self.redis_address = redis_address
-        self.redis_password = redis_password
+        if use_gcs_for_bootstrap():
+            head_node_ip = gcs_address.split(":")[0]
+        else:
+            head_node_ip = redis_address.split(":")[0]
+            self.redis_address = redis_address
+            self.redis_password = redis_password
+
         self.load_metrics = LoadMetrics()
         self.last_avail_resources = None
         self.event_summarizer = EventSummarizer()
@@ -334,35 +357,42 @@ class Monitor:
     def _run(self):
         """Run the monitor loop."""
         while True:
-            if self.stop_event and self.stop_event.is_set():
-                break
-            self.update_load_metrics()
-            self.update_resource_requests()
-            self.update_event_summary()
-            status = {
-                "load_metrics_report": asdict(self.load_metrics.summary()),
-                "time": time.time(),
-                "monitor_pid": os.getpid(),
-            }
+            try:
+                if self.stop_event and self.stop_event.is_set():
+                    break
+                self.update_load_metrics()
+                self.update_resource_requests()
+                self.update_event_summary()
+                status = {
+                    "load_metrics_report": asdict(self.load_metrics.summary()),
+                    "time": time.time(),
+                    "monitor_pid": os.getpid(),
+                }
 
-            # Process autoscaling actions
-            if self.autoscaler:
-                # Only used to update the load metrics for the autoscaler.
-                self.autoscaler.update()
-                status["autoscaler_report"] = asdict(self.autoscaler.summary())
+                # Process autoscaling actions
+                if self.autoscaler:
+                    # Only used to update the load metrics for the autoscaler.
+                    self.autoscaler.update()
+                    status["autoscaler_report"] = asdict(self.autoscaler.summary())
 
-                for msg in self.event_summarizer.summary():
-                    # Need to prefix each line of the message for the lines to
-                    # get pushed to the driver logs.
-                    for line in msg.split("\n"):
-                        logger.info(
-                            "{}{}".format(ray_constants.LOG_PREFIX_EVENT_SUMMARY, line)
-                        )
-                self.event_summarizer.clear()
+                    for msg in self.event_summarizer.summary():
+                        # Need to prefix each line of the message for the lines to
+                        # get pushed to the driver logs.
+                        for line in msg.split("\n"):
+                            logger.info(
+                                "{}{}".format(
+                                    ray_constants.LOG_PREFIX_EVENT_SUMMARY, line
+                                )
+                            )
+                    self.event_summarizer.clear()
 
-            as_json = json.dumps(status)
-            if _internal_kv_initialized():
-                _internal_kv_put(DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True)
+                as_json = json.dumps(status)
+                if _internal_kv_initialized():
+                    _internal_kv_put(
+                        ray_constants.DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True
+                    )
+            except Exception:
+                logger.exception("Monitor: Execution exception. Trying again...")
 
             # Wait for a autoscaler update interval before processing the next
             # round of messages.
@@ -430,17 +460,23 @@ class Monitor:
         # drivers.
         message = f"The autoscaler failed with the following error:\n{error}"
         if _internal_kv_initialized():
-            _internal_kv_put(DEBUG_AUTOSCALING_ERROR, message, overwrite=True)
-        redis_client = ray._private.services.create_redis_client(
-            self.redis_address, password=self.redis_password
-        )
-        gcs_publisher = None
-        if args.gcs_address:
-            gcs_publisher = GcsPublisher(address=args.gcs_address)
-        elif gcs_pubsub_enabled():
-            gcs_publisher = GcsPublisher(
-                address=get_gcs_address_from_redis(redis_client)
+            _internal_kv_put(
+                ray_constants.DEBUG_AUTOSCALING_ERROR, message, overwrite=True
             )
+        if not use_gcs_for_bootstrap():
+            redis_client = ray._private.services.create_redis_client(
+                self.redis_address, password=self.redis_password
+            )
+        else:
+            redis_client = None
+        gcs_publisher = None
+        if gcs_pubsub_enabled():
+            if use_gcs_for_bootstrap():
+                gcs_publisher = GcsPublisher(address=args.gcs_address)
+            else:
+                gcs_publisher = GcsPublisher(
+                    address=get_gcs_address_from_redis(redis_client)
+                )
         from ray._private.utils import publish_error_to_driver
 
         publish_error_to_driver(
@@ -451,19 +487,24 @@ class Monitor:
         )
 
     def _signal_handler(self, sig, frame):
-        self._handle_failure(
-            f"Terminated with signal {sig}\n" + "".join(traceback.format_stack(frame))
-        )
+        try:
+            self._handle_failure(
+                f"Terminated with signal {sig}\n"
+                + "".join(traceback.format_stack(frame))
+            )
+        except Exception:
+            logger.exception("Monitor: Failure in signal handler.")
         sys.exit(sig + 128)
 
     def run(self):
         # Register signal handlers for autoscaler termination.
+        # Signals will not be received on windows
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
         try:
             if _internal_kv_initialized():
                 # Delete any previous autoscaling errors.
-                _internal_kv_del(DEBUG_AUTOSCALING_ERROR)
+                _internal_kv_del(ray_constants.DEBUG_AUTOSCALING_ERROR)
             self._initialize_autoscaler()
             self._run()
         except Exception:
@@ -569,7 +610,7 @@ if __name__ == "__main__":
         autoscaling_config = None
 
     monitor = Monitor(
-        args.redis_address,
+        args.gcs_address if use_gcs_for_bootstrap() else args.redis_address,
         autoscaling_config,
         redis_password=args.redis_password,
         monitor_ip=args.monitor_ip,

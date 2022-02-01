@@ -5,12 +5,8 @@ import opencensus  # noqa: F401
 import prometheus_client  # noqa: F401
 
 import aiohttp  # noqa: F401
-import aiosignal  # noqa: F401
 import aiohttp.web  # noqa: F401
 import aiohttp_cors  # noqa: F401
 from aiohttp import hdrs  # noqa: F401
-from frozenlist import FrozenList  # noqa: F401
 from aiohttp.typedefs import PathLike  # noqa: F401
 from aiohttp.web import RouteDef  # noqa: F401
-
-import aioredis  # noqa: F401

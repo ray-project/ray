@@ -120,7 +120,7 @@ DEFAULT_CONFIG = with_common_config({
     # you're using the Async or Ape-X optimizers.
     "num_workers": 1,
     # Prevent iterations from going lower than this time span
-    "min_iter_time_s": 0,
+    "min_time_s_per_reporting": 0,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -166,10 +166,12 @@ class MADDPGTrainer(DQNTrainer):
         This hook is called explicitly prior to TrainOneStep() in the execution
         setups for DQN and APEX.
         """
+        # Call super's validation method.
+        super().validate_config(config)
 
         def f(batch, workers, config):
             policies = dict(
-                workers.local_worker().foreach_trainable_policy(lambda p, i: (i, p))
+                workers.local_worker().foreach_policy_to_train(lambda p, i: (i, p))
             )
             return before_learn_on_batch(batch, policies, config["train_batch_size"])
 

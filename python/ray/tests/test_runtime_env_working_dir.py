@@ -3,10 +3,12 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import shutil
 
 import pytest
 
 import ray
+import time
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -22,8 +24,7 @@ GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 
 
 @pytest.mark.parametrize(
-    "option",
-    ["failure", "working_dir", "py_modules", "py_modules_path", "working_dir_path"],
+    "option", ["failure", "working_dir", "working_dir_zip", "py_modules"]
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
@@ -40,8 +41,15 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
             ray.init(address)
         elif option == "working_dir":
             ray.init(address, runtime_env={"working_dir": tmp_working_dir})
-        elif option == "working_dir_path":
-            ray.init(address, runtime_env={"working_dir": Path(tmp_working_dir)})
+        elif option == "working_dir_zip":
+            # Create a temp dir to place the zipped package
+            # from tmp_working_dir
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                zip_dir = Path(tmp_working_dir)
+                package = shutil.make_archive(
+                    os.path.join(tmp_dir, "test"), "zip", zip_dir
+                )
+                ray.init(address, runtime_env={"working_dir": package})
         elif option == "py_modules":
             ray.init(
                 address,
@@ -59,6 +67,12 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
 
     def reinit():
         ray.shutdown()
+        # TODO(SongGuyang): Currently, reinit the driver will generate the same
+        # job id. And if we reinit immediately after shutdown, raylet may
+        # process new job started before old job finished in some cases. This
+        # inconsistency could disorder the URI reference and delete a valid
+        # runtime env. We sleep here to walk around this issue.
+        time.sleep(5)
         call_ray_init()
 
     @ray.remote
@@ -136,6 +150,12 @@ def test_captured_import(start_cluster, tmp_working_dir, option: str):
 
     def reinit():
         ray.shutdown()
+        # TODO(SongGuyang): Currently, reinit the driver will generate the same
+        # job id. And if we reinit immediately after shutdown, raylet may
+        # process new job started before old job finished in some cases. This
+        # inconsistency could disorder the URI reference and delete a valid
+        # runtime env. We sleep here to walk around this issue.
+        time.sleep(5)
         call_ray_init()
 
     # Import in the driver.

@@ -465,7 +465,7 @@ class GCPCompute(GCPResource):
             if not re.search(".*/acceleratorTypes/.*", gpu_type):
                 accelerator[
                     "acceleratorType"
-                ] = "projects/{project}/zones/{zone}/" "acceleratorTypes/{accelerator}".format(
+                ] = "projects/{project}/zones/{zone}/" "acceleratorTypes/{accelerator}".format(  # noqa: E501
                     project=self.project_id,
                     zone=self.availability_zone,
                     accelerator=gpu_type,

@@ -40,12 +40,12 @@ class StoreToReplayBuffer:
             actors: An optional list of replay actors to use instead of
                 `local_buffer`.
         """
-        if bool(local_buffer) == bool(actors):
+        if local_buffer is not None and actors is not None:
             raise ValueError(
                 "Either `local_buffer` or `replay_actors` must be given, " "not both!"
             )
 
-        if local_buffer:
+        if local_buffer is not None:
             self.local_actor = local_buffer
             self.replay_actors = None
         else:
@@ -53,7 +53,7 @@ class StoreToReplayBuffer:
             self.replay_actors = actors
 
     def __call__(self, batch: SampleBatchType):
-        if self.local_actor:
+        if self.local_actor is not None:
             self.local_actor.add_batch(batch)
         else:
             actor = random.choice(self.replay_actors)
@@ -63,8 +63,8 @@ class StoreToReplayBuffer:
 
 def Replay(
     *,
-    local_buffer: MultiAgentReplayBuffer = None,
-    actors: List[ActorHandle] = None,
+    local_buffer: Optional[MultiAgentReplayBuffer] = None,
+    actors: Optional[List[ActorHandle]] = None,
     num_async: int = 4,
 ) -> LocalIterator[SampleBatchType]:
     """Replay experiences from the given buffer or actors.
@@ -87,10 +87,10 @@ def Replay(
         SampleBatch(...)
     """
 
-    if bool(local_buffer) == bool(actors):
+    if local_buffer is not None and actors is not None:
         raise ValueError("Exactly one of local_buffer and replay_actors must be given.")
 
-    if actors:
+    if actors is not None:
         replay = from_actors(actors)
         return replay.gather_async(num_async=num_async).filter(lambda x: x is not None)
 
@@ -131,6 +131,8 @@ class SimpleReplayBuffer:
         self.replay_batches = []
         self.replay_index = 0
 
+        self.last_added_batches = []
+
     def add_batch(self, sample_batch: SampleBatchType) -> None:
         warn_replay_capacity(item=sample_batch, num_items=self.num_slots)
         if self.num_slots > 0:
@@ -141,8 +143,13 @@ class SimpleReplayBuffer:
                 self.replay_index += 1
                 self.replay_index %= self.num_slots
 
+            self.last_added_batches.append(sample_batch)
+
     def replay(self) -> SampleBatchType:
         return random.choice(self.replay_batches)
+
+    def __len__(self):
+        return len(self.replay_batches)
 
 
 class MixInReplay:

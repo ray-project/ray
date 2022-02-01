@@ -8,20 +8,23 @@ from aioredis.pubsub import Receiver
 import ray
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.optional_utils as dashboard_optional_utils
+import ray.experimental.internal_kv as internal_kv
 import ray._private.services
 import ray._private.utils
-from ray.autoscaler._private.util import (
+from ray.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
     DEBUG_AUTOSCALING_STATUS_LEGACY,
     DEBUG_AUTOSCALING_ERROR,
 )
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-import ray.experimental.internal_kv as internal_kv
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsAioResourceUsageSubscriber
+from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
 class ReportHead(dashboard_utils.DashboardHeadModule):
@@ -30,6 +33,21 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         self._stubs = {}
         self._ray_config = None
         DataSource.agents.signal.append(self._update_stubs)
+        # TODO(fyrestone): Avoid using ray.state in dashboard, it's not
+        # asynchronous and will lead to low performance. ray disconnect()
+        # will be hang when the ray.state is connected and the GCS is exit.
+        # Please refer to: https://github.com/ray-project/ray/issues/16328
+        assert dashboard_head.gcs_address or dashboard_head.redis_address
+        gcs_address = dashboard_head.gcs_address
+        redis_address = dashboard_head.redis_address
+        redis_password = dashboard_head.redis_password
+        temp_dir = dashboard_head.temp_dir
+        # Flatten the redis address
+        if isinstance(dashboard_head.redis_address, tuple):
+            redis_address = f"{redis_address[0]}:{redis_address[1]}"
+        self.service_discovery = PrometheusServiceDiscoveryWriter(
+            redis_address, redis_password, gcs_address, temp_dir
+        )
 
     async def _update_stubs(self, change):
         if change.old:
@@ -60,7 +78,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             if reply.profiling_stats
             else reply.std_out
         )
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True, message="Profiling success.", profiling_info=profiling_info
         )
 
@@ -72,12 +90,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 with open(config_path) as f:
                     cfg = yaml.safe_load(f)
             except yaml.YAMLError:
-                return dashboard_utils.rest_response(
+                return dashboard_optional_utils.rest_response(
                     success=False,
                     message=f"No config found at {config_path}.",
                 )
             except FileNotFoundError:
-                return dashboard_utils.rest_response(
+                return dashboard_optional_utils.rest_response(
                     success=False, message="Invalid config, could not load YAML."
                 )
 
@@ -98,7 +116,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
             self._ray_config = payload
 
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True,
             message="Fetched ray config.",
             **self._ray_config,
@@ -126,7 +144,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             else {}
         )
         error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True,
             message="Got cluster status.",
             autoscaling_status=legacy_status.decode() if legacy_status else None,
@@ -135,24 +153,47 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
 
     async def run(self, server):
-        # TODO: redis-removal pubsub
-        aioredis_client = self._dashboard_head.aioredis_client
-        receiver = Receiver()
+        # Need daemon True to avoid dashboard hangs at exit.
+        self.service_discovery.daemon = True
+        self.service_discovery.start()
+        if gcs_pubsub_enabled():
+            gcs_addr = await self._dashboard_head.get_gcs_address()
+            subscriber = GcsAioResourceUsageSubscriber(gcs_addr)
+            await subscriber.subscribe()
 
-        reporter_key = "{}*".format(reporter_consts.REPORTER_PREFIX)
-        await aioredis_client.psubscribe(receiver.pattern(reporter_key))
-        logger.info(f"Subscribed to {reporter_key}")
+            while True:
+                try:
+                    # The key is b'RAY_REPORTER:{node id hex}',
+                    # e.g. b'RAY_REPORTER:2b4fbd...'
+                    key, data = await subscriber.poll()
+                    if key is None:
+                        continue
+                    data = json.loads(data)
+                    node_id = key.split(":")[-1]
+                    DataSource.node_physical_stats[node_id] = data
+                except Exception:
+                    logger.exception(
+                        "Error receiving node physical stats " "from reporter agent."
+                    )
+        else:
+            receiver = Receiver()
+            aioredis_client = self._dashboard_head.aioredis_client
+            reporter_key = "{}*".format(reporter_consts.REPORTER_PREFIX)
+            await aioredis_client.psubscribe(receiver.pattern(reporter_key))
+            logger.info(f"Subscribed to {reporter_key}")
 
-        async for sender, msg in receiver.iter():
-            try:
-                # The key is b'RAY_REPORTER:{node id hex}',
-                # e.g. b'RAY_REPORTER:2b4fbd406898cc86fb88fb0acfd5456b0afd87cf'
-                key, data = msg
-                data = json.loads(ray._private.utils.decode(data))
-                key = key.decode("utf-8")
-                node_id = key.split(":")[-1]
-                DataSource.node_physical_stats[node_id] = data
-            except Exception:
-                logger.exception(
-                    "Error receiving node physical stats from reporter agent."
-                )
+            async for sender, msg in receiver.iter():
+                try:
+                    key, data = msg
+                    data = json.loads(ray._private.utils.decode(data))
+                    key = key.decode("utf-8")
+                    node_id = key.split(":")[-1]
+                    DataSource.node_physical_stats[node_id] = data
+                except Exception:
+                    logger.exception(
+                        "Error receiving node physical stats " "from reporter agent."
+                    )
+
+    @staticmethod
+    def is_minimal_module():
+        return False

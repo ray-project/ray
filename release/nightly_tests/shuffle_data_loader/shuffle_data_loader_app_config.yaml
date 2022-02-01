@@ -2,7 +2,7 @@ base_image: "anyscale/ray:nightly-py37"
 debian_packages: []
 
 python:
-  pip_packages: [numpy, pandas, pyarrow, s3fs]
+  pip_packages: [numpy, pandas, pyarrow, s3fs, botocore]
   conda_packages: []
 
 post_build_cmds:

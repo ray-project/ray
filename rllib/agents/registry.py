@@ -42,6 +42,18 @@ def _import_ars():
     return ars.ARSTrainer, ars.DEFAULT_CONFIG
 
 
+def _import_bandit_lints():
+    from ray.rllib.agents.bandit.bandit import BanditLinTSTrainer
+
+    return BanditLinTSTrainer, BanditLinTSTrainer.get_default_config()
+
+
+def _import_bandit_linucb():
+    from ray.rllib.agents.bandit.bandit import BanditLinUCBTrainer
+
+    return BanditLinUCBTrainer, BanditLinUCBTrainer.get_default_config()
+
+
 def _import_bc():
     from ray.rllib.agents import marwil
 
@@ -169,13 +181,14 @@ ALGORITHMS = {
     "APEX_DDPG": _import_apex_ddpg,
     "APPO": _import_appo,
     "ARS": _import_ars,
+    "BanditLinTS": _import_bandit_lints,
+    "BanditLinUCB": _import_bandit_linucb,
     "BC": _import_bc,
     "CQL": _import_cql,
     "ES": _import_es,
     "DDPG": _import_ddpg,
     "DDPPO": _import_ddppo,
     "DQN": _import_dqn,
-    "SlateQ": _import_slate_q,
     "DREAMER": _import_dreamer,
     "IMPALA": _import_impala,
     "MAML": _import_maml,
@@ -185,9 +198,10 @@ ALGORITHMS = {
     "PPO": _import_ppo,
     "QMIX": _import_qmix,
     "R2D2": _import_r2d2,
-    "SAC": _import_sac,
     "RNNSAC": _import_rnnsac,
+    "SAC": _import_sac,
     "SimpleQ": _import_simple_q,
+    "SlateQ": _import_slate_q,
     "TD3": _import_td3,
 }
 
@@ -207,7 +221,7 @@ def get_trainer_class(alg: str, return_config=False) -> type:
         return class_
 
 
-@Deprecated(new="get_trainer_class", error=False)
+@Deprecated(new="ray.rllib.agents.registry::get_trainer_class()", error=True)
 def get_agent_class(alg: str) -> type:
     return get_trainer_class(alg)
 

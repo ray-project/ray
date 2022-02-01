@@ -32,24 +32,28 @@ def _internal_kv_initialized():
 
 @client_mode_hook(auto_init=False)
 def _internal_kv_get(
-    key: Union[str, bytes], *, namespace: Optional[str] = None
+    key: Union[str, bytes], *, namespace: Optional[Union[str, bytes]] = None
 ) -> bytes:
     """Fetch the value of a binary key."""
 
     if isinstance(key, str):
         key = key.encode()
+    if isinstance(namespace, str):
+        namespace = namespace.encode()
     assert isinstance(key, bytes)
     return global_gcs_client.internal_kv_get(key, namespace)
 
 
 @client_mode_hook(auto_init=False)
 def _internal_kv_exists(
-    key: Union[str, bytes], *, namespace: Optional[str] = None
+    key: Union[str, bytes], *, namespace: Optional[Union[str, bytes]] = None
 ) -> bool:
     """Check key exists or not."""
 
     if isinstance(key, str):
         key = key.encode()
+    if isinstance(namespace, str):
+        namespace = namespace.encode()
     assert isinstance(key, bytes)
     return global_gcs_client.internal_kv_exists(key, namespace)
 
@@ -60,7 +64,7 @@ def _internal_kv_put(
     value: Union[str, bytes],
     overwrite: bool = True,
     *,
-    namespace: Optional[str] = None
+    namespace: Optional[Union[str, bytes]] = None
 ) -> bool:
     """Globally associates a value with a given binary key.
 
@@ -74,6 +78,8 @@ def _internal_kv_put(
         key = key.encode()
     if isinstance(value, str):
         value = value.encode()
+    if isinstance(namespace, str):
+        namespace = namespace.encode()
     assert (
         isinstance(key, bytes)
         and isinstance(value, bytes)
@@ -83,18 +89,27 @@ def _internal_kv_put(
 
 
 @client_mode_hook(auto_init=False)
-def _internal_kv_del(key: Union[str, bytes], *, namespace: Optional[str] = None):
+def _internal_kv_del(
+    key: Union[str, bytes],
+    *,
+    del_by_prefix: bool = False,
+    namespace: Optional[Union[str, bytes]] = None
+) -> int:
     if isinstance(key, str):
         key = key.encode()
+    if isinstance(namespace, str):
+        namespace = namespace.encode()
     assert isinstance(key, bytes)
-    return global_gcs_client.internal_kv_del(key, namespace)
+    return global_gcs_client.internal_kv_del(key, del_by_prefix, namespace)
 
 
 @client_mode_hook(auto_init=False)
 def _internal_kv_list(
-    prefix: Union[str, bytes], *, namespace: Optional[str] = None
+    prefix: Union[str, bytes], *, namespace: Optional[Union[str, bytes]] = None
 ) -> List[bytes]:
     """List all keys in the internal KV store that start with the prefix."""
     if isinstance(prefix, str):
         prefix = prefix.encode()
+    if isinstance(namespace, str):
+        namespace = namespace.encode()
     return global_gcs_client.internal_kv_keys(prefix, namespace)

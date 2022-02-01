@@ -157,7 +157,7 @@ public class FunctionManager {
     /** The job's corresponding class loader. */
     final ClassLoader classLoader;
     /** Functions per class, per function name + type descriptor. */
-    ConcurrentMap<String, Map<Pair<String, String>, RayFunction>> functions;
+    ConcurrentMap<String, Map<Pair<String, String>, Pair<RayFunction, Boolean>>> functions;
 
     JobFunctionTable(ClassLoader classLoader) {
       this.classLoader = classLoader;
@@ -165,7 +165,8 @@ public class FunctionManager {
     }
 
     RayFunction getFunction(JavaFunctionDescriptor descriptor) {
-      Map<Pair<String, String>, RayFunction> classFunctions = functions.get(descriptor.className);
+      Map<Pair<String, String>, Pair<RayFunction, Boolean>> classFunctions =
+          functions.get(descriptor.className);
       if (classFunctions == null) {
         synchronized (this) {
           classFunctions = functions.get(descriptor.className);
@@ -176,7 +177,7 @@ public class FunctionManager {
         }
       }
       final Pair<String, String> key = ImmutablePair.of(descriptor.name, descriptor.signature);
-      RayFunction func = classFunctions.get(key);
+      RayFunction func = classFunctions.get(key).getLeft();
       if (func == null) {
         if (classFunctions.containsKey(key)) {
           throw new RuntimeException(
@@ -192,9 +193,11 @@ public class FunctionManager {
     }
 
     /** Load all functions from a class. */
-    Map<Pair<String, String>, RayFunction> loadFunctionsForClass(String className) {
+    Map<Pair<String, String>, Pair<RayFunction, Boolean>> loadFunctionsForClass(String className) {
       // If RayFunction is null, the function is overloaded.
-      Map<Pair<String, String>, RayFunction> map = new HashMap<>();
+      // The value of this map is a pair of <rayFunction, isDefault>.
+      // The `isDefault` is used to mark if the method is a marked as default keyword.
+      Map<Pair<String, String>, Pair<RayFunction, Boolean>> map = new HashMap<>();
       try {
         Class clazz = Class.forName(className, true, classLoader);
         List<Executable> executables = new ArrayList<>();
@@ -227,13 +230,18 @@ public class FunctionManager {
           RayFunction rayFunction =
               new RayFunction(
                   e, classLoader, new JavaFunctionDescriptor(className, methodName, signature));
-          map.put(ImmutablePair.of(methodName, signature), rayFunction);
+          final boolean isDefault = e instanceof Method && ((Method) e).isDefault();
+          map.put(
+              ImmutablePair.of(methodName, signature), ImmutablePair.of(rayFunction, isDefault));
           // For cross language call java function without signature
           final Pair<String, String> emptyDescriptor = ImmutablePair.of(methodName, "");
-          if (map.containsKey(emptyDescriptor)) {
-            map.put(emptyDescriptor, null); // Mark this function as overloaded.
+          /// default method is not overloaded, so we should filter it.
+          if (map.containsKey(emptyDescriptor) && !map.get(emptyDescriptor).getRight()) {
+            map.put(
+                emptyDescriptor,
+                ImmutablePair.of(null, false)); // Mark this function as overloaded.
           } else {
-            map.put(emptyDescriptor, rayFunction);
+            map.put(emptyDescriptor, ImmutablePair.of(rayFunction, isDefault));
           }
         }
       } catch (Exception e) {

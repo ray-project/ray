@@ -58,26 +58,15 @@ class PushManager {
   int64_t NumChunksInFlight() const { return chunks_in_flight_; };
 
   /// Return the number of chunks remaining. For testing only.
-  int64_t NumChunksRemaining() const {
-    int total = 0;
-    for (const auto &pair : push_info_) {
-      total += pair.second->chunks_remaining;
-    }
-    return total;
-  }
+  int64_t NumChunksRemaining() const { return chunks_remaining_; }
 
   /// Return the number of pushes currently in flight. For testing only.
   int64_t NumPushesInFlight() const { return push_info_.size(); };
 
-  std::string DebugString() const {
-    std::stringstream result;
-    result << "PushManager:";
-    result << "\n- num pushes in flight: " << NumPushesInFlight();
-    result << "\n- num chunks in flight: " << NumChunksInFlight();
-    result << "\n- num chunks remaining: " << NumChunksRemaining();
-    result << "\n- max chunks allowed: " << max_chunks_in_flight_;
-    return result.str();
-  }
+  /// Record the internal metrics.
+  void RecordMetrics() const;
+
+  std::string DebugString() const;
 
  private:
   /// Tracks the state of an active object push to another node.
@@ -110,6 +99,9 @@ class PushManager {
 
   /// Running count of chunks in flight, used to limit progress of in_flight_pushes_.
   int64_t chunks_in_flight_ = 0;
+
+  /// Remaining count of chunks to push to other nodes.
+  int64_t chunks_remaining_ = 0;
 
   /// Tracks all pushes with chunk transfers in flight.
   absl::flat_hash_map<PushID, std::unique_ptr<PushState>> push_info_;

@@ -17,14 +17,14 @@ import ray
 import psutil
 
 from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
-from ray.util.ml_utils.dict import (
+from ray.util.ml_utils.dict import (  # noqa: F401
     merge_dicts,
     deep_update,
     flatten_dict,
     unflatten_dict,
     unflatten_list_dict,
     unflattened_lookup,
-)  # noqa
+)
 
 logger = logging.getLogger(__name__)
 

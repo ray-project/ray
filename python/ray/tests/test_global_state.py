@@ -9,9 +9,11 @@ import time
 import ray
 import ray.ray_constants
 import ray._private.gcs_utils as gcs_utils
-from ray._private.test_utils import wait_for_condition, convert_actor_state
-
-from ray._raylet import GlobalStateAccessor
+from ray._private.test_utils import (
+    wait_for_condition,
+    convert_actor_state,
+    make_global_state_accessor,
+)
 
 
 # TODO(rliaw): The proper way to do this is to have the pytest config setup.
@@ -161,10 +163,8 @@ def test_load_report(shutdown_only, max_shapes):
             "max_resource_shapes_per_load_report": max_shapes,
         },
     )
-    global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD
-    )
-    global_state_accessor.connect()
+
+    global_state_accessor = make_global_state_accessor(cluster)
 
     @ray.remote
     def sleep():
@@ -220,11 +220,10 @@ def test_placement_group_load_report(ray_start_cluster):
     cluster = ray_start_cluster
     # Add a head node that doesn't have gpu resource.
     cluster.add_node(num_cpus=4)
-    ray.init(address=cluster.address)
-    global_state_accessor = GlobalStateAccessor(
-        cluster.address, ray.ray_constants.REDIS_DEFAULT_PASSWORD
+
+    global_state_accessor = make_global_state_accessor(
+        ray.init(address=cluster.address)
     )
-    global_state_accessor.connect()
 
     class PgLoadChecker:
         def nothing_is_ready(self):
@@ -288,10 +287,8 @@ def test_backlog_report(shutdown_only):
         num_cpus=1,
         _system_config={"max_pending_lease_requests_per_scheduling_category": 1},
     )
-    global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD
-    )
-    global_state_accessor.connect()
+
+    global_state_accessor = make_global_state_accessor(cluster)
 
     @ray.remote(num_cpus=1)
     def foo(x):
@@ -332,11 +329,7 @@ def test_backlog_report(shutdown_only):
 
 def test_heartbeat_ip(shutdown_only):
     cluster = ray.init(num_cpus=1)
-    global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD
-    )
-    global_state_accessor.connect()
-
+    global_state_accessor = make_global_state_accessor(cluster)
     self_ip = ray.util.get_node_ip_address()
 
     def self_ip_is_set():

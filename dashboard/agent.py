@@ -13,7 +13,6 @@ try:
     from grpc import aio as aiogrpc
 except ImportError:
     from grpc.experimental import aio as aiogrpc
-from distutils.version import LooseVersion
 
 import ray
 import ray.experimental.internal_kv as internal_kv
@@ -23,15 +22,14 @@ import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
-from ray._private.gcs_utils import GcsClient, get_gcs_address_from_redis
+from ray._private.gcs_utils import (
+    GcsClient,
+    get_gcs_address_from_redis,
+    use_gcs_for_bootstrap,
+)
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 from ray._private.ray_logging import setup_component_logger
-
-# All third-party dependencies that are not included in the minimal Ray
-# installation must be included in this file. This allows us to determine if
-# the agent has the necessary dependencies to be started.
-from ray.dashboard.optional_deps import aiohttp, aiohttp_cors, hdrs
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -42,7 +40,6 @@ except AttributeError:
     create_task = asyncio.ensure_future
 
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
 
 aiogrpc.init_grpc_aio()
 
@@ -53,6 +50,8 @@ class DashboardAgent(object):
         node_ip_address,
         redis_address,
         dashboard_agent_port,
+        gcs_address,
+        minimal,
         redis_password=None,
         temp_dir=None,
         session_dir=None,
@@ -68,8 +67,17 @@ class DashboardAgent(object):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.
         self.ip = node_ip_address
-        self.redis_address = dashboard_utils.address_tuple(redis_address)
-        self.redis_password = redis_password
+        self.minimal = minimal
+
+        if use_gcs_for_bootstrap():
+            assert gcs_address is not None
+            self.gcs_address = gcs_address
+        else:
+            self.redis_address = dashboard_utils.address_tuple(redis_address)
+            self.redis_password = redis_password
+            self.aioredis_client = None
+            self.gcs_address = None
+
         self.temp_dir = temp_dir
         self.session_dir = session_dir
         self.runtime_env_dir = runtime_env_dir
@@ -95,12 +103,21 @@ class DashboardAgent(object):
             self.server, f"{grpc_ip}:{self.dashboard_agent_port}"
         )
         logger.info("Dashboard agent grpc address: %s:%s", grpc_ip, self.grpc_port)
-        self.aioredis_client = None
         options = (("grpc.enable_http_proxy", 0),)
         self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
             f"{self.ip}:{self.node_manager_port}", options, asynchronous=True
         )
-        self.http_session = None
+
+        # If the agent is started as non-minimal version, http server should
+        # be configured to communicate with the dashboard in a head node.
+        self.http_server = None
+
+    async def _configure_http_server(self, modules):
+        from ray.dashboard.http_server_agent import HttpServerAgent
+
+        http_server = HttpServerAgent(self.ip, self.listen_port)
+        await http_server.start(modules)
+        return http_server
 
     def _load_modules(self):
         """Load dashboard agent modules."""
@@ -113,10 +130,14 @@ class DashboardAgent(object):
                 "Loading %s: %s", dashboard_utils.DashboardAgentModule.__name__, cls
             )
             c = cls(self)
-            dashboard_utils.ClassMethodRouteTable.bind(c)
             modules.append(c)
         logger.info("Loaded %d modules.", len(modules))
         return modules
+
+    @property
+    def http_session(self):
+        assert self.http_server, "Accessing unsupported API in a minimal ray."
+        return self.http_server.http_session
 
     async def run(self):
         async def _check_parent():
@@ -138,75 +159,47 @@ class DashboardAgent(object):
         if sys.platform not in ["win32", "cygwin"]:
             check_parent_task = create_task(_check_parent())
 
-        # Create an aioredis client for all modules.
-        try:
-            self.aioredis_client = await dashboard_utils.get_aioredis_client(
-                self.redis_address,
-                self.redis_password,
-                dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
-                dashboard_consts.RETRY_REDIS_CONNECTION_TIMES,
-            )
-        except (socket.gaierror, ConnectionRefusedError):
-            logger.error(
-                "Dashboard agent exiting: " "Failed to connect to redis at %s",
-                self.redis_address,
-            )
-            sys.exit(-1)
-
-        # Create a http session for all modules.
-        # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
-        if LooseVersion(aiohttp.__version__) < LooseVersion("4.0.0"):
-            self.http_session = aiohttp.ClientSession(loop=asyncio.get_event_loop())
-        else:
-            self.http_session = aiohttp.ClientSession()
+        if not use_gcs_for_bootstrap():
+            # Create an aioredis client for all modules.
+            try:
+                self.aioredis_client = await dashboard_utils.get_aioredis_client(
+                    self.redis_address,
+                    self.redis_password,
+                    dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
+                    dashboard_consts.RETRY_REDIS_CONNECTION_TIMES,
+                )
+            except (socket.gaierror, ConnectionRefusedError):
+                logger.error(
+                    "Dashboard agent exiting: " "Failed to connect to redis at %s",
+                    self.redis_address,
+                )
+                sys.exit(-1)
 
         # Start a grpc asyncio server.
         await self.server.start()
-        # TODO: redis-removal bootstrap
-        gcs_address = await self.aioredis_client.get(
-            dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS
-        )
-        self.gcs_client = GcsClient(address=gcs_address.decode())
+
+        if not use_gcs_for_bootstrap():
+            gcs_address = await self.aioredis_client.get(
+                dashboard_consts.GCS_SERVER_ADDRESS
+            )
+            self.gcs_client = GcsClient(address=gcs_address.decode())
+        else:
+            self.gcs_client = GcsClient(address=self.gcs_address)
         modules = self._load_modules()
 
-        # Http server should be initialized after all modules loaded.
-        app = aiohttp.web.Application()
-        app.add_routes(routes=routes.bound_routes())
-
-        # Enable CORS on all routes.
-        cors = aiohttp_cors.setup(
-            app,
-            defaults={
-                "*": aiohttp_cors.ResourceOptions(
-                    allow_credentials=True,
-                    expose_headers="*",
-                    allow_methods="*",
-                    allow_headers=("Content-Type", "X-Header"),
-                )
-            },
-        )
-        for route in list(app.router.routes()):
-            cors.add(route)
-
-        runner = aiohttp.web.AppRunner(app)
-        await runner.setup()
-        site = aiohttp.web.TCPSite(
-            runner,
-            "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0",
-            self.listen_port,
-        )
-        await site.start()
-        http_host, http_port, *_ = site._server.sockets[0].getsockname()
-        logger.info("Dashboard agent http address: %s:%s", http_host, http_port)
-
-        # Dump registered http routes.
-        dump_routes = [r for r in app.router.routes() if r.method != hdrs.METH_HEAD]
-        for r in dump_routes:
-            logger.info(r)
-        logger.info("Registered %s routes.", len(dump_routes))
+        # Setup http server if necessary.
+        if not self.minimal:
+            # If the agent is not minimal it should start the http server
+            # to communicate with the dashboard in a head node.
+            # Http server is not started in the minimal version because
+            # it requires additional dependencies that are not
+            # included in the minimal ray package.
+            self.http_server = await self._configure_http_server(modules)
 
         # Write the dashboard agent port to redis.
         # TODO: Use async version if performance is an issue
+        # -1 should indicate that http server is not started.
+        http_port = -1 if not self.http_server else self.http_server.http_port
         internal_kv._internal_kv_put(
             f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}",
             json.dumps([http_port, self.grpc_port]),
@@ -232,8 +225,9 @@ class DashboardAgent(object):
         await asyncio.gather(*tasks)
 
         await self.server.wait_for_termination()
-        # Wait for finish signal.
-        await runner.cleanup()
+
+        if self.http_server:
+            await self.http_server.cleanup()
 
 
 if __name__ == "__main__":
@@ -366,6 +360,15 @@ if __name__ == "__main__":
         default=None,
         help="Specify the path of the resource directory used by runtime_env.",
     )
+    parser.add_argument(
+        "--minimal",
+        action="store_true",
+        help=(
+            "Minimal agent only contains a subset of features that don't "
+            "require additional dependencies installed when ray is installed "
+            "by `pip install ray[default]`."
+        ),
+    )
 
     args = parser.parse_args()
     try:
@@ -383,6 +386,8 @@ if __name__ == "__main__":
             args.node_ip_address,
             args.redis_address,
             args.dashboard_agent_port,
+            args.gcs_address,
+            args.minimal,
             redis_password=args.redis_password,
             temp_dir=args.temp_dir,
             session_dir=args.session_dir,
@@ -411,16 +416,23 @@ if __name__ == "__main__":
             # Agent is failed to be started many times.
             # Push an error to all drivers, so that users can know the
             # impact of the issue.
-            redis_client = ray._private.services.create_redis_client(
-                args.redis_address, password=args.redis_password
-            )
+            redis_client = None
             gcs_publisher = None
-            if args.gcs_address:
-                gcs_publisher = GcsPublisher(args.gcs_address)
-            elif gcs_pubsub_enabled():
-                gcs_publisher = GcsPublisher(
-                    address=get_gcs_address_from_redis(redis_client)
+            if gcs_pubsub_enabled():
+                if use_gcs_for_bootstrap():
+                    gcs_publisher = GcsPublisher(args.gcs_address)
+                else:
+                    redis_client = ray._private.services.create_redis_client(
+                        args.redis_address, password=args.redis_password
+                    )
+                    gcs_publisher = GcsPublisher(
+                        address=get_gcs_address_from_redis(redis_client)
+                    )
+            else:
+                redis_client = ray._private.services.create_redis_client(
+                    args.redis_address, password=args.redis_password
                 )
+
             traceback_str = ray._private.utils.format_error_message(
                 traceback.format_exc()
             )

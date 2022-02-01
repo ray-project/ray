@@ -55,6 +55,7 @@ def get_build_env():
             "TRAVIS_OS_NAME": {  # The map is used to stay consistent with Travis
                 "linux": "linux",
                 "darwin": "osx",
+                "win32": "windows",
             }[sys.platform],
         }
 

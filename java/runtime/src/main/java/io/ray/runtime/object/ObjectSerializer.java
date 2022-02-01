@@ -1,5 +1,6 @@
 package io.ray.runtime.object;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Bytes;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.id.ActorId;
@@ -99,7 +100,7 @@ public class ObjectSerializer {
       } else if (Bytes.indexOf(meta, ACTOR_EXCEPTION_META) == 0) {
         ActorId actorId = IdUtil.getActorIdFromObjectId(objectId);
         if (data != null && data.length > 0) {
-          RayException exception = deserializeRayException(data, objectId);
+          RayException exception = deserializeActorException(data, actorId, objectId);
           if (exception != null) {
             return exception;
           }
@@ -159,7 +160,10 @@ public class ObjectSerializer {
       // serializedBytes is MessagePack serialized bytes
       // Only OBJECT_METADATA_TYPE_RAW is raw bytes,
       // any other type should be the MessagePack serialized bytes.
-      return new NativeRayObject(serializedBytes, OBJECT_METADATA_TYPE_ACTOR_HANDLE);
+      NativeRayObject nativeRayObject =
+          new NativeRayObject(serializedBytes, OBJECT_METADATA_TYPE_ACTOR_HANDLE);
+      nativeRayObject.setContainedObjectIds(ImmutableList.of(actorHandle.getActorHandleId()));
+      return nativeRayObject;
     } else {
       try {
         Pair<byte[], Boolean> serialized = Serializer.encode(object);
@@ -215,12 +219,44 @@ public class ObjectSerializer {
       // No RayException provided
       return null;
     }
-
     try {
       return RayException.fromBytes(pbData);
     } catch (InvalidProtocolBufferException e) {
       throw new IllegalArgumentException(
-          "Can't deserialize RayActorCreationTaskException object: " + objectId.toString());
+          "Can't deserialize RayActorCreationTaskException object: " + objectId.toString(), e);
+    }
+  }
+
+  private static RayException deserializeActorException(
+      byte[] msgPackData, ActorId actorId, ObjectId objectId) {
+    // Serialization logic of task execution exception: an instance of
+    // `io.ray.runtime.exception.RayTaskException`
+    //    -> a `RayException` protobuf message
+    //    -> protobuf-serialized bytes
+    //    -> MessagePack-serialized bytes.
+    // So here the `data` variable is MessagePack-serialized bytes, and the `serialized`
+    // variable is protobuf-serialized bytes. They are not the same.
+    byte[] pbData = Serializer.decode(msgPackData, byte[].class);
+
+    if (pbData == null || pbData.length == 0) {
+      // No RayException provided
+      return null;
+    }
+
+    try {
+      io.ray.runtime.generated.Common.RayErrorInfo rayErrorInfo =
+          io.ray.runtime.generated.Common.RayErrorInfo.parseFrom(pbData);
+      if (rayErrorInfo.getActorDiedError().hasCreationTaskFailureContext()) {
+        return RayException.fromRayExceptionPB(
+            rayErrorInfo.getActorDiedError().getCreationTaskFailureContext());
+      } else {
+        // TODO(lixin) Generate friendly error message from RayErrorInfo.ActorDiedError's field
+        // type.
+        return new RayActorException(actorId);
+      }
+    } catch (InvalidProtocolBufferException e) {
+      throw new IllegalArgumentException(
+          "Can't deserialize RayActorCreationTaskException object: " + objectId.toString(), e);
     }
   }
 }

@@ -5,6 +5,7 @@ from types import FunctionType
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import ray
+from ray import data
 from ray.actor import ActorHandle
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.base_env import BaseEnv
@@ -16,13 +17,22 @@ from ray.rllib.offline import (
     JsonWriter,
     ShuffledInput,
     D4RLReader,
+    DatasetReader,
+    DatasetWriter,
 )
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.typing import EnvType, PolicyID, TrainerConfigDict
+from ray.rllib.utils.typing import (
+    EnvCreator,
+    EnvType,
+    PolicyID,
+    SampleBatchType,
+    TrainerConfigDict,
+)
 from ray.tune.registry import registry_contains_input, registry_get_input
 
 tf1, tf, tfv = try_import_tf()
@@ -43,7 +53,7 @@ class WorkerSet:
     def __init__(
         self,
         *,
-        env_creator: Optional[Callable[[EnvContext], EnvType]] = None,
+        env_creator: Optional[EnvCreator] = None,
         validate_env: Optional[Callable[[EnvType], None]] = None,
         policy_class: Optional[Type[Policy]] = None,
         trainer_config: Optional[TrainerConfigDict] = None,
@@ -92,6 +102,16 @@ class WorkerSet:
                 trainer_config,
                 {"tf_session_args": trainer_config["local_tf_session_args"]},
             )
+
+            if trainer_config["input"] == "dataset":
+                # Create the set of dataset readers to be shared by all the
+                # rollout workers.
+                self._ds, self._ds_shards = self._get_dataset_and_shards(
+                    trainer_config, num_workers, local_worker
+                )
+            else:
+                self._ds = None
+                self._ds_shards = None
 
             # Create a number of @ray.remote workers.
             self._remote_workers = []
@@ -157,17 +177,39 @@ class WorkerSet:
         """Returns a list of remote rollout workers."""
         return self._remote_workers
 
-    def sync_weights(self, policies: Optional[List[PolicyID]] = None) -> None:
+    def sync_weights(
+        self,
+        policies: Optional[List[PolicyID]] = None,
+        from_worker: Optional[RolloutWorker] = None,
+    ) -> None:
         """Syncs model weights from the local worker to all remote workers.
 
         Args:
-            policies: An optional list of policy IDs to sync for. If None,
-                sync all policies.
+            policies: Optional list of PolicyIDs to sync weights for.
+                If None (default), sync weights to/from all policies.
+            from_worker: Optional RolloutWorker instance to sync from.
+                If None (default), sync from this WorkerSet's local worker.
         """
-        if self.remote_workers():
-            weights = ray.put(self.local_worker().get_weights(policies))
-            for e in self.remote_workers():
-                e.set_weights.remote(weights)
+        if self.local_worker() is None and from_worker is None:
+            raise TypeError(
+                "No `local_worker` in WorkerSet, must provide `from_worker` "
+                "arg in `sync_weights()`!"
+            )
+
+        # Only sync if we have remote workers or `from_worker` is provided.
+        if self.remote_workers() or from_worker is not None:
+            weights = (from_worker or self.local_worker()).get_weights(policies)
+            # Put weights only once into object store and use same object
+            # ref to synch to all workers.
+            weights_ref = ray.put(weights)
+            # Sync to all remote workers in this WorkerSet.
+            for to_worker in self.remote_workers():
+                to_worker.set_weights.remote(weights_ref)
+
+            # If `from_worker` is provided, also sync to this WorkerSet's
+            # local worker.
+            if from_worker is not None and self.local_worker() is not None:
+                self.local_worker().set_weights(weights)
 
     def add_workers(self, num_workers: int) -> None:
         """Creates and adds a number of remote workers to this worker set.
@@ -222,6 +264,17 @@ class WorkerSet:
                 w.__ray_terminate__.remote()
 
     @DeveloperAPI
+    def is_policy_to_train(
+        self, policy_id: PolicyID, batch: Optional[SampleBatchType] = None
+    ) -> bool:
+        """Whether given PolicyID (optionally inside some batch) is trainable."""
+        local_worker = self.local_worker()
+        if local_worker:
+            return local_worker.is_policy_to_train(policy_id, batch)
+        else:
+            raise NotImplementedError
+
+    @DeveloperAPI
     def foreach_worker(self, func: Callable[[RolloutWorker], T]) -> List[T]:
         """Calls the given function with each worker instance as arg.
 
@@ -232,7 +285,7 @@ class WorkerSet:
              The list of return values of all calls to `func([worker])`.
         """
         local_result = []
-        if self._local_worker:
+        if self.local_worker() is not None:
             local_result = [func(self.local_worker())]
         remote_results = ray.get([w.apply.remote(func) for w in self.remote_workers()])
         return local_result + remote_results
@@ -257,7 +310,7 @@ class WorkerSet:
         """
         local_result = []
         # Local worker: Index=0.
-        if self._local_worker:
+        if self.local_worker() is not None:
             local_result = [func(self.local_worker(), 0)]
         # Remote workers: Index > 0.
         remote_results = ray.get(
@@ -285,7 +338,7 @@ class WorkerSet:
                 workers' results
         """
         results = []
-        if self._local_worker:
+        if self.local_worker() is not None:
             results = self.local_worker().foreach_policy(func)
         ray_gets = []
         for worker in self.remote_workers():
@@ -296,34 +349,25 @@ class WorkerSet:
         return results
 
     @DeveloperAPI
-    def trainable_policies(self) -> List[PolicyID]:
-        """Returns the list of trainable policy ids."""
-        if self._local_worker:
-            return self._local_worker.policies_to_train
-        else:
-            raise NotImplementedError
-
-    @DeveloperAPI
-    def foreach_trainable_policy(
-        self, func: Callable[[Policy, PolicyID], T]
-    ) -> List[T]:
+    def foreach_policy_to_train(self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
         """Apply `func` to all workers' Policies iff in `policies_to_train`.
 
         Args:
             func: A function - taking a Policy and its ID - that is
-                called on all workers' Policies in `worker.policies_to_train`.
+                called on all workers' Policies, for which
+                `worker.is_policy_to_train()` returns True.
 
         Returns:
             List[any]: The list of n return values of all
                 `func([trainable policy], [ID])`-calls.
         """
         results = []
-        if self._local_worker:
-            results = self.local_worker().foreach_trainable_policy(func)
+        if self.local_worker() is not None:
+            results = self.local_worker().foreach_policy_to_train(func)
         ray_gets = []
         for worker in self.remote_workers():
             ray_gets.append(
-                worker.apply.remote(lambda w: w.foreach_trainable_policy(func))
+                worker.apply.remote(lambda w: w.foreach_policy_to_train(func))
             )
         remote_results = ray.get(ray_gets)
         for r in remote_results:
@@ -348,7 +392,7 @@ class WorkerSet:
             The list (workers) of lists (sub environments) of results.
         """
         local_results = []
-        if self._local_worker:
+        if self.local_worker() is not None:
             local_results = [self.local_worker().foreach_env(func)]
         ray_gets = []
         for worker in self.remote_workers():
@@ -376,7 +420,7 @@ class WorkerSet:
                 of results.
         """
         local_results = []
-        if self._local_worker:
+        if self.local_worker() is not None:
             local_results = [self.local_worker().foreach_env_with_context(func)]
         ray_gets = []
         for worker in self.remote_workers():
@@ -394,11 +438,48 @@ class WorkerSet:
         workers._remote_workers = remote_workers or []
         return workers
 
+    def _get_dataset_and_shards(
+        self, config: TrainerConfigDict, num_workers: int, local_worker: bool
+    ) -> (ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]):
+        assert config["input"] == "dataset"
+        assert (
+            "input_config" in config
+        ), "Must specify input_config dict if using Dataset input."
+
+        input_config = config["input_config"]
+        if not input_config.get("format", None) or not input_config.get("path", None):
+            raise ValueError(
+                "Must specify format and path via input_config key"
+                " when using Ray dataset input."
+            )
+
+        format = input_config["format"]
+        path = input_config["path"]
+        if format == "json":
+            dataset = data.read_json(path)
+        elif format == "parquet":
+            dataset = data.read_parquet(path)
+        else:
+            raise ValueError("Un-supported Ray dataset format: ", format)
+
+        # Local worker will be responsible for sampling.
+        if local_worker and num_workers == 0:
+            # Dataset is the only shard we need.
+            return dataset, [dataset]
+        # Remote workers are responsible for sampling:
+        else:
+            # Each remote worker gets 1 shard.
+            # The first None shard is for the local worker, which
+            # shouldn't be doing rollout work anyways.
+            return dataset, [None] + dataset.repartition(
+                num_blocks=num_workers, shuffle=False
+            ).split(num_workers)
+
     def _make_worker(
         self,
         *,
         cls: Callable,
-        env_creator: Callable[[EnvContext], EnvType],
+        env_creator: EnvCreator,
         validate_env: Optional[Callable[[EnvType], None]],
         policy_cls: Type[Policy],
         worker_index: int,
@@ -430,6 +511,12 @@ class WorkerSet:
             input_creator = config["input"]
         elif config["input"] == "sampler":
             input_creator = lambda ioctx: ioctx.default_sampler_input()
+        elif config["input"] == "dataset":
+            # Input dataset shards should have already been prepared.
+            # We just need to take the proper shard here.
+            input_creator = lambda ioctx: DatasetReader(
+                ioctx, self._ds_shards[worker_index]
+            )
         elif isinstance(config["input"], dict):
             input_creator = lambda ioctx: ShuffledInput(
                 MixedInput(config["input"], ioctx), config["shuffle_buffer_size"]
@@ -454,6 +541,10 @@ class WorkerSet:
             output_creator = config["output"]
         elif config["output"] is None:
             output_creator = lambda ioctx: NoopOutput()
+        elif config["output"] == "dataset":
+            output_creator = lambda ioctx: DatasetWriter(
+                ioctx, compress_columns=config["output_compress_columns"]
+            )
         elif config["output"] == "logdir":
             output_creator = lambda ioctx: JsonWriter(
                 ioctx.log_dir,
@@ -478,7 +569,7 @@ class WorkerSet:
         ma_policies = config["multiagent"]["policies"]
         if ma_policies:
             for pid, policy_spec in ma_policies.copy().items():
-                assert isinstance(policy_spec, (PolicySpec, list, tuple))
+                assert isinstance(policy_spec, PolicySpec)
                 # Class is None -> Use `policy_cls`.
                 if policy_spec.policy_class is None:
                     ma_policies[pid] = ma_policies[pid]._replace(
@@ -540,3 +631,18 @@ class WorkerSet:
         )
 
         return worker
+
+    @Deprecated(new="WorkerSet.foreach_policy_to_train", error=False)
+    def foreach_trainable_policy(self, func):
+        return self.foreach_policy_to_train(func)
+
+    @Deprecated(new="WorkerSet.is_policy_to_train([pid], [batch]?)", error=False)
+    def trainable_policies(self):
+        local_worker = self.local_worker()
+        if local_worker is not None:
+            return [
+                local_worker.is_policy_to_train(pid, None)
+                for pid in local_worker.policy_map.keys()
+            ]
+        else:
+            raise NotImplementedError

@@ -12,7 +12,6 @@ from typing import List
 DEFAULT_BLACKLIST = [
     "aiohttp",
     "aiohttp_cors",
-    "aioredis",
     "colorful",
     "py-spy",
     # "requests",

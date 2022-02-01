@@ -247,63 +247,6 @@ service HeartbeatInfoGcsService {
   rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
 
-message AddTaskRequest {
-  TaskTableData task_data = 1;
-}
-
-message AddTaskReply {
-  GcsStatus status = 1;
-}
-
-message GetTaskRequest {
-  bytes task_id = 1;
-}
-
-message GetTaskReply {
-  GcsStatus status = 1;
-  TaskTableData task_data = 2;
-}
-
-message AddTaskLeaseRequest {
-  TaskLeaseData task_lease_data = 1;
-}
-
-message AddTaskLeaseReply {
-  GcsStatus status = 1;
-}
-
-message GetTaskLeaseRequest {
-  bytes task_id = 1;
-}
-
-message GetTaskLeaseReply {
-  GcsStatus status = 1;
-  TaskLeaseData task_lease_data = 2;
-}
-
-message AttemptTaskReconstructionRequest {
-  TaskReconstructionData task_reconstruction = 1;
-}
-
-message AttemptTaskReconstructionReply {
-  GcsStatus status = 1;
-}
-
-// Service for task info access.
-service TaskInfoGcsService {
-  // Add a task to GCS Service.
-  rpc AddTask(AddTaskRequest) returns (AddTaskReply);
-  // Get task information from GCS Service.
-  rpc GetTask(GetTaskRequest) returns (GetTaskReply);
-  // Add a task lease to GCS Service.
-  rpc AddTaskLease(AddTaskLeaseRequest) returns (AddTaskLeaseReply);
-  // Get task lease information from GCS Service.
-  rpc GetTaskLease(GetTaskLeaseRequest) returns (GetTaskLeaseReply);
-  // Attempt task reconstruction to GCS Service.
-  rpc AttemptTaskReconstruction(AttemptTaskReconstructionRequest)
-      returns (AttemptTaskReconstructionReply);
-}
-
 message AddProfileDataRequest {
   ProfileTableData profile_data = 1;
 }
@@ -509,6 +452,7 @@ message DrainNodeReply {
 
 message InternalKVGetRequest {
   bytes key = 1;
+  bytes namespace = 2;
 }
 
 message InternalKVGetReply {
@@ -520,6 +464,7 @@ message InternalKVPutRequest {
   bytes key = 1;
   bytes value = 2;
   bool overwrite = 3;
+  bytes namespace = 4;
 }
 
 message InternalKVPutReply {
@@ -529,6 +474,8 @@ message InternalKVPutReply {
 
 message InternalKVDelRequest {
   bytes key = 1;
+  bytes namespace = 2;
+  bool del_by_prefix = 3;
 }
 
 message InternalKVDelReply {
@@ -538,6 +485,7 @@ message InternalKVDelReply {
 
 message InternalKVExistsRequest {
   bytes key = 1;
+  bytes namespace = 2;
 }
 
 message InternalKVExistsReply {
@@ -547,6 +495,7 @@ message InternalKVExistsReply {
 
 message InternalKVKeysRequest {
   bytes prefix = 1;
+  bytes namespace = 2;
 }
 
 message InternalKVKeysReply {

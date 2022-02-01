@@ -14,8 +14,9 @@ provider:
         # We depend on AWS Systems Manager (SSM) to deploy CloudWatch configuration updates to your cluster,
         # with relevant configuration created or updated in the SSM Parameter Store during `ray up`.
 
-        # The `AmazonCloudWatch-ray_agent_config_{cluster_name}` SSM Parameter Store Config Key is used to
-        # store a remote cache of the last Unified CloudWatch Agent config applied.
+        # We support two CloudWatch related config type under this cloudwatch section: agent and dashboard.
+        # The `AmazonCloudWatch-ray_{config_type}_config_{cluster_name}` SSM Parameter Store Config Key is used to
+        # store a remote cache of the last Unified CloudWatch config applied.
 
         # Every time you run `ray up` to update your cluster, we compare your local CloudWatch config file contents
         # to the SSM Parameter Store's contents for that config and, if they differ, then the associated CloudWatch
@@ -39,6 +40,17 @@ provider:
                 max_attempts: 120
                 # Seconds to wait between each Unified CloudWatch Agent SSM config update attempt.
                 delay_seconds: 30
+        # For CloudWatch Dashboard config files, we will also replace references to
+        # `{region}` with your cluster's region name, and `{cluster_name}` with your cluster name.
+        dashboard:
+            # CloudWatch Dashboard name
+            # Per-cluster level dashboard is created and dashboard name will be
+            # `{your_cluster_name}-example-dashboard-name` as default
+            name: "example-dashboard-name"
+            # The CloudWatch Dashboard is defined via the config file described
+            # at https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/CloudWatch-Dashboard-Body-Structure.html.
+            # Path to the CloudWatch Dashboard config file
+            config: "cloudwatch/example-cloudwatch-dashboard-config.json"
 
 # How Ray will authenticate with newly launched nodes.
 auth:

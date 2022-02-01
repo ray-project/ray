@@ -22,7 +22,7 @@ from ray.autoscaler._private.command_runner import (
 )
 from ray.autoscaler._private.log_timer import LogTimer
 from ray.autoscaler._private.cli_logger import cli_logger, cf
-import ray.autoscaler._private.subprocess_output_util as cmd_output_util
+from ray.autoscaler._private import subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.constants import RESOURCES_ENVIRONMENT_VARIABLE
 from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
 
@@ -335,9 +335,7 @@ class NodeUpdater:
             )
 
             CloudwatchHelper(
-                self.provider.provider_config,
-                [self.node_id],
-                self.provider.cluster_name,
+                self.provider.provider_config, self.node_id, self.provider.cluster_name
             ).update_from_config(self.is_head_node)
 
         if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
@@ -417,7 +415,7 @@ class NodeUpdater:
                                     # Run outside docker.
                                     self.cmd_runner.run(
                                         cmd,
-                                        ssh_options_override_ssh_key=self.auth_config.get(
+                                        ssh_options_override_ssh_key=self.auth_config.get(  # noqa: E501
                                             "ssh_private_key"
                                         ),
                                         run_env="host",

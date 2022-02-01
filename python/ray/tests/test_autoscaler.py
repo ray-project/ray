@@ -66,6 +66,8 @@ class DrainNodeOutcome(str, Enum):
     GenericRpcError = "GenericRpcError"
     # Raise a generic unexpected exception.
     GenericException = "GenericException"
+    # Tell the autoscaler to fail finding ips during drain
+    FailedToFindIp = "FailedToFindIp"
 
 
 class MockRpcException(grpc.RpcError):
@@ -125,7 +127,10 @@ class MockNodeInfoStub:
         # All but the last.
         not_all_drained_status = all_nodes_drained_status[:-1]
 
-        if self.drain_node_outcome == DrainNodeOutcome.Succeeded:
+        if self.drain_node_outcome in [
+            DrainNodeOutcome.Succeeded,
+            DrainNodeOutcome.FailedToFindIp,
+        ]:
             drain_node_status = all_nodes_drained_status
         elif self.drain_node_outcome == DrainNodeOutcome.NotAllDrained:
             drain_node_status = not_all_drained_status
@@ -302,6 +307,7 @@ class MockProvider(NodeProvider):
         self.ready_to_create.set()
         self.cache_stopped = cache_stopped
         self.unique_ips = unique_ips
+        self.fail_to_fetch_ip = False
         # Many of these functions are called by node_launcher or updater in
         # different threads. This can be treated as a global lock for
         # everything.
@@ -353,6 +359,8 @@ class MockProvider(NodeProvider):
             return self.mock_nodes[node_id].tags
 
     def internal_ip(self, node_id):
+        if self.fail_to_fetch_ip:
+            raise Exception("Failed to fetch ip on purpose.")
         if node_id is None:
             # Circumvent test-cases where there's no head node.
             return "mock"
@@ -410,6 +418,10 @@ class MockAutoscaler(StandardAutoscaler):
     autoscaler update issues at most one provider.non_terminated_nodes call.
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fail_to_find_ip_during_drain = False
+
     def _update(self):
         # Only works with MockProvider
         assert isinstance(self.provider, MockProvider)
@@ -420,6 +432,12 @@ class MockAutoscaler(StandardAutoscaler):
         # Strict inequality if update is called twice within the throttling
         # interval `self.update_interval_s`
         assert end_calls <= start_calls + 1
+
+    def drain_nodes_via_gcs(self, provider_node_ids_to_drain):
+        if self.fail_to_find_ip_during_drain:
+            self.provider.fail_to_fetch_ip = True
+        super().drain_nodes_via_gcs(provider_node_ids_to_drain)
+        self.provider.fail_to_fetch_ip = False
 
 
 SMALL_CLUSTER = {
@@ -1473,6 +1491,9 @@ class AutoscalingTest(unittest.TestCase):
     def testDynamicScaling5(self):
         self.helperDynamicScaling(DrainNodeOutcome.GenericException)
 
+    def testDynamicScaling6(self):
+        self.helperDynamicScaling(DrainNodeOutcome.FailedToFindIp)
+
     def helperDynamicScaling(self, drain_node_outcome: DrainNodeOutcome):
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         mock_node_info_stub = MockNodeInfoStub(drain_node_outcome)
@@ -1482,9 +1503,9 @@ class AutoscalingTest(unittest.TestCase):
 
         # Make assertions about DrainNode error handling during scale-down.
 
-        # DrainNode call was made.
-        assert mock_node_info_stub.drain_node_call_count > 0
         if drain_node_outcome == DrainNodeOutcome.Succeeded:
+            # DrainNode call was made.
+            mock_node_info_stub.drain_node_call_count > 0
             # No drain node exceptions.
             assert mock_metrics.drain_node_exceptions.inc.call_count == 0
             # Each drain node call succeeded.
@@ -1493,6 +1514,8 @@ class AutoscalingTest(unittest.TestCase):
                 == mock_node_info_stub.drain_node_call_count
             )
         elif drain_node_outcome == DrainNodeOutcome.Unimplemented:
+            # DrainNode call was made.
+            mock_node_info_stub.drain_node_call_count > 0
             # All errors were supressed.
             assert mock_metrics.drain_node_exceptions.inc.call_count == 0
             # Every call failed.
@@ -1501,6 +1524,8 @@ class AutoscalingTest(unittest.TestCase):
             DrainNodeOutcome.GenericRpcError,
             DrainNodeOutcome.GenericException,
         ):
+            # DrainNode call was made.
+            mock_node_info_stub.drain_node_call_count > 0
 
             # We encountered an exception.
             assert mock_metrics.drain_node_exceptions.inc.call_count > 0
@@ -1510,6 +1535,12 @@ class AutoscalingTest(unittest.TestCase):
                 == mock_node_info_stub.drain_node_call_count
             )
             assert mock_node_info_stub.drain_node_reply_success == 0
+        elif drain_node_outcome == DrainNodeOutcome.FailedToFindIp:
+            # We never called the drain node api because we were unable to
+            # fetch ips
+            assert mock_node_info_stub.drain_node_call_count == 0
+            # We encountered an exception fetching ip.
+            assert mock_metrics.drain_node_exceptions.inc.call_count > 0
 
     def _helperDynamicScaling(self, mock_metrics, mock_node_info_stub):
         config_path = self.write_config(SMALL_CLUSTER)
@@ -1538,6 +1569,8 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0,
             prom_metrics=mock_metrics,
         )
+        if mock_node_info_stub.drain_node_outcome == DrainNodeOutcome.FailedToFindIp:
+            autoscaler.fail_to_find_ip_during_drain = True
         self.waitForNodes(0, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         autoscaler.update()
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
@@ -3408,6 +3441,18 @@ MemAvailable:   33000000 kB
         head_node_config = node_types["ray.head.default"]
         assert head_node_config["min_workers"] == 0
         assert head_node_config["max_workers"] == 0
+
+
+def test_import():
+    """This test ensures that all the autoscaler imports work as expected to
+    prevent errors such as #19840.
+    """
+    import ray  # noqa
+
+    ray.autoscaler.sdk.request_resources  # noqa
+    import ray.autoscaler  # noqa
+    import ray.autoscaler.sdk  # noqa
+    from ray.autoscaler.sdk import request_resources  # noqa
 
 
 if __name__ == "__main__":

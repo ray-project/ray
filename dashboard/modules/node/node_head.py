@@ -14,6 +14,7 @@ from ray.dashboard.modules.node.node_consts import (
     LOG_PRUNE_THREASHOLD,
 )
 import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.utils import async_loop_forever
 from ray.dashboard.memory_utils import GroupByType, SortingType
@@ -24,7 +25,7 @@ from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.datacenter import DataSource, DataOrganizer
 
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
 def gcs_node_info_to_dict(message):
@@ -147,17 +148,17 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 await asyncio.sleep(node_consts.UPDATE_NODES_INTERVAL_SECONDS)
 
     @routes.get("/nodes")
-    @dashboard_utils.aiohttp_cache
+    @dashboard_optional_utils.aiohttp_cache
     async def get_all_nodes(self, req) -> aiohttp.web.Response:
         view = req.query.get("view")
         if view == "summary":
             all_node_summary = await DataOrganizer.get_all_node_summary()
-            return dashboard_utils.rest_response(
+            return dashboard_optional_utils.rest_response(
                 success=True, message="Node summary fetched.", summary=all_node_summary
             )
         elif view == "details":
             all_node_details = await DataOrganizer.get_all_node_details()
-            return dashboard_utils.rest_response(
+            return dashboard_optional_utils.rest_response(
                 success=True,
                 message="All node details fetched",
                 clients=all_node_details,
@@ -167,22 +168,22 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             for node in DataSource.nodes.values():
                 if node["state"] == "ALIVE":
                     alive_hostnames.add(node["nodeManagerHostname"])
-            return dashboard_utils.rest_response(
+            return dashboard_optional_utils.rest_response(
                 success=True,
                 message="Node hostname list fetched.",
                 host_name_list=list(alive_hostnames),
             )
         else:
-            return dashboard_utils.rest_response(
+            return dashboard_optional_utils.rest_response(
                 success=False, message=f"Unknown view {view}"
             )
 
     @routes.get("/nodes/{node_id}")
-    @dashboard_utils.aiohttp_cache
+    @dashboard_optional_utils.aiohttp_cache
     async def get_node(self, req) -> aiohttp.web.Response:
         node_id = req.match_info.get("node_id")
         node_info = await DataOrganizer.get_node_info(node_id)
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True, message="Node details fetched.", detail=node_info
         )
 
@@ -197,7 +198,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             kwargs["sort_by"] = SortingType(sort_by)
 
         memory_table = await DataOrganizer.get_memory_table(**kwargs)
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True,
             message="Fetched memory table",
             memory_table=memory_table.as_dict(),
@@ -211,10 +212,10 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         elif should_fetch == "false":
             self._collect_memory_info = False
         else:
-            return dashboard_utils.rest_response(
+            return dashboard_optional_utils.rest_response(
                 success=False, message=f"Unknown argument to set_fetch {should_fetch}"
             )
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True, message=f"Successfully set fetching to {should_fetch}"
         )
 
@@ -225,7 +226,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         node_logs = DataSource.ip_and_pid_to_logs.get(ip, {})
         if pid:
             node_logs = {str(pid): node_logs.get(pid, [])}
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True, message="Fetched logs.", logs=node_logs
         )
 
@@ -236,7 +237,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         node_errors = DataSource.ip_and_pid_to_errors.get(ip, {})
         if pid:
             node_errors = {str(pid): node_errors.get(pid, [])}
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True, message="Fetched errors.", errors=node_errors
         )
 
@@ -276,12 +277,14 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
                 logs_for_ip[pid] = logs_for_pid
                 DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
-            logger.info(f"Received a log for {ip} and {pid}")
+            logger.debug(f"Received a log for {ip} and {pid}")
 
-        if self._dashboard_head.gcs_subscriber:
+        if self._dashboard_head.gcs_log_subscriber:
             while True:
-                log_batch = await self._dashboard_head.gcs_subscriber.poll_logs()
                 try:
+                    log_batch = await self._dashboard_head.gcs_log_subscriber.poll()
+                    if log_batch is None:
+                        continue
                     process_log_batch(log_batch)
                 except Exception:
                     logger.exception("Error receiving log from GCS.")
@@ -303,7 +306,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
     async def _update_error_info(self):
         def process_error(error_data):
-            error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
             message = error_data.error_message
             message = re.sub(r"\x1b\[\d+m", "", message)
             match = re.search(r"\(pid=(\d+), ip=(.*?)\)", message)
@@ -323,10 +325,15 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 DataSource.ip_and_pid_to_errors[ip] = errs_for_ip
                 logger.info(f"Received error entry for {ip} {pid}")
 
-        if self._dashboard_head.gcs_subscriber:
+        if self._dashboard_head.gcs_error_subscriber:
             while True:
-                _, error_data = await self._dashboard_head.gcs_subscriber.poll_error()
                 try:
+                    (
+                        _,
+                        error_data,
+                    ) = await self._dashboard_head.gcs_error_subscriber.poll()
+                    if error_data is None:
+                        continue
                     process_error(error_data)
                 except Exception:
                     logger.exception("Error receiving error info from GCS.")
@@ -360,3 +367,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             self._update_log_info(),
             self._update_error_info(),
         )
+
+    @staticmethod
+    def is_minimal_module():
+        return False

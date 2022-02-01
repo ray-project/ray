@@ -407,7 +407,12 @@ class Categorical(Domain):
         ):
             if not isinstance(random_state, _BackwardsCompatibleNumpyRng):
                 random_state = _BackwardsCompatibleNumpyRng(random_state)
-            items = random_state.choice(domain.categories, size=size).tolist()
+            # do not use .choice() directly on domain.categories
+            # as that will coerce them to a single dtype
+            indices = random_state.choice(
+                np.arange(0, len(domain.categories)), size=size
+            )
+            items = [domain.categories[index] for index in indices]
             return items if len(items) > 1 else domain.cast(items[0])
 
     default_sampler_cls = _Uniform

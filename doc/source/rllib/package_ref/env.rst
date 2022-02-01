@@ -7,7 +7,7 @@ Any environment type provided by you to RLlib (e.g. a user-defined `gym.Env <htt
 is converted internally into the :py:class:`~ray.rllib.env.base_env.BaseEnv` API, whose main methods are ``poll()`` and ``send_actions()``:
 
 .. https://docs.google.com/drawings/d/1NtbVk-Mo89liTRx-sHu_7fqi3Kn7Hjdf3i6jIMbxGlY/edit
-.. image:: ../../images/rllib/env_classes_overview.svg
+.. image:: ../images/env_classes_overview.svg
 
 
 The :py:class:`~ray.rllib.env.base_env.BaseEnv` API allows RLlib to support:

@@ -52,55 +52,55 @@ appo-pongnoframeskip-v4:
         model:
             dim: 42
 
-# Bring cql test back after we make sure it learns.
-#cql-halfcheetahbulletenv-v0:
-#    env: HalfCheetahBulletEnv-v0
-#    run: CQL
-#    frameworks: [ "tf", "tf2", "torch" ]
-#    stop:
-#        time_total_s: 1800
-#    config:
-#        # Use input produced by expert SAC algo.
-#        input: ["~/halfcheetah_expert_sac.zip"]
-#        actions_in_input_normalized: true
-#
-#        soft_horizon: False
-#        horizon: 1000
-#        Q_model:
-#            fcnet_activation: relu
-#            fcnet_hiddens: [256, 256, 256]
-#        policy_model:
-#            fcnet_activation: relu
-#            fcnet_hiddens: [256, 256, 256]
-#        tau: 0.005
-#        target_entropy: auto
-#        no_done_at_end: false
-#        n_step: 3
-#        rollout_fragment_length: 1
-#        prioritized_replay: false
-#        train_batch_size: 256
-#        target_network_update_freq: 0
-#        timesteps_per_iteration: 1000
-#        learning_starts: 256
-#        optimization:
-#            actor_learning_rate: 0.0001
-#            critic_learning_rate: 0.0003
-#            entropy_learning_rate: 0.0001
-#        num_workers: 0
-#        num_gpus: 1
-#        metrics_smoothing_episodes: 5
-#
-#        # CQL Configs
-#        min_q_weight: 5.0
-#        bc_iters: 20000
-#        temperature: 1.0
-#        num_actions: 10
-#        lagrangian: False
-#
-#        # Switch on online evaluation.
-#        evaluation_interval: 3
-#        evaluation_config:
-#            input: sampler
+cql-halfcheetahbulletenv-v0:
+    env: HalfCheetahBulletEnv-v0
+    run: CQL
+    frameworks: [ "tf", "tf2", "torch" ]
+    stop:
+        time_total_s: 3600
+    config:
+        # Use input produced by expert SAC algo.
+        input: ["~/halfcheetah_expert_sac.zip"]
+        actions_in_input_normalized: true
+
+        soft_horizon: False
+        horizon: 1000
+        Q_model:
+            fcnet_activation: relu
+            fcnet_hiddens: [256, 256, 256]
+        policy_model:
+            fcnet_activation: relu
+            fcnet_hiddens: [256, 256, 256]
+        tau: 0.005
+        target_entropy: auto
+        no_done_at_end: false
+        n_step: 3
+        rollout_fragment_length: 1
+        prioritized_replay: false
+        train_batch_size: 256
+        target_network_update_freq: 0
+        timesteps_per_iteration: 1000
+        learning_starts: 256
+        optimization:
+            actor_learning_rate: 0.0001
+            critic_learning_rate: 0.0003
+            entropy_learning_rate: 0.0001
+        num_workers: 0
+        num_gpus: 1
+        metrics_smoothing_episodes: 5
+
+        # CQL Configs
+        min_q_weight: 5.0
+        bc_iters: 20000
+        temperature: 1.0
+        num_actions: 10
+        lagrangian: False
+
+        # Switch on online evaluation.
+        evaluation_interval: 3
+        evaluation_config:
+            input: sampler
+        always_attach_evaluation_results: True
 
 sac-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0

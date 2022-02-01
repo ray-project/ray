@@ -89,9 +89,6 @@ if __name__ == "__main__":
     RAY_CI_PYTHON_AFFECTED = 0
     RAY_CI_LINUX_WHEELS_AFFECTED = 0
     RAY_CI_MACOS_WHEELS_AFFECTED = 0
-    RAY_CI_STREAMING_CPP_AFFECTED = 0
-    RAY_CI_STREAMING_PYTHON_AFFECTED = 0
-    RAY_CI_STREAMING_JAVA_AFFECTED = 0
     RAY_CI_DASHBOARD_AFFECTED = 0
     RAY_CI_DOCKER_AFFECTED = 0
     RAY_CI_DOC_AFFECTED = 0
@@ -146,6 +143,7 @@ if __name__ == "__main__":
                 RAY_CI_SGD_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_ML_UTILS_AFFECTED = 1
             elif re.match("^(python/ray/)?rllib/", changed_file):
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1
@@ -176,7 +174,6 @@ if __name__ == "__main__":
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-                RAY_CI_STREAMING_PYTHON_AFFECTED = 1
                 RAY_CI_DOC_AFFECTED = 1
                 # Python changes might impact cross language stack in Java.
                 # Java also depends on Python CLI to manage processes.
@@ -187,7 +184,6 @@ if __name__ == "__main__":
                     RAY_CI_PYTHON_DEPENDENCIES_AFFECTED = 1
             elif changed_file.startswith("java/"):
                 RAY_CI_JAVA_AFFECTED = 1
-                RAY_CI_STREAMING_JAVA_AFFECTED = 1
             elif changed_file.startswith("cpp/"):
                 RAY_CI_CPP_AFFECTED = 1
             elif changed_file.startswith("docker/"):
@@ -213,19 +209,8 @@ if __name__ == "__main__":
                 RAY_CI_PYTHON_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-                RAY_CI_STREAMING_CPP_AFFECTED = 1
-                RAY_CI_STREAMING_PYTHON_AFFECTED = 1
-                RAY_CI_STREAMING_JAVA_AFFECTED = 1
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 RAY_CI_DOC_AFFECTED = 1
-            elif changed_file.startswith("streaming/src"):
-                RAY_CI_STREAMING_CPP_AFFECTED = 1
-                RAY_CI_STREAMING_PYTHON_AFFECTED = 1
-                RAY_CI_STREAMING_JAVA_AFFECTED = 1
-            elif changed_file.startswith("streaming/python"):
-                RAY_CI_STREAMING_PYTHON_AFFECTED = 1
-            elif changed_file.startswith("streaming/java"):
-                RAY_CI_STREAMING_JAVA_AFFECTED = 1
             else:
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_SGD_AFFECTED = 1
@@ -239,9 +224,6 @@ if __name__ == "__main__":
                 RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-                RAY_CI_STREAMING_CPP_AFFECTED = 1
-                RAY_CI_STREAMING_PYTHON_AFFECTED = 1
-                RAY_CI_STREAMING_JAVA_AFFECTED = 1
                 RAY_CI_DASHBOARD_AFFECTED = 1
     else:
         RAY_CI_TUNE_AFFECTED = 1
@@ -257,9 +239,6 @@ if __name__ == "__main__":
         RAY_CI_DOC_AFFECTED = 1
         RAY_CI_LINUX_WHEELS_AFFECTED = 1
         RAY_CI_MACOS_WHEELS_AFFECTED = 1
-        RAY_CI_STREAMING_CPP_AFFECTED = 1
-        RAY_CI_STREAMING_PYTHON_AFFECTED = 1
-        RAY_CI_STREAMING_JAVA_AFFECTED = 1
         RAY_CI_DASHBOARD_AFFECTED = 1
 
     # Log the modified environment variables visible in console.
@@ -279,11 +258,6 @@ if __name__ == "__main__":
             "RAY_CI_PYTHON_AFFECTED={}".format(RAY_CI_PYTHON_AFFECTED),
             "RAY_CI_LINUX_WHEELS_AFFECTED={}".format(RAY_CI_LINUX_WHEELS_AFFECTED),
             "RAY_CI_MACOS_WHEELS_AFFECTED={}".format(RAY_CI_MACOS_WHEELS_AFFECTED),
-            "RAY_CI_STREAMING_CPP_AFFECTED={}".format(RAY_CI_STREAMING_CPP_AFFECTED),
-            "RAY_CI_STREAMING_PYTHON_AFFECTED={}".format(
-                RAY_CI_STREAMING_PYTHON_AFFECTED
-            ),
-            "RAY_CI_STREAMING_JAVA_AFFECTED={}".format(RAY_CI_STREAMING_JAVA_AFFECTED),
             "RAY_CI_DOCKER_AFFECTED={}".format(RAY_CI_DOCKER_AFFECTED),
             "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED={}".format(
                 RAY_CI_PYTHON_DEPENDENCIES_AFFECTED

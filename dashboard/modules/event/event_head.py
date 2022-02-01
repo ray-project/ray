@@ -7,6 +7,7 @@ from collections import OrderedDict, defaultdict
 import aiohttp.web
 
 import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.event_utils import (
     parse_event_strings,
@@ -17,7 +18,7 @@ from ray.core.generated import event_pb2_grpc
 from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
 
 JobEvents = OrderedDict
 dashboard_utils._json_compatible_types.add(JobEvents)
@@ -61,7 +62,7 @@ class EventHead(
         return event_pb2.ReportEventsReply(send_success=True)
 
     @routes.get("/events")
-    @dashboard_utils.aiohttp_cache(2)
+    @dashboard_optional_utils.aiohttp_cache(2)
     async def get_event(self, req) -> aiohttp.web.Response:
         job_id = req.query.get("job_id")
         if job_id is None:
@@ -69,12 +70,12 @@ class EventHead(
                 job_id: list(job_events.values())
                 for job_id, job_events in DataSource.events.items()
             }
-            return dashboard_utils.rest_response(
+            return dashboard_optional_utils.rest_response(
                 success=True, message="All events fetched.", events=all_events
             )
 
         job_events = DataSource.events.get(job_id, {})
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True,
             message="Job events fetched.",
             job_id=job_id,
@@ -88,3 +89,7 @@ class EventHead(
             lambda data: self._update_events(parse_event_strings(data)),
             source_types=event_consts.EVENT_HEAD_MONITOR_SOURCE_TYPES,
         )
+
+    @staticmethod
+    def is_minimal_module():
+        return False

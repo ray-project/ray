@@ -159,6 +159,7 @@ class ActorMethod:
                 kwargs=kwargs,
                 name=name,
                 num_returns=num_returns,
+                concurrency_group_name=concurrency_group,
             )
 
         # Apply the decorator if there is one.
@@ -556,6 +557,7 @@ class ActorClass:
         placement_group_bundle_index=-1,
         placement_group_capture_child_tasks=None,
         runtime_env=None,
+        max_pending_calls=-1,
         scheduling_strategy: SchedulingStrategyT = None,
     ):
         """Configures and overrides the actor instantiation parameters.
@@ -615,6 +617,7 @@ class ActorClass:
                         placement_group_capture_child_tasks
                     ),
                     runtime_env=new_runtime_env,
+                    max_pending_calls=max_pending_calls,
                     scheduling_strategy=scheduling_strategy,
                 )
 
@@ -641,6 +644,7 @@ class ActorClass:
         placement_group_bundle_index=-1,
         placement_group_capture_child_tasks=None,
         runtime_env=None,
+        max_pending_calls=-1,
         scheduling_strategy: SchedulingStrategyT = None,
     ):
         """Create an actor.
@@ -695,6 +699,11 @@ class ActorClass:
                 this actor or task and its children (see
                 :ref:`runtime-environments` for details).  This API is in beta
                 and may change before becoming stable.
+            max_pending_calls (int): Set the max number of pending calls
+                allowed on the actor handle. When this value is exceeded,
+                PendingCallsLimitExceeded will be raised for further tasks.
+                Note that this limit is counted per handle. -1 means that the
+                number of pending calls is unlimited.
             scheduling_strategy: Strategy about how to schedule this actor.
 
         Returns:
@@ -747,6 +756,7 @@ class ActorClass:
                     placement_group_capture_child_tasks
                 ),
                 runtime_env=runtime_env,
+                max_pending_calls=max_pending_calls,
                 scheduling_strategy=scheduling_strategy,
             )
 
@@ -780,12 +790,15 @@ class ActorClass:
                 )
 
         if lifetime is None:
-            detached = False
+            detached = None
         elif lifetime == "detached":
             detached = True
+        elif lifetime == "non_detached":
+            detached = False
         else:
             raise ValueError(
-                "actor `lifetime` argument must be either `None` or 'detached'"
+                "actor `lifetime` argument must be one of 'detached', "
+                "'non_detached' and 'None'."
             )
 
         # Set the actor's default resources if not already set. First three
@@ -962,6 +975,7 @@ class ActorClass:
             extension_data=str(actor_method_cpu),
             serialized_runtime_env=new_runtime_env or "{}",
             concurrency_groups_dict=concurrency_groups_dict or dict(),
+            max_pending_calls=max_pending_calls,
             scheduling_strategy=scheduling_strategy,
         )
 
@@ -1064,7 +1078,13 @@ class ActorHandle:
                 worker.core_worker.remove_actor_handle_reference(self._ray_actor_id)
 
     def _actor_method_call(
-        self, method_name, args=None, kwargs=None, name="", num_returns=None
+        self,
+        method_name,
+        args=None,
+        kwargs=None,
+        name="",
+        num_returns=None,
+        concurrency_group_name=None,
     ):
         """Method execution stub for an actor handle.
 
@@ -1119,6 +1139,7 @@ class ActorHandle:
             name,
             num_returns,
             self._ray_actor_method_cpus,
+            concurrency_group_name if concurrency_group_name is not None else b"",
         )
 
         if len(object_refs) == 1:
@@ -1198,7 +1219,7 @@ class ActorHandle:
                     "method_signatures": self._ray_method_signatures,
                     "method_num_returns": self._ray_method_num_returns,
                     "actor_method_cpus": self._ray_actor_method_cpus,
-                    "actor_creation_function_descriptor": self._ray_actor_creation_function_descriptor,
+                    "actor_creation_function_descriptor": self._ray_actor_creation_function_descriptor,  # noqa: E501
                 },
                 None,
             )

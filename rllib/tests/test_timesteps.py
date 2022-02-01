@@ -24,7 +24,7 @@ class TestTimeSteps(unittest.TestCase):
         config["model"]["fcnet_activation"] = None
 
         obs = np.array(1)
-        obs_one_hot = np.array([[0.0, 1.0]])
+        obs_batch = np.array([1])
 
         for _ in framework_iterator(config):
             trainer = pg.PGTrainer(config=config, env=RandomEnv)
@@ -34,7 +34,7 @@ class TestTimeSteps(unittest.TestCase):
                 trainer.compute_single_action(obs)
                 self.assertEqual(policy.global_timestep, i)
             for i in range(1, 21):
-                policy.compute_actions(obs_one_hot)
+                policy.compute_actions(obs_batch)
                 self.assertEqual(policy.global_timestep, i + 20)
 
             # Artificially set ts to 100Bio, then keep computing actions and
@@ -43,7 +43,7 @@ class TestTimeSteps(unittest.TestCase):
             policy.global_timestep = crazy_timesteps
             # Run for 10 more ts.
             for i in range(1, 11):
-                policy.compute_actions(obs_one_hot)
+                policy.compute_actions(obs_batch)
                 self.assertEqual(policy.global_timestep, i + crazy_timesteps)
             trainer.train()
 

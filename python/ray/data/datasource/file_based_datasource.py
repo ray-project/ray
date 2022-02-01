@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockAccessor, BlockExecStats
+from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
 from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_list import BlockMetadata
@@ -187,8 +187,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 size_bytes=sum(file_sizes),
                 schema=schema,
                 input_files=read_paths,
-                exec_stats=BlockExecStats.TODO,
-            )
+                exec_stats=None,
+            )  # Exec stats filled in later.
             read_task = ReadTask(
                 lambda read_paths=read_paths: read_files(read_paths, filesystem), meta
             )
@@ -484,6 +484,7 @@ def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
     # This is needed because pa.fs.S3FileSystem assumes pa.fs is already
     # imported before deserialization. See #17085.
     import pyarrow as pa
+    import pyarrow.fs
 
     if isinstance(filesystem, pa.fs.S3FileSystem):
         return _S3FileSystemWrapper(filesystem)
@@ -507,6 +508,18 @@ class _S3FileSystemWrapper:
 
     def __reduce__(self):
         return _S3FileSystemWrapper._reconstruct, self._fs.__reduce__()
+
+
+def _wrap_s3_filesystem_workaround(kwargs: dict) -> dict:
+    if "filesystem" in kwargs:
+        kwargs["filesystem"] = _wrap_s3_serialization_workaround(kwargs["filesystem"])
+    return kwargs
+
+
+def _unwrap_s3_filesystem_workaround(kwargs: dict) -> dict:
+    if isinstance(kwargs.get("filesystem"), _S3FileSystemWrapper):
+        kwargs["filesystem"] = kwargs["filesystem"].unwrap()
+    return kwargs
 
 
 def _resolve_kwargs(

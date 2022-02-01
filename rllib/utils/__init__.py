@@ -1,3 +1,4 @@
+import contextlib
 from functools import partial
 
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
@@ -17,7 +18,7 @@ from ray.rllib.utils.numpy import (
     MIN_LOG_NN_OUTPUT,
     MAX_LOG_NN_OUTPUT,
 )
-from ray.rllib.utils.pre_checks import check_env
+from ray.rllib.utils.pre_checks.env import check_env
 from ray.rllib.utils.schedules import (
     LinearSchedule,
     PiecewiseSchedule,
@@ -77,12 +78,12 @@ def force_list(elements=None, to_tuple=False):
         ctor()
         if elements is None
         else ctor(elements)
-        if type(elements) in [list, tuple]
+        if type(elements) in [list, set, tuple]
         else ctor([elements])
     )
 
 
-class NullContextManager:
+class NullContextManager(contextlib.AbstractContextManager):
     """No-op context manager"""
 
     def __init__(self):

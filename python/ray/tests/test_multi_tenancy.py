@@ -82,7 +82,7 @@ print("PID:" + str.join(",", [str(_) for _ in pids]))
 
 ray.shutdown()
     """.format(
-        info["redis_address"]
+        info["address"]
     )
 
     driver_count = 3
@@ -119,7 +119,6 @@ ray.shutdown()
                     all_worker_pids.add(worker_pid)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_runtime_env(shutdown_only):
     ray.init(
         job_config=ray.job_config.JobConfig(
@@ -234,7 +233,7 @@ def foo():
 
 ray.shutdown()
     """.format(
-        info["redis_address"]
+        info["address"]
     )
 
     before = len(get_workers())

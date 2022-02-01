@@ -47,13 +47,6 @@ class HEBOSearch(Searcher):
     by Huawei's Noah Ark. More info can be found here:
     https://github.com/huawei-noah/HEBO/tree/master/HEBO.
 
-    You will need to install HEBO via the following (dependencies are
-    pinned to avoid HEBO 0.1.0 errors):
-
-    .. code-block:: bash
-
-        pip install "scipy<1.7.0" "pymoo<0.5.0" "HEBO==0.1.0"
-
     `space` can either be a HEBO's `DesignSpace` object or a dict of Tune
     search spaces.
 
@@ -147,9 +140,10 @@ class HEBOSearch(Searcher):
     ):
         assert hebo is not None, (
             "HEBO must be installed! You can install HEBO with"
-            " the command: `pip install 'scipy<1.7.0' 'pymoo<0.5.0'"
-            " 'HEBO==0.1.0'`. This error may also be caused if HEBO"
-            " dependencies have bad versions."
+            " the command: `pip install 'HEBO>=0.2.0'."
+            "This error may also be caused if HEBO"
+            " dependencies have bad versions. Try updating HEBO"
+            " first."
         )
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
@@ -326,7 +320,16 @@ class HEBOSearch(Searcher):
             logger.warning("HEBO doesn't use intermediate_values. Ignoring.")
         if not error and not pruned:
             self._opt.observe(
-                pd.DataFrame([parameters]), np.array([value]) * self._metric_op
+                pd.DataFrame(
+                    [
+                        {
+                            k: v
+                            for k, v in parameters.items()
+                            if k in self._opt.space.para_names
+                        }
+                    ]
+                ),
+                np.array([value]) * self._metric_op,
             )
         else:
             logger.warning(

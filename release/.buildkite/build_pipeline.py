@@ -60,8 +60,6 @@ CORE_NIGHTLY_TESTS = {
         "non_streaming_shuffle_100gb",
         "non_streaming_shuffle_50gb_large_partition",
         "non_streaming_shuffle_50gb",
-        "dask_on_ray_10gb_sort",
-        "dask_on_ray_100gb_sort",
         SmokeTest("dask_on_ray_large_scale_test_no_spilling"),
         SmokeTest("dask_on_ray_large_scale_test_spilling"),
         "stress_test_placement_group",
@@ -77,9 +75,7 @@ CORE_NIGHTLY_TESTS = {
         SmokeTest("stress_test_many_tasks"),
         SmokeTest("stress_test_dead_actors"),
         "shuffle_data_loader",
-        "dask_on_ray_1tb_sort",
         SmokeTest("threaded_actors_stress_test"),
-        "placement_group_performance_test",
         "pg_long_running_performance_test",
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
@@ -101,6 +97,7 @@ CORE_NIGHTLY_TESTS = {
     "~/ray/release/nightly_tests/chaos_test.yaml": [
         "chaos_many_actors",
         "chaos_many_tasks_no_object_store",
+        "chaos_pipelined_ingestion_1500_gb_15_windows",
     ],
     "~/ray/release/microbenchmark/microbenchmark.yaml": [
         "microbenchmark",
@@ -115,20 +112,24 @@ SERVE_NIGHTLY_TESTS = {
     "~/ray/release/serve_tests/serve_tests.yaml": [
         "single_deployment_1k_noop_replica",
         "multi_deployment_1k_noop_replica",
+        "autoscaling_single_deployment",
+        "autoscaling_multi_deployment",
         "serve_micro_benchmark",
+        "serve_micro_benchmark_k8s",
         "serve_cluster_fault_tolerance",
     ],
 }
 
 CORE_DAILY_TESTS = {
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
+        "k8s_dask_on_ray_large_scale_test_no_spilling",
         "dask_on_ray_large_scale_test_no_spilling",
         "dask_on_ray_large_scale_test_spilling",
         "pg_autoscaling_regression_test",
         "threaded_actors_stress_test",
+        "k8s_threaded_actors_stress_test",
         "stress_test_many_tasks",
         "stress_test_dead_actors",
-        "many_nodes_actor_test",
     ],
     "~/ray/release/nightly_tests/chaos_test.yaml": [
         "chaos_dask_on_ray_large_scale_test_no_spilling",
@@ -142,6 +143,32 @@ CORE_SCALABILITY_TESTS_DAILY = {
         "many_tasks",
         "many_pgs",
         "many_nodes",
+    ],
+}
+
+CORE_REDIS_HA_TESTS_DAILY = {
+    "~/ray/benchmarks/benchmark_tests.yaml": [
+        "many_actors_redis_ha",
+        "many_tasks_redis_ha",
+        "many_pgs_redis_ha",
+        "many_nodes_redis_ha",
+    ],
+}
+
+CORE_SCHEDULING_DAILY = {
+    "~/ray/benchmarks/benchmark_tests.yaml": [
+        "scheduling_test_many_0s_tasks_single_node",
+        "scheduling_test_many_0s_tasks_many_nodes",
+        # Reenable these two once we got right setup
+        # "scheduling_test_many_5s_tasks_single_node",
+        # "scheduling_test_many_5s_tasks_many_nodes",
+    ],
+    "~/ray/release/nightly_tests/nightly_tests.yaml": [
+        "many_nodes_actor_test",
+        "dask_on_ray_10gb_sort",
+        "dask_on_ray_100gb_sort",
+        "dask_on_ray_1tb_sort",
+        "placement_group_performance_test",
     ],
 }
 
@@ -167,6 +194,19 @@ NIGHTLY_TESTS = {
         SmokeTest("pbt"),
         # SmokeTest("serve"),
         # SmokeTest("serve_failure"),
+        # Full long running tests (1 day runtime)
+        "actor_deaths",
+        "apex",
+        "impala",
+        "many_actor_tasks",
+        "many_drivers",
+        "many_ppo",
+        "many_tasks",
+        "many_tasks_serialized_ids",
+        "node_failures",
+        "pbt",
+        "serve",
+        "serve_failure",
     ],
     "~/ray/release/sgd_tests/sgd_tests.yaml": [
         "sgd_gpu",
@@ -186,7 +226,6 @@ NIGHTLY_TESTS = {
         SmokeTest("network_overhead"),
         "result_throughput_cluster",
         "result_throughput_single_node",
-        "xgboost_sweep",
     ],
     "~/ray/release/xgboost_tests/xgboost_tests.yaml": [
         "train_small",
@@ -224,24 +263,10 @@ WEEKLY_TESTS = {
     "/long_running_distributed.yaml": [
         "pytorch_pbt_failure",
     ],
-    # Full long running tests (1 day runtime)
-    "~/ray/release/long_running_tests/long_running_tests.yaml": [
-        "actor_deaths",
-        "apex",
-        "impala",
-        "many_actor_tasks",
-        "many_drivers",
-        "many_ppo",
-        "many_tasks",
-        "many_tasks_serialized_ids",
-        "node_failures",
-        "pbt",
-        "serve",
-        "serve_failure",
-    ],
     "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
         "network_overhead",
         "long_running_large_checkpoints",
+        "xgboost_sweep",
     ],
     "~/ray/release/rllib_tests/rllib_tests.yaml": [
         "learning_tests",
@@ -275,7 +300,9 @@ SUITES = {
     "serve-nightly": SERVE_NIGHTLY_TESTS,
     "core-daily": CORE_DAILY_TESTS,
     "core-scalability": CORE_SCALABILITY_TESTS_DAILY,
+    "core-redis-ha": CORE_REDIS_HA_TESTS_DAILY,
     "nightly": {**NIGHTLY_TESTS, **USER_TESTS},
+    "core-scheduling-daily": CORE_SCHEDULING_DAILY,
     "weekly": WEEKLY_TESTS,
 }
 

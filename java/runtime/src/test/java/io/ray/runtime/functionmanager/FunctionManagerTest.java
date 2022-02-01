@@ -183,7 +183,7 @@ public class FunctionManagerTest {
   @Test
   public void testLoadFunctionTableForClass() {
     JobFunctionTable functionTable = new JobFunctionTable(getClass().getClassLoader());
-    Map<Pair<String, String>, RayFunction> res =
+    Map<Pair<String, String>, Pair<RayFunction, Boolean>> res =
         functionTable.loadFunctionsForClass(ChildClass.class.getName());
     // The result should be 4 entries:
     //   1, the constructor with signature
@@ -211,7 +211,7 @@ public class FunctionManagerTest {
                 overloadFunctionDescriptorDouble.signature)));
     Assert.assertTrue(res.containsKey(ImmutablePair.of(overloadFunctionDescriptorInt.name, "")));
     Pair<String, String> overloadKey = ImmutablePair.of(overloadFunctionDescriptorInt.name, "");
-    RayFunction func = res.get(overloadKey);
+    RayFunction func = res.get(overloadKey).getLeft();
     // The function is overloaded.
     Assert.assertTrue(res.containsKey(overloadKey));
     Assert.assertNull(func);

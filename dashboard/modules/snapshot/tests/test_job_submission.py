@@ -52,8 +52,8 @@ def test_successful_job_status(
             if job_entry["status"] is not None:
                 assert job_entry["config"]["metadata"]["jobSubmissionId"] == job_id
                 assert job_entry["status"] in {"PENDING", "RUNNING", "SUCCEEDED"}
-                return job_entry["status"] == "SUCCEEDED"
                 assert job_entry["statusMessage"] is not None
+                return job_entry["status"] == "SUCCEEDED"
 
         return False
 

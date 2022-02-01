@@ -62,7 +62,7 @@ def _should_cache(req: ray_client_pb2.DataRequest) -> bool:
 
 def fill_queue(
     grpc_input_generator: Iterator[ray_client_pb2.DataRequest],
-    output_queue: "Queue[Union[ray_client_pb2.DataRequest, ray_client_pb2.DataResponse]]",
+    output_queue: "Queue[Union[ray_client_pb2.DataRequest, ray_client_pb2.DataResponse]]",  # noqa: E501
 ) -> None:
     """
     Pushes incoming requests to a shared output_queue.

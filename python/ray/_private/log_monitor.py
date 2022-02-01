@@ -37,6 +37,9 @@ LOG_NAME_UPDATE_INTERVAL_S = float(os.getenv("LOG_NAME_UPDATE_INTERVAL_S", 0.5))
 RAY_LOG_MONITOR_MANY_FILES_THRESHOLD = int(
     os.getenv("RAY_LOG_MONITOR_MANY_FILES_THRESHOLD", 1000)
 )
+RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED = int(
+    os.getenv("RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED", 1)
+)
 
 
 class LogFileInfo:
@@ -98,17 +101,20 @@ class LogMonitor:
             false otherwise.
     """
 
-    def __init__(self, logs_dir, redis_address, redis_password=None):
+    def __init__(self, logs_dir, redis_address, gcs_address, redis_password=None):
         """Initialize the log monitor object."""
         self.ip = services.get_node_ip_address()
         self.logs_dir = logs_dir
-        self.redis_client = ray._private.services.create_redis_client(
-            redis_address, password=redis_password
-        )
+        if gcs_utils.use_gcs_for_bootstrap():
+            self.redis_client = None
+        else:
+            self.redis_client = ray._private.services.create_redis_client(
+                redis_address, password=redis_password
+            )
+            gcs_address = gcs_utils.get_gcs_address_from_redis(self.redis_client)
         self.publisher = None
         if gcs_pubsub.gcs_pubsub_enabled():
-            gcs_addr = gcs_utils.get_gcs_address_from_redis(self.redis_client)
-            self.publisher = gcs_pubsub.GcsPublisher(address=gcs_addr)
+            self.publisher = gcs_pubsub.GcsPublisher(address=gcs_address)
         self.log_filenames = set()
         self.open_file_infos = []
         self.closed_file_infos = []
@@ -166,7 +172,9 @@ class LogMonitor:
         # If gcs server restarts, there can be multiple log files.
         gcs_err_path = glob.glob(f"{self.logs_dir}/gcs_server*.err")
         # runtime_env setup process is logged here
-        runtime_env_setup_paths = glob.glob(f"{self.logs_dir}/runtime_env*.log")
+        runtime_env_setup_paths = []
+        if RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED:
+            runtime_env_setup_paths = glob.glob(f"{self.logs_dir}/runtime_env*.log")
         total_files = 0
         for file_path in (
             log_file_paths
@@ -313,6 +321,7 @@ class LogMonitor:
                         break
                     if next_line[-1] == "\n":
                         next_line = next_line[:-1]
+
                     if next_line.startswith(ray_constants.LOG_PREFIX_ACTOR_NAME):
                         flush()  # Possible change of task/actor name.
                         file_info.actor_name = next_line.split(
@@ -463,7 +472,10 @@ if __name__ == "__main__":
     )
 
     log_monitor = LogMonitor(
-        args.logs_dir, args.redis_address, redis_password=args.redis_password
+        args.logs_dir,
+        args.redis_address,
+        args.gcs_address,
+        redis_password=args.redis_password,
     )
 
     try:
@@ -474,12 +486,13 @@ if __name__ == "__main__":
             args.redis_address, password=args.redis_password
         )
         gcs_publisher = None
-        if args.gcs_address:
-            gcs_publisher = GcsPublisher(address=args.gcs_address)
-        elif gcs_pubsub_enabled():
-            gcs_publisher = GcsPublisher(
-                address=gcs_utils.get_gcs_address_from_redis(redis_client)
-            )
+        if gcs_pubsub_enabled():
+            if gcs_utils.use_gcs_for_bootstrap():
+                gcs_publisher = GcsPublisher(address=args.gcs_address)
+            else:
+                gcs_publisher = GcsPublisher(
+                    address=gcs_utils.get_gcs_address_from_redis(redis_client)
+                )
         traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
         message = (
             f"The log monitor on node {platform.node()} "

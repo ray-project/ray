@@ -21,6 +21,7 @@
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/core_worker_process.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -45,12 +46,14 @@ Java_io_ray_runtime_actor_NativeActorHandle_nativeGetActorCreationTaskFunctionDe
 }
 
 JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeSerialize(
-    JNIEnv *env, jclass o, jbyteArray actorId) {
+    JNIEnv *env, jclass o, jbyteArray actorId, jbyteArray actorHandleId) {
   auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
   std::string output;
   ObjectID actor_handle_id;
   Status status = CoreWorkerProcess::GetCoreWorker().SerializeActorHandle(
       actor_id, &output, &actor_handle_id);
+  env->SetByteArrayRegion(actorHandleId, 0, ObjectID::kLength,
+                          reinterpret_cast<const jbyte *>(actor_handle_id.Data()));
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return NativeStringToJavaByteArray(env, output);
 }
@@ -65,6 +68,20 @@ Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(JNIEnv *env, jclas
       binary, /*outer_object_id=*/ObjectID::Nil());
 
   return IdToJavaByteArray<ActorID>(env, actor_id);
+}
+
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_actor_NativeActorHandle_nativeRemoveActorHandleReference(
+    JNIEnv *env, jclass clz, jbyteArray workerId, jbyteArray actorId) {
+  // We can't control the timing of Java GC, so it's normal that this method is called but
+  // core worker is shutting down (or already shut down). If we can't get a core worker
+  // instance here, skip calling the `RemoveLocalReference` method.
+  const auto worker_id = JavaByteArrayToId<ray::WorkerID>(env, workerId);
+  auto core_worker = CoreWorkerProcess::TryGetWorker(worker_id);
+  if (core_worker != nullptr) {
+    const auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
+    core_worker->RemoveActorHandleReference(actor_id);
+  }
 }
 
 #ifdef __cplusplus

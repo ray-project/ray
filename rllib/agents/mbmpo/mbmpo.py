@@ -174,7 +174,7 @@ class MetaUpdate:
             else:
                 logger.warning("No data for {}, not updating kl".format(pi_id))
 
-        self.workers.local_worker().foreach_trainable_policy(update)
+        self.workers.local_worker().foreach_policy_to_train(update)
 
         # Modify Reporting Metrics.
         metrics = _get_shared_metrics()
@@ -342,6 +342,9 @@ class MBMPOTrainer(Trainer):
 
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
+        super().validate_config(config)
+
         if config["num_gpus"] > 1:
             raise ValueError("`num_gpus` > 1 not yet supported for MB-MPO!")
         if config["framework"] != "torch":
@@ -396,7 +399,9 @@ class MBMPOTrainer(Trainer):
 
         # Metrics Collector.
         metric_collect = CollectMetrics(
-            workers, min_history=0, timeout_seconds=config["collect_metrics_timeout"]
+            workers,
+            min_history=0,
+            timeout_seconds=config["metrics_episode_collection_timeout_s"],
         )
 
         num_inner_steps = config["inner_adaptation_steps"]

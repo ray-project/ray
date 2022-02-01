@@ -77,7 +77,7 @@ import ray
 ray.init("{}")
 ray.get(ray.ObjectRef(ray._private.utils.hex_to_binary("{}")))
 """.format(
-        address_info["redis_address"], x_id.hex()
+        address_info["address"], x_id.hex()
     )
 
     p = run_string_as_driver_nonblocking(driver)
@@ -158,7 +158,7 @@ import ray
 ray.init("{}")
 ray.wait([ray.ObjectRef(ray._private.utils.hex_to_binary("{}"))])
 """.format(
-        address_info["redis_address"], x_id.hex()
+        address_info["address"], x_id.hex()
     )
 
     p = run_string_as_driver_nonblocking(driver)

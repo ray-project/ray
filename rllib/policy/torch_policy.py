@@ -1033,7 +1033,7 @@ class TorchPolicy(Policy):
         def _worker(shard_idx, model, sample_batch, device):
             torch.set_grad_enabled(grad_enabled)
             try:
-                with NullContextManager() if device.type == "cpu" else torch.cuda.device(
+                with NullContextManager() if device.type == "cpu" else torch.cuda.device(  # noqa: E501
                     device
                 ):
                     loss_out = force_list(
@@ -1097,10 +1097,14 @@ class TorchPolicy(Policy):
                 with lock:
                     results[shard_idx] = (all_grads, grad_info)
             except Exception as e:
+                import traceback
+
                 with lock:
                     results[shard_idx] = (
                         ValueError(
                             e.args[0]
+                            + "\n traceback"
+                            + traceback.format_exc()
                             + "\n"
                             + "In tower {} on device {}".format(shard_idx, device)
                         ),
@@ -1208,7 +1212,7 @@ class EntropyCoeffSchedule:
 
 @DeveloperAPI
 class DirectStepOptimizer:
-    """Typesafe method for indicating apply gradients can directly step the
+    """Typesafe method for indicating `apply_gradients` can directly step the
     optimizers with in-place gradients.
     """
 

@@ -126,6 +126,18 @@ enum class RayLogLevel {
 
 #endif  // NDEBUG
 
+#define RAY_CHECK_OP(left, op, right)        \
+  if (const auto &_left_ = (left); true)     \
+    if (const auto &_right_ = (right); true) \
+  RAY_CHECK((_left_ op _right_)) << " " << _left_ << " vs " << _right_
+
+#define RAY_CHECK_EQ(left, right) RAY_CHECK_OP(left, ==, right)
+#define RAY_CHECK_NE(left, right) RAY_CHECK_OP(left, !=, right)
+#define RAY_CHECK_LE(left, right) RAY_CHECK_OP(left, <=, right)
+#define RAY_CHECK_LT(left, right) RAY_CHECK_OP(left, <, right)
+#define RAY_CHECK_GE(left, right) RAY_CHECK_OP(left, >=, right)
+#define RAY_CHECK_GT(left, right) RAY_CHECK_OP(left, >, right)
+
 // RAY_LOG_EVERY_N/RAY_LOG_EVERY_MS, adaped from
 // https://github.com/google/glog/blob/master/src/glog/logging.h.in
 #define RAY_LOG_EVERY_N_VARNAME(base, line) RAY_LOG_EVERY_N_VARNAME_CONCAT(base, line)

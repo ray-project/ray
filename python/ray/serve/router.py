@@ -2,12 +2,12 @@ import sys
 import asyncio
 import pickle
 import itertools
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 import random
 
 from ray.actor import ActorHandle
-from ray.serve.common import str, ReplicaTag, RunningReplicaInfo
+from ray.serve.common import str, RunningReplicaInfo
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.utils import compute_iterable_delta, logger
 
@@ -19,20 +19,11 @@ from ray.util import metrics
 class RequestMetadata:
     request_id: str
     endpoint: str
-
     call_method: str = "__call__"
-    shard_key: Optional[str] = None
-
-    http_method: str = "GET"
-    http_headers: Dict[str, str] = field(default_factory=dict)
 
     # This flag will be set to true if the input argument is manually pickled
     # and it needs to be deserialized by the replica.
     http_arg_is_pickled: bool = False
-
-    def __post_init__(self):
-        self.http_headers.setdefault("X-Serve-Call-Method", self.call_method)
-        self.http_headers.setdefault("X-Serve-Shard-Key", self.shard_key)
 
 
 @dataclass
@@ -51,7 +42,7 @@ class ReplicaSet:
         event_loop: asyncio.AbstractEventLoop,
     ):
         self.deployment_name = deployment_name
-        self.in_flight_queries: Dict[ReplicaTag, set] = dict()
+        self.in_flight_queries: Dict[RunningReplicaInfo, set] = dict()
         # The iterator used for load balancing among replicas. Using itertools
         # cycle, we implements a round-robin policy, skipping overloaded
         # replicas.
@@ -59,7 +50,6 @@ class ReplicaSet:
         # policies like: min load, pick min of two replicas, pick replicas on
         # the same node.
         self.replica_iterator = itertools.cycle(self.in_flight_queries.keys())
-        self.replica_infos: Dict[ReplicaTag, RunningReplicaInfo] = dict()
 
         # Used to unblock this replica set waiting for free replicas. A newly
         # added replica or updated max_concurrent_queries value means the

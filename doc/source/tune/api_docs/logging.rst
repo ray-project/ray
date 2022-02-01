@@ -141,7 +141,7 @@ Tune automatically integrates with `Viskit <https://github.com/vitchyr/viskit>`_
 
 The nonrelevant metrics (like timing stats) can be disabled on the left to show only the relevant ones (like accuracy, loss, etc.).
 
-.. image:: /ray-tune-viskit.png
+.. image:: ../images/ray-tune-viskit.png
 
 
 TBXLogger

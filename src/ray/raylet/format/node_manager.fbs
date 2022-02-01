@@ -123,8 +123,6 @@ table RegisterClientRequest {
   worker_id: string;
   // The process ID of this worker.
   worker_pid: long;
-  // The PID of the process for setup worker runtime env.
-  worker_shim_pid: long;
   // The startup token of the process assigned to
   // it during startup as a command line argument.
   startup_token: long;

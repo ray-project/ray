@@ -23,8 +23,9 @@ void RuntimeEnvManager::AddURIReference(const std::string &hex_id,
   for (const auto &uri : uris) {
     uri_reference_[uri]++;
     id_to_uris_[hex_id].push_back(uri);
-    RAY_LOG(DEBUG) << "Added URI Reference " << uri;
+    RAY_LOG(DEBUG) << "Added URI Reference " << uri << " for id " << hex_id;
   }
+  PrintDebugString();
 }
 
 const std::vector<std::string> &RuntimeEnvManager::GetReferences(
@@ -35,6 +36,7 @@ const std::vector<std::string> &RuntimeEnvManager::GetReferences(
 }
 
 void RuntimeEnvManager::RemoveURIReference(const std::string &hex_id) {
+  RAY_LOG(DEBUG) << "Subtracting 1 from URI Reference for id " << hex_id;
   if (!id_to_uris_.count(hex_id)) {
     return;
   }
@@ -50,6 +52,31 @@ void RuntimeEnvManager::RemoveURIReference(const std::string &hex_id) {
     }
   }
   id_to_uris_.erase(hex_id);
+  PrintDebugString();
 }
+
+std::string RuntimeEnvManager::DebugString() const {
+  std::ostringstream stream;
+  stream << "[runtime env manager] ID to URIs table:";
+  for (const auto &entry : id_to_uris_) {
+    stream << "\n- " << entry.first << ": ";
+    for (const auto &uri : entry.second) {
+      stream << uri << ",";
+    }
+    // Erase the last ","
+    stream.seekp(-1, std::ios_base::end);
+  }
+  stream << "\n[runtime env manager] URIs reference table:";
+  for (const auto &entry : uri_reference_) {
+    stream << "\n- " << entry.first << ": " << entry.second;
+  }
+  return stream.str();
+};
+
+void RuntimeEnvManager::PrintDebugString() const {
+  if (RAY_LOG_ENABLED(DEBUG)) {
+    RAY_LOG(DEBUG) << "\n" << DebugString();
+  }
+};
 
 }  // namespace ray

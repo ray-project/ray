@@ -66,6 +66,9 @@ DEFAULT_CONFIG = with_common_config({
     # Number of steps to read before learning starts.
     "learning_starts": 0,
 
+    # A coeff to encourage higher action distribution entropy for exploration.
+    "bc_logstd_coeff": 0.0,
+
     # === Parallelism ===
     "num_workers": 0,
 })
@@ -81,6 +84,7 @@ class MARWILTrainer(Trainer):
 
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["num_gpus"] > 1:

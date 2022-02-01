@@ -232,7 +232,7 @@ class RunExperimentTest(unittest.TestCase):
                 }
             }
         )
-        self.assertEquals(
+        self.assertEqual(
             str(trial), "{}_{}_321".format(trial.trainable_name, trial.trial_id)
         )
 

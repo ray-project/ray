@@ -1,5 +1,6 @@
 # Heavy learning tests (Atari and HalfCheetah) for major algos.
 - name: learning_tests
+  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: 8gpus_64cpus.yaml
@@ -14,6 +15,7 @@
 
 # 2-GPU learning tests (CartPole and RepeatAfterMeEnv) for major algos.
 - name: multi_gpu_learning_tests
+  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: 8gpus_96cpus.yaml
@@ -25,6 +27,7 @@
 # 2-GPU learning tests (StatelessCartPole) + use_lstm=True for major algos
 # (that support RNN models).
 - name: multi_gpu_with_lstm_learning_tests
+  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: 8gpus_96cpus.yaml
@@ -36,6 +39,7 @@
 # 2-GPU learning tests (StatelessCartPole) + use_attention=True for major
 # algos (that support RNN models).
 - name: multi_gpu_with_attention_learning_tests
+  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: 8gpus_96cpus.yaml
@@ -46,6 +50,7 @@
 
 # We'll have these as per-PR tests soon.
 # - name: example_scripts_on_gpu_tests
+#   team: ml
 #  cluster:
 #    app_config: app_config.yaml
 #    compute_template: 1gpu_4cpus.yaml
@@ -56,6 +61,7 @@
 
 # IMPALA large machine stress tests (4x Atari).
 - name: stress_tests
+  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: 4gpus_544_cpus.yaml
@@ -71,6 +77,7 @@
 
 # Tests that exercise auto-scaling and Anyscale connect.
 - name: connect_tests
+  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: auto_scale.yaml
@@ -86,6 +93,7 @@
 # Performance metrics, such as reward achieved and throughput, are then
 # collected and tracked over time.
 - name: performance_tests
+  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: 12gpus_192cpus.yaml

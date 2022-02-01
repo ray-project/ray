@@ -106,8 +106,8 @@ DEFAULT_CONFIG = with_common_config({
     # to increase if your environment is particularly slow to sample, or if
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
-    # Prevent iterations from going lower than this time span.
-    "min_iter_time_s": 1,
+    # Prevent reporting frequency from going lower than this time span.
+    "min_time_s_per_reporting": 1,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -122,6 +122,7 @@ class SimpleQTrainer(Trainer):
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
         """Checks and updates the config based on settings."""
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["exploration_config"]["type"] == "ParameterNoise":
@@ -196,9 +197,7 @@ class SimpleQTrainer(Trainer):
                 sgd_minibatch_size=config["train_batch_size"],
                 num_sgd_iter=1,
                 num_gpus=config["num_gpus"],
-                shuffle_sequences=True,
                 _fake_gpus=config["_fake_gpus"],
-                framework=config.get("framework"),
             )
 
         # (2) Read and train on experiences from the replay buffer.

@@ -7,8 +7,8 @@ import traceback
 import random
 import subprocess
 import string
-
-from typing import Any, Dict, Tuple, Optional
+from collections import deque
+from typing import Any, Dict, Iterator, Tuple, Optional
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
@@ -21,6 +21,7 @@ from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
 )
+from ray.dashboard.modules.job.utils import file_tail_iterator
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,8 @@ class JobLogStorageClient:
     """
 
     JOB_LOGS_PATH = "job-driver-{job_id}.log"
+    # Number of last N lines to put in job message upon failure.
+    NUM_LOG_LINES_ON_ERROR = 10
 
     def get_logs(self, job_id: str) -> str:
         try:
@@ -60,12 +63,20 @@ class JobLogStorageClient:
         except FileNotFoundError:
             return ""
 
-    def tail_logs(self, job_id: str, n_lines=10) -> str:
-        all_logs = self.get_logs(job_id)
-        # TODO(edoakes): optimize this to not read the whole file into memory.
-        log_lines = all_logs.split("\n")
-        start = max(0, len(log_lines) - n_lines)
-        return "\n".join(log_lines[start:])
+    def tail_logs(self, job_id: str) -> Iterator[str]:
+        return file_tail_iterator(self.get_log_file_path(job_id))
+
+    def get_last_n_log_lines(
+        self, job_id: str, num_log_lines=NUM_LOG_LINES_ON_ERROR
+    ) -> str:
+        log_tail_iter = self.tail_logs(job_id)
+        log_tail_deque = deque(maxlen=num_log_lines)
+        for line in log_tail_iter:
+            if line is None:
+                break
+            else:
+                log_tail_deque.append(line)
+        return "".join(log_tail_deque)
 
     def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
         """
@@ -199,13 +210,13 @@ class JobSupervisor:
                     "metadata": self._metadata,
                 }
             )
-            ray_redis_address = (
-                ray._private.services.find_redis_address_or_die()  # noqa: E501
-            )
+            # Set RAY_ADDRESS to local Ray address, if it is not set.
             os.environ[
                 ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE
-            ] = ray_redis_address
-
+            ] = ray._private.services.get_ray_address_from_environment()
+            # Set PYTHONUNBUFFERED=1 to stream logs during the job instead of
+            # only streaming them upon completion of the job.
+            os.environ["PYTHONUNBUFFERED"] = "1"
             log_path = self._log_client.get_log_file_path(self._job_id)
             child_process = self._exec_entrypoint(log_path)
 
@@ -228,7 +239,7 @@ class JobSupervisor:
                 if return_code == 0:
                     self._status_client.put_status(self._job_id, JobStatus.SUCCEEDED)
                 else:
-                    log_tail = self._log_client.tail_logs(self._job_id)
+                    log_tail = self._log_client.get_last_n_log_lines(self._job_id)
                     if log_tail is not None and log_tail != "":
                         message = (
                             "Job failed due to an application error, "
@@ -265,6 +276,9 @@ class JobManager:
     """
 
     JOB_ACTOR_NAME = "_ray_internal_job_actor_{job_id}"
+    # Time that we will sleep while tailing logs if no new log line is
+    # available.
+    LOG_TAIL_SLEEP_S = 1
 
     def __init__(self):
         self._status_client = JobStatusStorageClient()
@@ -414,7 +428,7 @@ class JobManager:
         else:
             return False
 
-    def get_job_status(self, job_id: str) -> JobStatusInfo:
+    def get_job_status(self, job_id: str) -> Optional[JobStatus]:
         """Get latest status of a job. If job supervisor actor is no longer
         alive, it will also attempt to make adjustments needed to bring job
         to correct terminiation state.
@@ -440,5 +454,20 @@ class JobManager:
 
         return self._status_client.get_status(job_id)
 
-    def get_job_logs(self, job_id: str) -> bytes:
+    def get_job_logs(self, job_id: str) -> str:
         return self._log_client.get_logs(job_id)
+
+    async def tail_job_logs(self, job_id: str) -> Iterator[str]:
+        if self.get_job_status(job_id) is None:
+            raise RuntimeError(f"Job '{job_id}' does not exist.")
+
+        for line in self._log_client.tail_logs(job_id):
+            if line is None:
+                # Return if the job has exited and there are no new log lines.
+                status = self.get_job_status(job_id)
+                if status.status not in {JobStatus.PENDING, JobStatus.RUNNING}:
+                    return
+
+                await asyncio.sleep(self.LOG_TAIL_SLEEP_S)
+            else:
+                yield line

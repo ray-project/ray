@@ -208,7 +208,7 @@ we would like to use:
    :lines: 22
    :dedent: 4
 
-You can also specify :doc:`fractional GPUs for Tune </using-ray-with-gpus>`, allowing multiple trials to share GPUs
+You can also specify :doc:`fractional GPUs for Tune <../../ray-core/using-ray-with-gpus>`, allowing multiple trials to share GPUs
 and thus increase concurrency under resource constraints. While the ``gpus_per_trial`` passed into
 Tune is a decimal value, the ``gpus`` passed into the ``pl.Trainer`` should still be an integer.
 Please note that if using fractional GPUs, it is the user's responsibility to

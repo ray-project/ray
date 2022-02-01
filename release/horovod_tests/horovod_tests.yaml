@@ -1,4 +1,5 @@
 - name: horovod_test
+  team: ml
   cluster:
     app_config: app_config_master.yaml
     compute_template: compute_tpl.yaml

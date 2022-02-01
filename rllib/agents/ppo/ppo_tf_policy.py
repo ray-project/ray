@@ -91,8 +91,13 @@ def ppo_surrogate_loss(
         curr_action_dist.logp(train_batch[SampleBatch.ACTIONS])
         - train_batch[SampleBatch.ACTION_LOGP]
     )
-    action_kl = prev_action_dist.kl(curr_action_dist)
-    mean_kl_loss = reduce_mean_valid(action_kl)
+
+    # Only calculate kl loss if necessary (kl-coeff > 0.0).
+    if policy.config["kl_coeff"] > 0.0:
+        action_kl = prev_action_dist.kl(curr_action_dist)
+        mean_kl_loss = reduce_mean_valid(action_kl)
+    else:
+        mean_kl_loss = 0.0
 
     curr_entropy = curr_action_dist.entropy()
     mean_entropy = reduce_mean_valid(curr_entropy)
@@ -128,10 +133,13 @@ def ppo_surrogate_loss(
 
     total_loss = reduce_mean_valid(
         -surrogate_loss
-        + policy.kl_coeff * action_kl
         + policy.config["vf_loss_coeff"] * vf_loss
         - policy.entropy_coeff * curr_entropy
     )
+    # Add mean_kl_loss (already processed through `reduce_mean_valid`),
+    # if necessary.
+    if policy.config["kl_coeff"] > 0.0:
+        total_loss += policy.kl_coeff * mean_kl_loss
 
     # Store stats in policy for stats_fn.
     policy._total_loss = total_loss

@@ -1,7 +1,7 @@
 .. _tune-api-ref:
 
-Tune API Reference
-==================
+Ray Tune API
+============
 
 .. tip:: We'd love to hear your feedback on using Tune - `get in touch <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
 

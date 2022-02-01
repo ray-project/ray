@@ -16,7 +16,8 @@ from ray._private.runtime_env.packaging import parse_uri
 JOB_ID_METADATA_KEY = "job_submission_id"
 JOB_NAME_METADATA_KEY = "job_name"
 
-CURRENT_VERSION = "0"
+# Version 0 -> 1: Added log streaming and changed behavior of job logs cli.
+CURRENT_VERSION = "1"
 
 
 class JobStatus(str, Enum):

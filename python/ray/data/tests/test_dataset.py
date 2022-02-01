@@ -43,6 +43,13 @@ def maybe_pipeline(ds, enabled):
         return ds
 
 
+class SlowCSVDatasource(CSVDatasource):
+    def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
+        for block in CSVDatasource._read_stream(self, f, path, **reader_args):
+            time.sleep(3)
+            yield block
+
+
 # Tests that we don't block on exponential rampup when doing bulk reads.
 # https://github.com/ray-project/ray/issues/20625
 @pytest.mark.parametrize("block_split", [False, True])
@@ -50,17 +57,11 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
     ray.init(num_cpus=8)
     ctx = ray.data.context.DatasetContext.get_current()
 
-    class SlowCSVDatasource(CSVDatasource):
-        def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
-            for block in CSVDatasource._read_stream(self, f, path, **reader_args):
-                time.sleep(3)
-                yield block
-
     try:
         original = ctx.block_splitting_enabled
 
         ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
-        ctx.block_splitting_enabled = True
+        ctx.block_splitting_enabled = block_split
         ds = ray.data.read_datasource(
             SlowCSVDatasource(), parallelism=8, paths=str(tmp_path)
         )
@@ -79,9 +80,12 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_basic_actors(shutdown_only, pipelined):
     ray.init(num_cpus=2)
-    ds = ray.data.range(5)
+    n = 5
+    ds = ray.data.range(n)
     ds = maybe_pipeline(ds, pipelined)
-    assert sorted(ds.map(lambda x: x + 1, compute="actors").take()) == [1, 2, 3, 4, 5]
+    assert sorted(ds.map(lambda x: x + 1, compute="actors").take()) == list(
+        range(1, n + 1)
+    )
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -323,7 +327,7 @@ def test_batch_tensors(ray_start_regular_shared):
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))
     df = next(ds.iter_batches(batch_format="pandas"))
-    assert df.to_dict().keys() == {0, 1}
+    assert df.to_dict().keys() == {"value"}
 
 
 def test_arrow_block_slice_copy():
@@ -1174,34 +1178,52 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared):
     assert large._block_num_rows() == [500] * 20
 
 
-def test_from_pandas(ray_start_regular_shared):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([df1, df2])
-    values = [(r["one"], r["two"]) for r in ds.take(6)]
-    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
-    assert values == rows
+@pytest.mark.parametrize("enable_pandas_block", [False, True])
+def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
+    ctx = ray.data.context.DatasetContext.get_current()
+    old_enable_pandas_block = ctx.enable_pandas_block
+    ctx.enable_pandas_block = enable_pandas_block
+    try:
+        df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+        df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+        ds = ray.data.from_pandas([df1, df2])
+        assert ds._dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        values = [(r["one"], r["two"]) for r in ds.take(6)]
+        rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+        assert values == rows
 
-    # test from single pandas dataframe
-    ds = ray.data.from_pandas(df1)
-    values = [(r["one"], r["two"]) for r in ds.take(3)]
-    rows = [(r.one, r.two) for _, r in df1.iterrows()]
-    assert values == rows
+        # test from single pandas dataframe
+        ds = ray.data.from_pandas(df1)
+        assert ds._dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        values = [(r["one"], r["two"]) for r in ds.take(3)]
+        rows = [(r.one, r.two) for _, r in df1.iterrows()]
+        assert values == rows
+    finally:
+        ctx.enable_pandas_block = old_enable_pandas_block
 
 
-def test_from_pandas_refs(ray_start_regular_shared):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
-    values = [(r["one"], r["two"]) for r in ds.take(6)]
-    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
-    assert values == rows
+@pytest.mark.parametrize("enable_pandas_block", [False, True])
+def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
+    ctx = ray.data.context.DatasetContext.get_current()
+    old_enable_pandas_block = ctx.enable_pandas_block
+    ctx.enable_pandas_block = enable_pandas_block
+    try:
+        df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+        df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+        ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
+        assert ds._dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        values = [(r["one"], r["two"]) for r in ds.take(6)]
+        rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+        assert values == rows
 
-    # test from single pandas dataframe ref
-    ds = ray.data.from_pandas_refs(ray.put(df1))
-    values = [(r["one"], r["two"]) for r in ds.take(3)]
-    rows = [(r.one, r.two) for _, r in df1.iterrows()]
-    assert values == rows
+        # test from single pandas dataframe ref
+        ds = ray.data.from_pandas_refs(ray.put(df1))
+        assert ds._dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        values = [(r["one"], r["two"]) for r in ds.take(3)]
+        rows = [(r.one, r.two) for _, r in df1.iterrows()]
+        assert values == rows
+    finally:
+        ctx.enable_pandas_block = old_enable_pandas_block
 
 
 def test_from_numpy(ray_start_regular_shared):
@@ -1293,10 +1315,6 @@ def test_to_numpy_refs(ray_start_regular_shared):
     arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
     np.testing.assert_equal(arr, np.arange(0, 10))
 
-    # Table Dataset requires column
-    with pytest.raises(ValueError):
-        ray.get(ds.to_numpy_refs())
-
 
 def test_to_arrow_refs(ray_start_regular_shared):
     n = 5
@@ -1310,7 +1328,7 @@ def test_to_arrow_refs(ray_start_regular_shared):
     assert df.equals(dfds)
 
     # Conversion.
-    df = pd.DataFrame({0: list(range(n))})
+    df = pd.DataFrame({"value": list(range(n))})
     ds = ray.data.range(n)
     dfds = pd.concat(
         [t.to_pandas() for t in ray.get(ds.to_arrow_refs())], ignore_index=True
@@ -1721,8 +1739,8 @@ def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([df1, df2])
 
-    def _block_udf(block: pa.Table):
-        df = block.to_pandas()
+    def _block_udf(block):
+        df = BlockAccessor.for_block(block).to_pandas().copy()
         df["one"] += 1
         return pa.Table.from_pandas(df)
 
@@ -1925,7 +1943,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # blocks format.
     for batch, df in zip(ds.iter_batches(batch_format="native"), dfs):
-        assert batch.to_pandas().equals(df)
+        assert BlockAccessor.for_block(batch).to_pandas().equals(df)
 
     # Batch size.
     batch_size = 2
@@ -1948,6 +1966,15 @@ def test_iter_batches_basic(ray_start_regular_shared):
     assert pd.concat(batches, ignore_index=True).equals(
         pd.concat(dfs, ignore_index=True)
     )
+
+    # Batch size larger than dataset.
+    batch_size = 15
+    batches = list(
+        ds.iter_batches(batch_size=batch_size, batch_format="pandas"))
+    assert all(len(batch) == ds.count() for batch in batches)
+    assert len(batches) == 1
+    assert pd.concat(
+        batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
 
     # Batch size drop partial.
     batch_size = 5
@@ -2088,9 +2115,9 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     table = pa.Table.from_pandas(df)
     pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
     ds = ray.data.read_parquet(str(tmp_path))
-    ds_list = ds.map_batches(
-        lambda df: df + 1, batch_size=1, batch_format="pandas"
-    ).take()
+    ds2 = ds.map_batches(lambda df: df + 1, batch_size=1, batch_format="pandas")
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [2, 3, 4]
     values = [s["two"] for s in ds_list]
@@ -2098,7 +2125,9 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
 
     # Test Pyarrow
     ds = ray.data.read_parquet(str(tmp_path))
-    ds_list = ds.map_batches(lambda pa: pa, batch_size=1, batch_format="pyarrow").take()
+    ds2 = ds.map_batches(lambda pa: pa, batch_size=1, batch_format="pyarrow")
+    assert ds2._dataset_format() == "arrow"
+    ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [1, 2, 3]
     values = [s["two"] for s in ds_list]
@@ -2107,28 +2136,30 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     # Test batch
     size = 300
     ds = ray.data.range(size)
-    ds_list = ds.map_batches(
-        lambda df: df + 1, batch_size=17, batch_format="pandas"
-    ).take(limit=size)
+    ds2 = ds.map_batches(lambda df: df + 1, batch_size=17, batch_format="pandas")
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take(limit=size)
     for i in range(size):
-        # The pandas column is "0", and it originally has rows from 0~299.
+        # The pandas column is "value", and it originally has rows from 0~299.
         # After the map batch, it should have 1~300.
         row = ds_list[i]
-        assert row["0"] == i + 1
+        assert row["value"] == i + 1
     assert ds.count() == 300
 
     # Test the lambda returns different types than the batch_format
     # pandas => list block
     ds = ray.data.read_parquet(str(tmp_path))
-    ds_list = ds.map_batches(lambda df: [1], batch_size=1).take()
+    ds2 = ds.map_batches(lambda df: [1], batch_size=1)
+    assert ds2._dataset_format() == "simple"
+    ds_list = ds2.take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
 
     # pyarrow => list block
     ds = ray.data.read_parquet(str(tmp_path))
-    ds_list = ds.map_batches(
-        lambda df: [1], batch_size=1, batch_format="pyarrow"
-    ).take()
+    ds2 = ds.map_batches(lambda df: [1], batch_size=1, batch_format="pyarrow")
+    assert ds2._dataset_format() == "simple"
+    ds_list = ds2.take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
 
@@ -2456,24 +2487,104 @@ def test_to_torch(ray_start_regular_shared, pipelined):
         assert np.array_equal(np.sort(df.values), np.sort(combined_iterations))
 
 
-def test_to_torch_feature_columns(ray_start_regular_shared):
+@pytest.mark.parametrize("input", ["single", "list", "dict"])
+@pytest.mark.parametrize("force_dtype", [False, True])
+@pytest.mark.parametrize("label_type", [None, "squeezed", "unsqueezed"])
+def test_to_torch_feature_columns(
+    ray_start_regular_shared, input, force_dtype, label_type
+):
     import torch
 
     df1 = pd.DataFrame(
-        {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
+        {
+            "one": [1, 2, 3],
+            "two": [1.0, 2.0, 3.0],
+            "three": [4.0, 5.0, 6.0],
+            "label": [1.0, 2.0, 3.0],
+        }
     )
     df2 = pd.DataFrame(
-        {"one": [4, 5, 6], "two": [4.0, 5.0, 6.0], "label": [4.0, 5.0, 6.0]}
+        {
+            "one": [4, 5, 6],
+            "two": [4.0, 5.0, 6.0],
+            "three": [7.0, 8.0, 9.0],
+            "label": [4.0, 5.0, 6.0],
+        }
     )
-    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
-    df = pd.concat([df1, df2, df3]).drop("two", axis=1)
+    df3 = pd.DataFrame(
+        {"one": [7, 8], "two": [7.0, 8.0], "three": [10.0, 11.0], "label": [7.0, 8.0]}
+    )
+    df = pd.concat([df1, df2, df3]).drop("three", axis=1)
     ds = ray.data.from_pandas([df1, df2, df3])
-    torchd = ds.to_torch(label_column="label", feature_columns=["one"], batch_size=3)
+
+    feature_column_dtypes = None
+    label_column_dtype = None
+    if force_dtype:
+        label_column_dtype = torch.long
+    if input == "single":
+        feature_columns = ["one", "two"]
+        if force_dtype:
+            feature_column_dtypes = torch.long
+    elif input == "list":
+        feature_columns = [["one"], ["two"]]
+        if force_dtype:
+            feature_column_dtypes = [torch.long, torch.long]
+    elif input == "dict":
+        feature_columns = {"X1": ["one"], "X2": ["two"]}
+        if force_dtype:
+            feature_column_dtypes = {"X1": torch.long, "X2": torch.long}
+
+    label_column = None if label_type is None else "label"
+    unsqueeze_label_tensor = label_type == "unsqueezed"
+
+    torchd = ds.to_torch(
+        label_column=label_column,
+        feature_columns=feature_columns,
+        feature_column_dtypes=feature_column_dtypes,
+        label_column_dtype=label_column_dtype,
+        unsqueeze_label_tensor=unsqueeze_label_tensor,
+        batch_size=3,
+    )
     iterations = []
 
     for batch in iter(torchd):
-        iterations.append(torch.cat((batch[0], batch[1]), dim=1).numpy())
+        features, label = batch
+
+        if input == "single":
+            assert isinstance(features, torch.Tensor)
+            if force_dtype:
+                assert features.dtype == torch.long
+            data = features
+        elif input == "list":
+            assert isinstance(features, list)
+            assert all(isinstance(item, torch.Tensor) for item in features)
+            if force_dtype:
+                assert all(item.dtype == torch.long for item in features)
+            data = torch.cat(tuple(features), dim=1)
+        elif input == "dict":
+            assert isinstance(features, dict)
+            assert all(isinstance(item, torch.Tensor) for item in features.values())
+            if force_dtype:
+                assert all(item.dtype == torch.long for item in features.values())
+            data = torch.cat(tuple(features.values()), dim=1)
+
+        if not label_type:
+            assert label is None
+        else:
+            assert isinstance(label, torch.Tensor)
+            if force_dtype:
+                assert label.dtype == torch.long
+            if unsqueeze_label_tensor:
+                assert label.dim() == 2
+            else:
+                assert label.dim() == 1
+                label = label.view(-1, 1)
+            data = torch.cat((data, label), dim=1)
+        iterations.append(data.numpy())
+
     combined_iterations = np.concatenate(iterations)
+    if not label_type:
+        df.drop("label", axis=1, inplace=True)
     assert np.array_equal(df.values, combined_iterations)
 
 
@@ -3040,7 +3151,40 @@ def test_groupby_arrow(ray_start_regular_shared):
     assert agg_ds.count() == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+def test_groupby_errors(ray_start_regular_shared):
+    ds = ray.data.range(100)
+
+    ds.groupby(None).count().show()  # OK
+    ds.groupby(lambda x: x % 2).count().show()  # OK
+    with pytest.raises(ValueError):
+        ds.groupby("foo").count().show()
+
+    ds = ray.data.range_arrow(100)
+    ds.groupby(None).count().show()  # OK
+    with pytest.raises(ValueError):
+        ds.groupby(lambda x: x % 2).count().show()
+
+
+def test_agg_errors(ray_start_regular_shared):
+    ds = ray.data.range(100)
+    from ray.data.aggregate import Max
+
+    ds.aggregate(Max())  # OK
+    ds.aggregate(Max(lambda x: x))  # OK
+    with pytest.raises(ValueError):
+        ds.aggregate(Max("foo"))
+
+    ds = ray.data.range_arrow(100)
+    ds.aggregate(Max("value"))  # OK
+    with pytest.raises(ValueError):
+        ds.aggregate(Max())
+    with pytest.raises(ValueError):
+        ds.aggregate(Max(lambda x: x))
+    with pytest.raises(ValueError):
+        ds.aggregate(Max("bad_field"))
+
+
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
     # Test aggregation name conflict.
     xs = list(range(100))
@@ -3073,7 +3217,7 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
     ]
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_arrow_count(ray_start_regular_shared, num_parts):
     # Test built-in count aggregation
     seed = int(time.time())
@@ -3095,7 +3239,7 @@ def test_groupby_arrow_count(ray_start_regular_shared, num_parts):
     ]
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_arrow_sum(ray_start_regular_shared, num_parts):
     # Test built-in sum aggregation
     seed = int(time.time())
@@ -3123,7 +3267,7 @@ def test_groupby_arrow_sum(ray_start_regular_shared, num_parts):
     assert ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).sum("value") == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_arrow_min(ray_start_regular_shared, num_parts):
     # Test built-in min aggregation
     seed = int(time.time())
@@ -3151,7 +3295,7 @@ def test_groupby_arrow_min(ray_start_regular_shared, num_parts):
         ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).min("value")
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_arrow_max(ray_start_regular_shared, num_parts):
     # Test built-in max aggregation
     seed = int(time.time())
@@ -3180,7 +3324,7 @@ def test_groupby_arrow_max(ray_start_regular_shared, num_parts):
         ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).max("value")
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_arrow_mean(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation
     seed = int(time.time())
@@ -3209,7 +3353,7 @@ def test_groupby_arrow_mean(ray_start_regular_shared, num_parts):
         ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).mean("value")
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_arrow_std(ray_start_regular_shared, num_parts):
     # Test built-in std aggregation
     seed = int(time.time())
@@ -3247,7 +3391,7 @@ def test_groupby_arrow_std(ray_start_regular_shared, num_parts):
     assert ray.data.from_pandas(pd.DataFrame({"A": [3]})).std("A") == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_arrow_multicolumn(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation on multiple columns
     seed = int(time.time())
@@ -3321,7 +3465,7 @@ def test_groupby_agg_bad_on(ray_start_regular_shared):
         ray.data.from_items(xs).mean("A")
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_arrow_multi_agg with: {seed}")
@@ -3441,7 +3585,7 @@ def test_groupby_simple(ray_start_regular_shared):
     assert agg_ds.count() == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_count(ray_start_regular_shared, num_parts):
     # Test built-in count aggregation
     seed = int(time.time())
@@ -3456,7 +3600,7 @@ def test_groupby_simple_count(ray_start_regular_shared, num_parts):
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 34), (1, 33), (2, 33)]
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     # Test built-in sum aggregation
     seed = int(time.time())
@@ -3474,7 +3618,7 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     assert ray.data.range(10).filter(lambda r: r > 10).sum() == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_min(ray_start_regular_shared, num_parts):
     # Test built-in min aggregation
     seed = int(time.time())
@@ -3493,7 +3637,7 @@ def test_groupby_simple_min(ray_start_regular_shared, num_parts):
         ray.data.range(10).filter(lambda r: r > 10).min()
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_max(ray_start_regular_shared, num_parts):
     # Test built-in max aggregation
     seed = int(time.time())
@@ -3512,7 +3656,7 @@ def test_groupby_simple_max(ray_start_regular_shared, num_parts):
         ray.data.range(10).filter(lambda r: r > 10).max()
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_mean(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation
     seed = int(time.time())
@@ -3531,7 +3675,7 @@ def test_groupby_simple_mean(ray_start_regular_shared, num_parts):
         ray.data.range(10).filter(lambda r: r > 10).mean()
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_std(ray_start_regular_shared, num_parts):
     # Test built-in std aggregation
     seed = int(time.time())
@@ -3580,7 +3724,7 @@ def test_groupby_simple_std(ray_start_regular_shared, num_parts):
     assert ray.data.from_items([3]).std() == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_multilambda(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation
     seed = int(time.time())
@@ -3610,7 +3754,7 @@ def test_groupby_simple_multilambda(ray_start_regular_shared, num_parts):
         ).mean([lambda x: x[0], lambda x: x[1]])
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_multi_agg(ray_start_regular_shared, num_parts):
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_simple_multi_agg with: {seed}")
@@ -3685,6 +3829,8 @@ def test_sort_simple(ray_start_regular_shared):
     random.shuffle(xs)
     ds = ray.data.from_items(xs, parallelism=parallelism)
     assert ds.sort().take(num_items) == list(range(num_items))
+    # Make sure we have rows in each block.
+    assert len([n for n in ds.sort()._block_num_rows() if n > 0]) == parallelism
     assert ds.sort(descending=True).take(num_items) == list(reversed(range(num_items)))
     assert ds.sort(key=lambda x: -x).take(num_items) == list(reversed(range(num_items)))
 
@@ -3695,6 +3841,18 @@ def test_sort_simple(ray_start_regular_shared):
     assert s1 == ds
     ds = ray.data.range(10).filter(lambda r: r > 10).sort()
     assert ds.count() == 0
+
+
+def test_column_name_type_check(ray_start_regular_shared):
+    df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
+    ds = ray.data.from_pandas(df)
+    expected_str = (
+        "Dataset(num_blocks=1, num_rows=10, " "schema={1: float64, a: float64})"
+    )
+    assert str(ds) == expected_str, str(ds)
+    df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
+    with pytest.raises(ValueError):
+        ray.data.from_pandas(df)
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -3824,6 +3982,47 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
     assert set(locations) == {node1_id, node2_id}
 
 
+def test_parquet_read_spread_no_cpus(ray_start_cluster, tmp_path):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"foo": 100}, _system_config={"max_direct_call_object_size": 0}
+    )
+    cluster.add_node(resources={"bar:1": 100})
+    cluster.add_node(resources={"bar:2": 100}, num_cpus=0)
+
+    ray.init(cluster.address)
+
+    @ray.remote(num_cpus=0)
+    def get_node_id():
+        return ray.get_runtime_context().node_id.hex()
+
+    node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
+    node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
+
+    data_path = str(tmp_path)
+    df1 = pd.DataFrame({"one": list(range(100)), "two": list(range(100, 200))})
+    path1 = os.path.join(data_path, "test1.parquet")
+    df1.to_parquet(path1)
+    df2 = pd.DataFrame({"one": list(range(300, 400)), "two": list(range(400, 500))})
+    path2 = os.path.join(data_path, "test2.parquet")
+    df2.to_parquet(path2)
+
+    ds = ray.data.read_parquet(
+        data_path, ray_remote_args={"num_cpus": 0}, _spread_resource_prefix="bar:"
+    )
+
+    # Force reads.
+    blocks = ds.get_internal_block_refs()
+    assert len(blocks) == 2
+
+    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(blocks)
+    locations = []
+    for block in blocks:
+        locations.extend(location_data[block]["node_ids"])
+    assert set(locations) == {node1_id, node2_id}
+
+
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
 def test_sort_arrow(ray_start_regular, num_items, parallelism):
     a = list(reversed(range(num_items)))
@@ -3848,9 +4047,10 @@ def test_sort_arrow(ray_start_regular, num_items, parallelism):
         )
 
     assert_sorted(ds.sort(key="a"), zip(reversed(a), reversed(b)))
+    # Make sure we have rows in each block.
+    assert len([n for n in ds.sort(key="a")._block_num_rows() if n > 0]) == parallelism
     assert_sorted(ds.sort(key="b"), zip(a, b))
     assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
-    assert_sorted(ds.sort(key=[("b", "descending")]), zip(reversed(a), reversed(b)))
 
 
 def test_sort_arrow_with_empty_blocks(ray_start_regular):
@@ -3885,35 +4085,37 @@ def test_sort_arrow_with_empty_blocks(ray_start_regular):
     assert ds.sort("value").count() == 0
 
 
+@ray.remote
+class Counter:
+    def __init__(self):
+        self.value = 0
+
+    def increment(self):
+        self.value += 1
+        return self.value
+
+
+class FlakyCSVDatasource(CSVDatasource):
+    def __init__(self):
+        self.counter = Counter.remote()
+
+    def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
+        count = self.counter.increment.remote()
+        if ray.get(count) == 1:
+            raise ValueError("oops")
+        else:
+            for block in CSVDatasource._read_stream(self, f, path, **reader_args):
+                yield block
+
+    def _write_block(self, f: "pa.NativeFile", block: BlockAccessor, **writer_args):
+        count = self.counter.increment.remote()
+        if ray.get(count) == 1:
+            raise ValueError("oops")
+        else:
+            CSVDatasource._write_block(self, f, block, **writer_args)
+
+
 def test_dataset_retry_exceptions(ray_start_regular, local_path):
-    @ray.remote
-    class Counter:
-        def __init__(self):
-            self.value = 0
-
-        def increment(self):
-            self.value += 1
-            return self.value
-
-    class FlakyCSVDatasource(CSVDatasource):
-        def __init__(self):
-            self.counter = Counter.remote()
-
-        def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
-            count = self.counter.increment.remote()
-            if ray.get(count) == 1:
-                raise ValueError("oops")
-            else:
-                for block in CSVDatasource._read_stream(self, f, path, **reader_args):
-                    yield block
-
-        def _write_block(self, f: "pa.NativeFile", block: BlockAccessor, **writer_args):
-            count = self.counter.increment.remote()
-            if ray.get(count) == 1:
-                raise ValueError("oops")
-            else:
-                CSVDatasource._write_block(self, f, block, **writer_args)
-
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(local_path, "test1.csv")
     df1.to_csv(path1, index=False, storage_options={})

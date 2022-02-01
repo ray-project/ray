@@ -189,56 +189,6 @@ class GcsServerTest : public ::testing::Test {
     return resources;
   }
 
-  bool AddTask(const rpc::AddTaskRequest &request) {
-    std::promise<bool> promise;
-    client_->AddTask(request,
-                     [&promise](const Status &status, const rpc::AddTaskReply &reply) {
-                       RAY_CHECK_OK(status);
-                       promise.set_value(true);
-                     });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  rpc::TaskTableData GetTask(const std::string &task_id) {
-    rpc::TaskTableData task_data;
-    rpc::GetTaskRequest request;
-    request.set_task_id(task_id);
-    std::promise<bool> promise;
-    client_->GetTask(request, [&task_data, &promise](const Status &status,
-                                                     const rpc::GetTaskReply &reply) {
-      if (status.ok()) {
-        if (reply.has_task_data()) {
-          task_data.CopyFrom(reply.task_data());
-        }
-      }
-      promise.set_value(true);
-    });
-
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return task_data;
-  }
-
-  bool AddTaskLease(const rpc::AddTaskLeaseRequest &request) {
-    std::promise<bool> promise;
-    client_->AddTaskLease(
-        request, [&promise](const Status &status, const rpc::AddTaskLeaseReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool AttemptTaskReconstruction(const rpc::AttemptTaskReconstructionRequest &request) {
-    std::promise<bool> promise;
-    client_->AttemptTaskReconstruction(
-        request, [&promise](const Status &status,
-                            const rpc::AttemptTaskReconstructionReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool AddProfileData(const rpc::AddProfileDataRequest &request) {
     std::promise<bool> promise;
     client_->AddProfileData(
@@ -458,37 +408,6 @@ TEST_F(GcsServerTest, TestHeartbeatWithNoRegistering) {
   ASSERT_TRUE(node_info_list.size() == 1);
   ASSERT_TRUE(node_info_list[0].state() ==
               rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
-}
-
-TEST_F(GcsServerTest, TestTaskInfo) {
-  // Create task_table_data
-  JobID job_id = JobID::FromInt(1);
-  TaskID task_id = TaskID::ForDriverTask(job_id);
-  auto job_table_data = Mocker::GenTaskTableData(job_id.Binary(), task_id.Binary());
-
-  // Add task
-  rpc::AddTaskRequest add_task_request;
-  add_task_request.mutable_task_data()->CopyFrom(*job_table_data);
-  ASSERT_TRUE(AddTask(add_task_request));
-  rpc::TaskTableData result = GetTask(task_id.Binary());
-  ASSERT_TRUE(result.task().task_spec().job_id() == job_id.Binary());
-
-  // Add task lease
-  NodeID node_id = NodeID::FromRandom();
-  auto task_lease_data = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
-  rpc::AddTaskLeaseRequest add_task_lease_request;
-  add_task_lease_request.mutable_task_lease_data()->CopyFrom(*task_lease_data);
-  ASSERT_TRUE(AddTaskLease(add_task_lease_request));
-
-  // Attempt task reconstruction
-  rpc::AttemptTaskReconstructionRequest attempt_task_reconstruction_request;
-  rpc::TaskReconstructionData task_reconstruction_data;
-  task_reconstruction_data.set_task_id(task_id.Binary());
-  task_reconstruction_data.set_node_manager_id(node_id.Binary());
-  task_reconstruction_data.set_num_reconstructions(0);
-  attempt_task_reconstruction_request.mutable_task_reconstruction()->CopyFrom(
-      task_reconstruction_data);
-  ASSERT_TRUE(AttemptTaskReconstruction(attempt_task_reconstruction_request));
 }
 
 TEST_F(GcsServerTest, TestStats) {

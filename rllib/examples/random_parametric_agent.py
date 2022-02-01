@@ -70,7 +70,7 @@ def execution_plan(
     rollouts = ParallelRollouts(workers, mode="async")
 
     # Collect batches for the trainable policies.
-    rollouts = rollouts.for_each(SelectExperiences(workers.trainable_policies()))
+    rollouts = rollouts.for_each(SelectExperiences(local_worker=workers.local_worker()))
 
     # Return training metrics.
     return StandardMetricsReporting(rollouts, workers, config)

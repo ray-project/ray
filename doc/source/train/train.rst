@@ -55,9 +55,7 @@ Quick Start
 Ray Train abstracts away the complexity of setting up a distributed training
 system. Let's take following simple examples:
 
-.. tabs::
-
-  .. group-tab:: PyTorch
+.. tabbed:: PyTorch
 
     This example shows how you can use Ray Train with PyTorch.
 
@@ -106,7 +104,7 @@ system. Let's take following simple examples:
 
     See :ref:`train-porting-code` for a more comprehensive example.
 
-  .. group-tab:: TensorFlow
+.. tabbed:: TensorFlow
 
     This example shows how you can use Ray Train to set up `Multi-worker training
     with Keras <https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras>`_.

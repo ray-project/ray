@@ -15,7 +15,6 @@ from ray.core.generated import event_pb2
 from ray.core.generated import event_pb2_grpc
 
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
 
 
 class EventAgent(dashboard_utils.DashboardAgentModule):
@@ -39,7 +38,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
             try:
                 # TODO: Use async version if performance is an issue
                 dashboard_rpc_address = internal_kv._internal_kv_get(
-                    dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
+                    dashboard_consts.DASHBOARD_RPC_ADDRESS,
                     namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
                 )
                 if dashboard_rpc_address:
@@ -91,3 +90,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         )
         # Start reporting events.
         await self.report_events()
+
+    @staticmethod
+    def is_minimal_module():
+        return False

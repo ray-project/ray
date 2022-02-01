@@ -82,6 +82,7 @@ A notable one is the `RAY_WHEELS` variable which points to the wheels that
 should be tested (e.g. latest master wheels). You might want to include
 something like this in your `post_build_cmds`:
 
+  - pip3 uninstall ray -y || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
 
 If you want to force rebuilds, consider using something like
@@ -186,6 +187,9 @@ Release test yaml example
 """  # noqa: E501
 import argparse
 import enum
+import random
+import string
+import shlex
 
 import boto3
 import collections
@@ -211,7 +215,7 @@ import yaml
 
 import anyscale
 import anyscale.conf
-from anyscale.api import instantiate_api_client
+from anyscale.authenticate import get_auth_api_client
 from anyscale.controllers.session_controller import SessionController
 from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
@@ -229,7 +233,7 @@ def _format_link(link: str):
     # Use ANSI escape code to allow link to be clickable
     # https://buildkite.com/docs/pipelines/links-and-images
     # -in-log-output
-    return r"\033]1339;url='" + link + r"'\a\n"
+    return "\033]1339;url='" + link + "'\a\n"
 
 
 def getenv_default(key: str, default: Optional[str] = None):
@@ -240,7 +244,7 @@ def getenv_default(key: str, default: Optional[str] = None):
 
 GLOBAL_CONFIG = {
     "ANYSCALE_USER": getenv_default("ANYSCALE_USER", "release-automation@anyscale.com"),
-    "ANYSCALE_HOST": getenv_default("ANYSCALE_HOST", "https://beta.anyscale.com"),
+    "ANYSCALE_HOST": getenv_default("ANYSCALE_HOST", "https://console.anyscale.com"),
     "ANYSCALE_CLI_TOKEN": getenv_default("ANYSCALE_CLI_TOKEN"),
     "ANYSCALE_CLOUD_ID": getenv_default(
         "ANYSCALE_CLOUD_ID", "cld_4F7k8814aZzGG8TNUGPKnc"
@@ -285,6 +289,7 @@ GLOBAL_CONFIG = {
 
 REPORT_S = 30
 RETRY_MULTIPLIER = 2
+VALID_TEAMS = ["ml", "core", "serve"]
 
 
 class ExitCode(enum.Enum):
@@ -379,6 +384,124 @@ class State:
         self.state = state
         self.timestamp = timestamp
         self.data = data
+
+
+class CommandRunnerHack:
+    def __init__(self):
+        self.subprocess_pool: Dict[int, subprocess.Popen] = dict()
+        self.start_time: Dict[int, float] = dict()
+        self.counter = 0
+
+    def run_command(self, session_name, cmd_to_run, env_vars) -> int:
+        self.counter += 1
+        command_id = self.counter
+        env = os.environ.copy()
+        env["RAY_ADDRESS"] = f"anyscale://{session_name}"
+        env["ANYSCALE_CLI_TOKEN"] = GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"]
+        env["ANYSCALE_HOST"] = GLOBAL_CONFIG["ANYSCALE_HOST"]
+        full_cmd = " ".join(f"{k}={v}" for k, v in env_vars.items()) + " " + cmd_to_run
+        logger.info(f"Executing {cmd_to_run} with {env_vars} via ray job submit")
+        proc = subprocess.Popen(
+            " ".join(["ray", "job", "submit", shlex.quote(full_cmd)]),
+            shell=True,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            env=env,
+        )
+        self.subprocess_pool[command_id] = proc
+        self.start_time[command_id] = time.time()
+        return command_id
+
+    def wait_command(self, command_id: int):
+        retcode = self.subprocess_pool[command_id].wait()
+        duration = time.time() - self.start_time[command_id]
+        return retcode, duration
+
+
+global_command_runner = CommandRunnerHack()
+
+
+class S3SyncSessionController(SessionController):
+    def __init__(self, sdk, result_queue):
+        self.sdk = sdk
+        self.result_queue = result_queue
+        self.s3_client = boto3.client("s3")
+        self.bucket = GLOBAL_CONFIG["RELEASE_AWS_BUCKET"]
+        super().__init__()
+
+    def _generate_tmp_s3_path(self):
+        fn = "".join(random.choice(string.ascii_lowercase) for i in range(10))
+        location = f"tmp/{fn}"
+        return location
+
+    def pull(self, session_name, source, target):
+        remote_upload_to = self._generate_tmp_s3_path()
+        # remote source -> s3
+        cid = global_command_runner.run_command(
+            session_name,
+            (
+                f"pip install -q awscli && aws s3 cp {source} "
+                f"s3://{self.bucket}/{remote_upload_to} "
+                "--acl bucket-owner-full-control"
+            ),
+            {},
+        )
+        global_command_runner.wait_command(cid)
+
+        # s3 -> local target
+        self.s3_client.download_file(
+            Bucket=self.bucket,
+            Key=remote_upload_to,
+            Filename=target,
+        )
+
+    def _push_local_dir(self, session_name):
+        remote_upload_to = self._generate_tmp_s3_path()
+        # pack local dir
+        _, local_path = tempfile.mkstemp()
+        shutil.make_archive(local_path, "gztar", os.getcwd())
+        # local source -> s3
+        self.s3_client.upload_file(
+            Filename=local_path + ".tar.gz",
+            Bucket=self.bucket,
+            Key=remote_upload_to,
+        )
+        # s3 -> remote target
+        cid = global_command_runner.run_command(
+            session_name,
+            (
+                "pip install -q awscli && "
+                f"aws s3 cp s3://{self.bucket}/{remote_upload_to} "
+                f"archive.tar.gz && "
+                "tar xf archive.tar.gz"
+            ),
+            {},
+        )
+        global_command_runner.wait_command(cid)
+
+    def push(self, session_name, source, target):
+        if source is None and target is None:
+            self._push_local_dir(session_name)
+            return
+
+        assert isinstance(source, str)
+        assert isinstance(target, str)
+
+        remote_upload_to = self._generate_tmp_s3_path()
+        # local source -> s3
+        self.s3_client.upload_file(
+            Filename=source,
+            Bucket=self.bucket,
+            Key=remote_upload_to,
+        )
+        # s3 -> remote target
+        cid = global_command_runner.run_command(
+            session_name,
+            "pip install -q awscli && "
+            f"aws s3 cp s3://{self.bucket}/{remote_upload_to} {target}",
+            {},
+        )
+        global_command_runner.wait_command(cid)
 
 
 sys.path.insert(0, anyscale.ANYSCALE_RAY_DIR)
@@ -593,6 +716,7 @@ def maybe_get_alert_for_result(result_dict: Dict[str, Any]) -> Optional[str]:
 
 
 def report_result(
+    *,
     test_suite: str,
     test_name: str,
     status: str,
@@ -600,19 +724,21 @@ def report_result(
     results: Dict[Any, Any],
     artifacts: Dict[Any, Any],
     category: str,
+    team: str,
+    commit_url: str,
+    session_url: str,
+    runtime: float,
+    stable: bool,
+    return_code: int,
 ):
+    #   session_url: str, commit_url: str,
+    #   runtime: float, stable: bool, frequency: str, return_code: int):
+    """Report the test result to database."""
     now = datetime.datetime.utcnow()
     rds_data_client = boto3.client("rds-data", region_name="us-west-2")
 
     schema = GLOBAL_CONFIG["RELEASE_AWS_DB_TABLE"]
 
-    sql = (
-        f"INSERT INTO {schema} "
-        f"(created_on, test_suite, test_name, status, last_logs, "
-        f"results, artifacts, category) "
-        f"VALUES (:created_on, :test_suite, :test_name, :status, :last_logs, "
-        f":results, :artifacts, :category)"
-    )
     parameters = [
         {
             "name": "created_on",
@@ -634,7 +760,16 @@ def report_result(
             "value": {"stringValue": json.dumps(artifacts)},
         },
         {"name": "category", "value": {"stringValue": category}},
+        {"name": "team", "value": {"stringValue": team}},
     ]
+    columns = [param["name"] for param in parameters]
+    values = [f":{param['name']}" for param in parameters]
+    column_str = ", ".join(columns).strip(", ")
+    value_str = ", ".join(values).strip(", ")
+
+    sql = f"INSERT INTO {schema} " f"({column_str}) " f"VALUES ({value_str})"
+
+    logger.info(f"Query: {sql}")
 
     # Default boto3 call timeout is 45 seconds.
     retry_delay_s = 64
@@ -931,7 +1066,10 @@ def wait_for_build_or_raise(
     start_wait = time.time()
     next_report = start_wait + REPORT_S
     logger.info(f"Waiting for build {build_id} to finish...")
-    logger.info(f"Track progress here: " f"{anyscale_app_config_build_url(build_id)}")
+    logger.info(
+        f"Track progress here: "
+        f"{_format_link(anyscale_app_config_build_url(build_id))}"
+    )
     while not completed:
         now = time.time()
         if now > next_report:
@@ -1040,7 +1178,15 @@ def create_and_wait_for_session(
         session_operation = session_operation_response.result
         completed = session_operation.completed
 
-        _check_stop(stop_event, "session")
+        try:
+            _check_stop(stop_event, "session")
+        except SessionTimeoutError as e:
+            # Always queue session termination.
+            # We can't do this later as we won't return anything here
+            # and the session ID will not be set in the control loop
+            _cleanup_session(sdk=sdk, session_id=session_id)
+            raise e
+
         now = time.time()
         if now > next_report:
             logger.info(
@@ -1351,13 +1497,11 @@ def run_test_config(
     # So we use the session controller instead.
     sdk = AnyscaleSDK(auth_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"])
 
-    session_controller = SessionController(
-        api_client=instantiate_api_client(
-            cli_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"],
-            host=GLOBAL_CONFIG["ANYSCALE_HOST"],
-        ),
-        anyscale_api_client=sdk.api_client,
+    get_auth_api_client(
+        cli_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"],
+        host=GLOBAL_CONFIG["ANYSCALE_HOST"],
     )
+    session_controller = S3SyncSessionController(sdk, result_queue)
 
     cloud_id = test_config["cluster"].get("cloud_id", None)
     cloud_name = test_config["cluster"].get("cloud_name", None)
@@ -1382,6 +1526,15 @@ def run_test_config(
 
     app_config_rel_path = test_config["cluster"].get("app_config", None)
     app_config = _load_config(local_dir, app_config_rel_path)
+    # A lot of staging tests share the same app config yaml, except the flags.
+    # `app_env_vars` in test config will help this one.
+    # Here we extend the env_vars to use the one specified in the test config.
+    if test_config.get("app_env_vars") is not None:
+        if app_config["env_vars"] is None:
+            app_config["env_vars"] = test_config["app_env_vars"]
+        else:
+            app_config["env_vars"].update(test_config["app_env_vars"])
+        logger.info(f"Using app config:\n{app_config}")
 
     compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
     compute_tpl = _load_config(local_dir, compute_tpl_rel_path)
@@ -1478,10 +1631,11 @@ def run_test_config(
             )
 
         # Add these metadata here to avoid changing SQL schema.
+        is_stable = test_config.get("stable", True)
         results["_runtime"] = runtime
         results["_session_url"] = session_url
         results["_commit_url"] = commit_url
-        results["_stable"] = test_config.get("stable", True)
+        results["_stable"] = is_stable
         result_queue.put(
             State(
                 "END",
@@ -1491,6 +1645,10 @@ def run_test_config(
                     "last_logs": logs,
                     "results": results,
                     "artifacts": saved_artifacts,
+                    "runtime": runtime,
+                    "session_url": session_url,
+                    "commit_url": commit_url,
+                    "stable": is_stable,
                 },
             )
         )
@@ -1615,6 +1773,7 @@ def run_test_config(
             with open(test_state_file, "wt") as f:
                 json.dump({"start_time": time.time(), "test_name": test_name}, f)
 
+            on_k8s = test_config["cluster"].get("compute_on_k8s")
             if prepare_command or not test_uses_ray_connect:
                 if test_uses_ray_connect:
                     logger.info(
@@ -1626,8 +1785,6 @@ def run_test_config(
                     session_name=session_name,
                     source=None,
                     target=None,
-                    config=None,
-                    all_nodes=False,
                 )
 
                 logger.info("Syncing test state to session...")
@@ -1635,8 +1792,6 @@ def run_test_config(
                     session_name=session_name,
                     source=test_state_file,
                     target=state_json,
-                    config=None,
-                    all_nodes=False,
                 )
 
                 session_url = anyscale_session_url(
@@ -1647,21 +1802,29 @@ def run_test_config(
                 # Optionally run preparation command
                 if prepare_command:
                     logger.info(f"Running preparation command: {prepare_command}")
-                    scd_id, result = run_session_command(
-                        sdk=sdk,
-                        session_id=session_id,
-                        cmd_to_run=prepare_command,
-                        result_queue=result_queue,
-                        env_vars=env_vars,
-                        state_str="CMD_PREPARE",
-                    )
-                    _, _ = wait_for_session_command_to_complete(
-                        result,
-                        sdk=sdk,
-                        scd_id=scd_id,
-                        stop_event=stop_event,
-                        state_str="CMD_PREPARE",
-                    )
+                    if on_k8s:
+                        cid = global_command_runner.run_command(
+                            session_name, prepare_command, env_vars
+                        )
+                        status_code, _ = global_command_runner.wait_command(cid)
+                        if status_code != 0:
+                            raise PrepareCommandRuntimeError()
+                    else:
+                        scd_id, result = run_session_command(
+                            sdk=sdk,
+                            session_id=session_id,
+                            cmd_to_run=prepare_command,
+                            result_queue=result_queue,
+                            env_vars=env_vars,
+                            state_str="CMD_PREPARE",
+                        )
+                        _, _ = wait_for_session_command_to_complete(
+                            result,
+                            sdk=sdk,
+                            scd_id=scd_id,
+                            stop_event=stop_event,
+                            state_str="CMD_PREPARE",
+                        )
 
             if test_uses_ray_connect:
                 script_args = test_config["run"].get("args", [])
@@ -1696,30 +1859,47 @@ def run_test_config(
             if smoke_test:
                 cmd_to_run += " --smoke-test"
 
-            scd_id, result = run_session_command(
-                sdk=sdk,
-                session_id=session_id,
-                cmd_to_run=cmd_to_run,
-                result_queue=result_queue,
-                env_vars=env_vars,
-                state_str="CMD_RUN",
-            )
-
-            if not kick_off_only:
-                _, runtime = wait_for_session_command_to_complete(
-                    result,
+            if on_k8s:
+                cmd_id = global_command_runner.run_command(
+                    session_name, cmd_to_run, env_vars=env_vars
+                )
+            else:
+                scd_id, result = run_session_command(
                     sdk=sdk,
-                    scd_id=scd_id,
-                    stop_event=stop_event,
+                    session_id=session_id,
+                    cmd_to_run=cmd_to_run,
+                    result_queue=result_queue,
+                    env_vars=env_vars,
                     state_str="CMD_RUN",
                 )
-                _process_finished_command(
-                    session_controller=session_controller,
-                    scd_id=scd_id,
-                    runtime=runtime,
-                    session_url=session_url,
-                    commit_url=commit_url,
-                )
+
+            if not kick_off_only:
+                if on_k8s:
+                    retcode, runtime = global_command_runner.wait_command(cmd_id)
+                    if retcode != 0:
+                        raise RuntimeError("Command errored")
+                    _process_finished_command(
+                        session_controller=session_controller,
+                        scd_id="",
+                        runtime=runtime,
+                        session_url=session_url,
+                        commit_url=commit_url,
+                    )
+                else:
+                    _, runtime = wait_for_session_command_to_complete(
+                        result,
+                        sdk=sdk,
+                        scd_id=scd_id,
+                        stop_event=stop_event,
+                        state_str="CMD_RUN",
+                    )
+                    _process_finished_command(
+                        session_controller=session_controller,
+                        scd_id=scd_id,
+                        runtime=runtime,
+                        session_url=session_url,
+                        commit_url=commit_url,
+                    )
             else:
                 result_queue.put(
                     State("END", time.time(), {"status": "kickoff", "last_logs": ""})
@@ -1786,11 +1966,12 @@ def run_test_config(
                     exit_code = ExitCode.UNKNOWN
 
                 # Add these metadata here to avoid changing SQL schema.
+                is_stable = test_config.get("stable", True)
                 results = {}
                 results["_runtime"] = runtime
                 results["_session_url"] = session_url
                 results["_commit_url"] = commit_url
-                results["_stable"] = test_config.get("stable", True)
+                results["_stable"] = is_stable
                 result_queue.put(
                     State(
                         "END",
@@ -1800,6 +1981,10 @@ def run_test_config(
                             "last_logs": logs,
                             "results": results,
                             "exit_code": exit_code.value,
+                            "runtime": runtime,
+                            "session_url": session_url,
+                            "commit_url": commit_url,
+                            "stable": is_stable,
                         },
                     )
                 )
@@ -2042,14 +2227,25 @@ def run_test_config(
         )
 
         try:
-            shutil.rmtree(out_dir, ignore_errors=True)
-            shutil.copytree(temp_dir, out_dir)
-            logger.info(f"Dir contents: {os.listdir(out_dir)}")
-        except Exception as e:
-            logger.error(
-                f"Ran into error when copying results dir to persistent "
-                f"location: {str(e)}"
+            shutil.rmtree(out_dir)
+        except Exception:
+            logger.exception(
+                f"Ran into error when clearing the destination dir: {out_dir}"
             )
+
+        try:
+            # Use distutils.dir_util.copy_tree() instead of shutil.cptree(),
+            # which allows existing output directory.
+            from distutils.dir_util import copy_tree
+
+            copy_tree(temp_dir, out_dir)
+        except Exception:
+            logger.exception(
+                "Ran into error when copying results dir to persistent "
+                f"location: {out_dir}"
+            )
+
+        logger.info(f"Dir contents: {os.listdir(out_dir)}")
 
     return result
 
@@ -2111,6 +2307,19 @@ def run_test(
     driver_setup_script = test_config.get("driver_setup", None)
     if driver_setup_script:
         run_bash_script(local_dir, driver_setup_script)
+    logger.info(test_config)
+    team = test_config.get("team", "unspecified").strip(" ").lower()
+    # When running local test, this validates the team name.
+    # If the team name is not specified, they will be recorded as "unspecified"
+    if not report and team not in VALID_TEAMS:
+        logger.warning(
+            f"Incorrect team name {team} has given."
+            "Please specify team under the name field in the test config. "
+            "For example, within nightly_tests.yaml,\n"
+            "\tname: test_xxx\n"
+            f"\tteam: {'|'.join(VALID_TEAMS)}\n"
+            "\tcluster:..."
+        )
 
     result = run_test_config(
         local_dir,
@@ -2165,6 +2374,12 @@ def run_test(
             results=result.get("results", {}),
             artifacts=result.get("artifacts", {}),
             category=category,
+            team=team,
+            commit_url=result.get("commit_url", ""),
+            session_url=result.get("session_url", ""),
+            runtime=result.get("runtime", -1),
+            stable=result.get("stable", True),
+            exit_code=result.get("exit_code", ExitCode.UNKNOWN),
         )
 
         if not has_errored(result):
@@ -2197,7 +2412,7 @@ def run_test(
             except Exception as e:
                 # On database error the test should still pass
                 # Todo: flag somewhere else?
-                logger.error(f"Error persisting results to database: {e}")
+                logger.exception(f"Error persisting results to database: {e}")
         else:
             logger.info(
                 f"Usually I would now report the following results:\n"
@@ -2237,7 +2452,7 @@ if __name__ == "__main__":
         "--report",
         action="store_true",
         default=False,
-        help="Do not report any results or upload to S3",
+        help="Whether to report results and upload to S3",
     )
     parser.add_argument(
         "--kick-off-only",

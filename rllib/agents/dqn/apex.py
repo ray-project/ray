@@ -14,6 +14,7 @@ https://docs.ray.io/en/master/rllib-algorithms.html#distributed-prioritized-expe
 
 import collections
 import copy
+import platform
 from typing import Tuple
 
 import ray
@@ -38,7 +39,7 @@ from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import UpdateTargetNetwork
 from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.actors import create_colocated
+from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import SampleBatchType, TrainerConfigDict
@@ -61,10 +62,21 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "n_step": 3,
         "num_gpus": 1,
         "num_workers": 32,
+
         "buffer_size": 2000000,
         # TODO(jungong) : add proper replay_buffer_config after
         #     DistributedReplayBuffer type is supported.
         "replay_buffer_config": None,
+        # Whether all shards of the replay buffer must be co-located
+        # with the learner process (running the execution plan).
+        # This is preferred b/c the learner process should have quick
+        # access to the data from the buffer shards, avoiding network
+        # traffic each time samples from the buffer(s) are drawn.
+        # Set this to False for relaxing this constraint and allowing
+        # replay shards to be created on node(s) other than the one
+        # on which the learner is located.
+        "replay_buffer_shards_colocated_with_driver": True,
+
         "learning_starts": 50000,
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
@@ -72,7 +84,7 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "timesteps_per_iteration": 25000,
         "exploration_config": {"type": "PerWorkerEpsilonGreedy"},
         "worker_side_prioritization": True,
-        "min_iter_time_s": 30,
+        "min_time_s_per_reporting": 30,
         # If set, this will fix the ratio of replayed from a buffer and learned
         # on timesteps to sampled from an environment and stored in the replay
         # buffer timesteps. Otherwise, replay will proceed as fast as possible.
@@ -139,21 +151,35 @@ class ApexTrainer(DQNTrainer):
 
         # Create a number of replay buffer actors.
         num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
-        replay_actors = create_colocated(
-            ReplayActor,
-            [
-                num_replay_buffer_shards,
-                config["learning_starts"],
-                config["buffer_size"],
-                config["train_batch_size"],
-                config["prioritized_replay_alpha"],
-                config["prioritized_replay_beta"],
-                config["prioritized_replay_eps"],
-                config["multiagent"]["replay_mode"],
-                config.get("replay_sequence_length", 1),
-            ],
+
+        replay_actor_args = [
             num_replay_buffer_shards,
-        )
+            config["learning_starts"],
+            config["buffer_size"],
+            config["train_batch_size"],
+            config["prioritized_replay_alpha"],
+            config["prioritized_replay_beta"],
+            config["prioritized_replay_eps"],
+            config["multiagent"]["replay_mode"],
+            config.get("replay_sequence_length", 1),
+        ]
+        # Place all replay buffer shards on the same node as the learner
+        # (driver process that runs this execution plan).
+        if config["replay_buffer_shards_colocated_with_driver"]:
+            replay_actors = create_colocated_actors(
+                actor_specs=[
+                    # (class, args, kwargs={}, count)
+                    (ReplayActor, replay_actor_args, {}, num_replay_buffer_shards)
+                ],
+                node=platform.node(),  # localhost
+            )[
+                0
+            ]  # [0]=only one item in `actor_specs`.
+        # Place replay buffer shards on any node(s).
+        else:
+            replay_actors = [
+                ReplayActor(*replay_actor_args) for _ in range(num_replay_buffer_shards)
+            ]
 
         # Start the learner thread.
         learner_thread = LearnerThread(workers.local_worker())
@@ -234,7 +260,7 @@ class ApexTrainer(DQNTrainer):
             replay_stats = ray.get(
                 replay_actors[0].stats.remote(config["optimizer"].get("debug"))
             )
-            exploration_infos = workers.foreach_trainable_policy(
+            exploration_infos = workers.foreach_policy_to_train(
                 lambda p, _: p.get_exploration_state()
             )
             result["info"].update(

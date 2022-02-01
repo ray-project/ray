@@ -43,6 +43,14 @@ class FaultInjectEnv(gym.Env):
 
 
 class IgnoresWorkerFailure(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def do_test(self, alg, config, fn=None):
         fn = fn or self._do_test_fault_recover
         try:
@@ -96,7 +104,7 @@ class IgnoresWorkerFailure(unittest.TestCase):
             {
                 "timesteps_per_iteration": 1000,
                 "num_gpus": 0,
-                "min_iter_time_s": 1,
+                "min_time_s_per_reporting": 1,
                 "explore": False,
                 "learning_starts": 1000,
                 "target_network_update_freq": 100,

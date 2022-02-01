@@ -12,6 +12,12 @@ def handle_result(
     results: Dict,
     artifacts: Dict,
     last_logs: str,
+    team: str,
+    commit_url: str,
+    session_url: str,
+    runtime: float,
+    stable: bool,
+    return_code: int,
 ) -> Optional[str]:
     assert test_suite == "tune_tests"
 

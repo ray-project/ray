@@ -2,8 +2,8 @@
 
 .. _cluster-reference:
 
-Config YAML and CLI Reference
-=============================
+Ray Cluster Config YAML and CLI
+===============================
 
 .. toctree::
     :maxdepth: 2

@@ -31,10 +31,8 @@ class GlobalStateAccessor {
  public:
   /// Constructor of GlobalStateAccessor.
   ///
-  /// \param redis_address The address of GCS Redis.
-  /// \param redis_password The password of GCS Redis.
-  explicit GlobalStateAccessor(const std::string &redis_address,
-                               const std::string &redis_password);
+  /// \param gcs_client_options The client options to connect to gcs
+  explicit GlobalStateAccessor(const GcsClientOptions &gcs_client_options);
 
   ~GlobalStateAccessor() LOCKS_EXCLUDED(mutex_);
 
@@ -161,9 +159,11 @@ class GlobalStateAccessor {
 
   /// Get value of the key from GCS Service.
   ///
+  /// \param ns namespace to get.
   /// \param key key to get.
   /// \return Value of the key.
-  std::unique_ptr<std::string> GetInternalKV(const std::string &key)
+  std::unique_ptr<std::string> GetInternalKV(const std::string &ns,
+                                             const std::string &key)
       LOCKS_EXCLUDED(mutex_);
 
   /// Get the serialized system config from GCS.
@@ -231,10 +231,10 @@ class GlobalStateAccessor {
 
   /// Whether this client is connected to gcs server.
   bool is_connected_ GUARDED_BY(mutex_) = false;
-  std::unique_ptr<GcsClient> gcs_client_ GUARDED_BY(mutex_);
 
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<instrumented_io_context> io_service_;
+  std::unique_ptr<GcsClient> gcs_client_ GUARDED_BY(mutex_);
 };
 
 }  // namespace gcs

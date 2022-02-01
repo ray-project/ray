@@ -8,6 +8,7 @@ import ray.train as train
 from ray.data import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
 from ray.train import Trainer
+from ray.train.tensorflow import prepare_dataset_shard
 
 
 class TrainReportCallback(Callback):
@@ -26,17 +27,6 @@ def get_dataset_pipeline(a=5, b=10, size=1000) -> DatasetPipeline:
     dataset_pipeline = dataset.repeat().random_shuffle_each_window()
 
     return dataset_pipeline
-
-
-def prepare_dataset_shard(dataset_shard: tf.data.Dataset):
-    # Disable Tensorflow autosharding since the dataset has already been
-    # sharded.
-    options = tf.data.Options()
-    options.experimental_distribute.auto_shard_policy = (
-        tf.data.experimental.AutoShardPolicy.OFF
-    )
-    dataset = dataset_shard.with_options(options)
-    return dataset
 
 
 def build_and_compile_model(config):

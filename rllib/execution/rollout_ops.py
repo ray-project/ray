@@ -1,9 +1,8 @@
 import logging
-from typing import List, Tuple
 import time
+from typing import Callable, Container, List, Optional, Tuple, TYPE_CHECKING
 
-from ray.util.iter import from_actors, LocalIterator
-from ray.util.iter_metrics import SharedMetrics
+import ray
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (
@@ -19,11 +18,66 @@ from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
 )
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
+from ray.util.iter import from_actors, LocalIterator
+from ray.util.iter_metrics import SharedMetrics
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 logger = logging.getLogger(__name__)
+
+
+@ExperimentalAPI
+def synchronous_parallel_sample(
+    worker_set: WorkerSet,
+    remote_fn: Optional[Callable[["RolloutWorker"], None]] = None,
+) -> List[SampleBatch]:
+    """Runs parallel and synchronous rollouts on all remote workers.
+
+    Waits for all workers to return from the remote calls.
+
+    If no remote workers exist (num_workers == 0), use the local worker
+    for sampling.
+
+    Alternatively to calling `worker.sample.remote()`, the user can provide a
+    `remote_fn()`, which will be applied to the worker(s) instead.
+
+    Args:
+        worker_set: The WorkerSet to use for sampling.
+        remote_fn: If provided, use `worker.apply.remote(remote_fn)` instead
+            of `worker.sample.remote()` to generate the requests.
+
+    Returns:
+        The list of collected sample batch types (one for each parallel
+        rollout worker in the given `worker_set`).
+
+    Examples:
+        >>> # 2 remote workers (num_workers=2):
+        >>> batches = synchronous_parallel_sample(trainer.workers)
+        >>> print(len(batches))
+        ... 2
+        >>> print(batches[0])
+        ... SampleBatch(16: ['obs', 'actions', 'rewards', 'dones'])
+
+        >>> # 0 remote workers (num_workers=0): Using the local worker.
+        >>> batches = synchronous_parallel_sample(trainer.workers)
+        >>> print(len(batches))
+        ... 1
+    """
+    # No remote workers in the set -> Use local worker for collecting
+    # samples.
+    if not worker_set.remote_workers():
+        return [worker_set.local_worker().sample()]
+
+    # Loop over remote workers' `sample()` method in parallel.
+    sample_batches = ray.get([r.sample.remote() for r in worker_set.remote_workers()])
+
+    # Return all collected batches.
+    return sample_batches
 
 
 def ParallelRollouts(
@@ -226,22 +280,53 @@ class SelectExperiences:
         {"pol1", "pol2"}
     """
 
-    def __init__(self, policy_ids: List[PolicyID]):
-        assert isinstance(policy_ids, list), policy_ids
-        self.policy_ids = policy_ids
+    def __init__(
+        self,
+        policy_ids: Optional[Container[PolicyID]] = None,
+        local_worker: Optional["RolloutWorker"] = None,
+    ):
+        """Initializes a SelectExperiences instance.
+
+        Args:
+            policy_ids: Container of PolicyID to select from passing through
+                batches. If not provided, must provide the `local_worker` arg.
+            local_worker: The local worker to use to determine, which policy
+                IDs are trainable. If not provided, must provide the
+                `policy_ids` arg.
+        """
+        assert policy_ids is not None or local_worker is not None, (
+            "ERROR: Must provide either one of `policy_ids` or " "`local_worker` args!"
+        )
+
+        self.local_worker = self.policy_ids = None
+        if local_worker:
+            self.local_worker = local_worker
+        else:
+            assert isinstance(policy_ids, Container), policy_ids
+            self.policy_ids = set(policy_ids)
 
     def __call__(self, samples: SampleBatchType) -> SampleBatchType:
         _check_sample_batch_type(samples)
 
         if isinstance(samples, MultiAgentBatch):
-            samples = MultiAgentBatch(
-                {
-                    k: v
-                    for k, v in samples.policy_batches.items()
-                    if k in self.policy_ids
-                },
-                samples.count,
-            )
+            if self.local_worker:
+                samples = MultiAgentBatch(
+                    {
+                        pid: batch
+                        for pid, batch in samples.policy_batches.items()
+                        if self.local_worker.is_policy_to_train(pid, batch)
+                    },
+                    samples.count,
+                )
+            else:
+                samples = MultiAgentBatch(
+                    {
+                        k: v
+                        for k, v in samples.policy_batches.items()
+                        if k in self.policy_ids
+                    },
+                    samples.count,
+                )
 
         return samples
 
@@ -267,12 +352,21 @@ class StandardizeFields:
         wrapped = False
 
         if isinstance(samples, SampleBatch):
-            samples = MultiAgentBatch({DEFAULT_POLICY_ID: samples}, samples.count)
+            samples = samples.as_multi_agent()
             wrapped = True
 
         for policy_id in samples.policy_batches:
             batch = samples.policy_batches[policy_id]
             for field in self.fields:
+                if field not in batch:
+                    raise KeyError(
+                        f"`{field}` not found in SampleBatch for policy "
+                        f"`{policy_id}`! Maybe this policy fails to add "
+                        f"{field} in its `postprocess_trajectory` method? Or "
+                        "this policy is not meant to learn at all and you "
+                        "forgot to add it to the list under `config."
+                        "multiagent.policies_to_train`."
+                    )
                 batch[field] = standardized(batch[field])
 
         if wrapped:

@@ -1,4 +1,5 @@
 import asyncio
+from asyncio.tasks import FIRST_COMPLETED
 import socket
 import time
 import pickle
@@ -16,33 +17,20 @@ from ray.serve.long_poll import LongPollNamespace
 from ray.util import metrics
 from ray.serve.utils import logger
 from ray.serve.handle import RayServeHandle
-from ray.serve.http_util import HTTPRequestWrapper, receive_http_body, Response
+from ray.serve.http_util import (
+    HTTPRequestWrapper,
+    RawASGIResponse,
+    receive_http_body,
+    Response,
+)
 from ray.serve.long_poll import LongPollClient
-from ray.serve.handle import DEFAULT
 
 MAX_REPLICA_FAILURE_RETRIES = 10
+DISCONNECT_ERROR_CODE = "disconnection"
 
 
-async def _send_request_to_handle(handle, scope, receive, send):
+async def _send_request_to_handle(handle, scope, receive, send) -> str:
     http_body_bytes = await receive_http_body(scope, receive, send)
-
-    headers = {k.decode(): v.decode() for k, v in scope["headers"]}
-    handle = handle.options(
-        method_name=headers.get("X-SERVE-CALL-METHOD".lower(), DEFAULT.VALUE),
-        shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), DEFAULT.VALUE),
-        http_method=scope["method"].upper(),
-        http_headers=headers,
-    )
-
-    # scope["router"] and scope["endpoint"] contain references to a router
-    # and endpoint object, respectively, which each in turn contain a
-    # reference to the Serve client, which cannot be serialized.
-    # The solution is to delete these from scope, as they will not be used.
-    # TODO(edoakes): this can be removed once we deprecate the old API.
-    if "router" in scope:
-        del scope["router"]
-    if "endpoint" in scope:
-        del scope["endpoint"]
 
     # NOTE(edoakes): it's important that we defer building the starlette
     # request until it reaches the replica to avoid unnecessary
@@ -54,15 +42,41 @@ async def _send_request_to_handle(handle, scope, receive, send):
 
     retries = 0
     backoff_time_s = 0.05
+    loop = asyncio.get_event_loop()
+    # We have received all the http request conent. The next `receive`
+    # call might never arrive; if it does, it can only be `http.disconnect`.
+    client_disconnection_task = loop.create_task(receive())
     while retries < MAX_REPLICA_FAILURE_RETRIES:
-        object_ref = await handle.remote(request)
+        assignment_task = loop.create_task(handle.remote(request))
+        done, _ = await asyncio.wait(
+            [assignment_task, client_disconnection_task], return_when=FIRST_COMPLETED
+        )
+        if client_disconnection_task in done:
+            message = await client_disconnection_task
+            assert message["type"] == "http.disconnect", (
+                "Received additional request payload that's not disconnect. "
+                "This is an invalid HTTP state."
+            )
+
+            logger.warning(
+                f"Client from {scope['client']} disconnected, cancelling the "
+                "request."
+            )
+            # This will make the .result() to raise cancelled error.
+            assignment_task.cancel()
         try:
+            object_ref = await assignment_task
             result = await object_ref
+            client_disconnection_task.cancel()
             break
+        except asyncio.CancelledError:
+            # Here because the client disconnected, we will return a custom
+            # error code for metric tracking.
+            return DISCONNECT_ERROR_CODE
         except RayTaskError as error:
             error_message = "Task Error. Traceback: {}.".format(error)
             await Response(error_message, status_code=500).send(scope, receive, send)
-            return
+            return "500"
         except RayActorError:
             logger.warning(
                 "Request failed due to replica failure. There are "
@@ -78,12 +92,14 @@ async def _send_request_to_handle(handle, scope, receive, send):
     else:
         error_message = "Task failed with " f"{MAX_REPLICA_FAILURE_RETRIES} retries."
         await Response(error_message, status_code=500).send(scope, receive, send)
-        return
+        return "500"
 
-    if isinstance(result, starlette.responses.Response):
+    if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
         await result(scope, receive, send)
+        return str(result.status_code)
     else:
         await Response(result).send(scope, receive, send)
+        return "200"
 
 
 class LongestPrefixRouter:
@@ -109,14 +125,8 @@ class LongestPrefixRouter:
         routes = []
         route_info = {}
         for endpoint, info in endpoints.items():
-            # Default case where the user did not specify a route prefix.
-            if info.route is None:
-                route = f"/{endpoint}"
-            else:
-                route = info.route
-
-            routes.append(route)
-            route_info[route] = endpoint
+            routes.append(info.route)
+            route_info[info.route] = endpoint
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
@@ -204,10 +214,24 @@ class HTTPProxy:
             tag_keys=("route",),
         )
 
+        self.request_error_counter = metrics.Counter(
+            "serve_num_http_error_requests",
+            description="The number of non-200 HTTP responses.",
+            tag_keys=("route", "error_code"),
+        )
+
+        self.deployment_request_error_counter = metrics.Counter(
+            "serve_num_deployment_http_error_requests",
+            description=(
+                "The number of non-200 HTTP responses returned by each " "deployment."
+            ),
+            tag_keys=("deployment",),
+        )
+
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
         for endpoint, info in endpoints.items():
-            route = info.route if info.route is not None else f"/{endpoint}"
+            route = info.route
             self.route_info[route] = endpoint
 
         self.prefix_router.update_routes(endpoints)
@@ -241,15 +265,23 @@ class HTTPProxy:
         """
 
         assert scope["type"] == "http"
-        self.request_counter.inc(tags={"route": scope["path"]})
 
-        if scope["path"] == "/-/routes":
+        # only use the non-root part of the path for routing
+        root_path = scope["root_path"]
+        route_path = scope["path"][len(root_path) :]
+
+        self.request_counter.inc(tags={"route": route_path})
+
+        if route_path == "/-/routes":
             return await starlette.responses.JSONResponse(self.route_info)(
                 scope, receive, send
             )
 
-        route_prefix, handle = self.prefix_router.match_route(scope["path"])
+        route_prefix, handle = self.prefix_router.match_route(route_path)
         if route_prefix is None:
+            self.request_error_counter.inc(
+                tags={"route": route_path, "error_code": "404"}
+            )
             return await self._not_found(scope, receive, send)
 
         # Modify the path and root path so that reverse lookups and redirection
@@ -257,10 +289,17 @@ class HTTPProxy:
         # changed without restarting the replicas.
         if route_prefix != "/":
             assert not route_prefix.endswith("/")
-            scope["path"] = scope["path"].replace(route_prefix, "", 1)
-            scope["root_path"] = route_prefix
+            scope["path"] = route_path.replace(route_prefix, "", 1)
+            scope["root_path"] = root_path + route_prefix
 
-        await _send_request_to_handle(handle, scope, receive, send)
+        status_code = await _send_request_to_handle(handle, scope, receive, send)
+        if status_code != "200":
+            self.request_error_counter.inc(
+                tags={"route": route_path, "error_code": status_code}
+            )
+            self.deployment_request_error_counter.inc(
+                tags={"deployment": handle.deployment_name}
+            )
 
 
 @ray.remote(num_cpus=0)
@@ -269,6 +308,7 @@ class HTTPProxyActor:
         self,
         host: str,
         port: int,
+        root_path: str,
         controller_name: str,
         controller_namespace: str,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
@@ -278,6 +318,7 @@ class HTTPProxyActor:
 
         self.host = host
         self.port = port
+        self.root_path = root_path
 
         self.setup_complete = asyncio.Event()
 
@@ -339,6 +380,7 @@ Please make sure your http-host and http-port are specified correctly."""
             self.wrapped_app,
             host=self.host,
             port=self.port,
+            root_path=self.root_path,
             lifespan="off",
             access_log=False,
         )

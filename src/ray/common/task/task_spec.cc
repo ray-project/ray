@@ -167,6 +167,8 @@ bool TaskSpecification::HasRuntimeEnv() const {
   return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv().empty());
 }
 
+uint64_t TaskSpecification::AttemptNumber() const { return message_->attempt_number(); }
+
 int TaskSpecification::GetRuntimeEnvHash() const {
   absl::flat_hash_map<std::string, double> required_resource;
   if (RayConfig::instance().worker_resource_limits_enabled()) {

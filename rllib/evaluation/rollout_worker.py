@@ -1,23 +1,27 @@
 import copy
 import gym
+from gym.spaces import Box, Discrete, MultiDiscrete, Space
 import logging
 import numpy as np
 import platform
 import os
+import tree  # pip install dm_tree
 from typing import (
     Any,
     Callable,
+    Container,
     Dict,
     List,
     Optional,
+    Set,
     Tuple,
     Type,
-    TypeVar,
     TYPE_CHECKING,
     Union,
 )
 
 import ray
+from ray import ObjectRef
 from ray import cloudpickle as pickle
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
@@ -40,7 +44,7 @@ from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import force_list, merge_dicts
-from ray.rllib.utils.annotations import Deprecated, DeveloperAPI
+from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.error import EnvError, ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
@@ -52,6 +56,7 @@ from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import (
     AgentID,
     EnvConfigDict,
+    EnvCreator,
     EnvType,
     ModelConfigDict,
     ModelGradients,
@@ -59,7 +64,9 @@ from ray.rllib.utils.typing import (
     MultiAgentPolicyConfigDict,
     PartialTrainerConfigDict,
     PolicyID,
+    PolicyState,
     SampleBatchType,
+    T,
 )
 from ray.util.debug import log_once, disable_log_once_globally, enable_periodic_logging
 from ray.util.iter import ParallelIteratorWorker
@@ -68,9 +75,6 @@ if TYPE_CHECKING:
     from ray.rllib.evaluation.episode import Episode
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
-
-# Generic type var for foreach_* methods.
-T = TypeVar("T")
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -200,11 +204,13 @@ class RolloutWorker(ParallelIteratorWorker):
     def __init__(
         self,
         *,
-        env_creator: Callable[[EnvContext], EnvType],
+        env_creator: EnvCreator,
         validate_env: Optional[Callable[[EnvType, EnvContext], None]] = None,
         policy_spec: Optional[Union[type, Dict[PolicyID, PolicySpec]]] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, "Episode"], PolicyID]] = None,
-        policies_to_train: Optional[List[PolicyID]] = None,
+        policies_to_train: Union[
+            Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]
+        ] = None,
         tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
         rollout_fragment_length: int = 100,
         count_steps_by: str = "env_steps",
@@ -242,9 +248,7 @@ class RolloutWorker(ParallelIteratorWorker):
         seed: int = None,
         extra_python_environs: Optional[dict] = None,
         fake_sampler: bool = False,
-        spaces: Optional[
-            Dict[PolicyID, Tuple[gym.spaces.Space, gym.spaces.Space]]
-        ] = None,
+        spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         policy=None,
         monitor_path=None,
     ):
@@ -265,8 +269,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 agent appears in an episode, to bind that agent to a policy
                 for the duration of the episode. If not provided, will map all
                 agents to DEFAULT_POLICY_ID.
-            policies_to_train: Optional list of policies to train, or None
-                for all policies.
+            policies_to_train: Optional container of policies to train (None
+                for all policies), or a callable taking PolicyID and
+                SampleBatchType and returning a bool (trainable or not?).
             tf_session_creator: A function that returns a TF session.
                 This is optional and only useful with TFPolicy.
             rollout_fragment_length: The target number of steps
@@ -445,7 +450,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # If provided, set it here.
         self.set_policy_mapping_fn(policy_mapping_fn)
 
-        self.env_creator: Callable[[EnvContext], EnvType] = env_creator
+        self.env_creator: EnvCreator = env_creator
         self.rollout_fragment_length: int = rollout_fragment_length * num_envs
         self.count_steps_by: str = count_steps_by
         self.batch_mode: str = batch_mode
@@ -564,16 +569,21 @@ class RolloutWorker(ParallelIteratorWorker):
         self.make_sub_env_fn = make_sub_env
         self.spaces = spaces
 
-        policy_dict = _determine_spaces_for_multi_agent_dict(
+        self.policy_dict = _determine_spaces_for_multi_agent_dict(
             policy_spec, self.env, spaces=self.spaces, policy_config=policy_config
         )
 
-        # List of IDs of those policies, which should be trained.
-        # By default, these are all policies found in the policy_dict.
-        self.policies_to_train: List[PolicyID] = policies_to_train or list(
-            policy_dict.keys()
-        )
-        self.set_policies_to_train(self.policies_to_train)
+        # Set of IDs of those policies, which should be trained. This property
+        # is optional and mainly used for backward compatibility.
+        self.policies_to_train = policies_to_train
+        self.is_policy_to_train: Callable[[PolicyID, SampleBatchType], bool]
+
+        # By default (None), use the set of all policies found in the
+        # policy_dict.
+        if self.policies_to_train is None:
+            self.policies_to_train = set(self.policy_dict.keys())
+
+        self.set_is_policy_to_train(self.policies_to_train)
 
         self.policy_map: PolicyMap = None
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
@@ -617,7 +627,10 @@ class RolloutWorker(ParallelIteratorWorker):
             )
 
         self._build_policy_map(
-            policy_dict, policy_config, session_creator=tf_session_creator, seed=seed
+            self.policy_dict,
+            policy_config,
+            session_creator=tf_session_creator,
+            seed=seed,
         )
 
         # Update Policy's view requirements from Model, only if Policy directly
@@ -640,12 +653,18 @@ class RolloutWorker(ParallelIteratorWorker):
                     f"MultiAgentEnv, ActorHandle, or ExternalMultiAgentEnv!"
                 )
 
-        self.filters: Dict[PolicyID, Filter] = {
-            policy_id: get_filter(
-                self.observation_filter, policy.observation_space.shape
+        self.filters: Dict[PolicyID, Filter] = {}
+        for (policy_id, policy) in self.policy_map.items():
+            filter_shape = tree.map_structure(
+                lambda s: (
+                    None
+                    if isinstance(s, (Discrete, MultiDiscrete))  # noqa
+                    else np.array(s.shape)
+                ),
+                policy.observation_space_struct,
             )
-            for (policy_id, policy) in self.policy_map.items()
-        }
+            self.filters[policy_id] = get_filter(self.observation_filter, filter_shape)
+
         if self.worker_index == 0:
             logger.info("Built filter map: {}".format(self.filters))
 
@@ -887,7 +906,7 @@ class RolloutWorker(ParallelIteratorWorker):
             builders = {}
             to_fetch = {}
             for pid, batch in samples.policy_batches.items():
-                if pid not in self.policies_to_train:
+                if not self.is_policy_to_train(pid, samples):
                     continue
                 # Decompress SampleBatch, in case some columns are compressed.
                 batch.decompress_if_needed()
@@ -900,11 +919,12 @@ class RolloutWorker(ParallelIteratorWorker):
                     info_out[pid] = policy.learn_on_batch(batch)
             info_out.update({pid: builders[pid].get(v) for pid, v in to_fetch.items()})
         else:
-            info_out = {
-                DEFAULT_POLICY_ID: self.policy_map[DEFAULT_POLICY_ID].learn_on_batch(
-                    samples
-                )
-            }
+            if self.is_policy_to_train(DEFAULT_POLICY_ID, samples):
+                info_out = {
+                    DEFAULT_POLICY_ID: self.policy_map[
+                        DEFAULT_POLICY_ID
+                    ].learn_on_batch(samples)
+                }
         if log_once("learn_out"):
             logger.debug("Training out:\n\n{}\n".format(summarize(info_out)))
         return info_out
@@ -961,11 +981,12 @@ class RolloutWorker(ParallelIteratorWorker):
         """Returns a gradient computed w.r.t the specified samples.
 
         Uses the Policy's/ies' compute_gradients method(s) to perform the
-        calculations.
+        calculations. Skips policies that are not trainable as per
+        `self.is_policy_to_train()`.
 
         Args:
             samples: The SampleBatch or MultiAgentBatch to compute gradients
-                for using this worker's policies.
+                for using this worker's trainable policies.
 
         Returns:
             In the single-agent case, a tuple consisting of ModelGradients and
@@ -987,7 +1008,7 @@ class RolloutWorker(ParallelIteratorWorker):
             grad_out, info_out = {}, {}
             if self.policy_config.get("framework") == "tf":
                 for pid, batch in samples.policy_batches.items():
-                    if pid not in self.policies_to_train:
+                    if not self.is_policy_to_train(pid, samples):
                         continue
                     policy = self.policy_map[pid]
                     builder = TFRunBuilder(policy.get_session(), "compute_gradients")
@@ -998,7 +1019,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 info_out = {k: builder.get(v) for k, v in info_out.items()}
             else:
                 for pid, batch in samples.policy_batches.items():
-                    if pid not in self.policies_to_train:
+                    if not self.is_policy_to_train(pid, samples):
                         continue
                     grad_out[pid], info_out[pid] = self.policy_map[
                         pid
@@ -1041,10 +1062,10 @@ class RolloutWorker(ParallelIteratorWorker):
         # Multi-agent case.
         if isinstance(grads, dict):
             for pid, g in grads.items():
-                if pid in self.policies_to_train:
+                if self.is_policy_to_train(pid, None):
                     self.policy_map[pid].apply_gradients(g)
         # Grads is a ModelGradients type. Single-agent case.
-        elif DEFAULT_POLICY_ID in self.policies_to_train:
+        elif self.is_policy_to_train(DEFAULT_POLICY_ID, None):
             self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
     @DeveloperAPI
@@ -1140,11 +1161,14 @@ class RolloutWorker(ParallelIteratorWorker):
         *,
         policy_id: PolicyID,
         policy_cls: Type[Policy],
-        observation_space: Optional[gym.spaces.Space] = None,
-        action_space: Optional[gym.spaces.Space] = None,
+        observation_space: Optional[Space] = None,
+        action_space: Optional[Space] = None,
         config: Optional[PartialTrainerConfigDict] = None,
+        policy_state: Optional[PolicyState] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, "Episode"], PolicyID]] = None,
-        policies_to_train: Optional[List[PolicyID]] = None,
+        policies_to_train: Optional[
+            Union[Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
+        ] = None,
     ) -> Policy:
         """Adds a new policy to this RolloutWorker.
 
@@ -1155,22 +1179,29 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_space: The observation space of the policy to add.
             action_space: The action space of the policy to add.
             config: The config overrides for the policy to add.
-            policy_config: The base config of the Trainer object owning this
-                RolloutWorker.
+            policy_state: Optional state dict to apply to the new
+                policy instance, right after its construction.
             policy_mapping_fn: An optional (updated) policy mapping function
                 to use from here on. Note that already ongoing episodes will
                 not change their mapping but will use the old mapping till
                 the end of the episode.
-            policies_to_train: An optional list of policy IDs to be trained.
-                If None, will keep the existing list in place. Policies,
-                whose IDs are not in the list will not be updated.
+            policies_to_train: An optional container of policy IDs to be
+                trained or a callable taking PolicyID and - optionally -
+                SampleBatchType and returning a bool (trainable or not?).
+                If None, will keep the existing setup in place.
+                Policies, whose IDs are not in the list (or for which the
+                callable returns False) will not be updated.
 
         Returns:
             The newly added policy.
+
+        Raises:
+            KeyError: If the given `policy_id` already exists in this worker's
+                PolicyMap.
         """
         if policy_id in self.policy_map:
-            raise ValueError(f"Policy ID '{policy_id}' already in policy map!")
-        policy_dict = _determine_spaces_for_multi_agent_dict(
+            raise KeyError(f"Policy ID '{policy_id}' already in policy map!")
+        policy_dict_to_add = _determine_spaces_for_multi_agent_dict(
             {
                 policy_id: PolicySpec(
                     policy_cls, observation_space, action_space, config or {}
@@ -1180,17 +1211,22 @@ class RolloutWorker(ParallelIteratorWorker):
             spaces=self.spaces,
             policy_config=self.policy_config,
         )
+        self.policy_dict.update(policy_dict_to_add)
         self._build_policy_map(
-            policy_dict, self.policy_config, seed=self.policy_config.get("seed")
+            policy_dict_to_add, self.policy_config, seed=self.policy_config.get("seed")
         )
         new_policy = self.policy_map[policy_id]
+        # Set the state of the newly created policy.
+        if policy_state:
+            new_policy.set_state(policy_state)
 
         self.filters[policy_id] = get_filter(
             self.observation_filter, new_policy.observation_space.shape
         )
 
         self.set_policy_mapping_fn(policy_mapping_fn)
-        self.set_policies_to_train(policies_to_train)
+        if policies_to_train is not None:
+            self.set_is_policy_to_train(policies_to_train)
 
         return new_policy
 
@@ -1200,7 +1236,9 @@ class RolloutWorker(ParallelIteratorWorker):
         *,
         policy_id: PolicyID = DEFAULT_POLICY_ID,
         policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
-        policies_to_train: Optional[List[PolicyID]] = None,
+        policies_to_train: Optional[
+            Union[Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
+        ] = None,
     ) -> None:
         """Removes a policy from this RolloutWorker.
 
@@ -1211,16 +1249,20 @@ class RolloutWorker(ParallelIteratorWorker):
                 to use from here on. Note that already ongoing episodes will
                 not change their mapping but will use the old mapping till
                 the end of the episode.
-            policies_to_train: An optional list of policy IDs to be trained.
-                If None, will keep the existing list in place. Policies,
-                whose IDs are not in the list will not be updated.
+            policies_to_train: An optional container of policy IDs to be
+                trained or a callable taking PolicyID and - optionally -
+                SampleBatchType and returning a bool (trainable or not?).
+                If None, will keep the existing setup in place.
+                Policies, whose IDs are not in the list (or for which the
+                callable returns False) will not be updated.
         """
         if policy_id not in self.policy_map:
             raise ValueError(f"Policy ID '{policy_id}' not in policy map!")
         del self.policy_map[policy_id]
         del self.preprocessors[policy_id]
         self.set_policy_mapping_fn(policy_mapping_fn)
-        self.set_policies_to_train(policies_to_train)
+        if policies_to_train is not None:
+            self.set_is_policy_to_train(policies_to_train)
 
     @DeveloperAPI
     def set_policy_mapping_fn(
@@ -1239,17 +1281,57 @@ class RolloutWorker(ParallelIteratorWorker):
                 raise ValueError("`policy_mapping_fn` must be a callable!")
 
     @DeveloperAPI
-    def set_policies_to_train(
-        self, policies_to_train: Optional[List[PolicyID]] = None
+    def set_is_policy_to_train(
+        self,
+        is_policy_to_train: Union[
+            Container[PolicyID], Callable[[PolicyID, Optional[SampleBatchType]], bool]
+        ],
     ) -> None:
-        """Sets `self.policies_to_train` to a new list of PolicyIDs.
+        """Sets `self.is_policy_to_train()` to a new callable.
 
         Args:
-            policies_to_train: The new list of policy IDs to train with.
-                If None, will keep the existing list in place.
+            is_policy_to_train: A container of policy IDs to be
+                trained or a callable taking PolicyID and - optionally -
+                SampleBatchType and returning a bool (trainable or not?).
+                If None, will keep the existing setup in place.
+                Policies, whose IDs are not in the list (or for which the
+                callable returns False) will not be updated.
         """
-        if policies_to_train is not None:
-            self.policies_to_train = policies_to_train
+        # If container given, construct a simple default callable returning True
+        # if the PolicyID is found in the list/set of IDs.
+        if not callable(is_policy_to_train):
+            assert isinstance(is_policy_to_train, Container), (
+                "ERROR: `is_policy_to_train`must be a container or a "
+                "callable taking PolicyID and SampleBatch and returning "
+                "True|False (trainable or not?)."
+            )
+            pols = set(is_policy_to_train)
+
+            def is_policy_to_train(pid, batch=None):
+                return pid in pols
+
+        self.is_policy_to_train = is_policy_to_train
+
+    @ExperimentalAPI
+    def get_policies_to_train(
+        self, batch: Optional[SampleBatchType] = None
+    ) -> Set[PolicyID]:
+        """Returns all policies-to-train, given an optional batch.
+
+        Loops through all policies currently in `self.policy_map` and checks
+        the return value of `self.is_policy_to_train(pid, batch)`.
+
+        Args:
+            batch: An optional SampleBatchType for the
+                `self.is_policy_to_train(pid, [batch]?)` check.
+
+        Returns:
+            The set of currently trainable policy IDs, given the optional
+            `batch`.
+        """
+        return {
+            pid for pid in self.policy_map.keys() if self.is_policy_to_train(pid, batch)
+        }
 
     @DeveloperAPI
     def for_policy(
@@ -1292,19 +1374,19 @@ class RolloutWorker(ParallelIteratorWorker):
         return [func(policy, pid, **kwargs) for pid, policy in self.policy_map.items()]
 
     @DeveloperAPI
-    def foreach_trainable_policy(
+    def foreach_policy_to_train(
         self, func: Callable[[Policy, PolicyID, Optional[Any]], T], **kwargs
     ) -> List[T]:
         """
         Calls the given function with each (policy, policy_id) tuple.
 
-
-        Only those policies/IDs will be called on, which can be found in
-        `self.policies_to_train`.
+        Only those policies/IDs will be called on, for which
+        `self.is_policy_to_train()` returns True.
 
         Args:
             func: The function to call with each (policy, policy ID) tuple,
-                for only those policies that are in `self.policies_to_train`.
+                for only those policies that `self.is_policy_to_train`
+                returns True.
 
         Keyword Args:
             kwargs: Additional kwargs to be passed to the call.
@@ -1316,7 +1398,7 @@ class RolloutWorker(ParallelIteratorWorker):
         return [
             func(policy, pid, **kwargs)
             for pid, policy in self.policy_map.items()
-            if pid in self.policies_to_train
+            if self.is_policy_to_train(pid, None)
         ]
 
     @DeveloperAPI
@@ -1407,7 +1489,7 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def get_weights(
         self,
-        policies: Optional[List[PolicyID]] = None,
+        policies: Optional[Container[PolicyID]] = None,
     ) -> Dict[PolicyID, ModelWeights]:
         """Returns each policies' model weights of this worker.
 
@@ -1449,6 +1531,11 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> # Set `global_vars` (timestep) as well.
             >>> worker.set_weights(weights, {"timestep": 42})
         """
+        # If per-policy weights are object refs, `ray.get()` them first.
+        if weights and isinstance(next(iter(weights.values())), ObjectRef):
+            actual_weights = ray.get(list(weights.values()))
+            weights = {pid: actual_weights[i] for i, pid in enumerate(weights.keys())}
+
         for pid, w in weights.items():
             self.policy_map[pid].set_weights(w)
         if global_vars:
@@ -1496,18 +1583,28 @@ class RolloutWorker(ParallelIteratorWorker):
                 sess.close()
 
     @DeveloperAPI
-    def apply(self, func: Callable[["RolloutWorker", Optional[Any]], T], *args) -> T:
+    def apply(
+        self,
+        func: Callable[["RolloutWorker", Optional[Any], Optional[Any]], T],
+        *args,
+        **kwargs,
+    ) -> T:
         """Calls the given function with this rollout worker instance.
 
+        Useful for when the RolloutWorker class has been converted into a
+        ActorHandle and the user needs to execute some functionality (e.g.
+        add a property) on the underlying policy object.
+
         Args:
-            func: The function to call with this RolloutWorker as first
-                argument.
+            func: The function to call, with this RolloutWorker as first
+                argument, followed by args, and kwargs.
             args: Optional additional args to pass to the function call.
+            kwargs: Optional additional kwargs to pass to the function call.
 
         Returns:
             The return value of the function call.
         """
-        return func(self, *args)
+        return func(self, *args, **kwargs)
 
     def setup_torch_data_parallel(
         self, url: str, world_rank: int, world_size: int, backend: str
@@ -1652,11 +1749,15 @@ class RolloutWorker(ParallelIteratorWorker):
     ):
         self.policy_map[policy_id].export_checkpoint(export_dir, filename_prefix)
 
+    @Deprecated(new="RolloutWorker.foreach_policy_to_train", error=False)
+    def foreach_trainable_policy(self, func, **kwargs):
+        return self.foreach_policy_to_train(func, **kwargs)
+
 
 def _determine_spaces_for_multi_agent_dict(
     multi_agent_dict: MultiAgentPolicyConfigDict,
     env: Optional[EnvType] = None,
-    spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space, gym.spaces.Space]]] = None,
+    spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
     policy_config: Optional[PartialTrainerConfigDict] = None,
 ) -> MultiAgentPolicyConfigDict:
 
@@ -1756,13 +1857,11 @@ def _validate_env(env: EnvType, env_context: EnvContext = None):
         # Get a dummy observation by resetting the env.
         dummy_obs = env.reset()
         # Convert lists to np.ndarrays.
-        if type(dummy_obs) is list and isinstance(
-            env.observation_space, gym.spaces.Box
-        ):
+        if type(dummy_obs) is list and isinstance(env.observation_space, Box):
             dummy_obs = np.array(dummy_obs)
         # Ignore float32/float64 diffs.
         if (
-            isinstance(env.observation_space, gym.spaces.Box)
+            isinstance(env.observation_space, Box)
             and env.observation_space.dtype != dummy_obs.dtype
         ):
             dummy_obs = dummy_obs.astype(env.observation_space.dtype)

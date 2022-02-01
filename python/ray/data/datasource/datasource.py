@@ -13,10 +13,10 @@ from ray.data.block import (
     BlockPartition,
     BlockPartitionMetadata,
     MaybeBlockPartition,
-    BlockExecStats,
 )
 from ray.data.context import DatasetContext
-from ray.data.impl.arrow_block import ArrowRow, DelegatingArrowBlockBuilder
+from ray.data.impl.arrow_block import ArrowRow
+from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.util import _check_pyarrow_version
 from ray.util.annotations import DeveloperAPI
 
@@ -32,6 +32,9 @@ class Datasource(Generic[T]):
 
     See ``RangeDatasource`` and ``DummyOutputDatasource`` for examples
     of how to implement readable and writable datasources.
+
+    Datasource instances must be serializable, since ``prepare_read()`` and
+    ``do_write()`` are called in remote tasks.
     """
 
     def prepare_read(self, parallelism: int, **read_args) -> List["ReadTask[T]"]:
@@ -140,16 +143,15 @@ class ReadTask(Callable[[], BlockPartition]):
             partition: BlockPartition = []
             for block in result:
                 metadata = BlockAccessor.for_block(block).get_metadata(
-                    input_files=self._metadata.input_files,
-                    exec_stats=BlockExecStats.TODO,
-                )
+                    input_files=self._metadata.input_files, exec_stats=None
+                )  # No exec stats for the block splits.
                 assert context.block_owner
                 partition.append((ray.put(block, _owner=context.block_owner), metadata))
             if len(partition) == 0:
                 raise ValueError("Read task must return non-empty list.")
             return partition
         else:
-            builder = DelegatingArrowBlockBuilder()
+            builder = DelegatingBlockBuilder()
             for block in result:
                 builder.add_block(block)
             return builder.build()

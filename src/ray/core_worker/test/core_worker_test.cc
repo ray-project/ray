@@ -76,7 +76,7 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
                                      resources,
                                      resources,
                                      {},
-                                     /*is_detached=*/false,
+                                     /*is_detached=*/std::make_optional<bool>(false),
                                      name,
                                      ray_namespace,
                                      /*is_asyncio=*/false,
@@ -216,8 +216,9 @@ int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
   RayFunction func{Language::PYTHON,
                    FunctionDescriptorBuilder::BuildPython("GetWorkerPid", "", "", "")};
 
-  auto return_ids = ObjectRefsToIds(
-      CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id, func, args, options));
+  auto return_ids = ObjectRefsToIds(CoreWorkerProcess::GetCoreWorker()
+                                        .SubmitActorTask(actor_id, func, args, options)
+                                        .value());
 
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().Get(return_ids, -1, &results));
@@ -304,7 +305,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
                                              "MergeInputArgsAsOutput", "", "", ""));
 
       auto return_ids =
-          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
+          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
       ASSERT_EQ(return_ids.size(), 1);
 
       std::vector<std::shared_ptr<RayObject>> results;
@@ -347,7 +348,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
     RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                            "MergeInputArgsAsOutput", "", "", ""));
     auto return_ids =
-        ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
+        ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
 
     ASSERT_EQ(return_ids.size(), 1);
 
@@ -410,7 +411,7 @@ void CoreWorkerTest::TestActorRestart(
                                              "MergeInputArgsAsOutput", "", "", ""));
 
       auto return_ids =
-          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
+          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
       ASSERT_EQ(return_ids.size(), 1);
       // Verify if it's expected data.
       std::vector<std::shared_ptr<RayObject>> results;
@@ -453,7 +454,7 @@ void CoreWorkerTest::TestActorFailure(
                                              "MergeInputArgsAsOutput", "", "", ""));
 
       auto return_ids =
-          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
+          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
 
       ASSERT_EQ(return_ids.size(), 1);
       all_results.emplace_back(std::make_pair(return_ids[0], buffer1));
@@ -518,7 +519,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                                      resources,
                                      resources,
                                      {},
-                                     /*is_detached=*/false,
+                                     /*is_detached=*/std::make_optional<bool>(false),
                                      name,
                                      ray_namespace,
                                      /*is_asyncio=*/false,
@@ -527,7 +528,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
                            TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
                            function.GetLanguage(), function.GetFunctionDescriptor(), "",
-                           0, "", "");
+                           0, "", "", -1);
 
   // Manually create `num_tasks` task specs, and for each of them create a
   // `PushTaskRequest`, this is to batch performance of TaskSpec
@@ -589,7 +590,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
                                            "MergeInputArgsAsOutput", "", "", ""));
 
     auto return_ids =
-        ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
+        ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
     ASSERT_EQ(return_ids.size(), 1);
     object_ids.emplace_back(return_ids[0]);
   }
@@ -647,7 +648,7 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
   ActorHandle original(
       ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0), TaskID::Nil(),
       rpc::Address(), job_id, ObjectID::FromRandom(), Language::PYTHON,
-      FunctionDescriptorBuilder::BuildPython("", "", "", ""), "", 0, "", "");
+      FunctionDescriptorBuilder::BuildPython("", "", "", ""), "", 0, "", "", -1);
   std::string output;
   original.Serialize(&output);
   ActorHandle deserialized(output);
@@ -989,11 +990,11 @@ TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars) {
 TEST(TestOverrideRuntimeEnv, TestPyModulesInherit) {
   rpc::RuntimeEnv child;
   auto parent = std::make_shared<rpc::RuntimeEnv>();
-  parent->mutable_py_modules()->Add("s3://456");
+  parent->mutable_python_runtime_env()->mutable_dependent_modules()->Add("s3://456");
   parent->mutable_uris()->mutable_py_modules_uris()->Add("s3://456");
   auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
-  ASSERT_EQ(result.py_modules().size(), 1);
-  ASSERT_EQ(result.py_modules()[0], "s3://456");
+  ASSERT_EQ(result.python_runtime_env().dependent_modules().size(), 1);
+  ASSERT_EQ(result.python_runtime_env().dependent_modules()[0], "s3://456");
   ASSERT_EQ(result.uris().py_modules_uris().size(), 1);
   ASSERT_EQ(result.uris().py_modules_uris()[0], "s3://456");
 }
@@ -1001,15 +1002,15 @@ TEST(TestOverrideRuntimeEnv, TestPyModulesInherit) {
 TEST(TestOverrideRuntimeEnv, TestOverridePyModules) {
   rpc::RuntimeEnv child;
   auto parent = std::make_shared<rpc::RuntimeEnv>();
-  child.mutable_py_modules()->Add("s3://123");
+  child.mutable_python_runtime_env()->mutable_dependent_modules()->Add("s3://123");
   child.mutable_uris()->mutable_py_modules_uris()->Add("s3://123");
-  parent->mutable_py_modules()->Add("s3://456");
-  parent->mutable_py_modules()->Add("s3://789");
+  parent->mutable_python_runtime_env()->mutable_dependent_modules()->Add("s3://456");
+  parent->mutable_python_runtime_env()->mutable_dependent_modules()->Add("s3://789");
   parent->mutable_uris()->mutable_py_modules_uris()->Add("s3://456");
   parent->mutable_uris()->mutable_py_modules_uris()->Add("s3://789");
   auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
-  ASSERT_EQ(result.py_modules().size(), 1);
-  ASSERT_EQ(result.py_modules()[0], "s3://123");
+  ASSERT_EQ(result.python_runtime_env().dependent_modules().size(), 1);
+  ASSERT_EQ(result.python_runtime_env().dependent_modules()[0], "s3://123");
   ASSERT_EQ(result.uris().py_modules_uris().size(), 1);
   ASSERT_EQ(result.uris().py_modules_uris()[0], "s3://123");
 }
@@ -1037,28 +1038,33 @@ TEST(TestOverrideRuntimeEnv, TestCondaInherit) {
   child.mutable_uris()->set_working_dir_uri("gcs://abc");
   parent->mutable_uris()->set_working_dir_uri("gcs://def");
   parent->mutable_uris()->set_conda_uri("conda://456");
-  parent->mutable_conda_runtime_env()->set_conda_env_name("my-env-name");
+  parent->mutable_python_runtime_env()->mutable_conda_runtime_env()->set_conda_env_name(
+      "my-env-name");
   auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
   ASSERT_EQ(result.uris().working_dir_uri(), "gcs://abc");
   ASSERT_EQ(result.uris().conda_uri(), "conda://456");
-  ASSERT_TRUE(result.has_conda_runtime_env());
-  ASSERT_TRUE(result.conda_runtime_env().has_conda_env_name());
-  ASSERT_EQ(result.conda_runtime_env().conda_env_name(), "my-env-name");
+  ASSERT_TRUE(result.python_runtime_env().has_conda_runtime_env());
+  ASSERT_TRUE(result.python_runtime_env().conda_runtime_env().has_conda_env_name());
+  ASSERT_EQ(result.python_runtime_env().conda_runtime_env().conda_env_name(),
+            "my-env-name");
 }
 
 TEST(TestOverrideRuntimeEnv, TestCondaOverride) {
   rpc::RuntimeEnv child;
   auto parent = std::make_shared<rpc::RuntimeEnv>();
   child.mutable_uris()->set_conda_uri("conda://123");
-  child.mutable_conda_runtime_env()->set_conda_env_name("my-env-name-123");
+  child.mutable_python_runtime_env()->mutable_conda_runtime_env()->set_conda_env_name(
+      "my-env-name-123");
   parent->mutable_uris()->set_conda_uri("conda://456");
-  parent->mutable_conda_runtime_env()->set_conda_env_name("my-env-name-456");
+  parent->mutable_python_runtime_env()->mutable_conda_runtime_env()->set_conda_env_name(
+      "my-env-name-456");
   parent->mutable_uris()->set_working_dir_uri("gcs://def");
   auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
   ASSERT_EQ(result.uris().conda_uri(), "conda://123");
-  ASSERT_TRUE(result.has_conda_runtime_env());
-  ASSERT_TRUE(result.conda_runtime_env().has_conda_env_name());
-  ASSERT_EQ(result.conda_runtime_env().conda_env_name(), "my-env-name-123");
+  ASSERT_TRUE(result.python_runtime_env().has_conda_runtime_env());
+  ASSERT_TRUE(result.python_runtime_env().conda_runtime_env().has_conda_env_name());
+  ASSERT_EQ(result.python_runtime_env().conda_runtime_env().conda_env_name(),
+            "my-env-name-123");
   ASSERT_EQ(result.uris().working_dir_uri(), "gcs://def");
 }
 

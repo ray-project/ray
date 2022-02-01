@@ -1,3 +1,4 @@
+import time
 from typing import (
     TypeVar,
     List,
@@ -7,6 +8,7 @@ from typing import (
     Any,
     Union,
     Optional,
+    Callable,
     TYPE_CHECKING,
 )
 
@@ -17,7 +19,7 @@ if TYPE_CHECKING:
     import pyarrow
     from ray.data.impl.block_builder import BlockBuilder
     from ray.data.aggregate import AggregateFn
-    from ray.data.grouped_dataset import GroupKeyT
+    from ray.data import Dataset
 
 import ray
 from ray.types import ObjectRef
@@ -29,11 +31,55 @@ U = TypeVar("U")
 KeyType = TypeVar("KeyType")
 AggType = TypeVar("AggType")
 
+# A function that extracts a concrete value from a record in a Dataset, used
+# in ``sort(value_fns...)``, ``groupby(value_fn).agg(Agg(value_fn), ...)``.
+# It can either be None (intepreted as the identity function), the name
+# of a Dataset column, or a lambda function that extracts the desired value
+# from the object.
+KeyFn = Union[None, str, Callable[[T], Any]]
+
+
+def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
+    """Check the key function is valid on the given dataset."""
+    try:
+        fmt = ds._dataset_format()
+    except ValueError:
+        # Dataset is empty/cleared, validation not possible.
+        return
+    if isinstance(key, str):
+        if fmt == "simple":
+            raise ValueError(
+                "String key '{}' requires dataset format to be "
+                "'arrow' or 'pandas', was '{}'.".format(key, fmt)
+            )
+        # Raises KeyError if key is not present in the schema.
+        schema = ds.schema(fetch_if_missing=True)
+        if len(schema.names) > 0 and key not in schema.names:
+            raise ValueError(
+                "The column '{}' does not exist in the "
+                "schema '{}'.".format(key, schema)
+            )
+    elif key is None:
+        if fmt != "simple":
+            raise ValueError(
+                "The `None` key '{}' requires dataset format to be "
+                "'simple', was '{}'.".format(key, fmt)
+            )
+    elif callable(key):
+        if fmt != "simple":
+            raise ValueError(
+                "Callable key '{}' requires dataset format to be "
+                "'simple', was '{}'.".format(key, fmt)
+            )
+    else:
+        raise TypeError("Invalid key type {} ({}).".format(key, type(key)))
+
+
 # Represents a batch of records to be stored in the Ray object store.
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
-Block = Union[List[T], "pyarrow.Table", bytes]
+Block = Union[List[T], "pyarrow.Table", "pandas.DataFrame", bytes]
 
 # A list of block references pending computation by a single task. For example,
 # this may be the output of a task reading a file.
@@ -58,14 +104,14 @@ class BlockExecStats:
         node_id: A unique id for the node that computed this block.
     """
 
-    # Placeholder for block ops not yet instrumented.
-    TODO = None
-
-    # TODO(ekl) add a builder to fill these out in a simpler way.
     def __init__(self):
         self.wall_time_s: Optional[float] = None
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().node_id.hex()
+
+    @staticmethod
+    def builder() -> "_BlockExecStatsBuilder":
+        return _BlockExecStatsBuilder()
 
     def __repr__(self):
         return repr(
@@ -75,6 +121,24 @@ class BlockExecStats:
                 "node_id": self.node_id,
             }
         )
+
+
+class _BlockExecStatsBuilder:
+    """Helper class for building block stats.
+
+    When this class is created, we record the start time. When build() is
+    called, the time delta is saved as part of the stats.
+    """
+
+    def __init__(self):
+        self.start_time = time.perf_counter()
+        self.start_cpu = time.process_time()
+
+    def build(self) -> "BlockExecStats":
+        stats = BlockExecStats()
+        stats.wall_time_s = time.perf_counter() - self.start_time
+        stats.cpu_time_s = time.process_time() - self.start_cpu
+        return stats
 
 
 @DeveloperAPI
@@ -196,11 +260,16 @@ class BlockAccessor(Generic[T]):
         """Create a block accessor for the given block."""
         _check_pyarrow_version()
         import pyarrow
+        import pandas
 
         if isinstance(block, pyarrow.Table):
             from ray.data.impl.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor(block)
+        elif isinstance(block, pandas.DataFrame):
+            from ray.data.impl.pandas_block import PandasBlockAccessor
+
+            return PandasBlockAccessor(block)
         elif isinstance(block, bytes):
             from ray.data.impl.arrow_block import ArrowBlockAccessor
 
@@ -222,7 +291,7 @@ class BlockAccessor(Generic[T]):
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def combine(self, key: "GroupKeyT", agg: "AggregateFn") -> Block[U]:
+    def combine(self, key: KeyFn, agg: "AggregateFn") -> Block[U]:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
@@ -235,7 +304,7 @@ class BlockAccessor(Generic[T]):
 
     @staticmethod
     def aggregate_combined_blocks(
-        blocks: List[Block], key: "GroupKeyT", agg: "AggregateFn"
+        blocks: List[Block], key: KeyFn, agg: "AggregateFn"
     ) -> Tuple[Block[U], BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError

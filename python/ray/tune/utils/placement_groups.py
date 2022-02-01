@@ -136,16 +136,18 @@ class PlacementGroupFactory:
         assert (
             len(bundles) > 0
         ), "Cannot initialize a PlacementGroupFactory with zero bundles."
-        if not bundles[0]:
-            # This is when trainable itself doesn't need resources.
-            self._head_bundle_is_empty = True
-            bundles.pop(0)
-        else:
-            self._head_bundle_is_empty = False
 
         self._bundles = [
             {k: float(v) for k, v in bundle.items() if v != 0} for bundle in bundles
         ]
+
+        if not self._bundles[0]:
+            # This is when trainable itself doesn't need resources.
+            self._head_bundle_is_empty = True
+            self._bundles.pop(0)
+        else:
+            self._head_bundle_is_empty = False
+
         self._strategy = strategy
         self._args = args
         self._kwargs = kwargs
@@ -599,34 +601,6 @@ class PlacementGroupManager:
 
     def clean_cached_pg(self, pg: PlacementGroup):
         self._cached_pgs.pop(pg)
-
-    def return_or_clean_cached_pg(self, pg: PlacementGroup):
-        """Return cached pg, making it available for other trials to use.
-
-        This will try to replace another staged placement group. If this
-        is unsuccessful, destroy the placement group instead.
-
-        Args:
-            pg (PlacementGroup): Return this cached placement group.
-
-        Returns:
-            Boolean indicating if the placement group was returned (True)
-                or destroyed (False)
-        """
-        pgf = self._cached_pgs.pop(pg)
-
-        # Replace staged placement group
-        staged_pg = self._unstage_unused_pg(pgf)
-
-        # Could not replace
-        if not staged_pg:
-            self.remove_pg(pg)
-            return False
-
-        # Replace successful
-        self.remove_pg(staged_pg)
-        self._ready[pgf].add(pg)
-        return True
 
     def return_pg(self, trial: "Trial"):
         """Return pg back to Core scheduling.

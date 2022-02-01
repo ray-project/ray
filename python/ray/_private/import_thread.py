@@ -39,7 +39,12 @@ class ImportThread:
             self.subscriber.subscribe()
         else:
             self.subscriber = worker.redis_client.pubsub()
-            self.subscriber.subscribe("__keyspace@0__:Exports")
+            self.subscriber.subscribe(
+                b"__keyspace@0__:"
+                + ray._private.function_manager.make_exports_prefix(
+                    self.worker.current_job_id
+                )
+            )
         self.threads_stopped = threads_stopped
         self.imported_collision_identifiers = defaultdict(int)
         # Keep track of the number of imports that we've imported.
@@ -89,7 +94,7 @@ class ImportThread:
     def _do_importing(self):
         while True:
             export_key = ray._private.function_manager.make_export_key(
-                self.num_imported + 1
+                self.num_imported + 1, self.worker.current_job_id
             )
             key = self.gcs_client.internal_kv_get(
                 export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE
@@ -156,17 +161,17 @@ class ImportThread:
                         ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD,
                     )
 
-        if key.startswith(b"RemoteFunction"):
+        if key.startswith(b"RemoteFunction:"):
             # TODO (Alex): There's a race condition here if the worker is
             # shutdown before the function finished registering (because core
             # worker's global worker is unset before shutdown and is needed
             # for profiling).
             # with profiling.profile("register_remote_function"):
             (self.worker.function_actor_manager.fetch_and_register_remote_function(key))
-        elif key.startswith(b"FunctionsToRun"):
+        elif key.startswith(b"FunctionsToRun:"):
             with profiling.profile("fetch_and_run_function"):
                 self.fetch_and_execute_function_to_run(key)
-        elif key.startswith(b"ActorClass"):
+        elif key.startswith(b"ActorClass:"):
             # Keep track of the fact that this actor class has been
             # exported so that we know it is safe to turn this worker
             # into an actor of that class.
@@ -186,14 +191,7 @@ class ImportThread:
         (job_id, serialized_function) = self._internal_kv_multiget(
             key, ["job_id", "function"]
         )
-
         if self.worker.mode == ray.SCRIPT_MODE:
-            return
-
-        if (
-            ray_constants.ISOLATE_EXPORTS
-            and job_id != self.worker.current_job_id.binary()
-        ):
             return
 
         try:

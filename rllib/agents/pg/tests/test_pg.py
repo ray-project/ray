@@ -1,9 +1,11 @@
+from gym.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
 import unittest
 
 import ray
 import ray.rllib.agents.pg as pg
 from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -14,6 +16,7 @@ from ray.rllib.utils.test_utils import (
     check_train_results,
     framework_iterator,
 )
+from ray import tune
 
 
 class TestPG(unittest.TestCase):
@@ -30,10 +33,50 @@ class TestPG(unittest.TestCase):
         config = pg.DEFAULT_CONFIG.copy()
         config["num_workers"] = 1
         config["rollout_fragment_length"] = 500
+        # Test with filter to see whether they work w/o preprocessing.
+        config["observation_filter"] = "MeanStdFilter"
         num_iterations = 1
 
+        image_space = Box(-1.0, 1.0, shape=(84, 84, 3))
+        simple_space = Box(-1.0, 1.0, shape=(3,))
+
+        tune.register_env(
+            "random_dict_env",
+            lambda _: RandomEnv(
+                {
+                    "observation_space": Dict(
+                        {
+                            "a": simple_space,
+                            "b": Discrete(2),
+                            "c": image_space,
+                        }
+                    ),
+                    "action_space": Box(-1.0, 1.0, shape=(1,)),
+                }
+            ),
+        )
+        tune.register_env(
+            "random_tuple_env",
+            lambda _: RandomEnv(
+                {
+                    "observation_space": Tuple(
+                        [simple_space, Discrete(2), image_space]
+                    ),
+                    "action_space": Box(-1.0, 1.0, shape=(1,)),
+                }
+            ),
+        )
+
         for _ in framework_iterator(config, with_eager_tracing=True):
-            for env in ["FrozenLake-v1", "CartPole-v0"]:
+            # Test for different env types (discrete w/ and w/o image, + cont).
+            for env in [
+                "random_dict_env",
+                "random_tuple_env",
+                "MsPacmanNoFrameskip-v4",
+                "CartPole-v0",
+                "FrozenLake-v1",
+            ]:
+                print(f"env={env}")
                 trainer = pg.PGTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()

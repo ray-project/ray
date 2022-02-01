@@ -26,8 +26,6 @@ class MockWorkerInterface : public WorkerInterface {
   MOCK_METHOD(WorkerID, WorkerId, (), (const, override));
   MOCK_METHOD(Process, GetProcess, (), (const, override));
   MOCK_METHOD(void, SetProcess, (Process proc), (override));
-  MOCK_METHOD(Process, GetShimProcess, (), (const, override));
-  MOCK_METHOD(void, SetShimProcess, (Process proc), (override));
   MOCK_METHOD(Language, GetLanguage, (), (const, override));
   MOCK_METHOD(const std::string, IpAddress, (), (const, override));
   MOCK_METHOD(void, Connect, (int port), (override));

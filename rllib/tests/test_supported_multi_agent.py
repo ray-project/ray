@@ -96,7 +96,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
                 "timesteps_per_iteration": 100,
                 "num_gpus": 0,
                 "buffer_size": 1000,
-                "min_iter_time_s": 1,
+                "min_time_s_per_reporting": 1,
                 "learning_starts": 10,
                 "target_network_update_freq": 100,
                 "optimizer": {
@@ -113,7 +113,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
                 "timesteps_per_iteration": 100,
                 "buffer_size": 1000,
                 "num_gpus": 0,
-                "min_iter_time_s": 1,
+                "min_time_s_per_reporting": 1,
                 "learning_starts": 10,
                 "target_network_update_freq": 100,
                 "use_state_preprocessor": True,

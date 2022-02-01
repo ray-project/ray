@@ -178,7 +178,6 @@ def test_redefining_remote_functions(shutdown_only):
         assert ray.get(ray.get(h.remote(i))) == i
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_call_matrix(shutdown_only):
     ray.init(object_store_memory=1000 * 1024 * 1024)
 
@@ -248,7 +247,6 @@ def test_call_matrix(shutdown_only):
                     check(source_actor, dest_actor, is_large, out_of_band)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_actor_call_order(shutdown_only):
     ray.init(num_cpus=4)
 
@@ -273,7 +271,6 @@ def test_actor_call_order(shutdown_only):
     )
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_actor_pass_by_ref_order_optimization(shutdown_only):
     ray.init(num_cpus=4)
 
@@ -311,7 +308,6 @@ def test_actor_pass_by_ref_order_optimization(shutdown_only):
     assert delta < 10, "did not skip slow value"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 @pytest.mark.parametrize(
     "ray_start_cluster",
     [
@@ -371,7 +367,6 @@ def test_get_multiple(ray_start_regular_shared):
     assert results == indices
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_get_with_timeout(ray_start_regular_shared):
     SignalActor = create_remote_signal_actor(ray)
     signal = SignalActor.remote()
@@ -395,7 +390,6 @@ def test_get_with_timeout(ray_start_regular_shared):
 
 
 # https://github.com/ray-project/ray/issues/6329
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_call_actors_indirect_through_tasks(ray_start_regular_shared):
     @ray.remote
     class Counter:
@@ -425,7 +419,6 @@ def test_call_actors_indirect_through_tasks(ray_start_regular_shared):
         ray.get(zoo.remote([c]))
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_inline_arg_memory_corruption(ray_start_regular_shared):
     @ray.remote
     def f():
@@ -446,7 +439,6 @@ def test_inline_arg_memory_corruption(ray_start_regular_shared):
         ray.get(a.add.remote(f.remote()))
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_skip_plasma(ray_start_regular_shared):
     @ray.remote
@@ -464,7 +456,6 @@ def test_skip_plasma(ray_start_regular_shared):
     assert ray.get(obj_ref) == 2
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_actor_large_objects(ray_start_regular_shared):
     @ray.remote
@@ -485,7 +476,6 @@ def test_actor_large_objects(ray_start_regular_shared):
     assert isinstance(ray.get(obj_ref), np.ndarray)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_actor_pass_by_ref(ray_start_regular_shared):
     @ray.remote
     class Actor:
@@ -514,7 +504,6 @@ def test_actor_pass_by_ref(ray_start_regular_shared):
         ray.get(a.f.remote(error.remote()))
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_actor_recursive(ray_start_regular_shared):
     @ray.remote
     class Actor:
@@ -538,7 +527,6 @@ def test_actor_recursive(ray_start_regular_shared):
     assert result == [x * 2 for x in range(100)]
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on windows")
 def test_actor_concurrent(ray_start_regular_shared):
     @ray.remote
     class Batcher:
@@ -565,7 +553,6 @@ def test_actor_concurrent(ray_start_regular_shared):
     assert r1 == r2 == r3
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on windows")
 def test_actor_max_concurrency(ray_start_regular_shared):
     """
     Test that an actor of max_concurrency=N should only run
@@ -599,7 +586,6 @@ def test_actor_max_concurrency(ray_start_regular_shared):
     assert ray.get(actor.get_num_threads.remote()) <= CONCURRENCY
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_wait(ray_start_regular_shared):
     @ray.remote
     def f(delay):
@@ -646,7 +632,6 @@ def test_wait(ray_start_regular_shared):
         ray.wait([1])
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on windows")
 def test_duplicate_args(ray_start_regular_shared):
     @ray.remote
     def f(arg1, arg2, arg1_duplicate, kwarg1=None, kwarg2=None, kwarg1_duplicate=None):
@@ -677,7 +662,6 @@ def test_get_correct_node_ip():
         assert found_ip == "10.0.0.111"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_load_code_from_local(ray_start_regular_shared):
     # This case writes a driver python file to a temporary directory.
     #
@@ -711,12 +695,11 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory(suffix="a b") as tmpdir:
         test_driver = os.path.join(tmpdir, "test_load_code_from_local.py")
         with open(test_driver, "w") as f:
-            f.write(code_test.format(repr(ray_start_regular_shared["redis_address"])))
+            f.write(code_test.format(repr(ray_start_regular_shared["address"])))
         output = subprocess.check_output([sys.executable, test_driver])
         assert b"OK" in output
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Segfaults on windows")
 @pytest.mark.skipif(
     client_test_enabled(), reason="JobConfig doesn't work in client mode"
 )
@@ -749,7 +732,7 @@ def test_use_dynamic_function_and_class():
     # the same as in `FunctionActorManager.export`.
     key_func = (
         b"RemoteFunction:"
-        + ray.worker.global_worker.current_job_id.binary()
+        + ray.worker.global_worker.current_job_id.hex().encode()
         + b":"
         + f._function_descriptor.function_id.binary()
     )
@@ -764,7 +747,7 @@ def test_use_dynamic_function_and_class():
     # the same as in `FunctionActorManager.export_actor_class`.
     key_cls = (
         b"ActorClass:"
-        + ray.worker.global_worker.current_job_id.binary()
+        + ray.worker.global_worker.current_job_id.hex().encode()
         + b":"
         + foo_actor._ray_actor_creation_function_descriptor.function_id.binary()
     )

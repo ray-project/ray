@@ -49,7 +49,7 @@ To serve multiple deployments defined by the same class, use the ``name`` option
 .. code-block:: python
 
   MyFirstDeployment.options(name="hello_service").deploy("Hello!")
-  MyFirstDeployment.options(name="hi_service").deploy("Hi!)
+  MyFirstDeployment.options(name="hi_service").deploy("Hi!")
 
 You can also list all available deployments and dynamically get references to them:
 

@@ -1,10 +1,11 @@
 import math
-from typing import Callable, Optional, Union, Any, List
+from typing import Callable, Optional, List, TYPE_CHECKING
 
 from ray.util.annotations import PublicAPI
-from ray.data.block import T, U, KeyType, AggType
+from ray.data.block import T, U, KeyType, AggType, KeyFn, _validate_key_fn
 
-AggregateOnT = Union[Callable[[T], Any], str]
+if TYPE_CHECKING:
+    from ray.data import Dataset
 
 
 @PublicAPI(stability="beta")
@@ -44,7 +45,20 @@ class AggregateFn(object):
         self.finalize = finalize
         self.name = name
 
+    def _validate(self, ds: "Dataset") -> None:
+        """Raise an error if this cannot be applied to the given dataset."""
+        pass
 
+
+class _AggregateOnKeyBase(AggregateFn):
+    def _set_key_fn(self, on: KeyFn):
+        self._key_fn = on
+
+    def _validate(self, ds: "Dataset") -> None:
+        _validate_key_fn(ds, self._key_fn)
+
+
+@PublicAPI(stability="beta")
 class Count(AggregateFn):
     """Defines count aggregation."""
 
@@ -57,10 +71,12 @@ class Count(AggregateFn):
         )
 
 
-class Sum(AggregateFn):
+@PublicAPI(stability="beta")
+class Sum(_AggregateOnKeyBase):
     """Defines sum aggregation."""
 
-    def __init__(self, on: Optional[AggregateOnT] = None):
+    def __init__(self, on: Optional[KeyFn] = None):
+        self._set_key_fn(on)
         on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: 0,
@@ -70,10 +86,12 @@ class Sum(AggregateFn):
         )
 
 
-class Min(AggregateFn):
+@PublicAPI(stability="beta")
+class Min(_AggregateOnKeyBase):
     """Defines min aggregation."""
 
-    def __init__(self, on: Optional[AggregateOnT] = None):
+    def __init__(self, on: Optional[KeyFn] = None):
+        self._set_key_fn(on)
         on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: None,
@@ -83,10 +101,12 @@ class Min(AggregateFn):
         )
 
 
-class Max(AggregateFn):
+@PublicAPI(stability="beta")
+class Max(_AggregateOnKeyBase):
     """Defines max aggregation."""
 
-    def __init__(self, on: Optional[AggregateOnT] = None):
+    def __init__(self, on: Optional[KeyFn] = None):
+        self._set_key_fn(on)
         on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: None,
@@ -96,10 +116,12 @@ class Max(AggregateFn):
         )
 
 
-class Mean(AggregateFn):
+@PublicAPI(stability="beta")
+class Mean(_AggregateOnKeyBase):
     """Defines mean aggregation."""
 
-    def __init__(self, on: Optional[AggregateOnT] = None):
+    def __init__(self, on: Optional[KeyFn] = None):
+        self._set_key_fn(on)
         on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: [0, 0],
@@ -110,7 +132,8 @@ class Mean(AggregateFn):
         )
 
 
-class Std(AggregateFn):
+@PublicAPI(stability="beta")
+class Std(_AggregateOnKeyBase):
     """Defines standard deviation aggregation.
 
     Uses Welford's online method for an accumulator-style computation of the
@@ -122,7 +145,8 @@ class Std(AggregateFn):
     https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
     """
 
-    def __init__(self, on: Optional[AggregateOnT] = None, ddof: int = 1):
+    def __init__(self, on: Optional[KeyFn] = None, ddof: int = 1):
+        self._set_key_fn(on)
         on_fn = _to_on_fn(on)
 
         def accumulate(a: List[float], r: float):
@@ -174,7 +198,7 @@ class Std(AggregateFn):
         )
 
 
-def _to_on_fn(on: Optional[AggregateOnT]):
+def _to_on_fn(on: Optional[KeyFn]):
     if on is None:
         return lambda r: r
     elif isinstance(on, str):

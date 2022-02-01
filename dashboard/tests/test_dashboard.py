@@ -10,7 +10,6 @@ import subprocess
 import collections
 
 import numpy as np
-import aiohttp.web
 import ray
 import psutil
 import pytest
@@ -25,17 +24,40 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_until_succeeded_without_exception,
 )
-from ray.autoscaler._private.util import (
-    DEBUG_AUTOSCALING_STATUS_LEGACY,
-    DEBUG_AUTOSCALING_ERROR,
-)
+from ray._private.gcs_pubsub import gcs_pubsub_enabled
+from ray.ray_constants import DEBUG_AUTOSCALING_STATUS_LEGACY, DEBUG_AUTOSCALING_ERROR
 from ray.dashboard import dashboard
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.modules
+from ray._private.gcs_utils import use_gcs_for_bootstrap
+
+try:
+    import aiohttp.web
+    import ray.dashboard.optional_utils as dashboard_optional_utils
+
+    routes = dashboard_optional_utils.ClassMethodRouteTable
+except Exception:
+    pass
 
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
+
+
+def make_gcs_client(address_info):
+    if not use_gcs_for_bootstrap():
+        address = address_info["redis_address"]
+        address = address.split(":")
+        assert len(address) == 2
+        client = redis.StrictRedis(
+            host=address[0],
+            port=int(address[1]),
+            password=ray_constants.REDIS_DEFAULT_PASSWORD,
+        )
+        gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
+    else:
+        address = address_info["gcs_address"]
+        gcs_client = ray._private.gcs_utils.GcsClient(address=address)
+    return gcs_client
 
 
 def cleanup_test_files():
@@ -67,19 +89,9 @@ cleanup_test_files()
 def test_basic(ray_start_with_dashboard):
     """Dashboard test that starts a Ray cluster with a dashboard server running,
     then hits the dashboard API and asserts that it receives sensible data."""
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     address_info = ray_start_with_dashboard
     node_id = address_info["node_id"]
-    address = address_info["redis_address"]
-    address = address.split(":")
-    assert len(address) == 2
-
-    client = redis.StrictRedis(
-        host=address[0],
-        port=int(address[1]),
-        password=ray_constants.REDIS_DEFAULT_PASSWORD,
-    )
-    gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
+    gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
 
     all_processes = ray.worker._global_node.all_processes
@@ -150,15 +162,14 @@ def test_basic(ray_start_with_dashboard):
     raylet_proc.wait()
     agent_proc.wait(5)
 
-    # Check redis keys are set.
-    logger.info("Check redis keys are set.")
+    # Check kv keys are set.
+    logger.info("Check kv keys are set.")
     dashboard_address = ray.experimental.internal_kv._internal_kv_get(
-        ray_constants.REDIS_KEY_DASHBOARD,
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        ray_constants.DASHBOARD_ADDRESS, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
     )
     assert dashboard_address is not None
     dashboard_rpc_address = ray.experimental.internal_kv._internal_kv_get(
-        dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
+        dashboard_consts.DASHBOARD_RPC_ADDRESS,
         namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
     )
     assert dashboard_rpc_address is not None
@@ -180,11 +191,21 @@ def test_basic(ray_start_with_dashboard):
 )
 def test_dashboard_address(ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
-    webui_ip = webui_url.split(":")[0]
-    assert not ipaddress.ip_address(webui_ip).is_unspecified
-    assert webui_ip in ["127.0.0.1", ray_start_with_dashboard["node_ip_address"]]
+    if os.environ.get("RAY_MINIMAL") == "1":
+        # In the minimal installation, webui url shouldn't be configured.
+        assert webui_url == ""
+    else:
+        webui_ip = webui_url.split(":")[0]
+        print(ipaddress.ip_address(webui_ip))
+        print(webui_ip)
+        assert not ipaddress.ip_address(webui_ip).is_unspecified
+        assert webui_ip in ["127.0.0.1", ray_start_with_dashboard["node_ip_address"]]
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_http_get(enable_test_module, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
@@ -229,6 +250,10 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
                 raise Exception("Timed out while testing.")
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_class_method_route_table(enable_test_module):
     head_cls_list = dashboard_utils.get_all_modules(dashboard_utils.DashboardHeadModule)
     agent_cls_list = dashboard_utils.get_all_modules(
@@ -259,7 +284,7 @@ def test_class_method_route_table(enable_test_module):
                 return True
         return False
 
-    all_routes = dashboard_utils.ClassMethodRouteTable.routes()
+    all_routes = dashboard_optional_utils.ClassMethodRouteTable.routes()
     assert any(_has_route(r, "HEAD", "/test/route_head") for r in all_routes)
     assert any(_has_route(r, "GET", "/test/route_get") for r in all_routes)
     assert any(_has_route(r, "POST", "/test/route_post") for r in all_routes)
@@ -269,16 +294,18 @@ def test_class_method_route_table(enable_test_module):
     assert any(_has_route(r, "*", "/test/route_view") for r in all_routes)
 
     # Test bind()
-    bound_routes = dashboard_utils.ClassMethodRouteTable.bound_routes()
+    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes()
     assert len(bound_routes) == 0
-    dashboard_utils.ClassMethodRouteTable.bind(test_agent_cls.__new__(test_agent_cls))
-    bound_routes = dashboard_utils.ClassMethodRouteTable.bound_routes()
+    dashboard_optional_utils.ClassMethodRouteTable.bind(
+        test_agent_cls.__new__(test_agent_cls)
+    )
+    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes()
     assert any(_has_route(r, "POST", "/test/route_post") for r in bound_routes)
     assert all(not _has_route(r, "PUT", "/test/route_put") for r in bound_routes)
 
     # Static def should be in bound routes.
     routes.static("/test/route_static", "/path")
-    bound_routes = dashboard_utils.ClassMethodRouteTable.bound_routes()
+    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes()
     assert any(_has_static(r, "/path", "/test/route_static") for r in bound_routes)
 
     # Test duplicated routes should raise exception.
@@ -310,6 +337,10 @@ def test_class_method_route_table(enable_test_module):
     assert "Traceback" in resp["msg"]
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_async_loop_forever():
     counter = [0]
 
@@ -341,6 +372,10 @@ def test_async_loop_forever():
     assert counter2[0] == 3
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_dashboard_module_decorator(enable_test_module):
     head_cls_list = dashboard_utils.get_all_modules(dashboard_utils.DashboardHeadModule)
     agent_cls_list = dashboard_utils.get_all_modules(
@@ -368,6 +403,10 @@ print("success")
     run_string_as_driver(test_code)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
@@ -435,6 +474,10 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
     assert len(data[0]) == 2
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_get_cluster_status(ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     address_info = ray_start_with_dashboard
@@ -454,22 +497,11 @@ def test_get_cluster_status(ray_start_with_dashboard):
         assert "clusterStatus" in response.json()["data"]
         assert "loadMetricsReport" in response.json()["data"]["clusterStatus"]
 
-    wait_until_succeeded_without_exception(
+    assert wait_until_succeeded_without_exception(
         get_cluster_status, (requests.RequestException,)
     )
 
-    # Populate the GCS field, check that the data is returned from the
-    # endpoint.
-    address = address_info["redis_address"]
-    address = address.split(":")
-    assert len(address) == 2
-
-    client = redis.StrictRedis(
-        host=address[0],
-        port=int(address[1]),
-        password=ray_constants.REDIS_DEFAULT_PASSWORD,
-    )
-    gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
+    gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     ray.experimental.internal_kv._internal_kv_put(
         DEBUG_AUTOSCALING_STATUS_LEGACY, "hello"
@@ -487,6 +519,10 @@ def test_get_cluster_status(ray_start_with_dashboard):
     assert "loadMetricsReport" in response.json()["data"]["clusterStatus"]
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_immutable_types():
     d = {str(i): i for i in range(1000)}
     d["list"] = list(range(1000))
@@ -509,13 +545,13 @@ def test_immutable_types():
     assert type(list(immutable_dict["list"])[0]) == dashboard_utils.ImmutableDict
 
     # Test json dumps / loads
-    json_str = json.dumps(immutable_dict, cls=dashboard_utils.CustomEncoder)
+    json_str = json.dumps(immutable_dict, cls=dashboard_optional_utils.CustomEncoder)
     deserialized_immutable_dict = json.loads(json_str)
     assert type(deserialized_immutable_dict) == dict
     assert type(deserialized_immutable_dict["list"]) == list
     assert immutable_dict.mutable() == deserialized_immutable_dict
-    dashboard_utils.rest_response(True, "OK", data=immutable_dict)
-    dashboard_utils.rest_response(True, "OK", **immutable_dict)
+    dashboard_optional_utils.rest_response(True, "OK", data=immutable_dict)
+    dashboard_optional_utils.rest_response(True, "OK", **immutable_dict)
 
     # Test copy
     copy_of_immutable = copy.copy(immutable_dict)
@@ -563,6 +599,10 @@ def test_immutable_types():
         print(d3[1])
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_http_proxy(enable_test_module, set_http_proxy, shutdown_only):
     address_info = ray.init(num_cpus=1, include_dashboard=True)
     assert wait_until_server_available(address_info["webui_url"]) is True
@@ -593,19 +633,14 @@ def test_http_proxy(enable_test_module, set_http_proxy, shutdown_only):
                 raise Exception("Timed out while testing.")
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_dashboard_port_conflict(ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     address_info = ray_start_with_dashboard
-    address = address_info["redis_address"]
-    address = address.split(":")
-    assert len(address) == 2
-
-    client = redis.StrictRedis(
-        host=address[0],
-        port=int(address[1]),
-        password=ray_constants.REDIS_DEFAULT_PASSWORD,
-    )
-    gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
+    gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     host, port = address_info["webui_url"].split(":")
     temp_dir = "/tmp/ray"
@@ -617,8 +652,9 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         f"--port={port}",
         f"--temp-dir={temp_dir}",
         f"--log-dir={log_dir}",
-        f"--redis-address={address[0]}:{address[1]}",
+        f"--redis-address={address_info['redis_address']}",
         f"--redis-password={ray_constants.REDIS_DEFAULT_PASSWORD}",
+        f"--gcs-address={address_info['gcs_address']}",
     ]
     logger.info("The dashboard should be exit: %s", dashboard_cmd)
     p = subprocess.Popen(dashboard_cmd)
@@ -633,7 +669,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         time.sleep(1)
         try:
             dashboard_url = ray.experimental.internal_kv._internal_kv_get(
-                ray_constants.REDIS_KEY_DASHBOARD,
+                ray_constants.DASHBOARD_ADDRESS,
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             )
             if dashboard_url:
@@ -647,6 +683,10 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
                 raise Exception("Timed out while testing.")
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
 
@@ -664,8 +704,13 @@ def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
 
     gcs_server_proc.kill()
     gcs_server_proc.wait()
-    # The dashboard exits by os._exit(-1)
-    assert dashboard_proc.wait(10) == 255
+    if gcs_pubsub_enabled():
+        # When pubsub enabled, the exits comes from pubsub errored.
+        # TODO: Fix this exits logic for pubsub
+        assert dashboard_proc.wait(10) != 0
+    else:
+        # The dashboard exits by os._exit(-1)
+        assert dashboard_proc.wait(10) == 255
 
 
 if __name__ == "__main__":

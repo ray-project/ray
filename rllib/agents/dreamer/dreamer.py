@@ -194,6 +194,7 @@ class DREAMERTrainer(Trainer):
 
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
         super().validate_config(config)
 
         config["action_repeat"] = config["env_config"]["frame_skip"]

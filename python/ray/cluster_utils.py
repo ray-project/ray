@@ -9,8 +9,10 @@ import time
 
 import ray
 import ray._private.services
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.client_mode_hook import disable_client_hook
 from ray import ray_constants
+from ray._raylet import GcsClientOptions
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +64,7 @@ class AutoscalingCluster:
         ray.init("auto").
         """
         subprocess.check_call(["ray", "stop", "--force"])
-        fake_config = tempfile.mktemp()
+        _, fake_config = tempfile.mkstemp()
         with open(fake_config, "w") as f:
             f.write(json.dumps(self._config))
         cmd = [
@@ -110,7 +112,7 @@ class Cluster:
             initialize_head (bool): Automatically start a Ray cluster
                 by initializing the head node. Defaults to False.
             connect (bool): If `initialize_head=True` and `connect=True`,
-                ray.init will be called with the redis address of this cluster
+                ray.init will be called with the address of this cluster
                 passed in.
             head_node_args (dict): Arguments to be passed into
                 `start_ray_head` via `self.add_node`.
@@ -140,17 +142,26 @@ class Cluster:
                 self.connect()
 
     @property
+    def gcs_address(self):
+        if self.head_node is None:
+            return None
+        return self.head_node.gcs_address
+
+    @property
     def address(self):
-        return self.redis_address
+        if use_gcs_for_bootstrap():
+            return self.gcs_address
+        else:
+            return self.redis_address
 
     def connect(self, namespace=None):
         """Connect the driver to the cluster."""
-        assert self.redis_address is not None
+        assert self.address is not None
         assert not self.connected
         output_info = ray.init(
             namespace=namespace,
             ignore_reinit_error=True,
-            address=self.redis_address,
+            address=self.address,
             _redis_password=self.redis_password,
         )
         logger.info(output_info)
@@ -197,15 +208,21 @@ class Cluster:
                 )
                 self.webui_url = self.head_node.webui_url
                 # Init global state accessor when creating head node.
-                self.global_state._initialize_global_state(
-                    self.redis_address, self.redis_password
-                )
+                if use_gcs_for_bootstrap():
+                    gcs_options = GcsClientOptions.from_gcs_address(node.gcs_address)
+                else:
+                    gcs_options = GcsClientOptions.from_redis_address(
+                        self.redis_address, self.redis_password
+                    )
+                self.global_state._initialize_global_state(gcs_options)
             else:
                 ray_params.update_if_absent(redis_address=self.redis_address)
+                ray_params.update_if_absent(gcs_address=self.gcs_address)
                 # We only need one log monitor per physical node.
                 ray_params.update_if_absent(include_log_monitor=False)
                 # Let grpc pick a port.
                 ray_params.update_if_absent(node_manager_port=0)
+
                 node = ray.node.Node(
                     ray_params,
                     head=False,
@@ -270,6 +287,7 @@ class Cluster:
         """
         ray._private.services.wait_for_node(
             self.redis_address,
+            node.gcs_address,
             node.plasma_store_socket_name,
             self.redis_password,
             timeout,

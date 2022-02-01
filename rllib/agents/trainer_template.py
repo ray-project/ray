@@ -9,7 +9,7 @@ from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import (
-    EnvConfigDict,
+    EnvCreator,
     EnvType,
     PartialTrainerConfigDict,
     ResultDict,
@@ -131,11 +131,7 @@ def build_trainer(
                 )
             Trainer.setup(self, config)
 
-        def _init(
-            self,
-            config: TrainerConfigDict,
-            env_creator: Callable[[EnvConfigDict], EnvType],
-        ):
+        def _init(self, config: TrainerConfigDict, env_creator: EnvCreator):
 
             # No `get_policy_class` function.
             if get_policy_class is None:
@@ -172,7 +168,7 @@ def build_trainer(
 
         @override(Trainer)
         def validate_config(self, config: PartialTrainerConfigDict):
-            # Call super (Trainer) validation method first.
+            # Call super's validation method.
             Trainer.validate_config(self, config)
             # Then call user defined one, if any.
             if validate_config is not None:

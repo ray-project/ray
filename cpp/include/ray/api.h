@@ -93,11 +93,16 @@ WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_object
 template <typename F>
 ray::internal::TaskCaller<F> Task(F func);
 
+template <typename R>
+ray::internal::TaskCaller<PyFunction<R>> Task(PyFunction<R> func);
+
 /// Generic version of creating an actor
 /// It is used for creating an actor, such as: ActorCreator<Counter> creator =
 /// ray::Actor(Counter::FactoryCreate<int>).Remote(1);
 template <typename F>
 ray::internal::ActorCreator<F> Actor(F create_func);
+
+ray::internal::ActorCreator<PyActorClass> Actor(PyActorClass func);
 
 /// Get a handle to a named actor in current namespace.
 /// Gets a handle to a named actor with the given name. The actor must have been created
@@ -203,36 +208,41 @@ inline WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num
   return WaitResult<T>(std::move(readys), std::move(unreadys));
 }
 
-template <typename FuncType>
-inline ray::internal::TaskCaller<FuncType> TaskInternal(FuncType &func) {
-  ray::internal::RemoteFunctionHolder remote_func_holder(func);
-  return ray::internal::TaskCaller<FuncType>(ray::internal::GetRayRuntime().get(),
-                                             std::move(remote_func_holder));
+inline ray::internal::ActorCreator<PyActorClass> Actor(PyActorClass func) {
+  ray::internal::RemoteFunctionHolder remote_func_holder(
+      func.module_name, func.function_name, func.class_name,
+      ray::internal::LangType::PYTHON);
+  return {ray::internal::GetRayRuntime().get(), std::move(remote_func_holder)};
 }
 
-template <typename FuncType>
-inline ray::internal::ActorCreator<FuncType> CreateActorInternal(FuncType &create_func) {
-  ray::internal::RemoteFunctionHolder remote_func_holder(create_func);
-  return ray::internal::ActorCreator<FuncType>(ray::internal::GetRayRuntime().get(),
-                                               std::move(remote_func_holder));
+template <typename R>
+inline ray::internal::TaskCaller<PyFunction<R>> Task(PyFunction<R> func) {
+  ray::internal::RemoteFunctionHolder remote_func_holder(
+      func.module_name, func.function_name, "", ray::internal::LangType::PYTHON);
+  return {ray::internal::GetRayRuntime().get(), std::move(remote_func_holder)};
 }
 
 /// Normal task.
 template <typename F>
-ray::internal::TaskCaller<F> Task(F func) {
+inline ray::internal::TaskCaller<F> Task(F func) {
+  static_assert(!ray::internal::is_python_v<F>, "Must be a cpp function.");
   static_assert(!std::is_member_function_pointer_v<F>,
                 "Incompatible type: member function cannot be called with ray::Task.");
-  return TaskInternal<F>(func);
+  ray::internal::RemoteFunctionHolder remote_func_holder(std::move(func));
+  return ray::internal::TaskCaller<F>(ray::internal::GetRayRuntime().get(),
+                                      std::move(remote_func_holder));
 }
 
 /// Creating an actor.
 template <typename F>
-ray::internal::ActorCreator<F> Actor(F create_func) {
-  return CreateActorInternal<F>(create_func);
+inline ray::internal::ActorCreator<F> Actor(F create_func) {
+  ray::internal::RemoteFunctionHolder remote_func_holder(std::move(create_func));
+  return ray::internal::ActorCreator<F>(ray::internal::GetRayRuntime().get(),
+                                        std::move(remote_func_holder));
 }
 
 template <typename T>
-inline boost::optional<ActorHandle<T>> GetActorInternal(const std::string &actor_name) {
+boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name) {
   if (actor_name.empty()) {
     return {};
   }
@@ -243,11 +253,6 @@ inline boost::optional<ActorHandle<T>> GetActorInternal(const std::string &actor
   }
 
   return ActorHandle<T>(actor_id);
-}
-
-template <typename T>
-boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name) {
-  return GetActorInternal<T>(actor_name);
 }
 
 inline PlacementGroup CreatePlacementGroup(

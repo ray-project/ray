@@ -132,7 +132,7 @@ class UpdateKL:
 
         # Update KL on all trainable policies within the local (trainer)
         # Worker.
-        self.workers.local_worker().foreach_trainable_policy(update)
+        self.workers.local_worker().foreach_policy_to_train(update)
 
 
 def warn_about_bad_reward_scales(config, result):
@@ -292,7 +292,9 @@ class PPOTrainer(Trainer):
         rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
         # Collect batches for the trainable policies.
-        rollouts = rollouts.for_each(SelectExperiences(workers.trainable_policies()))
+        rollouts = rollouts.for_each(
+            SelectExperiences(local_worker=workers.local_worker())
+        )
         # Concatenate the SampleBatches into one.
         rollouts = rollouts.combine(
             ConcatBatches(
@@ -319,9 +321,7 @@ class PPOTrainer(Trainer):
                     sgd_minibatch_size=config["sgd_minibatch_size"],
                     num_sgd_iter=config["num_sgd_iter"],
                     num_gpus=config["num_gpus"],
-                    shuffle_sequences=config["shuffle_sequences"],
                     _fake_gpus=config["_fake_gpus"],
-                    framework=config.get("framework"),
                 )
             )
 

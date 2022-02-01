@@ -26,6 +26,7 @@ import ray._private.services
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
+from ray._raylet import GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import gcs_pb2
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
@@ -53,6 +54,18 @@ class RayTestTimeoutException(Exception):
     """Exception used to identify timeouts from test utilities."""
 
     pass
+
+
+def make_global_state_accessor(address_info):
+    if not gcs_utils.use_gcs_for_bootstrap():
+        gcs_options = GcsClientOptions.from_redis_address(
+            address_info["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD
+        )
+    else:
+        gcs_options = GcsClientOptions.from_gcs_address(address_info["gcs_address"])
+    global_state_accessor = GlobalStateAccessor(gcs_options)
+    global_state_accessor.connect()
+    return global_state_accessor
 
 
 def _pid_alive(pid):
@@ -101,10 +114,9 @@ def check_call_module(main, argv, capture_stdout=False, capture_stderr=False):
     return stream.buffer.getvalue()
 
 
-def check_call_ray(args, capture_stdout=False, capture_stderr=False):
+def check_call_subprocess(argv, capture_stdout=False, capture_stderr=False):
     # We use this function instead of calling the "ray" command to work around
     # some deadlocks that occur when piping ray's output on Windows
-    argv = ["ray"] + args
     if sys.platform == "win32":
         result = check_call_module(
             ray_main, argv, capture_stdout=capture_stdout, capture_stderr=capture_stderr
@@ -124,6 +136,10 @@ def check_call_ray(args, capture_stdout=False, capture_stderr=False):
             raise subprocess.CalledProcessError(proc.returncode, argv, stdout, stderr)
         result = b"".join([s for s in [stdout, stderr] if s is not None])
     return result
+
+
+def check_call_ray(args, capture_stdout=False, capture_stderr=False):
+    check_call_subprocess(["ray"] + args, capture_stdout, capture_stderr)
 
 
 def wait_for_pid_to_exit(pid, timeout=20):
@@ -156,14 +172,16 @@ def wait_for_children_names_of_pid(pid, children_names, timeout=20):
 def wait_for_children_of_pid(pid, num_children=1, timeout=20):
     p = psutil.Process(pid)
     start_time = time.time()
+    alive = []
     while time.time() - start_time < timeout:
-        num_alive = len(p.children(recursive=False))
+        alive = p.children(recursive=False)
+        num_alive = len(alive)
         if num_alive >= num_children:
             return
         time.sleep(0.1)
     raise RayTestTimeoutException(
-        "Timed out while waiting for process {} children to start "
-        "({}/{} started).".format(pid, num_alive, num_children)
+        f"Timed out while waiting for process {pid} children to start "
+        f"({num_alive}/{num_children} started: {alive})."
     )
 
 
@@ -199,6 +217,16 @@ def run_string_as_driver(driver_script: str, env: Dict = None):
     Returns:
         The script's output.
     """
+    if env is not None and gcs_utils.use_gcs_for_bootstrap():
+        env.update(
+            {
+                "RAY_bootstrap_with_gcs": "1",
+                "RAY_gcs_grpc_based_pubsub": "1",
+                "RAY_gcs_storage": "memory",
+                "RAY_bootstrap_with_gcs": "1",
+            }
+        )
+
     proc = subprocess.Popen(
         [sys.executable, "-"],
         stdin=subprocess.PIPE,
@@ -335,11 +363,18 @@ def wait_for_condition(
         RuntimeError: If the condition is not met before the timeout expires.
     """
     start = time.time()
+    last_ex = None
     while time.time() - start <= timeout:
-        if condition_predictor(**kwargs):
-            return
+        try:
+            if condition_predictor(**kwargs):
+                return
+        except Exception as ex:
+            last_ex = ex
         time.sleep(retry_interval_ms / 1000.0)
-    raise RuntimeError("The condition wasn't met before the timeout expired.")
+    message = "The condition wasn't met before the timeout expired."
+    if last_ex is not None:
+        message += f" Last exception: {last_ex}"
+    raise RuntimeError(message)
 
 
 def wait_until_succeeded_without_exception(
@@ -536,7 +571,7 @@ def get_non_head_nodes(cluster):
 def init_error_pubsub():
     """Initialize redis error info pub/sub"""
     if gcs_pubsub_enabled():
-        s = GcsErrorSubscriber(channel=ray.worker.global_worker.gcs_channel.channel())
+        s = GcsErrorSubscriber(address=ray.worker.global_worker.gcs_client.address)
         s.subscribe()
     else:
         s = ray.worker.global_worker.redis_client.pubsub(ignore_subscribe_messages=True)
@@ -576,7 +611,7 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
 def init_log_pubsub():
     """Initialize redis error info pub/sub"""
     if gcs_pubsub_enabled():
-        s = GcsLogSubscriber(channel=ray.worker.global_worker.gcs_channel.channel())
+        s = GcsLogSubscriber(address=ray.worker.global_worker.gcs_client.address)
         s.subscribe()
     else:
         s = ray.worker.global_worker.redis_client.pubsub(ignore_subscribe_messages=True)
@@ -584,20 +619,13 @@ def init_log_pubsub():
     return s
 
 
-def get_log_message(
+def get_log_data(
     subscriber,
     num: int = 1e6,
     timeout: float = 20,
     job_id: Optional[str] = None,
     matcher=None,
 ) -> List[str]:
-    """Gets log lines through GCS / Redis subscriber.
-
-    Returns maximum `num` lines of log messages, within `timeout`.
-
-    If `job_id` or `match` is specified, only returns log lines from `job_id`
-    or when `matcher` is true.
-    """
     deadline = time.time() + timeout
     msgs = []
     while time.time() < deadline and len(msgs) < num:
@@ -617,9 +645,38 @@ def get_log_message(
             continue
         if matcher and all(not matcher(line) for line in logs_data["lines"]):
             continue
-        msgs.extend(logs_data["lines"])
-
+        msgs.append(logs_data)
     return msgs
+
+
+def get_log_message(
+    subscriber,
+    num: int = 1e6,
+    timeout: float = 20,
+    job_id: Optional[str] = None,
+    matcher=None,
+) -> List[str]:
+    """Gets log lines through GCS / Redis subscriber.
+
+    Returns maximum `num` lines of log messages, within `timeout`.
+
+    If `job_id` or `match` is specified, only returns log lines from `job_id`
+    or when `matcher` is true.
+    """
+    msgs = get_log_data(subscriber, num, timeout, job_id, matcher)
+    return [msg["lines"] for msg in msgs]
+
+
+def get_log_sources(
+    subscriber,
+    num: int = 1e6,
+    timeout: float = 20,
+    job_id: Optional[str] = None,
+    matcher=None,
+):
+    """Get the source of all log messages"""
+    msgs = get_log_data(subscriber, num, timeout, job_id, matcher)
+    return {msg["pid"] for msg in msgs}
 
 
 def get_log_batch(
@@ -667,10 +724,6 @@ def format_web_url(url):
     if not url.startswith("http://"):
         return "http://" + url
     return url
-
-
-def new_scheduler_enabled():
-    return os.environ.get("RAY_ENABLE_NEW_SCHEDULER", "1") == "1"
 
 
 def client_test_enabled() -> bool:
@@ -977,7 +1030,11 @@ def teardown_tls(key_filepath, cert_filepath, temp_dir):
 
 
 def get_and_run_node_killer(
-    node_kill_interval_s, namespace=None, lifetime=None, no_start=False
+    node_kill_interval_s,
+    namespace=None,
+    lifetime=None,
+    no_start=False,
+    max_nodes_to_kill=2,
 ):
     assert ray.is_initialized(), "The API is only available when Ray is initialized."
 
@@ -1084,7 +1141,11 @@ def get_and_run_node_killer(
         namespace=namespace,
         name="node_killer",
         lifetime=lifetime,
-    ).remote(head_node_id, node_kill_interval_s=node_kill_interval_s)
+    ).remote(
+        head_node_id,
+        node_kill_interval_s=node_kill_interval_s,
+        max_nodes_to_kill=max_nodes_to_kill,
+    )
     print("Waiting for node killer actor to be ready...")
     ray.get(node_killer.ready.remote())
     print("Node killer actor is ready now.")
@@ -1099,3 +1160,47 @@ def chdir(d: str):
     os.chdir(d)
     yield
     os.chdir(old_dir)
+
+
+def check_local_files_gced(cluster):
+    for node in cluster.list_all_nodes():
+        for subdir in ["conda", "pip", "working_dir_files", "py_modules_files"]:
+            all_files = os.listdir(
+                os.path.join(node.get_runtime_env_dir_path(), subdir)
+            )
+            # Check that there are no files remaining except for .lock files
+            # and generated requirements.txt files.
+            # TODO(architkulkarni): these files should get cleaned up too!
+            if (
+                len(
+                    list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
+                )
+                > 0
+            ):
+                print(str(all_files))
+                return False
+
+    return True
+
+
+def generate_runtime_env_dict(field, spec_format, tmp_path, pip_list=None):
+    if pip_list is None:
+        pip_list = ["pip-install-test==0.5"]
+    if field == "conda":
+        conda_dict = {"dependencies": ["pip", {"pip": pip_list}]}
+        if spec_format == "file":
+            conda_file = tmp_path / f"environment-{hash(str(pip_list))}.yml"
+            conda_file.write_text(yaml.dump(conda_dict))
+            conda = str(conda_file)
+        elif spec_format == "python_object":
+            conda = conda_dict
+        runtime_env = {"conda": conda}
+    elif field == "pip":
+        if spec_format == "file":
+            pip_file = tmp_path / f"requirements-{hash(str(pip_list))}.txt"
+            pip_file.write_text("\n".join(pip_list))
+            pip = str(pip_file)
+        elif spec_format == "python_object":
+            pip = pip_list
+        runtime_env = {"pip": pip}
+    return runtime_env

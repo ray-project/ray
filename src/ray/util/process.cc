@@ -462,6 +462,13 @@ int Process::Wait() const {
   return status;
 }
 
+bool Process::IsAlive() const {
+  if (p_) {
+    return IsProcessAlive(p_->GetId());
+  }
+  return false;
+}
+
 void Process::Kill() {
   if (p_) {
     pid_t pid = p_->GetId();

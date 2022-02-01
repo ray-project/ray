@@ -41,8 +41,9 @@ class DirectTaskTransportTest : public ::testing::Test {
         nullptr,        /* lease_client_factory */
         lease_policy,   /* lease_policy */
         std::make_shared<CoreWorkerMemoryStore>(), task_finisher,
-        NodeID::Nil(), /* local_raylet_id */
-        0,             /* lease_timeout_ms */
+        NodeID::Nil(),      /* local_raylet_id */
+        WorkerType::WORKER, /* worker_type */
+        0,                  /* lease_timeout_ms */
         actor_creator, JobID::Nil() /* job_id */);
   }
 

@@ -15,6 +15,7 @@ from ray._private.runtime_env.packaging import (
     upload_package_if_needed,
 )
 from ray._private.runtime_env.utils import RuntimeEnv
+from ray._private.utils import try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
 
@@ -100,8 +101,7 @@ def upload_py_modules_if_needed(
 class PyModulesManager:
     def __init__(self, resources_dir: str):
         self._resources_dir = os.path.join(resources_dir, "py_modules_files")
-        if not os.path.isdir(self._resources_dir):
-            os.makedirs(self._resources_dir)
+        try_to_create_directory(self._resources_dir)
         assert _internal_kv_initialized()
 
     def delete_uri(

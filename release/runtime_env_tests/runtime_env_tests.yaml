@@ -1,4 +1,5 @@
 - name: rte_many_tasks_actors
+  team: serve
   cluster:
     app_config: app_config.yaml
     compute_template: rte_small.yaml
@@ -9,6 +10,7 @@
     script: python workloads/rte_many_tasks_actors.py
 
 - name: wheel_urls
+  team: serve
   cluster:
     app_config: app_config.yaml
     compute_template: rte_minimal.yaml
@@ -19,6 +21,7 @@
     script: python workloads/wheel_urls.py
 
 - name: rte_ray_client
+  team: serve
   cluster:
     app_config: app_config.yaml
     compute_template: rte_minimal.yaml

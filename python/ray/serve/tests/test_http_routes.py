@@ -88,6 +88,21 @@ def test_routes_endpoint(serve_instance):
     assert routes["/hello"] == "D3", routes
 
 
+def test_deployment_without_route(serve_instance):
+    @serve.deployment(route_prefix=None)
+    class D:
+        def __call__(self, *args):
+            return "1"
+
+    D.deploy()
+    routes = requests.get("http://localhost:8000/-/routes").json()
+    assert len(routes) == 0
+
+    # make sure the deployment is not exposed under the default route
+    r = requests.get(f"http://localhost:8000/{D.name}")
+    assert r.status_code == 404
+
+
 def test_deployment_options_default_route(serve_instance):
     @serve.deployment(name="1")
     class D1:

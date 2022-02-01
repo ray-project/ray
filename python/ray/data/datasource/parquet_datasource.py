@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockAccessor, BlockExecStats
+from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import (
@@ -77,15 +77,15 @@ class ParquetDatasource(FileBasedDatasource):
                 [schema.field(column) for column in columns], schema.metadata
             )
 
-        def read_pieces(serialized_pieces: List[str]) -> Iterator[pa.Table]:
+        def read_pieces(serialized_pieces: str) -> Iterator[pa.Table]:
             # Implicitly trigger S3 subsystem initialization by importing
             # pyarrow.fs.
             import pyarrow.fs  # noqa: F401
 
             # Deserialize after loading the filesystem class.
-            pieces: List["pyarrow._dataset.ParquetFileFragment"] = [
-                cloudpickle.loads(p) for p in serialized_pieces
-            ]
+            pieces: List["pyarrow._dataset.ParquetFileFragment"] = cloudpickle.loads(
+                serialized_pieces
+            )
 
             # Ensure that we're reading at least one dataset fragment.
             assert len(pieces) > 0
@@ -142,20 +142,20 @@ class ParquetDatasource(FileBasedDatasource):
         else:
             inferred_schema = schema
         read_tasks = []
-        serialized_pieces = [cloudpickle.dumps(p) for p in pq_ds.pieces]
         if len(pq_ds.pieces) > PARALLELIZE_META_FETCH_THRESHOLD:
-            metadata = _fetch_metadata_remotely(serialized_pieces)
+            metadata = _fetch_metadata_remotely(pq_ds.pieces)
         else:
             metadata = _fetch_metadata(pq_ds.pieces)
         for piece_data in np.array_split(
-            list(zip(pq_ds.pieces, serialized_pieces, metadata)), parallelism
+            list(zip(pq_ds.pieces, metadata)), parallelism
         ):
             if len(piece_data) == 0:
                 continue
-            pieces, serialized_pieces, metadata = zip(*piece_data)
+            pieces, metadata = zip(*piece_data)
+            serialized_pieces = cloudpickle.dumps(pieces)
             meta = _build_block_metadata(pieces, metadata, inferred_schema)
             read_tasks.append(
-                ReadTask(lambda pieces_=serialized_pieces: read_pieces(pieces_), meta)
+                ReadTask(lambda p=serialized_pieces: read_pieces(p), meta)
             )
 
         return read_tasks
@@ -177,22 +177,24 @@ class ParquetDatasource(FileBasedDatasource):
 
 
 def _fetch_metadata_remotely(
-    pieces: List[bytes],
+    pieces: List["pyarrow._dataset.ParquetFileFragment"],
 ) -> List[ObjectRef["pyarrow.parquet.FileMetaData"]]:
+    from ray import cloudpickle
+
     remote_fetch_metadata = cached_remote_fn(_fetch_metadata_serialization_wrapper)
     metas = []
     parallelism = min(len(pieces) // PIECES_PER_META_FETCH, 100)
     meta_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
-    for pieces_ in np.array_split(pieces, parallelism):
-        if len(pieces_) == 0:
+    for pcs in np.array_split(pieces, parallelism):
+        if len(pcs) == 0:
             continue
-        metas.append(remote_fetch_metadata.remote(pieces_))
+        metas.append(remote_fetch_metadata.remote(cloudpickle.dumps(pcs)))
     metas = meta_fetch_bar.fetch_until_complete(metas)
     return list(itertools.chain.from_iterable(metas))
 
 
 def _fetch_metadata_serialization_wrapper(
-    pieces: List[bytes],
+    pieces: str,
 ) -> List["pyarrow.parquet.FileMetaData"]:
     # Implicitly trigger S3 subsystem initialization by importing
     # pyarrow.fs.
@@ -200,9 +202,7 @@ def _fetch_metadata_serialization_wrapper(
     from ray import cloudpickle
 
     # Deserialize after loading the filesystem class.
-    pieces: List["pyarrow._dataset.ParquetFileFragment"] = [
-        cloudpickle.loads(p) for p in pieces
-    ]
+    pieces: List["pyarrow._dataset.ParquetFileFragment"] = cloudpickle.loads(pieces)
 
     return _fetch_metadata(pieces)
 
@@ -236,8 +236,8 @@ def _build_block_metadata(
             ),
             schema=schema,
             input_files=input_files,
-            exec_stats=BlockExecStats.TODO,
-        )
+            exec_stats=None,
+        )  # Exec stats filled in later.
     else:
         # Piece metadata was not available, construct an empty
         # BlockMetadata.

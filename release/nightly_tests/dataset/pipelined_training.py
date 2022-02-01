@@ -210,7 +210,7 @@ def create_torch_iterator(split, batch_size, rank=None):
         label_column=label_column,
         feature_columns=feature_columns,
         label_column_dtype=label_type,
-        feature_column_dtypes=feature_types,
+        feature_column_dtypes=feature_types[0],
         batch_size=batch_size,
         # prefetch_blocks: int = 0,
         # drop_last: bool = False
@@ -291,7 +291,7 @@ if __name__ == "__main__":
 
     if args.debug:
         tasks = [
-            consume.options(num_gpus=1).remote(
+            consume.options(num_gpus=1, num_cpus=0).remote(
                 split, rank=idx, batch_size=args.batch_size
             )
             for idx, split in enumerate(splits)

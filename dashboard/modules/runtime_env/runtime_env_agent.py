@@ -18,6 +18,7 @@ from ray.experimental.internal_kv import (
     _initialize_internal_kv,
 )
 from ray._private.ray_logging import setup_component_logger
+from ray._private.runtime_env.pip import PipManager
 from ray._private.runtime_env.conda import CondaManager
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.py_modules import PyModulesManager
@@ -71,6 +72,7 @@ class RuntimeEnvAgent(
         _initialize_internal_kv(self._dashboard_agent.gcs_client)
         assert _internal_kv_initialized()
 
+        self._pip_manager = PipManager(self._runtime_env_dir)
         self._conda_manager = CondaManager(self._runtime_env_dir)
         self._py_modules_manager = PyModulesManager(self._runtime_env_dir)
         self._working_dir_manager = WorkingDirManager(self._runtime_env_dir)
@@ -103,6 +105,7 @@ class RuntimeEnvAgent(
                 # avoid lint error. That will be moved to cgroup plugin.
                 per_job_logger.debug(f"Worker has resource :" f"{allocated_resource}")
                 context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
+                self._pip_manager.setup(runtime_env, context, logger=per_job_logger)
                 self._conda_manager.setup(runtime_env, context, logger=per_job_logger)
                 self._py_modules_manager.setup(
                     runtime_env, context, logger=per_job_logger
@@ -124,6 +127,9 @@ class RuntimeEnvAgent(
                         self._uris_to_envs[uri].add(serialized_runtime_env)
                 if runtime_env.conda_uri():
                     uri = runtime_env.conda_uri()
+                    self._uris_to_envs[uri].add(serialized_runtime_env)
+                if runtime_env.pip_uri():
+                    uri = runtime_env.pip_uri()
                     self._uris_to_envs[uri].add(serialized_runtime_env)
                 if runtime_env.plugin_uris():
                     for uri in runtime_env.plugin_uris():
@@ -241,6 +247,9 @@ class RuntimeEnvAgent(
             elif plugin == "conda":
                 if not self._conda_manager.delete_uri(uri):
                     failed_uris.append(uri)
+            elif plugin == "pip":
+                if not self._pip_manager.delete_uri(uri):
+                    failed_uris.append(uri)
             else:
                 raise ValueError(
                     "RuntimeEnvAgent received DeleteURI request "
@@ -259,3 +268,7 @@ class RuntimeEnvAgent(
 
     async def run(self, server):
         runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(self, server)
+
+    @staticmethod
+    def is_minimal_module():
+        return True

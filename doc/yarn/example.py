@@ -5,7 +5,7 @@ import ray
 
 
 @ray.remote
-def gethostname(x):
+def get_host_name(x):
     import platform
     import time
 
@@ -35,7 +35,7 @@ def main():
     # Check that objects can be transferred from each node to each other node.
     for i in range(10):
         print("Iteration {}".format(i))
-        results = [gethostname.remote(gethostname.remote(())) for _ in range(100)]
+        results = [get_host_name.remote(get_host_name.remote(())) for _ in range(100)]
         print(Counter(ray.get(results)))
         sys.stdout.flush()
 

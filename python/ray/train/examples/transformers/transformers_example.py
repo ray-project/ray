@@ -401,8 +401,8 @@ def train_func(config: Dict[str, Any]):
             if label_to_id is not None:
                 # Map labels to IDs (not necessary for GLUE tasks)
                 result["labels"] = [
-                    label_to_id[l] for l in examples["label"]
-                ]  # noqa:E741
+                    label_to_id[l] for l in examples["label"]  # noqa:E741
+                ]
             else:
                 # In all cases, rename the column to labels because the model
                 # will expect that.

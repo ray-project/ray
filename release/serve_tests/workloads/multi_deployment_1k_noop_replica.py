@@ -129,7 +129,7 @@ def main(
         # client doesn't need to
         num_nodes = int(math.ceil(num_replicas / NUM_CPU_PER_NODE))
         logger.info(f"Setting up local ray cluster with {num_nodes} nodes .. \n")
-        serve_client = setup_local_single_node_cluster(num_nodes)
+        serve_client = setup_local_single_node_cluster(num_nodes)[0]
     else:
         num_replicas = num_replicas or DEFAULT_FULL_TEST_NUM_REPLICA
         num_deployments = num_deployments or DEFAULT_FULL_TEST_NUM_DEPLOYMENTS

@@ -34,7 +34,7 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 if [[ $(uname -m) == 'arm64' ]] && [[ $OSTYPE == "darwin"* ]]; then
   PYTHON_VERSIONS=( "3.8" "3.9" )
 else
-  PYTHON_VERSION=( "3.6" "3.7" "3.8" "3.9" )
+  PYTHON_VERSIONS=( "3.6" "3.7" "3.8" "3.9" )
 fi
 
 for PYTHON_VERSION in "${PYTHON_VERSIONS[@]}"

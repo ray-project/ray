@@ -58,7 +58,7 @@ DEFAULT_CONFIG = impala.ImpalaTrainer.merge_trainer_configs(
         # == IMPALA optimizer params (see documentation in impala.py) ==
         "rollout_fragment_length": 50,
         "train_batch_size": 500,
-        "min_iter_time_s": 10,
+        "min_time_s_per_reporting": 10,
         "num_workers": 2,
         "num_gpus": 0,
         "num_multi_gpu_tower_stacks": 1,
@@ -105,7 +105,7 @@ class UpdateTargetAndKL:
             metrics.counters[NUM_TARGET_UPDATES] += 1
             metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts
             # Update Target Network
-            self.workers.local_worker().foreach_trainable_policy(
+            self.workers.local_worker().foreach_policy_to_train(
                 lambda p, _: p.update_target()
             )
             # Also update KL Coeff
@@ -123,15 +123,9 @@ class APPOTrainer(impala.ImpalaTrainer):
         super().__init__(config, *args, **kwargs)
 
         # After init: Initialize target net.
-        self.workers.local_worker().foreach_trainable_policy(
+        self.workers.local_worker().foreach_policy_to_train(
             lambda p, _: p.update_target()
         )
-
-    # TODO: Remove this once ImpalaTrainer directly inherits from Trainer
-    #  (instead of being created by `build_trainer()` utility).
-    @override(impala.ImpalaTrainer)
-    def _init(self, *args, **kwargs):
-        raise NotImplementedError
 
     @classmethod
     @override(Trainer)
@@ -146,5 +140,7 @@ class APPOTrainer(impala.ImpalaTrainer):
             from ray.rllib.agents.ppo.appo_torch_policy import AsyncPPOTorchPolicy
 
             return AsyncPPOTorchPolicy
-        else:
+        elif config["framework"] == "tf":
             return AsyncPPOTFPolicy
+        elif config["framework"] in ["tf2", "tfe"]:
+            return AsyncPPOTFPolicy.as_eager()

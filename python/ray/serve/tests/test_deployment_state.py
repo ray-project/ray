@@ -6,6 +6,7 @@ from unittest.mock import patch, Mock
 
 import pytest
 
+import ray
 from ray.actor import ActorHandle
 from ray.serve.common import (
     DeploymentConfig,
@@ -166,6 +167,7 @@ def deployment_info(
             num_replicas=num_replicas, user_config=user_config, **config_opts
         ),
         replica_config=ReplicaConfig(lambda x: x),
+        deployer_job_id=ray.JobID.nil(),
     )
 
     if version is not None:

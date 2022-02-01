@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from typing import (
     List,
@@ -26,7 +27,7 @@ if TYPE_CHECKING:
     import torch
     import tensorflow as tf
     from ray.data.dataset_pipeline import DatasetPipeline
-    from ray.data.grouped_dataset import GroupedDataset, GroupKeyT, AggregateOnTs
+    from ray.data.grouped_dataset import GroupedDataset
 
 import collections
 import itertools
@@ -44,6 +45,8 @@ from ray.data.block import (
     BlockPartition,
     BlockPartitionMetadata,
     BlockExecStats,
+    KeyFn,
+    _validate_key_fn,
 )
 from ray.data.context import DatasetContext
 from ray.data.datasource import (
@@ -54,6 +57,11 @@ from ray.data.datasource import (
     ParquetDatasource,
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
+    WriteResult,
+)
+from ray.data.datasource.file_based_datasource import (
+    _wrap_s3_filesystem_workaround,
+    _unwrap_s3_filesystem_workaround,
 )
 from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -66,7 +74,8 @@ from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
-from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
+from ray.data.impl.table_block import TableRow
+from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 
 # An output type of iter_batches() determined by the batch_format parameter.
 BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
@@ -255,11 +264,11 @@ class Dataset(Generic[T]):
                     )
 
                 applied = fn(view)
-                if isinstance(applied, list) or isinstance(applied, pa.Table):
-                    applied = applied
-                elif isinstance(applied, pd.core.frame.DataFrame):
-                    applied = pa.Table.from_pandas(applied)
-                else:
+                if not (
+                    isinstance(applied, list)
+                    or isinstance(applied, pa.Table)
+                    or isinstance(applied, pd.core.frame.DataFrame)
+                ):
                     raise ValueError(
                         "The map batches UDF returned the value "
                         f"{applied}, which is not allowed. "
@@ -393,13 +402,13 @@ class Dataset(Generic[T]):
             The repartitioned dataset.
         """
 
+        stats = self._stats.child_builder("repartition")
         if shuffle:
-            new_blocks = simple_shuffle(self._blocks, num_blocks)
-            return Dataset(
-                new_blocks, self._epoch, self._stats.child_TODO("repartition")
-            )
+            new_blocks, stage_info = simple_shuffle(self._blocks, num_blocks)
+            return Dataset(new_blocks, self._epoch, stats.build_multistage(stage_info))
 
         # Compute the (n-1) indices needed for an equal split of the data.
+        stage_info = {}
         count = self.count()
         indices = []
         cur_idx = 0
@@ -412,6 +421,8 @@ class Dataset(Generic[T]):
             # TODO this saves memory: self._blocks.clear()
         else:
             splits = [self]
+        # TODO(ekl) include stats for the split tasks. We may also want to
+        # consider combining the split and coalesce tasks as an optimization.
 
         # Coalesce each split into a single block.
         reduce_task = cached_remote_fn(_shuffle_reduce).options(num_returns=2)
@@ -430,29 +441,29 @@ class Dataset(Generic[T]):
         # Handle empty blocks.
         if len(new_blocks) < num_blocks:
             from ray.data.impl.arrow_block import ArrowBlockBuilder
+            from ray.data.impl.pandas_block import PandasBlockBuilder
             from ray.data.impl.simple_block import SimpleBlockBuilder
 
             num_empties = num_blocks - len(new_blocks)
-            builder = (
-                ArrowBlockBuilder()
-                if self._is_arrow_dataset()
-                else SimpleBlockBuilder()
-            )
+            dataset_format = self._dataset_format()
+            if dataset_format == "arrow":
+                builder = ArrowBlockBuilder()
+            elif dataset_format == "pandas":
+                builder = PandasBlockBuilder()
+            else:
+                builder = SimpleBlockBuilder()
             empty_block = builder.build()
             empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
-                input_files=None, exec_stats=BlockExecStats.TODO
-            )
+                input_files=None, exec_stats=None
+            )  # No stats for empty block.
             empty_blocks, empty_metadata = zip(
                 *[(ray.put(empty_block), empty_meta) for _ in range(num_empties)]
             )
             new_blocks += empty_blocks
             new_metadata += empty_metadata
 
-        return Dataset(
-            BlockList(new_blocks, new_metadata),
-            self._epoch,
-            self._stats.child_TODO("repartition"),
-        )
+        blocks = BlockList(new_blocks, new_metadata)
+        return Dataset(blocks, self._epoch, stats.build(blocks))
 
     def random_shuffle(
         self,
@@ -487,19 +498,18 @@ class Dataset(Generic[T]):
         # Handle empty dataset.
         if self.num_blocks() == 0:
             return self
+        stats = self._stats.child_builder("random_shuffle")
 
         if num_blocks is None:
             num_blocks = self._blocks.executed_num_blocks()  # Blocking.
-        new_blocks = simple_shuffle(
+        new_blocks, stage_info = simple_shuffle(
             self._move_blocks() if _move else self._blocks,
             num_blocks,
             random_shuffle=True,
             random_seed=seed,
             _spread_resource_prefix=_spread_resource_prefix,
         )
-        return Dataset(
-            new_blocks, self._epoch, self._stats.child_TODO("random_shuffle")
-        )
+        return Dataset(new_blocks, self._epoch, stats.build_multistage(stage_info))
 
     def split(
         self, n: int, *, equal: bool = False, locality_hints: List[Any] = None
@@ -872,6 +882,7 @@ class Dataset(Generic[T]):
             A new dataset holding the union of their data.
         """
 
+        start_time = time.perf_counter()
         context = DatasetContext.get_current()
         calls: List[Callable[[], ObjectRef[BlockPartition]]] = []
         metadata: List[BlockPartitionMetadata] = []
@@ -906,14 +917,16 @@ class Dataset(Generic[T]):
                     "be shown again.".format(set(epochs), max_epoch)
                 )
                 _epoch_warned = True
+        dataset_stats = DatasetStats(
+            stages={"union": []}, parent=[d._stats for d in datasets]
+        )
+        dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
-            LazyBlockList(calls, metadata, block_partitions),
-            max_epoch,
-            self._stats.child_TODO("union"),
+            LazyBlockList(calls, metadata, block_partitions), max_epoch, dataset_stats
         )
 
-    def groupby(self, key: "GroupKeyT") -> "GroupedDataset[T]":
-        """Group the dataset by the key function or column name (Experimental).
+    def groupby(self, key: KeyFn) -> "GroupedDataset[T]":
+        """Group the dataset by the key function or column name.
 
         This is a lazy operation.
 
@@ -928,12 +941,18 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            key: A key function or Arrow column name.
+            key: A key function or Arrow column name. If this is None, the
+                grouping is global.
 
         Returns:
             A lazy GroupedDataset that can be aggregated later.
         """
         from ray.data.grouped_dataset import GroupedDataset
+
+        # Always allow None since groupby interprets that as grouping all
+        # records into a single global group.
+        if key is not None:
+            _validate_key_fn(self, key)
 
         return GroupedDataset(self, key)
 
@@ -943,6 +962,7 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
+            >>> from ray.data.aggregate import Max, Mean
             >>> ray.data.range(100).aggregate(Max())
             >>> ray.data.range_arrow(100).aggregate(
                 Max("value"), Mean("value"))
@@ -964,125 +984,7 @@ class Dataset(Generic[T]):
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
-    def _check_and_normalize_agg_on(
-        self, on: Optional["AggregateOnTs"], skip_cols: Optional[List[str]] = None
-    ) -> Optional["AggregateOnTs"]:
-        """Checks whether the provided aggregation `on` arg is valid for this
-        type of dataset, and normalizes the value based on the Dataset type and
-        any provided columns to skip.
-        """
-        if on is not None and (
-            not isinstance(on, (str, Callable, list))
-            or (
-                isinstance(on, list)
-                and not (
-                    all(isinstance(on_, str) for on_ in on)
-                    or all(isinstance(on_, Callable) for on_ in on)
-                )
-            )
-        ):
-            from ray.data.grouped_dataset import AggregateOnTs
-
-            raise TypeError(f"`on` must be of type {AggregateOnTs}, but got {type(on)}")
-
-        if isinstance(on, list) and len(on) == 0:
-            raise ValueError("When giving a list for `on`, it must be nonempty.")
-
-        try:
-            is_arrow = self._is_arrow_dataset()
-        except ValueError:
-            # Dataset is empty/cleared, let downstream ops handle this.
-            return on
-
-        if is_arrow:
-            # This should be cached from the ._is_arrow_dataset() check, so we
-            # don't fetch and we assert that the schema is not None.
-            schema = self.schema(fetch_if_missing=False)
-            assert schema is not None
-            if len(schema.names) == 0:
-                # Empty dataset, don't validate `on` since we generically
-                # handle empty datasets downstream.
-                return on
-
-            if on is None:
-                # If a null `on` is given for an Arrow Dataset, coerce it to
-                # all columns sans any that we want to skip.
-                if skip_cols is None:
-                    skip_cols = []
-                elif not isinstance(skip_cols, list):
-                    skip_cols = [skip_cols]
-                on = [col for col in schema.names if col not in skip_cols]
-            # Check that column names refer to valid columns.
-            elif isinstance(on, str) and on not in schema.names:
-                raise ValueError(f"on={on} is not a valid column name: {schema.names}")
-            elif isinstance(on, list) and isinstance(on[0], str):
-                for on_ in on:
-                    if on_ not in schema.names:
-                        raise ValueError(
-                            f"on={on_} is not a valid column name: " f"{schema.names}"
-                        )
-        else:
-            if isinstance(on, str) or (isinstance(on, list) and isinstance(on[0], str)):
-                raise ValueError(
-                    "Can't aggregate on a column when using a simple Dataset; "
-                    "use a callable `on` argument or use an Arrow Dataset "
-                    "instead of a simple Dataset."
-                )
-        return on
-
-    def _is_arrow_dataset(self) -> bool:
-        """Determine if Dataset is an Arrow dataset.
-
-        This may block; if the schema is unknown, this will synchronously fetch
-        the schema for the first block.
-        """
-        try:
-            import pyarrow as pa
-        except ModuleNotFoundError:
-            return False
-        else:
-            # We need schema to properly validate, so synchronously
-            # fetch it if necessary.
-            schema = self.schema(fetch_if_missing=True)
-            if schema is None:
-                raise ValueError(
-                    "Dataset is empty or cleared, can't determine whether "
-                    "it's an Arrow dataset"
-                )
-            return isinstance(schema, pa.Schema)
-
-    def _aggregate_on(
-        self, agg_cls: type, on: Optional["AggregateOnTs"], *args, **kwargs
-    ):
-        """Helper for aggregating on a particular subset of the dataset.
-
-        This validates the `on` argument, and converts a list of column names
-        or lambdas to a multi-aggregation. A null `on` results in a
-        multi-aggregation on all columns for an Arrow Dataset, and a single
-        aggregation on the entire row for a simple Dataset.
-        """
-        aggs = self._build_multicolumn_aggs(
-            agg_cls, on, *args, skip_cols=None, **kwargs
-        )
-        return self.aggregate(*aggs)
-
-    def _build_multicolumn_aggs(
-        self,
-        agg_cls: type,
-        on: Optional["AggregateOnTs"],
-        *args,
-        skip_cols: Optional[List[str]] = None,
-        **kwargs,
-    ):
-        """Build set of aggregations for applying a single aggregation to
-        multiple columns.
-        """
-        on = self._check_and_normalize_agg_on(on, skip_cols=skip_cols)
-        if not isinstance(on, list):
-            on = [on]
-        return [agg_cls(on_, *args, **kwargs) for on_ in on]
-
-    def sum(self, on: Optional["AggregateOnTs"] = None) -> U:
+    def sum(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute sum over entire dataset.
 
         This is a blocking operation.
@@ -1132,12 +1034,10 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Sum, on)
         if ret is None:
             return 0
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
-    def min(self, on: Optional["AggregateOnTs"] = None) -> U:
+    def min(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute minimum over entire dataset.
 
         This is a blocking operation.
@@ -1187,12 +1087,10 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Min, on)
         if ret is None:
             raise ValueError("Cannot compute min on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
-    def max(self, on: Optional["AggregateOnTs"] = None) -> U:
+    def max(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute maximum over entire dataset.
 
         This is a blocking operation.
@@ -1242,12 +1140,10 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Max, on)
         if ret is None:
             raise ValueError("Cannot compute max on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
-    def mean(self, on: Optional["AggregateOnTs"] = None) -> U:
+    def mean(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute mean over entire dataset.
 
         This is a blocking operation.
@@ -1297,12 +1193,10 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Mean, on)
         if ret is None:
             raise ValueError("Cannot compute mean on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
-    def std(self, on: Optional["AggregateOnTs"] = None, ddof: int = 1) -> U:
+    def std(self, on: Union[KeyFn, List[KeyFn]] = None, ddof: int = 1) -> U:
         """Compute standard deviation over entire dataset.
 
         This is a blocking operation.
@@ -1362,18 +1256,11 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Std, on, ddof=ddof)
         if ret is None:
             raise ValueError("Cannot compute std on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
-    def sort(
-        self,
-        key: Union[None, str, List[str], Callable[[T], Any]] = None,
-        descending: bool = False,
-    ) -> "Dataset[T]":
+    def sort(self, key: KeyFn = None, descending: bool = False) -> "Dataset[T]":
         """Sort the dataset by the specified key column or key function.
-        (experimental support)
 
         This is a blocking operation.
 
@@ -1386,9 +1273,6 @@ class Dataset(Generic[T]):
 
             >>> # Sort by a key function.
             >>> ds.sort(lambda record: record["field1"] % 100)
-
-            >>> # Sort by multiple columns (not yet supported).
-            >>> ds.sort([("field1", "ascending"), ("field2", "descending")])
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -1406,11 +1290,16 @@ class Dataset(Generic[T]):
         # Handle empty dataset.
         if self.num_blocks() == 0:
             return self
-        return Dataset(
-            sort_impl(self._blocks, key, descending),
-            self._epoch,
-            self._stats.child_TODO("sort"),
-        )
+        if isinstance(key, list):
+            if not key:
+                raise ValueError("`key` must be a list of non-zero length")
+            for subkey in key:
+                _validate_key_fn(self, subkey)
+        else:
+            _validate_key_fn(self, key)
+        stats_builder = self._stats.child_builder("sort")
+        blocks, stage_info = sort_impl(self._blocks, key, descending)
+        return Dataset(blocks, self._epoch, stats_builder.build_multistage(stage_info))
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
@@ -1435,6 +1324,7 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
+        stats_builder = self._stats.child_builder("zip")
         blocks1 = self.get_internal_block_refs()
         blocks2 = other.get_internal_block_refs()
 
@@ -1447,12 +1337,11 @@ class Dataset(Generic[T]):
             )
 
         def do_zip(block1: Block, block2: Block) -> (Block, BlockMetadata):
+            stats = BlockExecStats.builder()
             b1 = BlockAccessor.for_block(block1)
             result = b1.zip(block2)
             br = BlockAccessor.for_block(result)
-            return result, br.get_metadata(
-                input_files=[], exec_stats=BlockExecStats.TODO
-            )
+            return result, br.get_metadata(input_files=[], exec_stats=stats.build())
 
         do_zip_fn = cached_remote_fn(do_zip, num_returns=2)
 
@@ -1465,9 +1354,8 @@ class Dataset(Generic[T]):
 
         # TODO(ekl) it might be nice to have a progress bar here.
         metadata = ray.get(metadata)
-        return Dataset(
-            BlockList(blocks, metadata), self._epoch, self._stats.child_TODO("zip")
-        )
+        blocks = BlockList(blocks, metadata)
+        return Dataset(blocks, self._epoch, stats_builder.build(blocks))
 
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.
@@ -1867,8 +1755,28 @@ class Dataset(Generic[T]):
             write_args: Additional write args to pass to the datasource.
         """
 
+        ctx = DatasetContext.get_current()
         blocks, metadata = zip(*self._blocks.get_blocks_with_metadata())
-        write_results = datasource.do_write(blocks, metadata, **write_args)
+
+        # TODO(ekl) remove this feature flag.
+        if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
+            write_results: List[ObjectRef[WriteResult]] = datasource.do_write(
+                blocks, metadata, **write_args
+            )
+        else:
+            # Prepare write in a remote task so that in Ray client mode, we
+            # don't do metadata resolution from the client machine.
+            do_write = cached_remote_fn(_do_write, retry_exceptions=False, num_cpus=0)
+            write_results: List[ObjectRef[WriteResult]] = ray.get(
+                do_write.remote(
+                    datasource,
+                    ctx,
+                    blocks,
+                    metadata,
+                    _wrap_s3_filesystem_workaround(write_args),
+                )
+            )
+
         progress = ProgressBar("Write Progress", len(write_results))
         try:
             progress.block_until_complete(write_results)
@@ -1986,13 +1894,18 @@ class Dataset(Generic[T]):
     def to_torch(
         self,
         *,
-        label_column: str,
-        feature_columns: Optional[List[str]] = None,
+        label_column: Optional[str] = None,
+        feature_columns: Union[
+            None, List[str], List[List[str]], Dict[str, List[str]]
+        ] = None,
         label_column_dtype: Optional["torch.dtype"] = None,
-        feature_column_dtypes: Optional[List["torch.dtype"]] = None,
+        feature_column_dtypes: Union[
+            None, "torch.dtype", List["torch.dtype"], Dict[str, "torch.dtype"]
+        ] = None,
         batch_size: int = 1,
         prefetch_blocks: int = 0,
         drop_last: bool = False,
+        unsqueeze_label_tensor: bool = True,
     ) -> "torch.utils.data.IterableDataset":
         """Return a Torch IterableDataset over this dataset.
 
@@ -2002,10 +1915,32 @@ class Dataset(Generic[T]):
         instead of passing it into a torch ``DataLoader``.
 
         Each element in IterableDataset will be a tuple consisting of 2
-        elements. The first item is the features tensor, and the second item
-        is the label tensor. The features tensor will be of shape (N, n),
-        and the label tensor will be of shape (N, 1), where N is the
-        ``batch_size`` used by the DataLoader, and n is the number of features.
+        elements. The first item contains the feature tensor(s), and the
+        second item is the label tensor. Those can take on different
+        forms, depending on the specified arguments.
+
+        For the features tensor (N is the ``batch_size`` and n, m, k
+        are the number of features per tensor):
+
+        * If ``feature_columns`` is a ``List[str]``, the features will be
+          a tensor of shape (N, n), with columns corresponding to
+          ``feature_columns``
+
+        * If ``feature_columns`` is a ``List[List[str]]``, the features will be
+          a list of tensors of shape [(N, m),...,(N, k)], with columns of each
+          tensor corresponding to the elements of ``feature_columns``
+
+        * If ``feature_columns`` is a ``Dict[str, List[str]]``, the features
+          will be a dict of key-tensor pairs of shape
+          {key1: (N, m),..., keyN: (N, k)}, with columns of each
+          tensor corresponding to the value of ``feature_columns`` under the
+          key.
+
+        If ``unsqueeze_label_tensor=True`` (default), the label tensor will be
+        of shape (N, 1). Otherwise, it will be of shape (N,).
+        If ``label_column`` is specified as ``None``, then no column from the
+        ``Dataset`` will be treated as the label, and the output label tensor
+        will be ``None``.
 
         Note that you probably want to call ``.split()`` on this dataset if
         there are to be multiple Torch workers consuming the data.
@@ -2013,18 +1948,24 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Args:
-            label_column (str): The name of the column used as the label
-                (second element of the output list).
-            feature_columns (Optional[List[str]]): The names of the columns
-                to use as the features. If None, then use all columns
-                except the label columns as the features.
+            label_column (Optional[str]): The name of the column used as the
+                label (second element of the output list). Can be None for
+                prediction, in which case the second element of returned
+                tuple will also be None.
+            feature_columns (Union[None, List[str], List[List[str]], \
+Dict[str, List[str]]]): The names of the columns
+                to use as the features. Can be a list of lists or
+                a dict of string-list pairs for multi-tensor output.
+                If None, then use all columns except the label columns as
+                the features.
             label_column_dtype (Optional[torch.dtype]): The torch dtype to
                 use for the label column. If None, then automatically infer
                 the dtype.
-            feature_column_dtypes (Optional[List[torch.dtype]]): The dtypes
-                to use for the feature columns. The len of this list must
-                be equal to the len of ``feature_columns``. If None,
-                then automatically infer the dtype.
+            feature_column_dtypes (Union[None, torch.dtype, List[torch.dtype],\
+ Dict[str, torch.dtype]]): The dtypes to use for the feature
+                tensors. This should match the format of ``feature_columns``,
+                or be a single dtype, in which case it will be applied to
+                all tensors. If None, then automatically infer the dtype.
             batch_size (int): How many samples per batch to yield at a time.
                 Defaults to 1.
             prefetch_blocks (int): The number of blocks to prefetch ahead of
@@ -2033,6 +1974,11 @@ class Dataset(Generic[T]):
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
+            unsqueeze_label_tensor (bool): If set to True, the label tensor
+                will be unsqueezed (reshaped to (N, 1)). Otherwise, it will
+                be left as is, that is (N, ). In general, regression loss
+                functions expect an unsqueezed tensor, while classification
+                loss functions expect a squeezed one. Defaults to True.
 
         Returns:
             A torch IterableDataset.
@@ -2041,15 +1987,40 @@ class Dataset(Generic[T]):
 
         from ray.data.impl.torch_iterable_dataset import TorchIterableDataset
 
-        if feature_columns and feature_column_dtypes:
-            if len(feature_columns) != len(feature_column_dtypes):
-                raise ValueError(
-                    "The lengths of `feature_columns` "
-                    f"({len(feature_columns)}) and "
-                    f"`feature_column_dtypes` ("
-                    f"{len(feature_column_dtypes)}) do not "
-                    "match!"
-                )
+        multi_input = feature_columns and (
+            isinstance(feature_columns, dict)
+            or isinstance(feature_columns[0], (list, tuple))
+        )
+
+        # If an empty collection is passed in, treat it the same as None
+        if not feature_columns:
+            feature_columns = None
+
+        if feature_column_dtypes and not isinstance(feature_column_dtypes, torch.dtype):
+            if isinstance(feature_columns, dict):
+                if not isinstance(feature_column_dtypes, dict):
+                    raise TypeError(
+                        "If `feature_columns` is a dict, "
+                        "`feature_column_dtypes` must be None, `torch.dtype`,"
+                        f" or dict, got {type(feature_column_dtypes)}."
+                    )
+                if set(feature_columns) != set(feature_column_dtypes):
+                    raise ValueError(
+                        "`feature_columns` and `feature_column_dtypes` "
+                        "must have the same keys."
+                    )
+            elif isinstance(feature_columns[0], (list, tuple)):
+                if not isinstance(feature_column_dtypes, (list, tuple)):
+                    raise TypeError(
+                        "If `feature_columns` is a list of lists, "
+                        "`feature_column_dtypes` must be None, `torch.dtype`,"
+                        f" or a sequence, got {type(feature_column_dtypes)}."
+                    )
+                if len(feature_columns) != len(feature_column_dtypes):
+                    raise ValueError(
+                        "`feature_columns` and `feature_column_dtypes` "
+                        "must have the same length."
+                    )
 
         def make_generator():
             for batch in self.iter_batches(
@@ -2058,26 +2029,63 @@ class Dataset(Generic[T]):
                 prefetch_blocks=prefetch_blocks,
                 drop_last=drop_last,
             ):
-                label_vals = batch.pop(label_column).values
-                label_tensor = torch.as_tensor(label_vals, dtype=label_column_dtype)
-                label_tensor = label_tensor.view(-1, 1)
-
-                feature_tensors = []
-                if feature_columns:
-                    batch = batch[feature_columns]
-
-                if feature_column_dtypes:
-                    dtypes = feature_column_dtypes
+                if label_column:
+                    label_vals = batch.pop(label_column).values
+                    label_tensor = torch.as_tensor(label_vals, dtype=label_column_dtype)
+                    if unsqueeze_label_tensor:
+                        label_tensor = label_tensor.view(-1, 1)
                 else:
-                    dtypes = [None] * len(batch.columns)
+                    label_tensor = None
 
-                for col, dtype in zip(batch.columns, dtypes):
-                    col_vals = batch[col].values
-                    t = torch.as_tensor(col_vals, dtype=dtype)
-                    t = t.view(-1, 1)
-                    feature_tensors.append(t)
+                def get_feature_tensors(
+                    batch,
+                    feature_columns: List[str],
+                    feature_column_dtype: "torch.dtype",
+                    assert_feature_columns_not_empty: bool = False,
+                ) -> torch.Tensor:
+                    feature_tensors = []
+                    if assert_feature_columns_not_empty and not feature_columns:
+                        raise ValueError("`feature_columns` may not be empty")
+                    if feature_columns:
+                        batch = batch[feature_columns]
 
-                features_tensor = torch.cat(feature_tensors, dim=1)
+                    for col in batch.columns:
+                        col_vals = batch[col].values
+                        t = torch.as_tensor(col_vals, dtype=feature_column_dtype)
+                        t = t.view(-1, 1)
+                        feature_tensors.append(t)
+
+                    return torch.cat(feature_tensors, dim=1)
+
+                if not multi_input:
+                    features_tensor = get_feature_tensors(
+                        batch, feature_columns, feature_column_dtypes
+                    )
+                else:
+                    if isinstance(feature_columns, dict):
+                        features_tensor = {
+                            key: get_feature_tensors(
+                                batch,
+                                feature_columns[key],
+                                feature_column_dtypes[key]
+                                if isinstance(feature_column_dtypes, dict)
+                                else feature_column_dtypes,
+                                assert_feature_columns_not_empty=True,
+                            )
+                            for key in feature_columns
+                        }
+                    else:
+                        features_tensor = [
+                            get_feature_tensors(
+                                batch,
+                                feature_columns[idx],
+                                feature_column_dtypes[idx]
+                                if isinstance(feature_column_dtypes, (list, tuple))
+                                else feature_column_dtypes,
+                                assert_feature_columns_not_empty=True,
+                            )
+                            for idx in range(len(feature_columns))
+                        ]
                 yield (features_tensor, label_tensor)
 
         return TorchIterableDataset(make_generator)
@@ -2247,10 +2255,10 @@ class Dataset(Generic[T]):
     def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
         """Convert this dataset into a single Pandas DataFrame.
 
-        This is only supported for datasets convertible to Arrow records. An
-        error is raised if the number of records exceeds the provided limit.
-        Note that you can use ``.limit()`` on the dataset beforehand to
-        truncate the dataset manually.
+        This is only supported for datasets convertible to Arrow or Pandas
+        records. An error is raised if the number of records exceeds the
+        provided limit. Note that you can use ``.limit()`` on the dataset
+        beforehand to truncate the dataset manually.
 
         Time complexity: O(dataset size)
 
@@ -2269,10 +2277,10 @@ class Dataset(Generic[T]):
                 "Use ds.limit(N).to_pandas().".format(limit)
             )
         blocks = self.get_internal_block_refs()
-        output = DelegatingArrowBlockBuilder()
+        output = DelegatingBlockBuilder()
         for block in blocks:
             output.add_block(ray.get(block))
-        return output.build().to_pandas()
+        return BlockAccessor.for_block(output.build()).to_pandas()
 
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
@@ -2330,7 +2338,7 @@ class Dataset(Generic[T]):
         """
         blocks: List[ObjectRef[Block]] = self._blocks.get_blocks()
 
-        if self._is_arrow_dataset():
+        if self._dataset_format() == "arrow":
             # Zero-copy path.
             return blocks
 
@@ -2379,7 +2387,7 @@ class Dataset(Generic[T]):
                     raise StopIteration
                 self._ds._set_epoch(self._i)
                 self._i += 1
-                return lambda: self._ds
+                return lambda: self._ds.force_reads()
 
         class Iterable:
             def __init__(self, ds: "Dataset[T]"):
@@ -2458,7 +2466,8 @@ class Dataset(Generic[T]):
                 blocks = self._splits.pop(0)
 
                 def gen():
-                    return Dataset(blocks, self._epoch, outer_stats)
+                    ds = Dataset(blocks, self._epoch, outer_stats)
+                    return ds
 
                 return gen
 
@@ -2486,6 +2495,18 @@ class Dataset(Generic[T]):
             A list of references to this dataset's blocks.
         """
         return self._blocks.get_blocks()
+
+    @DeveloperAPI
+    def force_reads(self) -> "Dataset[T]":
+        """Force full evaluation of the blocks of this dataset.
+
+        This can be used to read all blocks into memory. By default, Datasets
+        doesn't read blocks from the datasource until the first transform.
+        """
+        blocks = self.get_internal_block_refs()
+        bar = ProgressBar("Force reads", len(blocks))
+        bar.block_until_complete(blocks)
+        return self
 
     @DeveloperAPI
     def stats(self) -> str:
@@ -2555,6 +2576,91 @@ class Dataset(Generic[T]):
         return Dataset(left, self._epoch, self._stats), Dataset(
             right, self._epoch, self._stats
         )
+
+    def _dataset_format(self) -> str:
+        """Determine the format of the dataset. Possible values are: "arrow",
+        "pandas", "simple".
+
+        This may block; if the schema is unknown, this will synchronously fetch
+        the schema for the first block.
+        """
+        # We need schema to properly validate, so synchronously
+        # fetch it if necessary.
+        schema = self.schema(fetch_if_missing=True)
+        if schema is None:
+            raise ValueError(
+                "Dataset is empty or cleared, can't determine the format of "
+                "the dataset."
+            )
+
+        try:
+            import pyarrow as pa
+
+            if isinstance(schema, pa.Schema):
+                return "arrow"
+        except ModuleNotFoundError:
+            pass
+        from ray.data.impl.pandas_block import PandasBlockSchema
+
+        if isinstance(schema, PandasBlockSchema):
+            return "pandas"
+        return "simple"
+
+    def _aggregate_on(
+        self, agg_cls: type, on: Union[KeyFn, List[KeyFn]], *args, **kwargs
+    ):
+        """Helper for aggregating on a particular subset of the dataset.
+
+        This validates the `on` argument, and converts a list of column names
+        or lambdas to a multi-aggregation. A null `on` results in a
+        multi-aggregation on all columns for an Arrow Dataset, and a single
+        aggregation on the entire row for a simple Dataset.
+        """
+        aggs = self._build_multicolumn_aggs(agg_cls, on, *args, **kwargs)
+        return self.aggregate(*aggs)
+
+    def _build_multicolumn_aggs(
+        self,
+        agg_cls: type,
+        on: Union[KeyFn, List[KeyFn]],
+        skip_cols: Optional[List[str]] = None,
+        *args,
+        **kwargs,
+    ):
+        """Build set of aggregations for applying a single aggregation to
+        multiple columns.
+        """
+
+        # Expand None into an aggregation for each column.
+        if on is None:
+            try:
+                dataset_format = self._dataset_format()
+            except ValueError:
+                dataset_format = None
+            if dataset_format in ["arrow", "pandas"]:
+                # This should be cached from the ._dataset_format() check, so we
+                # don't fetch and we assert that the schema is not None.
+                schema = self.schema(fetch_if_missing=False)
+                if not skip_cols:
+                    skip_cols = []
+                if len(schema.names) > 0:
+                    on = [col for col in schema.names if col not in skip_cols]
+
+        if not isinstance(on, list):
+            on = [on]
+        return [agg_cls(on_, *args, **kwargs) for on_ in on]
+
+    def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
+        if len(result) == 1:
+            if isinstance(result, tuple):
+                return result[0]
+            else:
+                # NOTE (kfstorm): We cannot call `result[0]` directly on
+                # `PandasRow` because indexing a column with position is not
+                # supported by pandas.
+                return list(result.values())[0]
+        else:
+            return result
 
     def __repr__(self) -> str:
         schema = self.schema()
@@ -2662,6 +2768,7 @@ def _sliding_window(iterable: Iterable, n: int):
 def _split_block(
     block: Block, meta: BlockMetadata, count: int, return_right_half: bool
 ) -> (Block, BlockMetadata, Optional[Block], Optional[BlockMetadata]):
+    stats = BlockExecStats.builder()
     block = BlockAccessor.for_block(block)
     logger.debug("Truncating last block to size: {}".format(count))
     b0 = block.slice(0, count, copy=True)
@@ -2671,7 +2778,7 @@ def _split_block(
         size_bytes=a0.size_bytes(),
         schema=meta.schema,
         input_files=meta.input_files,
-        exec_stats=BlockExecStats.TODO,
+        exec_stats=stats.build(),
     )
     if return_right_half:
         b1 = block.slice(count, block.num_rows(), copy=True)
@@ -2681,9 +2788,21 @@ def _split_block(
             size_bytes=a1.size_bytes(),
             schema=meta.schema,
             input_files=meta.input_files,
-            exec_stats=BlockExecStats.TODO,
+            exec_stats=stats.build(),
         )
     else:
         b1 = None
         m1 = None
     return b0, m0, b1, m1
+
+
+def _do_write(
+    ds: Datasource,
+    ctx: DatasetContext,
+    blocks: List[Block],
+    meta: List[BlockMetadata],
+    write_args: dict,
+) -> List[ObjectRef[WriteResult]]:
+    write_args = _unwrap_s3_filesystem_workaround(write_args)
+    DatasetContext._set_current(ctx)
+    return ds.do_write(blocks, meta, **write_args)

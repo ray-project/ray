@@ -28,6 +28,14 @@ def env_bool(key, default):
     return default
 
 
+# Whether event logging to driver is enabled. Set to 0 to disable.
+AUTOSCALER_EVENTS = env_integer("RAY_SCHEDULER_EVENTS", 1)
+
+# Internal kv keys for storing monitor debug status.
+DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
+DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
+DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
+
 ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless
@@ -46,6 +54,12 @@ REDIS_MINIMUM_MEMORY_BYTES = 10 ** 7
 # Above this number of bytes, raise an error by default unless the user sets
 # RAY_ALLOW_SLOW_STORAGE=1. This avoids swapping with large object stores.
 REQUIRE_SHM_SIZE_THRESHOLD = 10 ** 10
+# Mac with 16GB memory has degraded performance when the object store size is
+# greater than 2GB.
+# (see https://github.com/ray-project/ray/issues/20388 for details)
+# The workaround here is to limit capacity to 2GB for Mac by default,
+# and raise error if the capacity is overwritten by user.
+MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT = 2 * 2 ** 30
 # If a user does not specify a port for the primary Ray service,
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
@@ -56,7 +70,7 @@ RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
-REDIS_KEY_DASHBOARD = "dashboard"
+DASHBOARD_ADDRESS = "dashboard"
 PROMETHEUS_SERVICE_DISCOVERY_FILE = "prom_metrics_service_discovery.json"
 # Default resource requirements for actors when no resource requirements are
 # specified.
@@ -160,11 +174,9 @@ RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
 REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 
 # Number of attempts to ping the Redis server. See
-# `services.py:wait_for_redis_to_start`.
+# `services.py::wait_for_redis_to_start()` and
+# `services.py::create_redis_client()`
 START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 16)
-
-# Only unpickle and run exported functions from the same job if it's true.
-ISOLATE_EXPORTS = env_bool("RAY_ISOLATE_EXPORTS", True)
 
 LOGGER_FORMAT = "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
 LOGGER_FORMAT_HELP = f"The logging format. default='{LOGGER_FORMAT}'"
@@ -177,6 +189,15 @@ LOGGER_LEVEL_HELP = (
 
 LOGGING_ROTATE_BYTES = 512 * 1024 * 1024  # 512MB.
 LOGGING_ROTATE_BACKUP_COUNT = 5  # 5 Backup files at max.
+
+LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE = "RAY_LOG_TO_STDERR"
+# Logging format when logging stderr. This should be formatted with the
+# component before setting the formatter, e.g. via
+#   format = LOGGER_FORMAT_STDERR.format(component="dashboard")
+#   handler.setFormatter(logging.Formatter(format))
+LOGGER_FORMAT_STDERR = (
+    "%(asctime)s\t%(levelname)s ({component}) %(filename)s:%(lineno)s -- %(message)s"
+)
 
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
@@ -291,15 +312,16 @@ CALL_STACK_LINE_DELIMITER = " | "
 GRPC_CPP_MAX_MESSAGE_SIZE = 100 * 1024 * 1024
 
 # Internal kv namespaces
-KV_NAMESPACE_DASHBOARD = "dashboard"
-KV_NAMESPACE_SESSION = "session"
-KV_NAMESPACE_TRACING = "tracing"
-KV_NAMESPACE_PDB = "ray_pdb"
-KV_NAMESPACE_HEALTHCHECK = "healthcheck"
-KV_NAMESPACE_JOB = "job"
+KV_NAMESPACE_DASHBOARD = b"dashboard"
+KV_NAMESPACE_SESSION = b"session"
+KV_NAMESPACE_TRACING = b"tracing"
+KV_NAMESPACE_PDB = b"ray_pdb"
+KV_NAMESPACE_HEALTHCHECK = b"healthcheck"
+KV_NAMESPACE_JOB = b"job"
+KV_NAMESPACE_CLUSTER = b"cluster"
 # TODO: Set package for runtime env
 # We need to update ray client for this since runtime env use ray client
 # This might introduce some compatibility issues so leave it here for now.
 KV_NAMESPACE_PACKAGE = None
-KV_NAMESPACE_SERVE = "serve"
-KV_NAMESPACE_FUNCTION_TABLE = "fun"
+KV_NAMESPACE_SERVE = b"serve"
+KV_NAMESPACE_FUNCTION_TABLE = b"fun"

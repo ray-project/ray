@@ -36,6 +36,9 @@ parser.add_argument(
     "--redis-address", required=True, type=str, help="the address to use for Redis"
 )
 parser.add_argument(
+    "--gcs-address", required=True, type=str, help="the address to use for GCS"
+)
+parser.add_argument(
     "--redis-password",
     required=False,
     type=str,
@@ -125,13 +128,6 @@ parser.add_argument(
     help="The computed hash of the runtime env for this worker.",
 )
 parser.add_argument(
-    "--worker-shim-pid",
-    required=False,
-    type=int,
-    default=0,
-    help="The PID of the process for setup worker runtime env.",
-)
-parser.add_argument(
     "--startup-token",
     required=True,
     type=int,
@@ -188,6 +184,7 @@ if __name__ == "__main__":
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
         metrics_agent_port=args.metrics_agent_port,
+        gcs_address=args.gcs_address,
     )
 
     node = ray.node.Node(
@@ -202,7 +199,6 @@ if __name__ == "__main__":
         node,
         mode=mode,
         runtime_env_hash=args.runtime_env_hash,
-        worker_shim_pid=args.worker_shim_pid,
         startup_token=args.startup_token,
         ray_debugger_external=args.ray_debugger_external,
     )

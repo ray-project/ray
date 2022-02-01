@@ -81,6 +81,10 @@ if __name__ == "__main__":
     from ray.train import Trainer
 
     trainer = Trainer(backend="tensorflow", num_workers=4)
+
+    # For GPU Training, set `use_gpu` to True.
+    # trainer = Trainer(backend="tensorflow", num_workers=4, use_gpu=True)
+
     trainer.start()
     results = trainer.run(train_func_distributed)
     trainer.shutdown()
