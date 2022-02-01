@@ -1259,37 +1259,10 @@ def deploy_group(deployment_list: List[Tuple[Deployment, Dict]],
             non-existent option.
     """
 
-
-    # TODO: Escalate this function to the Ray dashboard
-
-    # Apply options to deployments, store results in updated_deployments
-    # updated_deployments: List[Deployment] = []
-    # for deployment, options_dict in deployment_list:
-    #     if not isinstance(deployment, Deployment):
-    #         error_msg = (f"The deployment {deployment} should be a "
-    #                         f"Deployment class object. Instead, it was a "
-    #                         f"{type(deployment)} type. Make sure this "
-    #                         f"object is a class or function decorated with "
-    #                         f"@serve.deployment.")
-    #         logger.error(error_msg)
-    #         raise TypeError(error_msg)
-
-    #     try:
-    #         updated_deployment = deployment.options(**options_dict)
-    #     except TypeError as e:
-    #         error_msg = (f"Deployment {deployment.name} contained an "
-    #                         f"invalid option.")
-    #         logger.error(error_msg)
-    #         raise TypeError(error_msg) from e
-        
-    #     updated_deployments.append(updated_deployment)
-
     updated_deployments = [d for d, _ in deployment_list]
-    print("\ncheck\n", updated_deployments)
 
     deployment_args_list = []
     for deployment in updated_deployments:
-        print(f"\nhere are init kwargs: {deployment.init_kwargs}\n")
         deployment_args_list.append(
             prepare_deployment(
                 deployment._name,
@@ -1306,7 +1279,6 @@ def deploy_group(deployment_list: List[Tuple[Deployment, Dict]],
     
     controller = _get_global_client()._controller
     update_goals = ray.get(controller.deploy_group.remote(deployment_args_list))
-    print("\nfinished with update goals\n")
 
     # This section is adapted from api.py's Client's deploy
     for i in range(len(updated_deployments)):
