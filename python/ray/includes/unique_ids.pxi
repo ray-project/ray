@@ -325,6 +325,7 @@ cdef class ClientActorRef(ActorID):
 
     def __init__(self, id: Union[bytes, concurrent.futures.Future]):
         self._mutex = threading.Lock()
+        self._worker = client.ray.get_context().client_worker
         if isinstance(id, bytes):
             self._set_id(id)
         elif isinstance(id, Future):
@@ -333,13 +334,7 @@ cdef class ClientActorRef(ActorID):
             raise TypeError("Unexpected type for id {}".format(id))
 
     def __dealloc__(self):
-        if client is None or client.ray is None:
-            # The client package or client.ray object might be set
-            # to None when the script exits. Should be safe to skip
-            # call_release in this case, since the client should have already
-            # disconnected at this point.
-            return
-        if client.ray.is_connected():
+        if self._connected():
             try:
                 self._wait_for_id()
             # cython would suppress this exception as well, but it tries to
@@ -352,7 +347,7 @@ cdef class ClientActorRef(ActorID):
                     "a method on the actor reference before its destructor "
                     "is run.")
             if not self.data.IsNil():
-                client.ray.call_release(self.id)
+                self._worker.call_release(self.id)
 
     def binary(self):
         self._wait_for_id()
@@ -381,7 +376,7 @@ cdef class ClientActorRef(ActorID):
     cdef _set_id(self, id):
         check_id(id, CActorID.Size())
         self.data = CActorID.FromBinary(<c_string>id)
-        client.ray.call_retain(id)
+        self._worker.call_retain(id)
 
     cdef _wait_for_id(self, timeout=None):
         if self._id_future:
@@ -390,6 +385,11 @@ cdef class ClientActorRef(ActorID):
                     self._set_id(self._id_future.result(timeout=timeout))
                     self._id_future = None
 
+    def _connected(self) -> bool:
+        try:
+            return self._worker is not None and self._worker.is_connected()
+        except Exception:
+            return False
 
 cdef class FunctionID(UniqueID):
 
