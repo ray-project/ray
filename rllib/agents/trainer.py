@@ -379,7 +379,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     "always_attach_evaluation_results": False,
     #
     #
-    "keep_per_episode_custom_metrics": False,
+    "keep_per_episode_custom_metrics": True,
 
     # === Advanced Rollout Settings ===
     # Use a background thread for sampling (slightly off-policy, usually not
@@ -1309,7 +1309,7 @@ class Trainer(Trainable):
                 iters = duration if unit == "episodes" else 1
                 for _ in range(iters):
                     num_ts_run += len(self.workers.local_worker().sample())
-                metrics = collect_metrics(self.workers.local_worker())
+                metrics = collect_metrics(self.workers.local_worker(), keep_custom_metrics=self.config["keep_per_episode_custom_metrics"])
 
             # Evaluation worker set only has local worker.
             elif self.config["evaluation_num_workers"] == 0:
@@ -1360,6 +1360,7 @@ class Trainer(Trainable):
                 metrics = collect_metrics(
                     self.evaluation_workers.local_worker(),
                     self.evaluation_workers.remote_workers(),
+                    keep_custom_metrics=self.config["keep_per_episode_custom_metrics"]
                 )
             metrics["timesteps_this_iter"] = num_ts_run
 
@@ -2958,7 +2959,7 @@ class Trainer(Trainable):
             -self.config["metrics_num_episodes_for_smoothing"] :
         ]
         results["sampler_results"] = summarize_episodes(
-            episodes, orig_episodes, self.config["keep_per_episode_custom_config"]
+            episodes, orig_episodes, self.config["keep_per_episode_custom_metrics"]
         )
         # TODO: Don't dump sampler results into top-level.
         results.update(results["sampler_results"])
