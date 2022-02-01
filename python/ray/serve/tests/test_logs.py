@@ -2,8 +2,10 @@ import time
 import pytest
 
 from ray import serve
-from ray.serve.deployment_state import (SLOW_STARTUP_WARNING_S,
-                                        SLOW_STARTUP_WARNING_PERIOD_S)
+from ray.serve.deployment_state import (
+    SLOW_STARTUP_WARNING_S,
+    SLOW_STARTUP_WARNING_PERIOD_S,
+)
 
 
 def test_slow_allocation_warning(serve_instance, capsys):
@@ -16,10 +18,12 @@ def test_slow_allocation_warning(serve_instance, capsys):
     num_replicas = 2
     D.options(num_replicas=num_replicas).deploy(_blocking=False)
 
-    expected_warning = (f"Deployment '{D.name}' has "
-                        f"{num_replicas} replicas that have taken "
-                        f"more than {SLOW_STARTUP_WARNING_S}s "
-                        f"to be scheduled.")
+    expected_warning = (
+        f"Deployment '{D.name}' has "
+        f"{num_replicas} replicas that have taken "
+        f"more than {SLOW_STARTUP_WARNING_S}s "
+        f"to be scheduled."
+    )
 
     # wait long enough for the warning to be printed
     # with a small grace period
@@ -47,10 +51,12 @@ def test_slow_initialization_warning(serve_instance, capsys):
     num_replicas = 4
     D.options(num_replicas=num_replicas).deploy(_blocking=False)
 
-    expected_warning = (f"Deployment '{D.name}' has "
-                        f"{num_replicas} replicas that have taken "
-                        f"more than {SLOW_STARTUP_WARNING_S}s "
-                        f"to initialize.")
+    expected_warning = (
+        f"Deployment '{D.name}' has "
+        f"{num_replicas} replicas that have taken "
+        f"more than {SLOW_STARTUP_WARNING_S}s "
+        f"to initialize."
+    )
 
     # wait long enough for the warning to be printed
     # with a small grace period
@@ -79,6 +85,8 @@ def test_deployment_init_error_logging(serve_instance, capsys):
     assert "Exception in deployment 'D'" in captured.err
     assert "ZeroDivisionError" in captured.err
 
+
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))
