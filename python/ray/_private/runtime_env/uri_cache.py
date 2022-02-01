@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Callable
+from typing import Set, Callable
 
 default_logger = logging.getLogger(__name__)
 
@@ -27,18 +27,21 @@ class URICache:
 
     """
 
-    def __init__(
-            self,
-            delete_fn: Callable[[str, logging.Logger], int] = lambda x, y: 0,
-            max_total_size_bytes: int = DEFAULT_MAX_URI_CACHE_SIZE_BYTES,
-            debug_mode: bool = False):
+    def __init__(self,
+                 delete_fn: Callable[[str, logging.Logger],
+                                     int] = lambda uri, logger: 0,
+                 max_total_size_bytes: int = DEFAULT_MAX_URI_CACHE_SIZE_BYTES,
+                 debug_mode: bool = False):
         # Maps URIs to the size in bytes of their corresponding disk contents.
-        self._used_uris: Dict[str, int] = dict()
-        self._unused_uris: Dict[str, int] = dict()
+        self._used_uris: Set[str] = set()
+        self._unused_uris: Set[str] = set()
         self._delete_fn = delete_fn
+
+        # Total size of both used and unused URIs in the cache.
+        self._total_size_bytes = 0
         self.max_total_size_bytes = max_total_size_bytes
 
-        # Used in `self._check_valid()`` for testing.
+        # Used in `self._check_valid()` for testing.
         self._debug_mode = debug_mode
 
     def mark_unused(self, uri: str, logger: logging.Logger = default_logger):
@@ -46,9 +49,9 @@ class URICache:
         if uri not in self._used_uris:
             logger.debug(f"URI {uri} is already unused.")
         else:
-            self._unused_uris[uri] = self._used_uris[uri]
-            del self._used_uris[uri]
-        logger.debug(f"Marked uri {uri} unused.")
+            self._unused_uris.add(uri)
+            self._used_uris.remove(uri)
+        logger.debug(f"Marked URI {uri} unused.")
         self._evict_if_needed(logger)
         self._check_valid()
 
@@ -57,10 +60,10 @@ class URICache:
         if uri in self._used_uris:
             return
         elif uri in self._unused_uris:
-            self._used_uris[uri] = self._unused_uris[uri]
-            del self._unused_uris[uri]
+            self._used_uris.add(uri)
+            self._unused_uris.remove(uri)
         else:
-            raise ValueError(f"Got request to mark URI {uri} unused, but this "
+            raise ValueError(f"Got request to mark URI {uri} used, but this "
                              "URI is not present in the cache.")
         logger.debug(f"Marked URI {uri} used.")
         self._check_valid()
@@ -71,23 +74,17 @@ class URICache:
             logger: logging.Logger = default_logger):
         """Add a URI to the cache and mark it as in use."""
         if uri in self._unused_uris:
-            assert size_bytes == self._unused_uris[uri], (
-                f"Added URI {uri} with size {size_bytes}, which"
-                " doesn't match the existing size "
-                f"{self._unused_uris[uri]}.")
-            del self._unused_uris[uri]
-        if uri in self._used_uris:
-            assert size_bytes == self._used_uris[uri], (
-                f"Added URI {uri} with size {size_bytes}, which"
-                " doesn't match the existing size "
-                f"{self._used_uris[uri]}.")
-        self._used_uris[uri] = size_bytes
+            self._unused_uris.remove(uri)
+
+        self._used_uris.add(uri)
+        self._total_size_bytes += size_bytes
+
         self._evict_if_needed(logger)
         self._check_valid()
         logger.debug(f"Added URI {uri} with size {size_bytes}")
 
     def get_total_size_bytes(self) -> int:
-        return sum(self._used_uris.values()) + sum(self._unused_uris.values())
+        return self._total_size_bytes
 
     def _evict_if_needed(self, logger: logging.Logger = default_logger):
         """Evict unused URIs (if they exist) until total size <= max size."""
@@ -95,13 +92,14 @@ class URICache:
                and self.get_total_size_bytes() > self.max_total_size_bytes):
             # TODO(architkulkarni): Evict least recently used URI instead
             arbitrary_unused_uri = next(iter(self._unused_uris))
-            del self._unused_uris[arbitrary_unused_uri]
-            self._delete_fn(arbitrary_unused_uri, logger)
+            self._unused_uris.remove(arbitrary_unused_uri)
+            num_bytes_deleted = self._delete_fn(arbitrary_unused_uri, logger)
+            self._total_size_bytes -= num_bytes_deleted
 
     def _check_valid(self):
         """(Debug mode only) Check "used" and "unused" sets are disjoint."""
         if self._debug_mode:
-            assert self._used_uris.keys() & self._unused_uris.keys() == set()
+            assert self._used_uris & self._unused_uris == set()
 
     def __contains__(self, uri):
         return uri in self._used_uris or uri in self._unused_uris

@@ -284,7 +284,9 @@ def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
 
 class TestURICache:
     def test_zero_cache_size(self):
-        cache = URICache(max_total_size_bytes=0, debug_mode=True)
+        uris_to_sizes = {"5": 5, "3": 3}
+        delete_fn = (lambda uri, logger: uris_to_sizes[uri])
+        cache = URICache(delete_fn, max_total_size_bytes=0, debug_mode=True)
         cache.add("5", 5)
         assert cache.get_total_size_bytes() == 5
         cache.mark_unused("5")
@@ -297,7 +299,9 @@ class TestURICache:
         assert cache.get_total_size_bytes() == 0
 
     def test_nonzero_cache_size(self):
-        cache = URICache(max_total_size_bytes=10, debug_mode=True)
+        uris_to_sizes = {"a": 4, "b": 4, "c": 4}
+        delete_fn = (lambda uri, logger: uris_to_sizes[uri])
+        cache = URICache(delete_fn, max_total_size_bytes=10, debug_mode=True)
         cache.add("a", 4)
         cache.add("b", 4)
         cache.mark_unused("a")
@@ -314,7 +318,9 @@ class TestURICache:
             cache.mark_used("nonadded_uri")
 
     def test_mark_used(self):
-        cache = URICache(max_total_size_bytes=10, debug_mode=True)
+        uris_to_sizes = {"a": 3, "b": 3, "big": 300}
+        delete_fn = (lambda uri, logger: uris_to_sizes[uri])
+        cache = URICache(delete_fn, max_total_size_bytes=10, debug_mode=True)
         cache.add("a", 3)
         cache.add("b", 3)
         cache.mark_unused("a")
@@ -333,7 +339,9 @@ class TestURICache:
         assert cache.get_total_size_bytes() == 3
 
     def test_many_URIs(self):
-        cache = URICache(debug_mode=True)
+        uris_to_sizes = {str(i): i for i in range(1000)}
+        delete_fn = (lambda uri, logger: uris_to_sizes[uri])
+        cache = URICache(delete_fn, debug_mode=True)
         for i in range(1000):
             cache.add(str(i), i)
         for i in range(1000):
@@ -343,10 +351,12 @@ class TestURICache:
 
     def test_delete_fn_called(self):
         num_delete_fn_calls = 0
+        uris_to_sizes = {"a": 8, "b": 6, "c": 4, "d": 20}
 
-        def delete_fn(*wargs, **kwargs):
+        def delete_fn(uri, logger):
             nonlocal num_delete_fn_calls
             num_delete_fn_calls += 1
+            return uris_to_sizes[uri]
 
         cache = URICache(delete_fn, max_total_size_bytes=10, debug_mode=True)
         cache.add("a", 8)
