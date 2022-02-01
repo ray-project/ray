@@ -321,6 +321,7 @@ class Workflow(Generic[T]):
         self._ref: Optional[WorkflowStaticRef] = None
         # We save the reduce for later use in ray client
         self._original_reduce = self.__reduce__
+
         def wf_reduce(self):
             """Serialization helper for workflow.
 
@@ -337,6 +338,7 @@ class Workflow(Generic[T]):
                     "remote, or stored in Ray objects."
                 )
             return Workflow.from_ref, (self._ref,)
+
         self.__reduce__ = wf_reduce
 
     @property
@@ -502,19 +504,28 @@ class Workflow(Generic[T]):
 
         self._step_id = None
         if ray._private.client_mode_hook.is_client_mode_enabled:
-            self.__reduce__, self._original_reduce = self._original_reduce, self.__reduce__
+            self.__reduce__, self._original_reduce = (
+                self._original_reduce,
+                self.__reduce__,
+            )
+
             @ray.remote
             def client_mode_run(workflow, workflow_id, metadata, storage):
                 from ray.workflow.execution import run
+
                 ray.workflow.storage.set_global_storage(storage)
                 return run(workflow, workflow_id, metadata)
 
             ret = client_mode_run.remote(
-                self, workflow_id, metadata,
-                ray.workflow.storage.get_global_storage())
-            self.__reduce__, self._original_reduce = self._original_reduce, self.__reduce__
+                self, workflow_id, metadata, ray.workflow.storage.get_global_storage()
+            )
+            self.__reduce__, self._original_reduce = (
+                self._original_reduce,
+                self.__reduce__,
+            )
             return ray.get(ret)
         else:
+            from ray.workflow.execution import run
             return run(self, workflow_id, metadata)
 
 

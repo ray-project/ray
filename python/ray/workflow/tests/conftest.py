@@ -12,6 +12,7 @@ import uuid
 from ray.workflow.tests import utils
 from ray.cluster_utils import Cluster
 
+
 @contextmanager
 def aws_credentials():
     old_env = os.environ
@@ -102,7 +103,7 @@ def _workflow_start(storage_url, shared, client_mode, kwargs):
 def workflow_start_regular(storage_type, client_mode, request):
     param = getattr(request, "param", {})
     with storage(storage_type) as storage_url, _workflow_start(
-            storage_url, False, client_mode, param
+        storage_url, False, client_mode, param
     ) as res:
         yield res
 
@@ -118,7 +119,7 @@ def reset_workflow():
 def workflow_start_regular_shared(storage_type, client_mode, request):
     param = getattr(request, "param", {})
     with storage(storage_type) as storage_url, _workflow_start(
-            storage_url, True, client_mode, param
+        storage_url, True, client_mode, param
     ) as res:
         yield res
 
