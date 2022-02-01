@@ -244,18 +244,7 @@ class Client:
             self._controller.deploy.remote(**controller_deploy_args)
         )
 
-        tag = f"component=serve deployment={name}"
-
-        if updating:
-            msg = f"Updating deployment '{name}'"
-            if version is not None:
-                msg += f" to version '{version}'"
-            logger.info(f"{msg}. {tag}")
-        else:
-            logger.info(
-                f"Deployment '{name}' is already at version "
-                f"'{version}', not updating. {tag}"
-            )
+        log_deploy_update_status(name, version, updating)
 
         if _blocking:
             self._wait_for_goal(goal_id)
@@ -1250,24 +1239,12 @@ def deploy_group(deployment_list: List[Tuple[Deployment, Dict]],
         controller = _get_global_client()._controller
     update_goals = ray.get(controller.deploy_group.remote(deployment_args_list))
 
-    # This section is adapted from api.py's Client's deploy
     for i in range(len(updated_deployments)):
         deployment = updated_deployments[i]
         name, version = deployment._name, deployment._version
         updating = update_goals[i][1]
 
-        tag = f"component=serve deployment={name}"
-
-        if updating:
-            msg = f"Updating deployment '{name}'"
-            if version is not None:
-                msg += f" to version '{version}'"
-            logger.info(f"{msg}. {tag}")
-        else:
-            logger.info(
-                f"Deployment '{name}' is already at version "
-                f"'{version}', not updating. {tag}"
-            )
+        log_deploy_update_status(name, version, updating)
     
     # This section is also adapted from api.py's Client's deploy
     nonblocking_goal_ids = []
@@ -1366,3 +1343,17 @@ def prepare_deployment(
     }
 
     return controller_deploy_args
+
+def log_deploy_update_status(name: str, version: str, updating: bool):
+    tag = f"component=serve deployment={name}"
+
+    if updating:
+        msg = f"Updating deployment '{name}'"
+        if version is not None:
+            msg += f" to version '{version}'"
+        logger.info(f"{msg}. {tag}")
+    else:
+        logger.info(
+            f"Deployment '{name}' is already at version "
+            f"'{version}', not updating. {tag}"
+        )
