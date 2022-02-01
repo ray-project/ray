@@ -7,7 +7,6 @@ import time
 
 from pydantic.error_wrappers import ValidationError
 import pytest
-from ray.serve.api import Deployment
 import requests
 
 import ray
@@ -16,7 +15,6 @@ from ray.exceptions import RayTaskError
 from ray import serve
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import get_random_letters
-from ray.serve.controller import ServeController
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
@@ -1196,68 +1194,64 @@ def test_http_proxy_request_cancellation(serve_instance):
 
 
 class TestDeployGroup:
-
     @serve.deployment
     def f(request=None):
         return "f reached"
-    
+
     @serve.deployment
     def g(request=None):
         return "g reached"
-    
+
     @serve.deployment
     class C:
         async def __call__(self):
             return "C reached"
-    
+
     @serve.deployment
     class D:
         async def __call__(self):
             return "D reached"
-    
+
     @serve.deployment
     class E:
-
         async def __init__(self):
             self.F_handle = serve.get_deployment("F").get_handle()
-        
+
         async def __call__(self):
             return await self.F_handle.request_output.remote()
 
         async def request_output(self):
             return await self.F_handle.get_output.remote()
-        
+
         async def get_output(self):
             return "E reached"
 
     @serve.deployment
     class F:
-
         async def __init__(self):
             self.E_handle = serve.get_deployment("E").get_handle()
-        
+
         async def __call__(self):
             return await self.E_handle.request_output.remote()
-        
+
         async def request_output(self):
             return await self.E_handle.get_output.remote()
-        
+
         async def get_output(self):
-            return "F reached"  
-    
+            return "F reached"
+
     deployments = [f, g, C, D]
     responses = ["f reached", "g reached", "C reached", "D reached"]
 
-    
     def test_basic_deploy_group(self, serve_instance):
         # controller: ServeController = serve_instance._controller
 
         deployment_list = [(d, {}) for d in self.deployments]
         serve.deploy_group(deployment_list)
-        
+
         for deployment, response in zip(self.deployments, self.responses):
             assert ray.get(deployment.get_handle().remote()) == response
-    
+
     def test_mutual_handles(self, serve_instance):
         deployments = [self.E, self.F]
         responses = ["E reached", "F reached"]

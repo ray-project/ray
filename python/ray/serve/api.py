@@ -8,8 +8,7 @@ import re
 import time
 from dataclasses import dataclass
 from functools import wraps
-from typing import (Any, Callable, Dict, Optional, Tuple, Type, Union, List, 
-                    overload)
+from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, List, overload
 
 from fastapi import APIRouter, FastAPI
 from starlette.requests import Request
@@ -214,7 +213,7 @@ class Client:
         url: Optional[str] = None,
         _blocking: Optional[bool] = True,
     ) -> Optional[GoalId]:
-        
+
         controller_deploy_args = _get_deploy_args(
             name=name,
             deployment_def=deployment_def,
@@ -1172,9 +1171,11 @@ def list_deployments() -> Dict[str, Deployment]:
 
 
 @PublicAPI(stability="beta")
-def deploy_group(deployment_list: List[Tuple[Deployment, Dict]], 
-                 _blocking: bool=True,
-                 controller: ServeController=None) -> List[GoalId]:
+def deploy_group(
+    deployment_list: List[Tuple[Deployment, Dict]],
+    _blocking: bool = True,
+    controller: ServeController = None,
+) -> List[GoalId]:
     """
     Takes in a list of tuples that contain a deployment object and a
     dictionary of keyword arguments to apply that deployment via a
@@ -1188,7 +1189,7 @@ def deploy_group(deployment_list: List[Tuple[Deployment, Dict]],
             deploying or not.
         controller: the Serve controller to use when deploying the deployments.
             If None, uses the global_client's controller.
-    
+
     Raises:
         TypeError: if a non-deployment object is passed in as a deployment,
             or if the dictionary of options for a deployment contains a
@@ -1212,7 +1213,7 @@ def deploy_group(deployment_list: List[Tuple[Deployment, Dict]],
                 route_prefix=deployment.route_prefix,
             )
         )
-    
+
     if controller is None:
         controller = _get_global_client()._controller
     update_goals = ray.get(controller.deploy_group.remote(deployment_args_list))
@@ -1224,7 +1225,7 @@ def deploy_group(deployment_list: List[Tuple[Deployment, Dict]],
         updating = update_goals[i][1]
 
         tags.append(log_deploy_update_status(name, version, updating))
-    
+
     # This section is also adapted from api.py's Client's deploy
     nonblocking_goal_ids = []
     for i in range(len(updated_deployments)):
@@ -1237,8 +1238,9 @@ def deploy_group(deployment_list: List[Tuple[Deployment, Dict]],
             log_deploy_ready(name, version, url, tags[i])
         else:
             nonblocking_goal_ids.append(goal_id)
-    
+
     return nonblocking_goal_ids
+
 
 def _get_deploy_args(
     name: str,
@@ -1249,7 +1251,7 @@ def _get_deploy_args(
     config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
     prev_version: Optional[str] = None,
-    route_prefix: Optional[str] = None
+    route_prefix: Optional[str] = None,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed for
@@ -1293,11 +1295,10 @@ def _get_deploy_args(
             "because 'max_concurrent_queries' is less than "
             "'target_num_ongoing_requests_per_replica' now."
         )
-    
+
     controller_deploy_args = {
         "name": name,
-        "deployment_config_proto_bytes": 
-            deployment_config.to_proto_bytes(),
+        "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
         "replica_config": replica_config,
         "version": version,
         "prev_version": prev_version,
@@ -1306,6 +1307,7 @@ def _get_deploy_args(
     }
 
     return controller_deploy_args
+
 
 def log_deploy_update_status(name: str, version: str, updating: bool) -> str:
     tag = f"component=serve deployment={name}"
@@ -1320,8 +1322,9 @@ def log_deploy_update_status(name: str, version: str, updating: bool) -> str:
             f"Deployment '{name}' is already at version "
             f"'{version}', not updating. {tag}"
         )
-    
+
     return tag
+
 
 def log_deploy_ready(name: str, version: str, url: str, tag: str) -> None:
     if url is not None:
@@ -1333,17 +1336,16 @@ def log_deploy_ready(name: str, version: str, url: str, tag: str) -> None:
         f"{url_part}. {tag}"
     )
 
+
 def wait_for_goal(
     goal_id: Optional[GoalId],
     controller: ServeController,
-    timeout: Optional[float] = None
+    timeout: Optional[float] = None,
 ) -> bool:
     if goal_id is None:
         return True
 
-    ready, _ = ray.wait(
-        [controller.wait_for_goal.remote(goal_id)], timeout=timeout
-    )
+    ready, _ = ray.wait([controller.wait_for_goal.remote(goal_id)], timeout=timeout)
     # AsyncGoal could return exception if set, ray.get()
     # retrieves and throws it to user code explicitly.
     if len(ready) == 1:

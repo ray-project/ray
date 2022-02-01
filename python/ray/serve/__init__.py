@@ -7,7 +7,7 @@ try:
         deployment,
         get_deployment,
         list_deployments,
-        deploy_group
+        deploy_group,
     )
     from ray.serve.batching import batch
     from ray.serve.config import HTTPOptions

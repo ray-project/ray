@@ -357,11 +357,9 @@ class ServeController:
             self.endpoint_state.update_endpoint(name, endpoint_info)
 
         return goal_id, updating
-    
 
     def deploy_group(
-        self,
-        deployment_args_list: List[Dict]
+        self, deployment_args_list: List[Dict]
     ) -> List[Tuple[Optional[GoalId], bool]]:
         """
         Takes in a list of dictionaries that contain keyword arguments for the
@@ -373,7 +371,7 @@ class ServeController:
         update_goals: List[Tuple[Optional[GoalId], bool]] = []
         for deployment_args in deployment_args_list:
             update_goals.append(self.deploy(**deployment_args))
-        
+
         return update_goals
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
