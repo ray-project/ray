@@ -316,7 +316,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           self_node_id_.Binary(), local_resources.GetTotalResources().GetResourceMap(),
           *gcs_client_,
           [this]() {
-            if (RayConfig::instance().scheduler_report_primary_copy_bytes_only()) {
+            if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
               return local_object_manager_.GetPinnedBytes();
             } else {
               return object_manager_.GetUsedMemory();
