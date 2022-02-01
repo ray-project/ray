@@ -1309,7 +1309,10 @@ class Trainer(Trainable):
                 iters = duration if unit == "episodes" else 1
                 for _ in range(iters):
                     num_ts_run += len(self.workers.local_worker().sample())
-                metrics = collect_metrics(self.workers.local_worker(), keep_custom_metrics=self.config["keep_per_episode_custom_metrics"])
+                metrics = collect_metrics(
+                    self.workers.local_worker(),
+                    keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
+                )
 
             # Evaluation worker set only has local worker.
             elif self.config["evaluation_num_workers"] == 0:
@@ -1360,7 +1363,7 @@ class Trainer(Trainable):
                 metrics = collect_metrics(
                     self.evaluation_workers.local_worker(),
                     self.evaluation_workers.remote_workers(),
-                    keep_custom_metrics=self.config["keep_per_episode_custom_metrics"]
+                    keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
                 )
             metrics["timesteps_this_iter"] = num_ts_run
 
