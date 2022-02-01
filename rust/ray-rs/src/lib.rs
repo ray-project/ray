@@ -21,7 +21,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::{Mutex, Arc}, clone::Clone, os::raw::c_char,
     ops::{Deref, Drop}, marker::PhantomData,
-    mem::drop,
+    mem::drop, convert::TryInto,
 };
 
 use libloading::{Library, Symbol};
@@ -151,12 +151,14 @@ fn load_function_ptrs_from_library(lib: &Library) {
 }
 
 pub extern "C" fn rust_worker_execute(
-    _task_type: RayInt,
+    actor_ptr: *mut *mut std::os::raw::c_void,
+    task_type_int: i32,
     ray_function_info: RaySlice,
     args: *const *const DataValue,
     args_len: u64,
     return_values: RaySlice,
 ) {
+    let task_type = internal::parse_task_type(task_type_int);
     // TODO (jon-chuang): One should replace RustBuffer with RaySlice...
     // TODO (jon-chuang): Try to move unsafe into ray_rs_sys
     // Replace all size_t with u64?

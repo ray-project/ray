@@ -29,6 +29,7 @@ namespace internal {
 /// Execute remote functions by networking stream.
 msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
                                       const ArgsBufferList &args_buffer,
+                                      // This is wrong, this is a void ptr...
                                       msgpack::sbuffer *actor_ptr) {
   if (func_name.empty()) {
     throw std::invalid_argument("Task function name is empty");

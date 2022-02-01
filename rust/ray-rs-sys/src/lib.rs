@@ -9,9 +9,9 @@ include!(concat!(env!("OUT_DIR"), "/ray_rs_sys_bindgen.rs"));
 #[cfg(feature = "bazel")]
 include!(env!("BAZEL_BINDGEN_SOURCE"));
 
-use std::os::raw::*;
-use std::ffi::CString;
 use c_vec::CVec;
+use std::ffi::CString;
+use std::os::raw::*;
 
 #[cfg(not(feature = "bazel"))]
 mod proto;
@@ -39,13 +39,11 @@ impl std::fmt::Debug for ObjectID {
 impl ObjectID {
     fn new(ptr: *mut c_char) -> Self {
         // assert_eq!(ObjectID::size(), ActorID::size());
-        Self(
-            unsafe {
-                CVec::new_with_dtor(ptr, ID_ARRAY_LEN, |ptr| {
-                    libc::free(ptr as *mut c_void);
-                })
-            }
-        )
+        Self(unsafe {
+            CVec::new_with_dtor(ptr, ID_ARRAY_LEN, |ptr| {
+                libc::free(ptr as *mut c_void);
+            })
+        })
     }
 
     fn as_slice(&self) -> &[c_char] {
@@ -82,11 +80,12 @@ pub extern "C" fn rust_worker_execute_dummy(
 
 pub mod ray {
     use super::*;
+    pub use proto::TaskType;
     pub fn init_inner(
         is_driver: bool,
         f: MaybeExecuteCallback,
         // d: MaybeBufferDestructor,
-        argc_v: Option<(c_int, *const *const c_char)>
+        argc_v: Option<(c_int, *const *const c_char)>,
     ) {
         unsafe {
             let mut code_search_path = CString::new("").unwrap();
@@ -103,10 +102,12 @@ pub mod ray {
                 } else {
                     proto::WorkerType::WORKER
                 } as i32,
-                proto::Language::RUST as i32, NUM_WORKERS,
+                proto::Language::RUST as i32,
+                NUM_WORKERS,
                 code_search_path.as_ptr() as *mut c_char,
                 head_args.as_ptr() as *mut c_char,
-                argc, argv as *mut *mut c_char,
+                argc,
+                argv as *mut *mut c_char,
             );
             c_worker_Initialize();
         }
@@ -128,17 +129,14 @@ pub mod ray {
 pub mod util {
     use super::*;
     pub fn add_local_ref(id: &ObjectID) {
-        unsafe {
-            super::c_worker_AddLocalRef(id.as_ptr())
-        }
+        unsafe { super::c_worker_AddLocalRef(id.as_ptr()) }
     }
 
     pub fn remove_local_ref(id: &ObjectID) {
-        unsafe {
-            super::c_worker_RemoveLocalRef(id.as_ptr())
-        }
+        unsafe { super::c_worker_RemoveLocalRef(id.as_ptr()) }
     }
 
+    // TODO: convert this to std::fmt
     pub fn pretty_print_id(id: &ObjectID) -> String {
         id.as_slice()
             .iter()
@@ -152,16 +150,25 @@ pub mod util {
             super::c_worker_Log(std::ffi::CString::new(msg).unwrap().into_raw());
         }
     }
-//     pub fn fd_to_cstring(fd: RaySlice) -> CString {
-//         CString::from(fd.data as *c_char)
-//     }
+    //     pub fn fd_to_cstring(fd: RaySlice) -> CString {
+    //         CString::from(fd.data as *c_char)
+    //     }
 }
-
 
 pub mod internal {
     use super::*;
+    use protobuf::ProtobufEnum;
+
+    pub fn parse_task_type(i: i32) -> proto::TaskType {
+        ray::TaskType::from_i32(i).expect("Rust worker could not parse task type")
+    }
+
     // One can use Vec<&'a[u8]> in the function signature instead since SubmitTask is synchronous?
-    pub fn submit<'a>(maybe_actor_id: Option<&ActorID>, fn_name: CString, args: &[&[u8]]) -> ObjectID {
+    pub fn submit_task(
+        maybe_actor_id: Option<&ActorID>,
+        fn_name: CString,
+        args: &[&[u8]],
+    ) -> ObjectID {
         unsafe {
             // Create data
             let mut meta_vec = vec![0u8];
@@ -196,7 +203,7 @@ pub mod internal {
                 std::ptr::null_mut::<*const c_char>(),
                 data.len() as i32,
                 1,
-                obj_ids.as_mut_ptr()
+                obj_ids.as_mut_ptr(),
             );
 
             for &dv in data.iter() {
@@ -204,7 +211,7 @@ pub mod internal {
             }
 
             let id = ObjectID::new(obj_ids[0]);
-            println!("ObjectID: {:x?}", util::pretty_print_id(&id));
+            println!("ObjectID: {}", util::pretty_print_id(&id));
             id
         }
     }
@@ -223,7 +230,7 @@ pub mod internal {
                 data.as_ptr(),
                 1,
                 timeout,
-                d_value.as_ptr() as *mut *mut DataValue
+                d_value.as_ptr() as *mut *mut DataValue,
             );
             *d_value[0] as DataValue
         }
@@ -257,7 +264,7 @@ pub mod internal {
                 // data.as_ptr(),
                 // std::ptr::null_mut::<*mut c_char>(),
                 // data.len() as i32,
-                actor_ids.as_mut_ptr()
+                actor_ids.as_mut_ptr(),
             );
         }
 
@@ -268,19 +275,13 @@ pub mod internal {
         }
 
         let id = ActorID::new(actor_ids[0]);
-        println!("ActorID: {:x?}", util::pretty_print_id(&id));
+        println!("ActorID: {}", util::pretty_print_id(&id));
         id
-
     }
 }
 
 pub fn dv_as_slice<'a>(data: DataValue) -> &'a [u8] {
-    unsafe {
-        std::slice::from_raw_parts::<u8>(
-            (*data.data).p,
-            (*data.data).size as usize,
-        )
-    }
+    unsafe { std::slice::from_raw_parts::<u8>((*data.data).p, (*data.data).size as usize) }
 }
 
 #[cfg(test)]
@@ -291,13 +292,12 @@ pub mod test {
         let mut data_vec = vec![1u8, 2];
         let mut meta_vec = vec![3u8, 4];
         unsafe {
-            let data =
-                c_worker_AllocateDataValue(
-                    data_vec.as_ptr(),
-                    data_vec.len() as u64,
-                    meta_vec.as_ptr(),
-                    meta_vec.len() as u64,
-                );
+            let data = c_worker_AllocateDataValue(
+                data_vec.as_ptr(),
+                data_vec.len() as u64,
+                meta_vec.as_ptr(),
+                meta_vec.len() as u64,
+            );
             assert_eq!((*(*data).data).p, data_vec.as_mut_ptr());
             assert_eq!((*(*data).meta).p, meta_vec.as_mut_ptr());
             assert_eq!((*(*data).data).size, data_vec.len() as u64);
@@ -310,9 +310,7 @@ pub mod test {
     fn test_register_callback() {
         unsafe {
             assert_eq!(
-                c_worker_RegisterExecutionCallback(
-                    Some(rust_worker_execute_dummy)
-                ),
+                c_worker_RegisterExecutionCallback(Some(rust_worker_execute_dummy)),
                 1,
                 "Failed to register execute callback"
             );
@@ -343,21 +341,21 @@ pub mod test {
             // Create data
             let mut data_vec = vec![1u8, 2];
             let mut meta_vec = vec![3u8, 4];
-            let mut data = vec![
-                c_worker_AllocateDataValue(
-                    data_vec.as_ptr(),
-                    data_vec.len() as u64,
-                    meta_vec.as_ptr(),
-                    meta_vec.len() as u64,
-                )
-            ];
+            let mut data = vec![c_worker_AllocateDataValue(
+                data_vec.as_ptr(),
+                data_vec.len() as u64,
+                meta_vec.as_ptr(),
+                meta_vec.len() as u64,
+            )];
 
             let mut obj_ids = Vec::<*mut c_char>::new();
             obj_ids.push(std::ptr::null_mut() as *mut c_char);
 
             c_worker_Put(
                 obj_ids.as_mut_ptr(),
-                -1, data.as_mut_ptr(), data.len() as i32,
+                -1,
+                data.as_mut_ptr(),
+                data.len() as i32,
             );
 
             let id = ObjectID::new(obj_ids[0]);
@@ -367,8 +365,9 @@ pub mod test {
 
             c_worker_Get(
                 obj_ids.as_ptr() as *const *const c_char,
-                1, -1,
-                get_data.as_mut_ptr() as *mut *mut DataValue
+                1,
+                -1,
+                get_data.as_mut_ptr() as *mut *mut DataValue,
             );
 
             let slice = std::slice::from_raw_parts_mut::<u8>(
@@ -396,9 +395,5 @@ type BufferDestructor = extern "C" fn(*mut u8, u64);
 //
 // TODO: Doesn't need to be extern?
 pub extern "C" fn rust_raw_parts_dealloc(ptr: *mut u8, len: u64) {
-    unsafe {
-        std::ptr::drop_in_place(
-            std::ptr::slice_from_raw_parts_mut(ptr, len as usize)
-        )
-    }
+    unsafe { std::ptr::drop_in_place(std::ptr::slice_from_raw_parts_mut(ptr, len as usize)) }
 }

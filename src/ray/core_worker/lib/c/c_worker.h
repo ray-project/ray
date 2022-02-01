@@ -21,24 +21,48 @@ typedef struct RaySlice {
 } RaySlice;
 #endif
 
+// Rename BufferWrapper?
 typedef struct DataBuffer {
-  // TODO: replace with standard uint64_t here...
+  // TODO: replace with a less-headache-inducing uint64_t here...
   size_t size;
   const uint8_t *p;
 } DataBuffer;
 
+// Rename RayValueWrapper?
 typedef struct DataValue {
   struct DataBuffer *data;
   struct DataBuffer *meta;
 } DataValue;
 
 // TODO: Write detailed description of methods
-typedef void (*c_worker_ExecuteCallback)(RayInt task_type, RaySlice ray_function_info,
+
+
+///
+/// Public methods related to storing and retrieving objects.
+///
+
+/// Execute a NORMAL_TASK, ACTOR_TASK, or ACTOR_CREATION_TASK.
+///
+/// \param[in/out] actor_ptr ptr to an actor ptr. For ACTOR_TASK, the actor method
+/// will accept its value as its first arg. For ACTOR_CREATION_TASK,
+/// the ptr's value will be assigned to the newly created actor's pointer.
+/// \param[in] task_type The IDs serialized in this object.
+/// \param[out] return_values Generated ID of the object.
+/// \return Status.
+
+typedef void (*c_worker_ExecuteCallback)(void **actor_ptr, int task_type,
+                                         RaySlice ray_function_info,
                                          const DataValue* const args[], size_t args_len,
                                          RaySlice return_values);
-
+/// Register the language-worker's execution callback to the c_worker
+///
+/// \param[in]
 int c_worker_RegisterExecutionCallback(const c_worker_ExecuteCallback callback);
 
+/**
+* AllocateDataValue merely wraps
+* It should be renamed
+*/
 const DataValue *c_worker_AllocateDataValue(const uint8_t *data_ptr, size_t data_size,
                                             const uint8_t *meta_ptr, size_t meta_size);
 

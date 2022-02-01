@@ -25,6 +25,7 @@ namespace {
 static c_worker_ExecuteCallback c_worker_execute;
 static ray::core::CoreWorkerOptions stored_worker_options;
 static Config stored_config;
+static void* current_actor_ptr = nullptr;
 }
 
 int c_worker_RegisterExecutionCallback(const c_worker_ExecuteCallback callback) {
@@ -137,6 +138,7 @@ ray::Status ExecutionCallback(
     assert (false);
   }
   c_worker_execute(
+    &current_actor_ptr,
     task_type, fd_list,
     args_array_list.data(), args_array_list.size(),
     execute_return_value_list
@@ -145,37 +147,43 @@ ray::Status ExecutionCallback(
     c_worker_DeallocateDataValue(arg);
   }
 
-  results->clear();
-  for (size_t i = 0; i < return_value_list.size(); i++) {
-    auto &result_id = return_ids[i];
-    auto &return_value = return_value_list[i];
-    // How do you prevent memory bugs without needing to copy data?
-    std::shared_ptr<ray::Buffer> data_buffer =
-        std::make_shared<ray::LocalMemoryBuffer>(
-            // This cast is safe as we are copying the data
-            // In the future, we can make it safe even if we do not copy
-            // the data by passing in a buffer destructor
-            (uint8_t *)return_value->data->p,
-            return_value->data->size, false);
-    std::shared_ptr<ray::Buffer> meta_buffer = nullptr;
-        // std::make_shared<ray::LocalMemoryBuffer>(
-        //     reinterpret_cast<uint8_t *>(return_value->meta->p),
-        //     return_value->meta->size, false);
+  if (task_type == ray::rpc::ACTOR_CREATION_TASK) {
 
-    std::vector<ray::ObjectID> contained_object_ids;
-    auto contained_object_refs =
-        ray::core::CoreWorkerProcess::GetCoreWorker().GetObjectRefs(
-            contained_object_ids);
+  } else {
+    results->clear();
+    for (size_t i = 0; i < return_value_list.size(); i++) {
+      auto &result_id = return_ids[i];
+      auto &return_value = return_value_list[i];
+      // How do you prevent memory bugs without needing to copy data?
+      std::shared_ptr<ray::Buffer> data_buffer =
+          std::make_shared<ray::LocalMemoryBuffer>(
+              // This cast is safe as we are copying the data
+              // In the future, we can make it safe even if we do not copy
+              // the data by passing in a buffer destructor
+              //
+              // make sure that dealloc comes from same library as alloc
+              (uint8_t *)return_value->data->p,
+              return_value->data->size, false);
+      std::shared_ptr<ray::Buffer> meta_buffer = nullptr;
+          // std::make_shared<ray::LocalMemoryBuffer>(
+          //     reinterpret_cast<uint8_t *>(return_value->meta->p),
+          //     return_value->meta->size, false);
 
-    auto value = std::make_shared<ray::RayObject>(data_buffer, meta_buffer,
-                                                  contained_object_refs);
-    results->emplace_back(value);
-    int64_t task_output_inlined_bytes = 0;
-    RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
-        result_id, value->GetData()->Size(), value->GetMetadata(),
-        contained_object_ids, &task_output_inlined_bytes, &value));
-    RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().SealReturnObject(
-        result_id, value));
+      std::vector<ray::ObjectID> contained_object_ids;
+      auto contained_object_refs =
+          ray::core::CoreWorkerProcess::GetCoreWorker().GetObjectRefs(
+              contained_object_ids);
+
+      auto value = std::make_shared<ray::RayObject>(data_buffer, meta_buffer,
+                                                    contained_object_refs);
+      results->emplace_back(value);
+      int64_t task_output_inlined_bytes = 0;
+      RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
+          result_id, value->GetData()->Size(), value->GetMetadata(),
+          contained_object_ids, &task_output_inlined_bytes, &value));
+      RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().SealReturnObject(
+          result_id, value));
+    }
   }
   for (auto arg: return_value_list) {
     c_worker_DeallocateDataValue(arg);
@@ -312,7 +320,7 @@ RAY_EXPORT void c_worker_Run() {
 
 // TODO: maybe make this
 RAY_EXPORT int c_worker_CreateActor(const char *create_fn_name, char **result) {
-  std::vector<std::string> function_descriptor_list = {create_fn_name};
+  std::vector<std::string> function_descriptor_list = { create_fn_name };
   ray::FunctionDescriptor function_descriptor =
       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::RUST,
                                                  function_descriptor_list);
@@ -360,6 +368,7 @@ RAY_EXPORT int c_worker_CreateActor(const char *create_fn_name, char **result) {
   // TODO: wtf? why + 1?
   *result = (char *)malloc(result_length + 1);
   memcpy(*result, (char *)actor_id.Data(), result_length);
+  // ???
   return result_length;
 }
 
@@ -528,10 +537,11 @@ RAY_EXPORT int c_worker_Put(char **object_ids, int timeout, const DataValue **ob
   }
 
   int object_id_size = ObjectID::Size();
-  char *result = (char *) malloc(sizeof(char) * object_id_size);
+  char *result = (char *)malloc(sizeof(char) * object_id_size);
   memcpy(result, (char *)object_id.Data(), object_id_size);
   object_ids[0] = result;
 
+  // Is this necessary?
   ray::core::CoreWorkerProcess::GetCoreWorker().AddLocalReference(object_id);
 
   return 0;

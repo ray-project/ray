@@ -62,3 +62,69 @@ pub fn add_three_vecs(a: Vec<u64>, b: Vec<u64>, c: Vec<u64>) -> Vec<u64> {
     ret
 }
 }
+
+// // TODO: this should probably be in a separate crate, not simple.
+// pub trait PhysicalOperator<I, R> {
+//     fn update(&mut self, key: String, val: I);
+//     fn get(&self) -> R;
+// }
+//
+// // We choose
+// pub struct SumOperator<I: Integer> {
+//     materialized_values: HashMap<String, I>,
+//     count: I,
+// }
+//
+// impl<I: Integer> PhysicalOperator<I, I> for SumOperator<I> {
+//     fn update(&mut self, key: String, val: I) {
+//         self.materialized_values.upsert(key, val);
+//     }
+// }
+//
+// remote_actor! {
+// }
+//
+//
+// // We choose
+// #[derive(Default)]
+// pub struct Average<I: Float> {
+//     materialized_values: HashMap<String, I>,
+//     sum: I,
+// }
+//
+// impl<I: Float> Average<I> {
+//     // #[ray::create_actor]
+//     pub fn new() -> Self {
+//         Self::default()
+//     }
+// }
+//
+// impl<I: Float> PhysicalOperator<I, I> for Average<I> {
+//     fn update(&mut self, key: String, val: I) {
+//         let num_values = self.materialized_values.len(); // TODO: cache this instead?
+//         if let Some(old) = self.materialized_values.insert(key, val) {
+//             self.sum = self.sum - old + val;
+//         } else {
+//             self.sum += val;
+//         }
+//     }
+//
+//     fn get(&self) -> I {
+//         self.sum / self.materialized_values.len()
+//     }
+// }
+//
+// impl <I: Float> PhysicalOperator for InnerJoin {
+//
+// }
+//
+// // InnerJoin - column_name. Row_bitmap...?
+//
+//
+// #[test]
+// fn inner_join_and_avg() {
+//     Streaming::Operator::new()
+// }
+
+// Idea for generics... dynamic dispatch + concrete instantiation
+// declaration (with some hacks to get it to specialize?)
