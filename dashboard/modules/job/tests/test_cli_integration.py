@@ -3,7 +3,7 @@ import os
 import logging
 import sys
 import subprocess
-from typing import Optional
+from typing import Optional, Tuple
 
 import pytest
 
@@ -48,6 +48,30 @@ def ray_cluster_manager():
         subprocess.check_output(["ray", "stop", "--force"])
 
 
+def _run_cmd(cmd: str, should_fail=False) -> Tuple[str, str]:
+    """Convenience wrapper for subprocess.run.
+
+    We always run with shell=True to simulate the CLI.
+
+    Asserts that the process succeeds/fails depending on should_fail.
+
+    Returns (stdout, stderr).
+    """
+    p: subprocess.CompletedProcess = subprocess.run(
+        cmd, shell=True, capture_output=True
+    )
+    if should_fail and p.returncode == 0:
+        raise RuntimeError(
+            f"Expected command to fail, but got exit code: {p.returncode}."
+        )
+    elif not should_fail and p.returncode != 0:
+        raise RuntimeError(
+            f"Expected command to succeed, but got exit code: {p.returncode}."
+        )
+
+    return p.stdout.decode("utf-8"), p.stderr.decode("utf-8")
+
+
 class TestRayAddress:
     """
     Integration version of job CLI test that ensures interaction with the
@@ -59,49 +83,33 @@ class TestRayAddress:
 
     def test_empty_ray_address(self, ray_start_stop):
         with set_env_var("RAY_ADDRESS", None):
-            completed_process = subprocess.run(
-                ["ray", "job", "submit", "--", "echo hello"], stderr=subprocess.PIPE
-            )
-            stderr = completed_process.stderr.decode("utf-8")
-            # Current dashboard module that raises no exception from requests..
+            _, stderr = _run_cmd("ray job submit -- echo hello", should_fail=True)
             assert (
                 "Address must be specified using either the "
                 "--address flag or RAY_ADDRESS environment"
             ) in stderr
 
     def test_ray_client_address(self, ray_start_stop):
-        completed_process = subprocess.run(
-            ["ray", "job", "submit", "--", "echo hello"], stdout=subprocess.PIPE
-        )
-        stdout = completed_process.stdout.decode("utf-8")
+        stdout, _ = _run_cmd("ray job submit -- echo hello")
         assert "hello" in stdout
         assert "succeeded" in stdout
 
     def test_valid_http_ray_address(self, ray_start_stop):
-        completed_process = subprocess.run(
-            ["ray", "job", "submit", "--", "echo hello"], stdout=subprocess.PIPE
-        )
-        stdout = completed_process.stdout.decode("utf-8")
+        stdout, _ = _run_cmd("ray job submit -- echo hello")
         assert "hello" in stdout
         assert "succeeded" in stdout
 
     def test_set_ray_http_address_first(self):
         with set_env_var("RAY_ADDRESS", "http://127.0.0.1:8265"):
             with ray_cluster_manager():
-                completed_process = subprocess.run(
-                    ["ray", "job", "submit", "--", "echo hello"], stdout=subprocess.PIPE
-                )
-                stdout = completed_process.stdout.decode("utf-8")
+                stdout, _ = _run_cmd("ray job submit -- echo hello")
                 assert "hello" in stdout
                 assert "succeeded" in stdout
 
     def test_set_ray_client_address_first(self):
         with set_env_var("RAY_ADDRESS", "127.0.0.1:8265"):
             with ray_cluster_manager():
-                completed_process = subprocess.run(
-                    ["ray", "job", "submit", "--", "echo hello"], stdout=subprocess.PIPE
-                )
-                stdout = completed_process.stdout.decode("utf-8")
+                stdout, _ = _run_cmd("ray job submit -- echo hello")
                 assert "hello" in stdout
                 assert "succeeded" in stdout
 
@@ -110,20 +118,14 @@ class TestJobSubmit:
     def test_basic_submit(self, ray_start_stop):
         """Should tail logs and wait for process to exit."""
         cmd = "sleep 1 && echo hello && sleep 1 && echo hello"
-        completed_process = subprocess.run(
-            ["ray", "job", "submit", "--", cmd], stdout=subprocess.PIPE
-        )
-        stdout = completed_process.stdout.decode("utf-8")
+        stdout, _ = _run_cmd(f"ray job submit -- {cmd}")
         assert "hello\nhello" in stdout
         assert "succeeded" in stdout
 
     def test_submit_no_wait(self, ray_start_stop):
         """Should exit immediately w/o printing logs."""
         cmd = "echo hello && sleep 1000"
-        completed_process = subprocess.run(
-            ["ray", "job", "submit", "--no-wait", "--", cmd], stdout=subprocess.PIPE
-        )
-        stdout = completed_process.stdout.decode("utf-8")
+        stdout, _ = _run_cmd(f"ray job submit --no-wait -- {cmd}")
         assert "hello" not in stdout
         assert "Tailing logs until the job exits" not in stdout
 
@@ -133,14 +135,9 @@ class TestJobStop:
         """Should wait until the job is stopped."""
         cmd = "sleep 1000"
         job_id = "test_basic_stop"
-        completed_process = subprocess.run(
-            ["ray", "job", "submit", "--no-wait", f"--job-id={job_id}", "--", cmd]
-        )
+        _run_cmd(f"ray job submit --no-wait --job-id={job_id} -- {cmd}")
 
-        completed_process = subprocess.run(
-            ["ray", "job", "stop", job_id], stdout=subprocess.PIPE
-        )
-        stdout = completed_process.stdout.decode("utf-8")
+        stdout, _ = _run_cmd(f"ray job stop {job_id}")
         assert "Waiting for job" in stdout
         assert f"Job '{job_id}' was stopped" in stdout
 
@@ -148,14 +145,9 @@ class TestJobStop:
         """Should not wait until the job is stopped."""
         cmd = "echo hello && sleep 1000"
         job_id = "test_stop_no_wait"
-        completed_process = subprocess.run(
-            ["ray", "job", "submit", "--no-wait", f"--job-id={job_id}", "--", cmd]
-        )
+        _run_cmd(f"ray job submit --no-wait --job-id={job_id} -- {cmd}")
 
-        completed_process = subprocess.run(
-            ["ray", "job", "stop", "--no-wait", job_id], stdout=subprocess.PIPE
-        )
-        stdout = completed_process.stdout.decode("utf-8")
+        stdout, _ = _run_cmd(f"ray job stop --no-wait {job_id}")
         assert "Waiting for job" not in stdout
         assert f"Job '{job_id}' was stopped" not in stdout
 
@@ -163,10 +155,10 @@ class TestJobStop:
 def test_quote_escaping(ray_start_stop):
     cmd = "echo \"hello 'world'\""
     job_id = "test_quote_escaping"
-    output = subprocess.check_output(
-        f"ray job submit --job-id={job_id} -- {cmd}", shell=True
-    ).decode("utf-8")
-    assert "hello 'world'" in output
+    stdout, _ = _run_cmd(
+        f"ray job submit --job-id={job_id} -- {cmd}",
+    )
+    assert "hello 'world'" in stdout
 
 
 if __name__ == "__main__":
