@@ -228,54 +228,20 @@ class Client:
         url: Optional[str] = None,
         _blocking: Optional[bool] = True,
     ) -> Optional[GoalId]:
-        if config is None:
-            config = {}
-        if ray_actor_options is None:
-            ray_actor_options = {}
-
-        curr_job_env = ray.get_runtime_context().runtime_env
-        if "runtime_env" in ray_actor_options:
-            ray_actor_options["runtime_env"].setdefault(
-                "working_dir", curr_job_env.get("working_dir")
-            )
-        else:
-            ray_actor_options["runtime_env"] = curr_job_env
-
-        replica_config = ReplicaConfig(
-            deployment_def,
+        
+        controller_deploy_args = prepare_deployment(
+            name=name,
+            deployment_def=deployment_def,
             init_args=init_args,
             init_kwargs=init_kwargs,
             ray_actor_options=ray_actor_options,
+            config=config,
+            version=prev_version,
+            route_prefix=route_prefix,
         )
 
-        if isinstance(config, dict):
-            deployment_config = DeploymentConfig.parse_obj(config)
-        elif isinstance(config, DeploymentConfig):
-            deployment_config = config
-        else:
-            raise TypeError("config must be a DeploymentConfig or a dictionary.")
-
-        if (
-            deployment_config.autoscaling_config is not None
-            and deployment_config.max_concurrent_queries
-            < deployment_config.autoscaling_config.target_num_ongoing_requests_per_replica  # noqa: E501
-        ):
-            logger.warning(
-                "Autoscaling will never happen, "
-                "because 'max_concurrent_queries' is less than "
-                "'target_num_ongoing_requests_per_replica' now."
-            )
-
         goal_id, updating = ray.get(
-            self._controller.deploy.remote(
-                name,
-                deployment_config.to_proto_bytes(),
-                replica_config,
-                version,
-                prev_version,
-                route_prefix,
-                ray.get_runtime_context().job_id,
-            )
+            self._controller.deploy.remote(**controller_deploy_args)
         )
 
         tag = f"component=serve deployment={name}"
@@ -1340,9 +1306,8 @@ def prepare_deployment(
     route_prefix: Optional[str] = None
 ) -> Dict:
     """
-    Adapted from the api.py's Client's deploy. Takes a deployment's
-    configuration, and returns the arguments needed for the controller to
-    deploy it.
+    Takes a deployment's configuration, and returns the arguments needed for
+    the controller to deploy it.
     """
 
     # TODO: Escalate this function to the Ray Dashboard
