@@ -235,6 +235,7 @@ def make_recsim_env(
                 "resample_documents": True,
                 "seed": 0,
                 "convert_to_discrete_action_space": False,
+                "wrap_for_bandits": False,
             }
             if env_ctx is None or isinstance(env_ctx, dict):
                 env_ctx = EnvContext(env_ctx or default_config, worker_index=0)
