@@ -256,6 +256,7 @@ class CommandBasedClient(SyncClient):
         self.logfile = None
         self._closed = False
         self.cmd_process = None
+        # Keep track of last command for retry
         self._last_cmd = None
 
     def set_logdir(self, logdir):
