@@ -27,6 +27,7 @@ parts:
           - file: train/migration-guide
           - file: raysgd/raysgd
             title: "RaySGD v1: Distributed Training Wrappers"
+          - file: train/api
       - file: tune/index
         title: Ray Tune
         sections:

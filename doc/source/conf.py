@@ -65,28 +65,26 @@ extensions = [
     "sphinxcontrib.yt",
     "versionwarning.extension",
     "sphinx_sitemap",
-    "myst_parser",
-    # "myst_nb",
+    "myst_nb",
     "sphinx.ext.doctest",
     "sphinx.ext.coverage",
     "sphinx_external_toc",
 ]
 
 myst_enable_extensions = [
-    # "dollarmath",
-    # "amsmath",
-    # "deflist",
-    # "fieldlist",
+    "dollarmath",
+    "amsmath",
+    "deflist",
     "html_admonition",
     "html_image",
-    # "colon_fence",
-    # "smartquotes",
-    # "replacements",
-    # "linkify",
-    # "strikethrough",
-    # "substitution",
-    # "tasklist",
+    "colon_fence",
+    "smartquotes",
+    "replacements",
 ]
+
+# Cache notebook outputs in _build/.jupyter_cache
+# To prevent execution, set this to "off". To force re-execution, set this to "force".
+jupyter_execute_notebooks = "cache"
 
 external_toc_exclude_missing = False
 external_toc_path = "_toc.yml"
@@ -246,6 +244,11 @@ html_theme_options = {
     "path_to_docs": "doc/source",
     "home_page_in_toc": False,
     "show_navbar_depth": 0,
+    "launch_buttons": {
+        "notebook_interface": "jupyterlab",
+        "binderhub_url": "https://mybinder.org",
+        "colab_url": "https://colab.research.google.com",
+    },
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
@@ -402,6 +405,9 @@ autodoc_member_order = "bysource"
 
 
 def setup(app):
+    # myst-nb adds notebooks into the registry, which leads to sphinx-gallery warnings
+    app.registry.source_suffix.pop(".ipynb", None)
+
     app.connect("html-page-context", update_context)
     # Custom CSS
     app.add_css_file("css/custom.css", priority=800)

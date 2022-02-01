@@ -51,3 +51,13 @@ sphinx-sitemap==2.2.0
 # MyST
 myst-parser==0.15.2
 myst-nb==0.13.1
+
+# Jupyter conversion
+jupytext==1.13.6
+
+
+FLAKE8_VERSION_REQUIRED="3.9.1"
+BLACK_VERSION_REQUIRED="21.12b0"
+YAPF_VERSION_REQUIRED="0.23.0"
+SHELLCHECK_VERSION_REQUIRED="0.7.1"
+MYPY_VERSION_REQUIRED="0.782"
