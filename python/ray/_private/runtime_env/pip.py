@@ -10,7 +10,8 @@ from filelock import FileLock
 
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.packaging import Protocol, parse_uri
+from ray._private.runtime_env.packaging import (
+    Protocol, get_local_dir_from_uri, parse_uri)
 from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
 
@@ -79,7 +80,8 @@ class PipManager:
 
     def delete_uri(self,
                    uri: str,
-                   logger: Optional[logging.Logger] = default_logger) -> bool:
+                   logger: Optional[logging.Logger] = default_logger) -> int:
+        """Delete URI and return the number of bytes deleted."""
         logger.info(f"Got request to delete pip URI {uri}")
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.PIP:
@@ -87,15 +89,16 @@ class PipManager:
                              f"pip. Received protocol {protocol}, URI {uri}")
 
         pip_env_path = self._get_path_from_hash(hash)
+        local_dir_size = get_directory_size_bytes(pip_env_path)
         try:
             with FileLock(self._installs_and_deletions_file_lock):
                 shutil.rmtree(pip_env_path)
-            successful = True
         except OSError as e:
-            successful = False
             logger.warning(
                 f"Error when deleting pip env {pip_env_path}: {str(e)}")
-        return successful
+            return 0
+
+        return local_dir_size
 
     def create(self,
                uri: str,
@@ -138,7 +141,12 @@ class PipManager:
             return
         # Insert the target directory into the PYTHONPATH.
         protocol, hash = parse_uri(uri)
-        target_dir = self._get_path_from_hash(hash)
+        target_dir = get_local_dir_from_uri(uri)
+        if not target_dir.exists():
+            raise ValueError(
+                f"Local directory {target_dir} for URI {uri} does "
+                "not exist on the cluster. Something may have gone wrong while "
+                "installing the runtime_env `pip` packages.")
         python_path = target_dir
         if "PYTHONPATH" in context.env_vars:
             python_path += os.pathsep + context.env_vars["PYTHONPATH"]

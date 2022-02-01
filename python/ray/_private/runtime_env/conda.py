@@ -259,7 +259,8 @@ class CondaManager:
 
     def delete_uri(self,
                    uri: str,
-                   logger: Optional[logging.Logger] = default_logger) -> bool:
+                   logger: Optional[logging.Logger] = default_logger) -> int:
+        """Delete URI and return the number of bytes deleted."""
         logger.info(f"Got request to delete URI {uri}")
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.CONDA:
@@ -268,11 +269,15 @@ class CondaManager:
                 f"conda.  Received protocol {protocol}, URI {uri}")
 
         conda_env_path = self._get_path_from_hash(hash)
+        local_dir_size = get_directory_size_bytes(conda_env_path)
+
         with FileLock(self._installs_and_deletions_file_lock):
             successful = delete_conda_env(prefix=conda_env_path, logger=logger)
         if not successful:
             logger.warning(f"Error when deleting conda env {conda_env_path}. ")
-        return successful
+            return 0
+
+        return local_dir_size
 
     def create(self,
                uri: Optional[str],

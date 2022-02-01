@@ -81,6 +81,7 @@ class WorkingDirManager:
     def delete_uri(self,
                    uri: str,
                    logger: Optional[logging.Logger] = default_logger) -> int:
+        """Delete URI and return the number of bytes deleted."""
         local_dir = get_local_dir_from_uri(uri, self._resources_dir)
         local_dir_size = get_directory_size_bytes(local_dir)
 
@@ -113,9 +114,10 @@ class WorkingDirManager:
 
         local_dir = get_local_dir_from_uri(uri, self._resources_dir)
         if not local_dir.exists():
-            raise ValueError(f"Local directory {local_dir} for URI {uri} does "
-                             "not exist. Something may have gone wrong while "
-                             "downloading or unpacking the working_dir.")
+            raise ValueError(
+                f"Local directory {local_dir} for URI {uri} does "
+                "not exist on the cluster. Something may have gone wrong while "
+                "downloading or unpacking the working_dir.")
 
         context.command_prefix += [f"cd {local_dir}"]
 
