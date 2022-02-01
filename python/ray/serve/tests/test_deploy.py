@@ -1215,6 +1215,36 @@ class TestDeployGroup:
         async def __call__(self):
             return "D reached"
     
+    @serve.deployment
+    class E:
+
+        async def __init__(self):
+            self.F_handle = serve.get_deployment("F").get_handle()
+        
+        async def __call__(self):
+            return await self.F_handle.request_output.remote()
+
+        async def request_output(self):
+            return await self.F_handle.get_output.remote()
+        
+        async def get_output(self):
+            return "E reached"
+
+    @serve.deployment
+    class F:
+
+        async def __init__(self):
+            self.E_handle = serve.get_deployment("E").get_handle()
+        
+        async def __call__(self):
+            return await self.E_handle.request_output.remote()
+        
+        async def request_output(self):
+            return await self.E_handle.get_output.remote()
+        
+        async def get_output(self):
+            return "F reached"  
+    
     deployments = [f, g, C, D]
     responses = ["f reached", "g reached", "C reached", "D reached"]
 
@@ -1227,8 +1257,16 @@ class TestDeployGroup:
         
         for deployment, response in zip(self.deployments, self.responses):
             assert ray.get(deployment.get_handle().remote()) == response
+    
+    def test_mutual_handles(self, serve_instance):
+        deployments = [self.E, self.F]
+        responses = ["E reached", "F reached"]
 
+        deployment_list = [(d, {}) for d in deployments]
+        serve.deploy_group(deployment_list)
 
+        for deployment, response in zip(deployments, responses):
+            assert ray.get(deployment.get_handle().remote()) == response
 
 
 if __name__ == "__main__":
