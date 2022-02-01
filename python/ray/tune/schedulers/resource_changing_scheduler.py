@@ -325,14 +325,14 @@ class DistributeResourcesToTopJob(DistributeResources):
         metric: Optional[str] = None,
         mode: Optional[str] = None,
     ):
-        if mode not in ("min", "max"):
-            raise ValueError("The mode parameter can only be" " either min or max.")
         super().__init__(add_bundles, increase_by, increase_by_times, reserve_resources)
         self.metric = metric
         self.mode = mode
 
     @property
     def _metric_op(self) -> float:
+        if self.mode not in ("min", "max"):
+            raise ValueError("The mode parameter can only be" " either min or max.")
         if self.mode == "max":
             return 1.0
         return -1.0
