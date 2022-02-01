@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import time
+import traceback
 from typing import Dict, Set
 from ray._private.utils import import_attr
 
@@ -198,7 +199,10 @@ class RuntimeEnvAgent(
                     break
                 except Exception as ex:
                     logger.exception("Runtime env creation failed.")
-                    error_message = str(ex)
+                    error_message = (
+                        f"Traceback:\n{traceback.format_exc()}\n"
+                        f"ErrorMessage:\n{str(ex)}"
+                    )
                     await asyncio.sleep(
                         runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
                     )

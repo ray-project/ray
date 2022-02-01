@@ -380,8 +380,12 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                 if (reply.failure_type() ==
                     rpc::RequestWorkerLeaseReply::
                         SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED) {
+                  rpc::RayErrorInfo error_info;
+                  error_info.mutable_runtime_env_setup_failed_error()->set_error_message(
+                      reply.scheduling_failure_message());
                   RAY_UNUSED(task_finisher_->FailPendingTask(
-                      task_spec.TaskId(), rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED));
+                      task_spec.TaskId(), rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED,
+                      /*status*/ nullptr, &error_info));
                 } else {
                   if (task_spec.IsActorCreationTask()) {
                     RAY_UNUSED(task_finisher_->FailPendingTask(

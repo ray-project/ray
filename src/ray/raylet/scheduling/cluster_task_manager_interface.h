@@ -88,7 +88,8 @@ class ClusterTaskManagerInterface {
   virtual bool CancelTask(
       const TaskID &task_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED) = 0;
+          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+      const std::string &scheduling_failure_message = "") = 0;
 
   /// Set the worker backlog size for a particular scheduling class.
   ///

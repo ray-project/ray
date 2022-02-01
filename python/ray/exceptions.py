@@ -522,10 +522,21 @@ class AsyncioActorExit(RayError):
 
 
 class RuntimeEnvSetupError(RayError):
-    """Raised when a runtime environment fails to be set up."""
+    """Raised when a runtime environment fails to be set up.
+
+    params:
+        error_message: The error message that explains
+            why runtime env setup has failed.
+    """
+
+    def __init__(self, error_message: str = None):
+        self.error_message = error_message
 
     def __str__(self):
-        return "The runtime_env failed to be set up."
+        msgs = ["The runtime_env failed to be set up."]
+        if self.error_message:
+            msgs.append(f"Error message: {self.error_message}")
+        return " ".join(msgs)
 
 
 class TaskPlacementGroupRemoved(RayError):
