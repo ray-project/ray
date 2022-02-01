@@ -307,9 +307,7 @@ class TorchPolicy(Policy):
 
         with torch.no_grad():
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
-            input_dict = self._lazy_tensor_dict(
-                
-                input_dict)
+            input_dict = self._lazy_tensor_dict(input_dict)
             input_dict.set_training(True)
             # Pack internal state inputs into (separate) list.
             state_batches = [

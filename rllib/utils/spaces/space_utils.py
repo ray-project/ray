@@ -325,7 +325,10 @@ def convert_element_to_space_type(element: Any, sampled_element: Any) -> Any:
                 else:
                     raise ValueError(
                         "Element should be of type np.ndarray but is instead of \
-                            type {}".format(type(elem)))
+                            type {}".format(
+                            type(elem)
+                        )
+                    )
             elif s.dtype != elem.dtype:
                 elem = elem.astype(s.dtype)
 

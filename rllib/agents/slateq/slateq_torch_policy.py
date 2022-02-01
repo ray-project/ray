@@ -9,8 +9,10 @@ import ray
 from ray.rllib.agents.sac.sac_torch_policy import TargetNetworkMixin
 from ray.rllib.agents.slateq.slateq_torch_model import SlateQModel
 from ray.rllib.models.modelv2 import ModelV2, restore_original_dimensions
-from ray.rllib.models.torch.torch_action_dist import \
-    TorchCategorical, TorchDistributionWrapper
+from ray.rllib.models.torch.torch_action_dist import (
+    TorchCategorical,
+    TorchDistributionWrapper,
+)
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -22,10 +24,10 @@ torch, nn = try_import_torch()
 
 
 def build_slateq_model_and_distribution(
-        policy: Policy,
-        obs_space: gym.spaces.Space,
-        action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+    policy: Policy,
+    obs_space: gym.spaces.Space,
+    action_space: gym.spaces.Space,
+    config: TrainerConfigDict,
 ) -> Tuple[ModelV2, Type[TorchDistributionWrapper]]:
     """Build models for SlateQ
 
@@ -65,9 +67,12 @@ def build_slateq_model_and_distribution(
     return model, TorchCategorical
 
 
-def build_slateq_losses(policy: Policy, model: ModelV2,
-                        _: Type[TorchDistributionWrapper],
-                        train_batch: SampleBatch) -> TensorType:
+def build_slateq_losses(
+    policy: Policy,
+    model: ModelV2,
+    _: Type[TorchDistributionWrapper],
+    train_batch: SampleBatch,
+) -> TensorType:
     """Constructs the losses for SlateQPolicy.
 
     Args:
@@ -101,7 +106,8 @@ def build_slateq_losses(policy: Policy, model: ModelV2,
         input=doc,
         dim=1,
         # index.shape: [batch_size, slate_size, embedding_size]
-        index=actions.unsqueeze(2).expand(-1, -1, embedding_size).long())
+        index=actions.unsqueeze(2).expand(-1, -1, embedding_size).long(),
+    )
 
     scores = model.choice_model(user, selected_doc)
     choice_loss_fn = nn.CrossEntropyLoss()
@@ -132,8 +138,8 @@ def build_slateq_losses(policy: Policy, model: ModelV2,
             input=next_doc,
             dim=1,
             # index.shape: [batch_size, slate_size, embedding_size]
-            index=next_actions.unsqueeze(2).expand(-1, -1,
-                                                   embedding_size).long())
+            index=next_actions.unsqueeze(2).expand(-1, -1, embedding_size).long(),
+        )
         next_user = next_obs["user"]
         dones = train_batch["dones"]
         with torch.no_grad():
@@ -144,9 +150,9 @@ def build_slateq_losses(policy: Policy, model: ModelV2,
             max_raw_scores, _ = torch.max(raw_scores, dim=1, keepdim=True)
             scores = torch.exp(raw_scores - max_raw_scores)
             # next_q_values.shape: [batch_size]
-            next_q_values = torch.sum(
-                q_values * scores, dim=1) / torch.sum(
-                    scores, dim=1)
+            next_q_values = torch.sum(q_values * scores, dim=1) / torch.sum(
+                scores, dim=1
+            )
             next_q_values[dones.bool()] = 0.0
     elif learning_strategy == "MYOP":
         next_q_values = 0.0
@@ -157,11 +163,16 @@ def build_slateq_losses(policy: Policy, model: ModelV2,
         dones = train_batch["dones"]
         with torch.no_grad():
             if policy.config["double_q"]:
-                next_target_per_slate_q_values = policy.target_models[model].get_per_slate_q_values(next_user, next_doc)
-                _, next_q_values, _ = model.choose_slate(next_user, next_doc, next_target_per_slate_q_values)
+                next_target_per_slate_q_values = policy.target_models[
+                    model
+                ].get_per_slate_q_values(next_user, next_doc)
+                _, next_q_values, _ = model.choose_slate(
+                    next_user, next_doc, next_target_per_slate_q_values
+                )
             else:
                 _, next_q_values, _ = policy.target_models[model].choose_slate(
-                    next_user, next_doc)
+                    next_user, next_doc
+                )
         next_q_values = next_q_values.detach()
         next_q_values[dones.bool()] = 0.0
     else:
@@ -175,9 +186,9 @@ def build_slateq_losses(policy: Policy, model: ModelV2,
     raw_scores = model.choice_model(user, selected_doc)
     max_raw_scores, _ = torch.max(raw_scores, dim=1, keepdim=True)
     scores = torch.exp(raw_scores - max_raw_scores)
-    q_values = torch.sum(
-        q_values * scores, dim=1) / torch.sum(
-            scores, dim=1)  # shape=[batch_size]
+    q_values = torch.sum(q_values * scores, dim=1) / torch.sum(
+        scores, dim=1
+    )  # shape=[batch_size]
     td_error = torch.abs(q_values - target_q_values)
     q_value_loss = torch.mean(huber_loss(td_error))
 
@@ -199,20 +210,19 @@ def build_slateq_losses(policy: Policy, model: ModelV2,
 def build_slateq_stats(policy: Policy, batch) -> Dict[str, TensorType]:
     stats = {
         "q_loss": torch.mean(torch.stack(policy.get_tower_stats("q_loss"))),
-        "choice_loss": torch.mean(
-            torch.stack(policy.get_tower_stats("choice_loss"))),
-        "raw_scores": torch.mean(
-            torch.stack(policy.get_tower_stats("raw_scores"))),
-        "q_values": torch.mean(
-            torch.stack(policy.get_tower_stats("q_values"))),
+        "choice_loss": torch.mean(torch.stack(policy.get_tower_stats("choice_loss"))),
+        "raw_scores": torch.mean(torch.stack(policy.get_tower_stats("raw_scores"))),
+        "q_values": torch.mean(torch.stack(policy.get_tower_stats("q_values"))),
         "next_q_values": torch.mean(
-            torch.stack(policy.get_tower_stats("next_q_values"))),
+            torch.stack(policy.get_tower_stats("next_q_values"))
+        ),
         "next_q_minus_q": torch.mean(
-            torch.stack(policy.get_tower_stats("next_q_minus_q"))),
+            torch.stack(policy.get_tower_stats("next_q_minus_q"))
+        ),
         "target_q_values": torch.mean(
-            torch.stack(policy.get_tower_stats("target_q_values"))),
-        "td_error": torch.mean(
-            torch.stack(policy.get_tower_stats("td_error"))),
+            torch.stack(policy.get_tower_stats("target_q_values"))
+        ),
+        "td_error": torch.mean(torch.stack(policy.get_tower_stats("td_error"))),
     }
     model_stats = {
         k: torch.mean(var)
@@ -222,8 +232,9 @@ def build_slateq_stats(policy: Policy, batch) -> Dict[str, TensorType]:
     return stats
 
 
-def build_slateq_optimizers(policy: Policy, config: TrainerConfigDict
-                            ) -> List["torch.optim.Optimizer"]:
+def build_slateq_optimizers(
+    policy: Policy, config: TrainerConfigDict
+) -> List["torch.optim.Optimizer"]:
     optimizer_choice = torch.optim.Adam(
         policy.model.choice_model.parameters(), lr=config["lr_choice_model"]
     )
@@ -235,17 +246,13 @@ def build_slateq_optimizers(policy: Policy, config: TrainerConfigDict
     return [optimizer_choice, optimizer_q_value]
 
 
-def action_distribution_fn(policy: Policy,
-                           model: SlateQModel,
-                           input_dict,
-                           *,
-                           explore,
-                           is_training,
-                           **kwargs):
+def action_distribution_fn(
+    policy: Policy, model: SlateQModel, input_dict, *, explore, is_training, **kwargs
+):
     """Determine which action to take"""
     # First, we transform the observation into its unflattened form.
 
-    #start = time.time()
+    # start = time.time()
     obs = restore_original_dimensions(
         input_dict[SampleBatch.CUR_OBS], policy.observation_space, tensorlib=torch
     )
@@ -256,7 +263,7 @@ def action_distribution_fn(policy: Policy,
     doc = torch.cat([val.unsqueeze(1) for val in obs["doc"].values()], 1)
 
     _, _, per_slate_q_values = model.choose_slate(user, doc)
-    #print(f"action calculation took {time.time() - start}s")
+    # print(f"action calculation took {time.time() - start}s")
 
     return per_slate_q_values, TorchCategorical, []
 
@@ -276,9 +283,12 @@ def postprocess_fn_add_next_actions_for_sarsa(
     return batch
 
 
-def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
-                      action_space: gym.spaces.Space,
-                      config: TrainerConfigDict) -> None:
+def setup_late_mixins(
+    policy: Policy,
+    obs_space: gym.spaces.Space,
+    action_space: gym.spaces.Space,
+    config: TrainerConfigDict,
+) -> None:
     """Call all mixin classes' constructors before SlateQTorchPolicy
     initialization.
 
