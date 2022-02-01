@@ -19,14 +19,14 @@ if __name__ == "__main__":
         num_workers=6,
         use_gpu=True,
         placement_group_timeout_s=2000,
-        kwargs={"num_epochs": 20})
+        kwargs={"num_epochs": 20},
+    )
 
     taken = time.time() - start
     result = {
         "time_taken": taken,
     }
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/horovod_user_test.json")
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/horovod_user_test.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 

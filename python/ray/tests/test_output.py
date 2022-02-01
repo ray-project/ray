@@ -8,8 +8,10 @@ import os
 
 import ray
 
-from ray._private.test_utils import (run_string_as_driver_nonblocking,
-                                     run_string_as_driver)
+from ray._private.test_utils import (
+    run_string_as_driver_nonblocking,
+    run_string_as_driver,
+)
 
 
 def test_autoscaler_infeasible():
@@ -350,8 +352,8 @@ ray.get(b.f.remote())
 def test_output():
     # Use subprocess to execute the __main__ below.
     outputs = subprocess.check_output(
-        [sys.executable, __file__, "_ray_instance"],
-        stderr=subprocess.STDOUT).decode()
+        [sys.executable, __file__, "_ray_instance"], stderr=subprocess.STDOUT
+    ).decode()
     lines = outputs.split("\n")
     for line in lines:
         print(line)
@@ -367,7 +369,8 @@ def test_output():
 # TODO: fix this test to support minimal installation
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test currently fails with minimal install.")
+    reason="This test currently fails with minimal install.",
+)
 def test_output_on_driver_shutdown(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=16)
@@ -437,7 +440,8 @@ run_experiments(
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test currently fails with minimal install.")
+    reason="This test currently fails with minimal install.",
+)
 @pytest.mark.parametrize("execution_number", range(3))
 def test_empty_line_thread_safety_bug(execution_number, ray_start_cluster):
     """Make sure when new threads are used within __init__,
@@ -502,7 +506,7 @@ if __name__ == "__main__":
         # about low shm memory in Linux environment.
         # The test failures currently complain it only has 2 GB memory,
         # so let's set it much lower than that.
-        MB = 1000**2
+        MB = 1000 ** 2
         ray.init(num_cpus=1, object_store_memory=(100 * MB))
         ray.shutdown()
     else:

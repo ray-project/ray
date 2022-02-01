@@ -39,15 +39,13 @@ class BanditLinTSTrainer(Trainer):
             DEFAULT_CONFIG,
             {
                 # Use ThompsonSampling exploration.
-                "exploration_config": {
-                    "type": "ThompsonSampling"
-                }
-            })
+                "exploration_config": {"type": "ThompsonSampling"}
+            },
+        )
         return config
 
     @override(Trainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> \
-            Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return BanditTorchPolicy
 
 
@@ -59,12 +57,10 @@ class BanditLinUCBTrainer(Trainer):
             DEFAULT_CONFIG,
             {
                 # Use UpperConfidenceBound exploration.
-                "exploration_config": {
-                    "type": "UpperConfidenceBound"
-                }
-            })
+                "exploration_config": {"type": "UpperConfidenceBound"}
+            },
+        )
 
     @override(Trainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> \
-            Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return BanditTorchPolicy
