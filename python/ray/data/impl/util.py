@@ -73,7 +73,7 @@ def _get_resource_request_labels(ray_remote_args: Dict[str, Any]):
     task resource request defaults.
     """
     resource_request_labels = set(ray_remote_args.get("resources", {}).keys())
-    if DEFAULT_REMOTE_FUNCTION_CPUS > 0:
+    if ray_remote_args.get("num_cpus", DEFAULT_REMOTE_FUNCTION_CPUS) > 0:
         resource_request_labels.add("CPU")
     if "num_gpus" in ray_remote_args:
         resource_request_labels.add("GPU")
