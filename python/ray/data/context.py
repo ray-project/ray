@@ -59,8 +59,11 @@ class DatasetContext:
                     enable_pandas_block=DEFAULT_ENABLE_PANDAS_BLOCK,
                 )
 
-            if _default_context.block_owner is None:
-                owner = _DesignatedBlockOwner.options(lifetime="detached").remote()
+            if (
+                _default_context.block_splitting_enabled
+                and _default_context.block_owner is None
+            ):
+                owner = _DesignatedBlockOwner.remote()
                 ray.get(owner.ping.remote())
 
                 # Clear the actor handle after Ray reinits since it's no longer
