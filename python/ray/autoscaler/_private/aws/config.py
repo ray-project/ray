@@ -518,7 +518,7 @@ def _configure_subnet(config):
                     "The available subnets (as determined by Availability Zone "
                     "state, ability to launch public IPs & Availability Zones "
                     f"specified in the `provider` section) are: {subnets}.\n"
-                    "Node type ({node_type}) specifies subnets: {node_type_subnets}"
+                    f"Node type ({node_type}) specifies subnets: {node_type_subnets}"
                 )
             subnet_src_info[key] = "config"
 
