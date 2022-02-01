@@ -129,6 +129,7 @@ def collect_episodes(
 def summarize_episodes(
     episodes: List[Union[RolloutMetrics, OffPolicyEstimate]],
     new_episodes: List[Union[RolloutMetrics, OffPolicyEstimate]] = None,
+    keep_custom_metrics: bool = False,
 ) -> ResultDict:
     """Summarizes a set of episode metrics tuples.
 
@@ -196,14 +197,17 @@ def summarize_episodes(
 
     for k, v_list in custom_metrics.copy().items():
         filt = [v for v in v_list if not np.any(np.isnan(v))]
-        custom_metrics[k + "_mean"] = np.mean(filt)
-        if filt:
-            custom_metrics[k + "_min"] = np.min(filt)
-            custom_metrics[k + "_max"] = np.max(filt)
-        else:
-            custom_metrics[k + "_min"] = float("nan")
-            custom_metrics[k + "_max"] = float("nan")
-        del custom_metrics[k]
+        if keep_custom_metrics:
+            custom_metrics[k] = filt
+        else:   
+            custom_metrics[k + "_mean"] = np.mean(filt)
+            if filt:
+                custom_metrics[k + "_min"] = np.min(filt)
+                custom_metrics[k + "_max"] = np.max(filt)
+            else:
+                custom_metrics[k + "_min"] = float("nan")
+                custom_metrics[k + "_max"] = float("nan")
+            del custom_metrics[k]
 
     for k, v_list in perf_stats.copy().items():
         perf_stats[k] = np.mean(v_list)
