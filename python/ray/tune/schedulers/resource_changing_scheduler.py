@@ -721,9 +721,9 @@ class ResourceChangingScheduler(TrialScheduler):
         if self._resources_allocation_function is None:
             return None
 
-        if not self._resources_allocation_function.metric:
+        if not getattr(self._resources_allocation_function, "metric", None):
             self._resources_allocation_function.metric = self._base_scheduler._metric
-        if not self._resources_allocation_function.mode:
+        if not getattr(self._resources_allocation_function, "mode", None):
             self._resources_allocation_function.mode = self._base_scheduler._mode
 
         new_resources = self._resources_allocation_function(
