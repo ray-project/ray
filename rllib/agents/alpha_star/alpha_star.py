@@ -123,8 +123,13 @@ class AlphaStarTrainer(appo.APPOTrainer):
     @override(Trainer)
     def default_resource_request(cls, config):
         cf = dict(cls.get_default_config(), **config)
+        # Construct a dummy LeagueBuilder, such that it gets the opportunity to
+        # adjust the multiagent config, according to its setup, and we can then
+        # properly infer the resources to allocate.
+        from_config(cf["league_builder_config"], trainer=None, trainer_config=cf)
+
         max_num_policies_to_train = cf["max_num_policies_to_train"] or len(
-            cf["multiagent"]["policies_to_train"] or cf["multiagent"]["policies"]
+            cf["multiagent"].get("policies_to_train") or cf["multiagent"]["policies"]
         )
         num_learner_shards = min(
             cf["num_gpus"] or max_num_policies_to_train, max_num_policies_to_train

@@ -39,5 +39,3 @@ multi-agent-cartpole-alpha-star:
             # YAML-capable policy_mapping_fn definition via providing a callable class here.
             policy_mapping_fn:
                 type: ray.rllib.examples.multi_agent_and_self_play.policy_mapping_fn.PolicyMappingFn
-            # Train all defined policies.
-            policies_to_train: null
