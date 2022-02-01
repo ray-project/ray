@@ -147,7 +147,7 @@ class PipManager:
                 f"Local directory {target_dir} for URI {uri} does "
                 "not exist on the cluster. Something may have gone wrong while "
                 "installing the runtime_env `pip` packages.")
-        python_path = target_dir
+        python_path = str(target_dir)
         if "PYTHONPATH" in context.env_vars:
             python_path += os.pathsep + context.env_vars["PYTHONPATH"]
         context.env_vars["PYTHONPATH"] = python_path
