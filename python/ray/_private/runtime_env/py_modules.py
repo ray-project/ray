@@ -129,7 +129,7 @@ class PyModulesManager:
             return
         module_dirs = []
         for uri in uris:
-            module_dir = get_local_dir_from_uri(uri)
+            module_dir = get_local_dir_from_uri(uri, self._resources_dir)
             if not module_dir.exists():
                 raise ValueError(
                     f"Local directory {module_dir} for URI {uri} does "

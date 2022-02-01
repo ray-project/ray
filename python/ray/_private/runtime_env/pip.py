@@ -141,7 +141,7 @@ class PipManager:
             return
         # Insert the target directory into the PYTHONPATH.
         protocol, hash = parse_uri(uri)
-        target_dir = get_local_dir_from_uri(uri)
+        target_dir = get_local_dir_from_uri(uri, self._resources_dir)
         if not target_dir.exists():
             raise ValueError(
                 f"Local directory {target_dir} for URI {uri} does "
