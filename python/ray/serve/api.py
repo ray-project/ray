@@ -1206,7 +1206,8 @@ def list_deployments() -> Dict[str, Deployment]:
 
 @PublicAPI(stability="beta")
 def deploy_group(deployment_list: List[Tuple[Deployment, Dict]], 
-                 _blocking: bool=True) -> List[GoalId]:
+                 _blocking: bool=True,
+                 controller: ServeController=None) -> List[GoalId]:
     """
     Takes in a list of tuples that contain a deployment object and a
     dictionary of keyword arguments to apply that deployment via a
@@ -1218,6 +1219,8 @@ def deploy_group(deployment_list: List[Tuple[Deployment, Dict]],
             the Deployment object–option argument pairs.
         _blocking(bool): whether to wait for the deployments to finish
             deploying or not.
+        controller: the Serve controller to use when deploying the deployments.
+            If None, uses the global_client's controller.
     
     Raises:
         TypeError: if a non-deployment object is passed in as a deployment,
@@ -1243,7 +1246,8 @@ def deploy_group(deployment_list: List[Tuple[Deployment, Dict]],
             )
         )
     
-    controller = _get_global_client()._controller
+    if controller is None:
+        controller = _get_global_client()._controller
     update_goals = ray.get(controller.deploy_group.remote(deployment_args_list))
 
     # This section is adapted from api.py's Client's deploy
