@@ -56,7 +56,9 @@ def StandardMetricsReporting(
                 workers,
                 min_history=config["metrics_num_episodes_for_smoothing"],
                 timeout_seconds=config["metrics_episode_collection_timeout_s"],
-                keep_per_episode_custom_metrics=config["keep_per_episode_custom_metrics"],
+                keep_per_episode_custom_metrics=config[
+                    "keep_per_episode_custom_metrics"
+                ],
                 selected_workers=selected_workers,
                 by_steps_trained=by_steps_trained,
             )

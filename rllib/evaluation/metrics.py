@@ -85,7 +85,9 @@ def collect_metrics(
     episodes, to_be_collected = collect_episodes(
         local_worker, remote_workers, to_be_collected, timeout_seconds=timeout_seconds
     )
-    metrics = summarize_episodes(episodes, episodes, keep_custom_metrics=keep_custom_metrics)
+    metrics = summarize_episodes(
+        episodes, episodes, keep_custom_metrics=keep_custom_metrics
+    )
     return metrics
 
 
@@ -200,7 +202,7 @@ def summarize_episodes(
         filt = [v for v in v_list if not np.any(np.isnan(v))]
         if keep_custom_metrics:
             custom_metrics[k] = filt
-        else:   
+        else:
             custom_metrics[k + "_mean"] = np.mean(filt)
             if filt:
                 custom_metrics[k + "_min"] = np.min(filt)
