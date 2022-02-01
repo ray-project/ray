@@ -379,7 +379,9 @@ cdef class ClientActorRef(ActorID):
     cdef _set_id(self, id):
         check_id(id, CActorID.Size())
         self.data = CActorID.FromBinary(<c_string>id)
-        self._worker.call_retain(id)
+        client_worker = self._client_worker_ref()
+        assert client_worker is not None
+        client_worker.call_retain(id)
 
     cdef _wait_for_id(self, timeout=None):
         if self._id_future:
