@@ -36,6 +36,7 @@ def test_fastapi_serialization(shutdown_ray):
             data = request["data"]
             columns = request["columns"]
             import pandas as pd
+
             data = pd.DataFrame(data, columns=columns)
             data.drop_duplicates(inplace=True)
             return data.values.tolist()
@@ -162,6 +163,7 @@ def test_handle_cache_out_of_scope(serve_instance):
     [sender_where_handle_goes_out_of_scope() for _ in range(30)]
     assert len(handle_cache) == initial_num_cached + 1
 
+
 def test_out_of_order_chaining(serve_instance):
     # https://discuss.ray.io/t/concurrent-queries-blocking-following-queries/3949
 
@@ -169,10 +171,13 @@ def test_out_of_order_chaining(serve_instance):
     class Collector:
         def __init__(self):
             self.lst = []
+
         def append(self, msg):
             self.lst.append(msg)
+
         def get(self):
             return self.lst
+
     collector = Collector.remote()
 
     @serve.deployment
@@ -186,13 +191,13 @@ def test_out_of_order_chaining(serve_instance):
     async def first_func(_id):
         if _id == 0:
             await asyncio.sleep(1000)
-        print(f'First output: {_id}')
+        print(f"First output: {_id}")
         collector.append.remote(f"first-{_id}")
         return _id
 
     @serve.deployment
     async def second_func(_id):
-        print(f'Second output: {_id}')
+        print(f"Second output: {_id}")
         collector.append.remote(f"second-{_id}")
         return _id
 
@@ -208,6 +213,8 @@ def test_out_of_order_chaining(serve_instance):
 
     assert ray.get(collector.get.remote()) == ["first-1", "second-1"]
 
+
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))
