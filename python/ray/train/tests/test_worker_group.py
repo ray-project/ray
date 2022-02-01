@@ -85,12 +85,14 @@ def test_execute_single(ray_start_2_cpus):
 
     def f():
         import os
+
         os.environ["TEST"] = "1"
 
     wg.execute_single(1, f)
 
     def check():
         import os
+
         return os.environ.get("TEST", "0")
 
     assert wg.execute(check) == ["0", "1"]
@@ -105,6 +107,17 @@ def test_bad_resources(ray_start_2_cpus):
 
     with pytest.raises(ValueError):
         WorkerGroup(num_gpus_per_worker=-1)
+
+
+def test_placement_group(ray_start_2_cpus):
+    """Tests that workers can be removed and added to a placement group."""
+    num_workers = 2
+    bundle = {"CPU": 1}
+    bundles = [bundle.copy() for _ in range(num_workers)]
+    placement_group = ray.util.placement_group(bundles)
+    wg = WorkerGroup(num_workers=num_workers, placement_group=placement_group)
+    wg.remove_workers([0])
+    wg.add_workers(1)
 
 
 if __name__ == "__main__":

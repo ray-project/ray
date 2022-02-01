@@ -82,13 +82,14 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
 
   pushd python
     # Setuptools on CentOS is too old to install arrow 0.9.0, therefore we upgrade.
-    $PIP_CMD install --upgrade setuptools
+    # TODO: Unpin after https://github.com/pypa/setuptools/issues/2849 is fixed.
+    $PIP_CMD install --upgrade setuptools==58.4
     # Install setuptools_scm because otherwise when building the wheel for
     # Python 3.6, we see an error.
     $PIP_CMD install -q setuptools_scm==3.1.0
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
-    $PIP_CMD install -q numpy=="$NUMPY_VERSION" cython==0.29.15
+    $PIP_CMD install -q numpy=="$NUMPY_VERSION" cython==0.29.26
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install -q wheel
     # Set the commit SHA in __init__.py.

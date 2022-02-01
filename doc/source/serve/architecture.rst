@@ -2,7 +2,10 @@
 
 Serve Architecture
 ==================
-This document provides an overview of how each component in Serve works.
+This section should help you:
+
+- understand an overview of how each component in Serve works
+- understand the different types of actors that make up a Serve instance
 
 .. Figure source: https://docs.google.com/drawings/d/1jSuBN5dkSj2s9-0eGzlU_ldsRa3TsswQUZM-cMQ29a0/edit?usp=sharing
 
@@ -82,7 +85,7 @@ How do ServeHandles work?
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
 :mod:`ServeHandles <ray.serve.handle.RayServeHandle>` wrap a handle to the router actor on the same node. When a
-request is sent from one via replica to another via the handle, the
+request is sent from one replica to another via the handle, the
 requests go through the same data path as incoming HTTP requests. This enables
 the same deployment selection and batching procedures to happen. ServeHandles are
 often used to implement :ref:`model composition <serve-model-composition>`.

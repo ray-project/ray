@@ -4,10 +4,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import ray.train as train
-from ray.train import Trainer, TorchConfig
+from ray.train import Trainer
 from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
-from torch.nn.parallel import DistributedDataParallel
-from torch.utils.data import DistributedSampler
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -46,7 +44,10 @@ def validate_epoch(dataloader, model, loss_fn):
             pred = model(X)
             loss += loss_fn(pred, y).item()
     loss /= num_batches
-    result = {"model": model.state_dict(), "loss": loss}
+    import copy
+
+    model_copy = copy.deepcopy(model)
+    result = {"model": model_copy.cpu().state_dict(), "loss": loss}
     return result
 
 
@@ -60,17 +61,14 @@ def train_func(config):
 
     train_dataset = LinearDataset(2, 5, size=data_size)
     val_dataset = LinearDataset(2, 5, size=val_size)
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        sampler=DistributedSampler(train_dataset))
-    validation_loader = torch.utils.data.DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        sampler=DistributedSampler(val_dataset))
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size)
+    validation_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size)
+
+    train_loader = train.torch.prepare_data_loader(train_loader)
+    validation_loader = train.torch.prepare_data_loader(validation_loader)
 
     model = nn.Linear(1, hidden_size)
-    model = DistributedDataParallel(model)
+    model = train.torch.prepare_model(model)
 
     loss_fn = nn.MSELoss()
 
@@ -87,15 +85,13 @@ def train_func(config):
     return results
 
 
-def train_linear(num_workers=2):
-    trainer = Trainer(TorchConfig(backend="gloo"), num_workers=num_workers)
-    config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
+def train_linear(num_workers=2, use_gpu=False, epochs=3):
+    trainer = Trainer(backend="torch", num_workers=num_workers, use_gpu=use_gpu)
+    config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
     trainer.start()
     results = trainer.run(
-        train_func,
-        config,
-        callbacks=[JsonLoggerCallback(),
-                   TBXLoggerCallback()])
+        train_func, config, callbacks=[JsonLoggerCallback(), TBXLoggerCallback()]
+    )
     trainer.shutdown()
 
     print(results)
@@ -105,21 +101,27 @@ def train_linear(num_workers=2):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--address",
-        required=False,
-        type=str,
-        help="the address to use for Ray")
+        "--address", required=False, type=str, help="the address to use for Ray"
+    )
     parser.add_argument(
         "--num-workers",
         "-n",
         type=int,
         default=2,
-        help="Sets number of workers for training.")
+        help="Sets number of workers for training.",
+    )
+    parser.add_argument(
+        "--use-gpu", action="store_true", help="Whether to use GPU for training."
+    )
+    parser.add_argument(
+        "--epochs", type=int, default=3, help="Number of epochs to train for."
+    )
     parser.add_argument(
         "--smoke-test",
         action="store_true",
         default=False,
-        help="Finish quickly for testing.")
+        help="Finish quickly for testing.",
+    )
 
     args, _ = parser.parse_known_args()
 
@@ -127,7 +129,9 @@ if __name__ == "__main__":
 
     if args.smoke_test:
         ray.init(num_cpus=2)
+        train_linear()
     else:
         ray.init(address=args.address)
-
-    train_linear(num_workers=args.num_workers)
+        train_linear(
+            num_workers=args.num_workers, use_gpu=args.use_gpu, epochs=args.epochs
+        )

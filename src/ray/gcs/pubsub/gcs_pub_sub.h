@@ -20,23 +20,25 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/ray_config.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/pubsub/subscriber.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 namespace gcs {
 
+/// Channel name constants for Redis pubsub.
+/// Will be removed after migrating to GCS pubsub.
 inline constexpr std::string_view JOB_CHANNEL = "JOB";
 inline constexpr std::string_view NODE_CHANNEL = "NODE";
 inline constexpr std::string_view NODE_RESOURCE_CHANNEL = "NODE_RESOURCE";
 inline constexpr std::string_view ACTOR_CHANNEL = "ACTOR";
 inline constexpr std::string_view WORKER_CHANNEL = "WORKER";
-inline constexpr std::string_view OBJECT_CHANNEL = "OBJECT";
-inline constexpr std::string_view TASK_CHANNEL = "TASK";
 inline constexpr std::string_view TASK_LEASE_CHANNEL = "TASK_LEASE";
 inline constexpr std::string_view RESOURCES_BATCH_CHANNEL = "RESOURCES_BATCH";
 inline constexpr std::string_view ERROR_INFO_CHANNEL = "ERROR_INFO";
@@ -196,6 +198,10 @@ class GcsPublisher {
   /// TODO: remove this constructor and inject mock / fake from the other constructor.
   explicit GcsPublisher(std::unique_ptr<GcsPubSub> pubsub) : pubsub_(std::move(pubsub)) {}
 
+  /// Returns the underlying pubsub::Publisher. Caller does not take ownership.
+  /// Returns nullptr when RayConfig::instance().gcs_grpc_based_pubsub() is false.
+  pubsub::Publisher *GetPublisher() const { return publisher_.get(); }
+
   /// Each publishing method below publishes to a different "channel".
   /// ID is the entity which the message is associated with, e.g. ActorID for Actor data.
   /// Subscribers receive typed messages for the ID that they subscribe to.
@@ -228,10 +234,6 @@ class GcsPublisher {
                               const StatusCallback &done);
 
   /// Uses Redis pubsub.
-  Status PublishTaskLease(const TaskID &id, const rpc::TaskLeaseData &message,
-                          const StatusCallback &done);
-
-  /// Uses Redis pubsub.
   Status PublishError(const std::string &id, const rpc::ErrorTableData &message,
                       const StatusCallback &done);
 
@@ -240,17 +242,74 @@ class GcsPublisher {
   Status PublishResourceBatch(const rpc::ResourceUsageBatchData &message,
                               const StatusCallback &done);
 
-  /// TODO: This belongs to a deprecated codepath. Remove this and its callsites.
-  /// Uses Redis pubsub.
-  Status PublishObject(const ObjectID &id, const rpc::ObjectLocationChange &message,
-                       const StatusCallback &done);
-
   /// Prints debugging info for the publisher.
   std::string DebugString() const;
 
  private:
   const std::unique_ptr<GcsPubSub> pubsub_;
   const std::unique_ptr<pubsub::Publisher> publisher_;
+};
+
+/// \class GcsSubscriber
+///
+/// Supports subscribing to an entity or a channel from GCS. Thread safe.
+class GcsSubscriber {
+ public:
+  /// Initializes GcsSubscriber with both Redis and GCS based GcsSubscribers.
+  // TODO: Support restarted GCS publisher, at the same or a different address.
+  GcsSubscriber(const std::shared_ptr<RedisClient> &redis_client,
+                const rpc::Address &gcs_address,
+                std::unique_ptr<pubsub::Subscriber> subscriber)
+      : gcs_address_(gcs_address), subscriber_(std::move(subscriber)) {
+    if (redis_client) {
+      pubsub_ = std::make_unique<GcsPubSub>(redis_client);
+    } else {
+      RAY_CHECK(::RayConfig::instance().gcs_grpc_based_pubsub())
+          << "gRPC based pubsub has to be enabled";
+    }
+  }
+
+  /// Subscribe*() member functions below would be incrementally converted to use the GCS
+  /// based subscriber, if available.
+  /// The `subscribe` callbacks must not be empty. The `done` callbacks can optionally be
+  /// empty.
+
+  /// Uses GCS pubsub when created with `subscriber`.
+  Status SubscribeActor(const ActorID &id,
+                        const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+                        const StatusCallback &done);
+  Status UnsubscribeActor(const ActorID &id);
+  bool IsActorUnsubscribed(const ActorID &id);
+
+  /// Uses Redis pubsub.
+  Status SubscribeAllJobs(const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
+                          const StatusCallback &done);
+
+  /// Uses Redis pubsub.
+  Status SubscribeAllNodeInfo(const ItemCallback<rpc::GcsNodeInfo> &subscribe,
+                              const StatusCallback &done);
+
+  /// Uses Redis pubsub.
+  Status SubscribeAllNodeResources(const ItemCallback<rpc::NodeResourceChange> &subscribe,
+                                   const StatusCallback &done);
+
+  /// Uses Redis pubsub.
+  Status SubscribeAllWorkerFailures(const ItemCallback<rpc::WorkerDeltaData> &subscribe,
+                                    const StatusCallback &done);
+
+  /// TODO: remove once it is converted to GRPC-based push broadcasting.
+  /// Uses Redis pubsub.
+  Status SubscribeResourcesBatch(
+      const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
+      const StatusCallback &done);
+
+  /// Prints debugging info for the subscriber.
+  std::string DebugString() const;
+
+ private:
+  std::unique_ptr<GcsPubSub> pubsub_;
+  const rpc::Address gcs_address_;
+  const std::unique_ptr<pubsub::SubscriberInterface> subscriber_;
 };
 
 }  // namespace gcs

@@ -30,14 +30,15 @@ class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
             head_node_args={
                 "num_cpus": 4,
                 "num_gpus": 2,
-            })
+            },
+        )
 
     def tearDown(self):
         ray.shutdown()
         self.cluster.shutdown()
 
     # no autoscaler case, resource is not sufficient. Log warning for now.
-    @patch.object(ray.tune.trial_executor.logger, "warning")
+    @patch.object(ray.tune.insufficient_resources_manager.logger, "warning")
     def testRaiseErrorNoAutoscaler(self, mocked_warn):
         class FailureInjectorCallback(Callback):
             """Adds random failure injection to the TrialExecutor."""
@@ -65,15 +66,18 @@ class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
                 resources_per_trial={
                     "cpu": 5,  # more than what the cluster can offer.
                     "gpu": 3,
-                })
-        msg = ("Ignore this message if the cluster is autoscaling. "
-               "You asked for 5.0 cpu and 3.0 gpu per trial, "
-               "but the cluster only has 4.0 cpu and 2.0 gpu. "
-               "Stop the tuning job and "
-               "adjust the resources requested per trial "
-               "(possibly via `resources_per_trial` "
-               "or via `num_workers` for rllib) "
-               "and/or add more resources to your Ray runtime.")
+                },
+            )
+        msg = (
+            "Ignore this message if the cluster is autoscaling. "
+            "You asked for 5.0 cpu and 3.0 gpu per trial, "
+            "but the cluster only has 4.0 cpu and 2.0 gpu. "
+            "Stop the tuning job and "
+            "adjust the resources requested per trial "
+            "(possibly via `resources_per_trial` "
+            "or via `num_workers` for rllib) "
+            "and/or add more resources to your Ray runtime."
+        )
         mocked_warn.assert_called_once_with(msg)
 
 
@@ -177,14 +181,14 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         self.trial_executor.fetch_result(trial)
-        checkpoint = self.trial_executor.pause_trial(trial)
+        self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
-        self.trial_executor.start_trial(trial, checkpoint)
+        self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
-    def _testPauseUnpause(self, result_buffer_length):
+    def _testPauseAndStart(self, result_buffer_length):
         """Tests that unpausing works for trials being processed."""
         os.environ["TUNE_RESULT_BUFFER_LENGTH"] = f"{result_buffer_length}"
         os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "1"
@@ -201,8 +205,6 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(trial.last_result.get(TRAINING_ITERATION), base)
         self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
-        self.trial_executor.unpause_trial(trial)
-        self.assertEqual(Trial.PENDING, trial.status)
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         trial.last_result = self.trial_executor.fetch_result(trial)[-1]
@@ -210,14 +212,14 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
-    def testPauseUnpauseNoBuffer(self):
-        self._testPauseUnpause(0)
+    def testPauseAndStartNoBuffer(self):
+        self._testPauseAndStart(0)
 
-    def testPauseUnpauseTrivialBuffer(self):
-        self._testPauseUnpause(1)
+    def testPauseAndStartTrivialBuffer(self):
+        self._testPauseAndStart(1)
 
-    def testPauseUnpauseActualBuffer(self):
-        self._testPauseUnpause(8)
+    def testPauseAndStartActualBuffer(self):
+        self._testPauseAndStart(8)
 
     def testNoResetTrial(self):
         """Tests that reset handles NotImplemented properly."""
@@ -238,16 +240,16 @@ class RayTrialExecutorTest(unittest.TestCase):
                 self.config = config
                 return True
 
-        trials = self.generate_trials({
-            "run": B,
-            "config": {
-                "foo": 0
+        trials = self.generate_trials(
+            {
+                "run": B,
+                "config": {"foo": 0},
             },
-        }, "grid_search")
+            "grid_search",
+        )
         trial = trials[0]
         self.trial_executor.start_trial(trial)
-        exists = self.trial_executor.reset_trial(trial, {"hi": 1},
-                                                 "modified_mock")
+        exists = self.trial_executor.reset_trial(trial, {"hi": 1}, "modified_mock")
         self.assertEqual(exists, True)
         self.assertEqual(trial.config.get("hi"), 1)
         self.assertEqual(trial.experiment_tag, "modified_mock")
@@ -271,12 +273,13 @@ class RayTrialExecutorTest(unittest.TestCase):
                 print("Cleanup done")
 
         # First check if the trials terminate gracefully by default
-        trials = self.generate_trials({
-            "run": B,
-            "config": {
-                "foo": 0
+        trials = self.generate_trials(
+            {
+                "run": B,
+                "config": {"foo": 0},
             },
-        }, "grid_search")
+            "grid_search",
+        )
         trial = trials[0]
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
@@ -290,12 +293,13 @@ class RayTrialExecutorTest(unittest.TestCase):
 
         # Check forceful termination. It should run for much less than the
         # sleep periods in the Trainable
-        trials = self.generate_trials({
-            "run": B,
-            "config": {
-                "foo": 0
+        trials = self.generate_trials(
+            {
+                "run": B,
+                "config": {"foo": 0},
             },
-        }, "grid_search")
+            "grid_search",
+        )
         trial = trials[0]
         os.environ["TUNE_FORCE_TRIAL_CLEANUP_S"] = "1"
         self.trial_executor = RayTrialExecutor()
@@ -348,13 +352,10 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
             head_node_args={
                 "num_cpus": self.head_cpus,
                 "num_gpus": self.head_gpus,
-                "resources": {
-                    "custom": self.head_custom
-                },
-                "_system_config": {
-                    "num_heartbeats_timeout": 10
-                }
-            })
+                "resources": {"custom": self.head_custom},
+                "_system_config": {"num_heartbeats_timeout": 10},
+            },
+        )
         # Pytest doesn't play nicely with imports
         _register_all()
 
@@ -362,37 +363,6 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         ray.shutdown()
         self.cluster.shutdown()
         _register_all()  # re-register the evicted objects
-
-    def testResourcesAvailableNoPlacementGroup(self):
-        def train(config):
-            tune.report(metric=0, resources=ray.available_resources())
-
-        out = tune.run(
-            train,
-            resources_per_trial={
-                "cpu": 1,
-                "gpu": 1,
-                "custom_resources": {
-                    "custom": 3
-                },
-                "extra_cpu": 3,
-                "extra_gpu": 1,
-                "extra_custom_resources": {
-                    "custom": 4
-                },
-            })
-
-        # Only `cpu`, `gpu`, and `custom_resources` will be "really" reserved,
-        # the extra_* will just be internally reserved by Tune.
-        self.assertDictEqual({
-            key: val
-            for key, val in out.trials[0].last_result["resources"].items()
-            if key in ["CPU", "GPU", "custom"]
-        }, {
-            "CPU": self.head_cpus - 1.0,
-            "GPU": self.head_gpus - 1.0,
-            "custom": self.head_custom - 3.0
-        })
 
     def testResourcesAvailableWithPlacementGroup(self):
         def train(config):
@@ -402,7 +372,8 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         child_bundle = {"CPU": 2, "GPU": 1, "custom": 3}
 
         placement_group_factory = PlacementGroupFactory(
-            [head_bundle, child_bundle, child_bundle])
+            [head_bundle, child_bundle, child_bundle]
+        )
 
         out = tune.run(train, resources_per_trial=placement_group_factory)
 
@@ -413,16 +384,20 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         }
 
         if not available:
-            self.skipTest("Warning: Ray reported no available resources, "
-                          "but this is an error on the Ray core side. "
-                          "Skipping this test for now.")
+            self.skipTest(
+                "Warning: Ray reported no available resources, "
+                "but this is an error on the Ray core side. "
+                "Skipping this test for now."
+            )
 
         self.assertDictEqual(
-            available, {
+            available,
+            {
                 "CPU": self.head_cpus - 5.0,
                 "GPU": self.head_gpus - 2.0,
-                "custom": self.head_custom - 10.0
-            })
+                "custom": self.head_custom - 10.0,
+            },
+        )
 
     def testPlacementGroupFactoryEquality(self):
         """
@@ -431,39 +406,49 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         """
         from collections import Counter
 
-        pgf_1 = PlacementGroupFactory([{
-            "CPU": 2,
-            "GPU": 4,
-            "custom": 7
-        }, {
-            "GPU": 2,
-            "custom": 1,
-            "CPU": 3
-        }], "PACK", "no_name", None)
+        pgf_1 = PlacementGroupFactory(
+            [{"CPU": 2, "GPU": 4, "custom": 7}, {"GPU": 2, "custom": 1, "CPU": 3}],
+            "PACK",
+            "no_name",
+            None,
+        )
 
         pgf_2 = PlacementGroupFactory(
-            [{
-                "custom": 7,
-                "GPU": 4,
-                "CPU": 2,
-            }, {
-                "custom": 1,
-                "GPU": 2,
-                "CPU": 3
-            }],
+            [
+                {
+                    "custom": 7,
+                    "GPU": 4,
+                    "CPU": 2,
+                },
+                {"custom": 1, "GPU": 2, "CPU": 3},
+            ],
             strategy="PACK",
             name="no_name",
-            lifetime=None)
+            lifetime=None,
+        )
+
+        pgf_3 = PlacementGroupFactory(
+            [
+                {"custom": 7, "GPU": 4, "CPU": 2.0, "custom2": 0},
+                {"custom": 1.0, "GPU": 2, "CPU": 3, "custom2": 0},
+            ],
+            strategy="PACK",
+            name="no_name",
+            lifetime=None,
+        )
 
         self.assertEqual(pgf_1, pgf_2)
+        self.assertEqual(pgf_2, pgf_3)
 
         # Hash testing
         counter = Counter()
         counter[pgf_1] += 1
         counter[pgf_2] += 1
+        counter[pgf_3] += 1
 
-        self.assertEqual(counter[pgf_1], 2)
-        self.assertEqual(counter[pgf_2], 2)
+        self.assertEqual(counter[pgf_1], 3)
+        self.assertEqual(counter[pgf_2], 3)
+        self.assertEqual(counter[pgf_3], 3)
 
 
 class LocalModeExecutorTest(RayTrialExecutorTest):
@@ -476,10 +461,12 @@ class LocalModeExecutorTest(RayTrialExecutorTest):
         _register_all()  # re-register the evicted objects
 
     def testForceTrialCleanup(self):
-        self.skipTest("Skipping as force trial cleanup is not applicable"
-                      " for local mode.")
+        self.skipTest(
+            "Skipping as force trial cleanup is not applicable" " for local mode."
+        )
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

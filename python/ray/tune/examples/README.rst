@@ -17,6 +17,7 @@ General Examples
 - `PBT with Function API <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_function.py>`__: Example of using the function API with a PopulationBasedTraining scheduler.
 - `pbt_ppo_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_ppo_example.py>`__: Example of optimizing a distributed RLlib algorithm (PPO) with the PopulationBasedTraining scheduler.
 - `logging_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__: Example of custom loggers and custom trial directory naming.
+- `custom_func_checkpointing <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__: Example of custom checkpointing logic using the function API.
 
 Search Algorithm Examples
 -------------------------

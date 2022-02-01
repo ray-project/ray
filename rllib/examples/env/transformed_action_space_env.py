@@ -1,4 +1,5 @@
 import gym
+from typing import Type
 
 from ray.rllib.utils.annotations import override
 
@@ -8,17 +9,17 @@ class ActionTransform(gym.ActionWrapper):
         super().__init__(env)
         self._low = low
         self._high = high
-        self.action_space = type(env.action_space)(self._low, self._high,
-                                                   env.action_space.shape,
-                                                   env.action_space.dtype)
+        self.action_space = type(env.action_space)(
+            self._low, self._high, env.action_space.shape, env.action_space.dtype
+        )
 
     def action(self, action):
         return (action - self._low) / (self._high - self._low) * (
-            self.env.action_space.high -
-            self.env.action_space.low) + self.env.action_space.low
+            self.env.action_space.high - self.env.action_space.low
+        ) + self.env.action_space.low
 
 
-def transform_action_space(env_name_or_creator):
+def transform_action_space(env_name_or_creator) -> Type[gym.Env]:
     """Wrapper for gym.Envs to have their action space transformed.
 
     Args:
@@ -26,15 +27,15 @@ def transform_action_space(env_name_or_creator):
             env_maker function.
 
     Returns:
-        Type[TransformedActionSpaceEnv]: New TransformedActionSpaceEnv class
+        New TransformedActionSpaceEnv class
             to be used as env. The constructor takes a config dict with `_low`
             and `_high` keys specifying the new action range
             (default -1.0 to 1.0). The reset of the config dict will be
-            passed on to the underlying env's constructor.
+            passed on to the underlying/wrapped env's constructor.
 
     Examples:
          >>> # By gym string:
-         >>> pendulum_300_to_500_cls = transform_action_space("Pendulum-v0")
+         >>> pendulum_300_to_500_cls = transform_action_space("Pendulum-v1")
          >>> # Create a transformed pendulum env.
          >>> pendulum_300_to_500 = pendulum_300_to_500_cls({"_low": -15.0})
          >>> pendulum_300_to_500.action_space
@@ -70,4 +71,4 @@ def transform_action_space(env_name_or_creator):
     return TransformedActionSpaceEnv
 
 
-TransformedActionPendulum = transform_action_space("Pendulum-v0")
+TransformedActionPendulum = transform_action_space("Pendulum-v1")

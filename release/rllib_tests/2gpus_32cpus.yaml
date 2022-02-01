@@ -14,3 +14,8 @@ worker_node_types:
       max_workers: 0
       use_spot: false
 
+aws:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 500

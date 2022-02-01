@@ -21,6 +21,7 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
+#include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
@@ -76,7 +77,7 @@ struct GcsServerMocker {
 
     /// WorkerLeaseInterface
     void RequestWorkerLease(
-        const ray::TaskSpecification &resource_spec,
+        const ray::TaskSpecification &resource_spec, bool grant_or_reject,
         const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
         const int64_t backlog_size = -1) override {
       num_workers_requested += 1;
@@ -84,7 +85,7 @@ struct GcsServerMocker {
     }
 
     void RequestWorkerLease(
-        const rpc::TaskSpec &spec,
+        const rpc::TaskSpec &spec, bool grant_or_reject,
         const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
         const int64_t backlog_size = -1) override {
       num_workers_requested += 1;
@@ -174,7 +175,7 @@ struct GcsServerMocker {
 
     /// ResourceReserveInterface
     void PrepareBundleResources(
-        const BundleSpecification &bundle_spec,
+        const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
         const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback)
         override {
       num_lease_requested += 1;
@@ -183,7 +184,7 @@ struct GcsServerMocker {
 
     /// ResourceReserveInterface
     void CommitBundleResources(
-        const BundleSpecification &bundle_spec,
+        const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
         const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback)
         override {
       num_commit_requested += 1;
@@ -278,6 +279,11 @@ struct GcsServerMocker {
         const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) override {
       RAY_CHECK(false) << "Unused";
     };
+
+    /// ShutdownRaylet
+    void ShutdownRaylet(
+        const NodeID &node_id, bool graceful,
+        const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override{};
 
     ~MockRayletClient() {}
 
@@ -387,7 +393,7 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status UnregisterSelf() override { return Status::NotImplemented(""); }
+    Status DrainSelf() override { return Status::NotImplemented(""); }
 
     const NodeID &GetSelfId() const override {
       static NodeID node_id;
@@ -404,8 +410,8 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status AsyncUnregister(const NodeID &node_id,
-                           const gcs::StatusCallback &callback) override {
+    Status AsyncDrainNode(const NodeID &node_id,
+                          const gcs::StatusCallback &callback) override {
       if (callback) {
         callback(Status::OK());
       }

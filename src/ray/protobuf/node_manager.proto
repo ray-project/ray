@@ -44,9 +44,25 @@ message RequestWorkerLeaseRequest {
   TaskSpec resource_spec = 1;
   // Worker's backlog size for this spec's shape.
   int64 backlog_size = 2;
+  // If it's true, either grant the lease if the task is
+  // locally schedulable or reject the request.
+  // Else, the raylet may return another raylet at which to retry the request.
+  bool grant_or_reject = 3;
 }
 
 message RequestWorkerLeaseReply {
+  enum SchedulingFailureType {
+    // Scheduling is failed on this node.
+    SCHEDULING_FAILED = 0;
+    // Scheduling is cancelled because task/actor's placement is removed.
+    SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED = 1;
+    // Scheduling is cancelled because task/actor's runtime environment setup is failed
+    SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED = 2;
+    // Scheduling is cancelled because task/actor is intentionally cancelled. E.g.,
+    // ray.kill or ray.cancel
+    SCHEDULING_CANCELLED_INTENDED = 3;
+  }
+
   // Address of the leased worker. If this is empty, then the request should be
   // retried at the provided raylet address.
   Address worker_address = 1;
@@ -57,20 +73,19 @@ message RequestWorkerLeaseReply {
   // Whether this lease request was canceled. In this case, the
   // client should try again if the resources are still required.
   bool canceled = 4;
-  // Whether creating the runtime environment for this lease request failed.
-  // If this is true, the corresponding task should be failed by the client.
-  bool runtime_env_setup_failed = 5;
   // PID of the worker process.
   uint32 worker_pid = 6;
   // Whether the request was rejected because of insufficient resources.
   bool rejected = 7;
   // The (normal task) resources data to be carried by the Reply.
   ResourcesData resources_data = 8;
+  // Scheduling failure type.
+  SchedulingFailureType failure_type = 9;
 }
 
 message PrepareBundleResourcesRequest {
-  // Bundle containing the requested resources.
-  Bundle bundle_spec = 1;
+  // Bundles that containing the requested resources.
+  repeated Bundle bundle_specs = 1;
 }
 
 message PrepareBundleResourcesReply {
@@ -79,8 +94,8 @@ message PrepareBundleResourcesReply {
 }
 
 message CommitBundleResourcesRequest {
-  // Bundle containing the requested resources.
-  Bundle bundle_spec = 1;
+  // Bundles containing the requested resources.
+  repeated Bundle bundle_specs = 1;
 }
 
 message CommitBundleResourcesReply {
@@ -114,6 +129,13 @@ message ReleaseUnusedWorkersRequest {
 
 message ReleaseUnusedWorkersReply {
 }
+
+message ShutdownRayletRequest {
+  /// Whether the shutdown request is graceful or not.
+  bool graceful = 1;
+}
+
+message ShutdownRayletReply {}
 
 message CancelWorkerLeaseRequest {
   // The task to cancel.
@@ -283,6 +305,8 @@ service NodeManagerService {
   // are still needed. And Raylet will release other leased workers.
   rpc ReleaseUnusedWorkers(ReleaseUnusedWorkersRequest)
       returns (ReleaseUnusedWorkersReply);
+  /// Shutdown the raylet (node manager) gracefully.
+  rpc ShutdownRaylet(ShutdownRayletRequest) returns (ShutdownRayletReply);
   // Request a raylet to lock resources for a bundle.
   // This is the first phase of 2PC protocol for atomic placement group creation.
   rpc PrepareBundleResources(PrepareBundleResourcesRequest)

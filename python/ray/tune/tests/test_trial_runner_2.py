@@ -1,7 +1,6 @@
 import os
 import sys
 import unittest
-from unittest.mock import patch
 
 import ray
 from ray.rllib import _register_all
@@ -52,9 +51,7 @@ class TrialRunnerTest2(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         runner = TrialRunner()
         kwargs = {
-            "stopping_criterion": {
-                "training_iteration": 1
-            },
+            "stopping_criterion": {"training_iteration": 1},
             "resources": Resources(cpu=1, gpu=1),
         }
         _global_registry.register(TRAINABLE_CLASS, "asdf", None)
@@ -132,43 +129,6 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(len(searchalg.errored_trials), 0)
         self.assertEqual(len(scheduler.errored_trials), 0)
-
-    def testFailureRecoveryNodeRemoval(self):
-        # Node removal simulation only works with resource requests
-        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
-
-        ray.init(num_cpus=1, num_gpus=1)
-        searchalg, scheduler = create_mock_components()
-
-        runner = TrialRunner(searchalg, scheduler=scheduler)
-
-        kwargs = {
-            "resources": Resources(cpu=1, gpu=1),
-            "checkpoint_freq": 1,
-            "max_failures": 1,
-            "config": {
-                "mock_error": True,
-            },
-        }
-        runner.add_trial(Trial("__fake", **kwargs))
-        trials = runner.get_trials()
-
-        with patch("ray.cluster_resources") as resource_mock:
-            resource_mock.return_value = {"CPU": 1, "GPU": 1}
-            runner.step()  # Start trial
-            self.assertEqual(trials[0].status, Trial.RUNNING)
-
-            runner.step()  # Process result, dispatch save
-            runner.step()  # Process save
-            self.assertEqual(trials[0].status, Trial.RUNNING)
-
-            # Mimic a node failure
-            resource_mock.return_value = {"CPU": 0, "GPU": 0}
-            runner.step()  # Detect node failure
-            self.assertEqual(trials[0].status, Trial.PENDING)
-            self.assertEqual(trials[0].num_failures, 1)
-            self.assertEqual(len(searchalg.errored_trials), 0)
-            self.assertEqual(len(scheduler.errored_trials), 1)
 
     def testFailureRecoveryMaxFailures(self):
         ray.init(num_cpus=1, num_gpus=1)
@@ -255,9 +215,7 @@ class TrialRunnerTest2(unittest.TestCase):
         ray.init(num_cpus=1, num_gpus=1)
         runner = TrialRunner()
         kwargs = {
-            "stopping_criterion": {
-                "training_iteration": 1
-            },
+            "stopping_criterion": {"training_iteration": 1},
             "resources": Resources(cpu=1, gpu=1),
             "checkpoint_freq": 1,
         }
@@ -324,9 +282,7 @@ class TrialRunnerTest2(unittest.TestCase):
         ray.init(num_cpus=1, num_gpus=1)
         runner = TrialRunner()
         kwargs = {
-            "stopping_criterion": {
-                "training_iteration": 2
-            },
+            "stopping_criterion": {"training_iteration": 2},
             "checkpoint_at_end": True,
             "resources": Resources(cpu=1, gpu=1),
         }
@@ -346,9 +302,7 @@ class TrialRunnerTest2(unittest.TestCase):
         ray.init(num_cpus=1, num_gpus=1)
         runner = TrialRunner()
         kwargs = {
-            "stopping_criterion": {
-                "training_iteration": 2
-            },
+            "stopping_criterion": {"training_iteration": 2},
             "resources": Resources(cpu=1, gpu=1),
         }
         runner.add_trial(Trial("__fake", **kwargs))
@@ -365,9 +319,7 @@ class TrialRunnerTest2(unittest.TestCase):
         ray.init(num_cpus=1, num_gpus=1)
         runner = TrialRunner()
         kwargs = {
-            "stopping_criterion": {
-                "training_iteration": 2
-            },
+            "stopping_criterion": {"training_iteration": 2},
             "resources": Resources(cpu=1, gpu=1),
         }
         runner.add_trial(Trial("__fake", **kwargs))
@@ -383,14 +335,8 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.trial_executor.pause_trial(trials[0])
         self.assertEqual(trials[0].status, Trial.PAUSED)
 
-        runner.trial_executor.resume_trial(trials[0])
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(ray.get(trials[0].runner.get_info.remote()), 1)
-
-        runner.step()  # Process result
-        self.assertEqual(trials[0].status, Trial.TERMINATED)
-
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

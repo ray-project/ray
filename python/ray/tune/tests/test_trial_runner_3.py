@@ -24,6 +24,7 @@ from ray.tune.suggest.repeater import Repeater
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
 from ray.tune.suggest.search_generator import SearchGenerator
+from ray.tune.syncer import SyncConfig
 
 
 class TrialRunnerTest3(unittest.TestCase):
@@ -59,15 +60,16 @@ class TrialRunnerTest3(unittest.TestCase):
             self.post_step = 1 + cnt
 
         import types
+
         runner.trial_executor.on_step_begin = types.MethodType(
-            on_step_begin, runner.trial_executor)
+            on_step_begin, runner.trial_executor
+        )
         runner.trial_executor.on_step_end = types.MethodType(
-            on_step_end, runner.trial_executor)
+            on_step_end, runner.trial_executor
+        )
 
         kwargs = {
-            "stopping_criterion": {
-                "training_iteration": 5
-            },
+            "stopping_criterion": {"training_iteration": 5},
             "resources": Resources(cpu=1, gpu=1),
         }
         runner.add_trial(Trial("__fake", **kwargs))
@@ -79,16 +81,14 @@ class TrialRunnerTest3(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         runner = TrialRunner()
         kwargs = {
-            "stopping_criterion": {
-                "training_iteration": 5
-            },
+            "stopping_criterion": {"training_iteration": 5},
             "resources": Resources(cpu=1, gpu=1),
         }
         trials = [
             Trial("__fake", **kwargs),
             Trial("__fake", **kwargs),
             Trial("__fake", **kwargs),
-            Trial("__fake", **kwargs)
+            Trial("__fake", **kwargs),
         ]
         for t in trials:
             runner.add_trial(t)
@@ -195,9 +195,7 @@ class TrialRunnerTest3(unittest.TestCase):
         experiment_spec = {
             "run": "__fake",
             "num_samples": 3,
-            "stop": {
-                "training_iteration": 1
-            }
+            "stop": {"training_iteration": 1},
         }
         experiments = [Experiment.from_json("test", experiment_spec)]
         search_alg = _MockSuggestionAlgorithm(max_concurrent=1)
@@ -250,8 +248,7 @@ class TrialRunnerTest3(unittest.TestCase):
                 spec = self._experiment.spec
                 trial = None
                 if self._index < spec["num_samples"]:
-                    trial = Trial(
-                        spec.get("run"), stopping_criterion=spec.get("stop"))
+                    trial = Trial(spec.get("run"), stopping_criterion=spec.get("stop"))
                 self._index += 1
 
                 if self._index > 4:
@@ -266,9 +263,7 @@ class TrialRunnerTest3(unittest.TestCase):
         experiment_spec = {
             "run": "__fake",
             "num_samples": 2,
-            "stop": {
-                "training_iteration": 1
-            }
+            "stop": {"training_iteration": 1},
         }
         searcher = FinishFastAlg()
         experiments = [Experiment.from_json("test", experiment_spec)]
@@ -322,9 +317,7 @@ class TrialRunnerTest3(unittest.TestCase):
             experiment_spec = {
                 "run": "__fake",
                 "num_samples": 20,
-                "stop": {
-                    "training_iteration": 2
-                }
+                "stop": {"training_iteration": 2},
             }
             experiments = [Experiment.from_json("test", experiment_spec)]
             search_alg.add_configurations(experiments)
@@ -332,18 +325,17 @@ class TrialRunnerTest3(unittest.TestCase):
 
         searcher = create_searcher()
         runner = TrialRunner(
-            search_alg=searcher,
-            local_checkpoint_dir=self.tmpdir,
-            checkpoint_period=-1)
+            search_alg=searcher, local_checkpoint_dir=self.tmpdir, checkpoint_period=-1
+        )
         for i in range(6):
             runner.step()
 
-        assert len(
-            runner.get_trials()) == 6, [t.config for t in runner.get_trials()]
+        assert len(runner.get_trials()) == 6, [t.config for t in runner.get_trials()]
         runner.checkpoint()
         trials = runner.get_trials()
         [
-            runner.trial_executor.stop_trial(t) for t in trials
+            runner.trial_executor.stop_trial(t)
+            for t in trials
             if t.status is not Trial.ERROR
         ]
         del runner
@@ -351,12 +343,9 @@ class TrialRunnerTest3(unittest.TestCase):
 
         searcher = create_searcher()
         runner2 = TrialRunner(
-            search_alg=searcher,
-            local_checkpoint_dir=self.tmpdir,
-            resume="LOCAL")
-        assert len(runner2.get_trials()) == 6, [
-            t.config for t in runner2.get_trials()
-        ]
+            search_alg=searcher, local_checkpoint_dir=self.tmpdir, resume="LOCAL"
+        )
+        assert len(runner2.get_trials()) == 6, [t.config for t in runner2.get_trials()]
 
         def trial_statuses():
             return [t.status for t in runner2.get_trials()]
@@ -371,9 +360,7 @@ class TrialRunnerTest3(unittest.TestCase):
         for i in range(20):
             runner2.step()
             assert 1 <= num_running_trials() <= 6
-        evaluated = [
-            t.evaluated_params["test_variable"] for t in runner2.get_trials()
-        ]
+        evaluated = [t.evaluated_params["test_variable"] for t in runner2.get_trials()]
         count = Counter(evaluated)
         assert all(v <= 3 for v in count.values())
 
@@ -381,9 +368,7 @@ class TrialRunnerTest3(unittest.TestCase):
         ray.init(num_cpus=3, local_mode=True, include_dashboard=False)
         runner = TrialRunner(local_checkpoint_dir=self.tmpdir)
         kwargs = {
-            "stopping_criterion": {
-                "training_iteration": 4
-            },
+            "stopping_criterion": {"training_iteration": 4},
             "resources": Resources(cpu=1, gpu=0),
         }
         trials = [
@@ -410,9 +395,7 @@ class TrialRunnerTest3(unittest.TestCase):
         ray.init(num_cpus=3, local_mode=True, include_dashboard=False)
         runner = TrialRunner(local_checkpoint_dir=self.tmpdir)
         kwargs = {
-            "stopping_criterion": {
-                "training_iteration": 4
-            },
+            "stopping_criterion": {"training_iteration": 4},
             "resources": Resources(cpu=1, gpu=0),
         }
         trials = [
@@ -432,7 +415,8 @@ class TrialRunnerTest3(unittest.TestCase):
         del runner
 
         new_runner = TrialRunner(
-            resume="ERRORED_ONLY", local_checkpoint_dir=self.tmpdir)
+            resume="ERRORED_ONLY", local_checkpoint_dir=self.tmpdir
+        )
         assert len(new_runner.get_trials()) == 3
         assert Trial.ERROR not in (t.status for t in new_runner.get_trials())
         # The below is just a check for standard behavior.
@@ -451,14 +435,14 @@ class TrialRunnerTest3(unittest.TestCase):
         """Creates different trials to test runner.checkpoint/restore."""
         ray.init(num_cpus=3)
 
-        runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+        runner = TrialRunner(local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
         trials = [
             Trial(
                 "__fake",
                 trial_id="trial_terminate",
                 stopping_criterion={"training_iteration": 1},
-                checkpoint_freq=1)
+                checkpoint_freq=1,
+            )
         ]
         runner.add_trial(trials[0])
         runner.step()  # Start trial
@@ -472,7 +456,8 @@ class TrialRunnerTest3(unittest.TestCase):
                 trial_id="trial_fail",
                 stopping_criterion={"training_iteration": 3},
                 checkpoint_freq=1,
-                config={"mock_error": True})
+                config={"mock_error": True},
+            )
         ]
         runner.add_trial(trials[1])
         runner.step()  # Start trial
@@ -486,7 +471,8 @@ class TrialRunnerTest3(unittest.TestCase):
                 "__fake",
                 trial_id="trial_succ",
                 stopping_criterion={"training_iteration": 2},
-                checkpoint_freq=1)
+                checkpoint_freq=1,
+            )
         ]
         runner.add_trial(trials[2])
         runner.step()  # Start trial
@@ -509,22 +495,22 @@ class TrialRunnerTest3(unittest.TestCase):
         runner2.step()  # Process save
         self.assertRaises(TuneError, runner2.step)
 
-    def testTrialNoSave(self):
-        """Check that non-checkpointing trials are not saved."""
+    def testTrialNoCheckpointSave(self):
+        """Check that non-checkpointing trials *are* saved."""
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
         ray.init(num_cpus=3)
 
-        runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+        runner = TrialRunner(local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
         runner.add_trial(
             Trial(
                 "__fake",
                 trial_id="non_checkpoint",
-                stopping_criterion={"training_iteration": 2}))
+                stopping_criterion={"training_iteration": 2},
+            )
+        )
 
-        while not all(t.status == Trial.TERMINATED
-                      for t in runner.get_trials()):
+        while not all(t.status == Trial.TERMINATED for t in runner.get_trials()):
             runner.step()
 
         runner.add_trial(
@@ -532,17 +518,20 @@ class TrialRunnerTest3(unittest.TestCase):
                 "__fake",
                 trial_id="checkpoint",
                 checkpoint_at_end=True,
-                stopping_criterion={"training_iteration": 2}))
+                stopping_criterion={"training_iteration": 2},
+            )
+        )
 
-        while not all(t.status == Trial.TERMINATED
-                      for t in runner.get_trials()):
+        while not all(t.status == Trial.TERMINATED for t in runner.get_trials()):
             runner.step()
 
         runner.add_trial(
             Trial(
                 "__fake",
                 trial_id="pending",
-                stopping_criterion={"training_iteration": 2}))
+                stopping_criterion={"training_iteration": 2},
+            )
+        )
 
         runner.step()
         runner.step()
@@ -550,13 +539,10 @@ class TrialRunnerTest3(unittest.TestCase):
         runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
         new_trials = runner2.get_trials()
         self.assertEqual(len(new_trials), 3)
-        self.assertTrue(
-            runner2.get_trial("non_checkpoint").status == Trial.TERMINATED)
-        self.assertTrue(
-            runner2.get_trial("checkpoint").status == Trial.TERMINATED)
+        self.assertTrue(runner2.get_trial("non_checkpoint").status == Trial.TERMINATED)
+        self.assertTrue(runner2.get_trial("checkpoint").status == Trial.TERMINATED)
         self.assertTrue(runner2.get_trial("pending").status == Trial.PENDING)
-        self.assertTrue(
-            not runner2.get_trial("pending").has_reported_at_least_once)
+        self.assertTrue(runner2.get_trial("pending").has_reported_at_least_once)
         runner2.step()
 
     def testCheckpointWithFunction(self):
@@ -564,12 +550,14 @@ class TrialRunnerTest3(unittest.TestCase):
 
         trial = Trial(
             "__fake",
-            config={"callbacks": {
-                "on_episode_start": lambda i: i,
-            }},
-            checkpoint_freq=1)
-        runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+            config={
+                "callbacks": {
+                    "on_episode_start": lambda i: i,
+                }
+            },
+            checkpoint_freq=1,
+        )
+        runner = TrialRunner(local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
         for _ in range(5):
             runner.step()
@@ -582,9 +570,10 @@ class TrialRunnerTest3(unittest.TestCase):
 
     def testCheckpointOverwrite(self):
         def count_checkpoints(cdir):
-            return sum((fname.startswith("experiment_state")
-                        and fname.endswith(".json"))
-                       for fname in os.listdir(cdir))
+            return sum(
+                (fname.startswith("experiment_state") and fname.endswith(".json"))
+                for fname in os.listdir(cdir)
+            )
 
         ray.init(num_cpus=2)
 
@@ -613,14 +602,13 @@ class TrialRunnerTest3(unittest.TestCase):
 
         def num_checkpoints(trial):
             return sum(
-                item.startswith("checkpoint_")
-                for item in os.listdir(trial.logdir))
+                item.startswith("checkpoint_") for item in os.listdir(trial.logdir)
+            )
 
         ray.init(num_cpus=2)
 
         trial = Trial("__fake", checkpoint_freq=3)
-        runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+        runner = TrialRunner(local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
 
         runner.step()  # start trial
@@ -645,17 +633,21 @@ class TrialRunnerTest3(unittest.TestCase):
 
         def num_checkpoints(trial):
             return sum(
-                item.startswith("checkpoint_")
-                for item in os.listdir(trial.logdir))
+                item.startswith("checkpoint_") for item in os.listdir(trial.logdir)
+            )
 
         ray.init(num_cpus=2)
 
         trial = Trial(
             "__fake",
             checkpoint_at_end=True,
-            stopping_criterion={"training_iteration": 4})
+            stopping_criterion={"training_iteration": 4},
+        )
         runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+            local_checkpoint_dir=self.tmpdir,
+            checkpoint_period=0,
+            trial_executor=RayTrialExecutor(result_buffer_length=7),
+        )
         runner.add_trial(trial)
 
         runner.step()  # start trial
@@ -676,42 +668,12 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 4)
         self.assertEqual(num_checkpoints(trial), 1)
 
-    def testCheckpointAtEndBuffered(self):
-        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "7"
-        os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "0.5"
-
-        def num_checkpoints(trial):
-            return sum(
-                item.startswith("checkpoint_")
-                for item in os.listdir(trial.logdir))
-
-        ray.init(num_cpus=2)
-
-        trial = Trial(
-            "__fake",
-            checkpoint_at_end=True,
-            stopping_criterion={"training_iteration": 4})
-        # Force result buffer length
-        runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            checkpoint_period=0,
-            trial_executor=RayTrialExecutor(result_buffer_length=7))
-        runner.add_trial(trial)
-
-        runner.step()  # start trial
-        self.assertEqual(num_checkpoints(trial), 0)
-
-        runner.step()  # run iterations 1-7
-        self.assertEqual(trial.last_result[TRAINING_ITERATION], 7)
-        self.assertEqual(num_checkpoints(trial), 1)
-
     def testUserCheckpoint(self):
         os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"  # Don't finish early
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
         ray.init(num_cpus=3)
-        runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+        runner = TrialRunner(local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 2}))
         trials = runner.get_trials()
 
@@ -737,12 +699,11 @@ class TrialRunnerTest3(unittest.TestCase):
 
         def num_checkpoints(trial):
             return sum(
-                item.startswith("checkpoint_")
-                for item in os.listdir(trial.logdir))
+                item.startswith("checkpoint_") for item in os.listdir(trial.logdir)
+            )
 
         ray.init(num_cpus=3)
-        runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+        runner = TrialRunner(local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 10}))
         trials = runner.get_trials()
 
@@ -779,7 +740,7 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertTrue(trials[0].has_checkpoint())
         self.assertEqual(num_checkpoints(trials[0]), 2)
 
-    @patch("ray.tune.syncer.CLOUD_SYNC_PERIOD", 0)
+    @patch("ray.tune.syncer.SYNC_PERIOD", 0)
     def testCheckpointAutoPeriod(self):
         ray.init(num_cpus=3)
 
@@ -791,21 +752,20 @@ class TrialRunnerTest3(unittest.TestCase):
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
             checkpoint_period="auto",
-            sync_to_cloud=sync_up,
-            remote_checkpoint_dir="fake")
+            sync_config=SyncConfig(upload_dir="fake", syncer=sync_up),
+            remote_checkpoint_dir="fake",
+        )
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 1}))
 
         runner.step()  # Run one step, this will trigger checkpointing
 
-        self.assertGreaterEqual(runner._checkpoint_manager._checkpoint_period,
-                                38.)
+        self.assertGreaterEqual(runner._checkpoint_manager._checkpoint_period, 38.0)
 
 
 class SearchAlgorithmTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(
-            num_cpus=4, num_gpus=0, local_mode=True, include_dashboard=False)
+        ray.init(num_cpus=4, num_gpus=0, local_mode=True, include_dashboard=False)
 
     @classmethod
     def tearDownClass(cls):
@@ -841,9 +801,7 @@ class SearchAlgorithmTest(unittest.TestCase):
         experiment_spec = {
             "run": "__fake",
             "num_samples": num_samples,
-            "stop": {
-                "training_iteration": 1
-            }
+            "stop": {"training_iteration": 1},
         }
         alg.add_configurations({"test": experiment_spec})
         runner = TrialRunner(search_alg=alg)
@@ -956,9 +914,7 @@ class SearchAlgorithmTest(unittest.TestCase):
         experiment_spec = {
             "run": "__fake",
             "num_samples": 5,
-            "stop": {
-                "training_iteration": 1
-            }
+            "stop": {"training_iteration": 1},
         }
         search_alg.add_configurations({"test": experiment_spec})
 
@@ -1062,6 +1018,42 @@ class SearchAlgorithmTest(unittest.TestCase):
         limiter.on_trial_complete("test_2", {"result": 3})
         assert not limiter.searcher.returned_result
 
+    def testSetMaxConcurrency(self):
+        """Test whether ``set_max_concurrency`` is called by the
+        ``ConcurrencyLimiter`` and works correctly.
+        """
+
+        class TestSuggestion(Searcher):
+            def __init__(self, index):
+                self.index = index
+                self.returned_result = []
+                self._max_concurrent = 1
+                super().__init__(metric="result", mode="max")
+
+            def suggest(self, trial_id):
+                self.index += 1
+                return {"score": self.index}
+
+            def on_trial_complete(self, trial_id, result=None, **kwargs):
+                self.returned_result.append(result)
+
+            def set_max_concurrency(self, max_concurrent: int) -> bool:
+                self._max_concurrent = max_concurrent
+                return True
+
+        searcher = TestSuggestion(0)
+        limiter_max_concurrent = 2
+        limiter = ConcurrencyLimiter(
+            searcher, max_concurrent=limiter_max_concurrent, batch=True
+        )
+        assert limiter.searcher._max_concurrent == limiter_max_concurrent
+        # Since set_max_concurrency returns True, ConcurrencyLimiter should not
+        # be limiting concurrency itself
+        assert not limiter._limit_concurrency
+        assert limiter.suggest("test_1")["score"] == 1
+        assert limiter.suggest("test_2")["score"] == 2
+        assert limiter.suggest("test_3")["score"] == 3
+
 
 class ResourcesTest(unittest.TestCase):
     def testSubtraction(self):
@@ -1070,35 +1062,24 @@ class ResourcesTest(unittest.TestCase):
             0,
             0,
             1,
-            custom_resources={
-                "a": 1,
-                "b": 2
-            },
-            extra_custom_resources={
-                "a": 1,
-                "b": 1
-            })
+            custom_resources={"a": 1, "b": 2},
+            extra_custom_resources={"a": 1, "b": 1},
+        )
         resource_2 = Resources(
             1,
             0,
             0,
             1,
-            custom_resources={
-                "a": 1,
-                "b": 2
-            },
-            extra_custom_resources={
-                "a": 1,
-                "b": 1
-            })
+            custom_resources={"a": 1, "b": 2},
+            extra_custom_resources={"a": 1, "b": 1},
+        )
         new_res = Resources.subtract(resource_1, resource_2)
         self.assertTrue(new_res.cpu == 0)
         self.assertTrue(new_res.gpu == 0)
         self.assertTrue(new_res.extra_cpu == 0)
         self.assertTrue(new_res.extra_gpu == 0)
         self.assertTrue(all(k == 0 for k in new_res.custom_resources.values()))
-        self.assertTrue(
-            all(k == 0 for k in new_res.extra_custom_resources.values()))
+        self.assertTrue(all(k == 0 for k in new_res.extra_custom_resources.values()))
 
     def testDifferentResources(self):
         resource_1 = Resources(1, 0, 0, 1, custom_resources={"a": 1, "b": 2})
@@ -1121,4 +1102,5 @@ class ResourcesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))
