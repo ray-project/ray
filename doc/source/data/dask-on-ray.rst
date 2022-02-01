@@ -1,7 +1,8 @@
-Dask on Ray
-===========
-
 .. _dask-on-ray:
+
+Using Dask on Ray
+=================
+
 
 `Dask <https://dask.org/>`__ is a Python parallel computing library geared towards scaling analytics and
 scientific computing workloads. It provides `big data collections
@@ -30,6 +31,8 @@ workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be exec
 
      * - Ray Version
        - Dask Version
+     * - ``1.11.0``
+       - ``2022.1.0``
      * - ``1.10.0``
        - ``2021.12.0``
      * - ``1.9.2``

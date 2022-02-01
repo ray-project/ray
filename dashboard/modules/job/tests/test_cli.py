@@ -34,8 +34,7 @@ def mock_sdk_client():
 
     if "RAY_ADDRESS" in os.environ:
         del os.environ["RAY_ADDRESS"]
-    with mock.patch("ray.dashboard.modules.job.cli.JobSubmissionClient"
-                    ) as mock_client:
+    with mock.patch("ray.dashboard.modules.job.cli.JobSubmissionClient") as mock_client:
         # In python 3.6 it will fail with error
         # 'async for' requires an object with __aiter__ method, got MagicMock"
         mock_client().tail_job_logs.return_value = AsyncIterator(range(10))
@@ -52,9 +51,7 @@ def runtime_env_formats():
             "working_dir": "s3://bogus.zip",
             "conda": "conda_env",
             "pip": ["pip-install-test"],
-            "env_vars": {
-                "hi": "hi2"
-            }
+            "env_vars": {"hi": "hi2"},
         }
 
         yaml_file = path / "env.yaml"
@@ -86,18 +83,15 @@ class TestSubmit:
 
         # Test passing address via command line.
         result = runner.invoke(
-            job_cli_group,
-            ["submit", "--address=arg_addr", "--", "echo hello"])
+            job_cli_group, ["submit", "--address=arg_addr", "--", "echo hello"]
+        )
         assert mock_sdk_client.called_with("arg_addr")
         assert result.exit_code == 0
-
         # Test passing address via env var.
         with set_env_var("RAY_ADDRESS", "env_addr"):
-            result = runner.invoke(job_cli_group,
-                                   ["submit", "--", "echo hello"])
+            result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
             assert result.exit_code == 0
             assert mock_sdk_client.called_with("env_addr")
-
         # Test passing no address.
         result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
         assert result.exit_code == 1
@@ -108,24 +102,22 @@ class TestSubmit:
         mock_client_instance = mock_sdk_client.return_value
 
         with set_env_var("RAY_ADDRESS", "env_addr"):
-            result = runner.invoke(job_cli_group,
-                                   ["submit", "--", "echo hello"])
+            result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
             assert result.exit_code == 0
             assert mock_client_instance.called_with(runtime_env={})
 
             result = runner.invoke(
                 job_cli_group,
-                ["submit", "--", "--working-dir", "blah", "--", "echo hello"])
+                ["submit", "--", "--working-dir", "blah", "--", "echo hello"],
+            )
             assert result.exit_code == 0
-            assert mock_client_instance.called_with(
-                runtime_env={"working_dir": "blah"})
+            assert mock_client_instance.called_with(runtime_env={"working_dir": "blah"})
 
             result = runner.invoke(
-                job_cli_group,
-                ["submit", "--", "--working-dir='.'", "--", "echo hello"])
+                job_cli_group, ["submit", "--", "--working-dir='.'", "--", "echo hello"]
+            )
             assert result.exit_code == 0
-            assert mock_client_instance.called_with(
-                runtime_env={"working_dir": "."})
+            assert mock_client_instance.called_with(runtime_env={"working_dir": "."})
 
     def test_runtime_env(self, mock_sdk_client, runtime_env_formats):
         runner = CliRunner()
@@ -135,39 +127,64 @@ class TestSubmit:
         with set_env_var("RAY_ADDRESS", "env_addr"):
             # Test passing via file.
             result = runner.invoke(
-                job_cli_group,
-                ["submit", "--runtime-env", env_yaml, "--", "echo hello"])
+                job_cli_group, ["submit", "--runtime-env", env_yaml, "--", "echo hello"]
+            )
             assert result.exit_code == 0
             assert mock_client_instance.called_with(runtime_env=env_dict)
 
             # Test passing via json.
             result = runner.invoke(
                 job_cli_group,
-                ["submit", "--runtime-env-json", env_json, "--", "echo hello"])
+                ["submit", "--runtime-env-json", env_json, "--", "echo hello"],
+            )
             assert result.exit_code == 0
             assert mock_client_instance.called_with(runtime_env=env_dict)
 
             # Test passing both throws an error.
-            result = runner.invoke(job_cli_group, [
-                "submit", "--runtime-env", env_yaml, "--runtime-env-json",
-                env_json, "--", "echo hello"
-            ])
+            result = runner.invoke(
+                job_cli_group,
+                [
+                    "submit",
+                    "--runtime-env",
+                    env_yaml,
+                    "--runtime-env-json",
+                    env_json,
+                    "--",
+                    "echo hello",
+                ],
+            )
             assert result.exit_code == 1
             assert "Only one of" in str(result.exception)
 
             # Test overriding working_dir.
             env_dict.update(working_dir=".")
-            result = runner.invoke(job_cli_group, [
-                "submit", "--runtime-env", env_yaml, "--working-dir", ".",
-                "--", "echo hello"
-            ])
+            result = runner.invoke(
+                job_cli_group,
+                [
+                    "submit",
+                    "--runtime-env",
+                    env_yaml,
+                    "--working-dir",
+                    ".",
+                    "--",
+                    "echo hello",
+                ],
+            )
             assert result.exit_code == 0
             assert mock_client_instance.called_with(runtime_env=env_dict)
 
-            result = runner.invoke(job_cli_group, [
-                "submit", "--runtime-env-json", env_json, "--working-dir", ".",
-                "--", "echo hello"
-            ])
+            result = runner.invoke(
+                job_cli_group,
+                [
+                    "submit",
+                    "--runtime-env-json",
+                    env_json,
+                    "--working-dir",
+                    ".",
+                    "--",
+                    "echo hello",
+                ],
+            )
             assert result.exit_code == 0
             assert mock_client_instance.called_with(runtime_env=env_dict)
 
@@ -176,18 +193,18 @@ class TestSubmit:
         mock_client_instance = mock_sdk_client.return_value
 
         with set_env_var("RAY_ADDRESS", "env_addr"):
-            result = runner.invoke(job_cli_group,
-                                   ["submit", "--", "echo hello"])
+            result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
             assert result.exit_code == 0
             assert mock_client_instance.called_with(job_id=None)
 
             result = runner.invoke(
-                job_cli_group,
-                ["submit", "--", "--job-id=my_job_id", "echo hello"])
+                job_cli_group, ["submit", "--", "--job-id=my_job_id", "echo hello"]
+            )
             assert result.exit_code == 0
             assert mock_client_instance.called_with(job_id="my_job_id")
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

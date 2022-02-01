@@ -17,6 +17,7 @@ from ray.util.dask import ray_dask_get
 from ray._private.test_utils import monitor_memory_usage
 import math
 import json
+
 """
 We simulate a real-life usecase where we process a time-series
 data of 1 month, using Dask/Xarray on a Ray cluster.
@@ -55,11 +56,11 @@ logging.basicConfig(
 
 class TestSpec:
     def __init__(
-            self,
-            num_workers: int,
-            worker_obj_store_size_in_gb: int,
-            trigger_object_spill: bool,
-            error_rate: float,
+        self,
+        num_workers: int,
+        worker_obj_store_size_in_gb: int,
+        trigger_object_spill: bool,
+        error_rate: float,
     ):
         """
         `batch_size` is the # of Dask graphs sent to the cluster
@@ -83,18 +84,24 @@ class TestSpec:
         self.error_rate = error_rate
 
         if trigger_object_spill:
-            num_graphs_per_worker = (int(
-                math.floor(worker_obj_store_size_in_gb /
-                           PEAK_MEMORY_CONSUMPTION_IN_GB)) + 1)
+            num_graphs_per_worker = (
+                int(
+                    math.floor(
+                        worker_obj_store_size_in_gb / PEAK_MEMORY_CONSUMPTION_IN_GB
+                    )
+                )
+                + 1
+            )
         else:
             num_graphs_per_worker = int(
-                math.floor(worker_obj_store_size_in_gb /
-                           PEAK_MEMORY_CONSUMPTION_IN_GB))
+                math.floor(worker_obj_store_size_in_gb / PEAK_MEMORY_CONSUMPTION_IN_GB)
+            )
         self.batch_size = num_graphs_per_worker * num_workers
 
     def __str__(self):
         return "Error rate = {}, Batch Size = {}".format(
-            self.error_rate, self.batch_size)
+            self.error_rate, self.batch_size
+        )
 
 
 class LoadRoutines:
@@ -170,21 +177,12 @@ class TransformRoutines:
         transformed_audio = dask.array.map_overlap(
             TransformRoutines.fft_algorithm,
             xr_input.data_var.data,
-            depth={
-                0: 0,
-                1: (0, n_fft - hop_length)
-            },
-            boundary={
-                0: "none",
-                1: "none"
-            },
+            depth={0: 0, 1: (0, n_fft - hop_length)},
+            boundary={0: "none", 1: "none"},
             chunks=output_chunk_shape,
             dtype=np.float32,
             trim=True,
-            algorithm_params={
-                "hop_length": hop_length,
-                "n_fft": n_fft
-            },
+            algorithm_params={"hop_length": hop_length, "n_fft": n_fft},
         )
 
         return xarray.Dataset(
@@ -202,8 +200,7 @@ class TransformRoutines:
         )
 
     @staticmethod
-    def decimate_xarray_after_load(xr_input: xarray.Dataset,
-                                   decimate_factor: int):
+    def decimate_xarray_after_load(xr_input: xarray.Dataset, decimate_factor: int):
         """
         Downsample an Xarray.
         """
@@ -245,8 +242,7 @@ class TransformRoutines:
         return data_ds
 
     @staticmethod
-    def decimate_raw_data(data: np.ndarray, decimate_time: int,
-                          overlap_time=0):
+    def decimate_raw_data(data: np.ndarray, decimate_time: int, overlap_time=0):
         from scipy.signal import decimate
 
         data = np.nan_to_num(data)
@@ -278,12 +274,13 @@ class TransformRoutines:
         )
 
         spectrogram = np.abs(spectrogram)
-        spectrogram = 10 * np.log10(spectrogram**2)
+        spectrogram = 10 * np.log10(spectrogram ** 2)
         return spectrogram
 
     @staticmethod
-    def infer_chunk_shape_after_fft(n_fft: int, hop_length: int,
-                                    time_chunk_sizes: List) -> tuple:
+    def infer_chunk_shape_after_fft(
+        n_fft: int, hop_length: int, time_chunk_sizes: List
+    ) -> tuple:
         """
         Infer the chunk shapes after applying FFT transformation.
         Infer is necessary for lazy transformations in Dask when
@@ -291,11 +288,10 @@ class TransformRoutines:
         """
         output_time_chunk_sizes = list()
         for time_chunk_size in time_chunk_sizes:
-            output_time_chunk_sizes.append(
-                math.ceil(time_chunk_size / hop_length))
+            output_time_chunk_sizes.append(math.ceil(time_chunk_size / hop_length))
 
         num_freq = int(n_fft / 2 + 1)
-        return (INPUT_SHAPE[0], ), (num_freq, ), tuple(output_time_chunk_sizes)
+        return (INPUT_SHAPE[0],), (num_freq,), tuple(output_time_chunk_sizes)
 
     @staticmethod
     def fix_last_chunk_error(xr_input: xarray.Dataset, n_overlap):
@@ -303,8 +299,7 @@ class TransformRoutines:
         # purging chunks that are too small
         if time_chunks[-1] < n_overlap:
             current_len = len(xr_input.time)
-            xr_input = xr_input.isel(
-                time=slice(0, current_len - time_chunks[-1]))
+            xr_input = xr_input.isel(time=slice(0, current_len - time_chunks[-1]))
 
         if time_chunks[0] < n_overlap:
             current_len = len(xr_input.time)
@@ -330,18 +325,17 @@ class SaveRoutines:
 
     @staticmethod
     def save_all_xarrays(
-            xarray_filename_pairs: List[Tuple],
-            ray_scheduler,
-            dirpath: str,
-            batch_size: int,
+        xarray_filename_pairs: List[Tuple],
+        ray_scheduler,
+        dirpath: str,
+        batch_size: int,
     ):
         def chunks(lst, n):
             """Yield successive n-sized chunks from lst."""
             for i in range(0, len(lst), n):
-                yield lst[i:i + n]
+                yield lst[i : i + n]
 
-        for batch_idx, batch in enumerate(
-                chunks(xarray_filename_pairs, batch_size)):
+        for batch_idx, batch in enumerate(chunks(xarray_filename_pairs, batch_size)):
             delayed_tasks = list()
             for xarray_filename_pair in batch:
                 delayed_tasks.append(
@@ -349,11 +343,14 @@ class SaveRoutines:
                         xarray_dataset=xarray_filename_pair[0],
                         filename=xarray_filename_pair[1],
                         dirpath=dirpath,
-                    ))
+                    )
+                )
 
             logging.info(
-                "[Batch Index {}] Batch size {}: Sending work to Ray Cluster."
-                .format(batch_idx, batch_size))
+                "[Batch Index {}] Batch size {}: Sending work to Ray Cluster.".format(
+                    batch_idx, batch_size
+                )
+            )
 
             res = []
             try:
@@ -361,14 +358,16 @@ class SaveRoutines:
             except Exception:
                 logging.warning(
                     "[Batch Index {}] Exception while computing batch!".format(
-                        batch_idx))
+                        batch_idx
+                    )
+                )
             finally:
-                logging.info("[Batch Index {}], Result = {}".format(
-                    batch_idx, res))
+                logging.info("[Batch Index {}], Result = {}".format(batch_idx, res))
 
 
-def lazy_create_xarray_filename_pairs(test_spec: TestSpec,
-                                      ) -> List[Tuple[xarray.Dataset, str]]:
+def lazy_create_xarray_filename_pairs(
+    test_spec: TestSpec,
+) -> List[Tuple[xarray.Dataset, str]]:
     n_fft = 4096
     hop_length = int(SAMPLING_RATE / 100)
     decimate_factor = 100
@@ -376,30 +375,35 @@ def lazy_create_xarray_filename_pairs(test_spec: TestSpec,
     logging.info("Creating 1 month lazy Xarray with decimation and FFT")
     xr1 = LoadRoutines.lazy_load_xarray_one_month(test_spec)
     xr2 = TransformRoutines.decimate_xarray_after_load(
-        xr_input=xr1, decimate_factor=decimate_factor)
-    xr3 = TransformRoutines.fix_last_chunk_error(
-        xr2, n_overlap=n_fft - hop_length)
-    xr4 = TransformRoutines.fft_xarray(
-        xr_input=xr3, n_fft=n_fft, hop_length=hop_length)
+        xr_input=xr1, decimate_factor=decimate_factor
+    )
+    xr3 = TransformRoutines.fix_last_chunk_error(xr2, n_overlap=n_fft - hop_length)
+    xr4 = TransformRoutines.fft_xarray(xr_input=xr3, n_fft=n_fft, hop_length=hop_length)
 
     num_segments = int(MINUTES_IN_A_MONTH / NUM_MINS_PER_OUTPUT_FILE)
     start_time = 0
     xarray_filename_pairs: List[Tuple[xarray.Dataset, str]] = list()
     timestamp = int(time.time())
     for step in range(num_segments):
-        segment_start = start_time + (NUM_MINS_PER_OUTPUT_FILE * step
-                                      )  # in minutes
+        segment_start = start_time + (NUM_MINS_PER_OUTPUT_FILE * step)  # in minutes
         segment_start_index = int(
-            SECONDS_IN_A_MIN * NUM_MINS_PER_OUTPUT_FILE * step *
-            (SAMPLING_RATE / decimate_factor) / hop_length)
+            SECONDS_IN_A_MIN
+            * NUM_MINS_PER_OUTPUT_FILE
+            * step
+            * (SAMPLING_RATE / decimate_factor)
+            / hop_length
+        )
         segment_end = segment_start + NUM_MINS_PER_OUTPUT_FILE
         segment_len_sec = (segment_end - segment_start) * SECONDS_IN_A_MIN
-        segment_end_index = int(segment_start_index +
-                                segment_len_sec * SAMPLING_RATE / hop_length)
+        segment_end_index = int(
+            segment_start_index + segment_len_sec * SAMPLING_RATE / hop_length
+        )
         xr_segment = deepcopy(
-            xr4.isel(time=slice(segment_start_index, segment_end_index)))
+            xr4.isel(time=slice(segment_start_index, segment_end_index))
+        )
         xarray_filename_pairs.append(
-            (xr_segment, "xarray_step_{}_{}.zarr".format(step, timestamp)))
+            (xr_segment, "xarray_step_{}_{}.zarr".format(step, timestamp))
+        )
 
     return xarray_filename_pairs
 
@@ -436,7 +440,6 @@ def main():
     data_save_path = args.data_save_path
     if not os.path.exists(data_save_path):
         os.makedirs(data_save_path, mode=0o777, exist_ok=True)
-    os.chmod(data_save_path, mode=0o777)
 
     # Lazily construct Xarrays
     xarray_filename_pairs = lazy_create_xarray_filename_pairs(test_spec)
@@ -461,11 +464,14 @@ def main():
     print(ray.internal.internal_api.memory_summary(stats_only=True))
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         f.write(
-            json.dumps({
-                "success": 1,
-                "_peak_memory": round(used_gb, 2),
-                "_peak_process_memory": usage
-            }))
+            json.dumps(
+                {
+                    "success": 1,
+                    "_peak_memory": round(used_gb, 2),
+                    "_peak_process_memory": usage,
+                }
+            )
+        )
 
 
 if __name__ == "__main__":
