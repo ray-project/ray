@@ -702,7 +702,12 @@ class Worker:
         return False
 
     def is_connected(self) -> bool:
-        return not self._in_shutdown and self._has_connected
+        try:
+            return not self._in_shutdown and self._has_connected
+        except Exception:
+            # Usually this will happen when it's referenced in cython's __dealloc__.
+            # In this case, the attribute might have been cleaned up.
+            return False
 
     def _server_init(
         self, job_config: JobConfig, ray_init_kwargs: Optional[Dict[str, Any]] = None

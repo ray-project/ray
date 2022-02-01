@@ -334,13 +334,7 @@ cdef class ClientActorRef(ActorID):
             raise TypeError("Unexpected type for id {}".format(id))
 
     def __dealloc__(self):
-        def _connected():
-            try:
-                return self._worker is not None and self._worker.is_connected()
-            except Exception:
-                return False
-
-        if _connected():
+        if self._worker.is_connected():
             try:
                 self._wait_for_id()
             # cython would suppress this exception as well, but it tries to
