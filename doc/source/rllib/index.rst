@@ -5,7 +5,7 @@
 RLlib: Industry-Grade Reinforcement Learning
 ============================================
 
-.. figure:: ../images/rllib/rllib-index-header.svg
+.. figure:: images/rllib-index-header.svg
 
 **RLlib** is an open-source library for reinforcement learning (RL), offering support for
 production-level, highly distributed RL workloads while maintaining
@@ -73,7 +73,7 @@ Feature Overview
 ----------------
 
 The following is a summary of RLlib's most striking features.
-For an in-depth overview, check out our `documentation <http://docs.ray.io/en/master/rllib/index.html>`_.
+For an in-depth overview, check out our `documentation <http://docs.ray.io/en/latest/rllib/index.html>`_.
 
 Click on the images below to see an example script for each of the listed features:
 
@@ -94,7 +94,7 @@ custom `exploratory behavior <../rllib-training.htmlexploration-api>`_.
 Via mapping one or more agents in your environments to (one or more) policies, multi-agent
 RL (MARL) becomes an easy-to-use low-level primitive for our users.
 
-.. figure:: ../images/rllib/rllib-stack.svg
+.. figure:: images/rllib-stack.svg
     :align: left
     :width: 650
 

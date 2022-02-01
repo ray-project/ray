@@ -121,34 +121,49 @@ inline const rpc::RayException *GetCreationTaskExceptionFromDeathCause(
       death_cause->context_case() != ContextCase::kCreationTaskFailureContext) {
     return nullptr;
   }
-  return &(death_cause->creation_task_failure_context().creation_task_exception());
+  return &(death_cause->creation_task_failure_context());
 }
 
 /// Generate object error type from ActorDeathCause.
 inline rpc::ErrorType GenErrorTypeFromDeathCause(
-    const rpc::ActorDeathCause *death_cause) {
-  if (death_cause == nullptr) {
+    const rpc::ActorDeathCause &death_cause) {
+  if (death_cause.context_case() == ContextCase::kCreationTaskFailureContext) {
     return rpc::ErrorType::ACTOR_DIED;
-  }
-  if (death_cause->context_case() == ContextCase::kCreationTaskFailureContext) {
-    return rpc::ErrorType::ACTOR_DIED;
-  }
-  if (death_cause->context_case() == ContextCase::kRuntimeEnvSetupFailureContext) {
+  } else if (death_cause.context_case() == ContextCase::kRuntimeEnvFailedContext) {
     return rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED;
+  } else {
+    return rpc::ErrorType::ACTOR_DIED;
   }
-  return rpc::ErrorType::ACTOR_DIED;
 }
 
-inline const std::string &GetDeathCauseString(const rpc::ActorDeathCause *death_cause) {
+inline const std::string &GetActorDeathCauseString(
+    const rpc::ActorDeathCause &death_cause) {
   static absl::flat_hash_map<ContextCase, std::string> death_cause_string{
       {ContextCase::CONTEXT_NOT_SET, "CONTEXT_NOT_SET"},
+      {ContextCase::kRuntimeEnvFailedContext, "RuntimeEnvFailedContext"},
       {ContextCase::kCreationTaskFailureContext, "CreationTaskFailureContext"},
-      {ContextCase::kRuntimeEnvSetupFailureContext, "RuntimeEnvSetupFailureContext"}};
-  ContextCase death_cause_case = ContextCase::CONTEXT_NOT_SET;
-  if (death_cause != nullptr) {
-    death_cause_case = death_cause->context_case();
+      {ContextCase::kActorDiedErrorContext, "ActorDiedErrorContext"}};
+  auto it = death_cause_string.find(death_cause.context_case());
+  RAY_CHECK(it != death_cause_string.end())
+      << "Given death cause case " << death_cause.context_case() << " doesn't exist.";
+  return it->second;
+}
+
+/// Get the error information from the actor death cause.
+///
+/// \param[in] death_cause The rpc message that contains the actos death information.
+/// \return RayErrorInfo that has propagated death cause.
+inline rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
+    const rpc::ActorDeathCause &death_cause) {
+  rpc::RayErrorInfo error_info;
+  if (death_cause.context_case() == ContextCase::kRuntimeEnvFailedContext ||
+      death_cause.context_case() == ContextCase::kActorDiedErrorContext ||
+      death_cause.context_case() == ContextCase::kCreationTaskFailureContext) {
+    error_info.mutable_actor_died_error()->CopyFrom(death_cause);
+  } else {
+    RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
   }
-  return death_cause_string.at(death_cause_case);
+  return error_info;
 }
 
 }  // namespace gcs

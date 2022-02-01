@@ -7,17 +7,23 @@ from pathlib import Path
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
-from ray._private.test_utils import wait_for_condition, get_error_message
-from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
-                                get_release_wheel_url)
+from ray._private.test_utils import (
+    wait_for_condition,
+    get_error_message,
+    get_log_sources,
+)
+from ray._private.utils import (
+    get_wheel_filename,
+    get_master_wheel_url,
+    get_release_wheel_url,
+)
 
 
 def test_get_wheel_filename():
     ray_version = "2.0.0.dev0"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38", "39"]:
-            filename = get_wheel_filename(sys_platform, ray_version,
-                                          py_version)
+            filename = get_wheel_filename(sys_platform, ray_version, py_version)
             prefix = "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
             url = f"{prefix}{filename}"
             assert requests.head(url).status_code == 200, url
@@ -28,8 +34,9 @@ def test_get_master_wheel_url():
     test_commit = "58a73821fbfefbf53a19b6c7ffd71e70ccf258c7"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38", "39"]:
-            url = get_master_wheel_url(test_commit, sys_platform, ray_version,
-                                       py_version)
+            url = get_master_wheel_url(
+                test_commit, sys_platform, ray_version, py_version
+            )
             assert requests.head(url).status_code == 200, url
 
 
@@ -38,13 +45,10 @@ def test_get_release_wheel_url():
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38", "39"]:
             for version, commit in test_commits.items():
-                url = get_release_wheel_url(commit, sys_platform, version,
-                                            py_version)
+                url = get_release_wheel_url(commit, sys_platform, version, py_version)
                 assert requests.head(url).status_code == 200, url
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
 def test_decorator_task(start_cluster):
     cluster, address = start_cluster
     ray.init(address)
@@ -56,8 +60,6 @@ def test_decorator_task(start_cluster):
     assert ray.get(f.remote()) == "bar"
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
 def test_decorator_actor(start_cluster):
     cluster, address = start_cluster
     ray.init(address)
@@ -71,8 +73,6 @@ def test_decorator_actor(start_cluster):
     assert ray.get(a.g.remote()) == "bar"
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
 def test_decorator_complex(start_cluster):
     cluster, address = start_cluster
     ray.init(address, runtime_env={"env_vars": {"foo": "job"}})
@@ -99,24 +99,16 @@ def test_decorator_complex(start_cluster):
 
     # Test that runtime_env can be overridden by specifying .options().
 
-    assert ray.get(
-        f.options(runtime_env={
-            "env_vars": {
-                "foo": "new"
-            }
-        }).remote()) == "new"
+    assert (
+        ray.get(f.options(runtime_env={"env_vars": {"foo": "new"}}).remote()) == "new"
+    )
 
     a = A.options(runtime_env={"env_vars": {"foo": "new2"}}).remote()
     assert ray.get(a.g.remote()) == "new2"
 
 
 def test_container_option_serialize():
-    runtime_env = {
-        "container": {
-            "image": "ray:latest",
-            "run_options": ["--name=test"]
-        }
-    }
+    runtime_env = {"container": {"image": "ray:latest", "run_options": ["--name=test"]}}
     job_config = ray.job_config.JobConfig(runtime_env=runtime_env)
     job_config_serialized = job_config.serialize()
     # job_config_serialized is JobConfig protobuf serialized string,
@@ -127,7 +119,8 @@ def test_container_option_serialize():
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
+    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
+)
 def test_invalid_conda_env(shutdown_only):
     ray.init()
 
@@ -162,7 +155,8 @@ def test_invalid_conda_env(shutdown_only):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
+    sys.platform == "win32", reason="runtime_env unsupported on Windows."
+)
 def test_no_spurious_worker_startup(shutdown_only):
     """Test that no extra workers start up during a long env installation."""
 
@@ -188,20 +182,19 @@ def test_no_spurious_worker_startup(shutdown_only):
     # Check "debug_state.txt" to ensure no extra workers were started.
     session_dir = ray.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
-    debug_state_path = session_path / "debug_state.txt"
+    debug_state_path = session_path / "logs" / "debug_state.txt"
 
     def get_num_workers():
         with open(debug_state_path) as f:
             for line in f.readlines():
                 num_workers_prefix = "- num PYTHON workers: "
                 if num_workers_prefix in line:
-                    return int(line[len(num_workers_prefix):])
+                    return int(line[len(num_workers_prefix) :])
         return None
 
     # Wait for "debug_state.txt" to be updated to reflect the started worker.
     start = time.time()
-    wait_for_condition(
-        lambda: get_num_workers() is not None and get_num_workers() > 0)
+    wait_for_condition(lambda: get_num_workers() is not None and get_num_workers() > 0)
     time_waited = time.time() - start
     print(f"Waited {time_waited} for debug_state.txt to be updated")
 
@@ -230,10 +223,10 @@ def runtime_env_local_dev_env_var():
     del os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"]
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
+@pytest.mark.skipif(sys.platform == "win32", reason="very slow on Windows.")
 def test_runtime_env_no_spurious_resource_deadlock_msg(
-        runtime_env_local_dev_env_var, ray_start_regular, error_pubsub):
+    runtime_env_local_dev_env_var, ray_start_regular, error_pubsub
+):
     p = error_pubsub
 
     @ray.remote(runtime_env={"pip": ["tensorflow", "torch"]})
@@ -254,13 +247,17 @@ def set_agent_failure_env_var():
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "_system_config": {
-            "agent_restart_interval_ms": 10,
-            "agent_max_restart_count": 5
+    "ray_start_cluster_head",
+    [
+        {
+            "_system_config": {
+                "agent_restart_interval_ms": 10,
+                "agent_max_restart_count": 5,
+            }
         }
-    }],
-    indirect=True)
+    ],
+    indirect=True,
+)
 def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
     @ray.remote
     class A:
@@ -285,6 +282,37 @@ def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
         ray.get(a.ready.remote())
 
 
+@pytest.fixture
+def enable_dev_mode(local_env_var_enabled):
+    enabled = "1" if local_env_var_enabled else "0"
+    os.environ["RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED"] = enabled
+    yield
+    del os.environ["RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED"]
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
+)
+@pytest.mark.parametrize("local_env_var_enabled", [False, True])
+def test_runtime_env_log_msg(
+    local_env_var_enabled, enable_dev_mode, ray_start_cluster_head, log_pubsub
+):
+    p = log_pubsub
+
+    @ray.remote
+    def f():
+        pass
+
+    good_env = {"pip": ["requests"]}
+    ray.get(f.options(runtime_env=good_env).remote())
+    sources = get_log_sources(p, 5)
+    if local_env_var_enabled:
+        assert "runtime_env" in sources
+    else:
+        assert "runtime_env" not in sources
+
+
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-sv", __file__]))
