@@ -215,7 +215,7 @@ class Client:
         _blocking: Optional[bool] = True,
     ) -> Optional[GoalId]:
         
-        controller_deploy_args = prepare_deployment(
+        controller_deploy_args = _get_deploy_args(
             name=name,
             deployment_def=deployment_def,
             init_args=init_args,
@@ -1200,7 +1200,7 @@ def deploy_group(deployment_list: List[Tuple[Deployment, Dict]],
     deployment_args_list = []
     for deployment in updated_deployments:
         deployment_args_list.append(
-            prepare_deployment(
+            _get_deploy_args(
                 deployment._name,
                 deployment._func_or_class,
                 deployment.init_args,
@@ -1240,7 +1240,7 @@ def deploy_group(deployment_list: List[Tuple[Deployment, Dict]],
     
     return nonblocking_goal_ids
 
-def prepare_deployment(
+def _get_deploy_args(
     name: str,
     deployment_def: Union[Callable, Type[Callable], str],
     init_args: Tuple[Any],
@@ -1255,8 +1255,6 @@ def prepare_deployment(
     Takes a deployment's configuration, and returns the arguments needed for
     the controller to deploy it.
     """
-
-    # TODO: Escalate this function to the Ray Dashboard
 
     if config is None:
         config = {}
