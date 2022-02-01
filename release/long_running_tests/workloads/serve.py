@@ -18,8 +18,8 @@ MAX_BATCH_SIZE = 16
 
 # Cluster setup constants
 NUM_REDIS_SHARDS = 1
-REDIS_MAX_MEMORY = 10**8
-OBJECT_STORE_MEMORY = 10**8
+REDIS_MAX_MEMORY = 10 ** 8
+OBJECT_STORE_MEMORY = 10 ** 8
 NUM_NODES = 4
 
 # wrk setup constants (might want to make these configurable ?)
@@ -36,8 +36,9 @@ def update_progress(result):
     anyscale product runs in each releaser test
     """
     result["last_update"] = time.time()
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/release_test_output.json")
+    test_output_json = os.environ.get(
+        "TEST_OUTPUT_JSON", "/tmp/release_test_output.json"
+    )
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 

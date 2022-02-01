@@ -25,14 +25,11 @@ class MultiNodeSyncTest(unittest.TestCase):
 
     def testClusterAutoscaling(self):
         """Sanity check that multinode tests with autoscaling are working"""
-        self.cluster.update_config({
-            "provider": {
-                "head_resources": {
-                    "CPU": 4,
-                    "GPU": 0
-                }
-            },
-        })
+        self.cluster.update_config(
+            {
+                "provider": {"head_resources": {"CPU": 4, "GPU": 0}},
+            }
+        )
         self.cluster.start()
         self.cluster.connect(client=True, timeout=120)
 
@@ -50,8 +47,11 @@ class MultiNodeSyncTest(unittest.TestCase):
         self.assertEquals(
             5,
             ray.get(
-                remote_task.options(
-                    num_cpus=1, num_gpus=1, placement_group=pg).remote(5)))
+                remote_task.options(num_cpus=1, num_gpus=1, placement_group=pg).remote(
+                    5
+                )
+            ),
+        )
 
         print("Autoscaling worked")
         ray.util.remove_placement_group(pg)
@@ -68,8 +68,7 @@ class MultiNodeSyncTest(unittest.TestCase):
         timeout = time.monotonic() + 180
         while table["state"] != "CREATED":
             if time.monotonic() > timeout:
-                raise RuntimeError(
-                    "Re-starting killed node failed or too slow.")
+                raise RuntimeError("Re-starting killed node failed or too slow.")
             time.sleep(1)
             table = ray.util.placement_group_table(pg)
 
@@ -77,39 +76,35 @@ class MultiNodeSyncTest(unittest.TestCase):
 
     def testAutoscalingNewNode(self):
         """Test that newly added nodes from autoscaling are not stale."""
-        self.cluster.update_config({
-            "provider": {
-                "head_resources": {
-                    "CPU": 4,
-                    "GPU": 0
-                }
-            },
-            "available_node_types": {
-                "ray.worker.cpu": {
-                    "resources": {
-                        "CPU": 4
+        self.cluster.update_config(
+            {
+                "provider": {"head_resources": {"CPU": 4, "GPU": 0}},
+                "available_node_types": {
+                    "ray.worker.cpu": {
+                        "resources": {"CPU": 4},
+                        "min_workers": 0,  # No minimum nodes
+                        "max_workers": 2,
                     },
-                    "min_workers": 0,  # No minimum nodes
-                    "max_workers": 2,
+                    "ray.worker.gpu": {
+                        "min_workers": 0,
+                        "max_workers": 0,  # No GPU nodes
+                    },
                 },
-                "ray.worker.gpu": {
-                    "min_workers": 0,
-                    "max_workers": 0,  # No GPU nodes
-                }
-            },
-        })
+            }
+        )
         self.cluster.start()
         self.cluster.connect(client=True, timeout=120)
 
         def autoscaling_train(config):
             time.sleep(120)
-            tune.report(1.)
+            tune.report(1.0)
 
         tune.run(
             autoscaling_train,
             num_samples=3,
             resources_per_trial={"cpu": 4},
-            fail_fast=True)
+            fail_fast=True,
+        )
 
     def testFaultTolerance(self):
         """Test that Tune run can recover from a failed node.
@@ -117,33 +112,28 @@ class MultiNodeSyncTest(unittest.TestCase):
         When `max_failures` is set to larger than zero.
         """
 
-        self.cluster.update_config({
-            "provider": {
-                "head_resources": {
-                    "CPU": 4,
-                    "GPU": 0
-                }
-            },
-            "available_node_types": {
-                "ray.worker.cpu": {
-                    "resources": {
-                        "CPU": 4
+        self.cluster.update_config(
+            {
+                "provider": {"head_resources": {"CPU": 4, "GPU": 0}},
+                "available_node_types": {
+                    "ray.worker.cpu": {
+                        "resources": {"CPU": 4},
+                        "min_workers": 0,  # No minimum nodes
+                        "max_workers": 2,
                     },
-                    "min_workers": 0,  # No minimum nodes
-                    "max_workers": 2,
+                    "ray.worker.gpu": {
+                        "min_workers": 0,
+                        "max_workers": 0,  # No GPU nodes
+                    },
                 },
-                "ray.worker.gpu": {
-                    "min_workers": 0,
-                    "max_workers": 0,  # No GPU nodes
-                }
-            },
-        })
+            }
+        )
         self.cluster.start()
         self.cluster.connect(client=True, timeout=120)
 
         def train(config):
             time.sleep(120)
-            tune.report(1.)
+            tune.report(1.0)
 
         class FailureInjectionCallback(Callback):
             def __init__(self, cluster):
@@ -151,8 +141,11 @@ class MultiNodeSyncTest(unittest.TestCase):
                 self._killed = False
 
             def on_step_begin(self, iteration, trials, **info):
-                if not self._killed and len(trials) == 3 and all(
-                        trial.status == Trial.RUNNING for trial in trials):
+                if (
+                    not self._killed
+                    and len(trials) == 3
+                    and all(trial.status == Trial.RUNNING for trial in trials)
+                ):
                     self._cluster.kill_node(num=2)
                     self._killed = True
 
@@ -171,4 +164,5 @@ class MultiNodeSyncTest(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

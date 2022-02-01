@@ -1192,6 +1192,7 @@ def check_local_files_gced(cluster):
                 )
                 > 0
             ):
+                print(str(all_files))
                 return False
 
     return True

@@ -17,8 +17,11 @@ from ray._private.utils import (
     get_master_wheel_url,
     get_release_wheel_url,
 )
+<<<<<<< HEAD
 
 from ray._private.runtime_env.uri_cache import URICache
+=======
+>>>>>>> master
 
 
 def test_get_wheel_filename():

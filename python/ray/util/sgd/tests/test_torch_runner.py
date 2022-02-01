@@ -8,7 +8,9 @@ from unittest.mock import MagicMock, patch
 import ray
 from ray.util.sgd.torch.training_operator import TrainingOperator
 from ray.util.sgd.torch.distributed_torch_runner import (
-    LocalDistributedRunner, clear_dummy_actor)
+    LocalDistributedRunner,
+    clear_dummy_actor,
+)
 from ray.util.sgd.torch.torch_runner import TorchRunner
 
 
@@ -55,7 +57,8 @@ class TestTorchRunner(unittest.TestCase):
             model_creator,
             optimizer_creator,
             create_dataloaders,
-            loss_creator=loss_creator)
+            loss_creator=loss_creator,
+        )
 
     def testValidate(self):
         class MockOperator(self.Operator):
@@ -98,9 +101,7 @@ class TestTorchRunner(unittest.TestCase):
             return nn.Linear(1, 1), nn.Linear(1, 1), nn.Linear(1, 1)
 
         def three_optimizer_creator(models, config):
-            opts = [
-                torch.optim.SGD(model.parameters(), lr=0.1) for model in models
-            ]
+            opts = [torch.optim.SGD(model.parameters(), lr=0.1) for model in models]
             return opts[0], opts[1], opts[2]
 
         class MockOperator(TrainingOperator):
@@ -109,9 +110,9 @@ class TestTorchRunner(unittest.TestCase):
                 optimizers = three_optimizer_creator(models, config)
                 loader = single_loader(config)
                 loss = loss_creator(config)
-                self.models, self.optimizers, self.criterion = \
-                    self.register(models=models, optimizers=optimizers,
-                                  criterion=loss)
+                self.models, self.optimizers, self.criterion = self.register(
+                    models=models, optimizers=optimizers, criterion=loss
+                )
                 self.register_data(train_loader=loader, validation_loader=None)
                 self.train_epoch = MagicMock(returns=dict(mean_accuracy=10))
                 self.validate = MagicMock(returns=dict(mean_accuracy=10))
@@ -130,14 +131,18 @@ class TestTorchRunner(unittest.TestCase):
 
     def testMultiLoaders(self):
         def three_data_loader(config):
-            return (LinearDataset(2, 5), LinearDataset(2, 5, size=400),
-                    LinearDataset(2, 5, size=400))
+            return (
+                LinearDataset(2, 5),
+                LinearDataset(2, 5, size=400),
+                LinearDataset(2, 5, size=400),
+            )
 
         ThreeOperator = TrainingOperator.from_creators(
             model_creator,
             optimizer_creator,
             three_data_loader,
-            loss_creator=loss_creator)
+            loss_creator=loss_creator,
+        )
 
         runner = TorchRunner(training_operator_cls=ThreeOperator)
         with self.assertRaises(ValueError):
@@ -149,10 +154,8 @@ class TestTorchRunner(unittest.TestCase):
 
     def testSingleLoader(self):
         SingleOperator = TrainingOperator.from_creators(
-            model_creator,
-            optimizer_creator,
-            single_loader,
-            loss_creator=loss_creator)
+            model_creator, optimizer_creator, single_loader, loss_creator=loss_creator
+        )
         runner = TorchRunner(training_operator_cls=SingleOperator)
         runner.setup_operator()
         runner.train_epoch()
@@ -161,10 +164,8 @@ class TestTorchRunner(unittest.TestCase):
 
     def testNativeLoss(self):
         NativeOperator = TrainingOperator.from_creators(
-            model_creator,
-            optimizer_creator,
-            single_loader,
-            loss_creator=nn.MSELoss)
+            model_creator, optimizer_creator, single_loader, loss_creator=nn.MSELoss
+        )
         runner = TorchRunner(training_operator_cls=NativeOperator)
         runner.setup_operator()
         runner.train_epoch()
@@ -184,8 +185,7 @@ class TestLocalDistributedRunner(unittest.TestCase):
         mock_runner._set_cuda_device = MagicMock()
         preset_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
 
-        LocalDistributedRunner._try_reserve_and_set_resources(
-            mock_runner, num_cpus, 1)
+        LocalDistributedRunner._try_reserve_and_set_resources(mock_runner, num_cpus, 1)
 
         self.assertTrue(mock_runner._set_cuda_device.called)
         local_device = mock_runner._set_cuda_device.call_args[0][0]
@@ -260,8 +260,7 @@ class TestLocalDistributedRunner(unittest.TestCase):
         mock_runner = MagicMock()
         mock_runner._set_cpu_devices = MagicMock()
         # reserve CPU only
-        LocalDistributedRunner._try_reserve_and_set_resources(
-            mock_runner, 4, 0)
+        LocalDistributedRunner._try_reserve_and_set_resources(mock_runner, 4, 0)
         remaining = ray.available_resources()["CPU"]
         self.assertEqual(int(remaining), 6)
 
@@ -269,7 +268,6 @@ class TestLocalDistributedRunner(unittest.TestCase):
         mock_runner = MagicMock()
         mock_runner._set_cpu_devices = MagicMock()
         # reserve CPU and GPU
-        LocalDistributedRunner._try_reserve_and_set_resources(
-            mock_runner, 4, 1)
+        LocalDistributedRunner._try_reserve_and_set_resources(mock_runner, 4, 1)
         remaining = ray.available_resources()["CPU"]
         self.assertEqual(int(remaining), 6)

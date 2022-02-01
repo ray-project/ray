@@ -53,7 +53,10 @@ def maybe_fetch_buildkite_token():
             "secretsmanager", region_name="us-west-2"
         ).get_secret_value(
             SecretId="arn:aws:secretsmanager:us-west-2:029272617770:secret:"
-            "buildkite/ro-token")["SecretString"]
+            "buildkite/ro-token"
+        )[
+            "SecretString"
+        ]
 
 
 def escape(v: Any):
@@ -85,26 +88,26 @@ def env_str(env: Dict[str, Any]):
 
 def script_str(v: Any):
     if isinstance(v, bool):
-        return f"\"{int(v)}\""
+        return f'"{int(v)}"'
     elif isinstance(v, Number):
-        return f"\"{v}\""
+        return f'"{v}"'
     elif isinstance(v, list):
-        return "(" + " ".join(f"\"{shlex.quote(w)}\"" for w in v) + ")"
+        return "(" + " ".join(f'"{shlex.quote(w)}"' for w in v) + ")"
     else:
-        return f"\"{shlex.quote(v)}\""
+        return f'"{shlex.quote(v)}"'
 
 
 class ReproSession:
     plugin_default_env = {
-        "docker": {
-            "BUILDKITE_PLUGIN_DOCKER_MOUNT_BUILDKITE_AGENT": False
-        }
+        "docker": {"BUILDKITE_PLUGIN_DOCKER_MOUNT_BUILDKITE_AGENT": False}
     }
 
-    def __init__(self,
-                 buildkite_token: str,
-                 instance_name: Optional[str] = None,
-                 logger: Optional[logging.Logger] = None):
+    def __init__(
+        self,
+        buildkite_token: str,
+        instance_name: Optional[str] = None,
+        logger: Optional[logging.Logger] = None,
+    ):
         self.logger = logger or logging.getLogger(self.__class__.__name__)
 
         self.bk = Buildkite()
@@ -139,12 +142,15 @@ class ReproSession:
         # https://buildkite.com/ray-project/ray-builders-pr/
         # builds/19635#55a0d71a-831e-4f68-b668-2b10c6f65ee6
         pattern = re.compile(
-            "https://buildkite.com/([^/]+)/([^/]+)/builds/([0-9]+)#(.+)")
+            "https://buildkite.com/([^/]+)/([^/]+)/builds/([0-9]+)#(.+)"
+        )
         org, pipeline, build_id, job_id = pattern.match(session_url).groups()
 
-        self.logger.debug(f"Parsed session URL: {session_url}. "
-                          f"Got org='{org}', pipeline='{pipeline}', "
-                          f"build_id='{build_id}', job_id='{job_id}'.")
+        self.logger.debug(
+            f"Parsed session URL: {session_url}. "
+            f"Got org='{org}', pipeline='{pipeline}', "
+            f"build_id='{build_id}', job_id='{job_id}'."
+        )
 
         self.org = org
         self.pipeline = pipeline
@@ -155,7 +161,8 @@ class ReproSession:
         assert self.bk
 
         self.env = self.bk.jobs().get_job_environment_variables(
-            self.org, self.pipeline, self.build_id, self.job_id)["env"]
+            self.org, self.pipeline, self.build_id, self.job_id
+        )["env"]
 
         if overwrite:
             self.env.update(overwrite)
@@ -166,33 +173,30 @@ class ReproSession:
         assert self.env
 
         if not self.aws_instance_name:
-            self.aws_instance_name = (
-                f"repro_ci_{self.build_id}_{self.job_id[:8]}")
+            self.aws_instance_name = f"repro_ci_{self.build_id}_{self.job_id[:8]}"
             self.logger.info(
-                f"No instance name provided, using {self.aws_instance_name}")
+                f"No instance name provided, using {self.aws_instance_name}"
+            )
 
         instance_type = self.env["BUILDKITE_AGENT_META_DATA_AWS_INSTANCE_TYPE"]
         instance_ami = self.env["BUILDKITE_AGENT_META_DATA_AWS_AMI_ID"]
         instance_sg = "sg-0ccfca2ef191c04ae"
-        instance_block_device_mappings = [{
-            "DeviceName": "/dev/xvda",
-            "Ebs": {
-                "VolumeSize": 500
-            }
-        }]
+        instance_block_device_mappings = [
+            {"DeviceName": "/dev/xvda", "Ebs": {"VolumeSize": 500}}
+        ]
 
         # Check if instance exists:
-        running_instances = self.ec2_resource.instances.filter(Filters=[{
-            "Name": "tag:repro_name",
-            "Values": [self.aws_instance_name]
-        }, {
-            "Name": "instance-state-name",
-            "Values": ["running"]
-        }])
+        running_instances = self.ec2_resource.instances.filter(
+            Filters=[
+                {"Name": "tag:repro_name", "Values": [self.aws_instance_name]},
+                {"Name": "instance-state-name", "Values": ["running"]},
+            ]
+        )
 
         self.logger.info(
             f"Check if instance with name {self.aws_instance_name} "
-            f"already exists...")
+            f"already exists..."
+        )
 
         for instance in running_instances:
             self.aws_instance_id = instance.id
@@ -201,8 +205,8 @@ class ReproSession:
             return
 
         self.logger.info(
-            f"Instance with name {self.aws_instance_name} not found, "
-            f"creating...")
+            f"Instance with name {self.aws_instance_name} not found, " f"creating..."
+        )
 
         # Else, not running, yet, start.
         instance = self.ec2_resource.create_instances(
@@ -211,20 +215,18 @@ class ReproSession:
             InstanceType=instance_type,
             KeyName=self.ssh_key_name,
             SecurityGroupIds=[instance_sg],
-            TagSpecifications=[{
-                "ResourceType": "instance",
-                "Tags": [{
-                    "Key": "repro_name",
-                    "Value": self.aws_instance_name
-                }]
-            }],
+            TagSpecifications=[
+                {
+                    "ResourceType": "instance",
+                    "Tags": [{"Key": "repro_name", "Value": self.aws_instance_name}],
+                }
+            ],
             MinCount=1,
             MaxCount=1,
         )[0]
 
         self.aws_instance_id = instance.id
-        self.logger.info(
-            f"Created new instance with ID {self.aws_instance_id}")
+        self.logger.info(f"Created new instance with ID {self.aws_instance_id}")
 
     def aws_wait_for_instance(self):
         assert self.aws_instance_id
@@ -234,28 +236,32 @@ class ReproSession:
         repro_instance_state = None
         while repro_instance_state != "running":
             detail = self.ec2_client.describe_instances(
-                InstanceIds=[self.aws_instance_id], )
-            repro_instance_state = \
-                detail["Reservations"][0]["Instances"][0]["State"]["Name"]
+                InstanceIds=[self.aws_instance_id],
+            )
+            repro_instance_state = detail["Reservations"][0]["Instances"][0]["State"][
+                "Name"
+            ]
 
             if repro_instance_state != "running":
                 time.sleep(2)
 
         self.aws_instance_ip = detail["Reservations"][0]["Instances"][0][
-            "PublicIpAddress"]
+            "PublicIpAddress"
+        ]
 
     def aws_stop_instance(self):
         assert self.aws_instance_id
 
         self.ec2_client.terminate_instances(
-            InstanceIds=[self.aws_instance_id], )
+            InstanceIds=[self.aws_instance_id],
+        )
 
     def print_stop_command(self):
         click.secho("To stop this instance in the future, run this: ")
         click.secho(
-            f"aws ec2 terminate-instances "
-            f"--instance-ids={self.aws_instance_id}",
-            bold=True)
+            f"aws ec2 terminate-instances " f"--instance-ids={self.aws_instance_id}",
+            bold=True,
+        )
 
     def create_new_ssh_client(self):
         assert self.aws_instance_ip
@@ -264,7 +270,8 @@ class ReproSession:
             self.ssh.close()
 
         self.logger.info(
-            "Creating SSH client and waiting for SSH to become available...")
+            "Creating SSH client and waiting for SSH to become available..."
+        )
 
         ssh = paramiko.client.SSHClient()
         ssh.load_system_host_keys()
@@ -275,7 +282,8 @@ class ReproSession:
                 ssh.connect(
                     self.aws_instance_ip,
                     username=self.ssh_user,
-                    key_filename=os.path.expanduser(self.ssh_key_file))
+                    key_filename=os.path.expanduser(self.ssh_key_file),
+                )
                 break
             except paramiko.ssh_exception.NoValidConnectionsError:
                 self.logger.info("SSH not ready, yet, sleeping 5 seconds")
@@ -291,8 +299,7 @@ class ReproSession:
         result = {}
 
         def exec():
-            stdin, stdout, stderr = self.ssh.exec_command(
-                command, get_pty=True)
+            stdin, stdout, stderr = self.ssh.exec_command(command, get_pty=True)
 
             output = ""
             for line in stdout.readlines():
@@ -321,12 +328,13 @@ class ReproSession:
         return result.get("output", "")
 
     def execute_ssh_command(
-            self,
-            command: str,
-            env: Optional[Dict[str, str]] = None,
-            as_script: bool = False,
-            quiet: bool = False,
-            command_wrapper: Optional[Callable[[str], str]] = None) -> str:
+        self,
+        command: str,
+        env: Optional[Dict[str, str]] = None,
+        as_script: bool = False,
+        quiet: bool = False,
+        command_wrapper: Optional[Callable[[str], str]] = None,
+    ) -> str:
         assert self.ssh
 
         if not command_wrapper:
@@ -360,23 +368,25 @@ class ReproSession:
 
         return output
 
-    def execute_ssh_commands(self,
-                             commands: List[str],
-                             env: Optional[Dict[str, str]] = None,
-                             quiet: bool = False):
+    def execute_ssh_commands(
+        self,
+        commands: List[str],
+        env: Optional[Dict[str, str]] = None,
+        quiet: bool = False,
+    ):
         for command in commands:
             self.execute_ssh_command(command, env=env, quiet=quiet)
 
-    def execute_docker_command(self,
-                               command: str,
-                               env: Optional[Dict[str, str]] = None,
-                               quiet: bool = False):
+    def execute_docker_command(
+        self, command: str, env: Optional[Dict[str, str]] = None, quiet: bool = False
+    ):
         def command_wrapper(s):
             escaped = s.replace("'", "'\"'\"'")
             return f"docker exec -it ray_container /bin/bash -ci '{escaped}'"
 
         self.execute_ssh_command(
-            command, env=env, quiet=quiet, command_wrapper=command_wrapper)
+            command, env=env, quiet=quiet, command_wrapper=command_wrapper
+        )
 
     def prepare_instance(self):
         self.create_new_ssh_client()
@@ -387,8 +397,9 @@ class ReproSession:
 
         self.logger.info("Preparing instance (installing docker etc.)")
         commands = [
-            "sudo yum install -y docker", "sudo service docker start",
-            f"sudo usermod -aG docker {self.ssh_user}"
+            "sudo yum install -y docker",
+            "sudo service docker start",
+            f"sudo usermod -aG docker {self.ssh_user}",
         ]
         self.execute_ssh_commands(commands, quiet=True)
         self.create_new_ssh_client()
@@ -398,13 +409,18 @@ class ReproSession:
     def docker_login(self):
         self.logger.info("Logging into docker...")
         credentials = boto3.client(
-            "ecr", region_name="us-west-2").get_authorization_token()
-        token = base64.b64decode(credentials["authorizationData"][0][
-            "authorizationToken"]).decode("utf-8").replace("AWS:", "")
+            "ecr", region_name="us-west-2"
+        ).get_authorization_token()
+        token = (
+            base64.b64decode(credentials["authorizationData"][0]["authorizationToken"])
+            .decode("utf-8")
+            .replace("AWS:", "")
+        )
         endpoint = credentials["authorizationData"][0]["proxyEndpoint"]
 
         self.execute_ssh_command(
-            f"docker login -u AWS -p {token} {endpoint}", quiet=True)
+            f"docker login -u AWS -p {token} {endpoint}", quiet=True
+        )
 
     def fetch_buildkite_plugins(self):
         assert self.env
@@ -415,8 +431,9 @@ class ReproSession:
         for collection in plugins:
             for plugin, options in collection.items():
                 plugin_url, plugin_version = plugin.split("#")
-                if not plugin_url.startswith(
-                        "http://") or not plugin_url.startswith("https://"):
+                if not plugin_url.startswith("http://") or not plugin_url.startswith(
+                    "https://"
+                ):
                     plugin_url = f"https://{plugin_url}"
 
                 plugin_name = plugin_url.split("/")[-1].rstrip(".git")
@@ -432,7 +449,7 @@ class ReproSession:
                     "version": plugin_version,
                     "dir": plugin_dir,
                     "env": plugin_env,
-                    "details": {}
+                    "details": {},
                 }
 
     def get_plugin_env(self, plugin_short: str, options: Dict[str, Any]):
@@ -457,30 +474,33 @@ class ReproSession:
         self.execute_ssh_command(
             f"[ ! -e {plugin_dir} ] && git clone --depth 1 "
             f"--branch {plugin_version} {plugin_url} {plugin_dir}",
-            quiet=True)
+            quiet=True,
+        )
 
     def load_plugin_details(self, plugin: str):
         assert plugin in self.plugins
 
         plugin_dir = self.plugins[plugin]["dir"]
 
-        yaml_str = self.execute_ssh_command(
-            f"cat {plugin_dir}/plugin.yml", quiet=True)
+        yaml_str = self.execute_ssh_command(f"cat {plugin_dir}/plugin.yml", quiet=True)
 
         details = yaml.safe_load(yaml_str)
         self.plugins[plugin]["details"] = details
         return details
 
-    def execute_plugin_hook(self,
-                            plugin: str,
-                            hook: str,
-                            env: Optional[Dict[str, Any]] = None,
-                            script_command: Optional[str] = None):
+    def execute_plugin_hook(
+        self,
+        plugin: str,
+        hook: str,
+        env: Optional[Dict[str, Any]] = None,
+        script_command: Optional[str] = None,
+    ):
         assert plugin in self.plugins
 
         self.logger.info(
             f"Executing Buildkite hook for plugin {plugin}: {hook}. "
-            f"This pulls a Docker image and could take a while.")
+            f"This pulls a Docker image and could take a while."
+        )
 
         plugin_dir = self.plugins[plugin]["dir"]
         plugin_env = self.plugins[plugin]["env"].copy()
@@ -500,21 +520,23 @@ class ReproSession:
 
     def print_buildkite_command(self, skipped: bool = False):
         print("-" * 80)
-        print("These are the commands you need to execute to fully reproduce "
-              "the run")
+        print(
+            "These are the commands you need to execute to fully reproduce " "the run"
+        )
         print("-" * 80)
         print(self.env["BUILDKITE_COMMAND"])
         print("-" * 80)
 
         if skipped and self.skipped_commands:
-            print("Some of the commands above have already been run. "
-                  "Remaining commands:")
+            print(
+                "Some of the commands above have already been run. "
+                "Remaining commands:"
+            )
             print("-" * 80)
             print("\n".join(self.skipped_commands))
             print("-" * 80)
 
-    def run_buildkite_command(self,
-                              command_filter: Optional[List[str]] = None):
+    def run_buildkite_command(self, command_filter: Optional[List[str]] = None):
         commands = self.env["BUILDKITE_COMMAND"].split("\n")
         regexes = [re.compile(cf) for cf in command_filter or []]
 
@@ -537,15 +559,18 @@ class ReproSession:
             f"grep -q 'source ~/.env' $HOME/.bashrc "
             f"|| echo 'source ~/.env' >> $HOME/.bashrc; "
             f"echo 'export {escaped}' > $HOME/.env",
-            quiet=True)
+            quiet=True,
+        )
 
     def attach_to_container(self):
         self.logger.info("Attaching to AWS instance...")
-        ssh_command = (f"ssh -ti {self.ssh_key_file} "
-                       f"-o StrictHostKeyChecking=no "
-                       f"-o ServerAliveInterval=30 "
-                       f"{self.ssh_user}@{self.aws_instance_ip} "
-                       f"'docker exec -it ray_container bash -l'")
+        ssh_command = (
+            f"ssh -ti {self.ssh_key_file} "
+            f"-o StrictHostKeyChecking=no "
+            f"-o ServerAliveInterval=30 "
+            f"{self.ssh_user}@{self.aws_instance_ip} "
+            f"'docker exec -it ray_container bash -l'"
+        )
 
         subprocess.run(ssh_command, shell=True)
 
@@ -555,29 +580,32 @@ class ReproSession:
 @click.option("-n", "--instance-name", default=None)
 @click.option("-c", "--commands", is_flag=True, default=False)
 @click.option("-f", "--filters", multiple=True, default=[])
-def main(session_url: Optional[str],
-         instance_name: Optional[str] = None,
-         commands: bool = False,
-         filters: Optional[List[str]] = None):
+def main(
+    session_url: Optional[str],
+    instance_name: Optional[str] = None,
+    commands: bool = False,
+    filters: Optional[List[str]] = None,
+):
     random.seed(1235)
 
     logger = logging.getLogger("main")
     logger.setLevel(logging.INFO)
     handler = logging.StreamHandler()
     handler.setFormatter(
-        logging.Formatter("[%(levelname)s %(asctime)s] "
-                          "%(filename)s: %(lineno)d  "
-                          "%(message)s"))
+        logging.Formatter(
+            "[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s"
+        )
+    )
     logger.addHandler(handler)
 
     maybe_fetch_buildkite_token()
     repro = ReproSession(
-        os.environ["BUILDKITE_TOKEN"],
-        instance_name=instance_name,
-        logger=logger)
+        os.environ["BUILDKITE_TOKEN"], instance_name=instance_name, logger=logger
+    )
 
     session_url = session_url or click.prompt(
-        "Please copy and paste the Buildkite job build URI here")
+        "Please copy and paste the Buildkite job build URI here"
+    )
 
     repro.set_session(session_url)
 
@@ -610,13 +638,16 @@ def main(session_url: Optional[str],
             "BUILDKITE_PLUGIN_DOCKER_TTY": "0",
             "BUILDKITE_PLUGIN_DOCKER_MOUNT_CHECKOUT": "0",
         },
-        script_command=("sed -E 's/"
-                        "docker run/"
-                        "docker run "
-                        "--cap-add=SYS_PTRACE "
-                        "--name ray_container "
-                        "-d/g' | "
-                        "bash -l"))
+        script_command=(
+            "sed -E 's/"
+            "docker run/"
+            "docker run "
+            "--cap-add=SYS_PTRACE "
+            "--name ray_container "
+            "-d/g' | "
+            "bash -l"
+        ),
+    )
 
     repro.create_new_ssh_client()
 

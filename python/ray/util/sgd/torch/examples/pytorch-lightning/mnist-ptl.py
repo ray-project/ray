@@ -53,24 +53,19 @@ class LitMNIST(LightningModule):
 
     def setup(self, stage):
         # transforms for images
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.1307, ), (0.3081, ))
-        ])
+        transform = transforms.Compose(
+            [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+        )
 
         # prepare transforms standard to MNIST
         mnist_train = MNIST(
-            os.path.expanduser("~/data"),
-            train=True,
-            download=True,
-            transform=transform)
+            os.path.expanduser("~/data"), train=True, download=True, transform=transform
+        )
 
-        self.mnist_train, self.mnist_val = random_split(
-            mnist_train, [55000, 5000])
+        self.mnist_train, self.mnist_val = random_split(mnist_train, [55000, 5000])
 
     def train_dataloader(self):
-        return DataLoader(
-            self.mnist_train, batch_size=self.config["batch_size"])
+        return DataLoader(self.mnist_train, batch_size=self.config["batch_size"])
 
     def val_dataloader(self):
         return DataLoader(self.mnist_val, batch_size=self.config["batch_size"])
@@ -100,10 +95,7 @@ def train_mnist(num_workers=1, use_gpu=False, num_epochs=5):
     trainer = TorchTrainer(
         training_operator_cls=Operator,
         num_workers=num_workers,
-        config={
-            "lr": 1e-3,
-            "batch_size": 64
-        },
+        config={"lr": 1e-3, "batch_size": 64},
         use_gpu=use_gpu,
         use_tqdm=True,
     )
@@ -124,43 +116,39 @@ def train_mnist(num_workers=1, use_gpu=False, num_epochs=5):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--address",
-        required=False,
-        type=str,
-        help="the address to use for Ray")
+        "--address", required=False, type=str, help="the address to use for Ray"
+    )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using " "Ray Client.",
+    )
     parser.add_argument(
         "--num-workers",
         "-n",
         type=int,
         default=1,
-        help="Sets number of workers for training.")
+        help="Sets number of workers for training.",
+    )
     parser.add_argument(
-        "--use-gpu",
-        action="store_true",
-        default=False,
-        help="Enables GPU training")
+        "--use-gpu", action="store_true", default=False, help="Enables GPU training"
+    )
     parser.add_argument(
-        "--num-epochs",
-        type=int,
-        default=5,
-        help="How many epochs to train "
-        "for.")
+        "--num-epochs", type=int, default=5, help="How many epochs to train " "for."
+    )
     parser.add_argument(
         "--smoke-test",
         action="store_true",
         default=False,
-        help="Finish quickly for testing.")
+        help="Finish quickly for testing.",
+    )
 
     args, _ = parser.parse_known_args()
 
     import ray
+
     if args.smoke_test:
         ray.init(num_cpus=2)
         args.num_epochs = 1
@@ -169,6 +157,5 @@ if __name__ == "__main__":
     else:
         ray.init(address=args.address)
     train_mnist(
-        num_workers=args.num_workers,
-        use_gpu=args.use_gpu,
-        num_epochs=args.num_epochs)
+        num_workers=args.num_workers, use_gpu=args.use_gpu, num_epochs=args.num_epochs
+    )
