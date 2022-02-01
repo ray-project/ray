@@ -1,4 +1,5 @@
 import gc
+import asyncio
 
 import numpy as np
 import requests
@@ -203,7 +204,7 @@ def test_out_of_order_chaining(serve_instance):
         collector.append.remote(f"second-{_id}")
         return _id
 
-    client = serve.start(detached=True)
+    serve.start(detached=True)
 
     composed_model.deploy()
     first_func.deploy()
