@@ -17,7 +17,7 @@ def handle_result(
     session_url: str,
     runtime: float,
     stable: bool,
-    return_code: int
+    return_code: int,
 ) -> Optional[str]:
     assert test_suite == "tune_tests"
 

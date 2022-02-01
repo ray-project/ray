@@ -729,7 +729,7 @@ def report_result(
     session_url: str,
     runtime: float,
     stable: bool,
-    return_code: int
+    return_code: int,
 ):
     #   session_url: str, commit_url: str,
     #   runtime: float, stable: bool, frequency: str, return_code: int):
@@ -1648,7 +1648,7 @@ def run_test_config(
                     "runtime": runtime,
                     "session_url": session_url,
                     "commit_url": commit_url,
-                    "stable": is_stable
+                    "stable": is_stable,
                 },
             )
         )
@@ -1984,7 +1984,7 @@ def run_test_config(
                             "runtime": runtime,
                             "session_url": session_url,
                             "commit_url": commit_url,
-                            "stable": is_stable
+                            "stable": is_stable,
                         },
                     )
                 )
@@ -2379,7 +2379,7 @@ def run_test(
             session_url=result.get("session_url", ""),
             runtime=result.get("runtime", -1),
             stable=result.get("stable", True),
-            exit_code=result.get("exit_code", ExitCode.UNKNOWN)
+            exit_code=result.get("exit_code", ExitCode.UNKNOWN),
         )
 
         if not has_errored(result):
