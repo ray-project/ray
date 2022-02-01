@@ -20,8 +20,7 @@ class BlockList:
     change after execution due to block splitting.
     """
 
-    def __init__(self, blocks: List[ObjectRef[Block]],
-                 metadata: List[BlockMetadata]):
+    def __init__(self, blocks: List[ObjectRef[Block]], metadata: List[BlockMetadata]):
         assert len(blocks) == len(metadata), (blocks, metadata)
         self._blocks: List[ObjectRef[Block]] = blocks
         self._num_blocks = len(self._blocks)
@@ -48,7 +47,8 @@ class BlockList:
         if self._blocks is None:
             raise ValueError(
                 "This Dataset's blocks have been moved, which means that you "
-                "can no longer use this Dataset.")
+                "can no longer use this Dataset."
+            )
 
     def split(self, split_size: int) -> List["BlockList"]:
         """Split this BlockList into multiple lists.
@@ -72,10 +72,10 @@ class BlockList:
             block_idx: The block index to divide at.
         """
         self._check_if_cleared()
-        return (BlockList(self._blocks[:block_idx],
-                          self._metadata[:block_idx]),
-                BlockList(self._blocks[block_idx:],
-                          self._metadata[block_idx:]))
+        return (
+            BlockList(self._blocks[:block_idx], self._metadata[:block_idx]),
+            BlockList(self._blocks[block_idx:], self._metadata[block_idx:]),
+        )
 
     def get_blocks(self) -> List[ObjectRef[Block]]:
         """Bulk version of iter_blocks().
@@ -109,8 +109,7 @@ class BlockList:
 
         return Iter()
 
-    def get_blocks_with_metadata(
-            self) -> List[Tuple[ObjectRef[Block], BlockMetadata]]:
+    def get_blocks_with_metadata(self) -> List[Tuple[ObjectRef[Block], BlockMetadata]]:
         """Bulk version of iter_blocks_with_metadata().
 
         Prefer calling this instead of the iter form for performance if you
@@ -120,7 +119,8 @@ class BlockList:
         return list(self.iter_blocks_with_metadata())
 
     def iter_blocks_with_metadata(
-            self) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
+        self,
+    ) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
         """Iterate over the blocks along with their runtime metadata.
 
         This blocks on the execution of the tasks generating block outputs.
@@ -141,8 +141,7 @@ class BlockList:
         """
         return len(self.get_blocks())
 
-    def ensure_schema_for_first_block(
-            self) -> Optional[Union["pyarrow.Schema", type]]:
+    def ensure_schema_for_first_block(self) -> Optional[Union["pyarrow.Schema", type]]:
         """Ensure that the schema is set for the first block.
 
         Returns None if the block list is empty.

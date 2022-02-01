@@ -23,8 +23,7 @@ def test_deploy_with_consistent_constructor_failure(serve_instance):
 
     # Assert no replicas are running in deployment deployment after failed
     # deploy() call
-    deployment_dict = ray.get(
-        serve_instance._controller._all_running_replicas.remote())
+    deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
     assert deployment_dict["ConstructorFailureDeploymentOneReplica"] == []
 
     # # Test failed to deploy with total of 2 replicas
@@ -41,8 +40,7 @@ def test_deploy_with_consistent_constructor_failure(serve_instance):
 
     # Assert no replicas are running in deployment deployment after failed
     # deploy() call
-    deployment_dict = ray.get(
-        serve_instance._controller._all_running_replicas.remote())
+    deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
     assert deployment_dict["ConstructorFailureDeploymentTwoReplicas"] == []
 
 
@@ -60,14 +58,12 @@ def test_deploy_with_partial_constructor_failure(serve_instance):
                         # Write first replica tag to local file so that it will
                         # consistently fail even retried on other actor
                         f.write(serve.get_replica_context().replica_tag)
-                    raise RuntimeError(
-                        "Consistently throwing on same replica.")
+                    raise RuntimeError("Consistently throwing on same replica.")
                 else:
                     with open(file_path) as f:
                         content = f.read()
                         if content == serve.get_replica_context().replica_tag:
-                            raise RuntimeError(
-                                "Consistently throwing on same replica.")
+                            raise RuntimeError("Consistently throwing on same replica.")
                         else:
                             return True
 
@@ -78,8 +74,7 @@ def test_deploy_with_partial_constructor_failure(serve_instance):
 
     # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy() call
-    deployment_dict = ray.get(
-        serve_instance._controller._all_running_replicas.remote())
+    deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
     assert len(deployment_dict["PartialConstructorFailureDeployment"]) == 2
 
 
@@ -105,8 +100,7 @@ def test_deploy_with_transient_constructor_failure(serve_instance):
         TransientConstructorFailureDeployment.deploy()
     # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy() call with transient error
-    deployment_dict = ray.get(
-        serve_instance._controller._all_running_replicas.remote())
+    deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
     assert len(deployment_dict["TransientConstructorFailureDeployment"]) == 2
 
 

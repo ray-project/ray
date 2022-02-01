@@ -38,6 +38,7 @@ def test_fastapi_serialization(shutdown_ray):
             data = request["data"]
             columns = request["columns"]
             import pandas as pd
+
             data = pd.DataFrame(data, columns=columns)
             data.drop_duplicates(inplace=True)
             return data.values.tolist()
@@ -184,4 +185,5 @@ def test_uvicorn_duplicate_headers(serve_instance):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

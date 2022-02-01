@@ -170,7 +170,6 @@ class CloudwatchHelper:
             MaxConcurrency="1",
             MaxErrors="0",
         )
-
         return response
 
     def _ssm_command_waiter(

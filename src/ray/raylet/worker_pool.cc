@@ -402,7 +402,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
       worker_command_args.push_back("--serialized-runtime-env-context=" +
                                     serialized_runtime_env_context);
     } else {
-      // The "shim process" setup worker is not needed, so do not run it.
       // Check that the arg really is the path to the setup worker before erasing it, to
       // prevent breaking tests that mock out the worker command args.
       if (worker_command_args.size() >= 2 &&
@@ -649,22 +648,18 @@ boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
 }
 
 Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
-                                  pid_t pid, pid_t worker_shim_pid,
-                                  StartupToken worker_startup_token,
+                                  pid_t pid, StartupToken worker_startup_token,
                                   std::function<void(Status, int)> send_reply_callback) {
   RAY_CHECK(worker);
   auto &state = GetStateForLanguage(worker->GetLanguage());
   auto it = state.starting_worker_processes.find(worker_startup_token);
   if (it == state.starting_worker_processes.end()) {
-    RAY_LOG(WARNING)
-        << "Received a register request from an unknown worker shim process: "
-        << worker_shim_pid << ", token: " << worker_startup_token;
+    RAY_LOG(WARNING) << "Received a register request from an unknown token: "
+                     << worker_startup_token;
     Status status = Status::Invalid("Unknown worker");
     send_reply_callback(status, /*port=*/0);
     return status;
   }
-  auto shim_process = Process::FromPid(worker_shim_pid);
-  worker->SetShimProcess(shim_process);
   auto process = Process::FromPid(pid);
   worker->SetProcess(process);
 
@@ -695,9 +690,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 
 void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  const auto &shim_process = worker->GetShimProcess();
   const StartupToken worker_startup_token = worker->GetStartupToken();
-  RAY_CHECK(shim_process.IsValid());
 
   auto it = state.starting_worker_processes.find(worker_startup_token);
   if (it != state.starting_worker_processes.end()) {
@@ -964,7 +957,6 @@ void WorkerPool::TryKillingIdleWorkers() {
       // This is possible because a Java worker process may hold multiple workers.
       continue;
     }
-    auto shim_process = idle_worker->GetShimProcess();
     auto worker_startup_token = idle_worker->GetStartupToken();
     auto &worker_state = GetStateForLanguage(idle_worker->GetLanguage());
 
