@@ -4,20 +4,22 @@ import argparse
 import random
 import string
 import logging
+
 parser = argparse.ArgumentParser(prog="Stress Test - Logging")
 parser.add_argument(
     "--total-num-tasks",
     type=int,
     help="Total number of tasks sending logs",
-    required=True)
+    required=True,
+)
 parser.add_argument(
     "--log-lines-per-task",
     type=int,
     help="Total lines of logs to be sent",
-    required=True)
+    required=True,
+)
 
-parser.add_argument(
-    "--log-line-size", type=int, help="Size of a log", required=True)
+parser.add_argument("--log-line-size", type=int, help="Size of a log", required=True)
 
 args = parser.parse_args()
 ray.init(address="auto")
@@ -35,7 +37,9 @@ def gen_logs(log_size, log_num):
         logger.error(log_line)
 
 
-ray.get([
-    gen_logs.remote(args.log_line_size, args.log_lines_per_task)
-    for _ in range(args.total_num_tasks)
-])
+ray.get(
+    [
+        gen_logs.remote(args.log_line_size, args.log_lines_per_task)
+        for _ in range(args.total_num_tasks)
+    ]
+)
