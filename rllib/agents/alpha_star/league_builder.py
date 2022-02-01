@@ -51,8 +51,38 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
     def __init__(
         self,
         trainer: Trainer,
+        win_rate_threshold_for_new_snapshot: float = 0.8,
+        keep_new_snapshot_training_prob: float = 0.0,
+        prob_league_exploiter_match: float = 0.33,
+        prob_main_exploiter_match: float = 0.33,
+        prob_main_exploiter_playing_against_learning_main: float = 0.5,
     ):
+        """Initializes a AlphaStarLeagueBuilder instance.
+
+        Args:
+            trainer: The Trainer that holds this league builder.
+            win_rate_threshold_for_new_snapshot: The win-rate to be achieved
+                for a learning policy to get snapshot'd (forked into `self` +
+                a new learning or non-learning copy of `self`).
+            keep_new_snapshot_training_prob: The probability with which a new
+                snapshot should keep training. Note that the policy from which
+                this snapshot is taken will continue to train regardless.
+            prob_league_exploiter_match: Probability of an episode to become a
+                league-exploiter vs snapshot match.
+            prob_main_exploiter_match: Probability of an episode to become a
+                main-exploiter vs main match.
+            prob_main_exploiter_playing_against_learning_main: Probability of
+                a main-exploiter vs (training!) main match.
+        """
         super().__init__(trainer)
+
+        self.win_rate_threshold_for_new_snapshot = win_rate_threshold_for_new_snapshot
+        self.keep_new_snapshot_training_prob = keep_new_snapshot_training_prob
+        self.prob_league_exploiter_match = prob_league_exploiter_match
+        self.prob_main_exploiter_match = prob_main_exploiter_match
+        self.prob_main_exploiter_playing_against_learning_main = (
+            prob_main_exploiter_playing_against_learning_main
+        )
 
         # Make sure the multiagent config dict only contains valid policy IDs:
         # 1) 1 main_0
@@ -70,9 +100,10 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
             if mo:
                 idx = int(mo.group(1))
                 self.league_exploiters += 1
-                assert (
-                    self.league_exploiters == idx + 1
-                ), f"ERROR: `league_exploiter_\\d` index wrong ({pid})! Expected {idx + 1}."
+                assert self.league_exploiters == idx + 1, (
+                    f"ERROR: `league_exploiter_\\d` index wrong ({pid})! "
+                    f"Expected {idx + 1}."
+                )
                 continue
 
             # Main exploiter.
@@ -80,9 +111,10 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
             if mo:
                 idx = int(mo.group(1))
                 self.main_exploiters += 1
-                assert (
-                    self.main_exploiters == idx + 1
-                ), f"ERROR: `main_exploiter_\\d` index wrong ({pid})! Expected {idx + 1}."
+                assert self.main_exploiters == idx + 1, (
+                    f"ERROR: `main_exploiter_\\d` index wrong ({pid})! "
+                    f"Expected {idx + 1}."
+                )
                 continue
 
             # Not a valid ID
@@ -133,11 +165,11 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
 
             # If win rate is good enough -> Snapshot current policy and decide,
             # whether to freeze the new snapshot or not.
-            if win_rate >= self.config["win_rate_threshold_for_new_snapshot"]:
+            if win_rate >= self.win_rate_threshold_for_new_snapshot:
                 is_main = re.match("^main(_\\d+)?$", policy_id)
 
                 # Probability that the new snapshot is trainable.
-                keep_training_p = self.config["keep_new_snapshot_training_prob"]
+                keep_training_p = self.keep_new_snapshot_training_prob
                 # For main, new snapshots are never trainable, for all others
                 # use `config.keep_new_snapshot_training_prob` (default: 0.0!).
                 keep_training = (
@@ -174,15 +206,15 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
 
                 num_main_policies = self.main_policies
                 probs_match_types = [
-                    self.config["prob_league_exploiter_match"],
-                    self.config["prob_main_exploiter_match"],
+                    self.prob_league_exploiter_match,
+                    self.prob_main_exploiter_match,
                     1.0
-                    - self.config["prob_league_exploiter_match"]
-                    - self.config["prob_main_exploiter_match"],
+                    - self.prob_league_exploiter_match
+                    - self.prob_main_exploiter_match,
                 ]
-                prob_playing_learning_main = self.config[
-                    "prob_main_exploiter_playing_against_learning_main"
-                ]
+                prob_playing_learning_main = (
+                    self.prob_main_exploiter_playing_against_learning_main
+                )
 
                 # Update our mapping function accordingly.
                 def policy_mapping_fn(agent_id, episode, worker, **kwargs):
@@ -215,7 +247,7 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
                             all_opponents = list(non_trainable_policies)
                             probs = softmax(
                                 [
-                                    worker.global_vars["win_rates"].get(pid, 0.0)
+                                    worker.global_vars["win_rates"][pid]
                                     for pid in all_opponents
                                 ]
                             )
@@ -260,7 +292,7 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
                                 ]
                                 probs = softmax(
                                     [
-                                        worker.global_vars["win_rates"].get(pid, 0.0)
+                                        worker.global_vars["win_rates"][pid]
                                         for pid in all_opponents
                                     ]
                                 )

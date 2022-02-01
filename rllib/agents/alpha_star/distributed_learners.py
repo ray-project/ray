@@ -1,5 +1,5 @@
 import math
-from typing import Any, List, Type, Union
+from typing import Any, List, Optional, Type
 
 import ray
 from ray.actor import ActorHandle
@@ -10,52 +10,71 @@ from ray.rllib.utils.typing import PolicyID
 
 
 class DistributedLearners:
-    """Container class for n learning @ray.remote-turned policies."""
+    """Container class for n learning @ray.remote-turned policies.
+
+    The container contains n "learner shards", each one consisting of one
+    multi-agent replay buffer and m policy actors that share this replay
+    buffer.
+    """
 
     def __init__(
         self,
+        *,
         config,
-        max_num_policies: int,
+        max_num_policies_to_train: int,
         replay_actor_class: Type[ActorHandle],
         replay_actor_args: List[Any],
-        num_learner_shards: Union[str, int] = "auto",
+        num_learner_shards: Optional[int] = None,
     ):
         """Initializes a DistributedLearners instance.
 
         Args:
-            config:
-            max_num_policies:
-            replay_actor_class:
-            replay_actor_args:
-            num_learner_shards:
+            config: The Trainer's config dict.
+            max_num_policies_to_train: Maximum number of policies that will ever be
+                trainable. For these policies, we'll have to create remote
+                policy actors, distributed across n "learner shards".
+            num_learner_shards: Optional number of "learner shards" to reserve.
+                Each one consists of one multi-agent replay actor and
+                m policy actors that share this replay buffer. If None,
+                will infer this number automatically from the number of GPUs
+                and the max. number of learning policies.
+            replay_actor_class: The class to use to produce one multi-agent
+                replay buffer on each learner shard (shared by all policy actors
+                on that shard).
+            replay_actor_args: The args to pass to the remote replay buffer
+                actor's constructor.
         """
         self.config = config
         self.num_gpus = self.config["num_gpus"]
-        self.max_num_policies = max_num_policies
+        self.max_num_policies_to_train = max_num_policies_to_train
         self.replay_actor_class = replay_actor_class
         self.replay_actor_args = replay_actor_args
 
+        # Auto-num-learner-shard detection:
         # Examples:
         # 4 GPUs + max. 10 policies to train -> 4 shards (0.4 GPU/pol).
         # 8 GPUs + max. 3 policies to train -> 3 shards (2.667 GPUs/pol).
         # 8 GPUs + max. 2 policies to train -> 2 shards (4 GPUs/pol).
         # 2 GPUs + max. 5 policies to train -> 2 shards (0.4 GPUs/pol).
-        if num_learner_shards == "auto":
-            assert self.num_gpus
-            self.num_learner_shards = min(self.num_gpus, self.max_num_policies)
-            self.num_gpus_per_shard = self.num_gpus / self.num_learner_shards
+        if num_learner_shards is None:
+            self.num_learner_shards = min(
+                self.num_gpus or self.max_num_policies_to_train,
+                self.max_num_policies_to_train,
+            )
         else:
             self.num_learner_shards = num_learner_shards
-            self.num_gpus_per_shard = 0
 
-        num_policies_per_shard = self.max_num_policies / self.num_learner_shards
+        self.num_gpus_per_shard = self.num_gpus / self.num_learner_shards
+        num_policies_per_shard = (
+            self.max_num_policies_to_train / self.num_learner_shards
+        )
         self.num_gpus_per_policy = self.num_gpus_per_shard / num_policies_per_shard
         self.num_policies_per_shard = math.ceil(num_policies_per_shard)
 
         self.shards = [
             _Shard(
                 self.config,
-                self.max_num_policies,
+                self.max_num_policies_to_train,
                 self.num_gpus_per_policy,
                 self.replay_actor_class,
                 self.replay_actor_args,
@@ -100,6 +119,10 @@ class DistributedLearners:
 
     def get_replay_actors(self):
         return [shard.replay_actor for shard in self.shards]
+
+    def __len__(self):
+        """Returns the number of all Policy actors in all our shards."""
+        return sum(len(s) for s in self.shards)
 
     def __iter__(self):
         def _gen():
@@ -207,3 +230,7 @@ class _Shard:
         self.policy_actors[policy_id] = colocated[0][0]
 
         return self.policy_actors[policy_id]
+
+    def __len__(self):
+        """Returns the number of Policy actors in this shard."""
+        return len(self.policy_actors)

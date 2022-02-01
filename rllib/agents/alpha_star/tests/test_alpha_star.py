@@ -19,7 +19,7 @@ register_env("connect_four", lambda _: OpenSpielEnv(pyspiel.load_game("connect_f
 class TestAlphaStar(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()  # TODO  # num_cpus=20)
+        ray.init(num_cpus=20)
 
     @classmethod
     def tearDownClass(cls):
@@ -33,13 +33,14 @@ class TestAlphaStar(unittest.TestCase):
             "gamma": 1.0,
             "num_workers": 4,
             "num_envs_per_worker": 5,
-            "vtrace_drop_last_ts": False,
             "model": {
                 "fcnet_hiddens": [256, 256, 256],
             },
             "vf_loss_coeff": 0.01,
             "entropy_coeff": 0.004,
-            "win_rate_threshold_for_new_snapshot": 0.8,
+            "league_builder_config": {
+                "win_rate_threshold_for_new_snapshot": 0.8,
+            },
             "grad_clip": 10.0,
             "replay_buffer_capacity": 10,
             "replay_buffer_replay_ratio": 0.0,
@@ -50,15 +51,15 @@ class TestAlphaStar(unittest.TestCase):
             "use_kl_loss": True,
         }
 
-        num_iterations = 200
+        num_iterations = 2
 
-        for _ in framework_iterator(config, frameworks=("tf2",)):
+        for _ in framework_iterator(config):
             _config = config.copy()
             trainer = alpha_star.AlphaStarTrainer(config=_config)
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
-                # pprint.pprint(results)
+                pprint.pprint(results)
             check_compute_single_action(trainer)
             trainer.stop()
 

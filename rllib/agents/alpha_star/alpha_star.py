@@ -2,10 +2,9 @@
 A multi-agent, distributed multi-GPU, league-capable asynch. PPO
 ================================================================
 """
+from collections import defaultdict
 import gym
-import numpy as np
-import re
-from typing import Dict, Optional, Type
+from typing import DefaultDict, Optional, Type
 
 import ray
 from ray.actor import ActorHandle
@@ -32,7 +31,6 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
     TARGET_NET_UPDATE_TIMER,
 )
-from ray.rllib.utils.numpy import softmax
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
     PartialTrainerConfigDict,
@@ -64,33 +62,35 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # The LeagueBuilder class to be used for league building logic.
         "league_builder_config": {
             "type": AlphaStarLeagueBuilder,
+            # Minimum win-rate (between 0.0 = 0% and 1.0 = 100%) of any policy to
+            # be considered for snapshotting (cloning). The cloned copy may then
+            # be frozen (no further learning) or keep learning (independent of
+            # its ancestor policy).
+            # Set this to lower values to speed up league growth.
+            "win_rate_threshold_for_new_snapshot": 0.9,
+            # If we took a new snapshot of any given policy, what's the probability
+            # that this snapshot will continue to be trainable (rather than become
+            # frozen/non-trainable)? By default, only keep those policies trainable
+            # that have been trainable from the very beginning.
+            "keep_new_snapshot_training_prob": 0.0,
+            # Probabilities of different match-types:
+            # LE: Learning league_exploiter vs any.
+            # ME: Learning main exploiter vs any main.
+            # M: Main self-play (p=1.0 - LE - ME).
+            "prob_league_exploiter_match": 0.33,
+            "prob_main_exploiter_match": 0.33,
+            # Only for ME matches: Prob to play against learning
+            # main (vs a snapshot main).
+            "prob_main_exploiter_playing_against_learning_main": 0.5,
         },
-        # Minimum win-rate (between 0.0 = 0% and 1.0 = 100%) of any policy to
-        # be considered for snapshotting (cloning). The cloned copy may then
-        # be frozen (no further learning) or keep learning (independent of
-        # its ancestor policy).
-        # Set this to lower values to speed up league growth.
-        "win_rate_threshold_for_new_snapshot": 0.9,
-        # If we took a new snapshot of any given policy, what's the probability
-        # that this snapshot will continue to be trainable (rather than become
-        # frozen/non-trainable)? By default, only keep those policies trainable
-        # that have been trainable from the very beginning.
-        "keep_new_snapshot_training_prob": 0.0,
-        # Probabilities of different match-types:
-        # LE: Learning league_exploiter vs any.
-        # ME: Learning main exploiter vs any main.
-        # M: Main self-play (p=1.0 - LE - ME).
-        "prob_league_exploiter_match": 0.33,
-        "prob_main_exploiter_match": 0.33,
-        # Only for ME matches: Prob to play against learning
-        # main (vs a snapshot main).
-        "prob_main_exploiter_playing_against_learning_main": 0.5,
 
         # The maximum number of trainable policies for this Trainer.
-        # Each trainable policy will exist as a independent remote actor, co-locate
+        # Each trainable policy will exist as a independent remote actor, co-located
         # with a replay buffer. This is besides its existence inside
         # the RolloutWorkers for training and evaluation.
-        "max_num_policies_to_train": 11,
+        # Set to None for automatically inferring this value from the number of
+        # trainable policies found in the `multiagent` config.
+        "max_num_policies_to_train": None,
 
         # Basic "multiagent" setup for league-building AlphaStar:
         # Start with "main_0" (the policy we would like to use in the very end),
@@ -123,12 +123,19 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
                  ep.episode_id % 2 == aid else "main_exploiter_0"),
             # Train all non-random policies that exist at beginning.
             "policies_to_train": [
-                "main_0", "main_exploiter_1", "main_exploiter_2",
-                "main_exploiter_3", "main_exploiter_4", "league_exploiter_1",
-                "league_exploiter_2", "league_exploiter_3",
+                "main_0",
+                "main_exploiter_1",
+                "main_exploiter_2",
+                "main_exploiter_3",
+                "main_exploiter_4",
+                "league_exploiter_1",
+                "league_exploiter_2",
+                "league_exploiter_3",
                 "league_exploiter_4",
             ],
         },
+
+        "vtrace_drop_last_ts": False,
 
         # Reporting interval.
         "min_time_s_per_reporting": 2,
@@ -144,18 +151,30 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
 
 
 class AlphaStarTrainer(appo.APPOTrainer):
+    _allow_unknown_subkeys = appo.APPOTrainer._allow_unknown_subkeys + [
+        "league_builder_config",
+    ]
+    _override_all_subkeys_if_type_changes = (
+        appo.APPOTrainer._override_all_subkeys_if_type_changes
+        + [
+            "league_builder_config",
+        ]
+    )
+
     @classmethod
     @override(Trainer)
     def default_resource_request(cls, config):
         cf = dict(cls.get_default_config(), **config)
+        max_num_policies_to_train = cf["max_num_policies_to_train"] or len(
+            cf["multiagent"]["policies_to_train"] or cf["multiagent"]["policies"]
+        )
+        num_learner_shards = min(
+            cf["num_gpus"] or max_num_policies_to_train, max_num_policies_to_train
+        )
+        num_gpus_per_shard = cf["num_gpus"] / num_learner_shards
+        num_policies_per_shard = max_num_policies_to_train / num_learner_shards
 
-        num_policies = cf["max_num_policies_to_train"]
-        if cf["num_gpus"]:
-            num_learner_shards = min(cf["num_gpus"], num_policies)
-            num_gpus_per_shard = cf["num_gpus"] / num_learner_shards
-        else:
-            num_learner_shards = cf.get("num_replay_buffer_shards", 1)
-            num_gpus_per_shard = 0
+        fake_gpus = cf["_fake_gpus"]
 
         eval_config = cf["evaluation_config"]
 
@@ -178,8 +197,10 @@ class AlphaStarTrainer(appo.APPOTrainer):
             + [
                 {
                     # Policy learners (and Replay buffer shards).
-                    "CPU": 1,
-                    "GPU": num_gpus_per_shard,
+                    # 1 CPU for the replay buffer.
+                    # 1 CPU (or fractional GPU) for each learning policy.
+                    "CPU": 1 + (num_policies_per_shard if fake_gpus else 0),
+                    "GPU": 0 if fake_gpus else num_gpus_per_shard,
                 }
                 for _ in range(num_learner_shards)
             ]
@@ -191,9 +212,6 @@ class AlphaStarTrainer(appo.APPOTrainer):
                         # CPU or not even created iff >0 eval workers.
                         "CPU": eval_config.get(
                             "num_cpus_per_worker", cf["num_cpus_per_worker"]
-                        ),
-                        "GPU": eval_config.get(
-                            "num_gpus_per_worker", cf["num_gpus_per_worker"]
                         ),
                     }
                     for _ in range(cf["evaluation_num_workers"])
@@ -223,7 +241,12 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # - On each such node, also locate one replay buffer shard.
 
         ma_cfg = self.config["multiagent"]
-        max_num_policies_to_train = self.config["max_num_policies_to_train"]
+        # By default, set max_num_policies_to_train to the number of policy IDs
+        # provided in the multiagent config.
+        if self.config["max_num_policies_to_train"] is None:
+            self.config["max_num_policies_to_train"] = len(
+                self.workers.local_worker().get_policies_to_train()
+            )
 
         # Single CPU replay shard (co-located with GPUs so we can place the
         # policies on the same machine(s)).
@@ -245,7 +268,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # the initial first n learnable policies (found in the config).
         distributed_learners = DistributedLearners(
             config=self.config,
-            max_num_policies=max_num_policies_to_train,
+            max_num_policies_to_train=self.config["max_num_policies_to_train"],
             replay_actor_class=ReplayActor,
             replay_actor_args=replay_actor_args,
         )
@@ -275,7 +298,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
         )
 
         # Store the win rates for league overview printouts.
-        self.win_rates: Dict[PolicyID, float] = {}
+        self.win_rates: DefaultDict[PolicyID, float] = defaultdict(float)
 
     @override(Trainer)
     def step(self) -> ResultDict:
