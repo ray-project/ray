@@ -28,7 +28,7 @@ RAY_CONFIG(bool, event_stats, true)
 /// Whether to enable Ray legacy scheduler warnings. These are replaced by
 /// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
 /// TODO(ekl) remove this after Ray 1.8
-RAY_CONFIG(bool, legacy_scheduler_warnings, true)
+RAY_CONFIG(bool, legacy_scheduler_warnings, false)
 
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available to
@@ -325,11 +325,6 @@ RAY_CONFIG(int64_t, enable_metrics_collection, true)
 
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
-
-/// Maximum number of tasks that can be in flight between an owner and a worker for which
-/// the owner has been granted a lease. A value >1 is used when we want to enable
-/// pipelining task submission.
-RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
 
 /// Maximum number of pending lease requests per scheduling category
 RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 10)

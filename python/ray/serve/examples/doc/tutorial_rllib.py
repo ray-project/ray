@@ -20,7 +20,8 @@ class ServePPOModel:
                 # only 1 "local" worker with an env (not really used here).
                 "num_workers": 0,
             },
-            env="CartPole-v0")
+            env="CartPole-v0",
+        )
         self.trainer.restore(checkpoint_path)
 
     async def __call__(self, request: Request):
@@ -37,10 +38,7 @@ class ServePPOModel:
 # __doc_train_model_begin__
 def train_ppo_model():
     trainer = ppo.PPOTrainer(
-        config={
-            "framework": "torch",
-            "num_workers": 0
-        },
+        config={"framework": "torch", "num_workers": 0},
         env="CartPole-v0",
     )
     # Train for one iteration
@@ -66,8 +64,8 @@ for _ in range(10):
 
     print(f"-> Sending observation {obs}")
     resp = requests.get(
-        "http://localhost:8000/cartpole-ppo",
-        json={"observation": obs.tolist()})
+        "http://localhost:8000/cartpole-ppo", json={"observation": obs.tolist()}
+    )
     print(f"<- Received response {resp.json()}")
 # Output:
 # <- Received response {'action': 1}

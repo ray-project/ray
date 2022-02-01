@@ -61,17 +61,21 @@ def setup(config):
     kwargs = {"num_workers": 1, "pin_memory": True} if use_cuda else {}
     data_dir = data_dir or "~/data"
     with FileLock(os.path.expanduser("~/.horovod_lock")):
-        train_dataset = \
-            datasets.MNIST(data_dir, train=True, download=True,
-                           transform=transforms.Compose([
-                               transforms.ToTensor(),
-                               transforms.Normalize((0.1307,), (0.3081,))
-                           ]))
+        train_dataset = datasets.MNIST(
+            data_dir,
+            train=True,
+            download=True,
+            transform=transforms.Compose(
+                [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+            ),
+        )
     # Horovod: use DistributedSampler to partition the training data.
     train_sampler = torch.utils.data.distributed.DistributedSampler(
-        train_dataset, num_replicas=hvd.size(), rank=hvd.rank())
+        train_dataset, num_replicas=hvd.size(), rank=hvd.rank()
+    )
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size, sampler=train_sampler, **kwargs)
+        train_dataset, batch_size=batch_size, sampler=train_sampler, **kwargs
+    )
 
     model = Net()
 
@@ -86,20 +90,21 @@ def setup(config):
             lr_scaler = hvd.local_size()
 
     # Horovod: scale learning rate by lr_scaler.
-    optimizer = optim.SGD(
-        model.parameters(), lr=lr * lr_scaler, momentum=momentum)
+    optimizer = optim.SGD(model.parameters(), lr=lr * lr_scaler, momentum=momentum)
 
     # Horovod: wrap optimizer with DistributedOptimizer.
     optimizer = hvd.DistributedOptimizer(
         optimizer,
         named_parameters=model.named_parameters(),
-        op=hvd.Adasum if use_adasum else hvd.Average)
+        op=hvd.Adasum if use_adasum else hvd.Average,
+    )
 
     return model, optimizer, train_loader, train_sampler
 
 
-def train_epoch(model, optimizer, train_sampler, train_loader, epoch,
-                log_interval, use_cuda):
+def train_epoch(
+    model, optimizer, train_sampler, train_loader, epoch, log_interval, use_cuda
+):
     loss = None
     model.train()
     # Horovod: set epoch to sampler for shuffling.
@@ -115,9 +120,15 @@ def train_epoch(model, optimizer, train_sampler, train_loader, epoch,
         if batch_idx % log_interval == 0:
             # Horovod: use train_sampler to determine the number of
             # examples in this worker's partition.
-            print("Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}".format(
-                epoch, batch_idx * len(data), len(train_sampler),
-                100. * batch_idx / len(train_loader), loss.item()))
+            print(
+                "Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}".format(
+                    epoch,
+                    batch_idx * len(data),
+                    len(train_sampler),
+                    100.0 * batch_idx / len(train_loader),
+                    loss.item(),
+                )
+            )
     return loss.item() if loss else None
 
 
@@ -136,8 +147,9 @@ def train_func(config):
 
     results = []
     for epoch in range(num_epochs):
-        loss = train_epoch(model, optimizer, train_sampler, train_loader,
-                           epoch, log_interval, use_cuda)
+        loss = train_epoch(
+            model, optimizer, train_sampler, train_loader, epoch, log_interval, use_cuda
+        )
         results.append(loss)
     return results
 
@@ -161,13 +173,20 @@ class HorovodTrainClass:
         if self.use_cuda:
             torch.cuda.set_device(hvd.local_rank())
 
-        self.model, self.optimizer, self.train_loader, self.train_sampler = \
-            setup(config)
+        self.model, self.optimizer, self.train_loader, self.train_sampler = setup(
+            config
+        )
 
     def train(self, epoch):
-        loss = train_epoch(self.model, self.optimizer, self.train_sampler,
-                           self.train_loader, epoch, self.log_interval,
-                           self.use_cuda)
+        loss = train_epoch(
+            self.model,
+            self.optimizer,
+            self.train_sampler,
+            self.train_loader,
+            epoch,
+            self.log_interval,
+            self.use_cuda,
+        )
         return loss
 
 
@@ -175,68 +194,73 @@ if __name__ == "__main__":
     # Training settings
     parser = argparse.ArgumentParser(
         description="PyTorch MNIST Example",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
     parser.add_argument(
         "--batch-size",
         type=int,
         default=64,
         metavar="N",
-        help="input batch size for training (default: 64)")
+        help="input batch size for training (default: 64)",
+    )
     parser.add_argument(
         "--num-epochs",
         type=int,
         default=5,
         metavar="N",
-        help="number of epochs to train (default: 10)")
+        help="number of epochs to train (default: 10)",
+    )
     parser.add_argument(
         "--lr",
         type=float,
         default=0.01,
         metavar="LR",
-        help="learning rate (default: 0.01)")
+        help="learning rate (default: 0.01)",
+    )
     parser.add_argument(
         "--momentum",
         type=float,
         default=0.5,
         metavar="M",
-        help="SGD momentum (default: 0.5)")
+        help="SGD momentum (default: 0.5)",
+    )
     parser.add_argument(
-        "--use-gpu",
-        action="store_true",
-        default=False,
-        help="enables CUDA training")
+        "--use-gpu", action="store_true", default=False, help="enables CUDA training"
+    )
     parser.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        metavar="S",
-        help="random seed (default: 42)")
+        "--seed", type=int, default=42, metavar="S", help="random seed (default: 42)"
+    )
     parser.add_argument(
         "--log-interval",
         type=int,
         default=10,
         metavar="N",
-        help="how many batches to wait before logging training status")
+        help="how many batches to wait before logging training status",
+    )
     parser.add_argument(
         "--use-adasum",
         action="store_true",
         default=False,
-        help="use adasum algorithm to do reduction")
+        help="use adasum algorithm to do reduction",
+    )
     parser.add_argument(
         "--num-workers",
         type=int,
         default=2,
-        help="Number of Ray workers to use for training.")
+        help="Number of Ray workers to use for training.",
+    )
     parser.add_argument(
         "--data-dir",
         help="location of the training dataset in the local filesystem ("
-        "will be downloaded if needed)")
+        "will be downloaded if needed)",
+    )
     parser.add_argument(
         "--address",
         required=False,
         type=str,
         default=None,
-        help="Address of Ray cluster.")
+        help="Address of Ray cluster.",
+    )
 
     args = parser.parse_args()
 
@@ -256,7 +280,7 @@ if __name__ == "__main__":
         "lr": args.lr,
         "momentum": args.momentum,
         "num_epochs": args.num_epochs,
-        "log_interval": args.log_interval
+        "log_interval": args.log_interval,
     }
 
     main(num_workers=args.num_workers, use_gpu=use_cuda, kwargs=kwargs)

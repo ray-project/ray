@@ -80,9 +80,8 @@ def build_slateq_losses(policy: Policy, model: ModelV2,
     """
     start = time.time()
     obs = restore_original_dimensions(
-        train_batch[SampleBatch.OBS],
-        policy.observation_space,
-        tensorlib=torch)
+        train_batch[SampleBatch.OBS], policy.observation_space, tensorlib=torch
+    )
     # user.shape: [batch_size, embedding_size]
     user = obs["user"]
     # doc.shape: [batch_size, num_docs, embedding_size]
@@ -91,9 +90,8 @@ def build_slateq_losses(policy: Policy, model: ModelV2,
     actions = train_batch[SampleBatch.ACTIONS]
 
     next_obs = restore_original_dimensions(
-        train_batch[SampleBatch.NEXT_OBS],
-        policy.observation_space,
-        tensorlib=torch)
+        train_batch[SampleBatch.NEXT_OBS], policy.observation_space, tensorlib=torch
+    )
 
     # Step 1: Build user choice model loss
     _, _, embedding_size = doc.shape
@@ -109,8 +107,7 @@ def build_slateq_losses(policy: Policy, model: ModelV2,
     choice_loss_fn = nn.CrossEntropyLoss()
 
     # clicks.shape: [batch_size, slate_size]
-    clicks = torch.stack(
-        [resp["click"][:, 1] for resp in next_obs["response"]], dim=1)
+    clicks = torch.stack([resp["click"][:, 1] for resp in next_obs["response"]], dim=1)
     no_clicks = 1 - torch.sum(clicks, 1, keepdim=True)
     # clicks.shape: [batch_size, slate_size+1]
     targets = torch.cat([clicks, no_clicks], dim=1)
@@ -126,8 +123,7 @@ def build_slateq_losses(policy: Policy, model: ModelV2,
 
     if learning_strategy == "SARSA":
         # next_doc.shape: [batch_size, num_docs, embedding_size]
-        next_doc = torch.cat(
-            [val.unsqueeze(1) for val in next_obs["doc"].values()], 1)
+        next_doc = torch.cat([val.unsqueeze(1) for val in next_obs["doc"].values()], 1)
         next_actions = train_batch["next_actions"]
         _, _, embedding_size = next_doc.shape
         # selected_doc.shape: [batch_size, slate_size, embedding_size]
@@ -153,11 +149,10 @@ def build_slateq_losses(policy: Policy, model: ModelV2,
                     scores, dim=1)
             next_q_values[dones.bool()] = 0.0
     elif learning_strategy == "MYOP":
-        next_q_values = 0.
+        next_q_values = 0.0
     elif learning_strategy == "QL":
         # next_doc.shape: [batch_size, num_docs, embedding_size]
-        next_doc = torch.cat(
-            [val.unsqueeze(1) for val in next_obs["doc"].values()], 1)
+        next_doc = torch.cat([val.unsqueeze(1) for val in next_obs["doc"].values()], 1)
         next_user = next_obs["user"]
         dones = train_batch["dones"]
         with torch.no_grad():
@@ -230,11 +225,13 @@ def build_slateq_stats(policy: Policy, batch) -> Dict[str, TensorType]:
 def build_slateq_optimizers(policy: Policy, config: TrainerConfigDict
                             ) -> List["torch.optim.Optimizer"]:
     optimizer_choice = torch.optim.Adam(
-        policy.model.choice_model.parameters(), lr=config["lr_choice_model"])
+        policy.model.choice_model.parameters(), lr=config["lr_choice_model"]
+    )
     optimizer_q_value = torch.optim.Adam(
         policy.model.q_model.parameters(),
         lr=config["lr_q_model"],
-        eps=config["adam_epsilon"])
+        eps=config["adam_epsilon"],
+    )
     return [optimizer_choice, optimizer_q_value]
 
 
@@ -250,9 +247,8 @@ def action_distribution_fn(policy: Policy,
 
     #start = time.time()
     obs = restore_original_dimensions(
-        input_dict[SampleBatch.CUR_OBS],
-        policy.observation_space,
-        tensorlib=torch)
+        input_dict[SampleBatch.CUR_OBS], policy.observation_space, tensorlib=torch
+    )
 
     # user.shape: [batch_size(=1), embedding_size]
     user = obs["user"]
@@ -265,16 +261,16 @@ def action_distribution_fn(policy: Policy,
     return per_slate_q_values, TorchCategorical, []
 
 
-def postprocess_fn_add_next_actions_for_sarsa(policy: Policy,
-                                              batch: SampleBatch,
-                                              other_agent=None,
-                                              episode=None) -> SampleBatch:
+def postprocess_fn_add_next_actions_for_sarsa(
+    policy: Policy, batch: SampleBatch, other_agent=None, episode=None
+) -> SampleBatch:
     """Add next_actions to SampleBatch for SARSA training"""
     if policy.config["slateq_strategy"] == "SARSA":
         if not batch["dones"][-1] and policy._no_tracing is False:
             raise RuntimeError(
                 "Expected a complete episode in each sample batch. "
-                f"But this batch is not: {batch}.")
+                f"But this batch is not: {batch}."
+            )
         batch["next_actions"] = np.roll(batch["actions"], -1, axis=0)
 
     return batch

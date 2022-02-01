@@ -13,12 +13,23 @@ if nn:
 
 
 class QValueModel(nn.Module):
-    """The Q-value model for SlateQ"""
+    """The Q-value model for SlateQ.
+
+    A simple MLP with n layers (w/ LeakyReLU activation), whose sizes are
+    specified via `config.q_hiddens`.
+    """
 
     def __init__(self, embedding_size: int, q_hiddens: Sequence[int]):
+        """Initializes a QValueModel instance.
+
+        Args:
+            embedding_size: The sum of user- and doc embedding sizes. This is the input
+                dimension going into the first layer of the MLP.
+            q_hiddens: List of dense layer sizes to build the MLP by.
+        """
         super().__init__()
 
-        # construct hidden layers
+        # Construct hidden layers.
         layers = []
         ins = embedding_size
         for n in q_hiddens:
@@ -32,26 +43,36 @@ class QValueModel(nn.Module):
         """Evaluate the user-doc Q model
 
         Args:
-            user (TensorType): User embedding of shape (batch_size,
-                embedding_size).
-            doc (TensorType): Doc embeddings of shape (batch_size, num_docs,
-                embedding_size).
+            user: User embedding of shape (batch_size, user embedding size).
+                Note that `self.embedding_size` is the sum of both user- and
+                doc-embedding size.
+            doc: Doc embeddings of shape (batch_size, num_docs, doc embedding size).
+                Note that `self.embedding_size` is the sum of both user- and
+                doc-embedding size.
 
         Returns:
-            score (TensorType): q_values of shape (batch_size, num_docs + 1).
+            The q_values per document of shape (batch_size, num_docs + 1). +1 due to
+            also having a Q-value for the non-interaction (no click/no doc).
         """
         batch_size, num_docs, embedding_size = doc.shape
         doc_flat = doc.view((batch_size * num_docs, embedding_size))
+
+        # Concat everything.
         # No user features.
         if user.shape[-1] == 0:
             x = doc_flat
+        # User features, repeat user embeddings n times (n=num docs).
         else:
             user_repeated = user.repeat(num_docs, 1)
             x = torch.cat([user_repeated, doc_flat], dim=1)
+
         x = self.layers(x)
+
         # Similar to Google's SlateQ implementation in RecSim, we force the
         # Q-values to zeros if there are no clicks.
+        # See https://arxiv.org/abs/1905.12767 for details.
         x_no_click = torch.zeros((batch_size, 1), device=x.device)
+
         return torch.cat([x.view((batch_size, num_docs)), x_no_click], dim=1)
 
 
@@ -67,12 +88,13 @@ class UserChoiceModel(nn.Module):
     """
 
     def __init__(self):
+        """Initializes a UserChoiceModel instance."""
         super().__init__()
         self.beta = nn.Parameter(torch.tensor(0., dtype=torch.float))
         self.score_no_click = nn.Parameter(torch.tensor(0., dtype=torch.float))
 
     def forward(self, user: TensorType, doc: TensorType) -> TensorType:
-        """Evaluate the user choice model
+        """Evaluate the user choice model.
 
         This function outputs user click scores for candidate documents. The
         exponentials of these scores are proportional user click probabilities.
@@ -80,19 +102,23 @@ class UserChoiceModel(nn.Module):
         documents will be selected and shown to the user.
 
         Args:
-            user (TensorType): User embeddings of shape (batch_size,
-                embedding_size).
-            doc (TensorType): Doc embeddings of shape (batch_size, num_docs,
-                embedding_size).
+            user: User embeddings of shape (batch_size, user embedding size).
+            doc: Doc embeddings of shape (batch_size, num_docs, doc embedding size).
 
         Returns:
             score (TensorType): logits of shape (batch_size, num_docs + 1),
                 where the last dimension represents no_click.
         """
         batch_size = user.shape[0]
+        # Reduce across the embedding axis.
         s = torch.einsum("be,bde->bd", user, doc)
+        # s=[batch, num-docs]
+
+        # Multiply with learnable single "click" weight.
         s = s * self.beta
+        # Add the learnable no-click score.
         s = torch.cat([s, self.score_no_click.expand((batch_size, 1))], dim=1)
+
         return s
 
 
@@ -115,6 +141,18 @@ class SlateQModel(TorchModelV2, nn.Module):
             q_hiddens: Sequence[int],
             double_q: bool = True,
     ):
+        """Initializes a SlateQModel instance.
+
+        Args:
+            user_embedding_size: The size of the user embedding (number of
+                user specific features).
+            doc_embedding_size: The size of the doc embedding (number of doc
+                specific features).
+            num_docs: The number of docs to select a slate from. Note that the slate
+                size is inferred from the action space.
+            q_hiddens: The list of hidden layer sizes for the QValueModel.
+            double_q: Whether "double Q-learning" is applied in the loss function.
+        """
         nn.Module.__init__(self)
         TorchModelV2.__init__(
             self,

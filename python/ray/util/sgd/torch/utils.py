@@ -26,13 +26,17 @@ def setup_process_group(url, world_rank, world_size, timeout, backend="gloo"):
         backend (str): One of gloo or nccl. Depending on
             build-time configuration
     """
-    logger.debug("Connecting to {} world_rank: {} world_size: {}".format(
-        url, world_rank, world_size))
+    logger.debug(
+        "Connecting to {} world_rank: {} world_size: {}".format(
+            url, world_rank, world_size
+        )
+    )
     logger.debug(f"using {backend}")
     if backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
         logger.debug(
             "Setting NCCL_BLOCKING_WAIT for detecting node failure. "
-            "To override this behavior, you can set NCCL_BLOCKING_WAIT=0.")
+            "To override this behavior, you can set NCCL_BLOCKING_WAIT=0."
+        )
         os.environ["NCCL_BLOCKING_WAIT"] = "1"
 
     dist.init_process_group(
@@ -40,7 +44,8 @@ def setup_process_group(url, world_rank, world_size, timeout, backend="gloo"):
         init_method=url,
         rank=world_rank,
         world_size=world_size,
-        timeout=timeout)
+        timeout=timeout,
+    )
 
 
 def choose_amp_backend(use_fp16, native_amp=None, apex_amp=None):
@@ -56,7 +61,8 @@ def choose_amp_backend(use_fp16, native_amp=None, apex_amp=None):
             raise ImportError(
                 "Please install apex from "
                 "https://www.github.com/nvidia/apex to use fp16 training "
-                "with apex.")
+                "with apex."
+            )
     else:
         if not native_amp:
             use_fp16 = "apex"
@@ -65,6 +71,7 @@ def choose_amp_backend(use_fp16, native_amp=None, apex_amp=None):
                     "Neither native PyTorch amp nor apex are available."
                     "Please either upgrade to PyTorch>=1.6 or install apex "
                     "from https://www.github.com/nvidia/apex to use fp16"
-                    " training.")
+                    " training."
+                )
 
     return use_fp16
