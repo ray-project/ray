@@ -33,6 +33,9 @@ parser.add_argument(
 parser.add_argument(
     "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
 )
+parser.add_argument(
+    "--max-seq-len", type=int, default=20, help="Maximum length sequence for BPTT"
+)
 
 if __name__ == "__main__":
     import ray
@@ -68,6 +71,7 @@ if __name__ == "__main__":
                 "lstm_cell_size": 256,
                 "lstm_use_prev_action": args.use_prev_action,
                 "lstm_use_prev_reward": args.use_prev_reward,
+                "max_seq_len": args.max_seq_len,
             },
             "framework": args.framework,
             # Run with tracing enabled for tfe/tf2?

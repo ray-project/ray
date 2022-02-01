@@ -249,23 +249,22 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
     def forward_rnn(
         self, inputs: TensorType, state: List[TensorType], seq_lens: TensorType
     ) -> (TensorType, List[TensorType]):
-        # Don't show paddings to RNN(?)
-        # TODO: (sven) For now, only allow, iff time_major=True to not break
-        #  anything retrospectively (time_major not supported previously).
-        # max_seq_len = inputs.shape[0]
-        # time_major = self.model_config["_time_major"]
-        # if time_major and max_seq_len > 1:
-        #     inputs = torch.nn.utils.rnn.pack_padded_sequence(
-        #         inputs, seq_lens,
-        #         batch_first=not time_major, enforce_sorted=False)
-        self._features, [h, c] = self.lstm(
-            inputs, [torch.unsqueeze(state[0], 0), torch.unsqueeze(state[1], 0)]
+        time_major = self.model_config["_time_major"]
+        if isinstance(seq_lens, np.ndarray):
+            seq_lens = torch.from_numpy(seq_lens)
+        else:
+            # PackedSequence requires this on cpu
+            seq_lens = seq_lens.cpu()
+        # By packing sequence, LSTM does not see zero-padding
+        packed_input = torch.nn.utils.rnn.pack_padded_sequence(
+            inputs, seq_lens, enforce_sorted=False, batch_first=not time_major
         )
-        # Re-apply paddings.
-        # if time_major and max_seq_len > 1:
-        #     self._features, _ = torch.nn.utils.rnn.pad_packed_sequence(
-        #         self._features,
-        #         batch_first=not time_major)
+        packed_features, [h, c] = self.lstm(
+            packed_input, [torch.unsqueeze(state[0], 0), torch.unsqueeze(state[1], 0)]
+        )
+        self._features, _ = torch.nn.utils.rnn.pad_packed_sequence(
+            packed_features, batch_first=not time_major
+        )
         model_out = self._logits_branch(self._features)
         return model_out, [torch.squeeze(h, 0), torch.squeeze(c, 0)]
 

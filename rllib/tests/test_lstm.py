@@ -1,12 +1,13 @@
 import numpy as np
 import pickle
 import unittest
-
 import ray
+import torch
+import gym
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.examples.env.debug_counter_env import DebugCounterEnv
 from ray.rllib.examples.models.rnn_spy_model import RNNSpyModel
-from ray.rllib.models import ModelCatalog
+from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check
@@ -164,6 +165,38 @@ class TestLSTMUtils(unittest.TestCase):
         self.assertEqual([f.tolist() for f in f_pad], [[1, 0, 1, 1]])
         self.assertEqual([s.tolist() for s in s_init], [[1, 1]])
         self.assertEqual(seq_lens.tolist(), [1, 2])
+
+
+class TestTorchRNNPadding(unittest.TestCase):
+    def setUp(self) -> None:
+        self.B, self.T, self.F = 2, 5, 4
+        cfg = {**MODEL_DEFAULTS, "use_lstm": True, "lstm_cell_size": 2}
+        self.model = ModelCatalog.get_model_v2(
+            gym.spaces.Box(shape=(self.F,), low=-1, high=1),
+            gym.spaces.Discrete(1),
+            1,
+            cfg,
+            framework="torch",
+        )
+
+    def test_ragged(self):
+        obs = torch.rand(self.B * self.T, self.F)
+        obs[0, self.T :] = 0
+        d = {"obs": obs, "obs_flat": obs}
+        state = [s.repeat(self.B, 1) for s in self.model.get_initial_state()]
+        seq_lens = torch.tensor([2, self.T])
+        seq_lens2 = torch.tensor([2, 2])
+        # Just in case state is in-place modified in the future
+        state_ = [s.clone() for s in state]
+        _, state_out = self.model(d, state_, seq_lens)
+        state_ = [s.clone() for s in state]
+        _, state_out2 = self.model(d, state_, seq_lens2)
+        # Hidden
+        self.assertTrue(torch.allclose(state_out[0][0], state_out2[0][0]))
+        # Cell
+        self.assertTrue(torch.allclose(state_out[1][0], state_out2[1][0]))
+        # Sanity check
+        self.assertFalse(torch.allclose(state_out[0][1], state_out2[0][1]))
 
 
 class TestRNNSequencing(unittest.TestCase):
