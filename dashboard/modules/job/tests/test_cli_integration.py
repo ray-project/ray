@@ -123,14 +123,14 @@ class TestJobSubmit:
     def test_basic_submit(self, ray_start_stop):
         """Should tail logs and wait for process to exit."""
         cmd = "sleep 1 && echo hello && sleep 1 && echo hello"
-        stdout, _ = _run_cmd(f"ray job submit -- '{cmd}'")
+        stdout, _ = _run_cmd(f"ray job submit -- bash -c '{cmd}'")
         assert "hello\nhello" in stdout
         assert "succeeded" in stdout
 
     def test_submit_no_wait(self, ray_start_stop):
         """Should exit immediately w/o printing logs."""
         cmd = "echo hello && sleep 1000"
-        stdout, _ = _run_cmd(f"ray job submit --no-wait -- '{cmd}'")
+        stdout, _ = _run_cmd(f"ray job submit --no-wait -- bash -c '{cmd}'")
         assert "hello" not in stdout
         assert "Tailing logs until the job exits" not in stdout
 
@@ -150,7 +150,7 @@ class TestJobStop:
         """Should not wait until the job is stopped."""
         cmd = "echo hello && sleep 1000"
         job_id = "test_stop_no_wait"
-        _run_cmd(f"ray job submit --no-wait --job-id={job_id} -- '{cmd}'")
+        _run_cmd(f"ray job submit --no-wait --job-id={job_id} -- bash -c '{cmd}'")
 
         stdout, _ = _run_cmd(f"ray job stop --no-wait {job_id}")
         assert "Waiting for job" not in stdout
