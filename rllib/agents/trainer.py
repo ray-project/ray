@@ -378,7 +378,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # to evaluation metrics all the time.
     "always_attach_evaluation_results": False,
     # Store raw custom metrics without calculating max, min, mean
-    "keep_per_episode_custom_metrics": True,
+    "keep_per_episode_custom_metrics": False,
 
     # === Advanced Rollout Settings ===
     # Use a background thread for sampling (slightly off-policy, usually not
