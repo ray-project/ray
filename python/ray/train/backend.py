@@ -37,6 +37,7 @@ class BackendConfig:
 
     @property
     def default_accelerator_factory(self) -> Optional[Callable[[], Accelerator]]:
+        """A function that constructs the default accelerator for this backend."""
         return None
 
 

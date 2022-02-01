@@ -51,6 +51,7 @@ class TorchConfig(BackendConfig):
 
     @property
     def default_accelerator_factory(self) -> Optional[Callable[[], Accelerator]]:
+        """Returns a ``TorchAccelerator`` factory."""
         return TorchAccelerator
 
 

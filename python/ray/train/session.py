@@ -238,14 +238,28 @@ class Session:
 
     @property
     def accelerator(self) -> Optional[Accelerator]:
+        """The accelerator for this training session, if any.
+
+        If the accelerator has not been set and a default accelerator factory has been
+        provided, then this method will construct an accelerator using the provided
+        accelerator factory.
+        """
         if not self._accelerator and self._default_accelerator_factory:
             self._accelerator = self._default_accelerator_factory()
         return self._accelerator
 
     @accelerator.setter
     def accelerator(self, accelerator: Accelerator) -> None:
+        """Sets the accelerator for this training session.
+
+        Args:
+            accelerator (Accelerator): The accelerator to use for training.
+
+        Raises:
+            RuntimeError: if the accelerator has already been set.
+        """
         if self._accelerator:
-            raise RuntimeError
+            raise RuntimeError("Cannot change accelerator once set.")
         self._accelerator = accelerator
 
 

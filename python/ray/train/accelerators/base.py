@@ -1,2 +1,2 @@
 class Accelerator:
-    pass
+    """An object that contains methods to optimize training for a specific backend."""
