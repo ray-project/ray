@@ -17,7 +17,7 @@ def test_scaledown_shared_objects(shutdown_only):
             "cpu_node": {
                 "resources": {
                     "CPU": 1,
-                    "object_store_memory": 1024 * 1024 * 1024,
+                    "object_store_memory": 100 * 1024 * 1024,
                 },
                 "node_config": {},
                 "min_workers": 0,
@@ -47,7 +47,7 @@ def test_scaledown_shared_objects(shutdown_only):
         # Verify scale-up.
         wait_for_condition(lambda: ray.cluster_resources().get("CPU", 0) == 5)
 
-        data = ray.put(np.zeros(1024 * 1024 * 100))
+        data = ray.put(np.zeros(1024 * 1024 * 5))
         ray.get([a.recv.remote(data) for a in actors])
         print("Data broadcast successfully, deleting actors.")
         del actors
