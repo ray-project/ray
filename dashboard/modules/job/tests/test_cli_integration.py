@@ -57,17 +57,22 @@ def _run_cmd(cmd: str, should_fail=False) -> Tuple[str, str]:
 
     Returns (stdout, stderr).
     """
+    print(f"Running command: '{cmd}'")
     p: subprocess.CompletedProcess = subprocess.run(
         cmd, shell=True, capture_output=True
     )
-    if should_fail and p.returncode == 0:
-        raise RuntimeError(
-            f"Expected command to fail, but got exit code: {p.returncode}."
-        )
-    elif not should_fail and p.returncode != 0:
-        raise RuntimeError(
-            f"Expected command to succeed, but got exit code: {p.returncode}."
-        )
+    if p.returncode == 0:
+        print("Command succeeded.")
+        if should_fail:
+            raise RuntimeError(
+                f"Expected command to fail, but got exit code: {p.returncode}."
+            )
+    else:
+        print(f"Command failed with exit code: {p.returncode}.")
+        if not should_fail:
+            raise RuntimeError(
+                f"Expected command to succeed, but got exit code: {p.returncode}."
+            )
 
     return p.stdout.decode("utf-8"), p.stderr.decode("utf-8")
 
@@ -118,14 +123,14 @@ class TestJobSubmit:
     def test_basic_submit(self, ray_start_stop):
         """Should tail logs and wait for process to exit."""
         cmd = "sleep 1 && echo hello && sleep 1 && echo hello"
-        stdout, _ = _run_cmd(f"ray job submit -- {cmd}")
+        stdout, _ = _run_cmd(f"ray job submit -- '{cmd}'")
         assert "hello\nhello" in stdout
         assert "succeeded" in stdout
 
     def test_submit_no_wait(self, ray_start_stop):
         """Should exit immediately w/o printing logs."""
         cmd = "echo hello && sleep 1000"
-        stdout, _ = _run_cmd(f"ray job submit --no-wait -- {cmd}")
+        stdout, _ = _run_cmd(f"ray job submit --no-wait -- '{cmd}'")
         assert "hello" not in stdout
         assert "Tailing logs until the job exits" not in stdout
 
@@ -145,7 +150,7 @@ class TestJobStop:
         """Should not wait until the job is stopped."""
         cmd = "echo hello && sleep 1000"
         job_id = "test_stop_no_wait"
-        _run_cmd(f"ray job submit --no-wait --job-id={job_id} -- {cmd}")
+        _run_cmd(f"ray job submit --no-wait --job-id={job_id} -- '{cmd}'")
 
         stdout, _ = _run_cmd(f"ray job stop --no-wait {job_id}")
         assert "Waiting for job" not in stdout
