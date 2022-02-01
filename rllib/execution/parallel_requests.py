@@ -114,10 +114,7 @@ def asynchronous_parallel_requests(
             remote_to_actor[req] = actor
 
     # There must always be pending remote requests.
-    try:
-        assert len(pending_remotes) > 0
-    except Exception as e:
-        raise e  # TODO
+    assert len(pending_remotes) > 0
     pending_remote_list = list(pending_remotes)
 
     # No timeout: Block until at least one result is returned.

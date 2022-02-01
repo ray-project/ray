@@ -108,7 +108,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/alpha_star/multi-agent-cartpole-alpha-star.yaml"],
-    args = ["--yaml-dir=tuned_examples/alpha_star"]
+    args = ["--yaml-dir=tuned_examples/alpha_star", "--num-cpus=20"]
 )
 
 # APEX-DQN
