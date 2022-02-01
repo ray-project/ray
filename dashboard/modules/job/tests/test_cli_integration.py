@@ -59,7 +59,7 @@ def _run_cmd(cmd: str, should_fail=False) -> Tuple[str, str]:
     """
     print(f"Running command: '{cmd}'")
     p: subprocess.CompletedProcess = subprocess.run(
-        cmd, shell=True, capture_output=True
+        cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )
     if p.returncode == 0:
         print("Command succeeded.")
