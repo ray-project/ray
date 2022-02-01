@@ -1,5 +1,5 @@
-API and Package Reference
-=========================
+Ray Core API
+============
 
 Python API
 ----------

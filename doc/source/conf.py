@@ -16,7 +16,6 @@ import glob
 import shutil
 import sys
 import os
-import urllib
 
 sys.path.insert(0, os.path.abspath("."))
 from custom_directives import *
@@ -53,18 +52,12 @@ import ray
 
 # -- General configuration ------------------------------------------------
 
-# If your documentation needs a minimal Sphinx version, state it here.
-# needs_sphinx = '1.0'
-
-# Add any Sphinx extension module names here, as strings. They can be
-# extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
-# ones.
 extensions = [
+    "sphinx_panels",
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
     "sphinx_click.ext",
-    "sphinx_tabs.tabs",
     "sphinx-jsonschema",
     "sphinx_gallery.gen_gallery",
     "sphinxemoji.sphinxemoji",
@@ -79,18 +72,36 @@ extensions = [
     "sphinx_external_toc",
 ]
 
+myst_enable_extensions = [
+    # "dollarmath",
+    # "amsmath",
+    # "deflist",
+    # "fieldlist",
+    "html_admonition",
+    "html_image",
+    # "colon_fence",
+    # "smartquotes",
+    # "replacements",
+    # "linkify",
+    # "strikethrough",
+    # "substitution",
+    # "tasklist",
+]
+
 external_toc_exclude_missing = False
-external_toc_path = '_toc.yml'
+external_toc_path = "_toc.yml"
 
 # There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
 # of imports.
 # autodoc_mock_imports = ["ray.experimental.tf_utils"]
 
+# This is used to suppress warnings about explicit "toctree" directives.
+suppress_warnings = ["etoc.toctree"]
+
 versionwarning_admonition_type = "note"
 versionwarning_banner_title = "Join the Ray Discuss Forums!"
 
 FORUM_LINK = "https://discuss.ray.io"
-
 versionwarning_messages = {
     # Re-enable this after Ray Summit.
     # "latest": (
@@ -101,7 +112,8 @@ versionwarning_messages = {
         "<b>Got questions?</b> Join "
         f'<a href="{FORUM_LINK}">the Ray Community forum</a> '
         "for Q&A on all things Ray, as well as to share and learn use cases "
-        "and best practices with the Ray community."),
+        "and best practices with the Ray community."
+    ),
 }
 
 versionwarning_body_selector = "#main-content"
@@ -110,13 +122,11 @@ sphinx_gallery_conf = {
     # Example sources are taken from these folders:
     "examples_dirs": [
         "ray-core/_examples",
-        "ray-tune/_tutorials",
-        "ray-data/_examples",
+        "tune/_tutorials",
+        "data/_examples",
     ],
     # and then generated into these respective target folders:
-    "gallery_dirs": [
-        "ray-core/examples", "ray-tune/tutorials", "ray-data/examples"
-    ],
+    "gallery_dirs": ["ray-core/examples", "tune/tutorials", "data/examples"],
     "ignore_pattern": "ray-core/examples/doc_code/",
     "plot_gallery": "False",
     "min_reported_time": sys.maxsize,
@@ -172,12 +182,6 @@ release = version
 # Usually you set "language" from the command line for these cases.
 language = None
 
-# There are two options for replacing |today|: either, you set today to some
-# non-false value, then it is used:
-# today = ''
-# Else, today_fmt is used as the format for a strftime call.
-# today_fmt = '%B %d, %Y'
-
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 exclude_patterns = ["_build"]
@@ -186,20 +190,20 @@ exclude_patterns += sphinx_gallery_conf["examples_dirs"]
 # If "DOC_LIB" is found, only build that top-level navigation item.
 build_one_lib = os.getenv("DOC_LIB")
 
-# All doc libs start with a "ray-" prefix.
-all_toc_libs = [
-    f.path for f in os.scandir(".") if f.is_dir() and "ray-" in f.path
+all_toc_libs = [f.path for f in os.scandir(".") if f.is_dir() and "ray-" in f.path]
+all_toc_libs += [
+    "cluster",
+    "tune",
+    "data",
+    "raysgd",
+    "train",
+    "rllib",
+    "serve",
+    "workflows",
 ]
 if build_one_lib and build_one_lib in all_toc_libs:
     all_toc_libs.remove(build_one_lib)
     exclude_patterns += all_toc_libs
-
-# The reST default role (used for this markup: `text`) to use for all
-# documents.
-# default_role = None
-
-# If true, '()' will be appended to :func: etc. cross-reference text.
-# add_function_parentheses = True
 
 # If true, the current module name will be prepended to all description
 # unit titles (such as .. function::).
@@ -210,7 +214,7 @@ if build_one_lib and build_one_lib in all_toc_libs:
 # show_authors = False
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = "pastie"
+pygments_style = "lovelace"
 
 # A list of ignored prefixes for module index sorting.
 # modindex_common_prefix = []
@@ -249,7 +253,7 @@ html_theme_options = {
 
 # The name for this set of Sphinx documents.  If None, it defaults to
 # "<project> v<release> documentation".
-html_title = f"Ray v{release}"
+html_title = f"Ray {release}"
 
 # A shorter title for the navigation bar.  Default is the same as html_title.
 # html_short_title = None
@@ -303,9 +307,6 @@ html_static_path = ["_static"]
 # If true, "Created using Sphinx" is shown in the HTML footer. Default is True.
 # html_show_sphinx = True
 
-# If true, "(C) Copyright ..." is shown in the HTML footer. Default is True.
-# html_show_copyright = True
-
 # If true, an OpenSearch description file will be output, and all pages will
 # contain a <link> tag referring to it.  The value of this option must be the
 # base URL from which the finished HTML is served.
@@ -348,7 +349,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, "Ray.tex", "Ray Documentation", "The Ray Team", "manual"),
+    (master_doc, "Ray.tex", "Ray Documentation", author, "manual"),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
@@ -381,7 +382,6 @@ man_pages = [(master_doc, "ray", "Ray Documentation", [author], 1)]
 # man_show_urls = False
 
 # -- Options for Texinfo output -------------------------------------------
-
 # Grouping the document tree into Texinfo files. List of tuples
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
@@ -392,60 +392,29 @@ texinfo_documents = [
         "Ray Documentation",
         author,
         "Ray",
-        "One line description of project.",
+        "Ray provides a simple, universal API for building distributed applications.",
         "Miscellaneous",
     ),
 ]
 
-# Documents to append as an appendix to all manuals.
-# texinfo_appendices = []
-
-# If false, no module index is generated.
-# texinfo_domain_indices = True
-
-# How to display URL addresses: 'footnote', 'no', or 'inline'.
-# texinfo_show_urls = 'footnote'
-
-# If true, do not generate a @detailmenu in the "Top" node's menu.
-# texinfo_no_detailmenu = False
-
-# pcmoritz: To make the following work, you have to run
-# sudo pip install recommonmark
-
 # Python methods should be presented in source code order
 autodoc_member_order = "bysource"
-
-# Taken from https://github.com/edx/edx-documentation
-FEEDBACK_FORM_FMT = "https://github.com/ray-project/ray/issues/new?title={title}&labels=docs&body={body}"
-
-
-def feedback_form_url(project, page):
-    """Create a URL for feedback on a particular page in a project."""
-    return FEEDBACK_FORM_FMT.format(
-        title=urllib.parse.quote(
-            "[docs] Issue on `{page}.rst`".format(page=page)),
-        body=urllib.parse.quote(
-            "# Documentation Problem/Question/Comment\n"
-            "<!-- Describe your issue/question/comment below. -->\n"
-            "<!-- If there are typos or errors in the docs, feel free to create a pull-request. -->\n"
-            "\n\n\n\n"
-            "(Created directly from the docs)\n"),
-    )
-
-
-def update_context(app, pagename, templatename, context, doctree):
-    """Update the page rendering context to include ``feedback_form_url``."""
-    context["feedback_form_url"] = feedback_form_url(app.config.project,
-                                                     pagename)
-
-
-# see also http://searchvoidstar.tumblr.com/post/125486358368/making-pdfs-from-markdown-on-readthedocsorg-using
 
 
 def setup(app):
     app.connect("html-page-context", update_context)
-    app.add_css_file("css/custom.css")
-    # Custom directives
+    # Custom CSS
+    app.add_css_file("css/custom.css", priority=800)
+    app.add_css_file(
+        "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css"
+    )
+    # Custom JS
+    app.add_js_file(
+        "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js",
+        defer="defer",
+    )
+    app.add_js_file("js/docsearch.js", defer="defer")
+    # Custom Sphinx directives
     app.add_directive("customgalleryitem", CustomGalleryItemDirective)
-    # Custom connects
+    # Custom docstring processor
     app.connect("autodoc-process-docstring", fix_xgb_lgbm_docs)

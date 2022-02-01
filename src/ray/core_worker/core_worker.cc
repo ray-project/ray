@@ -34,6 +34,8 @@ namespace {
 // Duration between internal book-keeping heartbeats.
 const uint64_t kInternalHeartbeatMillis = 1000;
 
+using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
+
 JobID GetProcessJobID(const CoreWorkerOptions &options) {
   if (options.worker_type == WorkerType::DRIVER) {
     RAY_CHECK(!options.job_id.IsNil());
@@ -110,8 +112,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       options_.worker_type, worker_context_.GetCurrentJobID(), options_.runtime_env_hash,
       options_.language, options_.node_ip_address, &raylet_client_status,
-      &local_raylet_id, &assigned_port, &serialized_job_config, options_.worker_shim_pid,
-      options_.startup_token);
+      &local_raylet_id, &assigned_port, &serialized_job_config, options_.startup_token);
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -369,7 +370,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       std::move(lease_policy), memory_store_, task_manager_, local_raylet_id,
       GetWorkerType(), RayConfig::instance().worker_lease_timeout_milliseconds(),
       actor_creator_, worker_context_.GetCurrentJobID(),
-      RayConfig::instance().max_tasks_in_flight_per_worker(),
       boost::asio::steady_timer(io_service_),
       RayConfig::instance().max_pending_lease_requests_per_scheduling_category());
   auto report_locality_data_callback =
@@ -480,18 +480,23 @@ void CoreWorker::Shutdown() {
     options_.on_worker_shutdown(GetWorkerID());
   }
 
-  io_service_.stop();
   if (gcs_client_) {
-    // TODO(sang): This causes a thread-safety bug because
-    // it invalidates a pointer that's used by a different thread.
-    // We should run Disconnect in a io_service thread.
+    // We should disconnect gcs client first otherwise because it contains
+    // a blocking logic that can block the io service upon
+    // gcs shutdown.
+    // TODO(sang): Refactor GCS client to be more robust.
     RAY_LOG(INFO) << "Disconnecting a GCS client.";
     gcs_client_->Disconnect();
   }
-  RAY_LOG(INFO) << "Waiting for joining a core worker io thread.";
+  io_service_.stop();
+  RAY_LOG(INFO) << "Waiting for joining a core worker io thread. If it hangs here, there "
+                   "might be deadlock or a high load in the core worker io service.";
   if (io_thread_.joinable()) {
     io_thread_.join();
   }
+  // Now that gcs_client is not used within io service, we can reset the pointer and clean
+  // it up.
+  gcs_client_.reset();
 
   if (options_.worker_type == WorkerType::WORKER) {
     // Asyncio coroutines could still run after CoreWorker is removed because it is
@@ -1386,18 +1391,21 @@ rpc::RuntimeEnv CoreWorker::OverrideRuntimeEnv(
   rpc::RuntimeEnv result_runtime_env(*parent);
   // TODO(SongGuyang): avoid dupliacated fields.
   result_runtime_env.MergeFrom(child);
-  if (child.py_modules().size() > 0 && parent->py_modules().size() > 0) {
-    result_runtime_env.clear_py_modules();
-    for (auto &module : child.py_modules()) {
-      result_runtime_env.add_py_modules(module);
+  if (child.python_runtime_env().py_modules().size() > 0 &&
+      parent->python_runtime_env().py_modules().size() > 0) {
+    result_runtime_env.mutable_python_runtime_env()->clear_py_modules();
+    for (auto &module : child.python_runtime_env().py_modules()) {
+      result_runtime_env.mutable_python_runtime_env()->add_py_modules(module);
     }
     result_runtime_env.mutable_uris()->clear_py_modules_uris();
     result_runtime_env.mutable_uris()->mutable_py_modules_uris()->CopyFrom(
         child.uris().py_modules_uris());
   }
-  if (child.has_pip_runtime_env() && parent->has_pip_runtime_env()) {
-    result_runtime_env.clear_pip_runtime_env();
-    result_runtime_env.mutable_pip_runtime_env()->CopyFrom(child.pip_runtime_env());
+  if (child.python_runtime_env().has_pip_runtime_env() &&
+      parent->python_runtime_env().has_pip_runtime_env()) {
+    result_runtime_env.mutable_python_runtime_env()->clear_pip_runtime_env();
+    result_runtime_env.mutable_python_runtime_env()->mutable_pip_runtime_env()->CopyFrom(
+        child.python_runtime_env().pip_runtime_env());
   }
   if (!result_env_vars.empty()) {
     result_runtime_env.mutable_env_vars()->insert(result_env_vars.begin(),
@@ -1457,13 +1465,13 @@ std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(
     std::vector<std::string> *runtime_env_uris) {
   std::shared_ptr<rpc::RuntimeEnv> parent = nullptr;
   if (options_.worker_type == WorkerType::DRIVER) {
-    if (serialized_runtime_env == "") {
+    if (serialized_runtime_env == "" || serialized_runtime_env == "{}") {
       *runtime_env_uris = GetUrisFromRuntimeEnv(job_runtime_env_.get());
       return job_config_->runtime_env_info().serialized_runtime_env();
     }
     parent = job_runtime_env_;
   } else {
-    if (serialized_runtime_env == "") {
+    if (serialized_runtime_env == "" || serialized_runtime_env == "{}") {
       *runtime_env_uris =
           GetUrisFromRuntimeEnv(worker_context_.GetCurrentRuntimeEnv().get());
       return worker_context_.GetCurrentSerializedRuntimeEnv();
@@ -1574,6 +1582,18 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     return Status::NotImplemented(
         "Async actor is currently not supported for the local mode");
   }
+
+  RAY_CHECK(job_config_ != nullptr);
+  bool is_detached = false;
+  if (!actor_creation_options.is_detached.has_value()) {
+    /// Since this actor doesn't have a specified lifetime on creation, let's use
+    /// the default value of the job.
+    is_detached = job_config_->default_actor_lifetime() ==
+                  ray::rpc::JobConfig_ActorLifetime_DETACHED;
+  } else {
+    is_detached = actor_creation_options.is_detached.value();
+  }
+
   const auto next_task_index = worker_context_.GetNextTaskIndex();
   const ActorID actor_id =
       ActorID::Of(worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
@@ -1618,16 +1638,14 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_id, serialized_actor_handle, actor_creation_options.scheduling_strategy,
       actor_creation_options.max_restarts, actor_creation_options.max_task_retries,
       actor_creation_options.dynamic_worker_options,
-      actor_creation_options.max_concurrency, actor_creation_options.is_detached,
-      actor_name, ray_namespace, actor_creation_options.is_asyncio,
-      actor_creation_options.concurrency_groups, extension_data,
-      actor_creation_options.execute_out_of_order);
+      actor_creation_options.max_concurrency, is_detached, actor_name, ray_namespace,
+      actor_creation_options.is_asyncio, actor_creation_options.concurrency_groups,
+      extension_data, actor_creation_options.execute_out_of_order);
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.
   RAY_CHECK(actor_manager_->AddNewActorHandle(std::move(actor_handle), CurrentCallSite(),
-                                              rpc_address_,
-                                              actor_creation_options.is_detached))
+                                              rpc_address_, is_detached))
       << "Actor " << actor_id << " already exists";
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
@@ -2427,12 +2445,6 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
         },
         "CoreWorker.HandlePushTask");
   }
-}
-
-void CoreWorker::HandleStealTasks(const rpc::StealTasksRequest &request,
-                                  rpc::StealTasksReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) {
-  direct_task_receiver_->HandleStealTasks(request, reply, send_reply_callback);
 }
 
 void CoreWorker::HandleDirectActorCallArgWaitComplete(

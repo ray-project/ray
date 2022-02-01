@@ -6,23 +6,50 @@ import logging
 import numpy as np
 import platform
 import tree  # pip install dm_tree
-from typing import Any, Callable, Dict, List, Optional, Type, TYPE_CHECKING
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TYPE_CHECKING,
+    Union,
+)
 
+import ray
+from ray.actor import ActorHandle
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, \
-    OverrideToImplementCustomLogic
+from ray.rllib.utils.annotations import (
+    DeveloperAPI,
+    ExperimentalAPI,
+    OverrideToImplementCustomLogic,
+)
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
-    get_dummy_batch_for_space, unbatch
-from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
-    T, TensorType, TensorStructType, TrainerConfigDict, Tuple, Union
+from ray.rllib.utils.spaces.space_utils import (
+    get_base_struct_from_space,
+    get_dummy_batch_for_space,
+    unbatch,
+)
+from ray.rllib.utils.typing import (
+    AgentID,
+    ModelGradients,
+    ModelWeights,
+    PolicyID,
+    PolicyState,
+    T,
+    TensorType,
+    TensorStructType,
+    TrainerConfigDict,
+)
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -55,7 +82,8 @@ PolicySpec = namedtuple(
         # Overrides defined keys in the main Trainer config.
         # If None, use {}.
         "config",
-    ])  # defaults=(None, None, None, None)
+    ],
+)  # defaults=(None, None, None, None)
 # TODO: From 3.7 on, we could pass `defaults` into the above constructor.
 #  We still support py3.6.
 PolicySpec.__new__.__defaults__ = (None, None, None, None)
@@ -87,8 +115,12 @@ class Policy(metaclass=ABCMeta):
     """
 
     @DeveloperAPI
-    def __init__(self, observation_space: gym.Space, action_space: gym.Space,
-                 config: TrainerConfigDict):
+    def __init__(
+        self,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        config: TrainerConfigDict,
+    ):
         """Initializes a Policy instance.
 
         Args:
@@ -102,8 +134,7 @@ class Policy(metaclass=ABCMeta):
         # The base struct of the observation/action spaces.
         # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
         # action_space_struct = {"a": Discrete(2)}
-        self.observation_space_struct = get_base_struct_from_space(
-            observation_space)
+        self.observation_space_struct = get_base_struct_from_space(observation_space)
         self.action_space_struct = get_base_struct_from_space(action_space)
 
         self.config: TrainerConfigDict = config
@@ -113,6 +144,7 @@ class Policy(metaclass=ABCMeta):
             self.callbacks: "DefaultCallbacks" = self.config.get("callbacks")()
         else:
             from ray.rllib.agents.callbacks import DefaultCallbacks
+
             self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
 
         # The global timestep, broadcast down from time to time from the
@@ -141,20 +173,20 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     def compute_single_action(
-            self,
-            obs: Optional[TensorStructType] = None,
-            state: Optional[List[TensorType]] = None,
-            *,
-            prev_action: Optional[TensorStructType] = None,
-            prev_reward: Optional[TensorStructType] = None,
-            info: dict = None,
-            input_dict: Optional[SampleBatch] = None,
-            episode: Optional["Episode"] = None,
-            explore: Optional[bool] = None,
-            timestep: Optional[int] = None,
-            # Kwars placeholder for future compatibility.
-            **kwargs) -> \
-            Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]]:
+        self,
+        obs: Optional[TensorStructType] = None,
+        state: Optional[List[TensorType]] = None,
+        *,
+        prev_action: Optional[TensorStructType] = None,
+        prev_reward: Optional[TensorStructType] = None,
+        info: dict = None,
+        input_dict: Optional[SampleBatch] = None,
+        episode: Optional["Episode"] = None,
+        explore: Optional[bool] = None,
+        timestep: Optional[int] = None,
+        # Kwars placeholder for future compatibility.
+        **kwargs,
+    ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]]:
         """Computes and returns a single (B=1) action value.
 
         Takes an input dict (usually a SampleBatch) as its main data input.
@@ -206,10 +238,15 @@ class Policy(metaclass=ABCMeta):
 
         # Batch all data in input dict.
         input_dict = tree.map_structure_with_path(
-            lambda p, s: (s if p == "seq_lens" else s.unsqueeze(0) if
-                          torch and isinstance(s, torch.Tensor) else
-                          np.expand_dims(s, 0)),
-            input_dict)
+            lambda p, s: (
+                s
+                if p == "seq_lens"
+                else s.unsqueeze(0)
+                if torch and isinstance(s, torch.Tensor)
+                else np.expand_dims(s, 0)
+            ),
+            input_dict,
+        )
 
         episodes = None
         if episode is not None:
@@ -236,18 +273,21 @@ class Policy(metaclass=ABCMeta):
         single_action = single_action[0]
 
         # Return action, internal state(s), infos.
-        return single_action, [s[0] for s in state_out], \
-            {k: v[0] for k, v in info.items()}
+        return (
+            single_action,
+            [s[0] for s in state_out],
+            {k: v[0] for k, v in info.items()},
+        )
 
     @DeveloperAPI
     def compute_actions_from_input_dict(
-            self,
-            input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
-            explore: bool = None,
-            timestep: Optional[int] = None,
-            episodes: Optional[List["Episode"]] = None,
-            **kwargs) -> \
-            Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+        self,
+        input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
+        explore: bool = None,
+        timestep: Optional[int] = None,
+        episodes: Optional[List["Episode"]] = None,
+        **kwargs,
+    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
 
         Takes an input dict (usually a SampleBatch) as its main data input.
@@ -281,9 +321,7 @@ class Policy(metaclass=ABCMeta):
         """
         # Default implementation just passes obs, prev-a/r, and states on to
         # `self.compute_actions()`.
-        state_batches = [
-            s for k, s in input_dict.items() if k[:9] == "state_in_"
-        ]
+        state_batches = [s for k, s in input_dict.items() if k[:9] == "state_in_"]
         return self.compute_actions(
             input_dict[SampleBatch.OBS],
             state_batches,
@@ -299,19 +337,17 @@ class Policy(metaclass=ABCMeta):
     @abstractmethod
     @DeveloperAPI
     def compute_actions(
-            self,
-            obs_batch: Union[List[TensorStructType], TensorStructType],
-            state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Union[List[TensorStructType],
-                                     TensorStructType] = None,
-            prev_reward_batch: Union[List[TensorStructType],
-                                     TensorStructType] = None,
-            info_batch: Optional[Dict[str, list]] = None,
-            episodes: Optional[List["Episode"]] = None,
-            explore: Optional[bool] = None,
-            timestep: Optional[int] = None,
-            **kwargs) -> \
-            Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+        self,
+        obs_batch: Union[List[TensorStructType], TensorStructType],
+        state_batches: Optional[List[TensorType]] = None,
+        prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
+        prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
+        info_batch: Optional[Dict[str, list]] = None,
+        episodes: Optional[List["Episode"]] = None,
+        explore: Optional[bool] = None,
+        timestep: Optional[int] = None,
+        **kwargs,
+    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions for the current policy.
 
         Args:
@@ -345,15 +381,13 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     def compute_log_likelihoods(
-            self,
-            actions: Union[List[TensorType], TensorType],
-            obs_batch: Union[List[TensorType], TensorType],
-            state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Optional[Union[List[TensorType],
-                                              TensorType]] = None,
-            prev_reward_batch: Optional[Union[List[TensorType],
-                                              TensorType]] = None,
-            actions_normalized: bool = True,
+        self,
+        actions: Union[List[TensorType], TensorType],
+        obs_batch: Union[List[TensorType], TensorType],
+        state_batches: Optional[List[TensorType]] = None,
+        prev_action_batch: Optional[Union[List[TensorType], TensorType]] = None,
+        prev_reward_batch: Optional[Union[List[TensorType], TensorType]] = None,
+        actions_normalized: bool = True,
     ) -> TensorType:
         """Computes the log-prob/likelihood for a given action and observation.
 
@@ -380,11 +414,13 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     def postprocess_trajectory(
-            self,
-            sample_batch: SampleBatch,
-            other_agent_batches: Optional[Dict[AgentID, Tuple[
-                "Policy", SampleBatch]]] = None,
-            episode: Optional["Episode"] = None) -> SampleBatch:
+        self,
+        sample_batch: SampleBatch,
+        other_agent_batches: Optional[
+            Dict[AgentID, Tuple["Policy", SampleBatch]]
+        ] = None,
+        episode: Optional["Episode"] = None,
+    ) -> SampleBatch:
         """Implements algorithm-specific trajectory postprocessing.
 
         This will be called on each trajectory fragment computed during policy
@@ -411,8 +447,9 @@ class Policy(metaclass=ABCMeta):
 
     @ExperimentalAPI
     @OverrideToImplementCustomLogic
-    def loss(self, model: ModelV2, dist_class: ActionDistribution,
-             train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+    def loss(
+        self, model: ModelV2, dist_class: ActionDistribution, train_batch: SampleBatch
+    ) -> Union[TensorType, List[TensorType]]:
         """Loss function for this Policy.
 
         Override this method in order to implement custom loss computations.
@@ -451,9 +488,38 @@ class Policy(metaclass=ABCMeta):
         self.apply_gradients(grads)
         return grad_info
 
+    @ExperimentalAPI
+    def learn_on_batch_from_replay_buffer(
+        self, replay_actor: ActorHandle, policy_id: PolicyID
+    ) -> Dict[str, TensorType]:
+        """Samples a batch from given replay actor and performs an update.
+
+        Args:
+            replay_actor: The replay buffer actor to sample from.
+            policy_id: The ID of this policy.
+
+        Returns:
+            Dictionary of extra metadata from `compute_gradients()`.
+        """
+        # Sample a batch from the given replay actor.
+        # Note that for better performance (less data sent through the
+        # network), this policy should be co-located on the same node
+        # as `replay_actor`. Such a co-location step is usually done during
+        # the Trainer's `setup()` phase.
+        batch = ray.get(replay_actor.replay.remote(policy_id=policy_id))
+        if batch is None:
+            return {}
+
+        # Send to own learn_on_batch method for updating.
+        # TODO: hack w/ `hasattr`
+        if hasattr(self, "devices") and len(self.devices) > 1:
+            self.load_batch_into_buffer(batch, buffer_index=0)
+            return self.learn_on_loaded_batch(offset=0, buffer_index=0)
+        else:
+            return self.learn_on_batch(batch)
+
     @DeveloperAPI
-    def load_batch_into_buffer(self, batch: SampleBatch,
-                               buffer_index: int = 0) -> int:
+    def load_batch_into_buffer(self, batch: SampleBatch, buffer_index: int = 0) -> int:
         """Bulk-loads the given SampleBatch into the devices' memories.
 
         The data is split equally across all the Policy's devices.
@@ -511,8 +577,9 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
-    def compute_gradients(self, postprocessed_batch: SampleBatch) -> \
-            Tuple[ModelGradients, Dict[str, TensorType]]:
+    def compute_gradients(
+        self, postprocessed_batch: SampleBatch
+    ) -> Tuple[ModelGradients, Dict[str, TensorType]]:
         """Computes gradients given a batch of experiences.
 
         Either this in combination with `apply_gradients()` or
@@ -606,7 +673,7 @@ class Policy(metaclass=ABCMeta):
         return []
 
     @DeveloperAPI
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    def get_state(self) -> PolicyState:
         """Returns the entire current state of this Policy.
 
         Note: Not to be confused with an RNN model's internal state.
@@ -626,10 +693,7 @@ class Policy(metaclass=ABCMeta):
         return state
 
     @DeveloperAPI
-    def set_state(
-            self,
-            state: Union[Dict[str, TensorType], List[TensorType]],
-    ) -> None:
+    def set_state(self, state: PolicyState) -> None:
         """Restores the entire current state of this Policy from `state`.
 
         Args:
@@ -640,9 +704,12 @@ class Policy(metaclass=ABCMeta):
         self.global_timestep = state["global_timestep"]
 
     @ExperimentalAPI
-    def apply(self,
-              func: Callable[["Policy", Optional[Any], Optional[Any]], T],
-              *args, **kwargs) -> T:
+    def apply(
+        self,
+        func: Callable[["Policy", Optional[Any], Optional[Any]], T],
+        *args,
+        **kwargs,
+    ) -> T:
         """Calls the given function with this Policy instance.
 
         Useful for when the Policy class has been converted into a ActorHandle
@@ -682,8 +749,7 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
-    def export_model(self, export_dir: str,
-                     onnx: Optional[int] = None) -> None:
+    def export_model(self, export_dir: str, onnx: Optional[int] = None) -> None:
         """Exports the Policy's Model to local directory for serving.
 
         Note: The file format will depend on the deep learning framework used.
@@ -744,15 +810,14 @@ class Policy(metaclass=ABCMeta):
 
         exploration = from_config(
             Exploration,
-            self.config.get("exploration_config",
-                            {"type": "StochasticSampling"}),
+            self.config.get("exploration_config", {"type": "StochasticSampling"}),
             action_space=self.action_space,
             policy_config=self.config,
             model=getattr(self, "model", None),
             num_workers=self.config.get("num_workers", 0),
             worker_index=self.config.get("worker_index", 0),
-            framework=getattr(self, "framework",
-                              self.config.get("framework", "tf")))
+            framework=getattr(self, "framework", self.config.get("framework", "tf")),
+        )
         return exploration
 
     def _get_default_view_requirements(self):
@@ -771,22 +836,22 @@ class Policy(metaclass=ABCMeta):
         return {
             SampleBatch.OBS: ViewRequirement(space=self.observation_space),
             SampleBatch.NEXT_OBS: ViewRequirement(
-                data_col=SampleBatch.OBS,
-                shift=1,
-                space=self.observation_space),
+                data_col=SampleBatch.OBS, shift=1, space=self.observation_space
+            ),
             SampleBatch.ACTIONS: ViewRequirement(
-                space=self.action_space, used_for_compute_actions=False),
+                space=self.action_space, used_for_compute_actions=False
+            ),
             # For backward compatibility with custom Models that don't specify
             # these explicitly (will be removed by Policy if not used).
             SampleBatch.PREV_ACTIONS: ViewRequirement(
-                data_col=SampleBatch.ACTIONS,
-                shift=-1,
-                space=self.action_space),
+                data_col=SampleBatch.ACTIONS, shift=-1, space=self.action_space
+            ),
             SampleBatch.REWARDS: ViewRequirement(),
             # For backward compatibility with custom Models that don't specify
             # these explicitly (will be removed by Policy if not used).
             SampleBatch.PREV_REWARDS: ViewRequirement(
-                data_col=SampleBatch.REWARDS, shift=-1),
+                data_col=SampleBatch.REWARDS, shift=-1
+            ),
             SampleBatch.DONES: ViewRequirement(),
             SampleBatch.INFOS: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
@@ -796,9 +861,9 @@ class Policy(metaclass=ABCMeta):
         }
 
     def _initialize_loss_from_dummy_batch(
-            self,
-            auto_remove_unneeded_view_reqs: bool = True,
-            stats_fn=None,
+        self,
+        auto_remove_unneeded_view_reqs: bool = True,
+        stats_fn=None,
     ) -> None:
         """Performs test calls through policy's model and loss.
 
@@ -826,11 +891,12 @@ class Policy(metaclass=ABCMeta):
 
         sample_batch_size = max(self.batch_divisibility_req * 4, 32)
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
-            sample_batch_size)
+            sample_batch_size
+        )
         self._lazy_tensor_dict(self._dummy_batch)
-        actions, state_outs, extra_outs = \
-            self.compute_actions_from_input_dict(
-                self._dummy_batch, explore=False)
+        actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
+            self._dummy_batch, explore=False
+        )
         for key, view_req in self.view_requirements.items():
             if key not in self._dummy_batch.accessed_keys:
                 view_req.used_for_compute_actions = False
@@ -839,16 +905,19 @@ class Policy(metaclass=ABCMeta):
         for key, value in extra_outs.items():
             self._dummy_batch[key] = value
             if key not in self.view_requirements:
-                self.view_requirements[key] = \
-                    ViewRequirement(space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype),
-                    used_for_compute_actions=False)
+                self.view_requirements[key] = ViewRequirement(
+                    space=gym.spaces.Box(
+                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype
+                    ),
+                    used_for_compute_actions=False,
+                )
         for key in self._dummy_batch.accessed_keys:
             if key not in self.view_requirements:
                 self.view_requirements[key] = ViewRequirement()
             self.view_requirements[key].used_for_compute_actions = True
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
-            sample_batch_size)
+            sample_batch_size
+        )
         self._dummy_batch.set_get_interceptor(None)
         self.exploration.postprocess_trajectory(self, self._dummy_batch)
         postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)
@@ -857,11 +926,13 @@ class Policy(metaclass=ABCMeta):
             B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]
             i = 0
             while "state_in_{}".format(i) in postprocessed_batch:
-                postprocessed_batch["state_in_{}".format(i)] = \
-                    postprocessed_batch["state_in_{}".format(i)][:B]
+                postprocessed_batch["state_in_{}".format(i)] = postprocessed_batch[
+                    "state_in_{}".format(i)
+                ][:B]
                 if "state_out_{}".format(i) in postprocessed_batch:
-                    postprocessed_batch["state_out_{}".format(i)] = \
-                        postprocessed_batch["state_out_{}".format(i)][:B]
+                    postprocessed_batch["state_out_{}".format(i)] = postprocessed_batch[
+                        "state_out_{}".format(i)
+                    ][:B]
                 i += 1
             seq_len = sample_batch_size // B
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
@@ -886,35 +957,52 @@ class Policy(metaclass=ABCMeta):
         # Add new columns automatically to view-reqs.
         if auto_remove_unneeded_view_reqs:
             # Add those needed for postprocessing and training.
-            all_accessed_keys = train_batch.accessed_keys | \
-                                self._dummy_batch.accessed_keys | \
-                                self._dummy_batch.added_keys
+            all_accessed_keys = (
+                train_batch.accessed_keys
+                | self._dummy_batch.accessed_keys
+                | self._dummy_batch.added_keys
+            )
             for key in all_accessed_keys:
-                if key not in self.view_requirements and \
-                        key != SampleBatch.SEQ_LENS:
+                if key not in self.view_requirements and key != SampleBatch.SEQ_LENS:
                     self.view_requirements[key] = ViewRequirement(
-                        used_for_compute_actions=False)
+                        used_for_compute_actions=False
+                    )
             if self._loss:
                 # Tag those only needed for post-processing (with some
                 # exceptions).
                 for key in self._dummy_batch.accessed_keys:
-                    if key not in train_batch.accessed_keys and \
-                            key in self.view_requirements and \
-                            key not in self.model.view_requirements and \
-                            key not in [
-                                SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
-                                SampleBatch.UNROLL_ID, SampleBatch.DONES,
-                                SampleBatch.REWARDS, SampleBatch.INFOS]:
+                    if (
+                        key not in train_batch.accessed_keys
+                        and key in self.view_requirements
+                        and key not in self.model.view_requirements
+                        and key
+                        not in [
+                            SampleBatch.EPS_ID,
+                            SampleBatch.AGENT_INDEX,
+                            SampleBatch.UNROLL_ID,
+                            SampleBatch.DONES,
+                            SampleBatch.REWARDS,
+                            SampleBatch.INFOS,
+                        ]
+                    ):
                         self.view_requirements[key].used_for_training = False
                 # Remove those not needed at all (leave those that are needed
                 # by Sampler to properly execute sample collection).
                 # Also always leave DONES, REWARDS, INFOS, no matter what.
                 for key in list(self.view_requirements.keys()):
-                    if key not in all_accessed_keys and key not in [
-                        SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
-                        SampleBatch.UNROLL_ID, SampleBatch.DONES,
-                        SampleBatch.REWARDS, SampleBatch.INFOS] and \
-                            key not in self.model.view_requirements:
+                    if (
+                        key not in all_accessed_keys
+                        and key
+                        not in [
+                            SampleBatch.EPS_ID,
+                            SampleBatch.AGENT_INDEX,
+                            SampleBatch.UNROLL_ID,
+                            SampleBatch.DONES,
+                            SampleBatch.REWARDS,
+                            SampleBatch.INFOS,
+                        ]
+                        and key not in self.model.view_requirements
+                    ):
                         # If user deleted this key manually in postprocessing
                         # fn, warn about it and do not remove from
                         # view-requirements.
@@ -924,14 +1012,16 @@ class Policy(metaclass=ABCMeta):
                                 "postprocessing function! RLlib will "
                                 "automatically remove non-used items from the "
                                 "data stream. Remove the `del` from your "
-                                "postprocessing function.".format(key))
+                                "postprocessing function.".format(key)
+                            )
                         # If we are not writing output to disk, save to erase
                         # this key to save space in the sample batch.
                         elif self.config["output"] is None:
                             del self.view_requirements[key]
 
     def _get_dummy_batch_from_view_requirements(
-            self, batch_size: int = 1) -> SampleBatch:
+        self, batch_size: int = 1
+    ) -> SampleBatch:
         """Creates a numpy dummy batch based on the Policy's view requirements.
 
         Args:
@@ -944,16 +1034,20 @@ class Policy(metaclass=ABCMeta):
         for view_col, view_req in self.view_requirements.items():
             data_col = view_req.data_col or view_col
             # Flattened dummy batch.
-            if (isinstance(view_req.space,
-                           (gym.spaces.Tuple, gym.spaces.Dict))) and \
-                    ((data_col == SampleBatch.OBS and
-                      not self.config["_disable_preprocessor_api"]) or
-                     (data_col == SampleBatch.ACTIONS and
-                      not self.config.get("_disable_action_flattening"))):
+            if (isinstance(view_req.space, (gym.spaces.Tuple, gym.spaces.Dict))) and (
+                (
+                    data_col == SampleBatch.OBS
+                    and not self.config["_disable_preprocessor_api"]
+                )
+                or (
+                    data_col == SampleBatch.ACTIONS
+                    and not self.config.get("_disable_action_flattening")
+                )
+            ):
                 _, shape = ModelCatalog.get_action_shape(
-                    view_req.space, framework=self.config["framework"])
-                ret[view_col] = \
-                    np.zeros((batch_size, ) + shape[1:], np.float32)
+                    view_req.space, framework=self.config["framework"]
+                )
+                ret[view_col] = np.zeros((batch_size,) + shape[1:], np.float32)
             # Non-flattened dummy batch.
             else:
                 # Range of indices on time-axis, e.g. "-50:-1".
@@ -961,24 +1055,23 @@ class Policy(metaclass=ABCMeta):
                     ret[view_col] = get_dummy_batch_for_space(
                         view_req.space,
                         batch_size=batch_size,
-                        time_size=view_req.shift_to - view_req.shift_from + 1)
+                        time_size=view_req.shift_to - view_req.shift_from + 1,
+                    )
                 # Sequence of (probably non-consecutive) indices.
                 elif isinstance(view_req.shift, (list, tuple)):
                     ret[view_col] = get_dummy_batch_for_space(
                         view_req.space,
                         batch_size=batch_size,
-                        time_size=len(view_req.shift))
+                        time_size=len(view_req.shift),
+                    )
                 # Single shift int value.
                 else:
                     if isinstance(view_req.space, gym.spaces.Space):
                         ret[view_col] = get_dummy_batch_for_space(
-                            view_req.space,
-                            batch_size=batch_size,
-                            fill_value=0.0)
+                            view_req.space, batch_size=batch_size, fill_value=0.0
+                        )
                     else:
-                        ret[view_col] = [
-                            view_req.space for _ in range(batch_size)
-                        ]
+                        ret[view_col] = [view_req.space for _ in range(batch_size)]
 
         # Due to different view requirements for the different columns,
         # columns in the resulting batch may not all have the same batch size.
@@ -1002,17 +1095,20 @@ class Policy(metaclass=ABCMeta):
         view_reqs = obj.view_requirements
         # Add state-ins to this model's view.
         init_state = []
-        if hasattr(obj, "get_initial_state") and callable(
-                obj.get_initial_state):
+        if hasattr(obj, "get_initial_state") and callable(obj.get_initial_state):
             init_state = obj.get_initial_state()
         else:
             # Add this functionality automatically for new native model API.
-            if tf and isinstance(model, tf.keras.Model) and \
-                    "state_in_0" not in view_reqs:
+            if (
+                tf
+                and isinstance(model, tf.keras.Model)
+                and "state_in_0" not in view_reqs
+            ):
                 obj.get_initial_state = lambda: [
                     np.zeros_like(view_req.space.sample())
                     for k, view_req in model.view_requirements.items()
-                    if k.startswith("state_in_")]
+                    if k.startswith("state_in_")
+                ]
             else:
                 obj.get_initial_state = lambda: []
                 if "state_in_0" in view_reqs:
@@ -1020,17 +1116,24 @@ class Policy(metaclass=ABCMeta):
 
         # Make sure auto-generated init-state view requirements get added
         # to both Policy and Model, no matter what.
-        view_reqs = [view_reqs] + ([self.view_requirements] if hasattr(
-            self, "view_requirements") else [])
+        view_reqs = [view_reqs] + (
+            [self.view_requirements] if hasattr(self, "view_requirements") else []
+        )
 
         for i, state in enumerate(init_state):
             # Allow `state` to be either a Space (use zeros as initial values)
             # or any value (e.g. a dict or a non-zero tensor).
-            fw = np if isinstance(state, np.ndarray) else torch if \
-                torch and torch.is_tensor(state) else None
+            fw = (
+                np
+                if isinstance(state, np.ndarray)
+                else torch
+                if torch and torch.is_tensor(state)
+                else None
+            )
             if fw:
-                space = Box(-1.0, 1.0, shape=state.shape) if \
-                    fw.all(state == 0.0) else state
+                space = (
+                    Box(-1.0, 1.0, shape=state.shape) if fw.all(state == 0.0) else state
+                )
             else:
                 space = state
             for vr in view_reqs:
@@ -1042,13 +1145,16 @@ class Policy(metaclass=ABCMeta):
                         shift=-1,
                         used_for_compute_actions=True,
                         batch_repeat_value=self.config.get("model", {}).get(
-                            "max_seq_len", 1),
-                        space=space)
+                            "max_seq_len", 1
+                        ),
+                        space=space,
+                    )
                 # Only override if user has not already provided
                 # custom view-requirements for state_out_n.
                 if "state_out_{}".format(i) not in vr:
                     vr["state_out_{}".format(i)] = ViewRequirement(
-                        space=space, used_for_training=True)
+                        space=space, used_for_training=True
+                    )
 
     @DeveloperAPI
     def __repr__(self):

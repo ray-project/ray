@@ -11,8 +11,7 @@ from collections import defaultdict
 
 FRIST_VERSION = 0
 LAST_VERSION = 5
-FILES = sorted(
-    glob.glob("./release_logs/[0-9].[0-9].[0-9]/microbenchmark.txt"))
+FILES = sorted(glob.glob("./release_logs/[0-9].[0-9].[0-9]/microbenchmark.txt"))
 
 task_info = defaultdict(list)
 task_std_info = defaultdict(list)
@@ -54,10 +53,10 @@ def main():
 
         latest_perf = task_performance_list[-1]
         second_latest_perf = task_performance_list[-2]
-        change_rate = (
-            latest_perf - second_latest_perf) / second_latest_perf * 100
-        print("{} performance change rate: {}%".format(task_type,
-                                                       round(change_rate, 2)))
+        change_rate = (latest_perf - second_latest_perf) / second_latest_perf * 100
+        print(
+            "{} performance change rate: {}%".format(task_type, round(change_rate, 2))
+        )
 
 
 if __name__ == "__main__":
