@@ -2,7 +2,7 @@ import os
 import pytest
 import sys
 import platform
-
+import time
 from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.test_utils import (
     wait_for_condition,
@@ -127,9 +127,9 @@ class TestGC:
 
         # Ensure that the runtime env has been installed.
         assert ray.get(f.remote())
-        # TODO(architkulkarni): Conda envs actually take some seconds to
-        # uninstall, so we should sleep some seconds before checking that we
-        # didn't GC. Otherwise this check may spuriously pass.
+        # Sleep some seconds before checking that we didn't GC. Otherwise this
+        # check may spuriously pass.
+        time.sleep(2)
         assert not check_local_files_gced(cluster)
 
         ray.shutdown()
