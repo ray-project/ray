@@ -19,8 +19,12 @@ from ray.tune import TuneError
 from ray.tune.integration.docker import DockerSyncer
 from ray.tune.integration.kubernetes import KubernetesSyncer
 from ray.tune.sync_client import NOOP
-from ray.tune.syncer import (CommandBasedClient, detect_cluster_syncer,
-                             get_cloud_sync_client, SyncerCallback)
+from ray.tune.syncer import (
+    CommandBasedClient,
+    detect_cluster_syncer,
+    get_cloud_sync_client,
+    SyncerCallback,
+)
 from ray.tune.utils.callback import create_default_callbacks
 
 
@@ -33,41 +37,35 @@ class TestSyncFunctionality(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     def testSyncConfigDeprecation(self):
-        with self.assertWarnsRegex(
-                DeprecationWarning, expected_regex="sync_period"):
-            sync_conf = tune.SyncConfig(
-                node_sync_period=4, cloud_sync_period=8)
+        with self.assertWarnsRegex(DeprecationWarning, expected_regex="sync_period"):
+            sync_conf = tune.SyncConfig(node_sync_period=4, cloud_sync_period=8)
             self.assertEqual(sync_conf.sync_period, 4)
 
-        with self.assertWarnsRegex(
-                DeprecationWarning, expected_regex="sync_period"):
+        with self.assertWarnsRegex(DeprecationWarning, expected_regex="sync_period"):
             sync_conf = tune.SyncConfig(node_sync_period=4)
             self.assertEqual(sync_conf.sync_period, 4)
 
-        with self.assertWarnsRegex(
-                DeprecationWarning, expected_regex="sync_period"):
+        with self.assertWarnsRegex(DeprecationWarning, expected_regex="sync_period"):
             sync_conf = tune.SyncConfig(cloud_sync_period=8)
             self.assertEqual(sync_conf.sync_period, 8)
 
-        with self.assertWarnsRegex(
-                DeprecationWarning, expected_regex="syncer"):
+        with self.assertWarnsRegex(DeprecationWarning, expected_regex="syncer"):
             sync_conf = tune.SyncConfig(
-                sync_to_driver="a", sync_to_cloud="b", upload_dir=None)
+                sync_to_driver="a", sync_to_cloud="b", upload_dir=None
+            )
             self.assertEqual(sync_conf.syncer, "a")
 
-        with self.assertWarnsRegex(
-                DeprecationWarning, expected_regex="syncer"):
+        with self.assertWarnsRegex(DeprecationWarning, expected_regex="syncer"):
             sync_conf = tune.SyncConfig(
-                sync_to_driver="a", sync_to_cloud="b", upload_dir="c")
+                sync_to_driver="a", sync_to_cloud="b", upload_dir="c"
+            )
             self.assertEqual(sync_conf.syncer, "b")
 
-        with self.assertWarnsRegex(
-                DeprecationWarning, expected_regex="syncer"):
+        with self.assertWarnsRegex(DeprecationWarning, expected_regex="syncer"):
             sync_conf = tune.SyncConfig(sync_to_cloud="b", upload_dir=None)
             self.assertEqual(sync_conf.syncer, None)
 
-        with self.assertWarnsRegex(
-                DeprecationWarning, expected_regex="syncer"):
+        with self.assertWarnsRegex(DeprecationWarning, expected_regex="syncer"):
             sync_conf = tune.SyncConfig(sync_to_driver="a", upload_dir="c")
             self.assertEqual(sync_conf.syncer, None)
 
@@ -78,26 +76,22 @@ class TestSyncFunctionality(unittest.TestCase):
                 "__fake",
                 name="foo",
                 max_failures=0,
-                stop={
-                    "training_iteration": 1
-                },
-                sync_config=tune.SyncConfig(**{
-                    "upload_dir": "test",
-                    "syncer": "ls {target}"
-                })).trials
+                stop={"training_iteration": 1},
+                sync_config=tune.SyncConfig(
+                    **{"upload_dir": "test", "syncer": "ls {target}"}
+                ),
+            ).trials
 
         with self.assertRaises(ValueError):
             [trial] = tune.run(
                 "__fake",
                 name="foo",
                 max_failures=0,
-                stop={
-                    "training_iteration": 1
-                },
-                sync_config=tune.SyncConfig(**{
-                    "upload_dir": "test",
-                    "syncer": "ls {source}"
-                })).trials
+                stop={"training_iteration": 1},
+                sync_config=tune.SyncConfig(
+                    **{"upload_dir": "test", "syncer": "ls {source}"}
+                ),
+            ).trials
 
         tmpdir = tempfile.mkdtemp()
         logfile = os.path.join(tmpdir, "test.log")
@@ -106,14 +100,14 @@ class TestSyncFunctionality(unittest.TestCase):
             "__fake",
             name="foo",
             max_failures=0,
-            stop={
-                "training_iteration": 1
-            },
+            stop={"training_iteration": 1},
             sync_config=tune.SyncConfig(
                 **{
                     "upload_dir": "test",
-                    "syncer": "echo {source} {target} > " + logfile
-                })).trials
+                    "syncer": "echo {source} {target} > " + logfile,
+                }
+            ),
+        ).trials
         with open(logfile) as f:
             lines = f.read()
             self.assertTrue("test" in lines)
@@ -128,9 +122,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 "__fake",
                 name="foo",
                 max_failures=0,
-                stop={
-                    "training_iteration": 1
-                },
+                stop={"training_iteration": 1},
                 sync_config=sync_config,
             ).trials
 
@@ -142,9 +134,8 @@ class TestSyncFunctionality(unittest.TestCase):
                 name="foo",
                 max_failures=0,
                 sync_config=sync_config,
-                stop={
-                    "training_iteration": 1
-                }).trials
+                stop={"training_iteration": 1},
+            ).trials
 
         with patch.object(CommandBasedClient, "_execute") as mock_fn:
             with patch("ray.tune.syncer.get_node_ip_address") as mock_sync:
@@ -155,9 +146,8 @@ class TestSyncFunctionality(unittest.TestCase):
                     name="foo",
                     max_failures=0,
                     sync_config=sync_config,
-                    stop={
-                        "training_iteration": 1
-                    }).trials
+                    stop={"training_iteration": 1},
+                ).trials
                 self.assertGreater(mock_fn.call_count, 0)
 
     def testCloudFunctions(self):
@@ -175,10 +165,9 @@ class TestSyncFunctionality(unittest.TestCase):
             name="foo",
             max_failures=0,
             local_dir=tmpdir,
-            stop={
-                "training_iteration": 1
-            },
-            sync_config=sync_config).trials
+            stop={"training_iteration": 1},
+            sync_config=sync_config,
+        ).trials
         test_file_path = glob.glob(os.path.join(tmpdir2, "foo", "*.json"))
         self.assertTrue(test_file_path)
         shutil.rmtree(tmpdir)
@@ -205,20 +194,16 @@ class TestSyncFunctionality(unittest.TestCase):
             with open(count_file, "wb") as fp:
                 pickle.dump(count, fp)
 
-        sync_config = tune.SyncConfig(
-            upload_dir="test", syncer=counter, sync_period=1)
+        sync_config = tune.SyncConfig(upload_dir="test", syncer=counter, sync_period=1)
         # This was originally set to 0.5
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
-        self.addCleanup(
-            lambda: os.environ.pop("TUNE_GLOBAL_CHECKPOINT_S", None))
+        self.addCleanup(lambda: os.environ.pop("TUNE_GLOBAL_CHECKPOINT_S", None))
         [trial] = tune.run(
             trainable,
             name="foo",
             max_failures=0,
             local_dir=tmpdir,
-            stop={
-                "training_iteration": 10
-            },
+            stop={"training_iteration": 10},
             sync_config=sync_config,
         ).trials
 
@@ -243,10 +228,9 @@ class TestSyncFunctionality(unittest.TestCase):
             "__fake",
             name="foo",
             max_failures=0,
-            stop={
-                "training_iteration": 1
-            },
-            sync_config=sync_config).trials
+            stop={"training_iteration": 1},
+            sync_config=sync_config,
+        ).trials
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertFalse(os.path.exists(test_file_path))
 
@@ -257,10 +241,9 @@ class TestSyncFunctionality(unittest.TestCase):
                 "__fake",
                 name="foo",
                 max_failures=0,
-                stop={
-                    "training_iteration": 1
-                },
-                sync_config=sync_config).trials
+                stop={"training_iteration": 1},
+                sync_config=sync_config,
+            ).trials
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertTrue(os.path.exists(test_file_path))
         os.remove(test_file_path)
@@ -278,10 +261,9 @@ class TestSyncFunctionality(unittest.TestCase):
                 "__fake",
                 name="foo",
                 max_failures=0,
-                stop={
-                    "training_iteration": 1
-                },
-                sync_config=sync_config).trials
+                stop={"training_iteration": 1},
+                sync_config=sync_config,
+            ).trials
             self.assertEqual(mock_sync.call_count, 0)
 
     def testCloudSyncExclude(self):
@@ -295,82 +277,86 @@ class TestSyncFunctionality(unittest.TestCase):
             captured.append(command)
 
         with patch("subprocess.Popen", capture_popen), patch(
-                "distutils.spawn.find_executable", always_true):
+            "distutils.spawn.find_executable", always_true
+        ):
             # S3
             s3_client = get_cloud_sync_client("s3://test-bucket/test-dir")
-            s3_client.sync_down("s3://test-bucket/test-dir/remote_source",
-                                "local_target")
+            s3_client.sync_down(
+                "s3://test-bucket/test-dir/remote_source", "local_target"
+            )
 
             self.assertEqual(
                 captured[0].strip(),
                 "aws s3 sync s3://test-bucket/test-dir/remote_source "
-                "local_target --only-show-errors")
+                "local_target --only-show-errors",
+            )
 
             s3_client.sync_down(
                 "s3://test-bucket/test-dir/remote_source",
                 "local_target",
-                exclude=["*/checkpoint_*"])
+                exclude=["*/checkpoint_*"],
+            )
             self.assertEqual(
                 captured[0].strip(),
                 "aws s3 sync s3://test-bucket/test-dir/remote_source "
                 "local_target --only-show-errors "
-                "--exclude '*/checkpoint_*'")
+                "--exclude '*/checkpoint_*'",
+            )
 
             s3_client.sync_down(
                 "s3://test-bucket/test-dir/remote_source",
                 "local_target",
-                exclude=["*/checkpoint_*", "*.big"])
+                exclude=["*/checkpoint_*", "*.big"],
+            )
             self.assertEqual(
                 captured[0].strip(),
                 "aws s3 sync s3://test-bucket/test-dir/remote_source "
                 "local_target --only-show-errors "
-                "--exclude '*/checkpoint_*' --exclude '*.big'")
+                "--exclude '*/checkpoint_*' --exclude '*.big'",
+            )
 
             # GS
             gs_client = get_cloud_sync_client("gs://test-bucket/test-dir")
-            gs_client.sync_down("gs://test-bucket/test-dir/remote_source",
-                                "local_target")
+            gs_client.sync_down(
+                "gs://test-bucket/test-dir/remote_source", "local_target"
+            )
 
             self.assertEqual(
-                captured[0].strip(), "gsutil rsync -r  "
+                captured[0].strip(),
+                "gsutil rsync -r  "
                 "gs://test-bucket/test-dir/remote_source "
-                "local_target")
+                "local_target",
+            )
 
             gs_client.sync_down(
                 "gs://test-bucket/test-dir/remote_source",
                 "local_target",
-                exclude=["*/checkpoint_*"])
+                exclude=["*/checkpoint_*"],
+            )
             self.assertEqual(
-                captured[0].strip(), "gsutil rsync -r "
+                captured[0].strip(),
+                "gsutil rsync -r "
                 "-x '(.*/checkpoint_.*)' "
                 "gs://test-bucket/test-dir/remote_source "
-                "local_target")
+                "local_target",
+            )
 
             gs_client.sync_down(
                 "gs://test-bucket/test-dir/remote_source",
                 "local_target",
-                exclude=["*/checkpoint_*", "*.big"])
+                exclude=["*/checkpoint_*", "*.big"],
+            )
             self.assertEqual(
-                captured[0].strip(), "gsutil rsync -r "
+                captured[0].strip(),
+                "gsutil rsync -r "
                 "-x '(.*/checkpoint_.*)|(.*.big)' "
                 "gs://test-bucket/test-dir/remote_source "
-                "local_target")
+                "local_target",
+            )
 
     def testSyncDetection(self):
-        kubernetes_conf = {
-            "provider": {
-                "type": "kubernetes",
-                "namespace": "test_ray"
-            }
-        }
-        docker_conf = {
-            "docker": {
-                "image": "bogus"
-            },
-            "provider": {
-                "type": "aws"
-            }
-        }
+        kubernetes_conf = {"provider": {"type": "kubernetes", "namespace": "test_ray"}}
+        docker_conf = {"docker": {"image": "bogus"}, "provider": {"type": "aws"}}
         aws_conf = {"provider": {"type": "aws"}}
 
         with tempfile.TemporaryDirectory() as dir:
@@ -398,17 +384,17 @@ class TestSyncFunctionality(unittest.TestCase):
 
             # Should still return DockerSyncer, since it was passed explicitly
             syncer = detect_cluster_syncer(
-                tune.SyncConfig(syncer=DockerSyncer), kubernetes_file)
+                tune.SyncConfig(syncer=DockerSyncer), kubernetes_file
+            )
             self.assertTrue(issubclass(syncer, DockerSyncer))
 
-    @patch("ray.tune.syncer.log_sync_template",
-           lambda: "rsync {source} {target}")
+    @patch("ray.tune.syncer.log_sync_template", lambda: "rsync {source} {target}")
     def testNoSyncToDriver(self):
         """Test that sync to driver is disabled"""
 
         class _Trial:
             def __init__(self, id, logdir):
-                self.id = id,
+                self.id = (id,)
                 self.logdir = logdir
 
         trial = _Trial("0", "some_dir")
@@ -432,4 +418,5 @@ class TestSyncFunctionality(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))
