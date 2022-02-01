@@ -12,10 +12,10 @@ from ray._private.test_utils import run_string_as_driver
 import ray
 import ray.experimental.internal_kv as kv
 from ray._private.utils import get_directory_size_bytes
-from ray._private.test_utils import (wait_for_condition, chdir,
-                                     check_local_files_gced)
+from ray._private.test_utils import wait_for_condition, chdir, check_local_files_gced
 from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
 from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
+
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
 
@@ -30,10 +30,12 @@ S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 @pytest.fixture(scope="class")
 def runtime_env_disable_URI_cache():
     with mock.patch.dict(
-            os.environ, {
-                "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0",
-                "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0"
-            }):
+        os.environ,
+        {
+            "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0",
+            "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0",
+        },
+    ):
         print("URI caching disabled (cache size set to 0).")
         yield
 
@@ -41,10 +43,12 @@ def runtime_env_disable_URI_cache():
 @pytest.fixture(scope="class")
 def URI_cache_10_MB():
     with mock.patch.dict(
-            os.environ, {
-                "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0.01",
-                "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0.01"
-            }):
+        os.environ,
+        {
+            "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0.01",
+            "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0.01",
+        },
+    ):
         print("URI cache size set to 0.01 GB.")
         yield
 
@@ -169,16 +173,12 @@ ray.init("{address}", runtime_env={{"py_modules": ["{tmp_dir}"]}})
         assert "warning" not in output.lower()
 
 
-@pytest.mark.skipif(
-    sys.platform != "darwin", reason="Package exceeds max size.")
+@pytest.mark.skipif(sys.platform != "darwin", reason="Package exceeds max size.")
 def test_ray_worker_dev_flow(start_cluster):
     cluster, address = start_cluster
     ray.init(
-        address,
-        runtime_env={
-            "py_modules": [ray],
-            "excludes": RAY_WORKER_DEV_EXCLUDES
-        })
+        address, runtime_env={"py_modules": [ray], "excludes": RAY_WORKER_DEV_EXCLUDES}
+    )
 
     @ray.remote
     def get_captured_ray_path():
@@ -187,6 +187,7 @@ def test_ray_worker_dev_flow(start_cluster):
     @ray.remote
     def get_lazy_ray_path():
         import ray
+
         return [ray.__path__]
 
     captured_path = ray.get(get_captured_ray_path.remote())
@@ -241,7 +242,7 @@ def test_ray_worker_dev_flow(start_cluster):
     @ray.remote
     def test_tune():
         def objective(step, alpha, beta):
-            return (0.1 + alpha * step / 100)**(-1) + beta * 0.1
+            return (0.1 + alpha * step / 100) ** (-1) + beta * 0.1
 
         def training_function(config):
             # Hyperparameters
@@ -254,11 +255,11 @@ def test_ray_worker_dev_flow(start_cluster):
             training_function,
             config={
                 "alpha": tune.grid_search([0.001, 0.01, 0.1]),
-                "beta": tune.choice([1, 2, 3])
-            })
+                "beta": tune.choice([1, 2, 3]),
+            },
+        )
 
-        print("Best config: ",
-              analysis.get_best_config(metric="mean_loss", mode="min"))
+        print("Best config: ", analysis.get_best_config(metric="mean_loss", mode="min"))
 
     assert ray.get(test_tune.remote()) != serve.__path__[0]
 
@@ -268,20 +269,21 @@ def check_internal_kv_gced():
 
 
 class TestGC:
-    @pytest.mark.skipif(
-        sys.platform == "win32", reason="Fail to create temp dir.")
+    @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     @pytest.mark.parametrize(
-        "source",
-        [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
-    def test_job_level_gc(self, start_cluster, runtime_env_disable_URI_cache,
-                          option: str, source: str):
+        "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
+    )
+    def test_job_level_gc(
+        self, start_cluster, runtime_env_disable_URI_cache, option: str, source: str
+    ):
         """Tests that job-level working_dir is GC'd when the job exits."""
         NUM_NODES = 3
         cluster, address = start_cluster
         for i in range(NUM_NODES - 1):  # Head node already added.
             cluster.add_node(
-                num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
+                num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources"
+            )
 
         if option == "working_dir":
             ray.init(address, runtime_env={"working_dir": source})
@@ -302,6 +304,7 @@ class TestGC:
         class A:
             def test_import(self):
                 import test_module
+
                 test_module.one()
 
         num_cpus = int(ray.available_resources()["CPU"])
@@ -321,17 +324,18 @@ class TestGC:
         wait_for_condition(check_internal_kv_gced)
         wait_for_condition(lambda: check_local_files_gced(cluster))
 
-    @pytest.mark.skipif(
-        sys.platform == "win32", reason="Fail to create temp dir.")
+    @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-    def test_actor_level_gc(self, start_cluster, runtime_env_disable_URI_cache,
-                            option: str):
+    def test_actor_level_gc(
+        self, start_cluster, runtime_env_disable_URI_cache, option: str
+    ):
         """Tests that actor-level working_dir is GC'd when the actor exits."""
         NUM_NODES = 5
         cluster, address = start_cluster
         for i in range(NUM_NODES - 1):  # Head node already added.
             cluster.add_node(
-                num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
+                num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources"
+            )
 
         ray.init(address)
 
@@ -339,6 +343,7 @@ class TestGC:
         class A:
             def check(self):
                 import test_module
+
                 test_module.one()
 
         if option == "working_dir":
@@ -354,28 +359,23 @@ class TestGC:
             ray.kill(actors[i])
         wait_for_condition(lambda: check_local_files_gced(cluster))
 
-    @pytest.mark.skipif(
-        sys.platform == "win32", reason="Fail to create temp dir.")
+    @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     @pytest.mark.parametrize(
-        "source",
-        [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
-    def test_detached_actor_gc(self, start_cluster,
-                               runtime_env_disable_URI_cache, option: str,
-                               source: str):
+        "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
+    )
+    def test_detached_actor_gc(
+        self, start_cluster, runtime_env_disable_URI_cache, option: str, source: str
+    ):
         """Tests that URIs for detached actors are GC'd only when they exit."""
         cluster, address = start_cluster
 
         if option == "working_dir":
-            ray.init(
-                address, namespace="test", runtime_env={"working_dir": source})
+            ray.init(address, namespace="test", runtime_env={"working_dir": source})
         elif option == "py_modules":
             if source != S3_PACKAGE_URI:
                 source = str(Path(source) / "test_module")
-            ray.init(
-                address,
-                namespace="test",
-                runtime_env={"py_modules": [source]})
+            ray.init(address, namespace="test", runtime_env={"py_modules": [source]})
 
         # For a local directory, the package should be in the GCS.
         # For an S3 URI, there should be nothing in the GCS because
@@ -389,6 +389,7 @@ class TestGC:
         class A:
             def test_import(self):
                 import test_module
+
                 test_module.one()
 
         a = A.options(name="test", lifetime="detached").remote()
@@ -417,15 +418,15 @@ class TestGC:
         wait_for_condition(check_internal_kv_gced)
         wait_for_condition(lambda: check_local_files_gced(cluster))
 
-    @pytest.mark.skipif(
-        sys.platform == "win32", reason="Fail to create temp dir.")
+    @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     def test_hit_cache_size_limit(self, start_cluster, URI_cache_10_MB):
         """Test eviction happens when we exceed a nonzero (10MB) cache size."""
         NUM_NODES = 3
         cluster, address = start_cluster
         for i in range(NUM_NODES - 1):  # Head node already added.
             cluster.add_node(
-                num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
+                num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources"
+            )
         with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
             with open("test_file_1", "wb") as f:
                 f.write(os.urandom(8 * 1024 * 1024))  # 8 MiB
@@ -449,22 +450,21 @@ class TestGC:
             # GC'ed, leaving us with 4 MB.  Sleep to give time for deletion.
             time.sleep(5)
             for node in cluster.list_all_nodes():
-                local_dir = os.path.join(node.get_runtime_env_dir_path(),
-                                         "working_dir_files")
-                assert 3 < get_directory_size_bytes(local_dir) / (1024**2) < 5
+                local_dir = os.path.join(
+                    node.get_runtime_env_dir_path(), "working_dir_files"
+                )
+                assert 3 < get_directory_size_bytes(local_dir) / (1024 ** 2) < 5
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-@pytest.mark.parametrize(
-    "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
+@pytest.mark.parametrize("source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
 def test_default_large_cache(start_cluster, option: str, source: str):
     """Check small files aren't GC'ed when using the default large cache."""
     NUM_NODES = 3
     cluster, address = start_cluster
     for i in range(NUM_NODES - 1):  # Head node already added.
-        cluster.add_node(
-            num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
+        cluster.add_node(num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
 
     if option == "working_dir":
         ray.init(address, runtime_env={"working_dir": source})
@@ -493,6 +493,7 @@ def test_default_large_cache(start_cluster, option: str, source: str):
     class A:
         def check(self):
             import test_module
+
             test_module.one()
 
     if option == "working_dir":
@@ -510,9 +511,12 @@ def test_default_large_cache(start_cluster, option: str, source: str):
 # is "function".  We need these env vars to be set before Ray is started.
 @pytest.fixture(scope="class")
 def skip_local_gc():
-    with mock.patch.dict(os.environ, {
+    with mock.patch.dict(
+        os.environ,
+        {
             "RAY_RUNTIME_ENV_SKIP_LOCAL_GC": "1",
-    }):
+        },
+    ):
         print("RAY_RUNTIME_ENV_SKIP_LOCAL_GC enabled.")
         yield
 
@@ -521,13 +525,13 @@ class TestSkipLocalGC:
     @pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
     def test_skip_local_gc_env_var(self, skip_local_gc, start_cluster, source):
         cluster, address = start_cluster
-        ray.init(
-            address, namespace="test", runtime_env={"working_dir": source})
+        ray.init(address, namespace="test", runtime_env={"working_dir": source})
 
         @ray.remote
         class A:
             def test_import(self):
                 import test_module
+
                 test_module.one()
 
         a = A.remote()

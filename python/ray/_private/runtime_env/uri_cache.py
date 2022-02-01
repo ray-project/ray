@@ -3,7 +3,7 @@ from typing import Set, Callable
 
 default_logger = logging.getLogger(__name__)
 
-DEFAULT_MAX_URI_CACHE_SIZE_BYTES = (1024**3) * 10  # 10 GB
+DEFAULT_MAX_URI_CACHE_SIZE_BYTES = (1024 ** 3) * 10  # 10 GB
 
 
 class URICache:
@@ -27,11 +27,12 @@ class URICache:
 
     """
 
-    def __init__(self,
-                 delete_fn: Callable[[str, logging.Logger],
-                                     int] = lambda uri, logger: 0,
-                 max_total_size_bytes: int = DEFAULT_MAX_URI_CACHE_SIZE_BYTES,
-                 debug_mode: bool = False):
+    def __init__(
+        self,
+        delete_fn: Callable[[str, logging.Logger], int] = lambda uri, logger: 0,
+        max_total_size_bytes: int = DEFAULT_MAX_URI_CACHE_SIZE_BYTES,
+        debug_mode: bool = False,
+    ):
         # Maps URIs to the size in bytes of their corresponding disk contents.
         self._used_uris: Set[str] = set()
         self._unused_uris: Set[str] = set()
@@ -63,15 +64,14 @@ class URICache:
             self._used_uris.add(uri)
             self._unused_uris.remove(uri)
         else:
-            raise ValueError(f"Got request to mark URI {uri} used, but this "
-                             "URI is not present in the cache.")
+            raise ValueError(
+                f"Got request to mark URI {uri} used, but this "
+                "URI is not present in the cache."
+            )
         logger.debug(f"Marked URI {uri} used.")
         self._check_valid()
 
-    def add(self,
-            uri: str,
-            size_bytes: int,
-            logger: logging.Logger = default_logger):
+    def add(self, uri: str, size_bytes: int, logger: logging.Logger = default_logger):
         """Add a URI to the cache and mark it as in use."""
         if uri in self._unused_uris:
             self._unused_uris.remove(uri)
@@ -88,8 +88,10 @@ class URICache:
 
     def _evict_if_needed(self, logger: logging.Logger = default_logger):
         """Evict unused URIs (if they exist) until total size <= max size."""
-        while (self._unused_uris
-               and self.get_total_size_bytes() > self.max_total_size_bytes):
+        while (
+            self._unused_uris
+            and self.get_total_size_bytes() > self.max_total_size_bytes
+        ):
             # TODO(architkulkarni): Evict least recently used URI instead
             arbitrary_unused_uri = next(iter(self._unused_uris))
             self._unused_uris.remove(arbitrary_unused_uri)
