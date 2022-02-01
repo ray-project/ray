@@ -40,8 +40,10 @@ class DAGNode:
 
         return self._bound_kwargs.copy()
 
-    def get_options(self) -> Tuple[Any]:
+    def get_options(self) -> Optional[Dict[str, Any]]:
         """Return the dict of options arguments for this node."""
+        if not self._bound_options:
+            return None
 
         return self._bound_options.copy()
 

@@ -49,13 +49,23 @@ class _UnboundActorMethodNode(object):
     def __init__(self, actor: ActorNode, method_name: str):
         self._actor = actor
         self._method_name = method_name
+        self._options = None
 
     def _bind(self, *args, **kwargs):
         node = ActorMethodNode(
-            self._actor, self._actor._last_call, self._method_name, args, kwargs
+            self._actor,
+            self._actor._last_call,
+            self._method_name,
+            args,
+            kwargs,
+            method_options=self._options,
         )
         self._actor._last_call = node
         return node
+
+    def options(self, **options):
+        self._options = options
+        return self
 
 
 class ActorMethodNode(DAGNode):
@@ -99,17 +109,29 @@ class ActorMethodNode(DAGNode):
 
     def _execute(self):
         actor_handle = self._bound_args[0]
-        return getattr(actor_handle, self._method_name).remote(
-            *self._bound_args[2:], **self._bound_kwargs
-        )
+        if self._bound_options:
+            return (
+                getattr(actor_handle, self._method_name)
+                .options(**self._bound_options)
+                .remote(
+                    *self._bound_args[2:],
+                    **self._bound_kwargs,
+                )
+            )
+        else:
+            return getattr(actor_handle, self._method_name).remote(
+                *self._bound_args[2:], **self._bound_kwargs
+            )
 
     def __str__(self):
         return (
-            "ActorMethodNode(actor={}, prev_call={}, method={}, " "args={}, kwargs={})"
+            "ActorMethodNode(actor={}, prev_call={}, method={}, "
+            "args={}, kwargs={}, options={})"
         ).format(
             self._bound_args[0],
             self._bound_args[1],
             self._method_name,
             self._bound_args[2:],
             self._bound_kwargs,
+            self._bound_options,
         )
