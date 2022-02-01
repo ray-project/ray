@@ -155,11 +155,6 @@ train.world_size
 
 .. autofunction:: ray.train.world_size
 
-train.get_device
-~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.train.get_device
-
 .. _train-api-torch-utils:
 
 PyTorch Training Function Utilities
