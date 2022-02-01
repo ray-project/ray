@@ -26,7 +26,6 @@ uvicorn==0.16.0
 werkzeug
 
 # Ray libraries
-ray[tune, rllib, serve]
 git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
 git+https://github.com/ray-project/xgboost_ray@master#egg=xgboost_ray
 git+https://github.com/ray-project/lightgbm_ray@main#lightgbm_ray
