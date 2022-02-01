@@ -294,8 +294,6 @@ class RuntimeEnvAgent(
     async def DeleteURIs(self, request, context):
         self._logger.info(f"Got request to mark URIs unused: {request.uris}.")
 
-        failed_uris = []  # URIs that we failed to delete.
-
         for plugin_uri in request.uris:
             plugin, uri = decode_plugin_uri(plugin_uri)
             # Invalidate the env cache for any envs that contain this URI.
@@ -317,15 +315,9 @@ class RuntimeEnvAgent(
                     f"for unsupported plugin {plugin}. URI: {uri}"
                 )
 
-        if failed_uris:
-            return runtime_env_agent_pb2.DeleteURIsReply(
-                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
-                error_message="Local files for URI(s) " f"{failed_uris} not found.",
-            )
-        else:
-            return runtime_env_agent_pb2.DeleteURIsReply(
-                status=agent_manager_pb2.AGENT_RPC_STATUS_OK
-            )
+        return runtime_env_agent_pb2.DeleteURIsReply(
+            status=agent_manager_pb2.AGENT_RPC_STATUS_OK
+        )
 
     async def run(self, server):
         runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(self, server)
