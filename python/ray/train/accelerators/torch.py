@@ -45,7 +45,7 @@ class TorchAccelerator(Accelerator):
 
         rank = train.local_rank()
 
-        device = get_device()
+        device = self.get_device()
 
         if torch.cuda.is_available():
             torch.cuda.set_device(device)
@@ -128,10 +128,20 @@ class TorchAccelerator(Accelerator):
             data_loader = with_sampler(data_loader)
 
         if move_to_device:
-            device = get_device()
+            device = self.get_device()
             data_loader = _WrappedDataLoader(data_loader, device)
 
         return data_loader
+
+    def get_device(self) -> torch.device:
+        """Gets the correct torch device to use for training."""
+        if torch.cuda.is_available():
+            rank = train.local_rank()
+            device = torch.device(f"cuda:{rank}")
+        else:
+            device = torch.device("cpu")
+
+        return device
 
 
 class _WrappedDataLoader(DataLoader):
@@ -159,14 +169,3 @@ class _WrappedDataLoader(DataLoader):
 
         for item in iterator:
             yield self._move_to_device(item)
-
-
-def get_device() -> torch.device:
-    """Gets the correct torch device to use for training."""
-    if torch.cuda.is_available():
-        rank = train.local_rank()
-        device = torch.device(f"cuda:{rank}")
-    else:
-        device = torch.device("cpu")
-
-    return device

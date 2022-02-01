@@ -235,6 +235,11 @@ def prepare_data_loader(
     )
 
 
+def get_device() -> torch.device:
+    """Gets the correct torch device to use for training."""
+    return get_session().accelerator.get_device()
+
+
 @PublicAPI(stability="beta")
 def accelerate() -> None:
     """Enables training optimizations."""
