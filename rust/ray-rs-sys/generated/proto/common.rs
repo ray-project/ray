@@ -2660,7 +2660,7 @@ impl<'a> ::std::default::Default for &'a RayErrorInfo {
 
 #[derive(Clone,PartialEq,Debug)]
 pub enum RayErrorInfo_oneof_error {
-    actor_init_failure(RayException),
+    actor_died_error(ActorDeathCause),
 }
 
 impl RayErrorInfo {
@@ -2668,59 +2668,59 @@ impl RayErrorInfo {
         ::std::default::Default::default()
     }
 
-    // .ray.rpc.RayException actor_init_failure = 1;
+    // .ray.rpc.ActorDeathCause actor_died_error = 2;
 
 
-    pub fn get_actor_init_failure(&self) -> &RayException {
+    pub fn get_actor_died_error(&self) -> &ActorDeathCause {
         match self.error {
-            ::std::option::Option::Some(RayErrorInfo_oneof_error::actor_init_failure(ref v)) => v,
-            _ => <RayException as ::protobuf::Message>::default_instance(),
+            ::std::option::Option::Some(RayErrorInfo_oneof_error::actor_died_error(ref v)) => v,
+            _ => <ActorDeathCause as ::protobuf::Message>::default_instance(),
         }
     }
-    pub fn clear_actor_init_failure(&mut self) {
+    pub fn clear_actor_died_error(&mut self) {
         self.error = ::std::option::Option::None;
     }
 
-    pub fn has_actor_init_failure(&self) -> bool {
+    pub fn has_actor_died_error(&self) -> bool {
         match self.error {
-            ::std::option::Option::Some(RayErrorInfo_oneof_error::actor_init_failure(..)) => true,
+            ::std::option::Option::Some(RayErrorInfo_oneof_error::actor_died_error(..)) => true,
             _ => false,
         }
     }
 
     // Param is passed by value, moved
-    pub fn set_actor_init_failure(&mut self, v: RayException) {
-        self.error = ::std::option::Option::Some(RayErrorInfo_oneof_error::actor_init_failure(v))
+    pub fn set_actor_died_error(&mut self, v: ActorDeathCause) {
+        self.error = ::std::option::Option::Some(RayErrorInfo_oneof_error::actor_died_error(v))
     }
 
     // Mutable pointer to the field.
-    pub fn mut_actor_init_failure(&mut self) -> &mut RayException {
-        if let ::std::option::Option::Some(RayErrorInfo_oneof_error::actor_init_failure(_)) = self.error {
+    pub fn mut_actor_died_error(&mut self) -> &mut ActorDeathCause {
+        if let ::std::option::Option::Some(RayErrorInfo_oneof_error::actor_died_error(_)) = self.error {
         } else {
-            self.error = ::std::option::Option::Some(RayErrorInfo_oneof_error::actor_init_failure(RayException::new()));
+            self.error = ::std::option::Option::Some(RayErrorInfo_oneof_error::actor_died_error(ActorDeathCause::new()));
         }
         match self.error {
-            ::std::option::Option::Some(RayErrorInfo_oneof_error::actor_init_failure(ref mut v)) => v,
+            ::std::option::Option::Some(RayErrorInfo_oneof_error::actor_died_error(ref mut v)) => v,
             _ => panic!(),
         }
     }
 
     // Take field
-    pub fn take_actor_init_failure(&mut self) -> RayException {
-        if self.has_actor_init_failure() {
+    pub fn take_actor_died_error(&mut self) -> ActorDeathCause {
+        if self.has_actor_died_error() {
             match self.error.take() {
-                ::std::option::Option::Some(RayErrorInfo_oneof_error::actor_init_failure(v)) => v,
+                ::std::option::Option::Some(RayErrorInfo_oneof_error::actor_died_error(v)) => v,
                 _ => panic!(),
             }
         } else {
-            RayException::new()
+            ActorDeathCause::new()
         }
     }
 }
 
 impl ::protobuf::Message for RayErrorInfo {
     fn is_initialized(&self) -> bool {
-        if let Some(RayErrorInfo_oneof_error::actor_init_failure(ref v)) = self.error {
+        if let Some(RayErrorInfo_oneof_error::actor_died_error(ref v)) = self.error {
             if !v.is_initialized() {
                 return false;
             }
@@ -2732,11 +2732,11 @@ impl ::protobuf::Message for RayErrorInfo {
         while !is.eof()? {
             let (field_number, wire_type) = is.read_tag_unpack()?;
             match field_number {
-                1 => {
+                2 => {
                     if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
                         return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
                     }
-                    self.error = ::std::option::Option::Some(RayErrorInfo_oneof_error::actor_init_failure(is.read_message()?));
+                    self.error = ::std::option::Option::Some(RayErrorInfo_oneof_error::actor_died_error(is.read_message()?));
                 },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
@@ -2752,7 +2752,7 @@ impl ::protobuf::Message for RayErrorInfo {
         let mut my_size = 0;
         if let ::std::option::Option::Some(ref v) = self.error {
             match v {
-                &RayErrorInfo_oneof_error::actor_init_failure(ref v) => {
+                &RayErrorInfo_oneof_error::actor_died_error(ref v) => {
                     let len = v.compute_size();
                     my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
                 },
@@ -2766,8 +2766,8 @@ impl ::protobuf::Message for RayErrorInfo {
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
         if let ::std::option::Option::Some(ref v) = self.error {
             match v {
-                &RayErrorInfo_oneof_error::actor_init_failure(ref v) => {
-                    os.write_tag(1, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+                &RayErrorInfo_oneof_error::actor_died_error(ref v) => {
+                    os.write_tag(2, ::protobuf::wire_format::WireTypeLengthDelimited)?;
                     os.write_raw_varint32(v.get_cached_size())?;
                     v.write_to_with_cached_sizes(os)?;
                 },
@@ -2811,10 +2811,10 @@ impl ::protobuf::Message for RayErrorInfo {
         static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
         descriptor.get(|| {
             let mut fields = ::std::vec::Vec::new();
-            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, RayException>(
-                "actor_init_failure",
-                RayErrorInfo::has_actor_init_failure,
-                RayErrorInfo::get_actor_init_failure,
+            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, ActorDeathCause>(
+                "actor_died_error",
+                RayErrorInfo::has_actor_died_error,
+                RayErrorInfo::get_actor_died_error,
             ));
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<RayErrorInfo>(
                 "RayErrorInfo",
@@ -11973,6 +11973,8 @@ pub enum ErrorType {
     OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED = 13,
     OBJECT_FETCH_TIMED_OUT = 14,
     LOCAL_RAYLET_DIED = 15,
+    TASK_PLACEMENT_GROUP_REMOVED = 16,
+    ACTOR_PLACEMENT_GROUP_REMOVED = 17,
 }
 
 impl ::protobuf::ProtobufEnum for ErrorType {
@@ -11998,6 +12000,8 @@ impl ::protobuf::ProtobufEnum for ErrorType {
             13 => ::std::option::Option::Some(ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED),
             14 => ::std::option::Option::Some(ErrorType::OBJECT_FETCH_TIMED_OUT),
             15 => ::std::option::Option::Some(ErrorType::LOCAL_RAYLET_DIED),
+            16 => ::std::option::Option::Some(ErrorType::TASK_PLACEMENT_GROUP_REMOVED),
+            17 => ::std::option::Option::Some(ErrorType::ACTOR_PLACEMENT_GROUP_REMOVED),
             _ => ::std::option::Option::None
         }
     }
@@ -12020,6 +12024,8 @@ impl ::protobuf::ProtobufEnum for ErrorType {
             ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED,
             ErrorType::OBJECT_FETCH_TIMED_OUT,
             ErrorType::LOCAL_RAYLET_DIED,
+            ErrorType::TASK_PLACEMENT_GROUP_REMOVED,
+            ErrorType::ACTOR_PLACEMENT_GROUP_REMOVED,
         ];
         values
     }
@@ -12205,45 +12211,45 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     r\"\x9f\x01\n\x10ConcurrencyGroup\x12\x12\n\x04name\x18\x01\x20\x01(\tR\
     \x04name\x12'\n\x0fmax_concurrency\x18\x02\x20\x01(\x05R\x0emaxConcurren\
     cy\x12N\n\x14function_descriptors\x18\x03\x20\x03(\x0b2\x1b.ray.rpc.Func\
-    tionDescriptorR\x13functionDescriptors\"^\n\x0cRayErrorInfo\x12E\n\x12ac\
-    tor_init_failure\x18\x01\x20\x01(\x0b2\x15.ray.rpc.RayExceptionH\0R\x10a\
-    ctorInitFailureB\x07\n\x05error\"\xae\x01\n\x0cRayException\x12-\n\x08la\
-    nguage\x18\x01\x20\x01(\x0e2\x11.ray.rpc.LanguageR\x08language\x121\n\
-    \x14serialized_exception\x18\x02\x20\x01(\x0cR\x13serializedException\
-    \x12<\n\x1aformatted_exception_string\x18\x03\x20\x01(\tR\x18formattedEx\
-    ceptionString\"\xbe\x02\n\x0fActorDeathCause\x12Z\n\x1dcreation_task_fai\
-    lure_context\x18\x01\x20\x01(\x0b2\x15.ray.rpc.RayExceptionH\0R\x1acreat\
-    ionTaskFailureContext\x12i\n\x1aruntime_env_failed_context\x18\x02\x20\
-    \x01(\x0b2*.ray.rpc.ActorDeathRuntimeEnvFailedContextH\0R\x17runtimeEnvF\
-    ailedContext\x12Y\n\x18actor_died_error_context\x18\x03\x20\x01(\x0b2\
-    \x1e.ray.rpc.ActorDiedErrorContextH\0R\x15actorDiedErrorContextB\t\n\x07\
-    context\"H\n!ActorDeathRuntimeEnvFailedContext\x12#\n\rerror_message\x18\
-    \x01\x20\x01(\tR\x0cerrorMessage\"\xae\x02\n\x15ActorDiedErrorContext\
-    \x12#\n\rerror_message\x18\x01\x20\x01(\tR\x0cerrorMessage\x12\x19\n\x08\
-    owner_id\x18\x02\x20\x01(\x0cR\x07ownerId\x12(\n\x10owner_ip_address\x18\
-    \x03\x20\x01(\tR\x0eownerIpAddress\x12&\n\x0fnode_ip_address\x18\x04\x20\
-    \x01(\tR\rnodeIpAddress\x12\x10\n\x03pid\x18\x05\x20\x01(\rR\x03pid\x12\
-    \x12\n\x04name\x18\x06\x20\x01(\tR\x04name\x12#\n\rray_namespace\x18\x07\
-    \x20\x01(\tR\x0crayNamespace\x12\x1d\n\nclass_name\x18\x08\x20\x01(\tR\t\
-    className\x12\x19\n\x08actor_id\x18\t\x20\x01(\x0cR\x07actorId\"\x80\x0b\
-    \n\x08TaskSpec\x12%\n\x04type\x18\x01\x20\x01(\x0e2\x11.ray.rpc.TaskType\
-    R\x04type\x12\x12\n\x04name\x18\x02\x20\x01(\tR\x04name\x12-\n\x08langua\
-    ge\x18\x03\x20\x01(\x0e2\x11.ray.rpc.LanguageR\x08language\x12L\n\x13fun\
-    ction_descriptor\x18\x04\x20\x01(\x0b2\x1b.ray.rpc.FunctionDescriptorR\
-    \x12functionDescriptor\x12\x15\n\x06job_id\x18\x05\x20\x01(\x0cR\x05jobI\
-    d\x12\x17\n\x07task_id\x18\x06\x20\x01(\x0cR\x06taskId\x12$\n\x0eparent_\
-    task_id\x18\x07\x20\x01(\x0cR\x0cparentTaskId\x12%\n\x0eparent_counter\
-    \x18\x08\x20\x01(\x04R\rparentCounter\x12\x1b\n\tcaller_id\x18\t\x20\x01\
-    (\x0cR\x08callerId\x127\n\x0ecaller_address\x18\n\x20\x01(\x0b2\x10.ray.\
-    rpc.AddressR\rcallerAddress\x12$\n\x04args\x18\x0b\x20\x03(\x0b2\x10.ray\
-    .rpc.TaskArgR\x04args\x12\x1f\n\x0bnum_returns\x18\x0c\x20\x01(\x04R\nnu\
-    mReturns\x12W\n\x12required_resources\x18\r\x20\x03(\x0b2(.ray.rpc.TaskS\
-    pec.RequiredResourcesEntryR\x11requiredResources\x12s\n\x1crequired_plac\
-    ement_resources\x18\x0e\x20\x03(\x0b21.ray.rpc.TaskSpec.RequiredPlacemen\
-    tResourcesEntryR\x1arequiredPlacementResources\x12W\n\x18actor_creation_\
-    task_spec\x18\x0f\x20\x01(\x0b2\x1e.ray.rpc.ActorCreationTaskSpecR\x15ac\
-    torCreationTaskSpec\x12>\n\x0factor_task_spec\x18\x10\x20\x01(\x0b2\x16.\
-    ray.rpc.ActorTaskSpecR\ractorTaskSpec\x12\x1f\n\x0bmax_retries\x18\x11\
+    tionDescriptorR\x13functionDescriptors\"]\n\x0cRayErrorInfo\x12D\n\x10ac\
+    tor_died_error\x18\x02\x20\x01(\x0b2\x18.ray.rpc.ActorDeathCauseH\0R\x0e\
+    actorDiedErrorB\x07\n\x05error\"\xae\x01\n\x0cRayException\x12-\n\x08lan\
+    guage\x18\x01\x20\x01(\x0e2\x11.ray.rpc.LanguageR\x08language\x121\n\x14\
+    serialized_exception\x18\x02\x20\x01(\x0cR\x13serializedException\x12<\n\
+    \x1aformatted_exception_string\x18\x03\x20\x01(\tR\x18formattedException\
+    String\"\xbe\x02\n\x0fActorDeathCause\x12Z\n\x1dcreation_task_failure_co\
+    ntext\x18\x01\x20\x01(\x0b2\x15.ray.rpc.RayExceptionH\0R\x1acreationTask\
+    FailureContext\x12i\n\x1aruntime_env_failed_context\x18\x02\x20\x01(\x0b\
+    2*.ray.rpc.ActorDeathRuntimeEnvFailedContextH\0R\x17runtimeEnvFailedCont\
+    ext\x12Y\n\x18actor_died_error_context\x18\x03\x20\x01(\x0b2\x1e.ray.rpc\
+    .ActorDiedErrorContextH\0R\x15actorDiedErrorContextB\t\n\x07context\"H\n\
+    !ActorDeathRuntimeEnvFailedContext\x12#\n\rerror_message\x18\x01\x20\x01\
+    (\tR\x0cerrorMessage\"\xae\x02\n\x15ActorDiedErrorContext\x12#\n\rerror_\
+    message\x18\x01\x20\x01(\tR\x0cerrorMessage\x12\x19\n\x08owner_id\x18\
+    \x02\x20\x01(\x0cR\x07ownerId\x12(\n\x10owner_ip_address\x18\x03\x20\x01\
+    (\tR\x0eownerIpAddress\x12&\n\x0fnode_ip_address\x18\x04\x20\x01(\tR\rno\
+    deIpAddress\x12\x10\n\x03pid\x18\x05\x20\x01(\rR\x03pid\x12\x12\n\x04nam\
+    e\x18\x06\x20\x01(\tR\x04name\x12#\n\rray_namespace\x18\x07\x20\x01(\tR\
+    \x0crayNamespace\x12\x1d\n\nclass_name\x18\x08\x20\x01(\tR\tclassName\
+    \x12\x19\n\x08actor_id\x18\t\x20\x01(\x0cR\x07actorId\"\x80\x0b\n\x08Tas\
+    kSpec\x12%\n\x04type\x18\x01\x20\x01(\x0e2\x11.ray.rpc.TaskTypeR\x04type\
+    \x12\x12\n\x04name\x18\x02\x20\x01(\tR\x04name\x12-\n\x08language\x18\
+    \x03\x20\x01(\x0e2\x11.ray.rpc.LanguageR\x08language\x12L\n\x13function_\
+    descriptor\x18\x04\x20\x01(\x0b2\x1b.ray.rpc.FunctionDescriptorR\x12func\
+    tionDescriptor\x12\x15\n\x06job_id\x18\x05\x20\x01(\x0cR\x05jobId\x12\
+    \x17\n\x07task_id\x18\x06\x20\x01(\x0cR\x06taskId\x12$\n\x0eparent_task_\
+    id\x18\x07\x20\x01(\x0cR\x0cparentTaskId\x12%\n\x0eparent_counter\x18\
+    \x08\x20\x01(\x04R\rparentCounter\x12\x1b\n\tcaller_id\x18\t\x20\x01(\
+    \x0cR\x08callerId\x127\n\x0ecaller_address\x18\n\x20\x01(\x0b2\x10.ray.r\
+    pc.AddressR\rcallerAddress\x12$\n\x04args\x18\x0b\x20\x03(\x0b2\x10.ray.\
+    rpc.TaskArgR\x04args\x12\x1f\n\x0bnum_returns\x18\x0c\x20\x01(\x04R\nnum\
+    Returns\x12W\n\x12required_resources\x18\r\x20\x03(\x0b2(.ray.rpc.TaskSp\
+    ec.RequiredResourcesEntryR\x11requiredResources\x12s\n\x1crequired_place\
+    ment_resources\x18\x0e\x20\x03(\x0b21.ray.rpc.TaskSpec.RequiredPlacement\
+    ResourcesEntryR\x1arequiredPlacementResources\x12W\n\x18actor_creation_t\
+    ask_spec\x18\x0f\x20\x01(\x0b2\x1e.ray.rpc.ActorCreationTaskSpecR\x15act\
+    orCreationTaskSpec\x12>\n\x0factor_task_spec\x18\x10\x20\x01(\x0b2\x16.r\
+    ay.rpc.ActorTaskSpecR\ractorTaskSpec\x12\x1f\n\x0bmax_retries\x18\x11\
     \x20\x01(\x05R\nmaxRetries\x12%\n\x0eskip_execution\x18\x15\x20\x01(\x08\
     R\rskipExecution\x12/\n\x13debugger_breakpoint\x18\x16\x20\x01(\x0cR\x12\
     debuggerBreakpoint\x12A\n\x10runtime_env_info\x18\x17\x20\x01(\x0b2\x17.\
@@ -12376,7 +12382,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x10\0\x12\n\n\x06DRIVER\x10\x01\x12\x10\n\x0cSPILL_WORKER\x10\x02\x12\
     \x12\n\x0eRESTORE_WORKER\x10\x03*U\n\x08TaskType\x12\x0f\n\x0bNORMAL_TAS\
     K\x10\0\x12\x17\n\x13ACTOR_CREATION_TASK\x10\x01\x12\x0e\n\nACTOR_TASK\
-    \x10\x02\x12\x0f\n\x0bDRIVER_TASK\x10\x03*\xb7\x03\n\tErrorType\x12\x0f\
+    \x10\x02\x12\x0f\n\x0bDRIVER_TASK\x10\x03*\xfc\x03\n\tErrorType\x12\x0f\
     \n\x0bWORKER_DIED\x10\0\x12\x0e\n\nACTOR_DIED\x10\x01\x12\x1c\n\x18OBJEC\
     T_UNRECONSTRUCTABLE\x10\x02\x12\x1c\n\x18TASK_EXECUTION_EXCEPTION\x10\
     \x03\x12\x14\n\x10OBJECT_IN_PLASMA\x10\x04\x12\x12\n\x0eTASK_CANCELLED\
@@ -12386,13 +12392,15 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     _RESOLUTION_FAILED\x10\x0b\x122\n.OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_\
     EXCEEDED\x10\x0c\x12,\n(OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED\x10\r\
     \x12\x1a\n\x16OBJECT_FETCH_TIMED_OUT\x10\x0e\x12\x15\n\x11LOCAL_RAYLET_D\
-    IED\x10\x0f*\xac\x01\n\x0eWorkerExitType\x12\x15\n\x11SYSTEM_ERROR_EXIT\
-    \x10\0\x12\x11\n\rINTENDED_EXIT\x10\x01\x12\x1c\n\x18UNUSED_RESOURCE_REL\
-    EASED\x10\x02\x12\x1b\n\x17PLACEMENT_GROUP_REMOVED\x10\x03\x12\x17\n\x13\
-    CREATION_TASK_ERROR\x10\x04\x12\r\n\tIDLE_EXIT\x10\x05\x12\r\n\tNODE_DIE\
-    D\x10\x06*M\n\x11PlacementStrategy\x12\x08\n\x04PACK\x10\0\x12\n\n\x06SP\
-    READ\x10\x01\x12\x0f\n\x0bSTRICT_PACK\x10\x02\x12\x11\n\rSTRICT_SPREAD\
-    \x10\x03B\x1d\n\x18io.ray.runtime.generated\xf8\x01\x01b\x06proto3\
+    IED\x10\x0f\x12\x20\n\x1cTASK_PLACEMENT_GROUP_REMOVED\x10\x10\x12!\n\x1d\
+    ACTOR_PLACEMENT_GROUP_REMOVED\x10\x11*\xac\x01\n\x0eWorkerExitType\x12\
+    \x15\n\x11SYSTEM_ERROR_EXIT\x10\0\x12\x11\n\rINTENDED_EXIT\x10\x01\x12\
+    \x1c\n\x18UNUSED_RESOURCE_RELEASED\x10\x02\x12\x1b\n\x17PLACEMENT_GROUP_\
+    REMOVED\x10\x03\x12\x17\n\x13CREATION_TASK_ERROR\x10\x04\x12\r\n\tIDLE_E\
+    XIT\x10\x05\x12\r\n\tNODE_DIED\x10\x06*M\n\x11PlacementStrategy\x12\x08\
+    \n\x04PACK\x10\0\x12\n\n\x06SPREAD\x10\x01\x12\x0f\n\x0bSTRICT_PACK\x10\
+    \x02\x12\x11\n\rSTRICT_SPREAD\x10\x03B\x1d\n\x18io.ray.runtime.generated\
+    \xf8\x01\x01b\x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;

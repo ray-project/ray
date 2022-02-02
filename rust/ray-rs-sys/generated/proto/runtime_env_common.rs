@@ -1331,26 +1331,279 @@ impl ::protobuf::reflect::ProtobufValue for PluginRuntimeEnv_Plugin {
 }
 
 #[derive(PartialEq,Clone,Default)]
-pub struct JarsRuntimeEnv {
+pub struct PythonRuntimeEnv {
+    // message fields
+    pub py_modules: ::protobuf::RepeatedField<::std::string::String>,
+    // message oneof groups
+    pub python_runtime_env: ::std::option::Option<PythonRuntimeEnv_oneof_python_runtime_env>,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
 }
 
-impl<'a> ::std::default::Default for &'a JarsRuntimeEnv {
-    fn default() -> &'a JarsRuntimeEnv {
-        <JarsRuntimeEnv as ::protobuf::Message>::default_instance()
+impl<'a> ::std::default::Default for &'a PythonRuntimeEnv {
+    fn default() -> &'a PythonRuntimeEnv {
+        <PythonRuntimeEnv as ::protobuf::Message>::default_instance()
     }
 }
 
-impl JarsRuntimeEnv {
-    pub fn new() -> JarsRuntimeEnv {
+#[derive(Clone,PartialEq,Debug)]
+pub enum PythonRuntimeEnv_oneof_python_runtime_env {
+    pip_runtime_env(PipRuntimeEnv),
+    conda_runtime_env(CondaRuntimeEnv),
+    container_runtime_env(ContainerRuntimeEnv),
+    plugin_runtime_env(PluginRuntimeEnv),
+}
+
+impl PythonRuntimeEnv {
+    pub fn new() -> PythonRuntimeEnv {
         ::std::default::Default::default()
     }
+
+    // repeated string py_modules = 1;
+
+
+    pub fn get_py_modules(&self) -> &[::std::string::String] {
+        &self.py_modules
+    }
+    pub fn clear_py_modules(&mut self) {
+        self.py_modules.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_py_modules(&mut self, v: ::protobuf::RepeatedField<::std::string::String>) {
+        self.py_modules = v;
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_py_modules(&mut self) -> &mut ::protobuf::RepeatedField<::std::string::String> {
+        &mut self.py_modules
+    }
+
+    // Take field
+    pub fn take_py_modules(&mut self) -> ::protobuf::RepeatedField<::std::string::String> {
+        ::std::mem::replace(&mut self.py_modules, ::protobuf::RepeatedField::new())
+    }
+
+    // .ray.rpc.PipRuntimeEnv pip_runtime_env = 2;
+
+
+    pub fn get_pip_runtime_env(&self) -> &PipRuntimeEnv {
+        match self.python_runtime_env {
+            ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::pip_runtime_env(ref v)) => v,
+            _ => <PipRuntimeEnv as ::protobuf::Message>::default_instance(),
+        }
+    }
+    pub fn clear_pip_runtime_env(&mut self) {
+        self.python_runtime_env = ::std::option::Option::None;
+    }
+
+    pub fn has_pip_runtime_env(&self) -> bool {
+        match self.python_runtime_env {
+            ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::pip_runtime_env(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_pip_runtime_env(&mut self, v: PipRuntimeEnv) {
+        self.python_runtime_env = ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::pip_runtime_env(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_pip_runtime_env(&mut self) -> &mut PipRuntimeEnv {
+        if let ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::pip_runtime_env(_)) = self.python_runtime_env {
+        } else {
+            self.python_runtime_env = ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::pip_runtime_env(PipRuntimeEnv::new()));
+        }
+        match self.python_runtime_env {
+            ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::pip_runtime_env(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_pip_runtime_env(&mut self) -> PipRuntimeEnv {
+        if self.has_pip_runtime_env() {
+            match self.python_runtime_env.take() {
+                ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::pip_runtime_env(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            PipRuntimeEnv::new()
+        }
+    }
+
+    // .ray.rpc.CondaRuntimeEnv conda_runtime_env = 3;
+
+
+    pub fn get_conda_runtime_env(&self) -> &CondaRuntimeEnv {
+        match self.python_runtime_env {
+            ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::conda_runtime_env(ref v)) => v,
+            _ => <CondaRuntimeEnv as ::protobuf::Message>::default_instance(),
+        }
+    }
+    pub fn clear_conda_runtime_env(&mut self) {
+        self.python_runtime_env = ::std::option::Option::None;
+    }
+
+    pub fn has_conda_runtime_env(&self) -> bool {
+        match self.python_runtime_env {
+            ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::conda_runtime_env(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_conda_runtime_env(&mut self, v: CondaRuntimeEnv) {
+        self.python_runtime_env = ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::conda_runtime_env(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_conda_runtime_env(&mut self) -> &mut CondaRuntimeEnv {
+        if let ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::conda_runtime_env(_)) = self.python_runtime_env {
+        } else {
+            self.python_runtime_env = ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::conda_runtime_env(CondaRuntimeEnv::new()));
+        }
+        match self.python_runtime_env {
+            ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::conda_runtime_env(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_conda_runtime_env(&mut self) -> CondaRuntimeEnv {
+        if self.has_conda_runtime_env() {
+            match self.python_runtime_env.take() {
+                ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::conda_runtime_env(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            CondaRuntimeEnv::new()
+        }
+    }
+
+    // .ray.rpc.ContainerRuntimeEnv container_runtime_env = 4;
+
+
+    pub fn get_container_runtime_env(&self) -> &ContainerRuntimeEnv {
+        match self.python_runtime_env {
+            ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::container_runtime_env(ref v)) => v,
+            _ => <ContainerRuntimeEnv as ::protobuf::Message>::default_instance(),
+        }
+    }
+    pub fn clear_container_runtime_env(&mut self) {
+        self.python_runtime_env = ::std::option::Option::None;
+    }
+
+    pub fn has_container_runtime_env(&self) -> bool {
+        match self.python_runtime_env {
+            ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::container_runtime_env(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_container_runtime_env(&mut self, v: ContainerRuntimeEnv) {
+        self.python_runtime_env = ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::container_runtime_env(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_container_runtime_env(&mut self) -> &mut ContainerRuntimeEnv {
+        if let ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::container_runtime_env(_)) = self.python_runtime_env {
+        } else {
+            self.python_runtime_env = ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::container_runtime_env(ContainerRuntimeEnv::new()));
+        }
+        match self.python_runtime_env {
+            ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::container_runtime_env(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_container_runtime_env(&mut self) -> ContainerRuntimeEnv {
+        if self.has_container_runtime_env() {
+            match self.python_runtime_env.take() {
+                ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::container_runtime_env(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            ContainerRuntimeEnv::new()
+        }
+    }
+
+    // .ray.rpc.PluginRuntimeEnv plugin_runtime_env = 5;
+
+
+    pub fn get_plugin_runtime_env(&self) -> &PluginRuntimeEnv {
+        match self.python_runtime_env {
+            ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::plugin_runtime_env(ref v)) => v,
+            _ => <PluginRuntimeEnv as ::protobuf::Message>::default_instance(),
+        }
+    }
+    pub fn clear_plugin_runtime_env(&mut self) {
+        self.python_runtime_env = ::std::option::Option::None;
+    }
+
+    pub fn has_plugin_runtime_env(&self) -> bool {
+        match self.python_runtime_env {
+            ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::plugin_runtime_env(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_plugin_runtime_env(&mut self, v: PluginRuntimeEnv) {
+        self.python_runtime_env = ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::plugin_runtime_env(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_plugin_runtime_env(&mut self) -> &mut PluginRuntimeEnv {
+        if let ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::plugin_runtime_env(_)) = self.python_runtime_env {
+        } else {
+            self.python_runtime_env = ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::plugin_runtime_env(PluginRuntimeEnv::new()));
+        }
+        match self.python_runtime_env {
+            ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::plugin_runtime_env(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_plugin_runtime_env(&mut self) -> PluginRuntimeEnv {
+        if self.has_plugin_runtime_env() {
+            match self.python_runtime_env.take() {
+                ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::plugin_runtime_env(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            PluginRuntimeEnv::new()
+        }
+    }
 }
 
-impl ::protobuf::Message for JarsRuntimeEnv {
+impl ::protobuf::Message for PythonRuntimeEnv {
     fn is_initialized(&self) -> bool {
+        if let Some(PythonRuntimeEnv_oneof_python_runtime_env::pip_runtime_env(ref v)) = self.python_runtime_env {
+            if !v.is_initialized() {
+                return false;
+            }
+        }
+        if let Some(PythonRuntimeEnv_oneof_python_runtime_env::conda_runtime_env(ref v)) = self.python_runtime_env {
+            if !v.is_initialized() {
+                return false;
+            }
+        }
+        if let Some(PythonRuntimeEnv_oneof_python_runtime_env::container_runtime_env(ref v)) = self.python_runtime_env {
+            if !v.is_initialized() {
+                return false;
+            }
+        }
+        if let Some(PythonRuntimeEnv_oneof_python_runtime_env::plugin_runtime_env(ref v)) = self.python_runtime_env {
+            if !v.is_initialized() {
+                return false;
+            }
+        }
         true
     }
 
@@ -1358,6 +1611,33 @@ impl ::protobuf::Message for JarsRuntimeEnv {
         while !is.eof()? {
             let (field_number, wire_type) = is.read_tag_unpack()?;
             match field_number {
+                1 => {
+                    ::protobuf::rt::read_repeated_string_into(wire_type, is, &mut self.py_modules)?;
+                },
+                2 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    self.python_runtime_env = ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::pip_runtime_env(is.read_message()?));
+                },
+                3 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    self.python_runtime_env = ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::conda_runtime_env(is.read_message()?));
+                },
+                4 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    self.python_runtime_env = ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::container_runtime_env(is.read_message()?));
+                },
+                5 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    self.python_runtime_env = ::std::option::Option::Some(PythonRuntimeEnv_oneof_python_runtime_env::plugin_runtime_env(is.read_message()?));
+                },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
                 },
@@ -1370,12 +1650,62 @@ impl ::protobuf::Message for JarsRuntimeEnv {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u32 {
         let mut my_size = 0;
+        for value in &self.py_modules {
+            my_size += ::protobuf::rt::string_size(1, &value);
+        };
+        if let ::std::option::Option::Some(ref v) = self.python_runtime_env {
+            match v {
+                &PythonRuntimeEnv_oneof_python_runtime_env::pip_runtime_env(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
+                },
+                &PythonRuntimeEnv_oneof_python_runtime_env::conda_runtime_env(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
+                },
+                &PythonRuntimeEnv_oneof_python_runtime_env::container_runtime_env(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
+                },
+                &PythonRuntimeEnv_oneof_python_runtime_env::plugin_runtime_env(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
+                },
+            };
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
         my_size
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        for v in &self.py_modules {
+            os.write_string(1, &v)?;
+        };
+        if let ::std::option::Option::Some(ref v) = self.python_runtime_env {
+            match v {
+                &PythonRuntimeEnv_oneof_python_runtime_env::pip_runtime_env(ref v) => {
+                    os.write_tag(2, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+                    os.write_raw_varint32(v.get_cached_size())?;
+                    v.write_to_with_cached_sizes(os)?;
+                },
+                &PythonRuntimeEnv_oneof_python_runtime_env::conda_runtime_env(ref v) => {
+                    os.write_tag(3, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+                    os.write_raw_varint32(v.get_cached_size())?;
+                    v.write_to_with_cached_sizes(os)?;
+                },
+                &PythonRuntimeEnv_oneof_python_runtime_env::container_runtime_env(ref v) => {
+                    os.write_tag(4, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+                    os.write_raw_varint32(v.get_cached_size())?;
+                    v.write_to_with_cached_sizes(os)?;
+                },
+                &PythonRuntimeEnv_oneof_python_runtime_env::plugin_runtime_env(ref v) => {
+                    os.write_tag(5, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+                    os.write_raw_varint32(v.get_cached_size())?;
+                    v.write_to_with_cached_sizes(os)?;
+                },
+            };
+        }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -1406,41 +1736,71 @@ impl ::protobuf::Message for JarsRuntimeEnv {
         Self::descriptor_static()
     }
 
-    fn new() -> JarsRuntimeEnv {
-        JarsRuntimeEnv::new()
+    fn new() -> PythonRuntimeEnv {
+        PythonRuntimeEnv::new()
     }
 
     fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
         static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
         descriptor.get(|| {
-            let fields = ::std::vec::Vec::new();
-            ::protobuf::reflect::MessageDescriptor::new_pb_name::<JarsRuntimeEnv>(
-                "JarsRuntimeEnv",
+            let mut fields = ::std::vec::Vec::new();
+            fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "py_modules",
+                |m: &PythonRuntimeEnv| { &m.py_modules },
+                |m: &mut PythonRuntimeEnv| { &mut m.py_modules },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, PipRuntimeEnv>(
+                "pip_runtime_env",
+                PythonRuntimeEnv::has_pip_runtime_env,
+                PythonRuntimeEnv::get_pip_runtime_env,
+            ));
+            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, CondaRuntimeEnv>(
+                "conda_runtime_env",
+                PythonRuntimeEnv::has_conda_runtime_env,
+                PythonRuntimeEnv::get_conda_runtime_env,
+            ));
+            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, ContainerRuntimeEnv>(
+                "container_runtime_env",
+                PythonRuntimeEnv::has_container_runtime_env,
+                PythonRuntimeEnv::get_container_runtime_env,
+            ));
+            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, PluginRuntimeEnv>(
+                "plugin_runtime_env",
+                PythonRuntimeEnv::has_plugin_runtime_env,
+                PythonRuntimeEnv::get_plugin_runtime_env,
+            ));
+            ::protobuf::reflect::MessageDescriptor::new_pb_name::<PythonRuntimeEnv>(
+                "PythonRuntimeEnv",
                 fields,
                 file_descriptor_proto()
             )
         })
     }
 
-    fn default_instance() -> &'static JarsRuntimeEnv {
-        static instance: ::protobuf::rt::LazyV2<JarsRuntimeEnv> = ::protobuf::rt::LazyV2::INIT;
-        instance.get(JarsRuntimeEnv::new)
+    fn default_instance() -> &'static PythonRuntimeEnv {
+        static instance: ::protobuf::rt::LazyV2<PythonRuntimeEnv> = ::protobuf::rt::LazyV2::INIT;
+        instance.get(PythonRuntimeEnv::new)
     }
 }
 
-impl ::protobuf::Clear for JarsRuntimeEnv {
+impl ::protobuf::Clear for PythonRuntimeEnv {
     fn clear(&mut self) {
+        self.py_modules.clear();
+        self.python_runtime_env = ::std::option::Option::None;
+        self.python_runtime_env = ::std::option::Option::None;
+        self.python_runtime_env = ::std::option::Option::None;
+        self.python_runtime_env = ::std::option::Option::None;
         self.unknown_fields.clear();
     }
 }
 
-impl ::std::fmt::Debug for JarsRuntimeEnv {
+impl ::std::fmt::Debug for PythonRuntimeEnv {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         ::protobuf::text_format::fmt(self, f)
     }
 }
 
-impl ::protobuf::reflect::ProtobufValue for JarsRuntimeEnv {
+impl ::protobuf::reflect::ProtobufValue for PythonRuntimeEnv {
     fn as_ref(&self) -> ::protobuf::reflect::ReflectValueRef {
         ::protobuf::reflect::ReflectValueRef::Message(self)
     }
@@ -1557,6 +1917,813 @@ impl ::std::fmt::Debug for MavenRuntimeEnv {
 }
 
 impl ::protobuf::reflect::ProtobufValue for MavenRuntimeEnv {
+    fn as_ref(&self) -> ::protobuf::reflect::ReflectValueRef {
+        ::protobuf::reflect::ReflectValueRef::Message(self)
+    }
+}
+
+#[derive(PartialEq,Clone,Default)]
+pub struct JavaRuntimeEnv {
+    // message fields
+    pub dependent_jars: ::protobuf::RepeatedField<::std::string::String>,
+    pub jvm_options: ::protobuf::RepeatedField<::std::string::String>,
+    pub java_home: ::std::string::String,
+    // message oneof groups
+    pub java_runtime_env: ::std::option::Option<JavaRuntimeEnv_oneof_java_runtime_env>,
+    // special fields
+    pub unknown_fields: ::protobuf::UnknownFields,
+    pub cached_size: ::protobuf::CachedSize,
+}
+
+impl<'a> ::std::default::Default for &'a JavaRuntimeEnv {
+    fn default() -> &'a JavaRuntimeEnv {
+        <JavaRuntimeEnv as ::protobuf::Message>::default_instance()
+    }
+}
+
+#[derive(Clone,PartialEq,Debug)]
+pub enum JavaRuntimeEnv_oneof_java_runtime_env {
+    maven_runtime_env(MavenRuntimeEnv),
+    container_runtime_env(ContainerRuntimeEnv),
+    plugin_runtime_env(PluginRuntimeEnv),
+}
+
+impl JavaRuntimeEnv {
+    pub fn new() -> JavaRuntimeEnv {
+        ::std::default::Default::default()
+    }
+
+    // repeated string dependent_jars = 1;
+
+
+    pub fn get_dependent_jars(&self) -> &[::std::string::String] {
+        &self.dependent_jars
+    }
+    pub fn clear_dependent_jars(&mut self) {
+        self.dependent_jars.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_dependent_jars(&mut self, v: ::protobuf::RepeatedField<::std::string::String>) {
+        self.dependent_jars = v;
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_dependent_jars(&mut self) -> &mut ::protobuf::RepeatedField<::std::string::String> {
+        &mut self.dependent_jars
+    }
+
+    // Take field
+    pub fn take_dependent_jars(&mut self) -> ::protobuf::RepeatedField<::std::string::String> {
+        ::std::mem::replace(&mut self.dependent_jars, ::protobuf::RepeatedField::new())
+    }
+
+    // repeated string jvm_options = 2;
+
+
+    pub fn get_jvm_options(&self) -> &[::std::string::String] {
+        &self.jvm_options
+    }
+    pub fn clear_jvm_options(&mut self) {
+        self.jvm_options.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_jvm_options(&mut self, v: ::protobuf::RepeatedField<::std::string::String>) {
+        self.jvm_options = v;
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_jvm_options(&mut self) -> &mut ::protobuf::RepeatedField<::std::string::String> {
+        &mut self.jvm_options
+    }
+
+    // Take field
+    pub fn take_jvm_options(&mut self) -> ::protobuf::RepeatedField<::std::string::String> {
+        ::std::mem::replace(&mut self.jvm_options, ::protobuf::RepeatedField::new())
+    }
+
+    // string java_home = 3;
+
+
+    pub fn get_java_home(&self) -> &str {
+        &self.java_home
+    }
+    pub fn clear_java_home(&mut self) {
+        self.java_home.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_java_home(&mut self, v: ::std::string::String) {
+        self.java_home = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_java_home(&mut self) -> &mut ::std::string::String {
+        &mut self.java_home
+    }
+
+    // Take field
+    pub fn take_java_home(&mut self) -> ::std::string::String {
+        ::std::mem::replace(&mut self.java_home, ::std::string::String::new())
+    }
+
+    // .ray.rpc.MavenRuntimeEnv maven_runtime_env = 4;
+
+
+    pub fn get_maven_runtime_env(&self) -> &MavenRuntimeEnv {
+        match self.java_runtime_env {
+            ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::maven_runtime_env(ref v)) => v,
+            _ => <MavenRuntimeEnv as ::protobuf::Message>::default_instance(),
+        }
+    }
+    pub fn clear_maven_runtime_env(&mut self) {
+        self.java_runtime_env = ::std::option::Option::None;
+    }
+
+    pub fn has_maven_runtime_env(&self) -> bool {
+        match self.java_runtime_env {
+            ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::maven_runtime_env(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_maven_runtime_env(&mut self, v: MavenRuntimeEnv) {
+        self.java_runtime_env = ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::maven_runtime_env(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_maven_runtime_env(&mut self) -> &mut MavenRuntimeEnv {
+        if let ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::maven_runtime_env(_)) = self.java_runtime_env {
+        } else {
+            self.java_runtime_env = ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::maven_runtime_env(MavenRuntimeEnv::new()));
+        }
+        match self.java_runtime_env {
+            ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::maven_runtime_env(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_maven_runtime_env(&mut self) -> MavenRuntimeEnv {
+        if self.has_maven_runtime_env() {
+            match self.java_runtime_env.take() {
+                ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::maven_runtime_env(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            MavenRuntimeEnv::new()
+        }
+    }
+
+    // .ray.rpc.ContainerRuntimeEnv container_runtime_env = 5;
+
+
+    pub fn get_container_runtime_env(&self) -> &ContainerRuntimeEnv {
+        match self.java_runtime_env {
+            ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::container_runtime_env(ref v)) => v,
+            _ => <ContainerRuntimeEnv as ::protobuf::Message>::default_instance(),
+        }
+    }
+    pub fn clear_container_runtime_env(&mut self) {
+        self.java_runtime_env = ::std::option::Option::None;
+    }
+
+    pub fn has_container_runtime_env(&self) -> bool {
+        match self.java_runtime_env {
+            ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::container_runtime_env(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_container_runtime_env(&mut self, v: ContainerRuntimeEnv) {
+        self.java_runtime_env = ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::container_runtime_env(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_container_runtime_env(&mut self) -> &mut ContainerRuntimeEnv {
+        if let ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::container_runtime_env(_)) = self.java_runtime_env {
+        } else {
+            self.java_runtime_env = ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::container_runtime_env(ContainerRuntimeEnv::new()));
+        }
+        match self.java_runtime_env {
+            ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::container_runtime_env(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_container_runtime_env(&mut self) -> ContainerRuntimeEnv {
+        if self.has_container_runtime_env() {
+            match self.java_runtime_env.take() {
+                ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::container_runtime_env(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            ContainerRuntimeEnv::new()
+        }
+    }
+
+    // .ray.rpc.PluginRuntimeEnv plugin_runtime_env = 6;
+
+
+    pub fn get_plugin_runtime_env(&self) -> &PluginRuntimeEnv {
+        match self.java_runtime_env {
+            ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::plugin_runtime_env(ref v)) => v,
+            _ => <PluginRuntimeEnv as ::protobuf::Message>::default_instance(),
+        }
+    }
+    pub fn clear_plugin_runtime_env(&mut self) {
+        self.java_runtime_env = ::std::option::Option::None;
+    }
+
+    pub fn has_plugin_runtime_env(&self) -> bool {
+        match self.java_runtime_env {
+            ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::plugin_runtime_env(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_plugin_runtime_env(&mut self, v: PluginRuntimeEnv) {
+        self.java_runtime_env = ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::plugin_runtime_env(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_plugin_runtime_env(&mut self) -> &mut PluginRuntimeEnv {
+        if let ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::plugin_runtime_env(_)) = self.java_runtime_env {
+        } else {
+            self.java_runtime_env = ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::plugin_runtime_env(PluginRuntimeEnv::new()));
+        }
+        match self.java_runtime_env {
+            ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::plugin_runtime_env(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_plugin_runtime_env(&mut self) -> PluginRuntimeEnv {
+        if self.has_plugin_runtime_env() {
+            match self.java_runtime_env.take() {
+                ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::plugin_runtime_env(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            PluginRuntimeEnv::new()
+        }
+    }
+}
+
+impl ::protobuf::Message for JavaRuntimeEnv {
+    fn is_initialized(&self) -> bool {
+        if let Some(JavaRuntimeEnv_oneof_java_runtime_env::maven_runtime_env(ref v)) = self.java_runtime_env {
+            if !v.is_initialized() {
+                return false;
+            }
+        }
+        if let Some(JavaRuntimeEnv_oneof_java_runtime_env::container_runtime_env(ref v)) = self.java_runtime_env {
+            if !v.is_initialized() {
+                return false;
+            }
+        }
+        if let Some(JavaRuntimeEnv_oneof_java_runtime_env::plugin_runtime_env(ref v)) = self.java_runtime_env {
+            if !v.is_initialized() {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        while !is.eof()? {
+            let (field_number, wire_type) = is.read_tag_unpack()?;
+            match field_number {
+                1 => {
+                    ::protobuf::rt::read_repeated_string_into(wire_type, is, &mut self.dependent_jars)?;
+                },
+                2 => {
+                    ::protobuf::rt::read_repeated_string_into(wire_type, is, &mut self.jvm_options)?;
+                },
+                3 => {
+                    ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.java_home)?;
+                },
+                4 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    self.java_runtime_env = ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::maven_runtime_env(is.read_message()?));
+                },
+                5 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    self.java_runtime_env = ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::container_runtime_env(is.read_message()?));
+                },
+                6 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    self.java_runtime_env = ::std::option::Option::Some(JavaRuntimeEnv_oneof_java_runtime_env::plugin_runtime_env(is.read_message()?));
+                },
+                _ => {
+                    ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u32 {
+        let mut my_size = 0;
+        for value in &self.dependent_jars {
+            my_size += ::protobuf::rt::string_size(1, &value);
+        };
+        for value in &self.jvm_options {
+            my_size += ::protobuf::rt::string_size(2, &value);
+        };
+        if !self.java_home.is_empty() {
+            my_size += ::protobuf::rt::string_size(3, &self.java_home);
+        }
+        if let ::std::option::Option::Some(ref v) = self.java_runtime_env {
+            match v {
+                &JavaRuntimeEnv_oneof_java_runtime_env::maven_runtime_env(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
+                },
+                &JavaRuntimeEnv_oneof_java_runtime_env::container_runtime_env(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
+                },
+                &JavaRuntimeEnv_oneof_java_runtime_env::plugin_runtime_env(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
+                },
+            };
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
+        self.cached_size.set(my_size);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        for v in &self.dependent_jars {
+            os.write_string(1, &v)?;
+        };
+        for v in &self.jvm_options {
+            os.write_string(2, &v)?;
+        };
+        if !self.java_home.is_empty() {
+            os.write_string(3, &self.java_home)?;
+        }
+        if let ::std::option::Option::Some(ref v) = self.java_runtime_env {
+            match v {
+                &JavaRuntimeEnv_oneof_java_runtime_env::maven_runtime_env(ref v) => {
+                    os.write_tag(4, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+                    os.write_raw_varint32(v.get_cached_size())?;
+                    v.write_to_with_cached_sizes(os)?;
+                },
+                &JavaRuntimeEnv_oneof_java_runtime_env::container_runtime_env(ref v) => {
+                    os.write_tag(5, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+                    os.write_raw_varint32(v.get_cached_size())?;
+                    v.write_to_with_cached_sizes(os)?;
+                },
+                &JavaRuntimeEnv_oneof_java_runtime_env::plugin_runtime_env(ref v) => {
+                    os.write_tag(6, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+                    os.write_raw_varint32(v.get_cached_size())?;
+                    v.write_to_with_cached_sizes(os)?;
+                },
+            };
+        }
+        os.write_unknown_fields(self.get_unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn get_cached_size(&self) -> u32 {
+        self.cached_size.get()
+    }
+
+    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
+        &self.unknown_fields
+    }
+
+    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
+        &mut self.unknown_fields
+    }
+
+    fn as_any(&self) -> &dyn (::std::any::Any) {
+        self as &dyn (::std::any::Any)
+    }
+    fn as_any_mut(&mut self) -> &mut dyn (::std::any::Any) {
+        self as &mut dyn (::std::any::Any)
+    }
+    fn into_any(self: ::std::boxed::Box<Self>) -> ::std::boxed::Box<dyn (::std::any::Any)> {
+        self
+    }
+
+    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
+        Self::descriptor_static()
+    }
+
+    fn new() -> JavaRuntimeEnv {
+        JavaRuntimeEnv::new()
+    }
+
+    fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
+        descriptor.get(|| {
+            let mut fields = ::std::vec::Vec::new();
+            fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "dependent_jars",
+                |m: &JavaRuntimeEnv| { &m.dependent_jars },
+                |m: &mut JavaRuntimeEnv| { &mut m.dependent_jars },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "jvm_options",
+                |m: &JavaRuntimeEnv| { &m.jvm_options },
+                |m: &mut JavaRuntimeEnv| { &mut m.jvm_options },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "java_home",
+                |m: &JavaRuntimeEnv| { &m.java_home },
+                |m: &mut JavaRuntimeEnv| { &mut m.java_home },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, MavenRuntimeEnv>(
+                "maven_runtime_env",
+                JavaRuntimeEnv::has_maven_runtime_env,
+                JavaRuntimeEnv::get_maven_runtime_env,
+            ));
+            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, ContainerRuntimeEnv>(
+                "container_runtime_env",
+                JavaRuntimeEnv::has_container_runtime_env,
+                JavaRuntimeEnv::get_container_runtime_env,
+            ));
+            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, PluginRuntimeEnv>(
+                "plugin_runtime_env",
+                JavaRuntimeEnv::has_plugin_runtime_env,
+                JavaRuntimeEnv::get_plugin_runtime_env,
+            ));
+            ::protobuf::reflect::MessageDescriptor::new_pb_name::<JavaRuntimeEnv>(
+                "JavaRuntimeEnv",
+                fields,
+                file_descriptor_proto()
+            )
+        })
+    }
+
+    fn default_instance() -> &'static JavaRuntimeEnv {
+        static instance: ::protobuf::rt::LazyV2<JavaRuntimeEnv> = ::protobuf::rt::LazyV2::INIT;
+        instance.get(JavaRuntimeEnv::new)
+    }
+}
+
+impl ::protobuf::Clear for JavaRuntimeEnv {
+    fn clear(&mut self) {
+        self.dependent_jars.clear();
+        self.jvm_options.clear();
+        self.java_home.clear();
+        self.java_runtime_env = ::std::option::Option::None;
+        self.java_runtime_env = ::std::option::Option::None;
+        self.java_runtime_env = ::std::option::Option::None;
+        self.unknown_fields.clear();
+    }
+}
+
+impl ::std::fmt::Debug for JavaRuntimeEnv {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for JavaRuntimeEnv {
+    fn as_ref(&self) -> ::protobuf::reflect::ReflectValueRef {
+        ::protobuf::reflect::ReflectValueRef::Message(self)
+    }
+}
+
+#[derive(PartialEq,Clone,Default)]
+pub struct CppRuntimeEnv {
+    // message fields
+    pub dependent_libraries: ::protobuf::RepeatedField<::std::string::String>,
+    // message oneof groups
+    pub cpp_runtime_env: ::std::option::Option<CppRuntimeEnv_oneof_cpp_runtime_env>,
+    // special fields
+    pub unknown_fields: ::protobuf::UnknownFields,
+    pub cached_size: ::protobuf::CachedSize,
+}
+
+impl<'a> ::std::default::Default for &'a CppRuntimeEnv {
+    fn default() -> &'a CppRuntimeEnv {
+        <CppRuntimeEnv as ::protobuf::Message>::default_instance()
+    }
+}
+
+#[derive(Clone,PartialEq,Debug)]
+pub enum CppRuntimeEnv_oneof_cpp_runtime_env {
+    container_runtime_env(ContainerRuntimeEnv),
+    plugin_runtime_env(PluginRuntimeEnv),
+}
+
+impl CppRuntimeEnv {
+    pub fn new() -> CppRuntimeEnv {
+        ::std::default::Default::default()
+    }
+
+    // repeated string dependent_libraries = 1;
+
+
+    pub fn get_dependent_libraries(&self) -> &[::std::string::String] {
+        &self.dependent_libraries
+    }
+    pub fn clear_dependent_libraries(&mut self) {
+        self.dependent_libraries.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_dependent_libraries(&mut self, v: ::protobuf::RepeatedField<::std::string::String>) {
+        self.dependent_libraries = v;
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_dependent_libraries(&mut self) -> &mut ::protobuf::RepeatedField<::std::string::String> {
+        &mut self.dependent_libraries
+    }
+
+    // Take field
+    pub fn take_dependent_libraries(&mut self) -> ::protobuf::RepeatedField<::std::string::String> {
+        ::std::mem::replace(&mut self.dependent_libraries, ::protobuf::RepeatedField::new())
+    }
+
+    // .ray.rpc.ContainerRuntimeEnv container_runtime_env = 2;
+
+
+    pub fn get_container_runtime_env(&self) -> &ContainerRuntimeEnv {
+        match self.cpp_runtime_env {
+            ::std::option::Option::Some(CppRuntimeEnv_oneof_cpp_runtime_env::container_runtime_env(ref v)) => v,
+            _ => <ContainerRuntimeEnv as ::protobuf::Message>::default_instance(),
+        }
+    }
+    pub fn clear_container_runtime_env(&mut self) {
+        self.cpp_runtime_env = ::std::option::Option::None;
+    }
+
+    pub fn has_container_runtime_env(&self) -> bool {
+        match self.cpp_runtime_env {
+            ::std::option::Option::Some(CppRuntimeEnv_oneof_cpp_runtime_env::container_runtime_env(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_container_runtime_env(&mut self, v: ContainerRuntimeEnv) {
+        self.cpp_runtime_env = ::std::option::Option::Some(CppRuntimeEnv_oneof_cpp_runtime_env::container_runtime_env(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_container_runtime_env(&mut self) -> &mut ContainerRuntimeEnv {
+        if let ::std::option::Option::Some(CppRuntimeEnv_oneof_cpp_runtime_env::container_runtime_env(_)) = self.cpp_runtime_env {
+        } else {
+            self.cpp_runtime_env = ::std::option::Option::Some(CppRuntimeEnv_oneof_cpp_runtime_env::container_runtime_env(ContainerRuntimeEnv::new()));
+        }
+        match self.cpp_runtime_env {
+            ::std::option::Option::Some(CppRuntimeEnv_oneof_cpp_runtime_env::container_runtime_env(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_container_runtime_env(&mut self) -> ContainerRuntimeEnv {
+        if self.has_container_runtime_env() {
+            match self.cpp_runtime_env.take() {
+                ::std::option::Option::Some(CppRuntimeEnv_oneof_cpp_runtime_env::container_runtime_env(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            ContainerRuntimeEnv::new()
+        }
+    }
+
+    // .ray.rpc.PluginRuntimeEnv plugin_runtime_env = 3;
+
+
+    pub fn get_plugin_runtime_env(&self) -> &PluginRuntimeEnv {
+        match self.cpp_runtime_env {
+            ::std::option::Option::Some(CppRuntimeEnv_oneof_cpp_runtime_env::plugin_runtime_env(ref v)) => v,
+            _ => <PluginRuntimeEnv as ::protobuf::Message>::default_instance(),
+        }
+    }
+    pub fn clear_plugin_runtime_env(&mut self) {
+        self.cpp_runtime_env = ::std::option::Option::None;
+    }
+
+    pub fn has_plugin_runtime_env(&self) -> bool {
+        match self.cpp_runtime_env {
+            ::std::option::Option::Some(CppRuntimeEnv_oneof_cpp_runtime_env::plugin_runtime_env(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_plugin_runtime_env(&mut self, v: PluginRuntimeEnv) {
+        self.cpp_runtime_env = ::std::option::Option::Some(CppRuntimeEnv_oneof_cpp_runtime_env::plugin_runtime_env(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_plugin_runtime_env(&mut self) -> &mut PluginRuntimeEnv {
+        if let ::std::option::Option::Some(CppRuntimeEnv_oneof_cpp_runtime_env::plugin_runtime_env(_)) = self.cpp_runtime_env {
+        } else {
+            self.cpp_runtime_env = ::std::option::Option::Some(CppRuntimeEnv_oneof_cpp_runtime_env::plugin_runtime_env(PluginRuntimeEnv::new()));
+        }
+        match self.cpp_runtime_env {
+            ::std::option::Option::Some(CppRuntimeEnv_oneof_cpp_runtime_env::plugin_runtime_env(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_plugin_runtime_env(&mut self) -> PluginRuntimeEnv {
+        if self.has_plugin_runtime_env() {
+            match self.cpp_runtime_env.take() {
+                ::std::option::Option::Some(CppRuntimeEnv_oneof_cpp_runtime_env::plugin_runtime_env(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            PluginRuntimeEnv::new()
+        }
+    }
+}
+
+impl ::protobuf::Message for CppRuntimeEnv {
+    fn is_initialized(&self) -> bool {
+        if let Some(CppRuntimeEnv_oneof_cpp_runtime_env::container_runtime_env(ref v)) = self.cpp_runtime_env {
+            if !v.is_initialized() {
+                return false;
+            }
+        }
+        if let Some(CppRuntimeEnv_oneof_cpp_runtime_env::plugin_runtime_env(ref v)) = self.cpp_runtime_env {
+            if !v.is_initialized() {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        while !is.eof()? {
+            let (field_number, wire_type) = is.read_tag_unpack()?;
+            match field_number {
+                1 => {
+                    ::protobuf::rt::read_repeated_string_into(wire_type, is, &mut self.dependent_libraries)?;
+                },
+                2 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    self.cpp_runtime_env = ::std::option::Option::Some(CppRuntimeEnv_oneof_cpp_runtime_env::container_runtime_env(is.read_message()?));
+                },
+                3 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    self.cpp_runtime_env = ::std::option::Option::Some(CppRuntimeEnv_oneof_cpp_runtime_env::plugin_runtime_env(is.read_message()?));
+                },
+                _ => {
+                    ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u32 {
+        let mut my_size = 0;
+        for value in &self.dependent_libraries {
+            my_size += ::protobuf::rt::string_size(1, &value);
+        };
+        if let ::std::option::Option::Some(ref v) = self.cpp_runtime_env {
+            match v {
+                &CppRuntimeEnv_oneof_cpp_runtime_env::container_runtime_env(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
+                },
+                &CppRuntimeEnv_oneof_cpp_runtime_env::plugin_runtime_env(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
+                },
+            };
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
+        self.cached_size.set(my_size);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        for v in &self.dependent_libraries {
+            os.write_string(1, &v)?;
+        };
+        if let ::std::option::Option::Some(ref v) = self.cpp_runtime_env {
+            match v {
+                &CppRuntimeEnv_oneof_cpp_runtime_env::container_runtime_env(ref v) => {
+                    os.write_tag(2, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+                    os.write_raw_varint32(v.get_cached_size())?;
+                    v.write_to_with_cached_sizes(os)?;
+                },
+                &CppRuntimeEnv_oneof_cpp_runtime_env::plugin_runtime_env(ref v) => {
+                    os.write_tag(3, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+                    os.write_raw_varint32(v.get_cached_size())?;
+                    v.write_to_with_cached_sizes(os)?;
+                },
+            };
+        }
+        os.write_unknown_fields(self.get_unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn get_cached_size(&self) -> u32 {
+        self.cached_size.get()
+    }
+
+    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
+        &self.unknown_fields
+    }
+
+    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
+        &mut self.unknown_fields
+    }
+
+    fn as_any(&self) -> &dyn (::std::any::Any) {
+        self as &dyn (::std::any::Any)
+    }
+    fn as_any_mut(&mut self) -> &mut dyn (::std::any::Any) {
+        self as &mut dyn (::std::any::Any)
+    }
+    fn into_any(self: ::std::boxed::Box<Self>) -> ::std::boxed::Box<dyn (::std::any::Any)> {
+        self
+    }
+
+    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
+        Self::descriptor_static()
+    }
+
+    fn new() -> CppRuntimeEnv {
+        CppRuntimeEnv::new()
+    }
+
+    fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
+        descriptor.get(|| {
+            let mut fields = ::std::vec::Vec::new();
+            fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
+                "dependent_libraries",
+                |m: &CppRuntimeEnv| { &m.dependent_libraries },
+                |m: &mut CppRuntimeEnv| { &mut m.dependent_libraries },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, ContainerRuntimeEnv>(
+                "container_runtime_env",
+                CppRuntimeEnv::has_container_runtime_env,
+                CppRuntimeEnv::get_container_runtime_env,
+            ));
+            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, PluginRuntimeEnv>(
+                "plugin_runtime_env",
+                CppRuntimeEnv::has_plugin_runtime_env,
+                CppRuntimeEnv::get_plugin_runtime_env,
+            ));
+            ::protobuf::reflect::MessageDescriptor::new_pb_name::<CppRuntimeEnv>(
+                "CppRuntimeEnv",
+                fields,
+                file_descriptor_proto()
+            )
+        })
+    }
+
+    fn default_instance() -> &'static CppRuntimeEnv {
+        static instance: ::protobuf::rt::LazyV2<CppRuntimeEnv> = ::protobuf::rt::LazyV2::INIT;
+        instance.get(CppRuntimeEnv::new)
+    }
+}
+
+impl ::protobuf::Clear for CppRuntimeEnv {
+    fn clear(&mut self) {
+        self.dependent_libraries.clear();
+        self.cpp_runtime_env = ::std::option::Option::None;
+        self.cpp_runtime_env = ::std::option::Option::None;
+        self.unknown_fields.clear();
+    }
+}
+
+impl ::std::fmt::Debug for CppRuntimeEnv {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for CppRuntimeEnv {
     fn as_ref(&self) -> ::protobuf::reflect::ReflectValueRef {
         ::protobuf::reflect::ReflectValueRef::Message(self)
     }
@@ -1890,14 +3057,13 @@ impl ::protobuf::reflect::ProtobufValue for RuntimeEnvUris {
 #[derive(PartialEq,Clone,Default)]
 pub struct RuntimeEnv {
     // message fields
-    pub py_modules: ::protobuf::RepeatedField<::std::string::String>,
     pub working_dir: ::std::string::String,
-    pub uris: ::protobuf::SingularPtrField<RuntimeEnvUris>,
     pub env_vars: ::std::collections::HashMap<::std::string::String, ::std::string::String>,
     pub extensions: ::std::collections::HashMap<::std::string::String, ::std::string::String>,
-    // message oneof groups
-    pub python_runtime_env: ::std::option::Option<RuntimeEnv_oneof_python_runtime_env>,
-    pub java_runtime_env: ::std::option::Option<RuntimeEnv_oneof_java_runtime_env>,
+    pub python_runtime_env: ::protobuf::SingularPtrField<PythonRuntimeEnv>,
+    pub java_runtime_env: ::protobuf::SingularPtrField<JavaRuntimeEnv>,
+    pub cpp_runtime_env: ::protobuf::SingularPtrField<CppRuntimeEnv>,
+    pub uris: ::protobuf::SingularPtrField<RuntimeEnvUris>,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -1909,53 +3075,12 @@ impl<'a> ::std::default::Default for &'a RuntimeEnv {
     }
 }
 
-#[derive(Clone,PartialEq,Debug)]
-pub enum RuntimeEnv_oneof_python_runtime_env {
-    pip_runtime_env(PipRuntimeEnv),
-    conda_runtime_env(CondaRuntimeEnv),
-    py_container_runtime_env(ContainerRuntimeEnv),
-    py_plugin_runtime_env(PluginRuntimeEnv),
-}
-
-#[derive(Clone,PartialEq,Debug)]
-pub enum RuntimeEnv_oneof_java_runtime_env {
-    jars_runtime_env(JarsRuntimeEnv),
-    maven_runtime_env(MavenRuntimeEnv),
-    java_container_runtime_env(ContainerRuntimeEnv),
-    java_plugin_runtime_env(PluginRuntimeEnv),
-}
-
 impl RuntimeEnv {
     pub fn new() -> RuntimeEnv {
         ::std::default::Default::default()
     }
 
-    // repeated string py_modules = 1;
-
-
-    pub fn get_py_modules(&self) -> &[::std::string::String] {
-        &self.py_modules
-    }
-    pub fn clear_py_modules(&mut self) {
-        self.py_modules.clear();
-    }
-
-    // Param is passed by value, moved
-    pub fn set_py_modules(&mut self, v: ::protobuf::RepeatedField<::std::string::String>) {
-        self.py_modules = v;
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_py_modules(&mut self) -> &mut ::protobuf::RepeatedField<::std::string::String> {
-        &mut self.py_modules
-    }
-
-    // Take field
-    pub fn take_py_modules(&mut self) -> ::protobuf::RepeatedField<::std::string::String> {
-        ::std::mem::replace(&mut self.py_modules, ::protobuf::RepeatedField::new())
-    }
-
-    // string working_dir = 2;
+    // string working_dir = 1;
 
 
     pub fn get_working_dir(&self) -> &str {
@@ -1981,7 +3106,156 @@ impl RuntimeEnv {
         ::std::mem::replace(&mut self.working_dir, ::std::string::String::new())
     }
 
-    // .ray.rpc.RuntimeEnvUris uris = 3;
+    // repeated .ray.rpc.RuntimeEnv.EnvVarsEntry env_vars = 2;
+
+
+    pub fn get_env_vars(&self) -> &::std::collections::HashMap<::std::string::String, ::std::string::String> {
+        &self.env_vars
+    }
+    pub fn clear_env_vars(&mut self) {
+        self.env_vars.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_env_vars(&mut self, v: ::std::collections::HashMap<::std::string::String, ::std::string::String>) {
+        self.env_vars = v;
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_env_vars(&mut self) -> &mut ::std::collections::HashMap<::std::string::String, ::std::string::String> {
+        &mut self.env_vars
+    }
+
+    // Take field
+    pub fn take_env_vars(&mut self) -> ::std::collections::HashMap<::std::string::String, ::std::string::String> {
+        ::std::mem::replace(&mut self.env_vars, ::std::collections::HashMap::new())
+    }
+
+    // repeated .ray.rpc.RuntimeEnv.ExtensionsEntry extensions = 3;
+
+
+    pub fn get_extensions(&self) -> &::std::collections::HashMap<::std::string::String, ::std::string::String> {
+        &self.extensions
+    }
+    pub fn clear_extensions(&mut self) {
+        self.extensions.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_extensions(&mut self, v: ::std::collections::HashMap<::std::string::String, ::std::string::String>) {
+        self.extensions = v;
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_extensions(&mut self) -> &mut ::std::collections::HashMap<::std::string::String, ::std::string::String> {
+        &mut self.extensions
+    }
+
+    // Take field
+    pub fn take_extensions(&mut self) -> ::std::collections::HashMap<::std::string::String, ::std::string::String> {
+        ::std::mem::replace(&mut self.extensions, ::std::collections::HashMap::new())
+    }
+
+    // .ray.rpc.PythonRuntimeEnv python_runtime_env = 4;
+
+
+    pub fn get_python_runtime_env(&self) -> &PythonRuntimeEnv {
+        self.python_runtime_env.as_ref().unwrap_or_else(|| <PythonRuntimeEnv as ::protobuf::Message>::default_instance())
+    }
+    pub fn clear_python_runtime_env(&mut self) {
+        self.python_runtime_env.clear();
+    }
+
+    pub fn has_python_runtime_env(&self) -> bool {
+        self.python_runtime_env.is_some()
+    }
+
+    // Param is passed by value, moved
+    pub fn set_python_runtime_env(&mut self, v: PythonRuntimeEnv) {
+        self.python_runtime_env = ::protobuf::SingularPtrField::some(v);
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_python_runtime_env(&mut self) -> &mut PythonRuntimeEnv {
+        if self.python_runtime_env.is_none() {
+            self.python_runtime_env.set_default();
+        }
+        self.python_runtime_env.as_mut().unwrap()
+    }
+
+    // Take field
+    pub fn take_python_runtime_env(&mut self) -> PythonRuntimeEnv {
+        self.python_runtime_env.take().unwrap_or_else(|| PythonRuntimeEnv::new())
+    }
+
+    // .ray.rpc.JavaRuntimeEnv java_runtime_env = 5;
+
+
+    pub fn get_java_runtime_env(&self) -> &JavaRuntimeEnv {
+        self.java_runtime_env.as_ref().unwrap_or_else(|| <JavaRuntimeEnv as ::protobuf::Message>::default_instance())
+    }
+    pub fn clear_java_runtime_env(&mut self) {
+        self.java_runtime_env.clear();
+    }
+
+    pub fn has_java_runtime_env(&self) -> bool {
+        self.java_runtime_env.is_some()
+    }
+
+    // Param is passed by value, moved
+    pub fn set_java_runtime_env(&mut self, v: JavaRuntimeEnv) {
+        self.java_runtime_env = ::protobuf::SingularPtrField::some(v);
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_java_runtime_env(&mut self) -> &mut JavaRuntimeEnv {
+        if self.java_runtime_env.is_none() {
+            self.java_runtime_env.set_default();
+        }
+        self.java_runtime_env.as_mut().unwrap()
+    }
+
+    // Take field
+    pub fn take_java_runtime_env(&mut self) -> JavaRuntimeEnv {
+        self.java_runtime_env.take().unwrap_or_else(|| JavaRuntimeEnv::new())
+    }
+
+    // .ray.rpc.CppRuntimeEnv cpp_runtime_env = 6;
+
+
+    pub fn get_cpp_runtime_env(&self) -> &CppRuntimeEnv {
+        self.cpp_runtime_env.as_ref().unwrap_or_else(|| <CppRuntimeEnv as ::protobuf::Message>::default_instance())
+    }
+    pub fn clear_cpp_runtime_env(&mut self) {
+        self.cpp_runtime_env.clear();
+    }
+
+    pub fn has_cpp_runtime_env(&self) -> bool {
+        self.cpp_runtime_env.is_some()
+    }
+
+    // Param is passed by value, moved
+    pub fn set_cpp_runtime_env(&mut self, v: CppRuntimeEnv) {
+        self.cpp_runtime_env = ::protobuf::SingularPtrField::some(v);
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_cpp_runtime_env(&mut self) -> &mut CppRuntimeEnv {
+        if self.cpp_runtime_env.is_none() {
+            self.cpp_runtime_env.set_default();
+        }
+        self.cpp_runtime_env.as_mut().unwrap()
+    }
+
+    // Take field
+    pub fn take_cpp_runtime_env(&mut self) -> CppRuntimeEnv {
+        self.cpp_runtime_env.take().unwrap_or_else(|| CppRuntimeEnv::new())
+    }
+
+    // .ray.rpc.RuntimeEnvUris uris = 7;
 
 
     pub fn get_uris(&self) -> &RuntimeEnvUris {
@@ -2013,497 +3287,30 @@ impl RuntimeEnv {
     pub fn take_uris(&mut self) -> RuntimeEnvUris {
         self.uris.take().unwrap_or_else(|| RuntimeEnvUris::new())
     }
-
-    // repeated .ray.rpc.RuntimeEnv.EnvVarsEntry env_vars = 4;
-
-
-    pub fn get_env_vars(&self) -> &::std::collections::HashMap<::std::string::String, ::std::string::String> {
-        &self.env_vars
-    }
-    pub fn clear_env_vars(&mut self) {
-        self.env_vars.clear();
-    }
-
-    // Param is passed by value, moved
-    pub fn set_env_vars(&mut self, v: ::std::collections::HashMap<::std::string::String, ::std::string::String>) {
-        self.env_vars = v;
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_env_vars(&mut self) -> &mut ::std::collections::HashMap<::std::string::String, ::std::string::String> {
-        &mut self.env_vars
-    }
-
-    // Take field
-    pub fn take_env_vars(&mut self) -> ::std::collections::HashMap<::std::string::String, ::std::string::String> {
-        ::std::mem::replace(&mut self.env_vars, ::std::collections::HashMap::new())
-    }
-
-    // repeated .ray.rpc.RuntimeEnv.ExtensionsEntry extensions = 5;
-
-
-    pub fn get_extensions(&self) -> &::std::collections::HashMap<::std::string::String, ::std::string::String> {
-        &self.extensions
-    }
-    pub fn clear_extensions(&mut self) {
-        self.extensions.clear();
-    }
-
-    // Param is passed by value, moved
-    pub fn set_extensions(&mut self, v: ::std::collections::HashMap<::std::string::String, ::std::string::String>) {
-        self.extensions = v;
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_extensions(&mut self) -> &mut ::std::collections::HashMap<::std::string::String, ::std::string::String> {
-        &mut self.extensions
-    }
-
-    // Take field
-    pub fn take_extensions(&mut self) -> ::std::collections::HashMap<::std::string::String, ::std::string::String> {
-        ::std::mem::replace(&mut self.extensions, ::std::collections::HashMap::new())
-    }
-
-    // .ray.rpc.PipRuntimeEnv pip_runtime_env = 6;
-
-
-    pub fn get_pip_runtime_env(&self) -> &PipRuntimeEnv {
-        match self.python_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::pip_runtime_env(ref v)) => v,
-            _ => <PipRuntimeEnv as ::protobuf::Message>::default_instance(),
-        }
-    }
-    pub fn clear_pip_runtime_env(&mut self) {
-        self.python_runtime_env = ::std::option::Option::None;
-    }
-
-    pub fn has_pip_runtime_env(&self) -> bool {
-        match self.python_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::pip_runtime_env(..)) => true,
-            _ => false,
-        }
-    }
-
-    // Param is passed by value, moved
-    pub fn set_pip_runtime_env(&mut self, v: PipRuntimeEnv) {
-        self.python_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::pip_runtime_env(v))
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_pip_runtime_env(&mut self) -> &mut PipRuntimeEnv {
-        if let ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::pip_runtime_env(_)) = self.python_runtime_env {
-        } else {
-            self.python_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::pip_runtime_env(PipRuntimeEnv::new()));
-        }
-        match self.python_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::pip_runtime_env(ref mut v)) => v,
-            _ => panic!(),
-        }
-    }
-
-    // Take field
-    pub fn take_pip_runtime_env(&mut self) -> PipRuntimeEnv {
-        if self.has_pip_runtime_env() {
-            match self.python_runtime_env.take() {
-                ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::pip_runtime_env(v)) => v,
-                _ => panic!(),
-            }
-        } else {
-            PipRuntimeEnv::new()
-        }
-    }
-
-    // .ray.rpc.CondaRuntimeEnv conda_runtime_env = 7;
-
-
-    pub fn get_conda_runtime_env(&self) -> &CondaRuntimeEnv {
-        match self.python_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::conda_runtime_env(ref v)) => v,
-            _ => <CondaRuntimeEnv as ::protobuf::Message>::default_instance(),
-        }
-    }
-    pub fn clear_conda_runtime_env(&mut self) {
-        self.python_runtime_env = ::std::option::Option::None;
-    }
-
-    pub fn has_conda_runtime_env(&self) -> bool {
-        match self.python_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::conda_runtime_env(..)) => true,
-            _ => false,
-        }
-    }
-
-    // Param is passed by value, moved
-    pub fn set_conda_runtime_env(&mut self, v: CondaRuntimeEnv) {
-        self.python_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::conda_runtime_env(v))
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_conda_runtime_env(&mut self) -> &mut CondaRuntimeEnv {
-        if let ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::conda_runtime_env(_)) = self.python_runtime_env {
-        } else {
-            self.python_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::conda_runtime_env(CondaRuntimeEnv::new()));
-        }
-        match self.python_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::conda_runtime_env(ref mut v)) => v,
-            _ => panic!(),
-        }
-    }
-
-    // Take field
-    pub fn take_conda_runtime_env(&mut self) -> CondaRuntimeEnv {
-        if self.has_conda_runtime_env() {
-            match self.python_runtime_env.take() {
-                ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::conda_runtime_env(v)) => v,
-                _ => panic!(),
-            }
-        } else {
-            CondaRuntimeEnv::new()
-        }
-    }
-
-    // .ray.rpc.ContainerRuntimeEnv py_container_runtime_env = 8;
-
-
-    pub fn get_py_container_runtime_env(&self) -> &ContainerRuntimeEnv {
-        match self.python_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::py_container_runtime_env(ref v)) => v,
-            _ => <ContainerRuntimeEnv as ::protobuf::Message>::default_instance(),
-        }
-    }
-    pub fn clear_py_container_runtime_env(&mut self) {
-        self.python_runtime_env = ::std::option::Option::None;
-    }
-
-    pub fn has_py_container_runtime_env(&self) -> bool {
-        match self.python_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::py_container_runtime_env(..)) => true,
-            _ => false,
-        }
-    }
-
-    // Param is passed by value, moved
-    pub fn set_py_container_runtime_env(&mut self, v: ContainerRuntimeEnv) {
-        self.python_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::py_container_runtime_env(v))
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_py_container_runtime_env(&mut self) -> &mut ContainerRuntimeEnv {
-        if let ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::py_container_runtime_env(_)) = self.python_runtime_env {
-        } else {
-            self.python_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::py_container_runtime_env(ContainerRuntimeEnv::new()));
-        }
-        match self.python_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::py_container_runtime_env(ref mut v)) => v,
-            _ => panic!(),
-        }
-    }
-
-    // Take field
-    pub fn take_py_container_runtime_env(&mut self) -> ContainerRuntimeEnv {
-        if self.has_py_container_runtime_env() {
-            match self.python_runtime_env.take() {
-                ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::py_container_runtime_env(v)) => v,
-                _ => panic!(),
-            }
-        } else {
-            ContainerRuntimeEnv::new()
-        }
-    }
-
-    // .ray.rpc.PluginRuntimeEnv py_plugin_runtime_env = 9;
-
-
-    pub fn get_py_plugin_runtime_env(&self) -> &PluginRuntimeEnv {
-        match self.python_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::py_plugin_runtime_env(ref v)) => v,
-            _ => <PluginRuntimeEnv as ::protobuf::Message>::default_instance(),
-        }
-    }
-    pub fn clear_py_plugin_runtime_env(&mut self) {
-        self.python_runtime_env = ::std::option::Option::None;
-    }
-
-    pub fn has_py_plugin_runtime_env(&self) -> bool {
-        match self.python_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::py_plugin_runtime_env(..)) => true,
-            _ => false,
-        }
-    }
-
-    // Param is passed by value, moved
-    pub fn set_py_plugin_runtime_env(&mut self, v: PluginRuntimeEnv) {
-        self.python_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::py_plugin_runtime_env(v))
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_py_plugin_runtime_env(&mut self) -> &mut PluginRuntimeEnv {
-        if let ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::py_plugin_runtime_env(_)) = self.python_runtime_env {
-        } else {
-            self.python_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::py_plugin_runtime_env(PluginRuntimeEnv::new()));
-        }
-        match self.python_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::py_plugin_runtime_env(ref mut v)) => v,
-            _ => panic!(),
-        }
-    }
-
-    // Take field
-    pub fn take_py_plugin_runtime_env(&mut self) -> PluginRuntimeEnv {
-        if self.has_py_plugin_runtime_env() {
-            match self.python_runtime_env.take() {
-                ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::py_plugin_runtime_env(v)) => v,
-                _ => panic!(),
-            }
-        } else {
-            PluginRuntimeEnv::new()
-        }
-    }
-
-    // .ray.rpc.JarsRuntimeEnv jars_runtime_env = 10;
-
-
-    pub fn get_jars_runtime_env(&self) -> &JarsRuntimeEnv {
-        match self.java_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::jars_runtime_env(ref v)) => v,
-            _ => <JarsRuntimeEnv as ::protobuf::Message>::default_instance(),
-        }
-    }
-    pub fn clear_jars_runtime_env(&mut self) {
-        self.java_runtime_env = ::std::option::Option::None;
-    }
-
-    pub fn has_jars_runtime_env(&self) -> bool {
-        match self.java_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::jars_runtime_env(..)) => true,
-            _ => false,
-        }
-    }
-
-    // Param is passed by value, moved
-    pub fn set_jars_runtime_env(&mut self, v: JarsRuntimeEnv) {
-        self.java_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::jars_runtime_env(v))
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_jars_runtime_env(&mut self) -> &mut JarsRuntimeEnv {
-        if let ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::jars_runtime_env(_)) = self.java_runtime_env {
-        } else {
-            self.java_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::jars_runtime_env(JarsRuntimeEnv::new()));
-        }
-        match self.java_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::jars_runtime_env(ref mut v)) => v,
-            _ => panic!(),
-        }
-    }
-
-    // Take field
-    pub fn take_jars_runtime_env(&mut self) -> JarsRuntimeEnv {
-        if self.has_jars_runtime_env() {
-            match self.java_runtime_env.take() {
-                ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::jars_runtime_env(v)) => v,
-                _ => panic!(),
-            }
-        } else {
-            JarsRuntimeEnv::new()
-        }
-    }
-
-    // .ray.rpc.MavenRuntimeEnv maven_runtime_env = 11;
-
-
-    pub fn get_maven_runtime_env(&self) -> &MavenRuntimeEnv {
-        match self.java_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::maven_runtime_env(ref v)) => v,
-            _ => <MavenRuntimeEnv as ::protobuf::Message>::default_instance(),
-        }
-    }
-    pub fn clear_maven_runtime_env(&mut self) {
-        self.java_runtime_env = ::std::option::Option::None;
-    }
-
-    pub fn has_maven_runtime_env(&self) -> bool {
-        match self.java_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::maven_runtime_env(..)) => true,
-            _ => false,
-        }
-    }
-
-    // Param is passed by value, moved
-    pub fn set_maven_runtime_env(&mut self, v: MavenRuntimeEnv) {
-        self.java_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::maven_runtime_env(v))
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_maven_runtime_env(&mut self) -> &mut MavenRuntimeEnv {
-        if let ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::maven_runtime_env(_)) = self.java_runtime_env {
-        } else {
-            self.java_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::maven_runtime_env(MavenRuntimeEnv::new()));
-        }
-        match self.java_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::maven_runtime_env(ref mut v)) => v,
-            _ => panic!(),
-        }
-    }
-
-    // Take field
-    pub fn take_maven_runtime_env(&mut self) -> MavenRuntimeEnv {
-        if self.has_maven_runtime_env() {
-            match self.java_runtime_env.take() {
-                ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::maven_runtime_env(v)) => v,
-                _ => panic!(),
-            }
-        } else {
-            MavenRuntimeEnv::new()
-        }
-    }
-
-    // .ray.rpc.ContainerRuntimeEnv java_container_runtime_env = 12;
-
-
-    pub fn get_java_container_runtime_env(&self) -> &ContainerRuntimeEnv {
-        match self.java_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::java_container_runtime_env(ref v)) => v,
-            _ => <ContainerRuntimeEnv as ::protobuf::Message>::default_instance(),
-        }
-    }
-    pub fn clear_java_container_runtime_env(&mut self) {
-        self.java_runtime_env = ::std::option::Option::None;
-    }
-
-    pub fn has_java_container_runtime_env(&self) -> bool {
-        match self.java_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::java_container_runtime_env(..)) => true,
-            _ => false,
-        }
-    }
-
-    // Param is passed by value, moved
-    pub fn set_java_container_runtime_env(&mut self, v: ContainerRuntimeEnv) {
-        self.java_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::java_container_runtime_env(v))
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_java_container_runtime_env(&mut self) -> &mut ContainerRuntimeEnv {
-        if let ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::java_container_runtime_env(_)) = self.java_runtime_env {
-        } else {
-            self.java_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::java_container_runtime_env(ContainerRuntimeEnv::new()));
-        }
-        match self.java_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::java_container_runtime_env(ref mut v)) => v,
-            _ => panic!(),
-        }
-    }
-
-    // Take field
-    pub fn take_java_container_runtime_env(&mut self) -> ContainerRuntimeEnv {
-        if self.has_java_container_runtime_env() {
-            match self.java_runtime_env.take() {
-                ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::java_container_runtime_env(v)) => v,
-                _ => panic!(),
-            }
-        } else {
-            ContainerRuntimeEnv::new()
-        }
-    }
-
-    // .ray.rpc.PluginRuntimeEnv java_plugin_runtime_env = 13;
-
-
-    pub fn get_java_plugin_runtime_env(&self) -> &PluginRuntimeEnv {
-        match self.java_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::java_plugin_runtime_env(ref v)) => v,
-            _ => <PluginRuntimeEnv as ::protobuf::Message>::default_instance(),
-        }
-    }
-    pub fn clear_java_plugin_runtime_env(&mut self) {
-        self.java_runtime_env = ::std::option::Option::None;
-    }
-
-    pub fn has_java_plugin_runtime_env(&self) -> bool {
-        match self.java_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::java_plugin_runtime_env(..)) => true,
-            _ => false,
-        }
-    }
-
-    // Param is passed by value, moved
-    pub fn set_java_plugin_runtime_env(&mut self, v: PluginRuntimeEnv) {
-        self.java_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::java_plugin_runtime_env(v))
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_java_plugin_runtime_env(&mut self) -> &mut PluginRuntimeEnv {
-        if let ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::java_plugin_runtime_env(_)) = self.java_runtime_env {
-        } else {
-            self.java_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::java_plugin_runtime_env(PluginRuntimeEnv::new()));
-        }
-        match self.java_runtime_env {
-            ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::java_plugin_runtime_env(ref mut v)) => v,
-            _ => panic!(),
-        }
-    }
-
-    // Take field
-    pub fn take_java_plugin_runtime_env(&mut self) -> PluginRuntimeEnv {
-        if self.has_java_plugin_runtime_env() {
-            match self.java_runtime_env.take() {
-                ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::java_plugin_runtime_env(v)) => v,
-                _ => panic!(),
-            }
-        } else {
-            PluginRuntimeEnv::new()
-        }
-    }
 }
 
 impl ::protobuf::Message for RuntimeEnv {
     fn is_initialized(&self) -> bool {
+        for v in &self.python_runtime_env {
+            if !v.is_initialized() {
+                return false;
+            }
+        };
+        for v in &self.java_runtime_env {
+            if !v.is_initialized() {
+                return false;
+            }
+        };
+        for v in &self.cpp_runtime_env {
+            if !v.is_initialized() {
+                return false;
+            }
+        };
         for v in &self.uris {
             if !v.is_initialized() {
                 return false;
             }
         };
-        if let Some(RuntimeEnv_oneof_python_runtime_env::pip_runtime_env(ref v)) = self.python_runtime_env {
-            if !v.is_initialized() {
-                return false;
-            }
-        }
-        if let Some(RuntimeEnv_oneof_python_runtime_env::conda_runtime_env(ref v)) = self.python_runtime_env {
-            if !v.is_initialized() {
-                return false;
-            }
-        }
-        if let Some(RuntimeEnv_oneof_python_runtime_env::py_container_runtime_env(ref v)) = self.python_runtime_env {
-            if !v.is_initialized() {
-                return false;
-            }
-        }
-        if let Some(RuntimeEnv_oneof_python_runtime_env::py_plugin_runtime_env(ref v)) = self.python_runtime_env {
-            if !v.is_initialized() {
-                return false;
-            }
-        }
-        if let Some(RuntimeEnv_oneof_java_runtime_env::jars_runtime_env(ref v)) = self.java_runtime_env {
-            if !v.is_initialized() {
-                return false;
-            }
-        }
-        if let Some(RuntimeEnv_oneof_java_runtime_env::maven_runtime_env(ref v)) = self.java_runtime_env {
-            if !v.is_initialized() {
-                return false;
-            }
-        }
-        if let Some(RuntimeEnv_oneof_java_runtime_env::java_container_runtime_env(ref v)) = self.java_runtime_env {
-            if !v.is_initialized() {
-                return false;
-            }
-        }
-        if let Some(RuntimeEnv_oneof_java_runtime_env::java_plugin_runtime_env(ref v)) = self.java_runtime_env {
-            if !v.is_initialized() {
-                return false;
-            }
-        }
         true
     }
 
@@ -2512,67 +3319,25 @@ impl ::protobuf::Message for RuntimeEnv {
             let (field_number, wire_type) = is.read_tag_unpack()?;
             match field_number {
                 1 => {
-                    ::protobuf::rt::read_repeated_string_into(wire_type, is, &mut self.py_modules)?;
-                },
-                2 => {
                     ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.working_dir)?;
                 },
-                3 => {
-                    ::protobuf::rt::read_singular_message_into(wire_type, is, &mut self.uris)?;
-                },
-                4 => {
+                2 => {
                     ::protobuf::rt::read_map_into::<::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(wire_type, is, &mut self.env_vars)?;
                 },
-                5 => {
+                3 => {
                     ::protobuf::rt::read_map_into::<::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(wire_type, is, &mut self.extensions)?;
                 },
+                4 => {
+                    ::protobuf::rt::read_singular_message_into(wire_type, is, &mut self.python_runtime_env)?;
+                },
+                5 => {
+                    ::protobuf::rt::read_singular_message_into(wire_type, is, &mut self.java_runtime_env)?;
+                },
                 6 => {
-                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
-                    }
-                    self.python_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::pip_runtime_env(is.read_message()?));
+                    ::protobuf::rt::read_singular_message_into(wire_type, is, &mut self.cpp_runtime_env)?;
                 },
                 7 => {
-                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
-                    }
-                    self.python_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::conda_runtime_env(is.read_message()?));
-                },
-                8 => {
-                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
-                    }
-                    self.python_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::py_container_runtime_env(is.read_message()?));
-                },
-                9 => {
-                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
-                    }
-                    self.python_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_python_runtime_env::py_plugin_runtime_env(is.read_message()?));
-                },
-                10 => {
-                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
-                    }
-                    self.java_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::jars_runtime_env(is.read_message()?));
-                },
-                11 => {
-                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
-                    }
-                    self.java_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::maven_runtime_env(is.read_message()?));
-                },
-                12 => {
-                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
-                    }
-                    self.java_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::java_container_runtime_env(is.read_message()?));
-                },
-                13 => {
-                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
-                    }
-                    self.java_runtime_env = ::std::option::Option::Some(RuntimeEnv_oneof_java_runtime_env::java_plugin_runtime_env(is.read_message()?));
+                    ::protobuf::rt::read_singular_message_into(wire_type, is, &mut self.uris)?;
                 },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
@@ -2586,57 +3351,26 @@ impl ::protobuf::Message for RuntimeEnv {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u32 {
         let mut my_size = 0;
-        for value in &self.py_modules {
-            my_size += ::protobuf::rt::string_size(1, &value);
-        };
         if !self.working_dir.is_empty() {
-            my_size += ::protobuf::rt::string_size(2, &self.working_dir);
+            my_size += ::protobuf::rt::string_size(1, &self.working_dir);
+        }
+        my_size += ::protobuf::rt::compute_map_size::<::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(2, &self.env_vars);
+        my_size += ::protobuf::rt::compute_map_size::<::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(3, &self.extensions);
+        if let Some(ref v) = self.python_runtime_env.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
+        }
+        if let Some(ref v) = self.java_runtime_env.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
+        }
+        if let Some(ref v) = self.cpp_runtime_env.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
         }
         if let Some(ref v) = self.uris.as_ref() {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
-        }
-        my_size += ::protobuf::rt::compute_map_size::<::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(4, &self.env_vars);
-        my_size += ::protobuf::rt::compute_map_size::<::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(5, &self.extensions);
-        if let ::std::option::Option::Some(ref v) = self.python_runtime_env {
-            match v {
-                &RuntimeEnv_oneof_python_runtime_env::pip_runtime_env(ref v) => {
-                    let len = v.compute_size();
-                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
-                },
-                &RuntimeEnv_oneof_python_runtime_env::conda_runtime_env(ref v) => {
-                    let len = v.compute_size();
-                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
-                },
-                &RuntimeEnv_oneof_python_runtime_env::py_container_runtime_env(ref v) => {
-                    let len = v.compute_size();
-                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
-                },
-                &RuntimeEnv_oneof_python_runtime_env::py_plugin_runtime_env(ref v) => {
-                    let len = v.compute_size();
-                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
-                },
-            };
-        }
-        if let ::std::option::Option::Some(ref v) = self.java_runtime_env {
-            match v {
-                &RuntimeEnv_oneof_java_runtime_env::jars_runtime_env(ref v) => {
-                    let len = v.compute_size();
-                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
-                },
-                &RuntimeEnv_oneof_java_runtime_env::maven_runtime_env(ref v) => {
-                    let len = v.compute_size();
-                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
-                },
-                &RuntimeEnv_oneof_java_runtime_env::java_container_runtime_env(ref v) => {
-                    let len = v.compute_size();
-                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
-                },
-                &RuntimeEnv_oneof_java_runtime_env::java_plugin_runtime_env(ref v) => {
-                    let len = v.compute_size();
-                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
-                },
-            };
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
@@ -2644,66 +3378,30 @@ impl ::protobuf::Message for RuntimeEnv {
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
-        for v in &self.py_modules {
-            os.write_string(1, &v)?;
-        };
         if !self.working_dir.is_empty() {
-            os.write_string(2, &self.working_dir)?;
+            os.write_string(1, &self.working_dir)?;
         }
-        if let Some(ref v) = self.uris.as_ref() {
-            os.write_tag(3, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+        ::protobuf::rt::write_map_with_cached_sizes::<::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(2, &self.env_vars, os)?;
+        ::protobuf::rt::write_map_with_cached_sizes::<::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(3, &self.extensions, os)?;
+        if let Some(ref v) = self.python_runtime_env.as_ref() {
+            os.write_tag(4, ::protobuf::wire_format::WireTypeLengthDelimited)?;
             os.write_raw_varint32(v.get_cached_size())?;
             v.write_to_with_cached_sizes(os)?;
         }
-        ::protobuf::rt::write_map_with_cached_sizes::<::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(4, &self.env_vars, os)?;
-        ::protobuf::rt::write_map_with_cached_sizes::<::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(5, &self.extensions, os)?;
-        if let ::std::option::Option::Some(ref v) = self.python_runtime_env {
-            match v {
-                &RuntimeEnv_oneof_python_runtime_env::pip_runtime_env(ref v) => {
-                    os.write_tag(6, ::protobuf::wire_format::WireTypeLengthDelimited)?;
-                    os.write_raw_varint32(v.get_cached_size())?;
-                    v.write_to_with_cached_sizes(os)?;
-                },
-                &RuntimeEnv_oneof_python_runtime_env::conda_runtime_env(ref v) => {
-                    os.write_tag(7, ::protobuf::wire_format::WireTypeLengthDelimited)?;
-                    os.write_raw_varint32(v.get_cached_size())?;
-                    v.write_to_with_cached_sizes(os)?;
-                },
-                &RuntimeEnv_oneof_python_runtime_env::py_container_runtime_env(ref v) => {
-                    os.write_tag(8, ::protobuf::wire_format::WireTypeLengthDelimited)?;
-                    os.write_raw_varint32(v.get_cached_size())?;
-                    v.write_to_with_cached_sizes(os)?;
-                },
-                &RuntimeEnv_oneof_python_runtime_env::py_plugin_runtime_env(ref v) => {
-                    os.write_tag(9, ::protobuf::wire_format::WireTypeLengthDelimited)?;
-                    os.write_raw_varint32(v.get_cached_size())?;
-                    v.write_to_with_cached_sizes(os)?;
-                },
-            };
+        if let Some(ref v) = self.java_runtime_env.as_ref() {
+            os.write_tag(5, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+            os.write_raw_varint32(v.get_cached_size())?;
+            v.write_to_with_cached_sizes(os)?;
         }
-        if let ::std::option::Option::Some(ref v) = self.java_runtime_env {
-            match v {
-                &RuntimeEnv_oneof_java_runtime_env::jars_runtime_env(ref v) => {
-                    os.write_tag(10, ::protobuf::wire_format::WireTypeLengthDelimited)?;
-                    os.write_raw_varint32(v.get_cached_size())?;
-                    v.write_to_with_cached_sizes(os)?;
-                },
-                &RuntimeEnv_oneof_java_runtime_env::maven_runtime_env(ref v) => {
-                    os.write_tag(11, ::protobuf::wire_format::WireTypeLengthDelimited)?;
-                    os.write_raw_varint32(v.get_cached_size())?;
-                    v.write_to_with_cached_sizes(os)?;
-                },
-                &RuntimeEnv_oneof_java_runtime_env::java_container_runtime_env(ref v) => {
-                    os.write_tag(12, ::protobuf::wire_format::WireTypeLengthDelimited)?;
-                    os.write_raw_varint32(v.get_cached_size())?;
-                    v.write_to_with_cached_sizes(os)?;
-                },
-                &RuntimeEnv_oneof_java_runtime_env::java_plugin_runtime_env(ref v) => {
-                    os.write_tag(13, ::protobuf::wire_format::WireTypeLengthDelimited)?;
-                    os.write_raw_varint32(v.get_cached_size())?;
-                    v.write_to_with_cached_sizes(os)?;
-                },
-            };
+        if let Some(ref v) = self.cpp_runtime_env.as_ref() {
+            os.write_tag(6, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+            os.write_raw_varint32(v.get_cached_size())?;
+            v.write_to_with_cached_sizes(os)?;
+        }
+        if let Some(ref v) = self.uris.as_ref() {
+            os.write_tag(7, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+            os.write_raw_varint32(v.get_cached_size())?;
+            v.write_to_with_cached_sizes(os)?;
         }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -2743,20 +3441,10 @@ impl ::protobuf::Message for RuntimeEnv {
         static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
         descriptor.get(|| {
             let mut fields = ::std::vec::Vec::new();
-            fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
-                "py_modules",
-                |m: &RuntimeEnv| { &m.py_modules },
-                |m: &mut RuntimeEnv| { &mut m.py_modules },
-            ));
             fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
                 "working_dir",
                 |m: &RuntimeEnv| { &m.working_dir },
                 |m: &mut RuntimeEnv| { &mut m.working_dir },
-            ));
-            fields.push(::protobuf::reflect::accessor::make_singular_ptr_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<RuntimeEnvUris>>(
-                "uris",
-                |m: &RuntimeEnv| { &m.uris },
-                |m: &mut RuntimeEnv| { &mut m.uris },
             ));
             fields.push(::protobuf::reflect::accessor::make_map_accessor::<_, ::protobuf::types::ProtobufTypeString, ::protobuf::types::ProtobufTypeString>(
                 "env_vars",
@@ -2768,45 +3456,25 @@ impl ::protobuf::Message for RuntimeEnv {
                 |m: &RuntimeEnv| { &m.extensions },
                 |m: &mut RuntimeEnv| { &mut m.extensions },
             ));
-            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, PipRuntimeEnv>(
-                "pip_runtime_env",
-                RuntimeEnv::has_pip_runtime_env,
-                RuntimeEnv::get_pip_runtime_env,
+            fields.push(::protobuf::reflect::accessor::make_singular_ptr_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<PythonRuntimeEnv>>(
+                "python_runtime_env",
+                |m: &RuntimeEnv| { &m.python_runtime_env },
+                |m: &mut RuntimeEnv| { &mut m.python_runtime_env },
             ));
-            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, CondaRuntimeEnv>(
-                "conda_runtime_env",
-                RuntimeEnv::has_conda_runtime_env,
-                RuntimeEnv::get_conda_runtime_env,
+            fields.push(::protobuf::reflect::accessor::make_singular_ptr_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<JavaRuntimeEnv>>(
+                "java_runtime_env",
+                |m: &RuntimeEnv| { &m.java_runtime_env },
+                |m: &mut RuntimeEnv| { &mut m.java_runtime_env },
             ));
-            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, ContainerRuntimeEnv>(
-                "py_container_runtime_env",
-                RuntimeEnv::has_py_container_runtime_env,
-                RuntimeEnv::get_py_container_runtime_env,
+            fields.push(::protobuf::reflect::accessor::make_singular_ptr_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<CppRuntimeEnv>>(
+                "cpp_runtime_env",
+                |m: &RuntimeEnv| { &m.cpp_runtime_env },
+                |m: &mut RuntimeEnv| { &mut m.cpp_runtime_env },
             ));
-            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, PluginRuntimeEnv>(
-                "py_plugin_runtime_env",
-                RuntimeEnv::has_py_plugin_runtime_env,
-                RuntimeEnv::get_py_plugin_runtime_env,
-            ));
-            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, JarsRuntimeEnv>(
-                "jars_runtime_env",
-                RuntimeEnv::has_jars_runtime_env,
-                RuntimeEnv::get_jars_runtime_env,
-            ));
-            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, MavenRuntimeEnv>(
-                "maven_runtime_env",
-                RuntimeEnv::has_maven_runtime_env,
-                RuntimeEnv::get_maven_runtime_env,
-            ));
-            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, ContainerRuntimeEnv>(
-                "java_container_runtime_env",
-                RuntimeEnv::has_java_container_runtime_env,
-                RuntimeEnv::get_java_container_runtime_env,
-            ));
-            fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, PluginRuntimeEnv>(
-                "java_plugin_runtime_env",
-                RuntimeEnv::has_java_plugin_runtime_env,
-                RuntimeEnv::get_java_plugin_runtime_env,
+            fields.push(::protobuf::reflect::accessor::make_singular_ptr_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<RuntimeEnvUris>>(
+                "uris",
+                |m: &RuntimeEnv| { &m.uris },
+                |m: &mut RuntimeEnv| { &mut m.uris },
             ));
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<RuntimeEnv>(
                 "RuntimeEnv",
@@ -2824,19 +3492,13 @@ impl ::protobuf::Message for RuntimeEnv {
 
 impl ::protobuf::Clear for RuntimeEnv {
     fn clear(&mut self) {
-        self.py_modules.clear();
         self.working_dir.clear();
-        self.uris.clear();
         self.env_vars.clear();
         self.extensions.clear();
-        self.python_runtime_env = ::std::option::Option::None;
-        self.python_runtime_env = ::std::option::Option::None;
-        self.python_runtime_env = ::std::option::Option::None;
-        self.python_runtime_env = ::std::option::Option::None;
-        self.java_runtime_env = ::std::option::Option::None;
-        self.java_runtime_env = ::std::option::Option::None;
-        self.java_runtime_env = ::std::option::Option::None;
-        self.java_runtime_env = ::std::option::Option::None;
+        self.python_runtime_env.clear();
+        self.java_runtime_env.clear();
+        self.cpp_runtime_env.clear();
+        self.uris.clear();
         self.unknown_fields.clear();
     }
 }
@@ -3102,38 +3764,47 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ginRuntimeEnv\x12:\n\x07plugins\x18\x01\x20\x03(\x0b2\x20.ray.rpc.Plugin\
     RuntimeEnv.PluginR\x07plugins\x1a?\n\x06Plugin\x12\x1d\n\nclass_path\x18\
     \x01\x20\x01(\tR\tclassPath\x12\x16\n\x06config\x18\x02\x20\x01(\tR\x06c\
-    onfig\"\x10\n\x0eJarsRuntimeEnv\"\x11\n\x0fMavenRuntimeEnv\"\xb7\x01\n\
-    \x0eRuntimeEnvUris\x12&\n\x0fworking_dir_uri\x18\x01\x20\x01(\tR\rworkin\
-    gDirUri\x12&\n\x0fpy_modules_uris\x18\x02\x20\x03(\tR\rpyModulesUris\x12\
-    \x1b\n\tconda_uri\x18\x03\x20\x01(\tR\x08condaUri\x12\x17\n\x07pip_uri\
-    \x18\x04\x20\x01(\tR\x06pipUri\x12\x1f\n\x0bplugin_uris\x18\x05\x20\x03(\
-    \tR\npluginUris\"\x91\x08\n\nRuntimeEnv\x12\x1d\n\npy_modules\x18\x01\
-    \x20\x03(\tR\tpyModules\x12\x1f\n\x0bworking_dir\x18\x02\x20\x01(\tR\nwo\
-    rkingDir\x12+\n\x04uris\x18\x03\x20\x01(\x0b2\x17.ray.rpc.RuntimeEnvUris\
-    R\x04uris\x12;\n\x08env_vars\x18\x04\x20\x03(\x0b2\x20.ray.rpc.RuntimeEn\
-    v.EnvVarsEntryR\x07envVars\x12C\n\nextensions\x18\x05\x20\x03(\x0b2#.ray\
-    .rpc.RuntimeEnv.ExtensionsEntryR\nextensions\x12@\n\x0fpip_runtime_env\
-    \x18\x06\x20\x01(\x0b2\x16.ray.rpc.PipRuntimeEnvH\0R\rpipRuntimeEnv\x12F\
-    \n\x11conda_runtime_env\x18\x07\x20\x01(\x0b2\x18.ray.rpc.CondaRuntimeEn\
-    vH\0R\x0fcondaRuntimeEnv\x12W\n\x18py_container_runtime_env\x18\x08\x20\
-    \x01(\x0b2\x1c.ray.rpc.ContainerRuntimeEnvH\0R\x15pyContainerRuntimeEnv\
-    \x12N\n\x15py_plugin_runtime_env\x18\t\x20\x01(\x0b2\x19.ray.rpc.PluginR\
-    untimeEnvH\0R\x12pyPluginRuntimeEnv\x12C\n\x10jars_runtime_env\x18\n\x20\
-    \x01(\x0b2\x17.ray.rpc.JarsRuntimeEnvH\x01R\x0ejarsRuntimeEnv\x12F\n\x11\
-    maven_runtime_env\x18\x0b\x20\x01(\x0b2\x18.ray.rpc.MavenRuntimeEnvH\x01\
-    R\x0fmavenRuntimeEnv\x12[\n\x1ajava_container_runtime_env\x18\x0c\x20\
-    \x01(\x0b2\x1c.ray.rpc.ContainerRuntimeEnvH\x01R\x17javaContainerRuntime\
-    Env\x12R\n\x17java_plugin_runtime_env\x18\r\x20\x01(\x0b2\x19.ray.rpc.Pl\
-    uginRuntimeEnvH\x01R\x14javaPluginRuntimeEnv\x1a:\n\x0cEnvVarsEntry\x12\
-    \x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\
-    \x01(\tR\x05value:\x028\x01\x1a=\n\x0fExtensionsEntry\x12\x10\n\x03key\
-    \x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\tR\x05va\
-    lue:\x028\x01B\x14\n\x12python_runtime_envB\x12\n\x10java_runtime_env\"\
-    \x95\x01\n\x0eRuntimeEnvInfo\x124\n\x16serialized_runtime_env\x18\x01\
-    \x20\x01(\tR\x14serializedRuntimeEnv\x12\x12\n\x04uris\x18\x02\x20\x03(\
-    \tR\x04uris\x129\n\x19runtime_env_eager_install\x18\x03\x20\x01(\x08R\
-    \x16runtimeEnvEagerInstallB\x1d\n\x18io.ray.runtime.generated\xf8\x01\
-    \x01b\x06proto3\
+    onfig\"\xf0\x02\n\x10PythonRuntimeEnv\x12\x1d\n\npy_modules\x18\x01\x20\
+    \x03(\tR\tpyModules\x12@\n\x0fpip_runtime_env\x18\x02\x20\x01(\x0b2\x16.\
+    ray.rpc.PipRuntimeEnvH\0R\rpipRuntimeEnv\x12F\n\x11conda_runtime_env\x18\
+    \x03\x20\x01(\x0b2\x18.ray.rpc.CondaRuntimeEnvH\0R\x0fcondaRuntimeEnv\
+    \x12R\n\x15container_runtime_env\x18\x04\x20\x01(\x0b2\x1c.ray.rpc.Conta\
+    inerRuntimeEnvH\0R\x13containerRuntimeEnv\x12I\n\x12plugin_runtime_env\
+    \x18\x05\x20\x01(\x0b2\x19.ray.rpc.PluginRuntimeEnvH\0R\x10pluginRuntime\
+    EnvB\x14\n\x12python_runtime_env\"\x11\n\x0fMavenRuntimeEnv\"\xf0\x02\n\
+    \x0eJavaRuntimeEnv\x12%\n\x0edependent_jars\x18\x01\x20\x03(\tR\rdepende\
+    ntJars\x12\x1f\n\x0bjvm_options\x18\x02\x20\x03(\tR\njvmOptions\x12\x1b\
+    \n\tjava_home\x18\x03\x20\x01(\tR\x08javaHome\x12F\n\x11maven_runtime_en\
+    v\x18\x04\x20\x01(\x0b2\x18.ray.rpc.MavenRuntimeEnvH\0R\x0fmavenRuntimeE\
+    nv\x12R\n\x15container_runtime_env\x18\x05\x20\x01(\x0b2\x1c.ray.rpc.Con\
+    tainerRuntimeEnvH\0R\x13containerRuntimeEnv\x12I\n\x12plugin_runtime_env\
+    \x18\x06\x20\x01(\x0b2\x19.ray.rpc.PluginRuntimeEnvH\0R\x10pluginRuntime\
+    EnvB\x12\n\x10java_runtime_env\"\xf2\x01\n\rCppRuntimeEnv\x12/\n\x13depe\
+    ndent_libraries\x18\x01\x20\x03(\tR\x12dependentLibraries\x12R\n\x15cont\
+    ainer_runtime_env\x18\x02\x20\x01(\x0b2\x1c.ray.rpc.ContainerRuntimeEnvH\
+    \0R\x13containerRuntimeEnv\x12I\n\x12plugin_runtime_env\x18\x03\x20\x01(\
+    \x0b2\x19.ray.rpc.PluginRuntimeEnvH\0R\x10pluginRuntimeEnvB\x11\n\x0fcpp\
+    _runtime_env\"\xb7\x01\n\x0eRuntimeEnvUris\x12&\n\x0fworking_dir_uri\x18\
+    \x01\x20\x01(\tR\rworkingDirUri\x12&\n\x0fpy_modules_uris\x18\x02\x20\
+    \x03(\tR\rpyModulesUris\x12\x1b\n\tconda_uri\x18\x03\x20\x01(\tR\x08cond\
+    aUri\x12\x17\n\x07pip_uri\x18\x04\x20\x01(\tR\x06pipUri\x12\x1f\n\x0bplu\
+    gin_uris\x18\x05\x20\x03(\tR\npluginUris\"\xa3\x04\n\nRuntimeEnv\x12\x1f\
+    \n\x0bworking_dir\x18\x01\x20\x01(\tR\nworkingDir\x12;\n\x08env_vars\x18\
+    \x02\x20\x03(\x0b2\x20.ray.rpc.RuntimeEnv.EnvVarsEntryR\x07envVars\x12C\
+    \n\nextensions\x18\x03\x20\x03(\x0b2#.ray.rpc.RuntimeEnv.ExtensionsEntry\
+    R\nextensions\x12G\n\x12python_runtime_env\x18\x04\x20\x01(\x0b2\x19.ray\
+    .rpc.PythonRuntimeEnvR\x10pythonRuntimeEnv\x12A\n\x10java_runtime_env\
+    \x18\x05\x20\x01(\x0b2\x17.ray.rpc.JavaRuntimeEnvR\x0ejavaRuntimeEnv\x12\
+    >\n\x0fcpp_runtime_env\x18\x06\x20\x01(\x0b2\x16.ray.rpc.CppRuntimeEnvR\
+    \rcppRuntimeEnv\x12+\n\x04uris\x18\x07\x20\x01(\x0b2\x17.ray.rpc.Runtime\
+    EnvUrisR\x04uris\x1a:\n\x0cEnvVarsEntry\x12\x10\n\x03key\x18\x01\x20\x01\
+    (\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\tR\x05value:\x028\x01\
+    \x1a=\n\x0fExtensionsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\
+    \x12\x14\n\x05value\x18\x02\x20\x01(\tR\x05value:\x028\x01\"\x95\x01\n\
+    \x0eRuntimeEnvInfo\x124\n\x16serialized_runtime_env\x18\x01\x20\x01(\tR\
+    \x14serializedRuntimeEnv\x12\x12\n\x04uris\x18\x02\x20\x03(\tR\x04uris\
+    \x129\n\x19runtime_env_eager_install\x18\x03\x20\x01(\x08R\x16runtimeEnv\
+    EagerInstallB\x1d\n\x18io.ray.runtime.generated\xf8\x01\x01b\x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;

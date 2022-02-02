@@ -167,11 +167,11 @@ message RuntimeEnv {
   /// The extension fields.
   map<string, string> extensions = 3;
   /// python runtime env
-  optional PythonRuntimeEnv python_runtime_env = 4;
+  PythonRuntimeEnv python_runtime_env = 4;
   /// java runtime env
-  optional JavaRuntimeEnv java_runtime_env = 5;
+  JavaRuntimeEnv java_runtime_env = 5;
   /// cpp runtime env
-  optional CppRuntimeEnv cpp_runtime_env = 6;
+  CppRuntimeEnv cpp_runtime_env = 6;
   /// TODO(SongGuyang): Remove this field. Issue
   /// https://github.com/ray-project/ray/issues/21695.
   /// Runtime env uris of different types.

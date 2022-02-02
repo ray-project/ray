@@ -1719,7 +1719,7 @@ def start_raylet(
 
     if os.path.exists(DEFAULT_RUST_WORKER_EXECUTABLE):
         rust_worker_command = build_rust_worker_command(
-            "", redis_address, plasma_store_name, raylet_name, redis_password,
+            "", gcs_address if use_gcs_for_bootstrap() else redis_address, plasma_store_name, raylet_name, redis_password,
             session_dir, log_dir, node_ip_address)
     else:
         rust_worker_command = []
@@ -1969,7 +1969,7 @@ def build_cpp_worker_command(
         f"--ray_plasma_store_socket_name={plasma_store_name}",
         f"--ray_raylet_socket_name={raylet_name}",
         "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--ray_address={redis_address}",
+        f"--ray_address={bootstrap_address}",
         f"--ray_redis_password={redis_password}",
         f"--ray_session_dir={session_dir}",
         f"--ray_logs_dir={log_dir}",
@@ -1980,7 +1980,7 @@ def build_cpp_worker_command(
     return command
 
 
-def build_rust_worker_command(rust_worker_options, redis_address,
+def build_rust_worker_command(rust_worker_options, bootstrap_address,
                               plasma_store_name, raylet_name, redis_password,
                               session_dir, log_dir, node_ip_address):
     """This method assembles the command used to start a Rust worker.
