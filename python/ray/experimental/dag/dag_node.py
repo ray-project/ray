@@ -118,7 +118,6 @@ class DAGNode:
         children = f.find_nodes(
             [self._bound_args, self._bound_kwargs, self._bound_options]
         )
-
         # Update replacement table and execute the replace.
         for node in children:
             if node not in replace_table:
@@ -129,10 +128,10 @@ class DAGNode:
         return self.copy(new_args, new_kwargs, new_options)
 
     def apply_recursive(self, fn: "Callable[[DAGNode], T]") -> T:
-        """Transform each node in this DAG in a bottom-up tree walk.
+        """Apply callable on each node in this DAG in a bottom-up tree walk.
 
         Args:
-            visitor: Callable that will be applied once to each node in the
+            fn: Callable that will be applied once to each node in the
                 DAG. It will be applied recursively bottom-up, so nodes can
                 assume the visitor has been applied to their args already.
 
