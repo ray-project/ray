@@ -1,4 +1,4 @@
-
+#include
 namespace ray {
 namespace syncing {
 
@@ -15,13 +15,11 @@ class ComponentSyncer {
  public:
   explicit ComponentSyncer();
   void Register(const std::string& component, const Reporter* reporter, Receiver* receiver);
-
+  void
  private:
   absl::flat_hash_map<std::string, std::pair<const Reporter*, Receiver*>> components_;
 
   absl::flat_hash_map<ray::rpc::Address, std::vector<std::string>> messages_;
-
-  std::vector<Connections> connections_;
 
 };
 
