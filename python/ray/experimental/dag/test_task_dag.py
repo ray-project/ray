@@ -2,6 +2,7 @@ import pytest
 
 import ray
 
+
 @ray.remote
 class Counter:
     def __init__(self, init_value=0):
@@ -111,9 +112,7 @@ def test_invalid_task_options():
     # Ensure current DAG is executable
     assert ray.get(dag.execute()) == 4
     invalid_dag = b.options(num_cpus=-1)._bind(a_ref)
-    with pytest.raises(
-        ValueError, match=".*Resource quantities may not be negative.*"
-    ):
+    with pytest.raises(ValueError, match=".*Resource quantities may not be negative.*"):
         ray.get(invalid_dag.execute())
 
 

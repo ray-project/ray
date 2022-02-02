@@ -2,7 +2,7 @@ import pytest
 import pickle
 
 import ray
-from ray.experimental.dag.dag_node import DAGNode
+from ray.experimental.dag import DAGNode
 
 
 @ray.remote
@@ -15,6 +15,7 @@ class Counter:
 
     def get(self):
         return self.i
+
 
 @ray.remote
 class Actor:
@@ -59,9 +60,7 @@ def test_basic_actor_dag_constructor_options():
     dag = a1.get._bind()
     assert ray.get(dag.execute()) == 10
 
-    a1 = Actor.options(
-        name="Actor", namespace="test", max_pending_calls=10
-    )._bind(10)
+    a1 = Actor.options(name="Actor", namespace="test", max_pending_calls=10)._bind(10)
     dag = a1.get._bind()
     # Ensure execution result is identical with .options() in init()
     assert ray.get(dag.execute()) == 10
@@ -70,6 +69,7 @@ def test_basic_actor_dag_constructor_options():
     assert a1.get_options().get("namespace") == "test"
     assert a1.get_options().get("max_pending_calls") == 10
 
+
 def test_actor_method_options():
     a1 = Actor._bind(10)
     dag = a1.get.options(name="actor_method_options")._bind()
@@ -77,19 +77,20 @@ def test_actor_method_options():
     assert ray.get(dag.execute()) == 10
     assert dag.get_options().get("name") == "actor_method_options"
 
+
 def test_basic_actor_dag_constructor_invalid_options():
     a1 = Actor.options(num_cpus=-1)._bind(10)
     invalid_dag = a1.get._bind()
-    with pytest.raises(
-        ValueError, match=".*Resource quantities may not be negative.*"
-    ):
+    with pytest.raises(ValueError, match=".*Resource quantities may not be negative.*"):
         ray.get(invalid_dag.execute())
+
 
 def test_actor_options_complicated():
     """Test a more complicated setup where we apply .options() in both
     constructor and method call with overlapping keys, and ensure end to end
     options correctness.
     """
+
     @ray.remote
     def combine(x, y):
         return x + y
@@ -109,9 +110,9 @@ def test_actor_options_complicated():
 
     print(dag)
     assert ray.get(dag.execute()) == 32
-    test_a1 = dag.get_args()[0] # call graph for a1.get._bind()
-    test_a2 = dag.get_args()[1] # call graph for a2.get._bind()
-    assert test_a2.get_options() is None # No .options() at outer call
+    test_a1 = dag.get_args()[0]  # call graph for a1.get._bind()
+    test_a2 = dag.get_args()[1]  # call graph for a2.get._bind()
+    assert test_a2.get_options() is None  # No .options() at outer call
     # refer to a2 constructor .options() call
     assert test_a2.get_args()[0].get_options().get("name") == "a2_v0"
     # refer to actor method a2.inc.options() call

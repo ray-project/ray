@@ -1,5 +1,11 @@
 import ray
 from ray.experimental.dag.py_obj_scanner import _PyObjScanner
+from ray.experimental.dag.format_utils import (
+    get_args_lines,
+    get_kwargs_lines,
+    get_options_lines,
+    get_indentation,
+)
 
 from typing import Optional, Union, List, Tuple, Dict, Any, TypeVar, Callable, Set
 import uuid
@@ -167,99 +173,11 @@ class DAGNode:
         instance._stable_uuid = self._stable_uuid
         return instance
 
-    def _get_indentation(self):
-        return "    "
-
-    def _get_args_lines(self):
-        indent = self._get_indentation()
-        lines = []
-        for arg in self._bound_args:
-            if isinstance(arg, DAGNode):
-                node_repr_lines = str(arg).split("\n")
-                for node_repr_line in node_repr_lines:
-                    lines.append(f"{indent}" + node_repr_line)
-            elif isinstance(arg, list):
-                for ele in arg:
-                    node_repr_lines = str(ele).split("\n")
-                    for node_repr_line in node_repr_lines:
-                        lines.append(f"{indent}" + node_repr_line)
-            elif isinstance(arg, dict):
-                for key, val in arg.items():
-                    node_repr_lines = str(val).split("\n")
-                    for node_repr_line in node_repr_lines:
-                        lines.append(f"{indent}" + node_repr_line)
-            # TODO: (jiaodong) Handle nested containers and other obj types
-            else:
-                lines.append(str(arg))
-        if len(lines) > 0:
-            args_line = "["
-            for args in lines:
-                args_line += f"\n{indent}{args}"
-            args_line += f"\n{indent}]"
-        else:
-            args_line = "[]"
-
-        return args_line
-
-    def _get_kwargs_lines(self):
-        indent = self._get_indentation()
-        kwargs_lines = []
-        for key, val in self._bound_kwargs.items():
-            if isinstance(val, DAGNode):
-                node_repr_lines = str(val).split("\n")
-                for index, node_repr_line in enumerate(node_repr_lines):
-                    if index == 0:
-                        kwargs_lines.append(
-                            f"{indent}{key}:" + f"{indent}" + node_repr_line
-                        )
-                    else:
-                        kwargs_lines.append(f"{indent}{indent}" + node_repr_line)
-
-            elif isinstance(val, list):
-                for ele in val:
-                    node_repr_lines = str(ele).split("\n")
-                    for node_repr_line in node_repr_lines:
-                        kwargs_lines.append(f"{indent}" + node_repr_line)
-            elif isinstance(val, dict):
-                for inner_key, inner_val in val.items():
-                    node_repr_lines = str(inner_val).split("\n")
-                    for node_repr_line in node_repr_lines:
-                        kwargs_lines.append(f"{indent}" + node_repr_line)
-            # TODO: (jiaodong) Handle nested containers and other obj types
-            else:
-                kwargs_lines.append(val)
-
-        if len(kwargs_lines) > 0:
-            kwargs_line = "{"
-            for line in kwargs_lines:
-                kwargs_line += f"\n{indent}{line}"
-            kwargs_line += f"\n{indent}}}"
-        else:
-            kwargs_line = "{}"
-
-        return kwargs_line
-
-    def _get_options_lines(self):
-        """Pretty prints .options() in DAGNode. Only prints non-empty values."""
-        if not self._bound_options:
-            return "{}"
-        indent = self._get_indentation()
-        options_lines = []
-        for key, val in self._bound_options.items():
-            if val:
-                options_lines.append(f"{indent}{key}: " + str(val))
-
-        options_line = "{"
-        for line in options_lines:
-            options_line += f"\n{indent}{line}"
-        options_line += f"\n{indent}}}"
-        return options_line
-
-    def __str__(self):
-        indent = self._get_indentation()
-        args_line = self._get_args_lines()
-        kwargs_line = self._get_kwargs_lines()
-        options_line = self._get_options_lines()
+    def __str__(self) -> str:
+        indent = get_indentation()
+        args_line = get_args_lines(self._bound_args)
+        kwargs_line = get_kwargs_lines(self._bound_kwargs)
+        options_line = get_options_lines(self._bound_options)
         node_type = f"{self.__class__.__name__}"
         # kwargs_children = self._bound_kwargs
         return (

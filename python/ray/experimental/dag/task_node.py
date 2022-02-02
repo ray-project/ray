@@ -2,7 +2,7 @@ from typing import Any, Dict, List
 
 
 import ray
-from ray.experimental.dag.dag_node import DAGNode
+from ray.experimental.dag import DAGNode
 
 
 class TaskNode(DAGNode):
