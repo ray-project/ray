@@ -596,30 +596,6 @@ py_test(
     srcs = ["agents/bandit/tests/test_bandits.py"],
 )
 
-py_test(
-    name = "agents/bandit/tests/lin_ts_train_wheel_env",
-    main = "agents/bandit/tests/LinTS_train_wheel_env.py",
-    tags = ["team:ml", "trainers_dir"],
-    size = "small",
-    srcs = ["agents/bandit/tests/LinTS_train_wheel_env.py"],
-)
-
-py_test(
-    name = "bandit/tune_lin_ts_train_wheel_env",
-    main = "agents/bandit/tests/tune_LinTS_train_wheel_env.py",
-    tags = ["team:ml", "trainers_dir"],
-    size = "small",
-    srcs = ["agents/bandit/tests/tune_LinTS_train_wheel_env.py"],
-)
-
-py_test(
-    name = "bandit/tune_lin_ucb_train_recommendation",
-    main = "agents/bandit/tests/tune_LinUCB_train_recommendation.py",
-    tags = ["team:ml", "trainers_dir"],
-    size = "small",
-    srcs = ["agents/bandit/tests/tune_LinUCB_train_recommendation.py"],
-)
-
 # CQLTrainer
 py_test(
     name = "test_cql",
@@ -2764,6 +2740,39 @@ py_test(
     size = "medium",
     srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=PG"]
+)
+
+
+py_test(
+    name = "examples/bandit/lin_ts_train_wheel_env",
+    main = "examples/bandit/lin_ts_train_wheel_env.py",
+    tags = ["team:ml", "examples"],
+    size = "small",
+    srcs = ["examples/bandit/lin_ts_train_wheel_env.py"],
+)
+
+py_test(
+    name = "examples/bandit/tune_lin_ts_train_wheel_env",
+    main = "examples/bandit/tune_lin_ts_train_wheel_env.py",
+    tags = ["team:ml", "examples"],
+    size = "small",
+    srcs = ["examples/bandit/tune_lin_ts_train_wheel_env.py"],
+)
+
+py_test(
+    name = "examples/bandit/tune_lin_ucb_train_recommendation",
+    main = "examples/bandit/tune_lin_ucb_train_recommendation.py",
+    tags = ["team:ml", "examples", ],
+    size = "small",
+    srcs = ["examples/bandit/tune_lin_ucb_train_recommendation.py"],
+)
+
+py_test(
+    name = "examples/bandit/tune_lin_ucb_train_recsim_env",
+    main = "examples/bandit/tune_lin_ucb_train_recsim_env.py",
+    tags = ["team:ml", "examples", ],
+    size = "small",
+    srcs = ["examples/bandit/tune_lin_ucb_train_recsim_env.py"],
 )
 
 # --------------------------------------------------------------------
