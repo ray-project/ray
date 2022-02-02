@@ -44,7 +44,9 @@ class LeagueBuilder(metaclass=ABCMeta):
 class NoLeagueBuilder(LeagueBuilder):
     """A LeagueBuilder that does nothing.
 
-    Useful for simple non-league-building self-play setups.
+    Useful for simple, non-league-building multi-agent setups.
+    See e.g.
+    `rllib/tuned_examples/alpha_star/multi-agent-cart-pole-alpha-star.yaml`
     """
 
     def build_league(self, result: ResultDict) -> None:
