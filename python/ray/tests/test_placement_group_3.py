@@ -20,7 +20,7 @@ from ray._private.test_utils import (
     is_placement_group_removed,
     convert_actor_state,
 )
-from ray.exceptions import RaySystemError
+from ray.exceptions import RaySystemError, GetTimeoutError
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 import ray.experimental.internal_kv as internal_kv
@@ -697,10 +697,8 @@ def test_infeasible_pg(ray_start_cluster):
     pg = placement_group([bundle], name="worker_1", strategy="STRICT_PACK")
 
     # Placement group is infeasible.
-    try:
-        pg.wait(timeout=3)
-    except Exception:
-        pass
+    with pytest.raises(GetTimeoutError):
+        ray.get(pg.ready(), timeout=3)
 
     state = ray.util.placement_group_table()[pg.id.hex()]["stats"]["scheduling_state"]
     assert state == "INFEASIBLE"
