@@ -200,6 +200,7 @@ NIGHTLY_TESTS = {
         "impala",
         "many_actor_tasks",
         "many_drivers",
+        "many_logs",
         "many_ppo",
         "many_tasks",
         "many_tasks_serialized_ids",
