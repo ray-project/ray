@@ -1217,7 +1217,6 @@ def deploy_group(
 
         tags.append(log_deploy_update_status(name, version, updating))
 
-    # This section is also adapted from api.py's Client's deploy
     nonblocking_goal_ids = []
     for i in range(len(deployments)):
         deployment = deployments[i]
