@@ -211,6 +211,12 @@
                             "type": ["string", "null"],
                             "description": "Path to CloudWatch Dashboard config file. See https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/CloudWatch-Dashboard-Body-Structure.html for additional details."
                         }
+                    },
+                    "alarm": {
+                        "config": {
+                            "type": ["string", "null"],
+                            "description": "Path to CloudWatch Alarm config file. See https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_PutMetricAlarm.html for additional details."
+                        }
                     }
                 }
             }

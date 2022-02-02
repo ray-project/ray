@@ -1,7 +1,7 @@
 import asyncio
 import concurrent.futures
-from dataclasses import dataclass, field
-from typing import Dict, Optional, Union, Coroutine
+from dataclasses import dataclass
+from typing import Optional, Union, Coroutine
 import threading
 
 from ray.serve.common import EndpointTag
@@ -30,9 +30,6 @@ class HandleOptions:
     """Options for each ServeHandle instances. These fields are immutable."""
 
     method_name: str = "__call__"
-    shard_key: Optional[str] = None
-    http_method: str = "GET"
-    http_headers: Dict[str, str] = field(default_factory=dict)
 
 
 class RayServeHandle:
@@ -116,25 +113,16 @@ class RayServeHandle:
         self,
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
-        shard_key: Union[str, DEFAULT] = DEFAULT.VALUE,
-        http_method: Union[str, DEFAULT] = DEFAULT.VALUE,
-        http_headers: Union[Dict[str, str], DEFAULT] = DEFAULT.VALUE,
     ):
         """Set options for this handle.
 
         Args:
             method_name(str): The method to invoke.
-            http_method(str): The HTTP method to use for the request.
-            shard_key(str): A string to use to deterministically map this
-                request to a deployment if there are multiple.
         """
         new_options_dict = self.handle_options.__dict__.copy()
         user_modified_options_dict = {
             key: value
-            for key, value in zip(
-                ["method_name", "shard_key", "http_method", "http_headers"],
-                [method_name, shard_key, http_method, http_headers],
-            )
+            for key, value in zip(["method_name"], [method_name])
             if value != DEFAULT.VALUE
         }
         new_options_dict.update(user_modified_options_dict)
@@ -153,9 +141,6 @@ class RayServeHandle:
             get_random_letters(10),  # Used for debugging.
             deployment_name,
             call_method=handle_options.method_name,
-            shard_key=handle_options.shard_key,
-            http_method=handle_options.http_method,
-            http_headers=handle_options.http_headers,
             http_arg_is_pickled=self._pickled_http_request,
         )
         coro = self.router.assign_request(request_metadata, *args, **kwargs)
