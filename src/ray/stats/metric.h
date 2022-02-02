@@ -330,13 +330,7 @@ class Stats {
       return;
     }
     TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
-#ifndef NDEBUG
-    // In debug build, verify tag_val is printable.
-    for (auto &c : tag_val) {
-      RAY_CHECK(isprint(c)) << "Found unprintable character " << static_cast<int>(c)
-                            << " in " << tag_val;
-    }
-#endif  // NDEBUG
+    CheckPrintableChar(tag_val);
     combined_tags.emplace_back(tag_keys_[0], std::move(tag_val));
     opencensus::stats::Record({{*measure_, val}}, std::move(combined_tags));
   }
@@ -350,19 +344,23 @@ class Stats {
     }
     TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
     for (auto &[tag_key, tag_val] : tags) {
-#ifndef NDEBUG
-      // In debug build, verify tag_val is printable.
-      for (auto &c : tag_val) {
-        RAY_CHECK(isprint(c)) << "Found unprintable character " << static_cast<int>(c)
-                              << " in " << tag_val;
-      }
-#endif  // NDEBUG
+      CheckPrintableChar(tag_val);
       combined_tags.emplace_back(TagKeyType::Register(tag_key), std::move(tag_val));
     }
     opencensus::stats::Record({{*measure_, val}}, std::move(combined_tags));
   }
 
  private:
+  void CheckPrintableChar(const std::string &val) {
+#ifndef NDEBUG
+    // In debug build, verify val is printable.
+    for (auto c : val) {
+      RAY_CHECK(isprint(c)) << "Found unprintable character code " << static_cast<int>(c)
+                            << " in " << val;
+    }
+#endif  // NDEBUG
+  }
+
   const std::vector<opencensus::tags::TagKey> tag_keys_;
   std::unique_ptr<opencensus::stats::Measure<double>> measure_;
 };
