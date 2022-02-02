@@ -8,7 +8,7 @@ parts:
       - file: ray-overview/learn-more
       - file: ray-overview/ray-libraries
 
-  - caption: Ray ML | Machine Learning
+  - caption: Ray ML
     chapters:
       - file: data/dataset
         title: Ray Data
@@ -87,7 +87,7 @@ parts:
       - file: ray-more-libs/index
         title: More Ray ML Libraries
 
-  - caption: Ray Core | Distributed Applications
+  - caption: Ray Core
     chapters:
       - file: ray-core/walkthrough
         title: Getting Started
@@ -96,7 +96,7 @@ parts:
       - file: ray-core/examples/overview
         title: "Tutorials and Examples"
 
-  - caption: Ray Clusters | Deployments
+  - caption: Ray Clusters
     chapters:
       - file: cluster/quickstart
       - file: cluster/user-guide

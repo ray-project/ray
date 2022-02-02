@@ -1046,6 +1046,7 @@ def deployment(
     num_replicas: Optional[int] = None,
     init_args: Optional[Tuple[Any]] = None,
     init_kwargs: Optional[Dict[Any, Any]] = None,
+    route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
     ray_actor_options: Optional[Dict] = None,
     user_config: Optional[Any] = None,
     max_concurrent_queries: Optional[int] = None,
