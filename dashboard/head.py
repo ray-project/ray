@@ -3,12 +3,10 @@ import sys
 import socket
 import asyncio
 import logging
-import ipaddress
 import threading
 from concurrent.futures import Future
 from queue import Queue
 
-from distutils.version import LooseVersion
 import grpc
 
 try:
@@ -22,7 +20,6 @@ from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
 import ray._private.services
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray import ray_constants
 from ray._private.gcs_pubsub import (
     gcs_pubsub_enabled,
@@ -34,13 +31,7 @@ from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import async_loop_forever
 
-# All third-party dependencies that are not included in the minimal Ray
-# installation must be included in this file. This allows us to determine if
-# the agent has the necessary dependencies to be started.
-from ray.dashboard.optional_deps import aiohttp, hdrs
-
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
 
 aiogrpc.init_grpc_aio()
 GRPC_CHANNEL_OPTIONS = (
@@ -118,7 +109,10 @@ class DashboardHead:
         redis_address,
         redis_password,
         log_dir,
+        temp_dir,
+        minimal,
     ):
+        self.minimal = minimal
         self.health_check_thread: GCSHealthCheckThread = None
         self._gcs_rpc_error_counter = 0
         # Public attributes are accessible for all head modules.
@@ -127,6 +121,9 @@ class DashboardHead:
         self.http_port = http_port
         self.http_port_retries = http_port_retries
 
+        self.gcs_address = None
+        self.redis_address = None
+        self.redis_password = None
         if use_gcs_for_bootstrap():
             assert gcs_address is not None
             self.gcs_address = gcs_address
@@ -135,11 +132,11 @@ class DashboardHead:
             self.redis_password = redis_password
 
         self.log_dir = log_dir
+        self.temp_dir = temp_dir
         self.aioredis_client = None
         self.aiogrpc_gcs_channel = None
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
-        self.http_session = None
         self.ip = ray.util.get_node_ip_address()
         if not use_gcs_for_bootstrap():
             ip, port = redis_address.split(":")
@@ -152,6 +149,23 @@ class DashboardHead:
             self.server, f"{grpc_ip}:0"
         )
         logger.info("Dashboard head grpc address: %s:%s", grpc_ip, self.grpc_port)
+        # If the dashboard is started as non-minimal version, http server should
+        # be configured to expose APIs.
+        self.http_server = None
+
+    async def _configure_http_server(self, modules):
+        from ray.dashboard.http_server_head import HttpServerDashboardHead
+
+        http_server = HttpServerDashboardHead(
+            self.ip, self.http_host, self.http_port, self.http_port_retries
+        )
+        await http_server.run(modules)
+        return http_server
+
+    @property
+    def http_session(self):
+        assert self.http_server, "Accessing unsupported API in a minimal ray."
+        return self.http_server.http_session
 
     @async_loop_forever(dashboard_consts.GCS_CHECK_ALIVE_INTERVAL_SECONDS)
     async def _gcs_check_alive(self):
@@ -199,7 +213,6 @@ class DashboardHead:
                 "Loading %s: %s", dashboard_utils.DashboardHeadModule.__name__, cls
             )
             c = cls(self)
-            dashboard_optional_utils.ClassMethodRouteTable.bind(c)
             modules.append(c)
         logger.info("Loaded %d modules.", len(modules))
         return modules
@@ -225,14 +238,6 @@ class DashboardHead:
             return await get_gcs_address_with_retry(self.aioredis_client)
 
     async def run(self):
-
-        # Create a http session for all modules.
-        # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
-        if LooseVersion(aiohttp.__version__) < LooseVersion("4.0.0"):
-            self.http_session = aiohttp.ClientSession(loop=asyncio.get_event_loop())
-        else:
-            self.http_session = aiohttp.ClientSession()
-
         gcs_address = await self.get_gcs_address()
 
         # Dashboard will handle connection failure automatically
@@ -264,52 +269,23 @@ class DashboardHead:
 
         modules = self._load_modules()
 
-        # Http server should be initialized after all modules loaded.
-        # working_dir uploads for job submission can be up to 100MiB.
-        app = aiohttp.web.Application(client_max_size=100 * 1024 ** 2)
-        app.add_routes(routes=routes.bound_routes())
-
-        runner = aiohttp.web.AppRunner(app)
-        await runner.setup()
-        last_ex = None
-        for i in range(1 + self.http_port_retries):
-            try:
-                site = aiohttp.web.TCPSite(runner, self.http_host, self.http_port)
-                await site.start()
-                break
-            except OSError as e:
-                last_ex = e
-                self.http_port += 1
-                logger.warning("Try to use port %s: %s", self.http_port, e)
-        else:
-            raise Exception(
-                f"Failed to find a valid port for dashboard after "
-                f"{self.http_port_retries} retries: {last_ex}"
-            )
-        http_host, http_port, *_ = site._server.sockets[0].getsockname()
-        http_host = (
-            self.ip if ipaddress.ip_address(http_host).is_unspecified else http_host
-        )
-        logger.info("Dashboard head http address: %s:%s", http_host, http_port)
-
-        # TODO: Use async version if performance is an issue
-        # Write the dashboard head port to gcs kv.
+        http_host, http_port = self.http_host, self.http_port
+        if not self.minimal:
+            self.http_server = await self._configure_http_server(modules)
+            http_host, http_port = self.http_server.get_address()
         internal_kv._internal_kv_put(
             ray_constants.DASHBOARD_ADDRESS,
             f"{http_host}:{http_port}",
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
+
+        # TODO: Use async version if performance is an issue
+        # Write the dashboard head port to gcs kv.
         internal_kv._internal_kv_put(
             dashboard_consts.DASHBOARD_RPC_ADDRESS,
             f"{self.ip}:{self.grpc_port}",
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
-
-        # Dump registered http routes.
-        dump_routes = [r for r in app.router.routes() if r.method != hdrs.METH_HEAD]
-        for r in dump_routes:
-            logger.info(r)
-        logger.info("Registered %s routes.", len(dump_routes))
 
         # Freeze signal after all modules loaded.
         dashboard_utils.SignalManager.freeze()
@@ -321,3 +297,6 @@ class DashboardHead:
         ]
         await asyncio.gather(*concurrent_tasks, *(m.run(self.server) for m in modules))
         await self.server.wait_for_termination()
+
+        if self.http_server:
+            await self.http_server.cleanup()
