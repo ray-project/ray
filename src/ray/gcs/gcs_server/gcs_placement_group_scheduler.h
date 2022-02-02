@@ -309,6 +309,10 @@ class LeaseStatusTracker {
   /// else will be set NodeID::Nil().
   std::shared_ptr<BundleLocations> preparing_bundle_locations_;
 
+  /// Location of bundles grouped by node.
+  std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
+      grouped_preparing_bundle_locations_;
+
   /// Number of prepare requests that are returned.
   size_t prepare_request_returned_count_ = 0;
 
@@ -475,22 +479,23 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// all of bundles are atomically prepared on a given node.
   ///
   /// \param bundles Bundles to be scheduled on a node.
-  /// \param node A node to prepare resources for a given bundle.
+  /// \param node A node to prepare resources for given bundles.
   /// \param callback
   void PrepareResources(
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
       const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
       const StatusCallback &callback);
 
-  /// Send a bundle COMMIT request to a node. This means the placement group creation
+  /// Send bundles COMMIT request to a node. This means the placement group creation
   /// is ready and GCS will commit resources on a given node.
   ///
-  /// \param bundle A bundle to schedule on a node.
-  /// \param node A node to commit resources for a given bundle.
+  /// \param bundles Bundles to be scheduled on a node.
+  /// \param node A node to commit resources for given bundles.
   /// \param callback
-  void CommitResources(const std::shared_ptr<const BundleSpecification> &bundle,
-                       const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
-                       const StatusCallback callback);
+  void CommitResources(
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
+      const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+      const StatusCallback callback);
 
   /// Cacnel prepared or committed resources from a node.
   /// Nodes will be in charge of tracking state of a bundle.

@@ -1,6 +1,5 @@
 from ray.rllib.agents.dqn.apex import ApexTrainer
-from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, \
-    DEFAULT_CONFIG as DDPG_CONFIG
+from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, DEFAULT_CONFIG as DDPG_CONFIG
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
@@ -12,11 +11,9 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "optimizer": {
             "max_weight_sync_delay": 400,
             "num_replay_buffer_shards": 4,
-            "debug": False
+            "debug": False,
         },
-        "exploration_config": {
-            "type": "PerWorkerOrnsteinUhlenbeckNoise"
-        },
+        "exploration_config": {"type": "PerWorkerOrnsteinUhlenbeckNoise"},
         "n_step": 3,
         "num_gpus": 0,
         "num_workers": 32,
@@ -38,7 +35,7 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "target_network_update_freq": 500000,
         "timesteps_per_iteration": 25000,
         "worker_side_prioritization": True,
-        "min_iter_time_s": 30,
+        "min_time_s_per_reporting": 30,
     },
     _allow_unknown_configs=True,
 )
@@ -52,7 +49,8 @@ class ApexDDPGTrainer(DDPGTrainer):
 
     @staticmethod
     @override(DDPGTrainer)
-    def execution_plan(workers: WorkerSet, config: dict,
-                       **kwargs) -> LocalIterator[dict]:
+    def execution_plan(
+        workers: WorkerSet, config: dict, **kwargs
+    ) -> LocalIterator[dict]:
         """Use APEX-DQN's execution plan."""
         return ApexTrainer.execution_plan(workers, config, **kwargs)
