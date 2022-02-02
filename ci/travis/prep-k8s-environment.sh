@@ -2,9 +2,9 @@
 
 set -ex
 
-GO111MODULE="on" go get sigs.k8s.io/kind@v0.11.1
-
 ./scripts/ci.sh install_go
+
+GO111MODULE="on" go get sigs.k8s.io/kind@v0.11.1
 
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
 chmod +x kubectl
