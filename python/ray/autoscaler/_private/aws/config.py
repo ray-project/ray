@@ -6,7 +6,7 @@ import itertools
 import json
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import logging
 
 import boto3
@@ -434,6 +434,15 @@ def _key_assert_msg(node_type: str) -> str:
         )
 
 
+def _check_subnets_match_azs(
+    ec2, availability_zones: Optional[List[str]], subnet_ids: List[str]
+) -> bool:
+    if availability_zones is None:
+        return True
+    subnets = _get_subnets_or_die(ec2, tuple(subnet_ids))
+    return all(s.availability_zone in availability_zones for s in subnets)
+
+
 def _configure_subnet(config):
     ec2 = _resource("ec2", config)
     use_internal_ips = config["provider"].get("use_internal_ips", False)
@@ -479,8 +488,10 @@ def _configure_subnet(config):
             "the `provider` config."
         )
 
-    if "availability_zone" in config["provider"]:
-        azs = config["provider"]["availability_zone"].split(",")
+    azs = config["provider"].get("availability_zone")
+
+    if azs is not None:
+        azs = azs.split(",")
         subnets = [
             s
             for az in azs  # Iterate over AZs first to maintain the ordering
@@ -512,13 +523,14 @@ def _configure_subnet(config):
             node_config["SubnetIds"] = subnet_ids
         else:
             node_type_subnets = node_config["SubnetIds"]
-            if len(set(subnet_ids).intersection(node_type_subnets)) == 0:
+            if not _check_subnets_match_azs(ec2, azs, subnet_ids):
+                # assert False
                 cli_logger.abort(
-                    "MISMATCH between available subnets & specified subnets!\n"
-                    "The available subnets (as determined by Availability Zone "
-                    "state, ability to launch public IPs & Availability Zones "
-                    f"specified in the `provider` section) are: {subnets}.\n"
-                    f"Node type ({node_type}) specifies subnets: {node_type_subnets}"
+                    "MISMATCH between specified subnets and Availability Zones!\n"
+                    "The following Availability Zones were specified in the "
+                    f"`provider section`: {azs}.\n"
+                    f"Node type ({key}) specifies some subnets not in "
+                    f"these zones: {node_type_subnets}"
                 )
             subnet_src_info[key] = "config"
 
@@ -662,17 +674,22 @@ def _get_or_create_vpc_security_groups(conf, node_types):
     }
 
 
+def _get_vpc_id_or_die(ec2, subnet_id: str):
+    return _get_subnets_or_die(ec2, (subnet_id,))[0].vpc_id
+
+
 @lru_cache()
-def _get_vpc_id_or_die(ec2, subnet_id):
-    subnet = list(
-        ec2.subnets.filter(Filters=[{"Name": "subnet-id", "Values": [subnet_id]}])
+def _get_subnets_or_die(ec2, subnet_ids: Tuple[str]):
+    subnets = list(
+        ec2.subnets.filter(Filters=[{"Name": "subnet-id", "Values": list(subnet_ids)}])
     )
 
     # TODO: better error message
-    cli_logger.doassert(len(subnet) == 1, "Subnet ID not found: {}", subnet_id)
-    assert len(subnet) == 1, "Subnet ID not found: {}".format(subnet_id)
-    subnet = subnet[0]
-    return subnet.vpc_id
+    cli_logger.doassert(
+        len(subnets) == len(subnet_ids), "Not all subnet IDs found: {}", subnet_ids
+    )
+    assert len(subnets) == len(subnet_ids), "Subnet ID not found: {}".format(subnet_ids)
+    return subnets
 
 
 def _get_security_group(config, vpc_id, group_name):
