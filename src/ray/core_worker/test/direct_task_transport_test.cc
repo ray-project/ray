@@ -171,6 +171,9 @@ class MockRayletClient : public WorkerLeaseInterface {
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size, const bool is_selected_based_on_locality) override {
     num_workers_requested += 1;
+    if (grant_or_reject) {
+      num_grant_or_reject_leases_requested += 1;
+    }
     callbacks.push_back(callback);
   }
 
