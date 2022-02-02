@@ -10,7 +10,7 @@ import runpy
 import shutil
 
 from filelock import FileLock
-from typing import Optional, List, Dict, Any, Set
+from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 import ray
@@ -18,11 +18,12 @@ import ray
 from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.runtime_env.conda_utils import (
     get_conda_activate_commands,
-    create_conda_env,
+    create_conda_env_if_needed,
     delete_conda_env,
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.utils import (
+    get_directory_size_bytes,
     get_wheel_filename,
     get_master_wheel_url,
     get_release_wheel_url,
@@ -247,7 +248,14 @@ class CondaManager:
     def __init__(self, resources_dir: str):
         self._resources_dir = os.path.join(resources_dir, "conda")
         try_to_create_directory(self._resources_dir)
-        self._created_envs: Set[str] = set()
+
+        # It is not safe for multiple processes to install conda envs
+        # concurrently, even if the envs are different, so use a global
+        # lock for all conda installs and deletions.
+        # See https://github.com/ray-project/ray/issues/17086
+        self._installs_and_deletions_file_lock = os.path.join(
+            self._resources_dir, "ray-conda-installs-and-deletions.lock"
+        )
 
     def _get_path_from_hash(self, hash: str) -> str:
         """Generate a path from the hash of a conda or pip spec.
@@ -261,9 +269,17 @@ class CondaManager:
         """
         return os.path.join(self._resources_dir, hash)
 
+    def get_uri(self, runtime_env: RuntimeEnv) -> Optional[str]:
+        """Return the conda URI from the RuntimeEnv if it exists, else None."""
+        conda_uri = runtime_env.conda_uri()
+        if conda_uri != "":
+            return conda_uri
+        return None
+
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
-    ) -> bool:
+    ) -> int:
+        """Delete URI and return the number of bytes deleted."""
         logger.info(f"Got request to delete URI {uri}")
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.CONDA:
@@ -273,14 +289,49 @@ class CondaManager:
             )
 
         conda_env_path = self._get_path_from_hash(hash)
-        self._created_envs.remove(conda_env_path)
-        successful = delete_conda_env(prefix=conda_env_path, logger=logger)
+        local_dir_size = get_directory_size_bytes(conda_env_path)
+
+        with FileLock(self._installs_and_deletions_file_lock):
+            successful = delete_conda_env(prefix=conda_env_path, logger=logger)
         if not successful:
             logger.warning(f"Error when deleting conda env {conda_env_path}. ")
-        return successful
+            return 0
 
-    def setup(
+        return local_dir_size
+
+    def create(
         self,
+        uri: Optional[str],
+        runtime_env: RuntimeEnv,
+        context: RuntimeEnvContext,
+        logger: Optional[logging.Logger] = default_logger,
+    ) -> int:
+        logger.debug("Setting up conda for runtime_env: " f"{runtime_env.serialize()}")
+        protocol, hash = parse_uri(uri)
+        conda_env_name = self._get_path_from_hash(hash)
+
+        conda_dict = _get_conda_dict_with_ray_inserted(runtime_env, logger=logger)
+
+        logger.info(f"Setting up conda environment with {runtime_env}")
+        with FileLock(self._installs_and_deletions_file_lock):
+            try:
+                conda_yaml_file = os.path.join(self._resources_dir, "environment.yml")
+                with open(conda_yaml_file, "w") as file:
+                    yaml.dump(conda_dict, file)
+                create_conda_env_if_needed(
+                    conda_yaml_file, prefix=conda_env_name, logger=logger
+                )
+            finally:
+                os.remove(conda_yaml_file)
+
+            if runtime_env.get_extension("_inject_current_ray") == "True":
+                _inject_ray_to_conda_site(conda_path=conda_env_name, logger=logger)
+        logger.info(f"Finished creating conda environment at {conda_env_name}")
+        return get_directory_size_bytes(conda_env_name)
+
+    def modify_context(
+        self,
+        uri: str,
         runtime_env: RuntimeEnv,
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
@@ -288,47 +339,10 @@ class CondaManager:
         if not runtime_env.has_conda():
             return
 
-        logger.debug(
-            "Setting up conda or pip for runtime_env: " f"{runtime_env.serialize()}"
-        )
-
         if runtime_env.conda_env_name():
             conda_env_name = runtime_env.conda_env_name()
         else:
             protocol, hash = parse_uri(runtime_env.conda_uri())
             conda_env_name = self._get_path_from_hash(hash)
-
-            conda_dict = _get_conda_dict_with_ray_inserted(runtime_env, logger=logger)
-
-            # It is not safe for multiple processes to install conda envs
-            # concurrently, even if the envs are different, so use a global
-            # lock for all conda installs.
-            # See https://github.com/ray-project/ray/issues/17086
-            file_lock_name = "ray-conda-install.lock"
-            with FileLock(os.path.join(self._resources_dir, file_lock_name)):
-                try:
-                    conda_yaml_file = os.path.join(
-                        self._resources_dir, "environment.yml"
-                    )
-                    with open(conda_yaml_file, "w") as file:
-                        yaml.dump(conda_dict, file)
-
-                    if conda_env_name in self._created_envs:
-                        logger.debug(
-                            f"Conda env {conda_env_name} already "
-                            "created, skipping creation."
-                        )
-                    else:
-                        create_conda_env(
-                            conda_yaml_file, prefix=conda_env_name, logger=logger
-                        )
-                        self._created_envs.add(conda_env_name)
-                finally:
-                    os.remove(conda_yaml_file)
-
-                if runtime_env.get_extension("_inject_current_ray"):
-                    _inject_ray_to_conda_site(conda_path=conda_env_name, logger=logger)
-
         context.py_executable = "python"
         context.command_prefix += get_conda_activate_commands(conda_env_name)
-        logger.info(f"Finished setting up runtime environment at {conda_env_name}")
