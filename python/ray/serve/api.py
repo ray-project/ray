@@ -230,11 +230,11 @@ class Client:
             self._controller.deploy.remote(**controller_deploy_args)
         )
 
-        tag = log_deploy_update_status(name, version, updating)
+        tag = log_deployment_update_status(name, version, updating)
 
         if _blocking:
             self._wait_for_goal(goal_id)
-            log_deploy_ready(name, version, url, tag)
+            log_deployment_ready(name, version, url, tag)
         else:
             return goal_id
 
@@ -1215,7 +1215,7 @@ def deploy_group(
         name, version = deployment._name, deployment._version
         updating = update_goals[i][1]
 
-        tags.append(log_deploy_update_status(name, version, updating))
+        tags.append(log_deployment_update_status(name, version, updating))
 
     nonblocking_goal_ids = []
     for i in range(len(deployments)):
@@ -1225,7 +1225,7 @@ def deploy_group(
 
         if _blocking:
             wait_for_goal(goal_id, controller)
-            log_deploy_ready(name, version, url, tags[i])
+            log_deployment_ready(name, version, url, tags[i])
         else:
             nonblocking_goal_ids.append(goal_id)
 
@@ -1299,7 +1299,7 @@ def _get_deploy_args(
     return controller_deploy_args
 
 
-def log_deploy_update_status(name: str, version: str, updating: bool) -> str:
+def log_deployment_update_status(name: str, version: str, updating: bool) -> str:
     tag = f"component=serve deployment={name}"
 
     if updating:
@@ -1316,7 +1316,7 @@ def log_deploy_update_status(name: str, version: str, updating: bool) -> str:
     return tag
 
 
-def log_deploy_ready(name: str, version: str, url: str, tag: str) -> None:
+def log_deployment_ready(name: str, version: str, url: str, tag: str) -> None:
     if url is not None:
         url_part = f" at `{url}`"
     else:
