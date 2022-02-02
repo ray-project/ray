@@ -21,15 +21,6 @@ python_grpc_compile(
     deps = [":common_proto"],
 )
 
-proto_library(
-    name = "syncer_proto",
-    srcs = ["syncer.proto"],
-)
-
-cc_proto_library(
-    name = "syncer_cc_proto",
-    deps = [":syncer_proto"],
-)
 
 proto_library(
     name = "gcs_proto",
@@ -45,6 +36,16 @@ proto_library(
     name = "runtime_env_common_proto",
     srcs = ["runtime_env_common.proto"],
     visibility = ["//java:__subpackages__"],
+)
+
+proto_library(
+    name = "syncer_proto",
+    srcs = ["syncer.proto"],
+)
+
+cc_proto_library(
+    name = "syncer_cc_proto",
+    deps = [":syncer_proto"],
 )
 
 cc_proto_library(
