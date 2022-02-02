@@ -334,6 +334,7 @@ class CommandBasedClient(SyncClient):
                 self.cmd_process = self._start_process(self._last_cmd)
                 continue
             return
+        self.cmd_process = None
         raise TuneError(f"Failed sync even after {max_retries} retries.")
 
     def reset(self):
