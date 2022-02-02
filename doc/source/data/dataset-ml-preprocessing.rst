@@ -1,8 +1,8 @@
 .. _datasets-ml-preprocessing:
 
-==============================
-Loading and Processing ML Data
-==============================
+==============================================
+Data Loading and Preprocessing for ML Training
+==============================================
 
 Ray Datasets are designed to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>`.
 Compared to other loading solutions, Datasets are more flexible (e.g., can express higher-quality `per-epoch global shuffles <examples/big_data_ingestion.html>`__) and provides `higher overall performance <https://www.anyscale.com/blog/why-third-generation-ml-platforms-are-more-performant>`__.
@@ -29,9 +29,9 @@ last-mile bridge to model training and inference, and see :ref:`the Talks sectio
 Datasets ML use cases and benchmarks.
 
 
---------------------
-Preprocessing for ML
---------------------
+-----------------------
+Last-mile Preprocessing
+-----------------------
 
 Datasets supports data preprocessing transformations commonly performed just before model training and model inference, which we refer to as **last-mile preprocessing**. These transformations are carried out via a few key operations: mapping, groupbys + aggregations, and random shuffling.
 
