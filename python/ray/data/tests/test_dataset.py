@@ -327,7 +327,7 @@ def test_batch_tensors(ray_start_regular_shared):
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))
     df = next(ds.iter_batches(batch_format="pandas"))
-    assert df.to_dict().keys() == {0, 1}
+    assert df.to_dict().keys() == {"value"}
 
 
 def test_arrow_block_slice_copy():
@@ -1178,34 +1178,52 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared):
     assert large._block_num_rows() == [500] * 20
 
 
-def test_from_pandas(ray_start_regular_shared):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([df1, df2])
-    values = [(r["one"], r["two"]) for r in ds.take(6)]
-    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
-    assert values == rows
+@pytest.mark.parametrize("enable_pandas_block", [False, True])
+def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
+    ctx = ray.data.context.DatasetContext.get_current()
+    old_enable_pandas_block = ctx.enable_pandas_block
+    ctx.enable_pandas_block = enable_pandas_block
+    try:
+        df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+        df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+        ds = ray.data.from_pandas([df1, df2])
+        assert ds._dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        values = [(r["one"], r["two"]) for r in ds.take(6)]
+        rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+        assert values == rows
 
-    # test from single pandas dataframe
-    ds = ray.data.from_pandas(df1)
-    values = [(r["one"], r["two"]) for r in ds.take(3)]
-    rows = [(r.one, r.two) for _, r in df1.iterrows()]
-    assert values == rows
+        # test from single pandas dataframe
+        ds = ray.data.from_pandas(df1)
+        assert ds._dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        values = [(r["one"], r["two"]) for r in ds.take(3)]
+        rows = [(r.one, r.two) for _, r in df1.iterrows()]
+        assert values == rows
+    finally:
+        ctx.enable_pandas_block = old_enable_pandas_block
 
 
-def test_from_pandas_refs(ray_start_regular_shared):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
-    values = [(r["one"], r["two"]) for r in ds.take(6)]
-    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
-    assert values == rows
+@pytest.mark.parametrize("enable_pandas_block", [False, True])
+def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
+    ctx = ray.data.context.DatasetContext.get_current()
+    old_enable_pandas_block = ctx.enable_pandas_block
+    ctx.enable_pandas_block = enable_pandas_block
+    try:
+        df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+        df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+        ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
+        assert ds._dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        values = [(r["one"], r["two"]) for r in ds.take(6)]
+        rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+        assert values == rows
 
-    # test from single pandas dataframe ref
-    ds = ray.data.from_pandas_refs(ray.put(df1))
-    values = [(r["one"], r["two"]) for r in ds.take(3)]
-    rows = [(r.one, r.two) for _, r in df1.iterrows()]
-    assert values == rows
+        # test from single pandas dataframe ref
+        ds = ray.data.from_pandas_refs(ray.put(df1))
+        assert ds._dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        values = [(r["one"], r["two"]) for r in ds.take(3)]
+        rows = [(r.one, r.two) for _, r in df1.iterrows()]
+        assert values == rows
+    finally:
+        ctx.enable_pandas_block = old_enable_pandas_block
 
 
 def test_from_numpy(ray_start_regular_shared):
@@ -1310,7 +1328,7 @@ def test_to_arrow_refs(ray_start_regular_shared):
     assert df.equals(dfds)
 
     # Conversion.
-    df = pd.DataFrame({0: list(range(n))})
+    df = pd.DataFrame({"value": list(range(n))})
     ds = ray.data.range(n)
     dfds = pd.concat(
         [t.to_pandas() for t in ray.get(ds.to_arrow_refs())], ignore_index=True
@@ -1721,8 +1739,8 @@ def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([df1, df2])
 
-    def _block_udf(block: pa.Table):
-        df = block.to_pandas()
+    def _block_udf(block):
+        df = BlockAccessor.for_block(block).to_pandas().copy()
         df["one"] += 1
         return pa.Table.from_pandas(df)
 
@@ -1925,7 +1943,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # blocks format.
     for batch, df in zip(ds.iter_batches(batch_format="native"), dfs):
-        assert batch.to_pandas().equals(df)
+        assert BlockAccessor.for_block(batch).to_pandas().equals(df)
 
     # Batch size.
     batch_size = 2
@@ -1945,6 +1963,15 @@ def test_iter_batches_basic(ray_start_regular_shared):
     assert len(batches) == math.ceil(
         (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size
     )
+    assert pd.concat(batches, ignore_index=True).equals(
+        pd.concat(dfs, ignore_index=True)
+    )
+
+    # Batch size larger than dataset.
+    batch_size = 15
+    batches = list(ds.iter_batches(batch_size=batch_size, batch_format="pandas"))
+    assert all(len(batch) == ds.count() for batch in batches)
+    assert len(batches) == 1
     assert pd.concat(batches, ignore_index=True).equals(
         pd.concat(dfs, ignore_index=True)
     )
@@ -2088,9 +2115,9 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     table = pa.Table.from_pandas(df)
     pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
     ds = ray.data.read_parquet(str(tmp_path))
-    ds_list = ds.map_batches(
-        lambda df: df + 1, batch_size=1, batch_format="pandas"
-    ).take()
+    ds2 = ds.map_batches(lambda df: df + 1, batch_size=1, batch_format="pandas")
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [2, 3, 4]
     values = [s["two"] for s in ds_list]
@@ -2098,7 +2125,9 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
 
     # Test Pyarrow
     ds = ray.data.read_parquet(str(tmp_path))
-    ds_list = ds.map_batches(lambda pa: pa, batch_size=1, batch_format="pyarrow").take()
+    ds2 = ds.map_batches(lambda pa: pa, batch_size=1, batch_format="pyarrow")
+    assert ds2._dataset_format() == "arrow"
+    ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [1, 2, 3]
     values = [s["two"] for s in ds_list]
@@ -2107,28 +2136,30 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     # Test batch
     size = 300
     ds = ray.data.range(size)
-    ds_list = ds.map_batches(
-        lambda df: df + 1, batch_size=17, batch_format="pandas"
-    ).take(limit=size)
+    ds2 = ds.map_batches(lambda df: df + 1, batch_size=17, batch_format="pandas")
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take(limit=size)
     for i in range(size):
-        # The pandas column is "0", and it originally has rows from 0~299.
+        # The pandas column is "value", and it originally has rows from 0~299.
         # After the map batch, it should have 1~300.
         row = ds_list[i]
-        assert row["0"] == i + 1
+        assert row["value"] == i + 1
     assert ds.count() == 300
 
     # Test the lambda returns different types than the batch_format
     # pandas => list block
     ds = ray.data.read_parquet(str(tmp_path))
-    ds_list = ds.map_batches(lambda df: [1], batch_size=1).take()
+    ds2 = ds.map_batches(lambda df: [1], batch_size=1)
+    assert ds2._dataset_format() == "simple"
+    ds_list = ds2.take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
 
     # pyarrow => list block
     ds = ray.data.read_parquet(str(tmp_path))
-    ds_list = ds.map_batches(
-        lambda df: [1], batch_size=1, batch_format="pyarrow"
-    ).take()
+    ds2 = ds.map_batches(lambda df: [1], batch_size=1, batch_format="pyarrow")
+    assert ds2._dataset_format() == "simple"
+    ds_list = ds2.take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
 
@@ -3812,6 +3843,18 @@ def test_sort_simple(ray_start_regular_shared):
     assert ds.count() == 0
 
 
+def test_column_name_type_check(ray_start_regular_shared):
+    df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
+    ds = ray.data.from_pandas(df)
+    expected_str = (
+        "Dataset(num_blocks=1, num_rows=10, " "schema={1: float64, a: float64})"
+    )
+    assert str(ds) == expected_str, str(ds)
+    df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
+    with pytest.raises(ValueError):
+        ray.data.from_pandas(df)
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_random_shuffle(shutdown_only, pipelined):
     def range(n, parallelism=200):
@@ -3926,6 +3969,47 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
     df2.to_parquet(path2)
 
     ds = ray.data.read_parquet(data_path, _spread_resource_prefix="bar:")
+
+    # Force reads.
+    blocks = ds.get_internal_block_refs()
+    assert len(blocks) == 2
+
+    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(blocks)
+    locations = []
+    for block in blocks:
+        locations.extend(location_data[block]["node_ids"])
+    assert set(locations) == {node1_id, node2_id}
+
+
+def test_parquet_read_spread_no_cpus(ray_start_cluster, tmp_path):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"foo": 100}, _system_config={"max_direct_call_object_size": 0}
+    )
+    cluster.add_node(resources={"bar:1": 100})
+    cluster.add_node(resources={"bar:2": 100}, num_cpus=0)
+
+    ray.init(cluster.address)
+
+    @ray.remote(num_cpus=0)
+    def get_node_id():
+        return ray.get_runtime_context().node_id.hex()
+
+    node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
+    node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
+
+    data_path = str(tmp_path)
+    df1 = pd.DataFrame({"one": list(range(100)), "two": list(range(100, 200))})
+    path1 = os.path.join(data_path, "test1.parquet")
+    df1.to_parquet(path1)
+    df2 = pd.DataFrame({"one": list(range(300, 400)), "two": list(range(400, 500))})
+    path2 = os.path.join(data_path, "test2.parquet")
+    df2.to_parquet(path2)
+
+    ds = ray.data.read_parquet(
+        data_path, ray_remote_args={"num_cpus": 0}, _spread_resource_prefix="bar:"
+    )
 
     # Force reads.
     blocks = ds.get_internal_block_refs()

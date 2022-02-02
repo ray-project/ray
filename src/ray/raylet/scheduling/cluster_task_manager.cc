@@ -1255,8 +1255,8 @@ void ClusterTaskManager::Dispatch(
       if (predefined_resources[res_idx][inst_idx] > 0.) {
         if (first) {
           resource = reply->add_resource_mapping();
-          resource->set_name(
-              cluster_resource_scheduler_->GetResourceNameFromIndex(res_idx));
+          resource->set_name(cluster_resource_scheduler_->GetClusterResourceManager()
+                                 .GetResourceNameFromIndex(res_idx));
           first = false;
         }
         auto rid = resource->add_resource_ids();
@@ -1273,8 +1273,8 @@ void ClusterTaskManager::Dispatch(
       if (it->second[inst_idx] > 0.) {
         if (first) {
           resource = reply->add_resource_mapping();
-          resource->set_name(
-              cluster_resource_scheduler_->GetResourceNameFromIndex(it->first));
+          resource->set_name(cluster_resource_scheduler_->GetClusterResourceManager()
+                                 .GetResourceNameFromIndex(it->first));
           first = false;
         }
         auto rid = resource->add_resource_ids();
@@ -1500,8 +1500,8 @@ void ClusterTaskManager::SpillWaitingTasks() {
 
 bool ClusterTaskManager::IsLocallySchedulable(const RayTask &task) const {
   const auto &spec = task.GetTaskSpecification();
-  return cluster_resource_scheduler_->IsLocallySchedulable(
-      spec.GetRequiredResources().GetResourceMap());
+  return cluster_resource_scheduler_->IsSchedulableOnNode(
+      self_node_id_.Binary(), spec.GetRequiredResources().GetResourceMap());
 }
 
 ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
