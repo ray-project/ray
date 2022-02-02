@@ -27,6 +27,9 @@ TaskSpecification CreateFakeTask(std::vector<ObjectID> deps) {
     spec.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
         dep.Binary());
   }
+  spec.GetMutableMessage()
+      .mutable_scheduling_strategy()
+      ->mutable_default_scheduling_strategy();
   return spec;
 }
 

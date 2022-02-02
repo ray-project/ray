@@ -165,22 +165,15 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     return best_node;
   }
 
-  float spread_threshold = RayConfig::instance().scheduler_spread_threshold();
-  if (scheduling_strategy.scheduling_strategy_case() ==
-      rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy) {
-    spread_threshold = 0.0;
-  } else if ((scheduling_strategy.scheduling_strategy_case() ==
-              rpc::SchedulingStrategy::SchedulingStrategyCase::
-                  kDefaultSchedulingStrategy) &&
-             scheduling_strategy.default_scheduling_strategy().has_spread_threshold()) {
-    spread_threshold =
-        scheduling_strategy.default_scheduling_strategy().spread_threshold();
-  }
-
   // TODO (Alex): Setting require_available == force_spillback is a hack in order to
   // remain bug compatible with the legacy scheduling algorithms.
   int64_t best_node_id = scheduling_policy_->HybridPolicy(
-      resource_request, spread_threshold, force_spillback, force_spillback,
+      resource_request,
+      scheduling_strategy.scheduling_strategy_case() ==
+              rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy
+          ? 0.0
+          : RayConfig::instance().scheduler_spread_threshold(),
+      force_spillback, force_spillback,
       [this](auto node_id) { return this->NodeAlive(node_id); });
   *is_infeasible = best_node_id == -1 ? true : false;
   if (!*is_infeasible) {

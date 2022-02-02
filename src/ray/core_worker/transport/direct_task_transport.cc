@@ -329,26 +329,15 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   // same TaskID to request a worker
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
   resource_spec_msg.set_task_id(TaskID::FromRandom(job_id_).Binary());
-  TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
+  const TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
   rpc::Address best_node_address;
   const bool is_spillback = (raylet_address != nullptr);
-  float scheduler_spread_threshold = RayConfig::instance().scheduler_spread_threshold();
+  bool is_selected_based_on_locality = false;
   if (raylet_address == nullptr) {
-    bool is_selected_based_on_locality;
     // If no raylet address is given, find the best worker for our next lease request.
     std::tie(best_node_address, is_selected_based_on_locality) =
         lease_policy_->GetBestNodeForTask(resource_spec);
-    if (is_selected_based_on_locality) {
-      scheduler_spread_threshold = 1.0;
-    }
     raylet_address = &best_node_address;
-  }
-  if (resource_spec.GetMessage().scheduling_strategy().scheduling_strategy_case() ==
-      rpc::SchedulingStrategy::SchedulingStrategyCase::kDefaultSchedulingStrategy) {
-    resource_spec.GetMutableMessage()
-        .mutable_scheduling_strategy()
-        ->mutable_default_scheduling_strategy()
-        ->set_spread_threshold(scheduler_spread_threshold);
   }
 
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
@@ -488,7 +477,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           }
         }
       },
-      task_queue.size());
+      task_queue.size(), is_selected_based_on_locality);
   scheduling_key_entry.pending_lease_requests.emplace(task_id, *raylet_address);
   ReportWorkerBacklogIfNeeded(scheduling_key);
 }

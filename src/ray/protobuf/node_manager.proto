@@ -48,6 +48,8 @@ message RequestWorkerLeaseRequest {
   // locally schedulable or reject the request.
   // Else, the raylet may return another raylet at which to retry the request.
   bool grant_or_reject = 3;
+  // If it's true, then the current raylet is selected due to the locality of task arguments.
+  bool is_selected_based_on_locality = 4;
 }
 
 message RequestWorkerLeaseReply {
