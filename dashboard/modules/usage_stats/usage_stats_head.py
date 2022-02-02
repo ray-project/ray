@@ -1,69 +1,71 @@
 import asyncio
 import os
 import logging
-import json
-import requests
 import time
+
+from concurrent.futures import ThreadPoolExecutor
 
 import ray
 
 import ray.dashboard.utils as dashboard_utils
-import ray._private.usage_report as ray_usage_lib
-import ray.ray_constants as ray_constants
+import ray._private.usage.usage_lib as ray_usage_lib
+import ray._private.usage.usage_constants as usage_constants
 
 from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
 
-# TODO(sang): Make below values dynamically configurable.
 # Defines whether or not usage data is reported.
 USAGE_REPORT_ENABLED = int(os.getenv("RAY_USAGE_STATS_ENABLE", "0")) == 1
-# Defines how often usage data is reported to <link>.
-USAGE_REPOT_DATA_REPORT_INTERVAL = int(
-    os.getenv("RAY_USAGE_STATS_COLLECTION_INTERVAL", 10)
-)
-USAGE_REPORT_SERVER_URL = "https://dashboard-ses-jAXR6GB7BmsJuRZSawg3a4Ue.anyscale-internal-hsrczdm-0000.anyscale-test-production.com/serve/"  # noqa
 
 
 class UsageStatsHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self.cluster_metadata = None
+        self.session_dir = dashboard_head.session_dir
 
-    @async_loop_forever(USAGE_REPOT_DATA_REPORT_INTERVAL)
+    @async_loop_forever(usage_constants.USAGE_REPORT_INTERVAL)
     async def _report_usage(self):
         assert USAGE_REPORT_ENABLED
         if not self.cluster_metadata:
-            cluster_metadata = ray.experimental.internal_kv._internal_kv_get(
-                ray_usage_lib.CLUSTER_METADATA_KEY,
-                namespace=ray_constants.KV_NAMESPACE_CLUSTER,
+            self.cluster_metadata = ray_usage_lib.get_cluster_metadata(
+                ray.experimental.internal_kv.internal_kv_get_gcs_client(),
+                num_retries=20,
             )
-            self.cluster_metadata = json.loads(cluster_metadata.decode())
-            logger.info(f"Updated cluster metadata: {self.cluster_metadata}")
-        try:
-            self.cluster_metadata["_collect_timestamp_ms"] = time.time()
-            logger.info("Send, ", self.cluster_metadata)
-            r = requests.request(
-                "POST",
-                USAGE_REPORT_SERVER_URL,
-                headers={"Content-Type": "application/json"},
-                cookies={"anyscale-token": "8325e2bf-cbb6-4b4b-995f-98bfd1419796"},
-                json=self.cluster_metadata,
-            )
-            r.raise_for_status()
 
-            logger.info(f"Status code: {r.status_code}, body: {r.json()}")
-        except Exception as e:
-            logger.exception(e)
+        data = self.cluster_metadata.copy()
+        data["collect_timestamp_ms"] = int(time.time() * 1000)
+        ray_usage_lib.validate_schema(data)
+
+        # In order to not block the event loop, we run blocking IOs
+        # within a thread pool.
+        loop = asyncio.get_running_loop()
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            try:
+                await loop.run_in_executor(
+                    pool, ray_usage_lib.write_usage_data, data, self.session_dir
+                )
+                logger.info(f"The data is written: {data}")
+            except Exception as e:
+                logger.exception(e)
+
+            try:
+                await loop.run_in_executor(pool, ray_usage_lib.report_usage_data, data)
+                logger.info(f"The data is reported: {data}")
+            except Exception as e:
+                logger.exception(e)
 
     async def run(self, server):
         if not USAGE_REPORT_ENABLED:
             logger.info(
-                "Usage module won't be started because " "the usage repot is disabled."
+                "Usage module won't be started because the usage report is disabled."
             )
+            return
         else:
+            logger.info("Start the usage stats module.")
             await asyncio.gather(self._report_usage())
 
     @staticmethod
-    def is_optional():
-        return False
+    def is_minimal_module():
+        return True
