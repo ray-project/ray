@@ -11,8 +11,7 @@ from ray.rllib.agents.impala import vtrace_tf as vtrace
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.policy.tf_policy import LearningRateSchedule, \
-    EntropyCoeffSchedule
+from ray.rllib.policy.tf_policy import LearningRateSchedule, EntropyCoeffSchedule
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import explained_variance
 
@@ -22,26 +21,28 @@ logger = logging.getLogger(__name__)
 
 
 class VTraceLoss:
-    def __init__(self,
-                 actions,
-                 actions_logp,
-                 actions_entropy,
-                 dones,
-                 behaviour_action_logp,
-                 behaviour_logits,
-                 target_logits,
-                 discount,
-                 rewards,
-                 values,
-                 bootstrap_value,
-                 dist_class,
-                 model,
-                 valid_mask,
-                 config,
-                 vf_loss_coeff=0.5,
-                 entropy_coeff=0.01,
-                 clip_rho_threshold=1.0,
-                 clip_pg_rho_threshold=1.0):
+    def __init__(
+        self,
+        actions,
+        actions_logp,
+        actions_entropy,
+        dones,
+        behaviour_action_logp,
+        behaviour_logits,
+        target_logits,
+        discount,
+        rewards,
+        values,
+        bootstrap_value,
+        dist_class,
+        model,
+        valid_mask,
+        config,
+        vf_loss_coeff=0.5,
+        entropy_coeff=0.01,
+        clip_rho_threshold=1.0,
+        clip_pg_rho_threshold=1.0,
+    ):
         """Policy gradient loss with vtrace importance weighting.
 
         VTraceLoss takes tensors of shape [T, B, ...], where `B` is the
@@ -80,21 +81,21 @@ class VTraceLoss:
                 behaviour_policy_logits=behaviour_logits,
                 target_policy_logits=target_logits,
                 actions=tf.unstack(actions, axis=2),
-                discounts=tf.cast(~tf.cast(dones, tf.bool), tf.float32) *
-                discount,
+                discounts=tf.cast(~tf.cast(dones, tf.bool), tf.float32) * discount,
                 rewards=rewards,
                 values=values,
                 bootstrap_value=bootstrap_value,
                 dist_class=dist_class,
                 model=model,
                 clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
-                clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
-                                              tf.float32))
+                clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold, tf.float32),
+            )
             self.value_targets = self.vtrace_returns.vs
 
         # The policy gradients loss.
         masked_pi_loss = tf.boolean_mask(
-            actions_logp * self.vtrace_returns.pg_advantages, valid_mask)
+            actions_logp * self.vtrace_returns.pg_advantages, valid_mask
+        )
         self.pi_loss = -tf.reduce_sum(masked_pi_loss)
         self.mean_pi_loss = -tf.reduce_mean(masked_pi_loss)
 
@@ -110,8 +111,9 @@ class VTraceLoss:
         self.mean_entropy = tf.reduce_mean(masked_entropy)
 
         # The summed weighted loss.
-        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
-                           self.entropy * entropy_coeff)
+        self.total_loss = (
+            self.pi_loss + self.vf_loss * vf_loss_coeff - self.entropy * entropy_coeff
+        )
 
 
 def _make_time_major(policy, seq_lens, tensor, drop_last=False):
@@ -129,9 +131,7 @@ def _make_time_major(policy, seq_lens, tensor, drop_last=False):
         swapped axes.
     """
     if isinstance(tensor, list):
-        return [
-            _make_time_major(policy, seq_lens, t, drop_last) for t in tensor
-        ]
+        return [_make_time_major(policy, seq_lens, t, drop_last) for t in tensor]
 
     if policy.is_recurrent():
         B = tf.shape(seq_lens)[0]
@@ -144,8 +144,7 @@ def _make_time_major(policy, seq_lens, tensor, drop_last=False):
     rs = tf.reshape(tensor, tf.concat([[B, T], tf.shape(tensor)[1:]], axis=0))
 
     # swap B and T axes
-    res = tf.transpose(
-        rs, [1, 0] + list(range(2, 1 + int(tf.shape(tensor).shape[0]))))
+    res = tf.transpose(rs, [1, 0] + list(range(2, 1 + int(tf.shape(tensor).shape[0]))))
 
     if drop_last:
         return res[:-1]
@@ -167,16 +166,14 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         output_hidden_shape = 1
 
     def make_time_major(*args, **kw):
-        return _make_time_major(policy, train_batch.get("seq_lens"), *args,
-                                **kw)
+        return _make_time_major(policy, train_batch.get("seq_lens"), *args, **kw)
 
     actions = train_batch[SampleBatch.ACTIONS]
     dones = train_batch[SampleBatch.DONES]
     rewards = train_batch[SampleBatch.REWARDS]
     behaviour_action_logp = train_batch[SampleBatch.ACTION_LOGP]
     behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
-    unpacked_behaviour_logits = tf.split(
-        behaviour_logits, output_hidden_shape, axis=1)
+    unpacked_behaviour_logits = tf.split(behaviour_logits, output_hidden_shape, axis=1)
     unpacked_outputs = tf.split(model_out, output_hidden_shape, axis=1)
     values = model.value_function()
 
@@ -188,21 +185,16 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         mask = tf.ones_like(rewards)
 
     # Prepare actions for loss
-    loss_actions = actions if is_multidiscrete else tf.expand_dims(
-        actions, axis=1)
+    loss_actions = actions if is_multidiscrete else tf.expand_dims(actions, axis=1)
 
     # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
     policy.loss = VTraceLoss(
         actions=make_time_major(loss_actions, drop_last=True),
-        actions_logp=make_time_major(
-            action_dist.logp(actions), drop_last=True),
-        actions_entropy=make_time_major(
-            action_dist.multi_entropy(), drop_last=True),
+        actions_logp=make_time_major(action_dist.logp(actions), drop_last=True),
+        actions_entropy=make_time_major(action_dist.multi_entropy(), drop_last=True),
         dones=make_time_major(dones, drop_last=True),
-        behaviour_action_logp=make_time_major(
-            behaviour_action_logp, drop_last=True),
-        behaviour_logits=make_time_major(
-            unpacked_behaviour_logits, drop_last=True),
+        behaviour_action_logp=make_time_major(behaviour_action_logp, drop_last=True),
+        behaviour_logits=make_time_major(unpacked_behaviour_logits, drop_last=True),
         target_logits=make_time_major(unpacked_outputs, drop_last=True),
         discount=policy.config["gamma"],
         rewards=make_time_major(rewards, drop_last=True),
@@ -215,7 +207,8 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         vf_loss_coeff=policy.config["vf_loss_coeff"],
         entropy_coeff=policy.entropy_coeff,
         clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
-        clip_pg_rho_threshold=policy.config["vtrace_clip_pg_rho_threshold"])
+        clip_pg_rho_threshold=policy.config["vtrace_clip_pg_rho_threshold"],
+    )
 
     return policy.loss.total_loss
 
@@ -225,7 +218,8 @@ def stats(policy, train_batch):
         policy,
         train_batch.get("seq_lens"),
         policy.model.value_function(),
-        drop_last=policy.config["vtrace"])
+        drop_last=policy.config["vtrace"],
+    )
 
     return {
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
@@ -236,7 +230,8 @@ def stats(policy, train_batch):
         "vf_loss": policy.loss.mean_vf_loss,
         "vf_explained_var": explained_variance(
             tf.reshape(policy.loss.value_targets, [-1]),
-            tf.reshape(values_batched, [-1])),
+            tf.reshape(values_batched, [-1]),
+        ),
     }
 
 
@@ -254,18 +249,19 @@ def choose_optimizer(policy, config):
             return tf1.train.AdamOptimizer(policy.cur_lr)
     else:
         if tfv == 2:
-            return tf.keras.optimizers.RMSprop(policy.cur_lr, config["decay"],
-                                               config["momentum"],
-                                               config["epsilon"])
+            return tf.keras.optimizers.RMSprop(
+                policy.cur_lr, config["decay"], config["momentum"], config["epsilon"]
+            )
         else:
-            return tf1.train.RMSPropOptimizer(policy.cur_lr, config["decay"],
-                                              config["momentum"],
-                                              config["epsilon"])
+            return tf1.train.RMSPropOptimizer(
+                policy.cur_lr, config["decay"], config["momentum"], config["epsilon"]
+            )
 
 
 def clip_gradients(policy, optimizer, loss):
     grads_and_vars = optimizer.compute_gradients(
-        loss, policy.model.trainable_variables())
+        loss, policy.model.trainable_variables()
+    )
     grads = [g for (g, v) in grads_and_vars if g is not None]
     policy.grads, _ = tf.clip_by_global_norm(grads, policy.config["grad_clip"])
     clipped_grads = list(zip(policy.grads, policy.model.trainable_variables()))
@@ -274,8 +270,9 @@ def clip_gradients(policy, optimizer, loss):
 
 def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
-    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
-                                  config["entropy_coeff_schedule"])
+    EntropyCoeffSchedule.__init__(
+        policy, config["entropy_coeff"], config["entropy_coeff_schedule"]
+    )
 
 
 VTraceTFPolicy = build_tf_policy(
@@ -288,4 +285,5 @@ VTraceTFPolicy = build_tf_policy(
     compute_gradients_fn=clip_gradients,
     before_loss_init=setup_mixins,
     mixins=[LearningRateSchedule, EntropyCoeffSchedule],
-    get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"])
+    get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"],
+)

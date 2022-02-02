@@ -18,8 +18,7 @@ from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.typing import ModelGradients, TensorType, \
-    TrainerConfigDict
+from ray.rllib.utils.typing import ModelGradients, TensorType, TrainerConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import MultiAgentEpisode
@@ -60,31 +59,33 @@ class TFPolicy(Policy):
     """
 
     @DeveloperAPI
-    def __init__(self,
-                 observation_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space,
-                 config: TrainerConfigDict,
-                 sess: "tf1.Session",
-                 obs_input: TensorType,
-                 sampled_action: TensorType,
-                 loss: TensorType,
-                 loss_inputs: List[Tuple[str, TensorType]],
-                 model: ModelV2 = None,
-                 sampled_action_logp: Optional[TensorType] = None,
-                 action_input: Optional[TensorType] = None,
-                 log_likelihood: Optional[TensorType] = None,
-                 dist_inputs: Optional[TensorType] = None,
-                 dist_class: Optional[type] = None,
-                 state_inputs: Optional[List[TensorType]] = None,
-                 state_outputs: Optional[List[TensorType]] = None,
-                 prev_action_input: Optional[TensorType] = None,
-                 prev_reward_input: Optional[TensorType] = None,
-                 seq_lens: Optional[TensorType] = None,
-                 max_seq_len: int = 20,
-                 batch_divisibility_req: int = 1,
-                 update_ops: List[TensorType] = None,
-                 explore: Optional[TensorType] = None,
-                 timestep: Optional[TensorType] = None):
+    def __init__(
+        self,
+        observation_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        config: TrainerConfigDict,
+        sess: "tf1.Session",
+        obs_input: TensorType,
+        sampled_action: TensorType,
+        loss: TensorType,
+        loss_inputs: List[Tuple[str, TensorType]],
+        model: ModelV2 = None,
+        sampled_action_logp: Optional[TensorType] = None,
+        action_input: Optional[TensorType] = None,
+        log_likelihood: Optional[TensorType] = None,
+        dist_inputs: Optional[TensorType] = None,
+        dist_class: Optional[type] = None,
+        state_inputs: Optional[List[TensorType]] = None,
+        state_outputs: Optional[List[TensorType]] = None,
+        prev_action_input: Optional[TensorType] = None,
+        prev_reward_input: Optional[TensorType] = None,
+        seq_lens: Optional[TensorType] = None,
+        max_seq_len: int = 20,
+        batch_divisibility_req: int = 1,
+        update_ops: List[TensorType] = None,
+        explore: Optional[TensorType] = None,
+        timestep: Optional[TensorType] = None,
+    ):
         """Initializes a Policy object.
 
         Args:
@@ -145,24 +146,31 @@ class TFPolicy(Policy):
         # Log device and worker index.
         if tfv == 2:
             from ray.rllib.evaluation.rollout_worker import get_global_worker
+
             worker = get_global_worker()
             worker_idx = worker.worker_index if worker else 0
             if tf.config.list_physical_devices("GPU"):
-                logger.info("TFPolicy (worker={}) running on GPU.".format(
-                    worker_idx if worker_idx > 0 else "local"))
+                logger.info(
+                    "TFPolicy (worker={}) running on GPU.".format(
+                        worker_idx if worker_idx > 0 else "local"
+                    )
+                )
             else:
-                logger.info("TFPolicy (worker={}) running on CPU.".format(
-                    worker_idx if worker_idx > 0 else "local"))
+                logger.info(
+                    "TFPolicy (worker={}) running on CPU.".format(
+                        worker_idx if worker_idx > 0 else "local"
+                    )
+                )
 
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
             self.view_requirements[SampleBatch.INFOS].used_for_training = False
-            self.view_requirements[
-                SampleBatch.INFOS].used_for_compute_actions = False
+            self.view_requirements[SampleBatch.INFOS].used_for_compute_actions = False
 
-        assert model is None or isinstance(model, (ModelV2, tf.keras.Model)), \
-            "Model classes for TFPolicy other than `ModelV2|tf.keras.Model` " \
+        assert model is None or isinstance(model, (ModelV2, tf.keras.Model)), (
+            "Model classes for TFPolicy other than `ModelV2|tf.keras.Model` "
             "not allowed! You passed in {}.".format(model)
+        )
         self.model = model
         # Auto-update model's inference view requirements, if recurrent.
         if self.model is not None:
@@ -175,12 +183,17 @@ class TFPolicy(Policy):
         self._prev_reward_input = prev_reward_input
         self._sampled_action = sampled_action
         self._is_training = self._get_is_training_placeholder()
-        self._is_exploring = explore if explore is not None else \
-            tf1.placeholder_with_default(True, (), name="is_exploring")
+        self._is_exploring = (
+            explore
+            if explore is not None
+            else tf1.placeholder_with_default(True, (), name="is_exploring")
+        )
         self._sampled_action_logp = sampled_action_logp
-        self._sampled_action_prob = (tf.math.exp(self._sampled_action_logp)
-                                     if self._sampled_action_logp is not None
-                                     else None)
+        self._sampled_action_prob = (
+            tf.math.exp(self._sampled_action_logp)
+            if self._sampled_action_logp is not None
+            else None
+        )
         self._action_input = action_input  # For logp calculations.
         self._dist_inputs = dist_inputs
         self.dist_class = dist_class
@@ -192,18 +205,24 @@ class TFPolicy(Policy):
         if len(self._state_inputs) != len(self._state_outputs):
             raise ValueError(
                 "Number of state input and output tensors must match, got: "
-                "{} vs {}".format(self._state_inputs, self._state_outputs))
+                "{} vs {}".format(self._state_inputs, self._state_outputs)
+            )
         if self._state_inputs and self._seq_lens is None:
             raise ValueError(
-                "seq_lens tensor must be given if state inputs are defined")
+                "seq_lens tensor must be given if state inputs are defined"
+            )
 
         self._batch_divisibility_req = batch_divisibility_req
         self._update_ops = update_ops
         self._apply_op = None
         self._stats_fetches = {}
-        self._timestep = timestep if timestep is not None else \
-            tf1.placeholder_with_default(
-                tf.zeros((), dtype=tf.int64), (), name="timestep")
+        self._timestep = (
+            timestep
+            if timestep is not None
+            else tf1.placeholder_with_default(
+                tf.zeros((), dtype=tf.int64), (), name="timestep"
+            )
+        )
 
         self._optimizer = None
         self._grads_and_vars = None
@@ -224,10 +243,14 @@ class TFPolicy(Policy):
 
         # The log-likelihood calculator op.
         self._log_likelihood = log_likelihood
-        if self._log_likelihood is None and self._dist_inputs is not None and \
-                self.dist_class is not None:
-            self._log_likelihood = self.dist_class(
-                self._dist_inputs, self.model).logp(self._action_input)
+        if (
+            self._log_likelihood is None
+            and self._dist_inputs is not None
+            and self.dist_class is not None
+        ):
+            self._log_likelihood = self.dist_class(self._dist_inputs, self.model).logp(
+                self._action_input
+            )
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
@@ -257,9 +280,10 @@ class TFPolicy(Policy):
         elif name == SampleBatch.PREV_REWARDS:
             return self._prev_reward_input
 
-        assert self._loss_input_dict, \
-            "You need to populate `self._loss_input_dict` before " \
+        assert self._loss_input_dict, (
+            "You need to populate `self._loss_input_dict` before "
             "`get_placeholder()` can be called"
+        )
         return self._loss_input_dict[name]
 
     def get_session(self) -> "tf1.Session":
@@ -270,8 +294,9 @@ class TFPolicy(Policy):
         """Returns whether the loss function has been initialized."""
         return self._loss is not None
 
-    def _initialize_loss(self, loss: TensorType,
-                         loss_inputs: List[Tuple[str, TensorType]]) -> None:
+    def _initialize_loss(
+        self, loss: TensorType, loss_inputs: List[Tuple[str, TensorType]]
+    ) -> None:
         """Initializes the loss op from given loss tensor and placeholders.
 
         Args:
@@ -290,60 +315,69 @@ class TFPolicy(Policy):
 
         if self.model and not isinstance(self.model, tf.keras.Model):
             self._loss = self.model.custom_loss(loss, self._loss_input_dict)
-            self._stats_fetches.update({
-                "model": self.model.metrics() if isinstance(
-                    self.model, ModelV2) else self.model.custom_stats()
-            })
+            self._stats_fetches.update(
+                {
+                    "model": self.model.metrics()
+                    if isinstance(self.model, ModelV2)
+                    else self.model.custom_stats()
+                }
+            )
         else:
             self._loss = loss
 
         if self._optimizer is None:
             self._optimizer = self.optimizer()
         self._grads_and_vars = [
-            (g, v) for (g, v) in self.gradients(self._optimizer, self._loss)
+            (g, v)
+            for (g, v) in self.gradients(self._optimizer, self._loss)
             if g is not None
         ]
         self._grads = [g for (g, v) in self._grads_and_vars if g is not None]
 
         if self.model:
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
-                [], self._sess, self.variables())
+                [], self._sess, self.variables()
+            )
 
         # gather update ops for any batch norm layers
         if not self._update_ops:
             self._update_ops = tf1.get_collection(
-                tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
+                tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name
+            )
         if self._update_ops:
-            logger.info("Update ops to run on apply gradient: {}".format(
-                self._update_ops))
+            logger.info(
+                "Update ops to run on apply gradient: {}".format(self._update_ops)
+            )
         with tf1.control_dependencies(self._update_ops):
-            self._apply_op = self.build_apply_op(self._optimizer,
-                                                 self._grads_and_vars)
+            self._apply_op = self.build_apply_op(self._optimizer, self._grads_and_vars)
 
         if log_once("loss_used"):
             logger.debug(
                 "These tensors were used in the loss_fn:\n\n{}\n".format(
-                    summarize(self._loss_input_dict)))
+                    summarize(self._loss_input_dict)
+                )
+            )
 
         self._sess.run(tf1.global_variables_initializer())
         self._optimizer_variables = None
         if self._optimizer:
-            self._optimizer_variables = \
-                ray.experimental.tf_utils.TensorFlowVariables(
-                    self._optimizer.variables(), self._sess)
+            self._optimizer_variables = ray.experimental.tf_utils.TensorFlowVariables(
+                self._optimizer.variables(), self._sess
+            )
 
     @override(Policy)
     def compute_actions(
-            self,
-            obs_batch: Union[List[TensorType], TensorType],
-            state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Union[List[TensorType], TensorType] = None,
-            prev_reward_batch: Union[List[TensorType], TensorType] = None,
-            info_batch: Optional[Dict[str, list]] = None,
-            episodes: Optional[List["MultiAgentEpisode"]] = None,
-            explore: Optional[bool] = None,
-            timestep: Optional[int] = None,
-            **kwargs):
+        self,
+        obs_batch: Union[List[TensorType], TensorType],
+        state_batches: Optional[List[TensorType]] = None,
+        prev_action_batch: Union[List[TensorType], TensorType] = None,
+        prev_reward_batch: Union[List[TensorType], TensorType] = None,
+        info_batch: Optional[Dict[str, list]] = None,
+        episodes: Optional[List["MultiAgentEpisode"]] = None,
+        explore: Optional[bool] = None,
+        timestep: Optional[int] = None,
+        **kwargs
+    ):
 
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
@@ -356,26 +390,28 @@ class TFPolicy(Policy):
             prev_action_batch=prev_action_batch,
             prev_reward_batch=prev_reward_batch,
             explore=explore,
-            timestep=timestep)
+            timestep=timestep,
+        )
 
         # Execute session run to get action (and other fetches).
         fetched = builder.get(to_fetch)
 
         # Update our global timestep by the batch size.
-        self.global_timestep += len(obs_batch) if isinstance(obs_batch, list) \
-            else obs_batch.shape[0]
+        self.global_timestep += (
+            len(obs_batch) if isinstance(obs_batch, list) else obs_batch.shape[0]
+        )
 
         return fetched
 
     @override(Policy)
     def compute_actions_from_input_dict(
-            self,
-            input_dict: Dict[str, TensorType],
-            explore: bool = None,
-            timestep: Optional[int] = None,
-            episodes: Optional[List["MultiAgentEpisode"]] = None,
-            **kwargs) -> \
-            Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+        self,
+        input_dict: Dict[str, TensorType],
+        explore: bool = None,
+        timestep: Optional[int] = None,
+        episodes: Optional[List["MultiAgentEpisode"]] = None,
+        **kwargs
+    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
 
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
@@ -383,35 +419,38 @@ class TFPolicy(Policy):
         builder = TFRunBuilder(self._sess, "compute_actions_from_input_dict")
         obs_batch = input_dict[SampleBatch.OBS]
         to_fetch = self._build_compute_actions(
-            builder, input_dict=input_dict, explore=explore, timestep=timestep)
+            builder, input_dict=input_dict, explore=explore, timestep=timestep
+        )
 
         # Execute session run to get action (and other fetches).
         fetched = builder.get(to_fetch)
 
         # Update our global timestep by the batch size.
-        self.global_timestep += len(obs_batch) if isinstance(obs_batch, list) \
-            else obs_batch.shape[0]
+        self.global_timestep += (
+            len(obs_batch) if isinstance(obs_batch, list) else obs_batch.shape[0]
+        )
 
         return fetched
 
     @override(Policy)
     def compute_log_likelihoods(
-            self,
-            actions: Union[List[TensorType], TensorType],
-            obs_batch: Union[List[TensorType], TensorType],
-            state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Optional[Union[List[TensorType],
-                                              TensorType]] = None,
-            prev_reward_batch: Optional[Union[List[
-                TensorType], TensorType]] = None) -> TensorType:
+        self,
+        actions: Union[List[TensorType], TensorType],
+        obs_batch: Union[List[TensorType], TensorType],
+        state_batches: Optional[List[TensorType]] = None,
+        prev_action_batch: Optional[Union[List[TensorType], TensorType]] = None,
+        prev_reward_batch: Optional[Union[List[TensorType], TensorType]] = None,
+    ) -> TensorType:
 
         if self._log_likelihood is None:
-            raise ValueError("Cannot compute log-prob/likelihood w/o a "
-                             "self._log_likelihood op!")
+            raise ValueError(
+                "Cannot compute log-prob/likelihood w/o a " "self._log_likelihood op!"
+            )
 
         # Exploration hook before each forward pass.
         self.exploration.before_compute_actions(
-            explore=False, tf_sess=self.get_session())
+            explore=False, tf_sess=self.get_session()
+        )
 
         builder = TFRunBuilder(self._sess, "compute_log_likelihoods")
         # Feed actions (for which we want logp values) into graph.
@@ -422,19 +461,17 @@ class TFPolicy(Policy):
         state_batches = state_batches or []
         if len(self._state_inputs) != len(state_batches):
             raise ValueError(
-                "Must pass in RNN state batches for placeholders {}, got {}".
-                format(self._state_inputs, state_batches))
-        builder.add_feed_dict(
-            {k: v
-             for k, v in zip(self._state_inputs, state_batches)})
+                "Must pass in RNN state batches for placeholders {}, got {}".format(
+                    self._state_inputs, state_batches
+                )
+            )
+        builder.add_feed_dict({k: v for k, v in zip(self._state_inputs, state_batches)})
         if state_batches:
             builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
         # Prev-a and r.
-        if self._prev_action_input is not None and \
-           prev_action_batch is not None:
+        if self._prev_action_input is not None and prev_action_batch is not None:
             builder.add_feed_dict({self._prev_action_input: prev_action_batch})
-        if self._prev_reward_input is not None and \
-           prev_reward_batch is not None:
+        if self._prev_reward_input is not None and prev_reward_batch is not None:
             builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
         # Fetch the log_likelihoods output and return.
         fetches = builder.add_fetches([self._log_likelihood])
@@ -442,8 +479,7 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def learn_on_batch(
-            self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
+    def learn_on_batch(self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
         assert self.loss_initialized()
 
         builder = TFRunBuilder(self._sess, "learn_on_batch")
@@ -451,7 +487,8 @@ class TFPolicy(Policy):
         # Callback handling.
         learn_stats = {}
         self.callbacks.on_learn_on_batch(
-            policy=self, train_batch=postprocessed_batch, result=learn_stats)
+            policy=self, train_batch=postprocessed_batch, result=learn_stats
+        )
 
         fetches = self._build_learn_on_batch(builder, postprocessed_batch)
         stats = builder.get(fetches)
@@ -461,9 +498,8 @@ class TFPolicy(Policy):
     @override(Policy)
     @DeveloperAPI
     def compute_gradients(
-            self,
-            postprocessed_batch: SampleBatch) -> \
-            Tuple[ModelGradients, Dict[str, TensorType]]:
+        self, postprocessed_batch: SampleBatch
+    ) -> Tuple[ModelGradients, Dict[str, TensorType]]:
         assert self.loss_initialized()
         builder = TFRunBuilder(self._sess, "compute_gradients")
         fetches = self._build_compute_gradients(builder, postprocessed_batch)
@@ -502,13 +538,12 @@ class TFPolicy(Policy):
     def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
         # For tf Policies, return Policy weights and optimizer var values.
         state = super().get_state()
-        if self._optimizer_variables and \
-                len(self._optimizer_variables.variables) > 0:
-            state["_optimizer_variables"] = \
-                self._sess.run(self._optimizer_variables.variables)
+        if self._optimizer_variables and len(self._optimizer_variables.variables) > 0:
+            state["_optimizer_variables"] = self._sess.run(
+                self._optimizer_variables.variables
+            )
         # Add exploration state.
-        state["_exploration_state"] = \
-            self.exploration.get_state(self.get_session())
+        state["_exploration_state"] = self.exploration.get_state(self.get_session())
         return state
 
     @override(Policy)
@@ -521,7 +556,8 @@ class TFPolicy(Policy):
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(
-                state=state["_exploration_state"], sess=self.get_session())
+                state=state["_exploration_state"], sess=self.get_session()
+            )
 
         # Set the Policy's (NN) weights.
         super().set_state(state)
@@ -534,18 +570,21 @@ class TFPolicy(Policy):
             builder = tf1.saved_model.builder.SavedModelBuilder(export_dir)
             signature_def_map = self._build_signature_def()
             builder.add_meta_graph_and_variables(
-                self._sess, [tf1.saved_model.tag_constants.SERVING],
+                self._sess,
+                [tf1.saved_model.tag_constants.SERVING],
                 signature_def_map=signature_def_map,
                 saver=tf1.summary.FileWriter(export_dir).add_graph(
-                    graph=self._sess.graph))
+                    graph=self._sess.graph
+                ),
+            )
             builder.save()
 
     # TODO: (sven) Deprecate this in favor of `save()`.
     @override(Policy)
     @DeveloperAPI
-    def export_checkpoint(self,
-                          export_dir: str,
-                          filename_prefix: str = "model") -> None:
+    def export_checkpoint(
+        self, export_dir: str, filename_prefix: str = "model"
+    ) -> None:
         """Export tensorflow checkpoint to export_dir."""
         deprecation_warning("export_checkpoint", "save")
         try:
@@ -569,9 +608,7 @@ class TFPolicy(Policy):
                 return self.model.import_from_h5(import_file)
 
     @DeveloperAPI
-    def copy(self,
-             existing_inputs: List[Tuple[str, "tf1.placeholder"]]) -> \
-            "TFPolicy":
+    def copy(self, existing_inputs: List[Tuple[str, "tf1.placeholder"]]) -> "TFPolicy":
         """Creates a copy of self using existing input placeholders.
 
         Optional: Only required to work with the multi-GPU optimizer.
@@ -661,8 +698,9 @@ class TFPolicy(Policy):
             return tf1.train.AdamOptimizer()
 
     @DeveloperAPI
-    def gradients(self, optimizer: "tf.keras.optimizers.Optimizer",
-                  loss: TensorType) -> List[Tuple[TensorType, TensorType]]:
+    def gradients(
+        self, optimizer: "tf.keras.optimizers.Optimizer", loss: TensorType
+    ) -> List[Tuple[TensorType, TensorType]]:
         """Override this for a custom gradient computation behavior.
 
         Returns:
@@ -673,10 +711,10 @@ class TFPolicy(Policy):
 
     @DeveloperAPI
     def build_apply_op(
-            self,
-            optimizer: "tf.keras.optimizers.Optimizer",
-            grads_and_vars: List[Tuple[TensorType, TensorType]]) -> \
-            "tf.Operation":
+        self,
+        optimizer: "tf.keras.optimizers.Optimizer",
+        grads_and_vars: List[Tuple[TensorType, TensorType]],
+    ) -> "tf.Operation":
         """Override this for a custom gradient apply computation behavior.
 
         Args:
@@ -688,8 +726,8 @@ class TFPolicy(Policy):
         """
         # Specify global_step for TD3 which needs to count the num updates.
         return optimizer.apply_gradients(
-            self._grads_and_vars,
-            global_step=tf1.train.get_or_create_global_step())
+            self._grads_and_vars, global_step=tf1.train.get_or_create_global_step()
+        )
 
     def _get_is_training_placeholder(self):
         """Get the placeholder for _is_training, i.e., for batch norm layers.
@@ -698,7 +736,8 @@ class TFPolicy(Policy):
         """
         if not hasattr(self, "_is_training"):
             self._is_training = tf1.placeholder_with_default(
-                False, (), name="is_training")
+                False, (), name="is_training"
+            )
         return self._is_training
 
     def _debug_vars(self):
@@ -712,8 +751,7 @@ class TFPolicy(Policy):
         """
         feed_dict = self.extra_compute_action_feed_dict()
         return {
-            k.name: tf1.saved_model.utils.build_tensor_info(k)
-            for k in feed_dict.keys()
+            k.name: tf1.saved_model.utils.build_tensor_info(k) for k in feed_dict.keys()
         }
 
     def _extra_output_signature_def(self):
@@ -727,71 +765,82 @@ class TFPolicy(Policy):
         }
 
     def _build_signature_def(self):
-        """Build signature def map for tensorflow SavedModelBuilder.
-        """
+        """Build signature def map for tensorflow SavedModelBuilder."""
         # build input signatures
         input_signature = self._extra_input_signature_def()
-        input_signature["observations"] = \
-            tf1.saved_model.utils.build_tensor_info(self._obs_input)
+        input_signature["observations"] = tf1.saved_model.utils.build_tensor_info(
+            self._obs_input
+        )
 
         if self._seq_lens is not None:
-            input_signature["seq_lens"] = \
-                tf1.saved_model.utils.build_tensor_info(self._seq_lens)
+            input_signature["seq_lens"] = tf1.saved_model.utils.build_tensor_info(
+                self._seq_lens
+            )
         if self._prev_action_input is not None:
-            input_signature["prev_action"] = \
-                tf1.saved_model.utils.build_tensor_info(
-                    self._prev_action_input)
+            input_signature["prev_action"] = tf1.saved_model.utils.build_tensor_info(
+                self._prev_action_input
+            )
         if self._prev_reward_input is not None:
-            input_signature["prev_reward"] = \
-                tf1.saved_model.utils.build_tensor_info(
-                    self._prev_reward_input)
+            input_signature["prev_reward"] = tf1.saved_model.utils.build_tensor_info(
+                self._prev_reward_input
+            )
 
-        input_signature["is_training"] = \
-            tf1.saved_model.utils.build_tensor_info(self._is_training)
+        input_signature["is_training"] = tf1.saved_model.utils.build_tensor_info(
+            self._is_training
+        )
 
         if self._timestep is not None:
-            input_signature["timestep"] = \
-                tf1.saved_model.utils.build_tensor_info(self._timestep)
+            input_signature["timestep"] = tf1.saved_model.utils.build_tensor_info(
+                self._timestep
+            )
 
         for state_input in self._state_inputs:
-            input_signature[state_input.name] = \
-                tf1.saved_model.utils.build_tensor_info(state_input)
+            input_signature[state_input.name] = tf1.saved_model.utils.build_tensor_info(
+                state_input
+            )
 
         # build output signatures
         output_signature = self._extra_output_signature_def()
         for i, a in enumerate(tf.nest.flatten(self._sampled_action)):
-            output_signature["actions_{}".format(i)] = \
-                tf1.saved_model.utils.build_tensor_info(a)
+            output_signature[
+                "actions_{}".format(i)
+            ] = tf1.saved_model.utils.build_tensor_info(a)
 
         for state_output in self._state_outputs:
-            output_signature[state_output.name] = \
-                tf1.saved_model.utils.build_tensor_info(state_output)
-        signature_def = (
-            tf1.saved_model.signature_def_utils.build_signature_def(
-                input_signature, output_signature,
-                tf1.saved_model.signature_constants.PREDICT_METHOD_NAME))
-        signature_def_key = (tf1.saved_model.signature_constants.
-                             DEFAULT_SERVING_SIGNATURE_DEF_KEY)
+            output_signature[
+                state_output.name
+            ] = tf1.saved_model.utils.build_tensor_info(state_output)
+        signature_def = tf1.saved_model.signature_def_utils.build_signature_def(
+            input_signature,
+            output_signature,
+            tf1.saved_model.signature_constants.PREDICT_METHOD_NAME,
+        )
+        signature_def_key = (
+            tf1.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+        )
         signature_def_map = {signature_def_key: signature_def}
         return signature_def_map
 
-    def _build_compute_actions(self,
-                               builder,
-                               *,
-                               input_dict=None,
-                               obs_batch=None,
-                               state_batches=None,
-                               prev_action_batch=None,
-                               prev_reward_batch=None,
-                               episodes=None,
-                               explore=None,
-                               timestep=None):
+    def _build_compute_actions(
+        self,
+        builder,
+        *,
+        input_dict=None,
+        obs_batch=None,
+        state_batches=None,
+        prev_action_batch=None,
+        prev_reward_batch=None,
+        episodes=None,
+        explore=None,
+        timestep=None
+    ):
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
 
         # Call the exploration before_compute_actions hook.
         self.exploration.before_compute_actions(
-            timestep=timestep, explore=explore, tf_sess=self.get_session())
+            timestep=timestep, explore=explore, tf_sess=self.get_session()
+        )
 
         builder.add_feed_dict(self.extra_compute_action_feed_dict())
 
@@ -803,31 +852,26 @@ class TFPolicy(Policy):
                         builder.add_feed_dict({self._input_dict[key]: value})
             # For policies that inherit directly from TFPolicy.
             else:
-                builder.add_feed_dict({
-                    self._obs_input: input_dict[SampleBatch.OBS]
-                })
+                builder.add_feed_dict({self._obs_input: input_dict[SampleBatch.OBS]})
                 if SampleBatch.PREV_ACTIONS in input_dict:
-                    builder.add_feed_dict({
-                        self._prev_action_input: input_dict[
-                            SampleBatch.PREV_ACTIONS]
-                    })
+                    builder.add_feed_dict(
+                        {self._prev_action_input: input_dict[SampleBatch.PREV_ACTIONS]}
+                    )
                 if SampleBatch.PREV_REWARDS in input_dict:
-                    builder.add_feed_dict({
-                        self._prev_reward_input: input_dict[
-                            SampleBatch.PREV_REWARDS]
-                    })
+                    builder.add_feed_dict(
+                        {self._prev_reward_input: input_dict[SampleBatch.PREV_REWARDS]}
+                    )
                 state_batches = []
                 i = 0
                 while "state_in_{}".format(i) in input_dict:
                     state_batches.append(input_dict["state_in_{}".format(i)])
                     i += 1
-                builder.add_feed_dict(
-                    dict(zip(self._state_inputs, state_batches)))
+                builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
 
             if "state_in_0" in input_dict:
-                builder.add_feed_dict({
-                    self._seq_lens: np.ones(len(input_dict["state_in_0"]))
-                })
+                builder.add_feed_dict(
+                    {self._seq_lens: np.ones(len(input_dict["state_in_0"]))}
+                )
 
         # Hardcoded old way: Build fixed fields, if provided.
         # TODO: (sven) This can be deprecated after trajectory view API flag is
@@ -837,23 +881,16 @@ class TFPolicy(Policy):
             if len(self._state_inputs) != len(state_batches):
                 raise ValueError(
                     "Must pass in RNN state batches for placeholders {}, "
-                    "got {}".format(self._state_inputs, state_batches))
+                    "got {}".format(self._state_inputs, state_batches)
+                )
 
             builder.add_feed_dict({self._obs_input: obs_batch})
             if state_batches:
-                builder.add_feed_dict({
-                    self._seq_lens: np.ones(len(obs_batch))
-                })
-            if self._prev_action_input is not None and \
-               prev_action_batch is not None:
-                builder.add_feed_dict({
-                    self._prev_action_input: prev_action_batch
-                })
-            if self._prev_reward_input is not None and \
-               prev_reward_batch is not None:
-                builder.add_feed_dict({
-                    self._prev_reward_input: prev_reward_batch
-                })
+                builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
+            if self._prev_action_input is not None and prev_action_batch is not None:
+                builder.add_feed_dict({self._prev_action_input: prev_action_batch})
+            if self._prev_reward_input is not None and prev_reward_batch is not None:
+                builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
             builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
 
         builder.add_feed_dict({self._is_training: False})
@@ -862,8 +899,11 @@ class TFPolicy(Policy):
             builder.add_feed_dict({self._timestep: timestep})
 
         # Determine, what exactly to fetch from the graph.
-        to_fetch = [self._sampled_action] + self._state_outputs + \
-                   [self.extra_compute_action_fetches()]
+        to_fetch = (
+            [self._sampled_action]
+            + self._state_outputs
+            + [self.extra_compute_action_fetches()]
+        )
 
         # Perform the session call.
         fetches = builder.add_fetches(to_fetch)
@@ -873,16 +913,18 @@ class TFPolicy(Policy):
         self._debug_vars()
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
         builder.add_feed_dict(
-            self._get_loss_inputs_dict(postprocessed_batch, shuffle=False))
-        fetches = builder.add_fetches(
-            [self._grads, self._get_grad_and_stats_fetches()])
+            self._get_loss_inputs_dict(postprocessed_batch, shuffle=False)
+        )
+        fetches = builder.add_fetches([self._grads, self._get_grad_and_stats_fetches()])
         return fetches[0], fetches[1]
 
     def _build_apply_gradients(self, builder, gradients):
         if len(gradients) != len(self._grads):
             raise ValueError(
-                "Unexpected number of gradients to apply, got {} for {}".
-                format(gradients, self._grads))
+                "Unexpected number of gradients to apply, got {} for {}".format(
+                    gradients, self._grads
+                )
+            )
         builder.add_feed_dict({self._is_training: True})
         builder.add_feed_dict(dict(zip(self._grads, gradients)))
         fetches = builder.add_fetches([self._apply_op])
@@ -893,21 +935,24 @@ class TFPolicy(Policy):
 
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
         builder.add_feed_dict(
-            self._get_loss_inputs_dict(postprocessed_batch, shuffle=False))
-        fetches = builder.add_fetches([
-            self._apply_op,
-            self._get_grad_and_stats_fetches(),
-        ])
+            self._get_loss_inputs_dict(postprocessed_batch, shuffle=False)
+        )
+        fetches = builder.add_fetches(
+            [
+                self._apply_op,
+                self._get_grad_and_stats_fetches(),
+            ]
+        )
         return fetches[1]
 
     def _get_grad_and_stats_fetches(self):
         fetches = self.extra_compute_grad_fetches()
         if LEARNER_STATS_KEY not in fetches:
-            raise ValueError(
-                "Grad fetches should contain 'stats': {...} entry")
+            raise ValueError("Grad fetches should contain 'stats': {...} entry")
         if self._stats_fetches:
-            fetches[LEARNER_STATS_KEY] = dict(self._stats_fetches,
-                                              **fetches[LEARNER_STATS_KEY])
+            fetches[LEARNER_STATS_KEY] = dict(
+                self._stats_fetches, **fetches[LEARNER_STATS_KEY]
+            )
         return fetches
 
     def _get_loss_inputs_dict(self, train_batch: SampleBatch, shuffle: bool):
@@ -924,8 +969,7 @@ class TFPolicy(Policy):
         """
 
         # Get batch ready for RNNs, if applicable.
-        if not isinstance(train_batch,
-                          SampleBatch) or not train_batch.zero_padded:
+        if not isinstance(train_batch, SampleBatch) or not train_batch.zero_padded:
             pad_batch_to_sequences_of_same_size(
                 train_batch,
                 max_seq_len=self._max_seq_len,
@@ -944,9 +988,7 @@ class TFPolicy(Policy):
         for key, placeholder in self._loss_input_dict.items():
             feed_dict[placeholder] = train_batch[key]
 
-        state_keys = [
-            "state_in_{}".format(i) for i in range(len(self._state_inputs))
-        ]
+        state_keys = ["state_in_{}".format(i) for i in range(len(self._state_inputs))]
         for key in state_keys:
             feed_dict[self._loss_input_dict[key]] = train_batch[key]
         if state_keys:
@@ -963,18 +1005,19 @@ class LearningRateSchedule:
     def __init__(self, lr, lr_schedule):
         self._lr_schedule = None
         if lr_schedule is None:
-            self.cur_lr = tf1.get_variable(
-                "lr", initializer=lr, trainable=False)
+            self.cur_lr = tf1.get_variable("lr", initializer=lr, trainable=False)
         else:
             self._lr_schedule = PiecewiseSchedule(
-                lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
+                lr_schedule, outside_value=lr_schedule[-1][-1], framework=None
+            )
             self.cur_lr = tf1.get_variable(
-                "lr", initializer=self._lr_schedule.value(0), trainable=False)
+                "lr", initializer=self._lr_schedule.value(0), trainable=False
+            )
             if self.framework == "tf":
-                self._lr_placeholder = tf1.placeholder(
-                    dtype=tf.float32, name="lr")
+                self._lr_placeholder = tf1.placeholder(dtype=tf.float32, name="lr")
                 self._lr_update = self.cur_lr.assign(
-                    self._lr_placeholder, read_value=False)
+                    self._lr_placeholder, read_value=False
+                )
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
@@ -983,7 +1026,8 @@ class LearningRateSchedule:
             new_val = self._lr_schedule.value(global_vars["timestep"])
             if self.framework == "tf":
                 self._sess.run(
-                    self._lr_update, feed_dict={self._lr_placeholder: new_val})
+                    self._lr_update, feed_dict={self._lr_placeholder: new_val}
+                )
             else:
                 self.cur_lr.assign(new_val, read_value=False)
                 self._optimizer.learning_rate.assign(self.cur_lr)
@@ -1002,44 +1046,47 @@ class EntropyCoeffSchedule:
         self._entropy_coeff_schedule = None
         if entropy_coeff_schedule is None:
             self.entropy_coeff = get_variable(
-                entropy_coeff,
-                framework="tf",
-                tf_name="entropy_coeff",
-                trainable=False)
+                entropy_coeff, framework="tf", tf_name="entropy_coeff", trainable=False
+            )
         else:
             # Allows for custom schedule similar to lr_schedule format
             if isinstance(entropy_coeff_schedule, list):
                 self._entropy_coeff_schedule = PiecewiseSchedule(
                     entropy_coeff_schedule,
                     outside_value=entropy_coeff_schedule[-1][-1],
-                    framework=None)
+                    framework=None,
+                )
             else:
                 # Implements previous version but enforces outside_value
                 self._entropy_coeff_schedule = PiecewiseSchedule(
                     [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
                     outside_value=0.0,
-                    framework=None)
+                    framework=None,
+                )
 
             self.entropy_coeff = get_variable(
                 self._entropy_coeff_schedule.value(0),
                 framework="tf",
                 tf_name="entropy_coeff",
-                trainable=False)
+                trainable=False,
+            )
             if self.framework == "tf":
                 self._entropy_coeff_placeholder = tf1.placeholder(
-                    dtype=tf.float32, name="entropy_coeff")
+                    dtype=tf.float32, name="entropy_coeff"
+                )
                 self._entropy_coeff_update = self.entropy_coeff.assign(
-                    self._entropy_coeff_placeholder, read_value=False)
+                    self._entropy_coeff_placeholder, read_value=False
+                )
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
         if self._entropy_coeff_schedule is not None:
-            new_val = self._entropy_coeff_schedule.value(
-                global_vars["timestep"])
+            new_val = self._entropy_coeff_schedule.value(global_vars["timestep"])
             if self.framework == "tf":
                 self._sess.run(
                     self._entropy_coeff_update,
-                    feed_dict={self._entropy_coeff_placeholder: new_val})
+                    feed_dict={self._entropy_coeff_placeholder: new_val},
+                )
             else:
                 self.entropy_coeff.assign(new_val, read_value=False)
