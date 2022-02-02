@@ -8,7 +8,17 @@ from ray.experimental.dag.format_utils import (
 )
 import ray.experimental.dag as dag
 
-from typing import Optional, Union, List, Tuple, Dict, Any, TypeVar, Callable, Set
+from typing import (
+    Optional,
+    Union,
+    List,
+    Tuple,
+    Dict,
+    Any,
+    TypeVar,
+    Callable,
+    Set,
+)
 import uuid
 
 T = TypeVar("T")
@@ -18,8 +28,9 @@ class DAGNode:
     """Abstract class for a node in a Ray task graph.
 
     A node has a type (e.g., TaskNode), data (e.g., function options and body),
-    and arguments (Python values, DAGNodes, and DAGNodes nested within Python
-    argument values).
+    arguments (Python values, DAGNodes, and DAGNodes nested within Python
+    argument values) and options (Ray API .options() used for function, class
+    or class method)
     """
 
     def __init__(
@@ -49,9 +60,9 @@ class DAGNode:
 
     def get_options(self) -> Optional[Dict[str, Any]]:
         """Return the dict of options arguments for this node."""
+
         if not self._bound_options:
             return None
-
         return self._bound_options.copy()
 
     def get_toplevel_child_nodes(self) -> Set["DAGNode"]:
@@ -91,7 +102,7 @@ class DAGNode:
         """Replace all immediate child nodes using a given function.
 
         This is a shallow replacement only. To recursively transform nodes in
-        the DAG, use ``transform_up()``.
+        the DAG, use ``apply_recursive()``.
 
         Args:
             fn: Callable that will be applied once to each child of this node.
@@ -117,7 +128,7 @@ class DAGNode:
         # Return updated copy of self.
         return self.copy(new_args, new_kwargs, new_options)
 
-    def transform_up(self, visitor: "Callable[[DAGNode], T]") -> T:
+    def apply_recursive(self, fn: "Callable[[DAGNode], T]") -> T:
         """Transform each node in this DAG in a bottom-up tree walk.
 
         Args:
@@ -129,7 +140,7 @@ class DAGNode:
             Return type of the visitor after application to the tree.
         """
 
-        class _CachingVisitor:
+        class _CachingFn:
             def __init__(self, fn):
                 self.cache = {}
                 self.fn = fn
@@ -139,16 +150,14 @@ class DAGNode:
                     self.cache[node._stable_uuid] = self.fn(node)
                 return self.cache[node._stable_uuid]
 
-        if not type(visitor).__name__ == "_CachingVisitor":
-            visitor = _CachingVisitor(visitor)
+        if not type(fn).__name__ == "_CachingFn":
+            fn = _CachingFn(fn)
 
-        return visitor(
-            self.replace_all_child_nodes(lambda node: node.transform_up(visitor))
-        )
+        return fn(self.replace_all_child_nodes(lambda node: node.apply_recursive(fn)))
 
     def execute(self) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this DAG using the Ray default executor."""
-        return self.transform_up(lambda node: node._execute())
+        return self.apply_recursive(lambda node: node._execute())
 
     def _execute(self) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this node, assuming args have been transformed already."""

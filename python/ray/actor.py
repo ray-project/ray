@@ -7,7 +7,7 @@ import ray._raylet
 import ray._private.signature as signature
 from ray._private.runtime_env.validation import ParsedRuntimeEnv
 import ray.worker
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
     DEFAULT_SCHEDULING_STRATEGY,
@@ -621,7 +621,11 @@ class ActorClass:
                     scheduling_strategy=scheduling_strategy,
                 )
 
+            @DeveloperAPI
             def _bind(self, *args, **kwargs):
+                """For ray DAG building. Implementation and interface subject
+                to chagnes
+                """
                 from ray.experimental.dag.actor_node import ActorNode
 
                 cls_options = dict(
@@ -1025,7 +1029,11 @@ class ActorClass:
 
         return actor_handle
 
+    @DeveloperAPI
     def _bind(self, *args, **kwargs):
+        """For ray DAG building. Implementation and interface subject
+        to chagnes
+        """
         from ray.experimental.dag.actor_node import ActorNode
 
         return ActorNode(self.__ray_metadata__.modified_class, args, kwargs)

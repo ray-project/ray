@@ -20,6 +20,8 @@ from ray.util.tracing.tracing_helper import (
     _tracing_task_invocation,
     _inject_tracing_into_function,
 )
+from ray.util.annotations import DeveloperAPI
+
 
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
@@ -250,7 +252,11 @@ class RemoteFunction:
                     scheduling_strategy=scheduling_strategy,
                 )
 
+            @DeveloperAPI
             def _bind(self, *args, **kwargs):
+                """For ray DAG building. Implementation and interface subject
+                to chagnes
+                """
                 from ray.experimental.dag.task_node import TaskNode
 
                 task_options = dict(
@@ -475,7 +481,12 @@ class RemoteFunction:
 
         return invocation(args, kwargs)
 
+    @DeveloperAPI
     def _bind(self, *args, **kwargs):
+        """For ray DAG building. Implementation and interface subject to
+        chagne.
+        """
+
         from ray.experimental.dag.task_node import TaskNode
 
         return TaskNode(self._function, args, kwargs)
