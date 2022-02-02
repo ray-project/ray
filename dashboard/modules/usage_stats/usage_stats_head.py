@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 USAGE_REPORT_ENABLED = int(os.getenv("RAY_USAGE_STATS_ENABLE", "0")) == 1
 # Defines how often usage data is reported to <link>.
 USAGE_REPOT_DATA_REPORT_INTERVAL = int(
-    os.getenv("RAY_USAGE_STATS_COLLECTION_INTERVAL", 10))
+    os.getenv("RAY_USAGE_STATS_COLLECTION_INTERVAL", 10)
+)
 USAGE_REPORT_SERVER_URL = "https://dashboard-ses-jAXR6GB7BmsJuRZSawg3a4Ue.anyscale-internal-hsrczdm-0000.anyscale-test-production.com/serve/"  # noqa
 
 
@@ -35,7 +36,8 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         if not self.cluster_metadata:
             cluster_metadata = ray.experimental.internal_kv._internal_kv_get(
                 ray_usage_lib.CLUSTER_METADATA_KEY,
-                namespace=ray_constants.KV_NAMESPACE_CLUSTER)
+                namespace=ray_constants.KV_NAMESPACE_CLUSTER,
+            )
             self.cluster_metadata = json.loads(cluster_metadata.decode())
             logger.info(f"Updated cluster metadata: {self.cluster_metadata}")
         try:
@@ -45,10 +47,9 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
                 "POST",
                 USAGE_REPORT_SERVER_URL,
                 headers={"Content-Type": "application/json"},
-                cookies={
-                    "anyscale-token": "8325e2bf-cbb6-4b4b-995f-98bfd1419796"
-                },
-                json=self.cluster_metadata)
+                cookies={"anyscale-token": "8325e2bf-cbb6-4b4b-995f-98bfd1419796"},
+                json=self.cluster_metadata,
+            )
             r.raise_for_status()
 
             logger.info(f"Status code: {r.status_code}, body: {r.json()}")
@@ -57,8 +58,9 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
 
     async def run(self, server):
         if not USAGE_REPORT_ENABLED:
-            logger.info("Usage module won't be started because "
-                        "the usage repot is disabled.")
+            logger.info(
+                "Usage module won't be started because " "the usage repot is disabled."
+            )
         else:
             await asyncio.gather(self._report_usage())
 

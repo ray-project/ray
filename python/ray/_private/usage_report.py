@@ -29,8 +29,7 @@ import ray
 
 
 def usage_report_enabled():
-    """Return True if the usage report is enabled.
-    """
+    """Return True if the usage report is enabled."""
     pass
 
 
@@ -62,8 +61,7 @@ CLUSTER_METADATA_KEY = b"CLUSTER_METADATA"
 
 
 def get_cluster_metadata():
-    """Return a dictionary of cluster metadata that will be reported.
-    """
+    """Return a dictionary of cluster metadata that will be reported."""
     return {
         "_version": _SCHEMA_VERSION,
         "_source": os.getenv("RAY_USAGE_STATS_SOURCE", "OSS"),
