@@ -2104,6 +2104,20 @@ def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
         assert ds._blocks._num_computed() == expected
 
 
+def test_add_column(ray_start_regular_shared):
+    ds = ray.data.range(5).add_column("foo", lambda x: 1)
+    assert ds.take(1) == [{"value": 0, "foo": 1}]
+
+    ds = ray.data.range_arrow(5).add_column("foo", lambda x: x["value"] + 1)
+    assert ds.take(1) == [{"value": 0, "foo": 1}]
+
+    ds = ray.data.range_arrow(5).add_column("value", lambda x: x["value"] + 1)
+    assert ds.take(2) == [{"value": 1}, {"value": 2}]
+
+    with pytest.raises(ValueError):
+        ds = ray.data.range(5).add_column("value", 0)
+
+
 def test_map_batch(ray_start_regular_shared, tmp_path):
     # Test input validation
     ds = ray.data.range(5)

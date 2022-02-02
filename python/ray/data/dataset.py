@@ -329,6 +329,9 @@ class Dataset(Generic[T]):
             df[col] = fn(df)
             return df
 
+        if not callable(fn):
+            raise ValueError("`fn` must be callable, got {}".format(fn))
+
         return self.map_batches(
             process_batch, batch_format="pandas", compute=compute, **ray_remote_args
         )

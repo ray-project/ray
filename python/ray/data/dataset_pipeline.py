@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 # Operations that can be naively applied per dataset row in the pipeline.
-PER_DATASET_OPS = ["map", "map_batches", "flat_map", "filter"]
+PER_DATASET_OPS = ["map", "map_batches", "add_column", "flat_map", "filter"]
 
 # Operations that apply to each dataset holistically in the pipeline.
 HOLISTIC_PER_DATASET_OPS = ["repartition", "random_shuffle", "sort"]
