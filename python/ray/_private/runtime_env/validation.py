@@ -134,7 +134,6 @@ def _rewrite_pip_list_ray_libraries(pip_list: List[str]) -> List[str]:
     """
     result = []
     for specifier in pip_list:
-        requirement = Requirement.parse(specifier)
         try:
             requirement = Requirement.parse(specifier)
         except Exception:
