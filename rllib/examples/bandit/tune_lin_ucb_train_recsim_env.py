@@ -1,19 +1,24 @@
-""" Example of using LinUCB on a RecSim env. """
+"""Example of using LinUCB on a RecSim environment. """
 
 from matplotlib import pyplot as plt
-import os
 import pandas as pd
 import time
 
 from ray import tune
-from ray.rllib.examples.env import recsim_recommender_system_envs
+import ray.rllib.examples.env.recsim_recommender_system_envs  # noqa
 
-import ray
 
 if __name__ == "__main__":
-    ray.init(local_mode=True)
+    ray.init()
 
     config = {
+        # "RecSim-v1" is a pre-registered RecSim env.
+        # Alternatively, you can do:
+        # `from ray.rllib.examples.env.recsim_recommender_system_envs import ...`
+        # - LongTermSatisfactionRecSimEnv
+        # - InterestExplorationRecSimEnv
+        # - InterestEvolutionRecSimEnv
+        # Then: "env": [the imported RecSim class]
         "env": "RecSim-v1",
         "env_config": {
             "convert_to_discrete_action_space": True,
@@ -23,7 +28,7 @@ if __name__ == "__main__":
 
     # Actual training_iterations will be 10 * timesteps_per_iteration
     # (100 by default) = 2,000
-    training_iterations = 100
+    training_iterations = 10
 
     print("Running training for %s time steps" % training_iterations)
 
