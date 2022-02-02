@@ -1,4 +1,6 @@
 #include
+#include "ray/protobuf/syncer.pb.h"
+
 namespace ray {
 namespace syncing {
 
