@@ -6,7 +6,7 @@ from typing import Dict, List
 
 
 def get_offline_io_resource_bundles(
-    config: PartialTrainerConfigDict
+    config: PartialTrainerConfigDict,
 ) -> List[Dict[str, float]]:
     # DatasetReader is the only offline I/O component today that
     # requires compute resources.
