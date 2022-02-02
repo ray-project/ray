@@ -61,6 +61,7 @@ class DistributedLearners:
                 self.num_gpus or self.max_num_policies_to_train,
                 self.max_num_policies_to_train,
             )
+        #
         else:
             self.num_learner_shards = num_learner_shards
 
@@ -77,7 +78,7 @@ class DistributedLearners:
         self.shards = [
             _Shard(
                 config=self.config,
-                max_num_policies=num_policies_per_shard,
+                max_num_policies=self.num_policies_per_shard,
                 num_gpus_per_policy=self.num_gpus_per_policy,
                 replay_actor_class=self.replay_actor_class,
                 replay_actor_args=self.replay_actor_args,

@@ -222,11 +222,12 @@ class AlphaStarTrainer(appo.APPOTrainer):
 
         # Single CPU replay shard (co-located with GPUs so we can place the
         # policies on the same machine(s)).
+        num_gpus = (
+            0.01 if (self.config["num_gpus"] and not self.config["_fake_gpus"]) else 0
+        )
         ReplayActor = ray.remote(
             num_cpus=1,
-            num_gpus=0.01
-            if (self.config["num_gpus"] and not self.config["_fake_gpus"])
-            else 0,
+            num_gpus=num_gpus,
         )(MixInMultiAgentReplayBuffer)
 
         # Setup remote replay buffer shards and policy learner actors
@@ -300,7 +301,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
         with self._timers[LEARN_ON_BATCH_TIMER]:
             pol_actors = []
             args = []
-            for i, (pid, pol_actor, repl_actor) in enumerate(self.distributed_learners):
+            for pid, pol_actor, repl_actor in self.distributed_learners:
                 pol_actors.append(pol_actor)
                 args.append([repl_actor, pid])
             train_results = asynchronous_parallel_requests(
