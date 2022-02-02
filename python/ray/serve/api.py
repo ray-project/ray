@@ -1172,36 +1172,25 @@ def list_deployments() -> Dict[str, Deployment]:
 
 
 def deploy_group(
-    deployment_list: List[Tuple[Deployment, Dict]],
+    deployments: List[Deployment],
     _blocking: bool = True,
     controller: ServeController = None,
 ) -> List[GoalId]:
     """
     EXPERIMENTAL API
 
-    Takes in a list of tuples that contain a deployment object and a
-    dictionary of keyword arguments to apply that deployment via a
-    .options() call. Updates each deployments with its corresponding
-    dictionary, and then deploys all deployments atomically.
+    Takes in a list of deployment object, and deploys them atomically.
 
     Args:
-        deployment_list(List[Tuple(Deployment, Dict)]): a list of all
-            the Deployment object–option argument pairs.
+        deployments(List[Deployment]): a list of deployments to deploy.
         _blocking(bool): whether to wait for the deployments to finish
             deploying or not.
         controller: the Serve controller to use when deploying the deployments.
             If None, uses the global_client's controller.
-
-    Raises:
-        TypeError: if a non-deployment object is passed in as a deployment,
-            or if the dictionary of options for a deployment contains a
-            non-existent option.
     """
 
-    updated_deployments = [d for d, _ in deployment_list]
-
     deployment_args_list = []
-    for deployment in updated_deployments:
+    for deployment in deployments:
         deployment_args_list.append(
             _get_deploy_args(
                 deployment._name,
@@ -1221,8 +1210,8 @@ def deploy_group(
     update_goals = ray.get(controller.deploy_group.remote(deployment_args_list))
 
     tags = []
-    for i in range(len(updated_deployments)):
-        deployment = updated_deployments[i]
+    for i in range(len(deployments)):
+        deployment = deployments[i]
         name, version = deployment._name, deployment._version
         updating = update_goals[i][1]
 
@@ -1230,8 +1219,8 @@ def deploy_group(
 
     # This section is also adapted from api.py's Client's deploy
     nonblocking_goal_ids = []
-    for i in range(len(updated_deployments)):
-        deployment = updated_deployments[i]
+    for i in range(len(deployments)):
+        deployment = deployments[i]
         url = deployment.url
         goal_id = update_goals[i][0]
 
