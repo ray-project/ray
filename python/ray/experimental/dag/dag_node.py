@@ -6,6 +6,7 @@ from ray.experimental.dag.format_utils import (
     get_options_lines,
     get_indentation,
 )
+import ray.experimental.dag as dag
 
 from typing import Optional, Union, List, Tuple, Dict, Any, TypeVar, Callable, Set
 import uuid
@@ -175,14 +176,23 @@ class DAGNode:
 
     def __str__(self) -> str:
         indent = get_indentation()
+
+        if isinstance(self, dag.TaskNode):
+            body_line = str(self._body)
+        elif isinstance(self, dag.ActorNode):
+            body_line = str(self._actor_cls)
+        elif isinstance(self, dag.ActorMethodNode):
+            body_line = f"method={self._method_name}"
+
         args_line = get_args_lines(self._bound_args)
         kwargs_line = get_kwargs_lines(self._bound_kwargs)
         options_line = get_options_lines(self._bound_options)
+
         node_type = f"{self.__class__.__name__}"
-        # kwargs_children = self._bound_kwargs
+
         return (
             f"({node_type})(\n"
-            f"{indent}body={str(self._body)}\n"
+            f"{indent}body={body_line}\n"
             f"{indent}args={args_line}\n"
             f"{indent}kwargs={kwargs_line}\n"
             f"{indent}options={options_line}\n"

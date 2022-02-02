@@ -39,10 +39,10 @@ class ActorNode(DAGNode):
         call_node = _UnboundActorMethodNode(self, method_name)
         return call_node
 
-    def __str__(self):
-        return "ActorNode(cls={}, args={}, kwargs={})".format(
-            self._actor_cls, self._bound_args, self._bound_kwargs
-        )
+    # def __str__(self):
+    #     return "ActorNode(cls={}, args={}, kwargs={})".format(
+    #         self._actor_cls, self._bound_args, self._bound_kwargs
+    #     )
 
 
 class _UnboundActorMethodNode(object):
@@ -122,16 +122,3 @@ class ActorMethodNode(DAGNode):
             return getattr(actor_handle, self._method_name).remote(
                 *self._bound_args[2:], **self._bound_kwargs
             )
-
-    def __str__(self):
-        return (
-            "ActorMethodNode(actor={}, prev_call={}, method={}, "
-            "args={}, kwargs={}, options={})"
-        ).format(
-            self._bound_args[0],
-            self._bound_args[1],
-            self._method_name,
-            self._bound_args[2:],
-            self._bound_kwargs,
-            self._bound_options,
-        )
