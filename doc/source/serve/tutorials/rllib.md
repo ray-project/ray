@@ -11,7 +11,7 @@ kernelspec:
 
 (serve-rllib-tutorial)=
 
-# RLlib Tutorial
+# Serving RLlib Models
 
 In this guide, we will train and deploy a simple Ray RLlib model.
 In particular, we show:
@@ -124,6 +124,17 @@ for _ in range(5):
     )
     print(f"<- Received response {resp.json()}")
 ```
+
+You should see output like this (`observation` values will differ):
+
+```text
+<- Received response {'action': 1}
+-> Sending observation [0.04228249 0.02289503 0.00690076 0.03095441]
+<- Received response {'action': 0}
+-> Sending observation [ 0.04819471 -0.04702759 -0.00477937 -0.00735569]
+<- Received response {'action': 0}
+```
+
 
 :::{note}
 In this example the client used the `requests` library to send a request to the server.

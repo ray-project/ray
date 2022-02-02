@@ -83,8 +83,9 @@ myst_enable_extensions = [
 ]
 
 # Cache notebook outputs in _build/.jupyter_cache
-# To prevent execution, set this to "off". To force re-execution, set this to "force".
-jupyter_execute_notebooks = "cache"
+# To prevent notebook execution, set this to "off". To force re-execution, set this to "force".
+# To cache previous runs, set this to "cache".
+jupyter_execute_notebooks = os.getenv("RUN_NOTEBOOKS", "off")
 
 external_toc_exclude_missing = False
 external_toc_path = "_toc.yml"
