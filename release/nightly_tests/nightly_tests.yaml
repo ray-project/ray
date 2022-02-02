@@ -249,8 +249,9 @@
     compute_template: stress_tests/stress_tests_compute.yaml
 
   run:
-    timeout: 3600
-    script: python stress_tests/test_logging.py --total-num-tasks=4 --log-lines-per-task=134217728 --log-line-size=512
+    timeout: 86400
+    script: python stress_tests/test_logging.py --total-num-tasks=4 --log-lines-per-task=134217728 --log-line-size=512 2> logs
+    long_running: True
   stable: false
 
 # Stress tests with dead actors
