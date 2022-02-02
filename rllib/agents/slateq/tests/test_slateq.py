@@ -29,7 +29,7 @@ class TestSlateQ(unittest.TestCase):
 
         num_iterations = 1
 
-        # Test against all frameworks.
+        # Test only against torch (no other frameworks supported so far).
         for _ in framework_iterator(config, frameworks="torch"):
             trainer = slateq.SlateQTrainer(config=config)
             for i in range(num_iterations):
@@ -38,6 +38,9 @@ class TestSlateQ(unittest.TestCase):
                 print(results)
             check_compute_single_action(trainer)
             trainer.stop()
+
+    def test_slateq_loss_function(self):
+        pass
 
 
 if __name__ == "__main__":
