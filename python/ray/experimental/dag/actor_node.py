@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional
 class ActorNode(DAGNode):
     """Represents an actor creation in a Ray task DAG."""
 
-    # TODO(ekl) support actor options
     def __init__(self, actor_cls: type, cls_args, cls_kwargs, cls_options=None):
         self._actor_cls = actor_cls
         self._last_call: Optional["ActorMethodNode"] = None
@@ -39,11 +38,6 @@ class ActorNode(DAGNode):
         call_node = _UnboundActorMethodNode(self, method_name)
         return call_node
 
-    # def __str__(self):
-    #     return "ActorNode(cls={}, args={}, kwargs={})".format(
-    #         self._actor_cls, self._bound_args, self._bound_kwargs
-    #     )
-
 
 class _UnboundActorMethodNode(object):
     def __init__(self, actor: ActorNode, method_name: str):
@@ -71,7 +65,6 @@ class _UnboundActorMethodNode(object):
 class ActorMethodNode(DAGNode):
     """Represents an actor method invocation in a Ray task DAG."""
 
-    # TODO(ekl) support method options
     def __init__(
         self,
         actor: ActorNode,

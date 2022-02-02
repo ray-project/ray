@@ -58,10 +58,12 @@ def test_basic_actor_dag():
 def test_basic_actor_dag_constructor_options():
     a1 = Actor._bind(10)
     dag = a1.get._bind()
+    print(dag)
     assert ray.get(dag.execute()) == 10
 
     a1 = Actor.options(name="Actor", namespace="test", max_pending_calls=10)._bind(10)
     dag = a1.get._bind()
+    print(dag)
     # Ensure execution result is identical with .options() in init()
     assert ray.get(dag.execute()) == 10
     # Ensure options are passed in

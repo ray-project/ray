@@ -182,7 +182,7 @@ class DAGNode:
         elif isinstance(self, dag.ActorNode):
             body_line = str(self._actor_cls)
         elif isinstance(self, dag.ActorMethodNode):
-            body_line = f"method={self._method_name}"
+            body_line = f"{self._method_name}()"
 
         args_line = get_args_lines(self._bound_args)
         kwargs_line = get_kwargs_lines(self._bound_kwargs)
