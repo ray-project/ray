@@ -2207,12 +2207,21 @@ def run_test_config(
 
         out_dir = os.path.expanduser(GLOBAL_CONFIG["RELEASE_RESULTS_DIR"])
 
-        logger.info(
-            f"Moving results dir {temp_dir} to persistent location {out_dir}"
-        )
+        logger.info(f"Moving results dir {temp_dir} to persistent location {out_dir}")
 
         try:
-            # out_dir should not exist because it is cleared in run_e2e.sh
+            # out_dir is cleared in run_e2e.sh, but it may exist when running
+            # e2e.py directly.
+            if os.path.exists(out_dir):
+                shutil.rmtree(out_dir)
+                logger.info(f"Destination {out_dir} is cleared")
+        except Exception:
+            logger.info(
+                f"Ran into error when clearing the destination: {out_dir}",
+                exc_info=True,
+            )
+
+        try:
             shutil.cptree(temp_dir, out_dir)
         except Exception:
             logger.exception(
