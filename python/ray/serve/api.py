@@ -1171,13 +1171,14 @@ def list_deployments() -> Dict[str, Deployment]:
     return deployments
 
 
-@PublicAPI(stability="beta")
 def deploy_group(
     deployment_list: List[Tuple[Deployment, Dict]],
     _blocking: bool = True,
     controller: ServeController = None,
 ) -> List[GoalId]:
     """
+    EXPERIMENTAL API
+
     Takes in a list of tuples that contain a deployment object and a
     dictionary of keyword arguments to apply that deployment via a
     .options() call. Updates each deployments with its corresponding

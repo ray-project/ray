@@ -16,6 +16,8 @@ from ray import serve
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import get_random_letters
 
+from ray.serve.api import deploy_group
+
 
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_deploy(serve_instance, use_handle):
@@ -1247,7 +1249,7 @@ class TestDeployGroup:
         # controller: ServeController = serve_instance._controller
 
         deployment_list = [(d, {}) for d in self.deployments]
-        serve.deploy_group(deployment_list)
+        deploy_group(deployment_list)
 
         for deployment, response in zip(self.deployments, self.responses):
             assert ray.get(deployment.get_handle().remote()) == response
@@ -1257,7 +1259,7 @@ class TestDeployGroup:
         responses = ["E reached", "F reached"]
 
         deployment_list = [(d, {}) for d in deployments]
-        serve.deploy_group(deployment_list)
+        deploy_group(deployment_list)
 
         for deployment, response in zip(deployments, responses):
             assert ray.get(deployment.get_handle().remote()) == response
