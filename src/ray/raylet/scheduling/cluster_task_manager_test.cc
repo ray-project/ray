@@ -275,7 +275,8 @@ class ClusterTaskManagerTest : public ::testing::Test {
     node_resources[ray::kCPU_ResourceLabel] = num_cpus;
     node_resources[ray::kGPU_ResourceLabel] = num_gpus;
     node_resources[ray::kMemory_ResourceLabel] = memory;
-    scheduler_->AddOrUpdateNode(id.Binary(), node_resources, node_resources);
+    scheduler_->GetClusterResourceManager().AddOrUpdateNode(id.Binary(), node_resources,
+                                                            node_resources);
 
     rpc::GcsNodeInfo info;
     node_info_[id] = info;
@@ -1433,7 +1434,8 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
 }
 
 TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) {
-  const NodeResources &node_resources = scheduler_->GetLocalNodeResources();
+  const NodeResources &node_resources =
+      scheduler_->GetClusterResourceManager().GetNodeResources(id_.Binary());
   ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::CPU].available, 8);
   ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::GPU].available, 4);
 
