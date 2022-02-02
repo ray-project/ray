@@ -564,7 +564,7 @@ class SimpleListCollector(SampleCollector):
         self.policy_collector_groups = []
 
         # Agents to collect data from for the next forward pass (per policy).
-        self.forward_pass_agent_keys = {pid: [] for pid in self.policy_map.keys()}
+        self.forward_pass_agent_keys = {pid: set() for pid in self.policy_map.keys()}
         self.forward_pass_size = {pid: 0 for pid in self.policy_map.keys()}
 
         # Maps episode ID to the (non-built) env steps taken in this episode.
@@ -710,12 +710,17 @@ class SimpleListCollector(SampleCollector):
         keys = self.forward_pass_agent_keys[policy_id]
         batch_size = len(keys)
 
+        # Return empty batch, if no forward pass to do.
+        if batch_size == 0:
+            return SampleBatch()
+
         buffers = {}
+        k = None
         for k in keys:
             collector = self.agent_collectors[k]
             buffers[k] = collector.buffers
         # Use one agent's buffer_structs (they should all be the same).
-        buffer_structs = self.agent_collectors[keys[0]].buffer_structs
+        buffer_structs = self.agent_collectors[k].buffer_structs
 
         input_dict = {}
         for view_col, view_req in policy.view_requirements.items():
@@ -766,7 +771,7 @@ class SimpleListCollector(SampleCollector):
                     self.agent_collectors[k]._build_buffers({data_col: fill_value})
 
                 if data is None:
-                    data = [[] for _ in range(len(buffers[keys[0]][data_col]))]
+                    data = [[] for _ in range(len(buffers[k][data_col]))]
 
                 # `shift_from` and `shift_to` are defined: User wants a
                 # view with some time-range.
@@ -819,8 +824,16 @@ class SimpleListCollector(SampleCollector):
         # Build SampleBatches for the given episode.
         pre_batches = {}
         for (eps_id, agent_id), collector in self.agent_collectors.items():
-            # Build only if there is data and agent is part of given episode.
-            if collector.agent_steps == 0 or eps_id != episode_id:
+            # Build only if there is data and agent is part of given episode and
+            # info does not contain the training_enabled=True flag (used by our
+            # PolicyClients).
+            last_info = episode.last_info_for(agent_id)
+            if (
+                collector.agent_steps == 0
+                or eps_id != episode_id
+                or not last_info
+                or last_info.get("training_enabled", True)
+            ):
                 continue
             pid = self.agent_key_to_policy_id[(eps_id, agent_id)]
             policy = self.policy_map[pid]
@@ -922,6 +935,9 @@ class SimpleListCollector(SampleCollector):
             ].add_postprocessed_batch_for_training(post_batch, policy.view_requirements)
 
             if is_done:
+                if agent_key in self.forward_pass_agent_keys[pid]:
+                    self.forward_pass_agent_keys[pid].remove(agent_key)
+                    self.forward_pass_size[pid] = len(self.forward_pass_agent_keys[pid])
                 del self.agent_key_to_policy_id[agent_key]
                 del self.agent_collectors[agent_key]
 
@@ -1026,18 +1042,20 @@ class SimpleListCollector(SampleCollector):
         """
         pid = self.agent_key_to_policy_id[agent_key]
 
-        # PID may be a newly added policy. Just confirm we have it in our
-        # policy map before proceeding with forward_pass_size=0.
+        # PID may be a newly added policy (added on the fly during training).
+        # Just confirm we have it in our policy map before proceeding with
+        # forward_pass_size=0.
         if pid not in self.forward_pass_size:
             assert pid in self.policy_map
+            self.forward_pass_agent_keys[pid] = set()
             self.forward_pass_size[pid] = 0
-            self.forward_pass_agent_keys[pid] = []
 
         idx = self.forward_pass_size[pid]
+        assert idx >= 0
         if idx == 0:
             self.forward_pass_agent_keys[pid].clear()
 
-        self.forward_pass_agent_keys[pid].append(agent_key)
+        self.forward_pass_agent_keys[pid].add(agent_key)
         self.forward_pass_size[pid] += 1
 
     def _reset_inference_calls(self, policy_id: PolicyID) -> None:

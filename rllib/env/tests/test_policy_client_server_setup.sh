@@ -1,5 +1,12 @@
 #!/bin/bash
 
+"""
+Driver script for testing RLlib's client/server setup.
+
+Run as follows:
+test_policy_client_server_setup.sh [inference-mode: local|remote] [env: cartpole|unity3d|]
+"""
+
 rm -f last_checkpoint.out
 
 if [ "$1" == "local" ]; then
