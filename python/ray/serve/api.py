@@ -221,7 +221,8 @@ class Client:
             init_kwargs=init_kwargs,
             ray_actor_options=ray_actor_options,
             config=config,
-            version=prev_version,
+            version=version,
+            prev_version=prev_version,
             route_prefix=route_prefix,
         )
 
