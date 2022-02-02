@@ -551,12 +551,17 @@ def remove_dir_from_filepaths(base_dir: str, rdir: str):
     # Move rdir to a temporary directory, so its contents can be moved to
     # base_dir without any name conflicts
     with TemporaryDirectory() as tmp_dir:
-        os.rename(os.path.join(base_dir, rdir), os.path.join(tmp_dir, rdir))
+
+        # shutil.move() is used instead of os.rename() in case rdir and tmp_dir
+        # are located on separate file systems
+        shutil.move(os.path.join(base_dir, rdir), os.path.join(tmp_dir, rdir))
 
         # Shift children out of rdir and into base_dir
         rdir_children = os.listdir(os.path.join(tmp_dir, rdir))
         for child in rdir_children:
-            os.rename(os.path.join(tmp_dir, rdir, child), os.path.join(base_dir, child))
+            shutil.move(
+                os.path.join(tmp_dir, rdir, child), os.path.join(base_dir, child)
+            )
 
 
 def unzip_package(
