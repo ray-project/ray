@@ -163,7 +163,7 @@ class MultiDiscreteToDiscreteActionWrapper(gym.ActionWrapper):
 def recsim_gym_wrapper(
     recsim_gym_env: gym.Env,
     convert_to_discrete_action_space: bool = False,
-    wrap_for_bandits=False,
+    wrap_for_bandits: bool = False,
 ) -> gym.Env:
     """Makes sure a RecSim gym.Env can ba handled by RLlib.
 
@@ -187,8 +187,8 @@ def recsim_gym_wrapper(
             such as RLlib's DQN. If None, `convert_to_discrete_action_space`
             may also be provided via the EnvContext (config) when creating an
             actual env instance.
-        wrap_for_bandits: Optional bool indicating, whether this RecSim env
-            should be wrapped for use with our Bandits agent.
+        wrap_for_bandits: Bool indicating, whether this RecSim env should be
+            wrapped for use with our Bandits agent.
 
     Returns:
         An RLlib-ready gym.Env instance.
