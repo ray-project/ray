@@ -135,7 +135,11 @@ def test_invalid_conda_env(shutdown_only):
 
     start = time.time()
     bad_env = {"conda": {"dependencies": ["this_doesnt_exist"]}}
-    with pytest.raises(RuntimeEnvSetupError):
+    with pytest.raises(
+        RuntimeEnvSetupError,
+        # The actual error message should be included in the exception.
+        match="No such file or directory",
+    ):
         ray.get(f.options(runtime_env=bad_env).remote())
     first_time = time.time() - start
 
@@ -148,7 +152,7 @@ def test_invalid_conda_env(shutdown_only):
 
     # The second time this runs it should be faster as the error is cached.
     start = time.time()
-    with pytest.raises(RuntimeEnvSetupError):
+    with pytest.raises(RuntimeEnvSetupError, match="No such file or directory"):
         ray.get(f.options(runtime_env=bad_env).remote())
 
     assert (time.time() - start) < (first_time / 2.0)

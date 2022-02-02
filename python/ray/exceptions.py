@@ -535,8 +535,8 @@ class RuntimeEnvSetupError(RayError):
     def __str__(self):
         msgs = ["The runtime_env failed to be set up."]
         if self.error_message:
-            msgs.append(f"Error message: {self.error_message}")
-        return " ".join(msgs)
+            msgs.append(self.error_message)
+        return "\n".join(msgs)
 
 
 class TaskPlacementGroupRemoved(RayError):
