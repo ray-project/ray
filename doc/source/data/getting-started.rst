@@ -1,7 +1,7 @@
-.. _data_getting_started:
+.. _datasets_getting_started:
 
 =============================
-Getting Started with Ray Data
+Getting Started with Ray Datasets
 =============================
 
 In this tutorial you will learn how to:
@@ -10,13 +10,13 @@ In this tutorial you will learn how to:
 - How to transform a ``Dataset`` and pass it into other Ray Tasks.
 - How to create a Ray ``DatasetPipeline`` and run transformations on it.
 
-.. _ray_data_quick_start:
+.. _ray_datasets_quick_start:
 
 --------------------
 Dataset Quick Start
 --------------------
 
-Ray Data implements `Distributed Arrow <https://arrow.apache.org/>`__.
+Ray Datasets implements `Distributed Arrow <https://arrow.apache.org/>`__.
 A Dataset consists of a list of Ray object references to *blocks*.
 Each block holds a set of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__
 or a Python list (for Arrow incompatible objects).
