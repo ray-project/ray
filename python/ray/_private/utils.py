@@ -13,18 +13,29 @@ import sys
 import tempfile
 import threading
 import time
-from typing import Optional
+from typing import Optional, Sequence, Tuple, Any
 import uuid
+import grpc
 import warnings
+
+try:
+    from grpc import aio as aiogrpc
+except ImportError:
+    from grpc.experimental import aio as aiogrpc
 
 import inspect
 from inspect import signature
 from pathlib import Path
 import numpy as np
-import psutil
+
 import ray
-import ray.gcs_utils
+import ray._private.gcs_utils as gcs_utils
 import ray.ray_constants as ray_constants
+from ray._private.gcs_pubsub import construct_error_message
+from ray._private.tls_utils import load_certs_from_env
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 pwd = None
 if sys.platform != "win32":
@@ -43,7 +54,11 @@ win32_AssignProcessToJobObject = None
 
 
 def get_user_temp_dir():
-    if sys.platform.startswith("darwin") or sys.platform.startswith("linux"):
+    if "RAY_TMPDIR" in os.environ:
+        return os.environ["RAY_TMPDIR"]
+    elif sys.platform.startswith("linux") and "TMPDIR" in os.environ:
+        return os.environ["TMPDIR"]
+    elif sys.platform.startswith("darwin") or sys.platform.startswith("linux"):
         # Ideally we wouldn't need this fallback, but keep it for now for
         # for compatibility
         tempdir = os.path.join(os.sep, "tmp")
@@ -103,10 +118,9 @@ def push_error_to_driver(worker, error_type, message, job_id=None):
     worker.core_worker.push_error(job_id, error_type, message, time.time())
 
 
-def push_error_to_driver_through_redis(redis_client,
-                                       error_type,
-                                       message,
-                                       job_id=None):
+def publish_error_to_driver(
+    error_type, message, job_id=None, redis_client=None, gcs_publisher=None
+):
     """Push an error message to the driver to be printed in the background.
 
     Normally the push_error_to_driver function should be used. However, in some
@@ -115,25 +129,30 @@ def push_error_to_driver_through_redis(redis_client,
     backend processes.
 
     Args:
-        redis_client: The redis client to use.
         error_type (str): The type of the error.
         message (str): The message that will be printed in the background
             on the driver.
         job_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
+        redis_client: The redis client to use.
+        gcs_publisher: The GCS publisher to use. If specified, ignores
+            redis_client.
     """
     if job_id is None:
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
-    # Do everything in Python and through the Python Redis client instead
-    # of through the raylet.
-    error_data = ray.gcs_utils.construct_error_message(job_id, error_type,
-                                                       message, time.time())
-    pubsub_msg = ray.gcs_utils.PubSubMessage()
-    pubsub_msg.id = job_id.binary()
-    pubsub_msg.data = error_data
-    redis_client.publish("ERROR_INFO:" + job_id.hex(),
-                         pubsub_msg.SerializeToString())
+    error_data = construct_error_message(job_id, error_type, message, time.time())
+    if gcs_publisher:
+        gcs_publisher.publish_error(job_id.hex().encode(), error_data)
+    elif redis_client:
+        pubsub_msg = gcs_utils.PubSubMessage()
+        pubsub_msg.id = job_id.binary()
+        pubsub_msg.data = error_data.SerializeToString()
+        redis_client.publish(
+            "ERROR_INFO:" + job_id.hex(), pubsub_msg.SerializeToString()
+        )
+    else:
+        raise ValueError("One of redis_client and gcs_publisher needs to be specified!")
 
 
 def random_string():
@@ -188,8 +207,8 @@ def decode(byte_str, allow_none=False):
 def ensure_str(s, encoding="utf-8", errors="strict"):
     """Coerce *s* to `str`.
 
-      - `str` -> `str`
-      - `bytes` -> decoded to `str`
+    - `str` -> `str`
+    - `bytes` -> decoded to `str`
     """
     if isinstance(s, str):
         return s
@@ -221,7 +240,7 @@ def hex_to_binary(hex_identifier):
 # once we separate `WorkerID` from `UniqueID`.
 def compute_job_id_from_driver(driver_id):
     assert isinstance(driver_id, ray.WorkerID)
-    return ray.JobID(driver_id.binary()[0:ray.JobID.size()])
+    return ray.JobID(driver_id.binary()[0 : ray.JobID.size()])
 
 
 def compute_driver_id_from_job(job_id):
@@ -264,6 +283,9 @@ def set_cuda_visible_devices(gpu_ids):
         gpu_ids (List[str]): List of strings representing GPU IDs.
     """
 
+    if os.environ.get("RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"):
+        return
+
     global last_set_gpu_ids
     if last_set_gpu_ids == gpu_ids:
         return  # optimization: already set
@@ -273,11 +295,19 @@ def set_cuda_visible_devices(gpu_ids):
 
 
 def resources_from_resource_arguments(
-        default_num_cpus, default_num_gpus, default_memory,
-        default_object_store_memory, default_resources,
-        default_accelerator_type, runtime_num_cpus, runtime_num_gpus,
-        runtime_memory, runtime_object_store_memory, runtime_resources,
-        runtime_accelerator_type):
+    default_num_cpus,
+    default_num_gpus,
+    default_memory,
+    default_object_store_memory,
+    default_resources,
+    default_accelerator_type,
+    runtime_num_cpus,
+    runtime_num_gpus,
+    runtime_memory,
+    runtime_object_store_memory,
+    runtime_resources,
+    runtime_accelerator_type,
+):
     """Determine a task's resource requirements.
 
     Args:
@@ -312,15 +342,19 @@ def resources_from_resource_arguments(
         resources = {}
 
     if "CPU" in resources or "GPU" in resources:
-        raise ValueError("The resources dictionary must not "
-                         "contain the key 'CPU' or 'GPU'")
+        raise ValueError(
+            "The resources dictionary must not " "contain the key 'CPU' or 'GPU'"
+        )
     elif "memory" in resources or "object_store_memory" in resources:
-        raise ValueError("The resources dictionary must not "
-                         "contain the key 'memory' or 'object_store_memory'")
+        raise ValueError(
+            "The resources dictionary must not "
+            "contain the key 'memory' or 'object_store_memory'"
+        )
 
     assert default_num_cpus is not None
-    resources["CPU"] = (default_num_cpus
-                        if runtime_num_cpus is None else runtime_num_cpus)
+    resources["CPU"] = (
+        default_num_cpus if runtime_num_cpus is None else runtime_num_cpus
+    )
 
     if runtime_num_gpus is not None:
         resources["GPU"] = runtime_num_gpus
@@ -329,21 +363,22 @@ def resources_from_resource_arguments(
 
     # Order of arguments matter for short circuiting.
     memory = runtime_memory or default_memory
-    object_store_memory = (runtime_object_store_memory
-                           or default_object_store_memory)
+    object_store_memory = runtime_object_store_memory or default_object_store_memory
     if memory is not None:
-        resources["memory"] = ray_constants.to_memory_units(
-            memory, round_up=True)
+        resources["memory"] = ray_constants.to_memory_units(memory, round_up=True)
     if object_store_memory is not None:
         resources["object_store_memory"] = ray_constants.to_memory_units(
-            object_store_memory, round_up=True)
+            object_store_memory, round_up=True
+        )
 
     if runtime_accelerator_type is not None:
-        resources[f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
-                  f"{runtime_accelerator_type}"] = 0.001
+        resources[
+            f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{runtime_accelerator_type}"
+        ] = 0.001
     elif default_accelerator_type is not None:
-        resources[f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
-                  f"{default_accelerator_type}"] = 0.001
+        resources[
+            f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{default_accelerator_type}"
+        ] = 0.001
 
     return resources
 
@@ -417,9 +452,9 @@ def get_system_memory():
 
 
 def _get_docker_cpus(
-        cpu_quota_file_name="/sys/fs/cgroup/cpu/cpu.cfs_quota_us",
-        cpu_period_file_name="/sys/fs/cgroup/cpu/cpu.cfs_period_us",
-        cpuset_file_name="/sys/fs/cgroup/cpuset/cpuset.cpus"
+    cpu_quota_file_name="/sys/fs/cgroup/cpu/cpu.cfs_quota_us",
+    cpu_period_file_name="/sys/fs/cgroup/cpu/cpu.cfs_period_us",
+    cpuset_file_name="/sys/fs/cgroup/cpuset/cpuset.cpus",
 ) -> Optional[float]:
     # TODO (Alex): Don't implement this logic oursleves.
     # Docker has 2 underyling ways of implementing CPU limits:
@@ -431,16 +466,14 @@ def _get_docker_cpus(
 
     cpu_quota = None
     # See: https://bugs.openjdk.java.net/browse/JDK-8146115
-    if os.path.exists(cpu_quota_file_name) and os.path.exists(
-            cpu_quota_file_name):
+    if os.path.exists(cpu_quota_file_name) and os.path.exists(cpu_quota_file_name):
         try:
             with open(cpu_quota_file_name, "r") as quota_file, open(
-                    cpu_period_file_name, "r") as period_file:
-                cpu_quota = float(quota_file.read()) / float(
-                    period_file.read())
+                cpu_period_file_name, "r"
+            ) as period_file:
+                cpu_quota = float(quota_file.read()) / float(period_file.read())
         except Exception as e:
-            logger.exception("Unexpected error calculating docker cpu quota.",
-                             e)
+            logger.exception("Unexpected error calculating docker cpu quota.", e)
     if (cpu_quota is not None) and (cpu_quota < 0):
         cpu_quota = None
 
@@ -459,8 +492,7 @@ def _get_docker_cpus(
                         cpu_ids.append(int(num_or_range))
                 cpuset_num = len(cpu_ids)
         except Exception as e:
-            logger.exception("Unexpected error calculating docker cpuset ids.",
-                             e)
+            logger.exception("Unexpected error calculating docker cpuset ids.", e)
 
     if cpu_quota and cpuset_num:
         return min(cpu_quota, cpuset_num)
@@ -499,7 +531,8 @@ def get_num_cpus() -> int:
             "multiprocessing.cpu_count() to detect the number of CPUs. "
             "This may be inconsistent when used inside docker. "
             "To correctly detect CPUs, unset the env var: "
-            "`RAY_USE_MULTIPROCESSING_CPU_COUNT`.")
+            "`RAY_USE_MULTIPROCESSING_CPU_COUNT`."
+        )
         return cpu_count
     try:
         # Not easy to get cpu count in docker, see:
@@ -515,14 +548,16 @@ def get_num_cpus() -> int:
                     "prior behavior, set "
                     "`RAY_USE_MULTIPROCESSING_CPU_COUNT=1` as an env var "
                     "before starting Ray. Set the env var: "
-                    "`RAY_DISABLE_DOCKER_CPU_WARNING=1` to mute this warning.")
+                    "`RAY_DISABLE_DOCKER_CPU_WARNING=1` to mute this warning."
+                )
             # TODO (Alex): We should probably add support for fractional cpus.
             if int(docker_count) != float(docker_count):
                 logger.warning(
                     f"Ray currently does not support initializing Ray"
                     f"with fractional cpus. Your num_cpus will be "
                     f"truncated from {docker_count} to "
-                    f"{int(docker_count)}.")
+                    f"{int(docker_count)}."
+                )
             docker_count = int(docker_count)
             cpu_count = docker_count
 
@@ -592,29 +627,49 @@ def get_shared_memory_bytes():
     return shm_avail
 
 
-def check_oversized_pickle(pickled, name, obj_type, worker):
-    """Send a warning message if the pickled object is too large.
+def check_oversized_function(
+    pickled: bytes, name: str, obj_type: str, worker: "ray.Worker"
+) -> None:
+    """Send a warning message if the pickled function is too large.
 
     Args:
-        pickled: the pickled object.
+        pickled: the pickled function.
         name: name of the pickled object.
         obj_type: type of the pickled object, can be 'function',
-            'remote function', 'actor', or 'object'.
-        worker: the worker used to send warning message.
+            'remote function', or 'actor'.
+        worker: the worker used to send warning message. message will be logged
+            locally if None.
     """
     length = len(pickled)
-    if length <= ray_constants.PICKLE_OBJECT_WARNING_SIZE:
+    if length <= ray_constants.FUNCTION_SIZE_WARN_THRESHOLD:
         return
-    warning_message = (
-        "Warning: The {} {} has size {} when pickled. "
-        "It will be stored in Redis, which could cause memory issues. "
-        "This may mean that its definition uses a large array or other object."
-    ).format(obj_type, name, length)
-    push_error_to_driver(
-        worker,
-        ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
-        warning_message,
-        job_id=worker.current_job_id)
+    elif length < ray_constants.FUNCTION_SIZE_ERROR_THRESHOLD:
+        warning_message = (
+            "The {} {} is very large ({} MiB). "
+            "Check that its definition is not implicitly capturing a large "
+            "array or other object in scope. Tip: use ray.put() to put large "
+            "objects in the Ray object store."
+        ).format(obj_type, name, length // (1024 * 1024))
+        if worker:
+            push_error_to_driver(
+                worker,
+                ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
+                "Warning: " + warning_message,
+                job_id=worker.current_job_id,
+            )
+    else:
+        error = (
+            "The {} {} is too large ({} MiB > FUNCTION_SIZE_ERROR_THRESHOLD={}"
+            " MiB). Check that its definition is not implicitly capturing a "
+            "large array or other object in scope. Tip: use ray.put() to "
+            "put large objects in the Ray object store."
+        ).format(
+            obj_type,
+            name,
+            length // (1024 * 1024),
+            ray_constants.FUNCTION_SIZE_ERROR_THRESHOLD // (1024 * 1024),
+        )
+        raise ValueError(error)
 
 
 def is_main_thread():
@@ -625,8 +680,10 @@ def detect_fate_sharing_support_win32():
     global win32_job, win32_AssignProcessToJobObject
     if win32_job is None and sys.platform == "win32":
         import ctypes
+
         try:
             from ctypes.wintypes import BOOL, DWORD, HANDLE, LPVOID, LPCWSTR
+
             kernel32 = ctypes.WinDLL("kernel32")
             kernel32.CreateJobObjectW.argtypes = (LPVOID, LPCWSTR)
             kernel32.CreateJobObjectW.restype = HANDLE
@@ -669,8 +726,7 @@ def detect_fate_sharing_support_win32():
 
             class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
                 _fields_ = [
-                    ("BasicLimitInformation",
-                     JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                    ("BasicLimitInformation", JOBOBJECT_BASIC_LIMIT_INFORMATION),
                     ("IoInfo", IO_COUNTERS),
                     ("ProcessMemoryLimit", ctypes.c_size_t),
                     ("JobMemoryLimit", ctypes.c_size_t),
@@ -690,13 +746,16 @@ def detect_fate_sharing_support_win32():
             buf.BasicLimitInformation.LimitFlags = (
                 (0 if debug else JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE)
                 | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION
-                | JOB_OBJECT_LIMIT_BREAKAWAY_OK)
+                | JOB_OBJECT_LIMIT_BREAKAWAY_OK
+            )
             infoclass = JobObjectExtendedLimitInformation
             if not kernel32.SetInformationJobObject(
-                    job, infoclass, ctypes.byref(buf), ctypes.sizeof(buf)):
+                job, infoclass, ctypes.byref(buf), ctypes.sizeof(buf)
+            ):
                 job = None
-        win32_AssignProcessToJobObject = (kernel32.AssignProcessToJobObject
-                                          if kernel32 is not None else False)
+        win32_AssignProcessToJobObject = (
+            kernel32.AssignProcessToJobObject if kernel32 is not None else False
+        )
         win32_job = job if job else False
     return bool(win32_job)
 
@@ -706,6 +765,7 @@ def detect_fate_sharing_support_linux():
     if linux_prctl is None and sys.platform.startswith("linux"):
         try:
             from ctypes import c_int, c_ulong, CDLL
+
             prctl = CDLL(None).prctl
             prctl.restype = c_int
             prctl.argtypes = [c_int, c_ulong, c_ulong, c_ulong, c_ulong]
@@ -731,9 +791,11 @@ def set_kill_on_parent_death_linux():
     """
     if detect_fate_sharing_support_linux():
         import signal
+
         PR_SET_PDEATHSIG = 1
         if linux_prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0) != 0:
             import ctypes
+
             raise OSError(ctypes.get_errno(), "prctl(PR_SET_PDEATHSIG) failed")
     else:
         assert False, "PR_SET_PDEATHSIG used despite being unavailable"
@@ -755,8 +817,8 @@ def set_kill_child_on_death_win32(child_proc):
     if detect_fate_sharing_support_win32():
         if not win32_AssignProcessToJobObject(win32_job, int(child_proc)):
             import ctypes
-            raise OSError(ctypes.get_last_error(),
-                          "AssignProcessToJobObject() failed")
+
+            raise OSError(ctypes.get_last_error(), "AssignProcessToJobObject() failed")
     else:
         assert False, "AssignProcessToJobObject used despite being unavailable"
 
@@ -873,8 +935,10 @@ def get_conda_env_dir(env_name):
         # support this case.
         conda_exe = os.environ.get("CONDA_EXE")
         if conda_exe is None:
-            raise ValueError("Cannot find environment variables set by conda. "
-                             "Please verify conda is installed.")
+            raise ValueError(
+                "Cannot find environment variables set by conda. "
+                "Please verify conda is installed."
+            )
         # Example: CONDA_EXE=$HOME/anaconda3/bin/python
         # Strip out /bin/python by going up two parent directories.
         conda_prefix = str(Path(conda_exe).parent.parent)
@@ -887,7 +951,7 @@ def get_conda_env_dir(env_name):
     if os.environ.get("CONDA_DEFAULT_ENV") == "base":
         # Caller's curent environment is (base).
         # Not recommended by conda, but we can still support it.
-        if (env_name == "base"):
+        if env_name == "base":
             # Desired environment is (base), located at e.g. $HOME/anaconda3
             env_dir = conda_prefix
         else:
@@ -902,9 +966,11 @@ def get_conda_env_dir(env_name):
         env_dir = os.path.join(conda_envs_dir, env_name)
     if not os.path.isdir(env_dir):
         raise ValueError(
-            "conda env " + env_name +
-            " not found in conda envs directory. Run `conda env list` to " +
-            "verify the name is correct.")
+            "conda env "
+            + env_name
+            + " not found in conda envs directory. Run `conda env list` to "
+            + "verify the name is correct."
+        )
     return env_dir
 
 
@@ -932,10 +998,9 @@ _PRINTED_WARNING = set()
 
 # The following is inspired by
 # https://github.com/tensorflow/tensorflow/blob/dec8e0b11f4f87693b67e125e67dfbc68d26c205/tensorflow/python/util/deprecation.py#L274-L329
-def deprecated(instructions=None,
-               removal_release=None,
-               removal_date=None,
-               warn_once=True):
+def deprecated(
+    instructions=None, removal_release=None, removal_date=None, warn_once=True
+):
     """
     Creates a decorator for marking functions as deprecated. The decorator
     will log a deprecation warning on the first (or all, see `warn_once` arg)
@@ -970,15 +1035,20 @@ def deprecated(instructions=None,
             if func not in _PRINTED_WARNING:
                 if warn_once:
                     _PRINTED_WARNING.add(func)
-                msg = ("From {}: {} (from {}) is deprecated and will ".format(
-                    get_call_location(), func.__name__,
-                    func.__module__) + "be removed " +
-                       (f"in version {removal_release}."
-                        if removal_release is not None else
-                        f"after {removal_date}"
-                        if removal_date is not None else "in a future version")
-                       + (f" {instructions}"
-                          if instructions is not None else ""))
+                msg = (
+                    "From {}: {} (from {}) is deprecated and will ".format(
+                        get_call_location(), func.__name__, func.__module__
+                    )
+                    + "be removed "
+                    + (
+                        f"in version {removal_release}."
+                        if removal_release is not None
+                        else f"after {removal_date}"
+                        if removal_date is not None
+                        else "in a future version"
+                    )
+                    + (f" {instructions}" if instructions is not None else "")
+                )
                 warnings.warn(msg)
             return func(*args, **kwargs)
 
@@ -1000,16 +1070,16 @@ def import_attr(full_path: str):
     if full_path is None:
         raise TypeError("import path cannot be None")
     last_period_idx = full_path.rfind(".")
-    attr_name = full_path[last_period_idx + 1:]
+    attr_name = full_path[last_period_idx + 1 :]
     module_name = full_path[:last_period_idx]
     module = importlib.import_module(module_name)
     return getattr(module, attr_name)
 
 
 def get_wheel_filename(
-        sys_platform: str = sys.platform,
-        ray_version: str = ray.__version__,
-        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
+    sys_platform: str = sys.platform,
+    ray_version: str = ray.__version__,
+    py_version: str = f"{sys.version_info.major}{sys.version_info.minor}",
 ) -> str:
     """Returns the filename used for the nightly Ray wheel.
 
@@ -1020,59 +1090,108 @@ def get_wheel_filename(
             `ray --version`.  Examples: "2.0.0.dev0"
         py_version (str):
             The major and minor Python versions concatenated.  Examples: "36",
-            "37", "38"
+            "37", "38", "39"
     Returns:
         The wheel file name.  Examples:
             ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
     """
-    assert py_version in ["36", "37", "38"], ("py_version must be one of '36',"
-                                              " '37', or '38'")
+    assert py_version in ["36", "37", "38", "39"], py_version
 
     os_strings = {
-        "darwin": "macosx_10_13_x86_64"
-        if py_version == "38" else "macosx_10_13_intel",
+        "darwin": "macosx_10_15_x86_64"
+        if py_version in ["38", "39"]
+        else "macosx_10_15_intel",
         "linux": "manylinux2014_x86_64",
-        "win32": "win_amd64"
+        "win32": "win_amd64",
     }
 
-    assert sys_platform in os_strings, ("sys_platform must be one of 'darwin',"
-                                        " 'linux', or 'win32'")
+    assert sys_platform in os_strings, sys_platform
 
-    wheel_filename = (f"ray-{ray_version}-cp{py_version}-"
-                      f"cp{py_version}{'m' if py_version != '38' else ''}"
-                      f"-{os_strings[sys_platform]}.whl")
+    wheel_filename = (
+        f"ray-{ray_version}-cp{py_version}-"
+        f"cp{py_version}{'m' if py_version in ['36', '37'] else ''}"
+        f"-{os_strings[sys_platform]}.whl"
+    )
 
     return wheel_filename
 
 
 def get_master_wheel_url(
-        ray_commit: str = ray.__commit__,
-        sys_platform: str = sys.platform,
-        ray_version: str = ray.__version__,
-        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
+    ray_commit: str = ray.__commit__,
+    sys_platform: str = sys.platform,
+    ray_version: str = ray.__version__,
+    py_version: str = f"{sys.version_info.major}{sys.version_info.minor}",
 ) -> str:
     """Return the URL for the wheel from a specific commit."""
     filename = get_wheel_filename(
-        sys_platform=sys_platform,
-        ray_version=ray_version,
-        py_version=py_version)
-    return (f"https://s3-us-west-2.amazonaws.com/ray-wheels/master/"
-            f"{ray_commit}/{filename}")
+        sys_platform=sys_platform, ray_version=ray_version, py_version=py_version
+    )
+    return (
+        f"https://s3-us-west-2.amazonaws.com/ray-wheels/master/"
+        f"{ray_commit}/{filename}"
+    )
 
 
 def get_release_wheel_url(
-        ray_commit: str = ray.__commit__,
-        sys_platform: str = sys.platform,
-        ray_version: str = ray.__version__,
-        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
+    ray_commit: str = ray.__commit__,
+    sys_platform: str = sys.platform,
+    ray_version: str = ray.__version__,
+    py_version: str = f"{sys.version_info.major}{sys.version_info.minor}",
 ) -> str:
     """Return the URL for the wheel for a specific release."""
     filename = get_wheel_filename(
-        sys_platform=sys_platform,
-        ray_version=ray_version,
-        py_version=py_version)
-    return (f"https://ray-wheels.s3-us-west-2.amazonaws.com/releases/"
-            f"{ray_version}/{ray_commit}/{filename}")
+        sys_platform=sys_platform, ray_version=ray_version, py_version=py_version
+    )
+    return (
+        f"https://ray-wheels.s3-us-west-2.amazonaws.com/releases/"
+        f"{ray_version}/{ray_commit}/{filename}"
+    )
     # e.g. https://ray-wheels.s3-us-west-2.amazonaws.com/releases/1.4.0rc1/e7c7
     # f6371a69eb727fa469e4cd6f4fbefd143b4c/ray-1.4.0rc1-cp36-cp36m-manylinux201
     # 4_x86_64.whl
+
+
+def validate_namespace(namespace: str):
+    if not isinstance(namespace, str):
+        raise TypeError("namespace must be None or a string.")
+    elif namespace == "":
+        raise ValueError(
+            '"" is not a valid namespace. ' "Pass None to not specify a namespace."
+        )
+
+
+def init_grpc_channel(
+    address: str,
+    options: Optional[Sequence[Tuple[str, Any]]] = None,
+    asynchronous: bool = False,
+):
+    grpc_module = aiogrpc if asynchronous else grpc
+    if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
+        server_cert_chain, private_key, ca_cert = load_certs_from_env()
+        credentials = grpc.ssl_channel_credentials(
+            certificate_chain=server_cert_chain,
+            private_key=private_key,
+            root_certificates=ca_cert,
+        )
+        channel = grpc_module.secure_channel(address, credentials, options=options)
+    else:
+        channel = grpc_module.insecure_channel(address, options=options)
+
+    return channel
+
+
+def check_dashboard_dependencies_installed() -> bool:
+    """Returns True if Ray Dashboard dependencies are installed.
+
+    Checks to see if we should start the dashboard agent or not based on the
+    Ray installation version the user has installed (ray vs. ray[default]).
+    Unfortunately there doesn't seem to be a cleaner way to detect this other
+    than just blindly importing the relevant packages.
+
+    """
+    try:
+        import ray.dashboard.optional_deps  # noqa: F401
+
+        return True
+    except ImportError:
+        return False

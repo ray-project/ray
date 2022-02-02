@@ -1,6 +1,7 @@
 package io.ray.runtime.object;
 
 import com.google.protobuf.InvalidProtocolBufferException;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.BaseId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
@@ -31,7 +32,12 @@ public class NativeObjectStore extends ObjectStore {
 
   @Override
   public ObjectId putRaw(NativeRayObject obj) {
-    return new ObjectId(nativePut(obj));
+    return new ObjectId(nativePut(obj, null));
+  }
+
+  @Override
+  public ObjectId putRaw(NativeRayObject obj, ActorId ownerActorId) {
+    return new ObjectId(nativePut(obj, ownerActorId.getBytes()));
   }
 
   @Override
@@ -72,8 +78,8 @@ public class NativeObjectStore extends ObjectStore {
   }
 
   @Override
-  public byte[] promoteAndGetOwnershipInfo(ObjectId objectId) {
-    return nativePromoteAndGetOwnershipInfo(objectId.getBytes());
+  public byte[] getOwnershipInfo(ObjectId objectId) {
+    return nativeGetOwnershipInfo(objectId.getBytes());
   }
 
   @Override
@@ -107,7 +113,7 @@ public class NativeObjectStore extends ObjectStore {
     return ids.stream().map(BaseId::getBytes).collect(Collectors.toList());
   }
 
-  private static native byte[] nativePut(NativeRayObject obj);
+  private static native byte[] nativePut(NativeRayObject obj, byte[] ownerActorIdBytes);
 
   private static native void nativePut(byte[] objectId, NativeRayObject obj);
 
@@ -126,7 +132,7 @@ public class NativeObjectStore extends ObjectStore {
 
   private static native byte[] nativeGetOwnerAddress(byte[] objectId);
 
-  private static native byte[] nativePromoteAndGetOwnershipInfo(byte[] objectId);
+  private static native byte[] nativeGetOwnershipInfo(byte[] objectId);
 
   private static native void nativeRegisterOwnershipInfoAndResolveFuture(
       byte[] objectId, byte[] outerObjectId, byte[] ownerAddress);

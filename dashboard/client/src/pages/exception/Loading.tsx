@@ -1,7 +1,7 @@
 import React from "react";
 import Logo from "../../logo.svg";
 
-export default () => {
+const fn = () => {
   return (
     <div style={{ height: "100vh", width: "100vw" }}>
       <div
@@ -19,3 +19,5 @@ export default () => {
     </div>
   );
 };
+
+export default fn;

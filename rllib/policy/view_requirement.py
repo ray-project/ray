@@ -24,14 +24,16 @@ class ViewRequirement:
         {"obs": ViewRequirement(shift=0)}
     """
 
-    def __init__(self,
-                 data_col: Optional[str] = None,
-                 space: gym.Space = None,
-                 shift: Union[int, str, List[int]] = 0,
-                 index: Optional[int] = None,
-                 batch_repeat_value: int = 1,
-                 used_for_compute_actions: bool = True,
-                 used_for_training: bool = True):
+    def __init__(
+        self,
+        data_col: Optional[str] = None,
+        space: gym.Space = None,
+        shift: Union[int, str, List[int]] = 0,
+        index: Optional[int] = None,
+        batch_repeat_value: int = 1,
+        used_for_compute_actions: bool = True,
+        used_for_training: bool = True,
+    ):
         """Initializes a ViewRequirement object.
 
         Args:
@@ -64,8 +66,11 @@ class ViewRequirement:
                 final train batch.
         """
         self.data_col = data_col
-        self.space = space if space is not None else gym.spaces.Box(
-            float("-inf"), float("inf"), shape=())
+        self.space = (
+            space
+            if space is not None
+            else gym.spaces.Box(float("-inf"), float("inf"), shape=())
+        )
 
         self.shift = shift
         if isinstance(self.shift, (list, tuple)):

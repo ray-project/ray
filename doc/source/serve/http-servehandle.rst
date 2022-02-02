@@ -2,14 +2,12 @@
 Calling Deployments via HTTP and Python
 =======================================
 
+This section should help you:
+
+- understand how deployments can be called in two ways: from HTTP and from Python
+- integrate Ray Serve with an existing web server
+
 .. contents:: Calling Deployments via HTTP and Python
-
-Overview
-========
-
-Deployments can be called in two ways: from HTTP and from Python.
-On this page we will show you both of these approaches and then give a tutorial
-on how to integrate Ray Serve with an existing web server.
 
 Calling Deployments via HTTP
 ============================
@@ -17,7 +15,7 @@ Calling Deployments via HTTP
 Basic Example
 ^^^^^^^^^^^^^
 
-As described in the :doc:`tutorial`, when you create a deployment, it is exposed over HTTP by default at ``/{deployment_name}``. You can change the route by specifying the ``route_prefix`` argument to the :mod:`@serve.deployment <ray.serve.api.deployment>` decorator.
+As shown in the :ref:`serve_quickstart`, when you create a deployment, it is exposed over HTTP by default at ``/{deployment_name}``. You can change the route by specifying the ``route_prefix`` argument to the :mod:`@serve.deployment <ray.serve.api.deployment>` decorator.
 
 .. code-block:: python
 
@@ -39,9 +37,14 @@ If you want to define more complex HTTP handling logic, Serve integrates with `F
 
 .. code-block:: python
 
+    import ray
+
     from fastapi import FastAPI
+    from ray import serve
 
     app = FastAPI()
+    ray.init(address="auto", namespace="summarizer")
+    serve.start(detached=True)
 
     @serve.deployment(route_prefix="/hello")
     @serve.ingress(app)
@@ -56,9 +59,14 @@ Now if you send a request to ``/hello``, this will be routed to the ``root`` met
 
 .. code-block:: python
 
+    import ray
+
     from fastapi import FastAPI
+    from ray import serve
 
     app = FastAPI()
+    ray.init(address="auto", namespace="summarizer")
+    serve.start(detached=True)
 
     @serve.deployment(route_prefix="/hello")
     @serve.ingress(app)
@@ -77,9 +85,14 @@ You can also pass in an existing FastAPI app to a deployment to serve it as-is:
 
 .. code-block:: python
 
+    import ray
+
     from fastapi import FastAPI
+    from ray import serve
 
     app = FastAPI()
+    ray.init(address="auto", namespace="summarizer")
+    serve.start(detached=True)
 
     @app.get("/")
     def f():
@@ -92,15 +105,22 @@ You can also pass in an existing FastAPI app to a deployment to serve it as-is:
     class FastAPIWrapper:
         pass
 
+    FastAPIWrapper.deploy()
+
 This is useful for scaling out an existing FastAPI app with no modifications necessary.
 Existing middlewares, automatic OpenAPI documentation generation, and other advanced FastAPI features should work as-is.
 You can also combine routes defined this way with routes defined on the deployment:
 
 .. code-block:: python
 
+    import ray
+
     from fastapi import FastAPI
+    from ray import serve
 
     app = FastAPI()
+    ray.init(address="auto", namespace="summarizer")
+    serve.start(detached=True)
 
     @app.get("/")
     def f():
@@ -120,7 +140,17 @@ You can also combine routes defined this way with routes defined on the deployme
         def method(self):
             return "Hello 2!"
 
+    FastAPIWrapper1.deploy()
+    FastAPIWrapper2.deploy()
+
 In this example, requests to both ``/api1`` and ``/api2`` would return ``Hello from the root!`` while a request to ``/api1/subpath`` would return ``Hello 1!`` and a request to ``/api2/subpath`` would return ``Hello 2!``.
+
+To try it out, save a code snippet in a local python file (i.e. main.py) and in the same directory, run the following commands to start a local Ray cluster on your machine.
+
+.. code-block:: bash
+
+    ray start --head
+    python main.py
 
 Configuring HTTP Server Locations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -172,8 +202,8 @@ reach a deployment through HTTP via a specific route. When you issue a request
 to a deployment through ``ServeHandle``, the request is load balanced across
 available replicas in the same way an HTTP request is.
 
-To call a Ray Serve deployment from python, use :mod:`Deployment.get_handle <ray.serve.api.Deployment>` 
-to get a handle to the deployment, then use 
+To call a Ray Serve deployment from python, use :mod:`Deployment.get_handle <ray.serve.api.Deployment>`
+to get a handle to the deployment, then use
 :mod:`handle.remote <ray.serve.handle.RayServeHandle.remote>` to send requests
 to that deployment. These requests can pass ordinary args and kwargs that are
 passed directly to the method. This returns a Ray ``ObjectRef`` whose result

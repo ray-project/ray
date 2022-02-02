@@ -116,6 +116,37 @@ def test_init_args(serve_instance):
     assert pid3 != pid2
 
 
+def test_init_kwargs(serve_instance):
+    name = "test"
+
+    @serve.deployment(name=name)
+    class D:
+        def __init__(self, *, val=None):
+            assert val is not None
+            self._val = val
+
+        def __call__(self, *arg):
+            return self._val, os.getpid()
+
+    D.deploy(val="1")
+    val1, pid1 = ray.get(D.get_handle().remote())
+    assert val1 == "1"
+
+    del D
+
+    D2 = serve.get_deployment(name=name)
+    D2.deploy()
+    val2, pid2 = ray.get(D2.get_handle().remote())
+    assert val2 == "1"
+    assert pid2 != pid1
+
+    D2 = serve.get_deployment(name=name)
+    D2.deploy(val="2")
+    val3, pid3 = ray.get(D2.get_handle().remote())
+    assert val3 == "2"
+    assert pid3 != pid2
+
+
 def test_scale_replicas(serve_instance):
     name = "test"
 
@@ -138,4 +169,5 @@ def test_scale_replicas(serve_instance):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

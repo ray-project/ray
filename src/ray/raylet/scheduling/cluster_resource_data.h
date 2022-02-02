@@ -20,14 +20,19 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/id.h"
 #include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
+
+namespace ray {
 
 /// List of predefined resources.
 enum PredefinedResources { CPU, MEM, GPU, OBJECT_STORE_MEM, PredefinedResources_MAX };
 
 const std::string ResourceEnumToString(PredefinedResources resource);
+
+const PredefinedResources ResourceStringToEnum(const std::string &resource);
 
 /// Helper function to compare two vectors with FixedPoint values.
 bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2);
@@ -54,12 +59,15 @@ struct ResourceInstanceCapacities {
 };
 
 // Data structure specifying the capacity of each resource requested by a task.
-class TaskRequest {
+class ResourceRequest {
  public:
   /// List of predefined resources required by the task.
   std::vector<FixedPoint> predefined_resources;
   /// List of custom resources required by the task.
-  std::unordered_map<int64_t, FixedPoint> custom_resources;
+  absl::flat_hash_map<int64_t, FixedPoint> custom_resources;
+  /// Whether this task requires object store memory.
+  /// TODO(swang): This should be a quantity instead of a flag.
+  bool requires_object_store_memory = false;
   /// Check whether the request contains no resources.
   bool IsEmpty() const;
   /// Returns human-readable string for this task request.
@@ -79,7 +87,7 @@ class TaskResourceInstances {
   const std::vector<FixedPoint> &Get(const std::string &resource_name,
                                      const StringIdMap &string_id_map) const;
   /// For each resource of this request aggregate its instances.
-  TaskRequest ToTaskRequest() const;
+  ResourceRequest ToResourceRequest() const;
   /// Get CPU instances only.
   std::vector<FixedPoint> GetCPUInstances() const {
     if (!this->predefined_resources.empty()) {
@@ -130,7 +138,7 @@ class TaskResourceInstances {
   /// Check whether there are no resource instances.
   bool IsEmpty() const;
   /// Returns human-readable string for these resources.
-  std::string DebugString() const;
+  [[nodiscard]] std::string DebugString(const StringIdMap &string_id_map) const;
 };
 
 /// Total and available capacities of each resource of a node.
@@ -139,21 +147,25 @@ class NodeResources {
   NodeResources() {}
   NodeResources(const NodeResources &other)
       : predefined_resources(other.predefined_resources),
-        custom_resources(other.custom_resources) {}
+        custom_resources(other.custom_resources),
+        object_pulls_queued(other.object_pulls_queued) {}
   /// Available and total capacities for predefined resources.
   std::vector<ResourceCapacity> predefined_resources;
   /// Map containing custom resources. The key of each entry represents the
   /// custom resource ID.
   absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
+  bool object_pulls_queued = false;
+
   /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
   /// of each resource and return the highest.
   float CalculateCriticalResourceUtilization() const;
   /// Returns true if the node has the available resources to run the task.
   /// Note: This doesn't account for the binpacking of unit resources.
-  bool IsAvailable(const TaskRequest &task_req) const;
+  bool IsAvailable(const ResourceRequest &resource_request,
+                   bool ignore_at_capacity = false) const;
   /// Returns true if the node's total resources are enough to run the task.
   /// Note: This doesn't account for the binpacking of unit resources.
-  bool IsFeasible(const TaskRequest &task_req) const;
+  bool IsFeasible(const ResourceRequest &resource_request) const;
   /// Returns if this equals another node resources.
   bool operator==(const NodeResources &other);
   bool operator!=(const NodeResources &other);
@@ -177,26 +189,17 @@ class NodeResourceInstances {
   /// Returns if this equals another node resources.
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
-  std::string DebugString(StringIdMap string_to_int_map) const;
+  [[nodiscard]] std::string DebugString(StringIdMap string_to_int_map) const;
 };
 
 struct Node {
-  Node(const NodeResources &resources)
-      : last_reported_(resources), local_view_(resources) {}
-
-  void ResetLocalView() { local_view_ = last_reported_; }
+  Node(const NodeResources &resources) : local_view_(resources) {}
 
   NodeResources *GetMutableLocalView() { return &local_view_; }
 
   const NodeResources &GetLocalView() const { return local_view_; }
 
  private:
-  /// The resource information according to the last heartbeat reported by
-  /// this node.
-  /// NOTE(swang): For the local node, this field should be ignored because
-  /// we do not receive heartbeats from ourselves and the local view is
-  /// therefore always the most up-to-date.
-  NodeResources last_reported_;
   /// Our local view of the remote node's resources. This may be dirty
   /// because it includes any resource requests that we allocated to this
   /// node through spillback since our last heartbeat tick. This view will
@@ -206,13 +209,16 @@ struct Node {
   NodeResources local_view_;
 };
 
-/// \request Conversion result to a TaskRequest data structure.
+/// \request Conversion result to a ResourceRequest data structure.
 NodeResources ResourceMapToNodeResources(
     StringIdMap &string_to_int_map,
-    const std::unordered_map<std::string, double> &resource_map_total,
-    const std::unordered_map<std::string, double> &resource_map_available);
+    const absl::flat_hash_map<std::string, double> &resource_map_total,
+    const absl::flat_hash_map<std::string, double> &resource_map_available);
 
-/// Convert a map of resources to a TaskRequest data structure.
-TaskRequest ResourceMapToTaskRequest(
+/// Convert a map of resources to a ResourceRequest data structure.
+ResourceRequest ResourceMapToResourceRequest(
     StringIdMap &string_to_int_map,
-    const std::unordered_map<std::string, double> &resource_map);
+    const absl::flat_hash_map<std::string, double> &resource_map,
+    bool requires_object_store_memory);
+
+}  // namespace ray

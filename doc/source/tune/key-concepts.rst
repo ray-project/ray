@@ -24,64 +24,89 @@ To start, let's try to maximize this objective function:
 
 To use Tune, you will need to wrap this function in a lightweight :ref:`trainable API <trainable-docs>`. You can either use a :ref:`function-based version <tune-function-api>` or a :ref:`class-based version <tune-class-api>`.
 
-.. tabs::
-    .. group-tab:: Function API
+.. tabbed:: Function API
 
-        Here's an example of specifying the objective function using :ref:`the function-based Trainable API <tune-function-api>`:
+    Here's an example of specifying the objective function using :ref:`the function-based Trainable API <tune-function-api>`:
 
-        .. code-block:: python
+    .. code-block:: python
 
-            def trainable(config):
-                # config (dict): A dict of hyperparameters.
+        def trainable(config):
+            # config (dict): A dict of hyperparameters.
 
-                for x in range(20):
-                    score = objective(x, config["a"], config["b"])
+            for x in range(20):
+                score = objective(x, config["a"], config["b"])
 
-                    tune.report(score=score)  # This sends the score to Tune.
+                tune.report(score=score)  # This sends the score to Tune.
 
-    .. group-tab:: Class API
+.. tabbed:: Class API
 
-        Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
+    Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
 
-        .. code-block:: python
+    .. code-block:: python
 
-            from ray import tune
+        from ray import tune
 
-            class Trainable(tune.Trainable):
-                def setup(self, config):
-                    # config (dict): A dict of hyperparameters
-                    self.x = 0
-                    self.a = config["a"]
-                    self.b = config["b"]
+        class Trainable(tune.Trainable):
+            def setup(self, config):
+                # config (dict): A dict of hyperparameters
+                self.x = 0
+                self.a = config["a"]
+                self.b = config["b"]
 
-                def step(self):  # This is called iteratively.
-                    score = objective(self.x, self.a, self.b)
-                    self.x += 1
-                    return {"score": score}
+            def step(self):  # This is called iteratively.
+                score = objective(self.x, self.a, self.b)
+                self.x += 1
+                return {"score": score}
 
-        .. tip:: Do not use ``tune.report`` within a ``Trainable`` class.
+    .. tip:: Do not use ``tune.report`` within a ``Trainable`` class.
 
 See the documentation: :ref:`trainable-docs` and :ref:`examples <tune-general-examples>`.
+
+Hyperparameters
+---------------
+
+What are *hyperparameters?* And how are they different from *model parameters*?
+
+In supervised learning, we train a model with labeled data so the model can properly identify new data values.
+Everything about the model is defined by a set of parameters, such as the weights in a linear regression. These
+are *model parameters*; they are learned during training.
+
+.. image:: /images/hyper-model-parameters.png
+
+In contrast, the *hyperparameters* define structural details about the kind of model itself, like whether or not
+we are using a linear regression or classification, what architecture is best for a neural network, how many layers, what kind
+of filters, etc. They are defined before training, not learned.
+
+.. image:: /images/hyper-network-params.png
+
+Other quantities considered *hyperparameters* include learning rates, discount rates, etc. If we want our training
+process and resulting model to work well, we first need to determine the optimal or near-optimal set of *hyperparameters*.
+
+How do we determine the optimal *hyperparameters*? The most direct approach is to perform a loop where we pick
+a candidate set of values from some reasonably inclusive list of possible values, train a model, compare the results
+achieved with previous loop iterations, and pick the set that performed best. This process is called
+*Hyperparameter Tuning* or *Optimization* (HPO). And *hyperparameters* are specified over a configured and confined
+search space, collectively defined for each *hyperparameter* in a ``config`` dictionary.
 
 tune.run and Trials
 -------------------
 
-Use :ref:`tune.run <tune-run-ref>` to execute hyperparameter tuning. This function manages your experiment and provides many features such as :ref:`logging <tune-logging>`, :ref:`checkpointing <tune-checkpoint>`, and :ref:`early stopping <tune-stopping>`.
+Use :ref:`tune.run <tune-run-ref>` to execute hyperparameter tuning. This function manages your experiment and provides many features such as :ref:`logging <tune-logging>`, :ref:`checkpointing <tune-checkpoint-syncing>`, and :ref:`early stopping <tune-stopping>`.
 
 .. code-block:: python
 
-    # Pass in a Trainable class or function to tune.run.
-    tune.run(trainable)
+    # Pass in a Trainable class or function to tune.run, along with configs
+    tune.run(trainable, config={"a": 2, "b": 4})
 
-``tune.run`` will generate a couple hyperparameter configurations from its arguments, wrapping them into :ref:`Trial objects <trial-docstring>`.
+``tune.run`` will generate a couple of hyperparameter configurations from its arguments, wrapping them into :ref:`Trial objects <trial-docstring>`.
 
 Each trial has
 
 - a hyperparameter configuration (``trial.config``), id (``trial.trial_id``)
-- a resource specification (``resources_per_trial`` or ``trial.resources``)
+- a resource specification (``resources_per_trial`` or ``trial.placement_group_factory``)
 - And other configuration values.
 
-Each trial is also associated with one instance of a :ref:`Trainable <trainable-docs>`. You can access trial objects through the :ref:`Analysis object <tune-concepts-analysis>` provided after ``tune.run`` finishes.
+Each trial is also associated with one instance of a :ref:`Trainable <trainable-docs>`. You can access trial objects through the :ref:`ExperimentAnalysis object <tune-concepts-analysis>` provided after ``tune.run`` finishes.
 
 ``tune.run`` will execute until all trials stop or error:
 
@@ -104,7 +129,7 @@ You can also easily run 10 trials. Tune automatically :ref:`determines how many 
 
 .. code-block:: python
 
-    tune.run(trainable, num_samples=10)
+    tune.run(trainable, config={"a": 2, "b": 4}, num_samples=10)
 
 Finally, you can randomly sample or grid search hyperparameters via Tune's :ref:`search space API <tune-default-search-space>`:
 
@@ -119,7 +144,7 @@ See more documentation: :ref:`tune-run-ref`.
 Search spaces
 -------------
 
-To optimize your hyperparameters, you have to define a *search space*.
+To optimize your *hyperparameters*, you have to define a *search space*.
 A search space defines valid values for your hyperparameters and can specify
 how these values are sampled (e.g. from a uniform distribution or a normal
 distribution).
@@ -140,7 +165,7 @@ Here's an example covering all search space functions. Again,
         "uniform": tune.uniform(-5, -1),  # Uniform float between -5 and -1
         "quniform": tune.quniform(3.2, 5.4, 0.2),  # Round to increments of 0.2
         "loguniform": tune.loguniform(1e-4, 1e-1),  # Uniform float in log space
-        "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-4),  # Round to increments of 0.0005
+        "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-5),  # Round to increments of 0.00005
         "randn": tune.randn(10, 2),  # Normal distribution with mean 10 and sd 2
         "qrandn": tune.qrandn(10, 2, 0.2),  # Round to increments of 0.2
         "randint": tune.randint(-9, 15),  # Random integer between -9 and 15
@@ -159,41 +184,34 @@ To optimize the hyperparameters of your training process, you will want to use a
 
 .. code-block:: python
 
-    # Be sure to first run `pip install hyperopt`
+    # Be sure to first run `pip install bayesian-optimization`
 
-    import hyperopt as hp
-    from ray.tune.suggest.hyperopt import HyperOptSearch
+    from ray.tune.suggest import ConcurrencyLimiter
+    from ray.tune.suggest.bayesopt import BayesOptSearch
 
-    # Create a HyperOpt search space
+    # Define the search space
     config = {
         "a": tune.uniform(0, 1),
         "b": tune.uniform(0, 20)
-
-        # Note: Arbitrary HyperOpt search spaces should be supported!
-        # "foo": tune.randn(0, 1))
     }
 
-    # Specify the search space and maximize score
-    hyperopt = HyperOptSearch(metric="score", mode="max")
-
-    # Execute 20 trials using HyperOpt and stop after 20 iterations
+    # Execute 20 trials using BayesOpt and stop after 20 iterations
     tune.run(
         trainable,
         config=config,
-        search_alg=hyperopt,
+        metric="score",
+        mode="max",
+        # Limit to two concurrent trials (otherwise we end up with random search)
+        search_alg=ConcurrencyLimiter(
+            BayesOptSearch(random_search_steps=4),
+            max_concurrent=2),
         num_samples=20,
-        stop={"training_iteration": 20}
-    )
+        stop={"training_iteration": 20},
+        verbose=2)
 
-Tune has SearchAlgorithms that integrate with many popular **optimization** libraries, such as :ref:`Nevergrad <nevergrad>` and :ref:`Hyperopt <tune-hyperopt>`. Tune automatically converts the provided search space into the search
+
+Tune has SearchAlgorithms that integrate with many popular **optimization** libraries, such as :ref:`Nevergrad <nevergrad>` and :ref:`HyperOpt <tune-hyperopt>`. Tune automatically converts the provided search space into the search
 spaces the search algorithms/underlying library expect.
-
-.. note::
-    We are currently in the process of implementing automatic search space
-    conversions for all search algorithms. Currently this works for
-    AxSearch, BayesOpt, Hyperopt and Optuna. The other search algorithms
-    will follow shortly, but have to be instantiated with their respective
-    search spaces at the moment.
 
 See the documentation: :ref:`tune-search-alg`.
 
@@ -232,7 +250,7 @@ See the documentation: :ref:`schedulers-ref`.
 Analysis
 --------
 
-``tune.run`` returns an :ref:`Analysis <tune-analysis-docs>` object which has methods you can use for analyzing your training.
+``tune.run`` returns an :ref:`ExperimentAnalysis <tune-analysis-docs>` object which has methods you can use for analyzing your training.
 
 .. code-block:: python
 
@@ -270,4 +288,4 @@ Now that you have a working understanding of Tune, check out:
 Further Questions or Issues?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. include:: /_help.rst
+.. include:: /_includes/_help.rst

@@ -33,7 +33,7 @@ def experiment(config):
     done = False
     eval_results = {"eval_reward": 0, "eval_eps_length": 0}
     while not done:
-        action = eval_agent.compute_action(obs)
+        action = eval_agent.compute_single_action(obs)
         next_obs, reward, done, info = env.step(action)
         eval_results["eval_reward"] += reward
         eval_results["eval_eps_length"] += 1
@@ -53,4 +53,5 @@ if __name__ == "__main__":
     tune.run(
         experiment,
         config=config,
-        resources_per_trial=ppo.PPOTrainer.default_resource_request(config))
+        resources_per_trial=ppo.PPOTrainer.default_resource_request(config),
+    )

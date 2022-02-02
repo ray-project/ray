@@ -1,18 +1,29 @@
 import argparse
+import logging
 
-from ray._private.utils import import_attr
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray.core.generated.common_pb2 import Language
+
+logger = logging.getLogger(__name__)
+
 parser = argparse.ArgumentParser(
-    description=(
-        "Set up the environment for a Ray worker and launch the worker."))
+    description=("Set up the environment for a Ray worker and launch the worker.")
+)
 
 parser.add_argument(
-    "--worker-setup-hook",
+    "--serialized-runtime-env-context",
     type=str,
-    help="the module path to a Python function to run to set up the "
-    "environment for a worker and launch the worker.")
+    help="the serialized runtime env context",
+)
 
-args, remaining_args = parser.parse_known_args()
+parser.add_argument("--language", type=str, help="the language type of the worker")
 
-setup = import_attr(args.worker_setup_hook)
-
-setup(remaining_args)
+if __name__ == "__main__":
+    args, remaining_args = parser.parse_known_args()
+    # NOTE(edoakes): args.serialized_runtime_env_context is only None when
+    # we're starting the main Ray client proxy server. That case should
+    # probably not even go through this codepath.
+    runtime_env_context = RuntimeEnvContext.deserialize(
+        args.serialized_runtime_env_context or "{}"
+    )
+    runtime_env_context.exec_worker(remaining_args, Language.Value(args.language))

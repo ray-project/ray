@@ -19,7 +19,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
-#include "ray/gcs/accessor.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
@@ -45,6 +44,11 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   void HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &request,
                              rpc::ReportHeartbeatReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle check alive rpc come from dashboard.
+  void HandleCheckAlive(const rpc::CheckAliveRequest &request,
+                        rpc::CheckAliveReply *reply,
+                        rpc::SendReplyCallback send_reply_callback) override;
 
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.

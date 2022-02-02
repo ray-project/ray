@@ -1,6 +1,9 @@
 Distributed TensorFlow
 ======================
 
+.. warning:: This is an older version of Ray SGD. A newer, more light-weight version of Ray SGD (named Ray Train) is in alpha as of Ray 1.7.
+         See the documentation :ref:`here <train-docs>`. To migrate from v1 to v2 you can follow the :ref:`migration guide <sgd-migration>`.
+
 RaySGD's ``TFTrainer`` simplifies distributed model training for Tensorflow. The ``TFTrainer`` is a wrapper around ``MultiWorkerMirroredStrategy`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to write custom logic of setting environments and starting separate processes.
 
 Under the hood, ``TFTrainer`` will create *replicas* of your model (controlled by ``num_replicas``), each of which is managed by a Ray actor.
@@ -8,7 +11,7 @@ Under the hood, ``TFTrainer`` will create *replicas* of your model (controlled b
 .. image:: raysgd-actors.svg
     :align: center
 
-.. tip:: We need your feedback! RaySGD is currently early in its development, and we're hoping to get feedback from people using or considering it. We'd love `to get in touch <https://forms.gle/26EMwdahdgm7Lscy9>`_!
+.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
 
 ----------
 
@@ -66,6 +69,7 @@ In your training program, insert the following, and **customize** for each worke
 
 And on each machine, launch a separate process that contains the index of the worker and information about all other nodes of the cluster.
 
+.. _ray-train-tftrainer-example:
 
 TFTrainer Example
 -----------------

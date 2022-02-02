@@ -6,7 +6,7 @@ Batching Tutorial
 In this guide, we will deploy a simple vectorized adder that takes
 a batch of queries and adds them at once. In particular, we show:
 
-- How to implement and deploy a Ray Serve backend that accepts batches.
+- How to implement and deploy a Ray Serve deployment that accepts batches.
 - How to configure the batch size.
 - How to query the model in Python.
 
@@ -37,7 +37,7 @@ This function must also be ``async def`` so that you can handle multiple queries
     async def my_batch_handler(self, requests: List):
         pass
 
-This batch handler can then be called from another ``async def`` method in your backend.
+This batch handler can then be called from another ``async def`` method in your deployment.
 These calls will be batched and executed together, but return an individual result as if
 they were a normal function call:
 
@@ -62,7 +62,7 @@ they were a normal function call:
     ``batch_wait_timeout_s`` option to ``@serve.batch`` (defaults to 0). Increasing this
     timeout may improve throughput at the cost of latency under low load.
 
-Let's define a backend that takes in a list of requests, extracts the input value,
+Let's define a deployment that takes in a list of requests, extracts the input value,
 converts them into an array, and uses NumPy to add 1 to each element.
 
 .. literalinclude:: ../../../../python/ray/serve/examples/doc/tutorial_batch.py
@@ -90,7 +90,7 @@ What if you want to evaluate a whole batch in Python? Ray Serve allows you to se
 queries via the Python API. A batch of queries can either come from the web server
 or the Python API. Learn more :ref:`here<serve-handle-explainer>`.
 
-To query the backend via the Python API, we can use ``Deployment.get_handle`` to receive
+To query the deployment via the Python API, we can use ``Deployment.get_handle`` to receive
 a handle to the corresponding deployment. To enqueue a query, you can call
 ``handle.method.remote(data)``. This call returns immediately
 with a :ref:`Ray ObjectRef<ray-object-refs>`. You can call `ray.get` to retrieve

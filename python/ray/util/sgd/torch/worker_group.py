@@ -7,8 +7,12 @@ from datetime import timedelta
 import ray
 import torch
 from ray.exceptions import RayActorError
-from ray.util.sgd.torch.distributed_torch_runner import \
-    LocalDistributedRunner, DistributedTorchRunner
+from ray.util.placement_group import get_current_placement_group, remove_placement_group
+from ray.util.sgd.torch.constants import SGD_PLACEMENT_GROUP_TIMEOUT_S
+from ray.util.sgd.torch.distributed_torch_runner import (
+    LocalDistributedRunner,
+    DistributedTorchRunner,
+)
 from ray.util.sgd.torch.torch_runner import TorchRunner
 from ray.util.sgd.torch.utils import setup_address
 from ray.util.sgd.utils import check_for_failure
@@ -104,6 +108,23 @@ class WorkerGroupInterface:
         raise NotImplementedError
 
 
+def wait_for_condition(condition_predictor, timeout=60, retry_interval_ms=100):
+    """Wait until a condition is met or time out with an exception.
+    Args:
+        condition_predictor: A function that predicts the condition.
+        timeout: Maximum timeout in seconds.
+        retry_interval_ms: Retry interval in milliseconds.
+    Raises:
+        RuntimeError: If the condition is not met before the timeout expires.
+    """
+    start = time.time()
+    while time.time() - start <= timeout:
+        if condition_predictor():
+            return True
+        time.sleep(retry_interval_ms / 1000.0)
+    return False
+
+
 class RemoteWorkerGroup(WorkerGroupInterface):
     """A group of TorchRunner workers that are all remote Ray actors.
 
@@ -119,8 +140,16 @@ class RemoteWorkerGroup(WorkerGroupInterface):
 
     """
 
-    def __init__(self, max_workers, params, dist_params, initialization_hook,
-                 timeout_s, num_cpus_per_worker, use_gpu):
+    def __init__(
+        self,
+        max_workers,
+        params,
+        dist_params,
+        initialization_hook,
+        timeout_s,
+        num_cpus_per_worker,
+        use_gpu,
+    ):
         # Invariant: These variables should never change state!
         self._max_workers = max_workers
         self._params = params
@@ -135,19 +164,58 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         # The last time when this worker group was resized.
         self._last_resize = float("-inf")
 
+        # This is set only if a placement group is created by the worker group.
+        self._worker_placement_group = None
+
+    def _create_placement_group(self, num_workers):
+        """Creates a placement group for the workers.
+
+        If this worker is already in a placement group then a new one will
+        not be created. This is primarily for when Tune is the upstream and
+        will allocate resources for SGD workers.
+
+        If this worker is not in a placement group, a new one will be created
+        and set. The placement group will have a single bundle for each worker
+        and use the SPREAD strategy for an even distribution.
+        """
+        pg = get_current_placement_group()
+        if pg is None:
+            bundle = {"CPU": self._num_cpus_per_worker, "GPU": int(self._use_gpu)}
+            bundles = [bundle] * num_workers
+            pg = ray.util.placement_group(bundles, strategy="SPREAD")
+            logger.debug("Waiting for placement group to start.")
+            ready, _ = ray.wait([pg.ready()], timeout=SGD_PLACEMENT_GROUP_TIMEOUT_S)
+            if ready:
+                logger.debug("Placement group has started.")
+            else:
+                raise TimeoutError(
+                    "Placement group creation timed out. Make sure "
+                    "your cluster either has enough resources or use "
+                    "an autoscaling cluster. Current resources "
+                    "available: {}, resources requested by the "
+                    "placement group: {}".format(
+                        ray.available_resources(), pg.bundle_specs
+                    )
+                )
+            self._worker_placement_group = pg
+
     def _init_dist_workers(self, num_workers):
         """Create `num_workers` remote workers."""
         # Generate actor class
         RemoteRunner = ray.remote(
-            num_cpus=self._num_cpus_per_worker,
-            num_gpus=int(self._use_gpu))(DistributedTorchRunner)
+            num_cpus=self._num_cpus_per_worker, num_gpus=int(self._use_gpu)
+        )(DistributedTorchRunner)
+
+        # Get placement group
+        self._create_placement_group(num_workers)
+        pg = self._worker_placement_group or "default"
 
         # Start workers
         self.remote_workers = [
-            RemoteRunner.remote(**{
-                **self._params,
-                **self._dist_params
-            }) for _ in range(num_workers)
+            RemoteRunner.options(placement_group=pg).remote(
+                **{**self._params, **self._dist_params}
+            )
+            for _ in range(num_workers)
         ]
 
     def _setup_process_group(self, address, world_size, starting_rank=0):
@@ -175,7 +243,8 @@ class RemoteWorkerGroup(WorkerGroupInterface):
                 url=address,
                 world_rank=i + starting_rank,
                 world_size=world_size,
-                timeout=timedelta(seconds=self._timeout_s))
+                timeout=timedelta(seconds=self._timeout_s),
+            )
             for i, worker in enumerate(self.remote_workers)
         ]
         return remote_pgroup_setups
@@ -196,8 +265,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         """Sets local rank for all workers."""
         if rank_counter_dict is None:
             rank_counter_dict = defaultdict(int)
-        node_ips = ray.get(
-            [w.get_node_ip.remote() for w in self.remote_workers])
+        node_ips = ray.get([w.get_node_ip.remote() for w in self.remote_workers])
         futures = []
         for ip, worker in zip(node_ips, self.remote_workers):
             rank = rank_counter_dict[ip]
@@ -210,8 +278,8 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         try:
             if num_workers == 1:
                 RemoteRunner = ray.remote(
-                    num_cpus=self._num_cpus_per_worker,
-                    num_gpus=int(self._use_gpu))(TorchRunner)
+                    num_cpus=self._num_cpus_per_worker, num_gpus=int(self._use_gpu)
+                )(TorchRunner)
                 self.remote_workers = [RemoteRunner.remote(**self._params)]
                 ray.get(self.remote_workers[0].setup_operator.remote())
             else:
@@ -221,12 +289,11 @@ class RemoteWorkerGroup(WorkerGroupInterface):
                     self.apply_all_workers(self._initialization_hook)
 
                 # Make sure to get the IP address of the rank 0 worker node.
-                address = ray.get(
-                    self.remote_workers[0].setup_address.remote())
+                address = ray.get(self.remote_workers[0].setup_address.remote())
 
                 ray.get(
-                    self._setup_process_group(
-                        address=address, world_size=num_workers))
+                    self._setup_process_group(address=address, world_size=num_workers)
+                )
 
                 ray.get(self._setup_local_rank())
 
@@ -236,9 +303,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             return False
 
     def _apply_all_operators(self, fn):
-        remote_calls = [
-            w.apply_operator.remote(fn) for w in self.remote_workers
-        ]
+        remote_calls = [w.apply_operator.remote(fn) for w in self.remote_workers]
         return remote_calls
 
     def apply_all_operators(self, fn):
@@ -254,19 +319,18 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         raise NotImplementedError(
             "Cannot return a local operators if all "
             "workers are remote. Set use_local to True in"
-            "TorchTrainer to access a local operator.")
+            "TorchTrainer to access a local operator."
+        )
 
     def get_model(self, to_cpu=False):
-        ready, _ = ray.wait(
-            [r.get_models.remote(to_cpu) for r in self.remote_workers])
+        ready, _ = ray.wait([r.get_models.remote(to_cpu) for r in self.remote_workers])
         models = ray.get(ready[0])
         return models
 
     def _load_state_id(self, state_id):
         """Loads the object with id `state_id` to all workers."""
         remote_calls = [
-            worker.load_state_stream.remote(state_id)
-            for worker in self.remote_workers
+            worker.load_state_stream.remote(state_id) for worker in self.remote_workers
         ]
         return remote_calls
 
@@ -295,14 +359,16 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             else:
                 break
         if buffer_object is None:
-            raise RuntimeError("Obtaining state_dict from remote workers is "
-                               "unsuccessful since all workers have died.")
+            raise RuntimeError(
+                "Obtaining state_dict from remote workers is "
+                "unsuccessful since all workers have died."
+            )
         to_gpu = self._use_gpu and torch.cuda.is_available()
         _buffer = io.BytesIO(buffer_object)
         state_dict = torch.load(
             _buffer,
-            map_location=("cpu" if not to_gpu else
-                          lambda storage, loc: storage.cuda()))
+            map_location=("cpu" if not to_gpu else lambda storage, loc: storage.cuda()),
+        )
         return state_dict
 
     def _train(self, num_steps, profile, info, dataset=None):
@@ -334,9 +400,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
 
     def _validate(self, params):
         """Runs validation for each worker. Returns results as promises."""
-        remote_worker_stats = [
-            w.validate.remote(**params) for w in self.remote_workers
-        ]
+        remote_worker_stats = [w.validate.remote(**params) for w in self.remote_workers]
         return remote_worker_stats
 
     def validate(self, num_steps=None, profile=False, info=None):
@@ -352,34 +416,51 @@ class RemoteWorkerGroup(WorkerGroupInterface):
     def _terminate_remote_workers(self, cleanup):
         """Blocks on worker shutdown and then terminates each worker actor.
 
-        If graceful shutdown fails, forcefully kills all actors.
+        Return:
+            Whether or not workers were shutdown gracefully.
         """
         try:
             ray.get(cleanup)
-            [
-                worker.__ray_terminate__.remote()
-                for worker in self.remote_workers
-            ]
+            [worker.__ray_terminate__.remote() for worker in self.remote_workers]
+            return True
         except RayActorError:
-            logger.warning("Failed to shutdown gracefully, forcing a "
-                           "shutdown.")
-            self.reset()
+            logger.warning("Failed to shutdown gracefully.")
+            return False
 
     def shutdown(self, force=False):
-        if not force:
-            cleanup = [
-                worker.shutdown.remote() for worker in self.remote_workers
-            ]
-            self._terminate_remote_workers(cleanup)
-        else:
-            self.reset()
+        force_kill = force
+        if not force_kill:
+            cleanup = self._shutdown_remote_workers()
+            force_kill = not self._terminate_remote_workers(cleanup)
+        if force_kill:
+            for worker in self.remote_workers:
+                logger.debug(f"Killing worker {worker}.")
+                ray.kill(worker)
         self.remote_workers = []
+        # Remove worker placement group.
+        if self._worker_placement_group:
+            remove_placement_group(self._worker_placement_group)
+            removed_placement_group = self._worker_placement_group
+            self._worker_placement_group = None
+
+            def is_placement_group_removed():
+                table = ray.util.placement_group_table(removed_placement_group)
+                if "state" not in table:
+                    return False
+                return table["state"] == "REMOVED"
+
+            # Wait the placement_group been deleted
+            success = wait_for_condition(
+                is_placement_group_removed, SGD_PLACEMENT_GROUP_TIMEOUT_S
+            )
+            if not success:
+                logger.warning(
+                    f"Placement Group removal is not successful after "
+                    f"{SGD_PLACEMENT_GROUP_TIMEOUT_S} seconds."
+                )
 
     def reset(self):
-        for worker in self.remote_workers:
-            logger.debug(f"Killing worker {worker}.")
-            ray.kill(worker)
-        self.remote_workers = []
+        self.shutdown(force=True)
 
     def should_scale_up(self):
         worker_gap = self._max_workers - self.num_workers
@@ -394,11 +475,9 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         """Returns number of workers to create based on available resources."""
         remote_resources = ray.available_resources()
         max_remote_workers = self._max_workers
-        new_remote_workers = min(
-            remote_resources.get("CPU", 0), max_remote_workers)
+        new_remote_workers = min(remote_resources.get("CPU", 0), max_remote_workers)
         if self._use_gpu:
-            new_remote_workers = min(
-                remote_resources.get("GPU", 0), new_remote_workers)
+            new_remote_workers = min(remote_resources.get("GPU", 0), new_remote_workers)
         return new_remote_workers
 
     @property
@@ -418,8 +497,16 @@ class LocalWorkerGroup(WorkerGroupInterface):
         Same as RemoteWorkerGroup.
     """
 
-    def __init__(self, max_workers, params, dist_params, initialization_hook,
-                 timeout_s, num_cpus_per_worker, use_gpu):
+    def __init__(
+        self,
+        max_workers,
+        params,
+        dist_params,
+        initialization_hook,
+        timeout_s,
+        num_cpus_per_worker,
+        use_gpu,
+    ):
 
         # Invariant: These variables should never change state!
         self._max_workers = max_workers
@@ -438,7 +525,8 @@ class LocalWorkerGroup(WorkerGroupInterface):
             initialization_hook=initialization_hook,
             timeout_s=timeout_s,
             num_cpus_per_worker=num_cpus_per_worker,
-            use_gpu=use_gpu)
+            use_gpu=use_gpu,
+        )
 
     def start_workers(self, num_workers):
         logger.debug(f"start_workers: Setting {num_workers} workers.")
@@ -455,10 +543,8 @@ class LocalWorkerGroup(WorkerGroupInterface):
                 self.local_worker = LocalDistributedRunner(
                     num_cpus=self._num_cpus_per_worker,
                     num_gpus=int(self._use_gpu),
-                    **{
-                        **self._params,
-                        **self._dist_params
-                    })
+                    **{**self._params, **self._dist_params},
+                )
                 self.remote_worker_group._init_dist_workers(num_workers - 1)
                 if self._initialization_hook:
                     self.apply_all_workers(self._initialization_hook)
@@ -467,13 +553,15 @@ class LocalWorkerGroup(WorkerGroupInterface):
                 address = setup_address()
 
                 remote_pgs = self.remote_worker_group._setup_process_group(
-                    address=address, world_size=num_workers, starting_rank=1)
+                    address=address, world_size=num_workers, starting_rank=1
+                )
                 # Use the local worker as rank 0. Helps with debugging.
                 self.local_worker.setup_process_group(
                     url=address,
                     world_rank=0,
                     world_size=num_workers,
-                    timeout=timedelta(seconds=self._timeout_s))
+                    timeout=timedelta(seconds=self._timeout_s),
+                )
                 ray.get(remote_pgs)
 
                 local_node_ip = ray.util.get_node_ip_address()
@@ -540,7 +628,8 @@ class LocalWorkerGroup(WorkerGroupInterface):
             initialization_hook=self._initialization_hook,
             num_cpus_per_worker=self._num_cpus_per_worker,
             use_gpu=self._use_gpu,
-            timeout_s=self._timeout_s)
+            timeout_s=self._timeout_s,
+        )
 
     def new_workers_size(self):
         return self.remote_worker_group.new_workers_size() + 1
@@ -551,7 +640,8 @@ class LocalWorkerGroup(WorkerGroupInterface):
             dataset.set_num_shards(self.num_workers)
 
         remote_worker_stats = self.remote_worker_group._train(
-            num_steps, profile, info, dataset)
+            num_steps, profile, info, dataset
+        )
         try:
             if dataset:
                 params["iterator"] = dataset.get_shard(self.num_workers - 1)
@@ -584,13 +674,8 @@ class LocalWorkerGroup(WorkerGroupInterface):
         return worker_stats
 
     def shutdown(self, force=False):
-        if not force:
-            cleanup = self.remote_worker_group._shutdown_remote_workers()
-            self.local_worker.shutdown()
-            self.remote_worker_group._terminate_remote_workers(cleanup)
-        else:
-            self.local_worker.shutdown()
-            self.remote_worker_group.reset()
+        self.local_worker.shutdown()
+        self.remote_worker_group.shutdown(force=force)
 
         self.local_worker = None
         self.remote_worker_group = DeactivatedWorkerGroup()
@@ -608,4 +693,5 @@ class DeactivatedWorkerGroup:
     def __getattr__(self, *args, **kwargs):
         raise RuntimeError(
             "This TorchTrainer is not active (it is likely shutdown already). "
-            "Create a new TorchTrainer.")
+            "Create a new TorchTrainer."
+        )

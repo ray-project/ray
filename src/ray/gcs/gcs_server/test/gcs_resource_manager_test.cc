@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
+
 #include <memory>
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
@@ -38,7 +39,7 @@ TEST_F(GcsResourceManagerTest, TestBasic) {
   // Add node resources.
   auto node_id = NodeID::FromRandom();
   const std::string cpu_resource = "CPU";
-  std::unordered_map<std::string, double> resource_map;
+  absl::flat_hash_map<std::string, double> resource_map;
   resource_map[cpu_resource] = 10;
   ResourceSet resource_set(resource_map);
   gcs_resource_manager_->UpdateResourceCapacity(node_id, resource_map);

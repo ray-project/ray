@@ -20,7 +20,7 @@
 #include <type_traits>
 
 namespace ray {
-namespace api {
+namespace internal {
 
 template <typename T>
 struct FilterArgType {
@@ -55,7 +55,8 @@ struct is_invocable
 
 template <typename Function, typename... Args>
 inline std::enable_if_t<!std::is_member_function_pointer<Function>::value> StaticCheck() {
-  static_assert(is_invocable<Function, typename FilterArgType<Args>::type...>::value,
+  static_assert(is_invocable<Function, typename FilterArgType<Args>::type...>::value ||
+                    is_invocable<Function, Args...>::value,
                 "arguments not match");
 }
 
@@ -63,9 +64,10 @@ template <typename Function, typename... Args>
 inline std::enable_if_t<std::is_member_function_pointer<Function>::value> StaticCheck() {
   using ActorType = boost::callable_traits::class_of_t<Function>;
   static_assert(
-      is_invocable<Function, ActorType &, typename FilterArgType<Args>::type...>::value,
+      is_invocable<Function, ActorType &, typename FilterArgType<Args>::type...>::value ||
+          is_invocable<Function, ActorType &, Args...>::value,
       "arguments not match");
 }
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

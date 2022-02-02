@@ -1,0 +1,60 @@
+cluster_name: launch_templates
+
+max_workers: 2
+
+provider:
+    type: aws
+    region: us-west-2
+
+    # Note that availability zones can be omitted when using custom launch
+    # templates that contain either pre-configured availability zones or custom
+    # network interfaces for all node types, since each node will always be
+    # launched in either the launch template's AZ or the AZ shared by its
+    # network interface subnets.
+    # If some of your node types have launch templates binding them to AZs and
+    # others do not, then node types without AZ bindings will be limited to
+    # launching only in subnets available in the below availability zones:
+    availability_zone: us-west-2a, us-west-2b, us-west-2c
+
+auth:
+    ssh_user: ubuntu
+
+# You can use EC2 launch templates to consolidate, re-use, and version common
+# node configurations.
+
+# For more information, see the documentation on EC2 Launch Templates at:
+# https://docs.aws.amazon.com/autoscaling/ec2/userguide/LaunchTemplates.html
+
+available_node_types:
+  ray.head.default:
+    resources: {}
+    node_config:
+      # The launch template to use to launch the instances. Any parameters that
+      # you specify in node_config override the same parameters in the launch
+      # template. Tags will be merged by key, with node_config values overriding
+      # launch template values for the same key. You can specify either the name
+      # or ID of a launch template, but not both.
+      LaunchTemplate:
+        LaunchTemplateId: lt-00000000000000000
+        # Launch template versions can be set to a version number, "$Default"
+        # for the default launch template version, or "$Latest" for the latest
+        # launch template version. If the version is omitted, it will
+        # automatically resolve to the launch template's default version.
+        Version: $Latest
+
+      ImageId: latest_dlami
+      InstanceType: m5.large
+
+  ray.worker.default:
+    min_workers: 0
+    max_workers: 1
+    resources: {}
+    node_config:
+      LaunchTemplate:
+        LaunchTemplateName: ExampleLaunchTemplate
+        Version: 2
+
+      ImageId: latest_dlami
+      InstanceType: m5.large
+
+head_node_type: ray.head.default

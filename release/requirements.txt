@@ -1,0 +1,17 @@
+# ray
+https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+click
+anyscale>0.5.0
+slackclient
+boto3
+PyGithub
+pydantic
+pyyaml
+typer[all]
+toml
+python-dotenv
+expiringdict
+requests
+pytz
+git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray
+git+https://github.com/ray-project/lightgbm_ray.git#lightgbm_ray

@@ -14,10 +14,10 @@ from collections import defaultdict, OrderedDict
 
 def textproto_format(space, key, value, json_encoder):
     """Rewrites a key-value pair from textproto as JSON."""
-    if value.startswith(b"\""):
+    if value.startswith(b'"'):
         evaluated = ast.literal_eval(value.decode("utf-8"))
         value = json_encoder.encode(evaluated).encode("utf-8")
-    return b"%s[\"%s\", %s]" % (space, key, value)
+    return b'%s["%s", %s]' % (space, key, value)
 
 
 def textproto_split(input_lines, json_encoder):
@@ -50,19 +50,21 @@ def textproto_split(input_lines, json_encoder):
         pieces = re.split(b"(\\r|\\n)", full_line, 1)
         pieces[1:] = [b"".join(pieces[1:])]
         [line, tail] = pieces
-        next_line = pat_open.sub(b"\\1[\"\\2\",\\3[", line)
-        outputs.append(b"" if not prev_comma else b"]"
-                       if next_line.endswith(b"}") else b",")
+        next_line = pat_open.sub(b'\\1["\\2",\\3[', line)
+        outputs.append(
+            b"" if not prev_comma else b"]" if next_line.endswith(b"}") else b","
+        )
         next_line = pat_close.sub(b"]", next_line)
         next_line = pat_line.sub(
-            lambda m: textproto_format(*(m.groups() + (json_encoder, ))),
-            next_line)
+            lambda m: textproto_format(*(m.groups() + (json_encoder,))), next_line
+        )
         outputs.append(prev_tail + next_line)
         if line == b"}":
             yield b"".join(outputs)
             del outputs[:]
-        prev_comma = line != b"}" and (next_line.endswith(b"]")
-                                       or next_line.endswith(b"\""))
+        prev_comma = line != b"}" and (
+            next_line.endswith(b"]") or next_line.endswith(b'"')
+        )
         prev_tail = tail
     if len(outputs) > 0:
         yield b"".join(outputs)
@@ -80,13 +82,14 @@ class Bazel(object):
     def __init__(self, program=None):
         if program is None:
             program = os.getenv("BAZEL_EXECUTABLE", "bazel")
-        self.argv = (program, )
-        self.extra_args = ("--show_progress=no", )
+        self.argv = (program,)
+        self.extra_args = ("--show_progress=no",)
 
     def _call(self, command, *args):
         return subprocess.check_output(
-            self.argv + (command, ) + args[:1] + self.extra_args + args[1:],
-            stdin=subprocess.PIPE)
+            self.argv + (command,) + args[:1] + self.extra_args + args[1:],
+            stdin=subprocess.PIPE,
+        )
 
     def info(self, *args):
         result = OrderedDict()
@@ -98,35 +101,45 @@ class Bazel(object):
         return result
 
     def aquery(self, *args):
-        lines = self._call("aquery", "--output=textproto", *args).splitlines()
-        return textproto_parse(lines, self.encoding, json.JSONEncoder())
+        out = self._call("aquery", "--output=jsonproto", *args)
+        return json.loads(out.decode(self.encoding))
 
 
 def parse_aquery_shell_calls(aquery_results):
     """Extracts and yields the command lines representing the genrule() rules
     from Bazel aquery results.
     """
-    for (key, val) in aquery_results:
-        if key == "actions":
-            [mnemonic] = [pair[1] for pair in val if pair[0] == "mnemonic"]
-            if mnemonic == "Genrule":
-                yield [pair[1] for pair in val if pair[0] == "arguments"]
+    for action in aquery_results["actions"]:
+        if action["mnemonic"] != "Genrule":
+            continue
+        yield action["arguments"]
 
 
 def parse_aquery_output_artifacts(aquery_results):
     """Extracts and yields the file paths representing the output artifact
     from the provided Bazel aquery results.
+
+    To understand the output of aquery command in textproto format, try:
+        bazel aquery --include_artifacts=true --output=jsonproto \
+            'mnemonic("Genrule", deps(//:*))'
     """
+    fragments = {}
+    for fragment in aquery_results["pathFragments"]:
+        fragments[fragment["id"]] = fragment
+
     artifacts = {}
-    for (key, val) in aquery_results:
-        if key == "artifacts":
-            [artifact_id] = [pair[1] for pair in val if pair[0] == "id"]
-            [exec_path] = [pair[1] for pair in val if pair[0] == "exec_path"]
-            artifacts[artifact_id] = exec_path
-        elif key == "actions":
-            output_ids = [pair[1] for pair in val if pair[0] == "output_ids"]
-            for output_id in output_ids:
-                yield artifacts[output_id]
+    for artifact in aquery_results["artifacts"]:
+        artifacts[artifact["id"]] = artifact
+
+    def _path(fragment_id):
+        fragment = fragments[fragment_id]
+        parent = _path(fragment["parentId"]) if "parentId" in fragment else []
+        return parent + [fragment["label"]]
+
+    for action in aquery_results["actions"]:
+        for output_id in action["outputIds"]:
+            path = os.path.join(*_path(artifacts[output_id]["pathFragmentId"]))
+            yield path
 
 
 def textproto2json(infile, outfile):
@@ -238,8 +251,7 @@ def shellcheck(bazel_aquery, *shellcheck_argv):
 def main(program, command, *command_args):
     result = 0
     if command == textproto2json.__name__:
-        result = textproto2json(sys.stdin.buffer, sys.stdout.buffer,
-                                *command_args)
+        result = textproto2json(sys.stdin.buffer, sys.stdout.buffer, *command_args)
     elif command == shellcheck.__name__:
         result = shellcheck(*command_args)
     elif command == preclean.__name__:

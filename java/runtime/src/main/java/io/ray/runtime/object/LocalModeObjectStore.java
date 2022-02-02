@@ -1,9 +1,11 @@
 package io.ray.runtime.object;
 
 import com.google.common.base.Preconditions;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
+import io.ray.runtime.exception.RayTimeoutException;
 import io.ray.runtime.generated.Common.Address;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,6 +46,12 @@ public class LocalModeObjectStore extends ObjectStore {
   }
 
   @Override
+  public ObjectId putRaw(NativeRayObject obj, ActorId ownerActorId) {
+    throw new UnsupportedOperationException(
+        "Assigning owner in Ray:put is not implemented in local mode");
+  }
+
+  @Override
   public void putRaw(NativeRayObject obj, ObjectId objectId) {
     Preconditions.checkNotNull(obj);
     Preconditions.checkNotNull(objectId);
@@ -56,6 +64,9 @@ public class LocalModeObjectStore extends ObjectStore {
   @Override
   public List<NativeRayObject> getRaw(List<ObjectId> objectIds, long timeoutMs) {
     waitInternal(objectIds, objectIds.size(), timeoutMs);
+    if (timeoutMs >= 0 && objectIds.stream().filter(pool::containsKey).count() < objectIds.size()) {
+      throw new RayTimeoutException("Get timed out: some object(s) not ready.");
+    }
     return objectIds.stream().map(pool::get).collect(Collectors.toList());
   }
 
@@ -110,7 +121,7 @@ public class LocalModeObjectStore extends ObjectStore {
   }
 
   @Override
-  public byte[] promoteAndGetOwnershipInfo(ObjectId objectId) {
+  public byte[] getOwnershipInfo(ObjectId objectId) {
     return new byte[0];
   }
 

@@ -1,6 +1,9 @@
 """
 Example script on how to train, save, load, and test an RLlib agent.
-Equivalent script with stable baselines: sb2rllib_sb_example.py
+Equivalent script with stable baselines: sb2rllib_sb_example.py.
+Demonstrates transition from stable_baselines to Ray RLlib.
+
+Run example: python sb2rllib_rllib_example.py
 """
 import gym
 import ray
@@ -16,10 +19,7 @@ save_dir = "saved_models"
 analysis = ray.tune.run(
     "PPO",
     stop={"timesteps_total": train_steps},
-    config={
-        "env": env_name,
-        "lr": learning_rate
-    },
+    config={"env": env_name, "lr": learning_rate},
     checkpoint_at_end=True,
     local_dir=save_dir,
 )
@@ -38,7 +38,7 @@ print(f"Agent loaded from saved model at {checkpoint_path}")
 env = gym.make(env_name)
 obs = env.reset()
 for i in range(1000):
-    action = agent.compute_action(obs)
+    action = agent.compute_single_action(obs)
     obs, reward, done, info = env.step(action)
     env.render()
     if done:

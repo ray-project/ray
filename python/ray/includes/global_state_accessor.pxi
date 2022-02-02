@@ -1,3 +1,7 @@
+from ray.includes.common cimport (
+    CGcsClientOptions
+)
+
 from ray.includes.unique_ids cimport (
     CActorID,
     CNodeID,
@@ -11,21 +15,17 @@ from ray.includes.global_state_accessor cimport (
 )
 
 from libcpp.string cimport string as c_string
+from libcpp.memory cimport make_unique as c_make_unique
 
 cdef class GlobalStateAccessor:
     """Cython wrapper class of C++ `ray::gcs::GlobalStateAccessor`."""
     cdef:
         unique_ptr[CGlobalStateAccessor] inner
 
-    def __init__(self, redis_address, redis_password):
-        if not redis_password:
-            redis_password = ""
-        self.inner.reset(
-            new CGlobalStateAccessor(
-                redis_address.encode("ascii"),
-                redis_password.encode("ascii"),
-            ),
-        )
+    def __cinit__(self, GcsClientOptions gcs_options):
+        cdef CGcsClientOptions *opts
+        opts = gcs_options.native()
+        self.inner = c_make_unique[CGlobalStateAccessor](opts[0])
 
     def connect(self):
         cdef c_bool result
@@ -66,21 +66,6 @@ cdef class GlobalStateAccessor:
         with nogil:
             result = self.inner.get().GetAllProfileInfo()
         return result
-
-    def get_object_table(self):
-        cdef c_vector[c_string] result
-        with nogil:
-            result = self.inner.get().GetAllObjectInfo()
-        return result
-
-    def get_object_info(self, object_id):
-        cdef unique_ptr[c_string] object_info
-        cdef CObjectID cobject_id = CObjectID.FromBinary(object_id.binary())
-        with nogil:
-            object_info = self.inner.get().GetObjectInfo(cobject_id)
-        if object_info:
-            return c_string(object_info.get().data(), object_info.get().size())
-        return None
 
     def get_all_resource_usage(self):
         """Get newest resource usage of all nodes from GCS service."""
@@ -162,3 +147,17 @@ cdef class GlobalStateAccessor:
         if result:
             return c_string(result.get().data(), result.get().size())
         return None
+
+    def get_system_config(self):
+        return self.inner.get().GetSystemConfig()
+
+    def get_node_to_connect_for_driver(self, node_ip_address):
+        cdef CRayStatus status
+        cdef c_string cnode_ip_address = node_ip_address
+        cdef c_string cnode_to_connect
+        with nogil:
+            status = self.inner.get().GetNodeToConnectForDriver(
+                cnode_ip_address, &cnode_to_connect)
+        if not status.ok():
+            raise RuntimeError(status.message())
+        return cnode_to_connect

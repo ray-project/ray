@@ -89,8 +89,6 @@ std::shared_ptr<RayObject> GenerateRandomObject(
 extern std::string TEST_REDIS_SERVER_EXEC_PATH;
 /// Path to redis client executable binary.
 extern std::string TEST_REDIS_CLIENT_EXEC_PATH;
-/// Path to redis module library.
-extern std::string TEST_REDIS_MODULE_LIBRARY_PATH;
 /// Ports of redis server.
 extern std::vector<int> TEST_REDIS_SERVER_PORTS;
 
@@ -120,7 +118,7 @@ class TestSetupUtil {
   static std::string StartGcsServer(const std::string &redis_address);
   static void StopGcsServer(const std::string &gcs_server_socket_name);
   static std::string StartRaylet(const std::string &node_ip_address, const int &port,
-                                 const std::string &redis_address,
+                                 const std::string &bootstrap_address,
                                  const std::string &resource,
                                  std::string *store_socket_name);
   static void StopRaylet(const std::string &raylet_socket_name);

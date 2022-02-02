@@ -4,11 +4,13 @@ import numpy as np
 import requests
 import pytest
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 import ray
 from ray.exceptions import GetTimeoutError
 from ray import serve
-from ray.test_utils import SignalActor
+from ray._private.test_utils import SignalActor
+from ray.serve.api import _get_global_client
 
 
 @pytest.fixture
@@ -36,6 +38,7 @@ def test_fastapi_serialization(shutdown_ray):
             data = request["data"]
             columns = request["columns"]
             import pandas as pd
+
             data = pd.DataFrame(data, columns=columns)
             data.drop_duplicates(inplace=True)
             return data.values.tolist()
@@ -71,7 +74,7 @@ def test_np_in_composed_model(serve_instance):
     assert result.json() == 100.0
 
 
-def test_backend_worker_memory_growth(serve_instance):
+def test_replica_memory_growth(serve_instance):
     # https://github.com/ray-project/ray/issues/12395
     @serve.deployment(name="model")
     def gc_unreachable_objects(*args):
@@ -140,6 +143,47 @@ def test_nested_actors(serve_instance):
     ray.get(signal.wait.remote(), timeout=10)
 
 
+def test_handle_cache_out_of_scope(serve_instance):
+    # https://github.com/ray-project/ray/issues/18980
+    initial_num_cached = len(_get_global_client().handle_cache)
+
+    @serve.deployment(name="f")
+    def f():
+        return "hi"
+
+    f.deploy()
+    handle = serve.get_deployment("f").get_handle()
+
+    handle_cache = _get_global_client().handle_cache
+    assert len(handle_cache) == initial_num_cached + 1
+
+    def sender_where_handle_goes_out_of_scope():
+        f = serve.get_deployment("f").get_handle()
+        assert f is handle
+        assert ray.get(f.remote()) == "hi"
+
+    [sender_where_handle_goes_out_of_scope() for _ in range(30)]
+    assert len(handle_cache) == initial_num_cached + 1
+
+
+def test_uvicorn_duplicate_headers(serve_instance):
+    # https://github.com/ray-project/ray/issues/21876
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class A:
+        @app.get("/")
+        def func(self):
+            return JSONResponse({"a": "b"})
+
+    A.deploy()
+    resp = requests.get("http://127.0.0.1:8000/A")
+    # If the header duplicated, it will be "9, 9"
+    assert resp.headers["content-length"] == "9"
+
+
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

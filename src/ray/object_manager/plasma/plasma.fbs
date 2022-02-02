@@ -60,9 +60,6 @@ enum MessageType:long {
   // Make room for new objects in the plasma store.
   PlasmaEvictRequest,
   PlasmaEvictReply,
-  // Set memory quota for a client.
-  PlasmaSetOptionsRequest,
-  PlasmaSetOptionsReply,
   // Get debugging information from the store.
   PlasmaGetDebugStringRequest,
   PlasmaGetDebugStringReply,
@@ -77,9 +74,6 @@ enum PlasmaError:int {
   ObjectNonexistent,
   // Trying to create an object but there isn't enough space in the store.
   OutOfMemory,
-  // Trying to create an object but there is temporarily not enough space in
-  // the store. Caller should try again later.
-  TransientOutOfMemory,
   // Trying to delete an object but it's not sealed.
   ObjectNotSealed,
   // Trying to delete an object but it's in use.
@@ -88,6 +82,8 @@ enum PlasmaError:int {
   // the result of the same request twice. This is most likely due to a system
   // bug in the plasma store or caller.
   UnexpectedError,
+  // Trying to abort an object but it's not sealed.
+  ObjectSealed,
 }
 
 // Plasma store messages
@@ -108,18 +104,6 @@ struct PlasmaObjectSpec {
   metadata_size: ulong;
   // Device to create buffer on.
   device_num: int;
-}
-
-table PlasmaSetOptionsRequest {
-  // The name of the client.
-  client_name: string;
-  // The size of the output memory limit in bytes.
-  output_memory_quota: long;
-}
-
-table PlasmaSetOptionsReply {
-  // Whether setting options succeeded.
-  error: PlasmaError;
 }
 
 table PlasmaGetDebugStringRequest {

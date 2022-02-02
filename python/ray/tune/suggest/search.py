@@ -15,6 +15,7 @@ class SearchAlgorithm:
 
     See also: `ray.tune.suggest.BasicVariantGenerator`.
     """
+
     _finished = False
 
     _metric = None
@@ -23,8 +24,9 @@ class SearchAlgorithm:
     def metric(self):
         return self._metric
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+    def set_search_properties(
+        self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
+    ) -> bool:
         """Pass search properties to search algorithm.
 
         This method acts as an alternative to instantiating search algorithms
@@ -37,7 +39,9 @@ class SearchAlgorithm:
         Args:
             metric (str): Metric to optimize
             mode (str): One of ["min", "max"]. Direction to optimize.
-            config (dict): Tune config dict.
+            config (Dict): Tune config dict.
+            **spec: Any kwargs for forward compatiblity.
+                Info like Experiment.PUBLIC_KEYS is provided through here.
         """
         if self._metric and metric:
             return False
@@ -51,8 +55,8 @@ class SearchAlgorithm:
         return 0
 
     def add_configurations(
-            self,
-            experiments: Union[Experiment, List[Experiment], Dict[str, Dict]]):
+        self, experiments: Union[Experiment, List[Experiment], Dict[str, Dict]]
+    ):
         """Tracks given experiment specifications.
 
         Arguments:
@@ -79,10 +83,9 @@ class SearchAlgorithm:
         """
         pass
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False):
+    def on_trial_complete(
+        self, trial_id: str, result: Optional[Dict] = None, error: bool = False
+    ):
         """Notification for the completion of trial.
 
         Arguments:

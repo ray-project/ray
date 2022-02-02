@@ -13,6 +13,7 @@ public class Sum extends Metric {
 
   private DoubleAdder sum;
 
+  @Deprecated
   public Sum(String name, String description, String unit, Map<TagKey, String> tags) {
     super(name, tags);
     metricNativePointer =
@@ -23,6 +24,10 @@ public class Sum extends Metric {
             tags.keySet().stream().map(TagKey::getTagKey).collect(Collectors.toList()));
     Preconditions.checkState(metricNativePointer != 0, "Count native pointer must not be 0.");
     this.sum = new DoubleAdder();
+  }
+
+  public Sum(String name, String description, Map<String, String> tags) {
+    this(name, description, "", TagKey.tagsFromMap(tags));
   }
 
   @Override

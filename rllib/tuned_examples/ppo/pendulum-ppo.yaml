@@ -1,6 +1,6 @@
 # Can expect improvement to -140 reward in ~300-500k timesteps.
 pendulum-ppo:
-    env: Pendulum-v0
+    env: Pendulum-v1
     run: PPO
     stop:
         episode_reward_mean: -500
@@ -17,6 +17,4 @@ pendulum-ppo:
         lr: 0.0003
         sgd_minibatch_size: 64
         num_sgd_iter: 6
-        model:
-            fcnet_hiddens: [256, 256]
         observation_filter: MeanStdFilter

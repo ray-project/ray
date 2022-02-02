@@ -25,8 +25,6 @@ namespace ray {
 
 namespace raylet {
 
-using rpc::TaskLeaseData;
-
 /// Used for unit-testing the ClusterTaskManager, which requests dependencies
 /// for queued tasks.
 class TaskDependencyManagerInterface {
@@ -36,6 +34,7 @@ class TaskDependencyManagerInterface {
       const std::vector<rpc::ObjectReference> &required_objects) = 0;
   virtual void RemoveTaskDependencies(const TaskID &task_id) = 0;
   virtual bool TaskDependenciesBlocked(const TaskID &task_id) const = 0;
+  virtual bool CheckObjectLocal(const ObjectID &object_id) const = 0;
   virtual ~TaskDependencyManagerInterface(){};
 };
 

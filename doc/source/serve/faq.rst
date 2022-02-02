@@ -77,4 +77,4 @@ Is Ray Serve only for ML models?
 --------------------------------
 Nope! Ray Serve can be used to build any type of Python microservices
 application. You can also use the full power of Ray within your Ray Serve
-programs, so it's easy to run parallel computations within your backends.
+programs, so it's easy to run parallel computations within your deployments.

@@ -1,9 +1,14 @@
 import numpy as np
+import os
 import time
 
+import pytest
 import ray
-from ray.cluster_utils import Cluster
+from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.internal.internal_api import memory_summary
+
+# RayConfig to enable recording call sites during ObjectRej creations.
+ray_config = {"record_ref_creation_sites": True}
 
 # Unique strings.
 DRIVER_PID = "Driver"
@@ -22,7 +27,8 @@ PUT_OBJ = "(put object)"
 TASK_CALL_OBJ = "(task call)"
 ACTOR_TASK_CALL_OBJ = "(actor call)"
 DESER_TASK_ARG = "(deserialize task arg)"
-DESER_ACTOR_TASK_ARG = "(deserialize actor task arg)"
+# Only 22 characters can be matched because longer strings are wrapped around.
+DESER_ACTOR_TASK_ARG = "(deserialize actor tas"
 
 # Group by and sort by parameters.
 NODE_ADDRESS = "node address"
@@ -34,9 +40,13 @@ REFERENCE_TYPE = "reference type"
 
 def data_lines(memory_str):
     for line in memory_str.split("\n"):
-        if (PINNED_IN_MEMORY in line or LOCAL_REF in line
-                or USED_BY_PENDING_TASK in line or CAPTURED_IN_OBJECT in line
-                or ACTOR_HANDLE in line):
+        if (
+            PINNED_IN_MEMORY in line
+            or LOCAL_REF in line
+            or USED_BY_PENDING_TASK in line
+            or CAPTURED_IN_OBJECT in line
+            or ACTOR_HANDLE in line
+        ):
             yield line
         else:
             continue
@@ -50,7 +60,7 @@ def num_objects(memory_str):
 
 
 def count(memory_str, substr):
-    substr = substr[:39]
+    substr = substr[:42]
     n = 0
     for line in memory_str.split("\n"):
         if substr in line:
@@ -58,8 +68,11 @@ def count(memory_str, substr):
     return n
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"_system_config": ray_config}], indirect=True
+)
 def test_driver_put_ref(ray_start_regular):
-    address = ray_start_regular["redis_address"]
+    address = ray_start_regular["address"]
     info = memory_summary(address)
     assert num_objects(info) == 0, info
     x_id = ray.put("HI")
@@ -73,12 +86,16 @@ def test_driver_put_ref(ray_start_regular):
     assert num_objects(info) == 0, info
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"_system_config": ray_config}], indirect=True
+)
 def test_worker_task_refs(ray_start_regular):
-    address = ray_start_regular["redis_address"]
+    address = ray_start_regular["address"]
 
     @ray.remote
     def f(y):
         from ray.internal.internal_api import memory_summary
+
         x_id = ray.put("HI")
         info = memory_summary(address)
         del x_id
@@ -112,8 +129,11 @@ def test_worker_task_refs(ray_start_regular):
     assert num_objects(info) == 0, info
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"_system_config": ray_config}], indirect=True
+)
 def test_actor_task_refs(ray_start_regular):
-    address = ray_start_regular["redis_address"]
+    address = ray_start_regular["address"]
 
     @ray.remote
     class Actor:
@@ -122,6 +142,7 @@ def test_actor_task_refs(ray_start_regular):
 
         def f(self, x):
             from ray.internal.internal_api import memory_summary
+
             self.refs.append(x)
             return memory_summary(address)
 
@@ -132,15 +153,16 @@ def test_actor_task_refs(ray_start_regular):
     x_id = actor.f.remote(np.zeros(100000))
     info = ray.get(x_id)
     print(info)
-    assert num_objects(info) == 4, info
+    # Note, the actor will always hold a handle to the actor itself.
+    assert num_objects(info) == 5, info
     # Actor handle, task argument id, task return id.
     assert count(info, ACTOR_TASK_CALL_OBJ) == 3, info
     assert count(info, DRIVER_PID) == 3, info
-    assert count(info, WORKER_PID) == 1, info
+    assert count(info, WORKER_PID) == 2, info
     assert count(info, LOCAL_REF) == 1, info
     assert count(info, PINNED_IN_MEMORY) == 1, info
     assert count(info, USED_BY_PENDING_TASK) == 1, info
-    assert count(info, ACTOR_HANDLE) == 1, info
+    assert count(info, ACTOR_HANDLE) == 2, info
     assert count(info, DESER_ACTOR_TASK_ARG) == 1, info
     del x_id
 
@@ -159,8 +181,11 @@ def test_actor_task_refs(ray_start_regular):
     assert num_objects(info) == 0, info
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"_system_config": ray_config}], indirect=True
+)
 def test_nested_object_refs(ray_start_regular):
-    address = ray_start_regular["redis_address"]
+    address = ray_start_regular["address"]
     x_id = ray.put(np.zeros(100000))
     y_id = ray.put([x_id])
     z_id = ray.put([y_id])
@@ -173,8 +198,11 @@ def test_nested_object_refs(ray_start_regular):
     del z_id
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"_system_config": ray_config}], indirect=True
+)
 def test_pinned_object_call_site(ray_start_regular):
-    address = ray_start_regular["redis_address"]
+    address = ray_start_regular["address"]
     # Local ref only.
     x_id = ray.put(np.zeros(100000))
     info = memory_summary(address)
@@ -206,7 +234,12 @@ def test_pinned_object_call_site(ray_start_regular):
     assert num_objects(info) == 0, info
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_multi_node_stats(shutdown_only):
+    # NOTE(mwtian): using env var only enables the feature on workers, while
+    # using head_node_args={"_system_config": ray_config} only enables the
+    # feature on the driver.
+    os.environ["RAY_record_ref_creation_sites"] = "1"
     cluster = Cluster()
     for _ in range(2):
         cluster.add_node(num_cpus=1)
@@ -233,18 +266,20 @@ def test_multi_node_stats(shutdown_only):
     assert count(info, PUT_OBJ) == 2, info
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"_system_config": ray_config}], indirect=True
+)
 def test_group_by_sort_by(ray_start_regular):
-    address = ray_start_regular["redis_address"]
+    address = ray_start_regular["address"]
 
     @ray.remote
     def f(y):
         x_id = ray.put("HI")
         info_a = memory_summary(
-            address, group_by="STACK_TRACE", sort_by="REFERENCE_TYPE")
-        info_b = memory_summary(
-            address, group_by="NODE_ADDRESS", sort_by="OBJECT_SIZE")
-        info_c = memory_summary(
-            address, group_by="NODE_ADDRESS", sort_by="PID")
+            address, group_by="STACK_TRACE", sort_by="REFERENCE_TYPE"
+        )
+        info_b = memory_summary(address, group_by="NODE_ADDRESS", sort_by="OBJECT_SIZE")
+        info_c = memory_summary(address, group_by="NODE_ADDRESS", sort_by="PID")
         del x_id
         return info_a, info_b, info_c
 
@@ -259,9 +294,13 @@ def test_group_by_sort_by(ray_start_regular):
     assert count(info_c, PID) == 1, info_c
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"_system_config": ray_config}], indirect=True
+)
 def test_memory_used_output(ray_start_regular):
-    address = ray_start_regular["redis_address"]
+    address = ray_start_regular["address"]
     import numpy as np
+
     _ = ray.put(np.ones(8 * 1024 * 1024, dtype=np.int8))
 
     info = memory_summary(address)
@@ -271,6 +310,6 @@ def test_memory_used_output(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

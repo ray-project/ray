@@ -3,6 +3,7 @@ package io.ray.runtime.metric;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.AtomicDouble;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -59,14 +60,14 @@ public abstract class Metric {
   protected abstract double getAndReset();
 
   /**
-   * Update gauge value without tags. Update metric info for user.
+   * Update metric value without tags. Update metric info for user.
    *
    * @param value latest value for updating
    */
   public abstract void update(double value);
 
   /**
-   * Update gauge value with dynamic tag values.
+   * Update metric value with dynamic tag values.
    *
    * @param value latest value for updating
    * @param tags tag map
@@ -74,6 +75,30 @@ public abstract class Metric {
   public void update(double value, Map<TagKey, String> tags) {
     update(value);
     this.tags = tags;
+  }
+
+  /**
+   * Update metric value with dynamic tag values in pair string format.
+   *
+   * @param tags tag map
+   * @param value latest value for updating
+   */
+  public void update(Map<String, String> tags, double value) {
+    update(value);
+    this.tags = TagKey.tagsFromMap(tags);
+  }
+
+  /**
+   * Convert tagkey list to map in string format.
+   *
+   * @return tags.
+   */
+  public Map<String, String> getTagMap() {
+    Map<String, String> tagMap = new HashMap<>();
+    for (Map.Entry<TagKey, String> entry : tags.entrySet()) {
+      tagMap.put(entry.getKey().getTagKey(), entry.getValue());
+    }
+    return tagMap;
   }
 
   /** Deallocate object from stats and reset native pointer in null. */

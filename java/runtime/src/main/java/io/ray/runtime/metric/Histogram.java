@@ -17,6 +17,7 @@ public class Histogram extends Metric {
   private List<Double> histogramWindow;
   public static final int HISTOGRAM_WINDOW_SIZE = 100;
 
+  @Deprecated
   public Histogram(
       String name,
       String description,
@@ -33,6 +34,11 @@ public class Histogram extends Metric {
             tags.keySet().stream().map(TagKey::getTagKey).collect(Collectors.toList()));
     Preconditions.checkState(metricNativePointer != 0, "Histogram native pointer must not be 0.");
     histogramWindow = Collections.synchronizedList(new ArrayList<>());
+  }
+
+  public Histogram(
+      String name, String description, List<Double> boundaries, Map<String, String> tags) {
+    this(name, description, "", boundaries, TagKey.tagsFromMap(tags));
   }
 
   private void updateForWindow(double value) {

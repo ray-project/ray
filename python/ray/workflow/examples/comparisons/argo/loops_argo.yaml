@@ -1,0 +1,28 @@
+# https://github.com/argoproj/argo-workflows/tree/master/examples#loops
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: loops-
+spec:
+  entrypoint: loop-example
+  templates:
+  - name: loop-example
+    steps:
+    - - name: print-message
+        template: whalesay
+        arguments:
+          parameters:
+          - name: message
+            value: "{{item}}"
+        withItems:              # invoke whalesay once for each item in parallel
+        - hello world           # item 1
+        - goodbye world         # item 2
+
+  - name: whalesay
+    inputs:
+      parameters:
+      - name: message
+    container:
+      image: docker/whalesay:latest
+      command: [cowsay]
+      args: ["{{inputs.parameters.message}}"]

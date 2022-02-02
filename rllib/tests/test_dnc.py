@@ -1,12 +1,14 @@
+import gym
 import unittest
-import torch
 
 import ray
-import gym
 from ray import tune
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.examples.models.neural_computer import DNCMemory
+from ray.rllib.utils.framework import try_import_torch
+
+torch, _ = try_import_torch()
 
 
 class TestDNC(unittest.TestCase):
@@ -24,8 +26,7 @@ class TestDNC(unittest.TestCase):
         ray.shutdown()
 
     def test_pack_unpack(self):
-        d = DNCMemory(
-            gym.spaces.Discrete(1), gym.spaces.Discrete(1), 1, {}, "")
+        d = DNCMemory(gym.spaces.Discrete(1), gym.spaces.Discrete(1), 1, {}, "")
         # Add batch dim
         packed_state = [m.unsqueeze(0) for m in d.get_initial_state()]
         [m.random_() for m in packed_state]
@@ -68,4 +69,5 @@ class TestDNC(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

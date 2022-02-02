@@ -14,9 +14,9 @@ public class GlobalStateAccessor {
   private static GlobalStateAccessor globalStateAccessor;
 
   public static synchronized GlobalStateAccessor getInstance(
-      String redisAddress, String redisPassword) {
+      String bootstrapAddress, String redisPassword) {
     if (null == globalStateAccessor) {
-      globalStateAccessor = new GlobalStateAccessor(redisAddress, redisPassword);
+      globalStateAccessor = new GlobalStateAccessor(bootstrapAddress, redisPassword);
     }
     return globalStateAccessor;
   }
@@ -28,8 +28,9 @@ public class GlobalStateAccessor {
     }
   }
 
-  private GlobalStateAccessor(String redisAddress, String redisPassword) {
-    globalStateAccessorNativePointer = nativeCreateGlobalStateAccessor(redisAddress, redisPassword);
+  private GlobalStateAccessor(String bootstrapAddress, String redisPassword) {
+    globalStateAccessorNativePointer =
+        nativeCreateGlobalStateAccessor(bootstrapAddress, redisPassword);
     validateGlobalStateAccessorPointer();
     connect();
   }
@@ -92,10 +93,10 @@ public class GlobalStateAccessor {
     }
   }
 
-  public byte[] getPlacementGroupInfo(String name, boolean global) {
+  public byte[] getPlacementGroupInfo(String name, String namespace) {
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
-      return nativeGetPlacementGroupInfoByName(globalStateAccessorNativePointer, name, global);
+      return nativeGetPlacementGroupInfoByName(globalStateAccessorNativePointer, name, namespace);
     }
   }
 
@@ -103,6 +104,13 @@ public class GlobalStateAccessor {
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
       return this.nativeGetAllPlacementGroupInfo(globalStateAccessorNativePointer);
+    }
+  }
+
+  public byte[] getInternalKV(String n, String k) {
+    synchronized (GlobalStateAccessor.class) {
+      validateGlobalStateAccessorPointer();
+      return this.nativeGetInternalKV(globalStateAccessorNativePointer, n, k);
     }
   }
 
@@ -121,6 +129,15 @@ public class GlobalStateAccessor {
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
       return this.nativeGetActorInfo(globalStateAccessorNativePointer, actorId.getBytes());
+    }
+  }
+
+  /** Get the node to connect for a Ray driver. */
+  public byte[] getNodeToConnectForDriver(String nodeIpAddress) {
+    // Fetch a node with protobuf bytes format from GCS.
+    synchronized (GlobalStateAccessor.class) {
+      validateGlobalStateAccessorPointer();
+      return this.nativeGetNodeToConnectForDriver(globalStateAccessorNativePointer, nodeIpAddress);
     }
   }
 
@@ -155,7 +172,11 @@ public class GlobalStateAccessor {
   private native byte[] nativeGetPlacementGroupInfo(long nativePtr, byte[] placementGroupId);
 
   private native byte[] nativeGetPlacementGroupInfoByName(
-      long nativePtr, String name, boolean global);
+      long nativePtr, String name, String namespace);
 
   private native List<byte[]> nativeGetAllPlacementGroupInfo(long nativePtr);
+
+  private native byte[] nativeGetInternalKV(long nativePtr, String n, String k);
+
+  private native byte[] nativeGetNodeToConnectForDriver(long nativePtr, String nodeIpAddress);
 }

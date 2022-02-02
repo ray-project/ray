@@ -15,7 +15,7 @@
 #include "ray/raylet/raylet.h"
 
 #include <boost/asio.hpp>
-#include <boost/bind.hpp>
+#include <boost/bind/bind.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <iostream>
 
@@ -55,28 +55,18 @@ namespace ray {
 namespace raylet {
 
 Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_name,
-               const std::string &node_ip_address, const std::string &redis_address,
-               int redis_port, const std::string &redis_password,
+               const std::string &node_ip_address,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::GcsClient> gcs_client, int metrics_export_port)
     : main_service_(main_service),
-      self_node_id_(NodeID::FromRandom()),
+      self_node_id_(
+          !RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING().empty()
+              ? NodeID::FromHex(RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING())
+              : NodeID::FromRandom()),
       gcs_client_(gcs_client),
-      object_directory_(std::dynamic_pointer_cast<ObjectDirectoryInterface>(
-          std::make_shared<OwnershipBasedObjectDirectory>(
-              main_service, gcs_client_,
-
-              [this](const ObjectID &obj_id) {
-                rpc::ObjectReference ref;
-                ref.set_object_id(obj_id.Binary());
-                node_manager_.MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
-                                                  {ref}, JobID::Nil());
-              }
-
-              ))),
       node_manager_(main_service, self_node_id_, node_manager_config,
-                    object_manager_config, gcs_client_, object_directory_),
+                    object_manager_config, gcs_client_),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {
@@ -89,6 +79,9 @@ Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_
   self_node_info_.set_node_manager_port(node_manager_.GetServerPort());
   self_node_info_.set_node_manager_hostname(boost::asio::ip::host_name());
   self_node_info_.set_metrics_export_port(metrics_export_port);
+  const auto &resource_map = node_manager_config.resource_config.GetResourceMap();
+  self_node_info_.mutable_resources_total()->insert(resource_map.begin(),
+                                                    resource_map.end());
 }
 
 Raylet::~Raylet() {}
@@ -101,7 +94,7 @@ void Raylet::Start() {
 }
 
 void Raylet::Stop() {
-  RAY_CHECK_OK(gcs_client_->Nodes().UnregisterSelf());
+  RAY_CHECK_OK(gcs_client_->Nodes().DrainSelf());
   node_manager_.Stop();
   acceptor_.close();
 }

@@ -1,3 +1,16 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #pragma once
 
@@ -5,6 +18,7 @@
 #include <functional>
 
 #include "ray/common/id.h"
+#include "ray/common/status.h"
 
 namespace ray {
 
@@ -32,6 +46,17 @@ struct ObjectInfo {
   int owner_port;
   /// Owner's worker ID.
   WorkerID owner_worker_id;
+
+  int64_t GetObjectSize() const { return data_size + metadata_size; }
+
+  bool operator==(const ObjectInfo &other) const {
+    return ((object_id == other.object_id) && (data_size == other.data_size) &&
+            (metadata_size == other.metadata_size) &&
+            (owner_raylet_id == other.owner_raylet_id) &&
+            (owner_ip_address == other.owner_ip_address) &&
+            (owner_port == other.owner_port) &&
+            (owner_worker_id == other.owner_worker_id));
+  }
 };
 
 // A callback to call when an object is added to the shared memory store.

@@ -1,3 +1,16 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "local_mode_task_submitter.h"
 
@@ -9,7 +22,7 @@
 #include "../abstract_ray_runtime.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 LocalModeTaskSubmitter::LocalModeTaskSubmitter(
     LocalModeRayRuntime &local_mode_ray_tuntime)
@@ -17,29 +30,39 @@ LocalModeTaskSubmitter::LocalModeTaskSubmitter(
   thread_pool_.reset(new boost::asio::thread_pool(10));
 }
 
-ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
-  /// TODO(Guyang Song): Make the infomation of TaskSpecification more reasonable
+ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
+                                        const ActorCreationOptions &options) {
+  /// TODO(SongGuyang): Make the information of TaskSpecification more reasonable
   /// We just reuse the TaskSpecification class and make the single process mode work.
   /// Maybe some infomation of TaskSpecification are not reasonable or invalid.
   /// We will enhance this after implement the cluster mode.
   auto functionDescriptor = FunctionDescriptorBuilder::BuildCpp(
-      "SingleProcess", invocation.remote_function_holder.function_name);
+      invocation.remote_function_holder.function_name);
   rpc::Address address;
   std::unordered_map<std::string, double> required_resources;
   std::unordered_map<std::string, double> required_placement_resources;
+  std::string task_id_data(TaskID::Size(), 0);
+  FillRandom(&task_id_data);
+  auto task_id = TaskID::FromBinary(task_id_data);
   TaskSpecBuilder builder;
   std::string task_name =
       invocation.name.empty() ? functionDescriptor->DefaultTaskName() : invocation.name;
-  builder.SetCommonTaskSpec(invocation.task_id, task_name, rpc::Language::CPP,
-                            functionDescriptor, local_mode_ray_tuntime_.GetCurrentJobID(),
+
+  // TODO (Alex): Properly set the depth here?
+  builder.SetCommonTaskSpec(task_id, task_name, rpc::Language::CPP, functionDescriptor,
+                            local_mode_ray_tuntime_.GetCurrentJobID(),
                             local_mode_ray_tuntime_.GetCurrentTaskId(), 0,
                             local_mode_ray_tuntime_.GetCurrentTaskId(), address, 1,
-                            required_resources, required_placement_resources,
-                            std::make_pair(PlacementGroupID::Nil(), -1), true, "");
+                            required_resources, required_placement_resources, "",
+                            /*depth=*/0);
   if (invocation.task_type == TaskType::NORMAL_TASK) {
   } else if (invocation.task_type == TaskType::ACTOR_CREATION_TASK) {
     invocation.actor_id = local_mode_ray_tuntime_.GetNextActorID();
-    builder.SetActorCreationTaskSpec(invocation.actor_id);
+    rpc::SchedulingStrategy scheduling_strategy;
+    scheduling_strategy.mutable_default_scheduling_strategy();
+    builder.SetActorCreationTaskSpec(invocation.actor_id, /*serialized_actor_handle=*/"",
+                                     scheduling_strategy, options.max_restarts,
+                                     /*max_task_retries=*/0, {}, options.max_concurrency);
   } else if (invocation.task_type == TaskType::ACTOR_TASK) {
     const TaskID actor_creation_task_id =
         TaskID::ForActorCreationTask(invocation.actor_id);
@@ -66,7 +89,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
   AbstractRayRuntime *runtime = &local_mode_ray_tuntime_;
   if (invocation.task_type == TaskType::ACTOR_CREATION_TASK ||
       invocation.task_type == TaskType::ACTOR_TASK) {
-    /// TODO(Guyang Song): Handle task dependencies.
+    /// TODO(SongGuyang): Handle task dependencies.
     /// Execute actor task directly in the main thread because we must guarantee the actor
     /// task executed by calling order.
     TaskExecutor::Invoke(task_specification, actor, runtime, actor_contexts_,
@@ -87,18 +110,63 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
   return return_object_id;
 }
 
-ObjectID LocalModeTaskSubmitter::SubmitTask(InvocationSpec &invocation) {
-  return Submit(invocation);
+ObjectID LocalModeTaskSubmitter::SubmitTask(InvocationSpec &invocation,
+                                            const CallOptions &call_options) {
+  return Submit(invocation, {});
 }
 
-ActorID LocalModeTaskSubmitter::CreateActor(InvocationSpec &invocation) {
-  Submit(invocation);
+ActorID LocalModeTaskSubmitter::CreateActor(InvocationSpec &invocation,
+                                            const ActorCreationOptions &create_options) {
+  Submit(invocation, create_options);
+  if (!create_options.name.empty()) {
+    absl::MutexLock lock(&named_actors_mutex_);
+    named_actors_.emplace(create_options.name, invocation.actor_id);
+  }
+
   return invocation.actor_id;
 }
 
-ObjectID LocalModeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation) {
-  return Submit(invocation);
+ObjectID LocalModeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
+                                                 const CallOptions &call_options) {
+  return Submit(invocation, {});
 }
 
-}  // namespace api
+ActorID LocalModeTaskSubmitter::GetActor(const std::string &actor_name) const {
+  absl::MutexLock lock(&named_actors_mutex_);
+  auto it = named_actors_.find(actor_name);
+  if (it == named_actors_.end()) {
+    return ActorID::Nil();
+  }
+
+  return it->second;
+}
+
+ray::PlacementGroup LocalModeTaskSubmitter::CreatePlacementGroup(
+    const ray::PlacementGroupCreationOptions &create_options) {
+  ray::PlacementGroup placement_group{ray::PlacementGroupID::FromRandom().Binary(),
+                                      create_options};
+  placement_group.SetWaitCallbak([this](const std::string &id, int timeout_seconds) {
+    return WaitPlacementGroupReady(id, timeout_seconds);
+  });
+  placement_groups_.emplace(placement_group.GetID(), placement_group);
+  return placement_group;
+}
+
+void LocalModeTaskSubmitter::RemovePlacementGroup(const std::string &group_id) {
+  placement_groups_.erase(group_id);
+}
+
+std::vector<PlacementGroup> LocalModeTaskSubmitter::GetAllPlacementGroups() {
+  throw RayException("Ray doesn't support placement group operations in local mode.");
+}
+
+PlacementGroup LocalModeTaskSubmitter::GetPlacementGroupById(const std::string &id) {
+  throw RayException("Ray doesn't support placement group operations in local mode.");
+}
+
+PlacementGroup LocalModeTaskSubmitter::GetPlacementGroup(const std::string &name) {
+  throw RayException("Ray doesn't support placement group operations in local mode.");
+}
+
+}  // namespace internal
 }  // namespace ray

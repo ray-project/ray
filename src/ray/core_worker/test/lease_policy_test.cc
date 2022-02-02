@@ -18,10 +18,11 @@
 #include "ray/common/task/task_spec.h"
 
 namespace ray {
+namespace core {
 
 TaskSpecification CreateFakeTask(std::vector<ObjectID> deps) {
   TaskSpecification spec;
-  spec.GetMutableMessage().set_task_id(TaskID::ForFakeTask().Binary());
+  spec.GetMutableMessage().set_task_id(TaskID::FromRandom(JobID::FromInt(1)).Binary());
   for (auto &dep : deps) {
     spec.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
         dep.Binary());
@@ -208,4 +209,5 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityFallbackAddrFetchFail) {
   ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), fallback_node);
 }
 
+}  // namespace core
 }  // namespace ray

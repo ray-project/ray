@@ -18,8 +18,12 @@
 #include <cstdlib>
 #include <iostream>
 
+#include "absl/strings/str_format.h"
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/util/filesystem.h"
+
+using namespace testing;
 
 namespace ray {
 
@@ -55,9 +59,138 @@ TEST(PrintLogTest, LogTestWithoutInit) {
   PrintLog();
 }
 
+#if GTEST_HAS_STREAM_REDIRECTION
+using testing::internal::CaptureStderr;
+using testing::internal::GetCapturedStderr;
+
+namespace {
+void VerifyOnlyNthOccurenceLogged(bool fallback_to_debug) {
+  const std::string kLogStr = "this is a test log";
+  CaptureStderr();
+  static int non_fallback_counter = 0;
+  static int fallback_counter = 0;
+  int &counter = fallback_to_debug ? fallback_counter : non_fallback_counter;
+  for (int i = 0; i < 9; i++) {
+    counter++;
+    if (fallback_to_debug) {
+      RAY_LOG_EVERY_N_OR_DEBUG(INFO, 3) << kLogStr;
+    } else {
+      RAY_LOG_EVERY_N(INFO, 3) << kLogStr;
+    }
+  }
+  std::string output = GetCapturedStderr();
+  for (int i = counter - 8; i <= counter; i++) {
+    std::string expected_str = absl::StrFormat("[%d] this is a test log", i);
+    if (i % 3 == 1) {
+      EXPECT_THAT(output, HasSubstr(expected_str));
+    } else {
+      EXPECT_THAT(output, Not(HasSubstr(expected_str)));
+    }
+  }
+
+  size_t occurrences = 0;
+  std::string::size_type start = 0;
+
+  while ((start = output.find(kLogStr, start)) != std::string::npos) {
+    ++occurrences;
+    start += kLogStr.length();
+  }
+  EXPECT_EQ(occurrences, 3);
+}
+
+void VerifyAllOccurenceLogged() {
+  const std::string kLogStr = "this is a test log";
+  CaptureStderr();
+  for (int i = 0; i < 10; i++) {
+    RAY_LOG_EVERY_N_OR_DEBUG(INFO, 3) << kLogStr;
+  }
+  std::string output = GetCapturedStderr();
+  size_t occurrences = 0;
+  std::string::size_type start = 0;
+  while ((start = output.find("[0] this is a test log", start)) != std::string::npos) {
+    ++occurrences;
+    start += kLogStr.length();
+  }
+  EXPECT_EQ(occurrences, 10);
+}
+
+void VerifyNothingLogged(bool fallback_to_debug) {
+  const std::string kLogStr = "this is a test log";
+  CaptureStderr();
+  for (int i = 0; i < 10; i++) {
+    if (fallback_to_debug) {
+      RAY_LOG_EVERY_N_OR_DEBUG(INFO, 3) << kLogStr;
+    } else {
+      RAY_LOG_EVERY_N(INFO, 3) << kLogStr;
+    };
+  }
+  std::string output = GetCapturedStderr();
+
+  size_t occurrences = 0;
+  std::string::size_type start = 0;
+
+  while ((start = output.find(kLogStr, start)) != std::string::npos) {
+    ++occurrences;
+    start += kLogStr.length();
+  }
+  EXPECT_EQ(occurrences, 0);
+}
+}  // namespace
+
+TEST(PrintLogTest, TestRayLogEveryN) {
+  RayLog::severity_threshold_ = RayLogLevel::INFO;
+  VerifyOnlyNthOccurenceLogged(/*fallback_to_debug*/ false);
+
+  RayLog::severity_threshold_ = RayLogLevel::DEBUG;
+  VerifyOnlyNthOccurenceLogged(/*fallback_to_debug*/ false);
+
+  RayLog::severity_threshold_ = RayLogLevel::WARNING;
+  VerifyNothingLogged(/*fallback_to_debug*/ false);
+
+  RayLog::severity_threshold_ = RayLogLevel::INFO;
+}
+
+TEST(PrintLogTest, TestRayLogEveryNOrDebug) {
+  RayLog::severity_threshold_ = RayLogLevel::INFO;
+  VerifyOnlyNthOccurenceLogged(/*fallback_to_debug*/ true);
+
+  RayLog::severity_threshold_ = RayLogLevel::DEBUG;
+  VerifyAllOccurenceLogged();
+
+  RayLog::severity_threshold_ = RayLogLevel::WARNING;
+  VerifyNothingLogged(/*fallback_to_debug*/ true);
+
+  RayLog::severity_threshold_ = RayLogLevel::INFO;
+}
+
+TEST(PrintLogTest, TestRayLogEveryMs) {
+  CaptureStderr();
+  const std::string kLogStr = "this is a test log";
+  auto start_time = std::chrono::steady_clock::now().time_since_epoch();
+  size_t num_iterations = 0;
+  while (std::chrono::steady_clock::now().time_since_epoch() - start_time <
+         std::chrono::milliseconds(100)) {
+    num_iterations++;
+    RAY_LOG_EVERY_MS(INFO, 10) << kLogStr;
+  }
+  std::string output = GetCapturedStderr();
+  size_t occurrences = 0;
+  std::string::size_type start = 0;
+
+  while ((start = output.find(kLogStr, start)) != std::string::npos) {
+    ++occurrences;
+    start += kLogStr.length();
+  }
+  EXPECT_LT(occurrences, num_iterations);
+  EXPECT_GT(occurrences, 5);
+  EXPECT_LT(occurrences, 15);
+}
+
+#endif /* GTEST_HAS_STREAM_REDIRECTION */
+
 TEST(PrintLogTest, LogTestWithInit) {
   // Test empty app name.
-  RayLog::StartRayLog("", RayLogLevel::DEBUG, ray::GetUserTempDir() + ray::GetDirSep());
+  RayLog::StartRayLog("", RayLogLevel::DEBUG, ray::GetUserTempDir());
   PrintLog();
   RayLog::ShutDownRayLog();
 }
@@ -65,8 +198,8 @@ TEST(PrintLogTest, LogTestWithInit) {
 // This test will output large amount of logs to stderr, should be disabled in travis.
 TEST(LogPerfTest, PerfTest) {
   RayLog::StartRayLog("/fake/path/to/appdire/LogPerfTest", RayLogLevel::ERROR,
-                      ray::GetUserTempDir() + ray::GetDirSep());
-  int rounds = 100000;
+                      ray::GetUserTempDir());
+  int rounds = 10;
 
   int64_t start_time = current_time_ms();
   for (int i = 0; i < rounds; ++i) {
@@ -95,6 +228,31 @@ TEST(LogPerfTest, PerfTest) {
   std::cout << "Testing RAY_CHECK(true) for " << rounds << " rounds takes " << elapsed
             << " ms." << std::endl;
   RayLog::ShutDownRayLog();
+}
+
+TEST(PrintLogTest, TestCheckOp) {
+  int i = 1;
+  RAY_CHECK_EQ(i, 1);
+  ASSERT_DEATH(RAY_CHECK_EQ(i, 2), "1 vs 2");
+
+  RAY_CHECK_NE(i, 0);
+  ASSERT_DEATH(RAY_CHECK_NE(i, 1), "1 vs 1");
+
+  RAY_CHECK_LE(i, 1);
+  ASSERT_DEATH(RAY_CHECK_LE(i, 0), "1 vs 0");
+
+  RAY_CHECK_LT(i, 2);
+  ASSERT_DEATH(RAY_CHECK_LT(i, 1), "1 vs 1");
+
+  RAY_CHECK_GE(i, 1);
+  ASSERT_DEATH(RAY_CHECK_GE(i, 2), "1 vs 2");
+
+  RAY_CHECK_GT(i, 0);
+  ASSERT_DEATH(RAY_CHECK_GT(i, 1), "1 vs 1");
+
+  int j = 0;
+  RAY_CHECK_NE(i, j);
+  ASSERT_DEATH(RAY_CHECK_EQ(i, j), "1 vs 0");
 }
 
 std::string TestFunctionLevel0() {

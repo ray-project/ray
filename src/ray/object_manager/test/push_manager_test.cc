@@ -21,7 +21,7 @@ namespace ray {
 
 TEST(TestPushManager, TestSingleTransfer) {
   std::vector<int> results;
-  results.reserve(10);
+  results.resize(10);
   auto node_id = NodeID::FromRandom();
   auto obj_id = ObjectID::FromRandom();
   PushManager pm(5);
@@ -42,7 +42,7 @@ TEST(TestPushManager, TestSingleTransfer) {
 
 TEST(TestPushManager, TestSuppressDuplicates) {
   std::vector<int> results;
-  results.reserve(10);
+  results.resize(10);
   auto node_id = NodeID::FromRandom();
   auto obj_id = ObjectID::FromRandom();
   PushManager pm(5);
@@ -80,9 +80,9 @@ TEST(TestPushManager, TestSuppressDuplicates) {
 
 TEST(TestPushManager, TestMultipleTransfers) {
   std::vector<int> results1;
-  results1.reserve(10);
+  results1.resize(10);
   std::vector<int> results2;
-  results2.reserve(10);
+  results2.resize(10);
   auto node1 = NodeID::FromRandom();
   auto node2 = NodeID::FromRandom();
   auto obj_id = ObjectID::FromRandom();

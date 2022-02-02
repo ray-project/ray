@@ -3,6 +3,9 @@
 RaySGD Hyperparameter Tuning
 ============================
 
+.. warning:: This is an older version of Ray SGD. A newer, more light-weight version of Ray SGD (named Ray Train) is in alpha as of Ray 1.7.
+         See the documentation :ref:`here <train-docs>`. To migrate from v1 to v2 you can follow the :ref:`migration guide <sgd-migration>`.
+
 RaySGD integrates with :ref:`Ray Tune <tune-60-seconds>` to easily run distributed hyperparameter tuning experiments with your RaySGD Trainer.
 
 PyTorch

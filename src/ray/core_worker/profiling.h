@@ -20,9 +20,10 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/core_worker/context.h"
-#include "ray/gcs/gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 
 namespace ray {
+namespace core {
 
 namespace worker {
 
@@ -84,4 +85,5 @@ class ProfileEvent {
 
 }  // namespace worker
 
+}  // namespace core
 }  // namespace ray

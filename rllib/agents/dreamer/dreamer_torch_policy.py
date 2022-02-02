@@ -1,11 +1,18 @@
 import logging
 
+import numpy as np
+from typing import Dict, Optional
+
 import ray
 from ray.rllib.agents.dreamer.utils import FreezeParameters
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import apply_grad_clipping
+from ray.rllib.utils.torch_utils import apply_grad_clipping
+from ray.rllib.utils.typing import AgentID
 
 torch, nn = try_import_torch()
 if torch:
@@ -15,40 +22,42 @@ logger = logging.getLogger(__name__)
 
 
 # This is the computation graph for workers (inner adaptation steps)
-def compute_dreamer_loss(obs,
-                         action,
-                         reward,
-                         model,
-                         imagine_horizon,
-                         discount=0.99,
-                         lambda_=0.95,
-                         kl_coeff=1.0,
-                         free_nats=3.0,
-                         log=False):
+def compute_dreamer_loss(
+    obs,
+    action,
+    reward,
+    model,
+    imagine_horizon,
+    discount=0.99,
+    lambda_=0.95,
+    kl_coeff=1.0,
+    free_nats=3.0,
+    log=False,
+):
     """Constructs loss for the Dreamer objective
 
-        Args:
-            obs (TensorType): Observations (o_t)
-            action (TensorType): Actions (a_(t-1))
-            reward (TensorType): Rewards (r_(t-1))
-            model (TorchModelV2): DreamerModel, encompassing all other models
-            imagine_horizon (int): Imagine horizon for actor and critic loss
-            discount (float): Discount
-            lambda_ (float): Lambda, like in GAE
-            kl_coeff (float): KL Coefficient for Divergence loss in model loss
-            free_nats (float): Threshold for minimum divergence in model loss
-            log (bool): If log, generate gifs
-        """
+    Args:
+        obs (TensorType): Observations (o_t)
+        action (TensorType): Actions (a_(t-1))
+        reward (TensorType): Rewards (r_(t-1))
+        model (TorchModelV2): DreamerModel, encompassing all other models
+        imagine_horizon (int): Imagine horizon for actor and critic loss
+        discount (float): Discount
+        lambda_ (float): Lambda, like in GAE
+        kl_coeff (float): KL Coefficient for Divergence loss in model loss
+        free_nats (float): Threshold for minimum divergence in model loss
+        log (bool): If log, generate gifs
+    """
     encoder_weights = list(model.encoder.parameters())
     decoder_weights = list(model.decoder.parameters())
     reward_weights = list(model.reward.parameters())
     dynamics_weights = list(model.dynamics.parameters())
     critic_weights = list(model.value.parameters())
-    model_weights = list(encoder_weights + decoder_weights + reward_weights +
-                         dynamics_weights)
+    model_weights = list(
+        encoder_weights + decoder_weights + reward_weights + dynamics_weights
+    )
 
-    device = (torch.device("cuda")
-              if torch.cuda.is_available() else torch.device("cpu"))
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     # PlaNET Model Loss
     latent = model.encoder(obs)
@@ -61,7 +70,8 @@ def compute_dreamer_loss(obs,
     prior_dist = model.dynamics.get_dist(prior[0], prior[1])
     post_dist = model.dynamics.get_dist(post[0], post[1])
     div = torch.mean(
-        torch.distributions.kl_divergence(post_dist, prior_dist).sum(dim=2))
+        torch.distributions.kl_divergence(post_dist, prior_dist).sum(dim=2)
+    )
     div = torch.clamp(div, min=free_nats)
     model_loss = kl_coeff * div + reward_loss + image_loss
 
@@ -75,12 +85,11 @@ def compute_dreamer_loss(obs,
         reward = model.reward(imag_feat).mean
         value = model.value(imag_feat).mean
     pcont = discount * torch.ones_like(reward)
-    returns = lambda_return(reward[:-1], value[:-1], pcont[:-1], value[-1],
-                            lambda_)
+    returns = lambda_return(reward[:-1], value[:-1], pcont[:-1], value[-1], lambda_)
     discount_shape = pcont[:1].size()
     discount = torch.cumprod(
-        torch.cat([torch.ones(*discount_shape).to(device), pcont[:-2]], dim=0),
-        dim=0)
+        torch.cat([torch.ones(*discount_shape).to(device), pcont[:-2]], dim=0), dim=0
+    )
     actor_loss = -torch.mean(discount * returns)
 
     # Critic Loss
@@ -168,23 +177,23 @@ def dreamer_loss(policy, model, dist_class, train_batch):
 
     loss_dict = policy.stats_dict
 
-    return (loss_dict["model_loss"], loss_dict["actor_loss"],
-            loss_dict["critic_loss"])
+    return (loss_dict["model_loss"], loss_dict["actor_loss"], loss_dict["critic_loss"])
 
 
 def build_dreamer_model(policy, obs_space, action_space, config):
 
-    policy.model = ModelCatalog.get_model_v2(
+    model = ModelCatalog.get_model_v2(
         obs_space,
         action_space,
         1,
         config["dreamer_model"],
         name="DreamerModel",
-        framework="torch")
+        framework="torch",
+    )
 
-    policy.model_variables = policy.model.variables()
+    policy.model_variables = model.variables()
 
-    return policy.model
+    return model
 
 
 def action_sampler_fn(policy, model, input_dict, state, explore, timestep):
@@ -197,7 +206,7 @@ def action_sampler_fn(policy, model, input_dict, state, explore, timestep):
 
     # Custom Exploration
     if timestep <= policy.config["prefill_timesteps"]:
-        logp = [0.0]
+        logp = None
         # Random action in space [-1.0, 1.0]
         action = 2.0 * torch.rand(1, model.action_space.shape[0]) - 1.0
         state = model.get_initial_state()
@@ -229,11 +238,46 @@ def dreamer_optimizer_fn(policy, config):
     critic_weights = list(model.value.parameters())
     model_opt = torch.optim.Adam(
         encoder_weights + decoder_weights + reward_weights + dynamics_weights,
-        lr=config["td_model_lr"])
+        lr=config["td_model_lr"],
+    )
     actor_opt = torch.optim.Adam(actor_weights, lr=config["actor_lr"])
     critic_opt = torch.optim.Adam(critic_weights, lr=config["critic_lr"])
 
     return (model_opt, actor_opt, critic_opt)
+
+
+def preprocess_episode(
+    policy: Policy,
+    sample_batch: SampleBatch,
+    other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
+    episode: Optional[Episode] = None,
+) -> SampleBatch:
+    """Batch format should be in the form of (s_t, a_(t-1), r_(t-1))
+    When t=0, the resetted obs is paired with action and reward of 0.
+    """
+    obs = sample_batch[SampleBatch.OBS]
+    new_obs = sample_batch[SampleBatch.NEXT_OBS]
+    action = sample_batch[SampleBatch.ACTIONS]
+    reward = sample_batch[SampleBatch.REWARDS]
+    eps_ids = sample_batch[SampleBatch.EPS_ID]
+
+    act_shape = action.shape
+    act_reset = np.array([0.0] * act_shape[-1])[None]
+    rew_reset = np.array(0.0)[None]
+    obs_end = np.array(new_obs[act_shape[0] - 1])[None]
+
+    batch_obs = np.concatenate([obs, obs_end], axis=0)
+    batch_action = np.concatenate([act_reset, action], axis=0)
+    batch_rew = np.concatenate([rew_reset, reward], axis=0)
+    batch_eps_ids = np.concatenate([eps_ids, eps_ids[-1:]], axis=0)
+
+    new_batch = {
+        SampleBatch.OBS: batch_obs,
+        SampleBatch.REWARDS: batch_rew,
+        SampleBatch.ACTIONS: batch_action,
+        SampleBatch.EPS_ID: batch_eps_ids,
+    }
+    return SampleBatch(new_batch)
 
 
 DreamerTorchPolicy = build_policy_class(
@@ -241,8 +285,10 @@ DreamerTorchPolicy = build_policy_class(
     framework="torch",
     get_default_config=lambda: ray.rllib.agents.dreamer.dreamer.DEFAULT_CONFIG,
     action_sampler_fn=action_sampler_fn,
+    postprocess_fn=preprocess_episode,
     loss_fn=dreamer_loss,
     stats_fn=dreamer_stats,
     make_model=build_dreamer_model,
     optimizer_fn=dreamer_optimizer_fn,
-    extra_grad_process_fn=apply_grad_clipping)
+    extra_grad_process_fn=apply_grad_clipping,
+)
