@@ -59,11 +59,15 @@ def test_get_conda_dict_with_ray_inserted_m1_wheel(monkeypatch):
     reason="Requires PR wheels built in CI, so only run on linux CI machines.",
 )
 @pytest.mark.parametrize("field", ["conda", "pip"])
-def test_files_remote_cluster(start_cluster, field):
-    """Test that requirements files are parsed on the driver, not the cluster.
+def test_requirements_files(start_cluster, field):
+    """Test the use of requirements.txt and environment.yaml.
 
+    Tests that requirements files are parsed on the driver, not the cluster.
     This is the desired behavior because the file paths only make sense on the
     driver machine. The files do not exist on the remote cluster.
+
+    Also tests the common use case of specifying the option --extra-index-url
+    in a pip requirements.txt file.
     """
     cluster, address = start_cluster
 
@@ -73,14 +77,17 @@ def test_files_remote_cluster(start_cluster, field):
     # temporary directory.  So if the nodes try to read the requirements file,
     # this test should fail because the relative path won't make sense.
     with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
+        pip_list = [
+            "--extra-index-url https://pypi.org/simple",
+            "pip-install-test==0.5",
+        ]
         if field == "conda":
-            conda_dict = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
+            conda_dict = {"dependencies": ["pip", {"pip": pip_list}]}
             relative_filepath = "environment.yml"
             conda_file = Path(relative_filepath)
             conda_file.write_text(yaml.dump(conda_dict))
             runtime_env = {"conda": relative_filepath}
         elif field == "pip":
-            pip_list = ["pip-install-test==0.5"]
             relative_filepath = "requirements.txt"
             pip_file = Path(relative_filepath)
             pip_file.write_text("\n".join(pip_list))
