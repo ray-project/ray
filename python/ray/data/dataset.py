@@ -306,9 +306,9 @@ class Dataset(Generic[T]):
         Examples:
             >>> ds = ray.data.range_arrow(100)
             >>> # Add a new column equal to value * 2.
-            >>> ds = ds.add_column("new_col", lambda r: r["value"] * 2)
+            >>> ds = ds.add_column("new_col", lambda df: df["value"] * 2)
             >>> # Overwrite the existing "value" with zeros.
-            >>> ds = ds.add_column("value", lambda r: 0)
+            >>> ds = ds.add_column("value", lambda df: 0)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -324,10 +324,8 @@ class Dataset(Generic[T]):
         """
 
         def process_batch(batch):
-            block = BlockAccessor.for_block(batch)
-            df = block.to_pandas()
-            df[col] = fn(df)
-            return df
+            batch[col] = fn(batch)
+            return batch
 
         if not callable(fn):
             raise ValueError("`fn` must be callable, got {}".format(fn))
