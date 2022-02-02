@@ -831,8 +831,7 @@ class SimpleListCollector(SampleCollector):
             if (
                 collector.agent_steps == 0
                 or eps_id != episode_id
-                or not last_info
-                or last_info.get("training_enabled", True)
+                or (last_info and not last_info.get("training_enabled", True))
             ):
                 continue
             pid = self.agent_key_to_policy_id[(eps_id, agent_id)]
