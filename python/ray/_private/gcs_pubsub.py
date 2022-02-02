@@ -4,8 +4,11 @@ import logging
 import random
 import threading
 from typing import Optional, Tuple
+import time
 
 import grpc
+from grpc._channel import _InactiveRpcError
+
 try:
     from grpc import aio as aiogrpc
 except ImportError:
@@ -22,6 +25,9 @@ from ray.core.generated import reporter_pb2
 from ray.core.generated import pubsub_pb2
 
 logger = logging.getLogger(__name__)
+
+# Max retries for GCS publisher connection error
+MAX_GCS_PUBLISH_RETRIES = 60
 
 
 def gcs_pubsub_enabled():
@@ -54,39 +60,47 @@ class _PublisherBase:
     @staticmethod
     def _create_log_request(log_json: dict):
         job_id = log_json.get("job")
-        return gcs_service_pb2.GcsPublishRequest(pub_messages=[
-            pubsub_pb2.PubMessage(
-                channel_type=pubsub_pb2.RAY_LOG_CHANNEL,
-                key_id=job_id.encode() if job_id else None,
-                log_batch_message=logging_utils.log_batch_dict_to_proto(
-                    log_json))
-        ])
+        return gcs_service_pb2.GcsPublishRequest(
+            pub_messages=[
+                pubsub_pb2.PubMessage(
+                    channel_type=pubsub_pb2.RAY_LOG_CHANNEL,
+                    key_id=job_id.encode() if job_id else None,
+                    log_batch_message=logging_utils.log_batch_dict_to_proto(log_json),
+                )
+            ]
+        )
 
     @staticmethod
     def _create_function_key_request(key: bytes):
-        return gcs_service_pb2.GcsPublishRequest(pub_messages=[
-            pubsub_pb2.PubMessage(
-                channel_type=pubsub_pb2.RAY_PYTHON_FUNCTION_CHANNEL,
-                python_function_message=dependency_pb2.PythonFunction(key=key))
-        ])
+        return gcs_service_pb2.GcsPublishRequest(
+            pub_messages=[
+                pubsub_pb2.PubMessage(
+                    channel_type=pubsub_pb2.RAY_PYTHON_FUNCTION_CHANNEL,
+                    python_function_message=dependency_pb2.PythonFunction(key=key),
+                )
+            ]
+        )
 
     @staticmethod
     def _create_node_resource_usage_request(key: str, json: str):
-        return gcs_service_pb2.GcsPublishRequest(pub_messages=[
-            pubsub_pb2.PubMessage(
-                channel_type=pubsub_pb2.RAY_NODE_RESOURCE_USAGE_CHANNEL,
-                key_id=key.encode(),
-                node_resource_usage_message=reporter_pb2.NodeResourceUsage(
-                    json=json))
-        ])
+        return gcs_service_pb2.GcsPublishRequest(
+            pub_messages=[
+                pubsub_pb2.PubMessage(
+                    channel_type=pubsub_pb2.RAY_NODE_RESOURCE_USAGE_CHANNEL,
+                    key_id=key.encode(),
+                    node_resource_usage_message=reporter_pb2.NodeResourceUsage(
+                        json=json
+                    ),
+                )
+            ]
+        )
 
 
 class _SubscriberBase:
     def __init__(self):
         # self._subscriber_id needs to match the binary format of a random
         # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
-        self._subscriber_id = bytes(
-            bytearray(random.getrandbits(8) for _ in range(28)))
+        self._subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
         self._last_batch_size = 0
 
     # Batch size of the result from last poll. Used to indicate whether the
@@ -98,20 +112,23 @@ class _SubscriberBase:
     def _subscribe_request(self, channel):
         cmd = pubsub_pb2.Command(channel_type=channel, subscribe_message={})
         req = gcs_service_pb2.GcsSubscriberCommandBatchRequest(
-            subscriber_id=self._subscriber_id, commands=[cmd])
+            subscriber_id=self._subscriber_id, commands=[cmd]
+        )
         return req
 
     def _poll_request(self):
         return gcs_service_pb2.GcsSubscriberPollRequest(
-            subscriber_id=self._subscriber_id)
+            subscriber_id=self._subscriber_id
+        )
 
     def _unsubscribe_request(self, channels):
         req = gcs_service_pb2.GcsSubscriberCommandBatchRequest(
-            subscriber_id=self._subscriber_id, commands=[])
+            subscriber_id=self._subscriber_id, commands=[]
+        )
         for channel in channels:
             req.commands.append(
-                pubsub_pb2.Command(
-                    channel_type=channel, unsubscribe_message={}))
+                pubsub_pb2.Command(channel_type=channel, unsubscribe_message={})
+            )
         return req
 
     @staticmethod
@@ -166,12 +183,10 @@ class GcsPublisher(_PublisherBase):
 
     def __init__(self, *, address: str = None, channel: grpc.Channel = None):
         if address:
-            assert channel is None, \
-                "address and channel cannot both be specified"
+            assert channel is None, "address and channel cannot both be specified"
             channel = gcs_utils.create_gcs_channel(address)
         else:
-            assert channel is not None, \
-                "One of address and channel must be specified"
+            assert channel is not None, "One of address and channel must be specified"
         self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
 
     def publish_error(self, key_id: bytes, error_info: ErrorTableData) -> None:
@@ -179,37 +194,48 @@ class GcsPublisher(_PublisherBase):
         msg = pubsub_pb2.PubMessage(
             channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
             key_id=key_id,
-            error_info_message=error_info)
+            error_info_message=error_info,
+        )
         req = gcs_service_pb2.GcsPublishRequest(pub_messages=[msg])
-        self._stub.GcsPublish(req)
+        self._gcs_publish(req)
 
     def publish_logs(self, log_batch: dict) -> None:
         """Publishes logs to GCS."""
         req = self._create_log_request(log_batch)
-        self._stub.GcsPublish(req)
+        self._gcs_publish(req)
 
     def publish_function_key(self, key: bytes) -> None:
         """Publishes function key to GCS."""
         req = self._create_function_key_request(key)
-        self._stub.GcsPublish(req)
+        self._gcs_publish(req)
+
+    def _gcs_publish(self, req) -> None:
+        count = MAX_GCS_PUBLISH_RETRIES
+        while count > 0:
+            try:
+                self._stub.GcsPublish(req)
+                return
+            except _InactiveRpcError:
+                pass
+            time.sleep(1)
+            count -= 1
+        raise
 
 
 class _SyncSubscriber(_SubscriberBase):
     def __init__(
-            self,
-            pubsub_channel_type,
-            address: str = None,
-            channel: grpc.Channel = None,
+        self,
+        pubsub_channel_type,
+        address: str = None,
+        channel: grpc.Channel = None,
     ):
         super().__init__()
 
         if address:
-            assert channel is None, \
-                "address and channel cannot both be specified"
+            assert channel is None, "address and channel cannot both be specified"
             channel = gcs_utils.create_gcs_channel(address)
         else:
-            assert channel is not None, \
-                "One of address and channel must be specified"
+            assert channel is not None, "One of address and channel must be specified"
         # GRPC stub to GCS pubsub.
         self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
 
@@ -243,7 +269,8 @@ class _SyncSubscriber(_SubscriberBase):
                 return
 
             fut = self._stub.GcsSubscriberPoll.future(
-                self._poll_request(), timeout=timeout)
+                self._poll_request(), timeout=timeout
+            )
             # Wait for result to become available, or cancel if the
             # subscriber has closed.
             while True:
@@ -269,9 +296,7 @@ class _SyncSubscriber(_SubscriberBase):
                 self._last_batch_size = len(fut.result().pub_messages)
                 for msg in fut.result().pub_messages:
                     if msg.channel_type != self._channel:
-                        logger.warn(
-                            f"Ignoring message from unsubscribed channel {msg}"
-                        )
+                        logger.warn(f"Ignoring message from unsubscribed channel {msg}")
                         continue
                     self._queue.append(msg)
 
@@ -306,9 +331,9 @@ class GcsErrorSubscriber(_SyncSubscriber):
     """
 
     def __init__(
-            self,
-            address: str = None,
-            channel: grpc.Channel = None,
+        self,
+        address: str = None,
+        channel: grpc.Channel = None,
     ):
         super().__init__(pubsub_pb2.RAY_ERROR_INFO_CHANNEL, address, channel)
 
@@ -340,9 +365,9 @@ class GcsLogSubscriber(_SyncSubscriber):
     """
 
     def __init__(
-            self,
-            address: str = None,
-            channel: grpc.Channel = None,
+        self,
+        address: str = None,
+        channel: grpc.Channel = None,
     ):
         super().__init__(pubsub_pb2.RAY_LOG_CHANNEL, address, channel)
 
@@ -374,12 +399,11 @@ class GcsFunctionKeySubscriber(_SyncSubscriber):
     """
 
     def __init__(
-            self,
-            address: str = None,
-            channel: grpc.Channel = None,
+        self,
+        address: str = None,
+        channel: grpc.Channel = None,
     ):
-        super().__init__(pubsub_pb2.RAY_PYTHON_FUNCTION_CHANNEL, address,
-                         channel)
+        super().__init__(pubsub_pb2.RAY_PYTHON_FUNCTION_CHANNEL, address, channel)
 
     def poll(self, timeout=None) -> Optional[bytes]:
         """Polls for new function key messages.
@@ -409,9 +433,9 @@ class GcsActorSubscriber(_SyncSubscriber):
     """
 
     def __init__(
-            self,
-            address: str = None,
-            channel: grpc.Channel = None,
+        self,
+        address: str = None,
+        channel: grpc.Channel = None,
     ):
         super().__init__(pubsub_pb2.GCS_ACTOR_CHANNEL, address, channel)
 
@@ -432,21 +456,19 @@ class GcsAioPublisher(_PublisherBase):
 
     def __init__(self, address: str = None, channel: aiogrpc.Channel = None):
         if address:
-            assert channel is None, \
-                "address and channel cannot both be specified"
+            assert channel is None, "address and channel cannot both be specified"
             channel = gcs_utils.create_gcs_channel(address, aio=True)
         else:
-            assert channel is not None, \
-                "One of address and channel must be specified"
+            assert channel is not None, "One of address and channel must be specified"
         self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
 
-    async def publish_error(self, key_id: bytes,
-                            error_info: ErrorTableData) -> None:
+    async def publish_error(self, key_id: bytes, error_info: ErrorTableData) -> None:
         """Publishes error info to GCS."""
         msg = pubsub_pb2.PubMessage(
             channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
             key_id=key_id,
-            error_info_message=error_info)
+            error_info_message=error_info,
+        )
         req = gcs_service_pb2.GcsPublishRequest(pub_messages=[msg])
         await self._stub.GcsPublish(req)
 
@@ -474,20 +496,18 @@ class _AioSubscriber(_SubscriberBase):
     """
 
     def __init__(
-            self,
-            pubsub_channel_type,
-            address: str = None,
-            channel: aiogrpc.Channel = None,
+        self,
+        pubsub_channel_type,
+        address: str = None,
+        channel: aiogrpc.Channel = None,
     ):
         super().__init__()
 
         if address:
-            assert channel is None, \
-                "address and channel cannot both be specified"
+            assert channel is None, "address and channel cannot both be specified"
             channel = gcs_utils.create_gcs_channel(address, aio=True)
         else:
-            assert channel is not None, \
-                "One of address and channel must be specified"
+            assert channel is not None, "One of address and channel must be specified"
         # GRPC stub to GCS pubsub.
         self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
 
@@ -521,9 +541,8 @@ class _AioSubscriber(_SubscriberBase):
             poll = asyncio.ensure_future(self._poll_call(req, timeout=timeout))
             close = asyncio.ensure_future(self._close.wait())
             done, _ = await asyncio.wait(
-                [poll, close],
-                timeout=timeout,
-                return_when=asyncio.FIRST_COMPLETED)
+                [poll, close], timeout=timeout, return_when=asyncio.FIRST_COMPLETED
+            )
             if poll not in done or close in done:
                 # Request timed out or subscriber closed.
                 break
@@ -553,9 +572,9 @@ class _AioSubscriber(_SubscriberBase):
 
 class GcsAioErrorSubscriber(_AioSubscriber):
     def __init__(
-            self,
-            address: str = None,
-            channel: grpc.Channel = None,
+        self,
+        address: str = None,
+        channel: grpc.Channel = None,
     ):
         super().__init__(pubsub_pb2.RAY_ERROR_INFO_CHANNEL, address, channel)
 
@@ -572,9 +591,9 @@ class GcsAioErrorSubscriber(_AioSubscriber):
 
 class GcsAioLogSubscriber(_AioSubscriber):
     def __init__(
-            self,
-            address: str = None,
-            channel: grpc.Channel = None,
+        self,
+        address: str = None,
+        channel: grpc.Channel = None,
     ):
         super().__init__(pubsub_pb2.RAY_LOG_CHANNEL, address, channel)
 
@@ -591,12 +610,11 @@ class GcsAioLogSubscriber(_AioSubscriber):
 
 class GcsAioResourceUsageSubscriber(_AioSubscriber):
     def __init__(
-            self,
-            address: str = None,
-            channel: grpc.Channel = None,
+        self,
+        address: str = None,
+        channel: grpc.Channel = None,
     ):
-        super().__init__(pubsub_pb2.RAY_NODE_RESOURCE_USAGE_CHANNEL, address,
-                         channel)
+        super().__init__(pubsub_pb2.RAY_NODE_RESOURCE_USAGE_CHANNEL, address, channel)
 
     async def poll(self, timeout=None) -> Tuple[bytes, str]:
         """Polls for new resource usage message.
@@ -610,9 +628,9 @@ class GcsAioResourceUsageSubscriber(_AioSubscriber):
 
 class GcsAioActorSubscriber(_AioSubscriber):
     def __init__(
-            self,
-            address: str = None,
-            channel: grpc.Channel = None,
+        self,
+        address: str = None,
+        channel: grpc.Channel = None,
     ):
         super().__init__(pubsub_pb2.GCS_ACTOR_CHANNEL, address, channel)
 

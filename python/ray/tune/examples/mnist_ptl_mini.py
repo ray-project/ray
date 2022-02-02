@@ -68,14 +68,16 @@ def train_mnist_tune(config, num_epochs=10, num_gpus=0):
     model = LightningMNISTClassifier(config, data_dir)
     with FileLock(os.path.expanduser("~/.data.lock")):
         dm = MNISTDataModule(
-            data_dir=data_dir, num_workers=1, batch_size=config["batch_size"])
+            data_dir=data_dir, num_workers=1, batch_size=config["batch_size"]
+        )
     metrics = {"loss": "ptl/val_loss", "acc": "ptl/val_accuracy"}
     trainer = pl.Trainer(
         max_epochs=num_epochs,
         # If fractional GPUs passed in, convert to int.
         gpus=math.ceil(num_gpus),
         progress_bar_refresh_rate=0,
-        callbacks=[TuneReportCallback(metrics, on="validation_end")])
+        callbacks=[TuneReportCallback(metrics, on="validation_end")],
+    )
     trainer.fit(model, dm)
 
 
@@ -88,18 +90,17 @@ def tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0):
     }
 
     trainable = tune.with_parameters(
-        train_mnist_tune, num_epochs=num_epochs, num_gpus=gpus_per_trial)
+        train_mnist_tune, num_epochs=num_epochs, num_gpus=gpus_per_trial
+    )
     analysis = tune.run(
         trainable,
-        resources_per_trial={
-            "cpu": 1,
-            "gpu": gpus_per_trial
-        },
+        resources_per_trial={"cpu": 1, "gpu": gpus_per_trial},
         metric="loss",
         mode="min",
         config=config,
         num_samples=num_samples,
-        name="tune_mnist")
+        name="tune_mnist",
+    )
 
     print("Best hyperparameters found were: ", analysis.best_config)
 
@@ -109,14 +110,15 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using " "Ray Client.",
+    )
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
@@ -124,6 +126,7 @@ if __name__ == "__main__":
     else:
         if args.server_address:
             import ray
+
             ray.init(f"ray://{args.server_address}")
 
         tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0)

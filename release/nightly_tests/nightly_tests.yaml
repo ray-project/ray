@@ -166,6 +166,7 @@
 #     script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6 --no-streaming
 
 - name: k8s_dask_on_ray_large_scale_test_no_spilling
+  team: core
   cluster:
     app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
     compute_template: dask_on_ray/dask_on_ray_stress_compute_k8s.yaml
@@ -293,7 +294,6 @@
       timeout: 3600
       prepare: python wait_cluster.py 5 600
       script: python stress_tests/test_threaded_actors.py --test-runtime 1800 --kill-interval_s 30
-  stable: false
 
 - name: k8s_threaded_actors_stress_test
   team: core

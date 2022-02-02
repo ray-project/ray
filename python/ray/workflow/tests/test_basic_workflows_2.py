@@ -28,14 +28,20 @@ def test_init_twice_2(call_ray_start, reset_workflow, tmp_path):
     with patch.dict(os.environ, {"RAY_ADDRESS": call_ray_start}):
         run_string_as_driver(driver_script)
         with pytest.raises(
-                RuntimeError, match=".*different from the workflow manager.*"):
+            RuntimeError, match=".*different from the workflow manager.*"
+        ):
             workflow.init(str(tmp_path))
 
 
 @pytest.mark.parametrize(
-    "workflow_start_regular", [{
-        "num_cpus": 2,
-    }], indirect=True)
+    "workflow_start_regular",
+    [
+        {
+            "num_cpus": 2,
+        }
+    ],
+    indirect=True,
+)
 def test_step_resources(workflow_start_regular, tmp_path):
     lock_path = str(tmp_path / "lock")
     # We use signal actor here because we can't guarantee the order of tasks
@@ -125,7 +131,8 @@ def test_get_named_step_output_finished(workflow_start_regular, tmp_path):
 
     # Get the result from named step after workflow finished
     assert 4 == double.options(name="outer").step(
-        double.options(name="inner").step(1)).run("double")
+        double.options(name="inner").step(1)
+    ).run("double")
     assert ray.get(workflow.get_output("double", name="inner")) == 2
     assert ray.get(workflow.get_output("double", name="outer")) == 4
 
@@ -143,9 +150,11 @@ def test_get_named_step_output_running(workflow_start_regular, tmp_path):
     lock_path = str(tmp_path / "lock")
     lock = FileLock(lock_path)
     lock.acquire()
-    output = double.options(name="outer").step(
-        double.options(name="inner").step(1, lock_path),
-        lock_path).run_async("double-2")
+    output = (
+        double.options(name="outer")
+        .step(double.options(name="inner").step(1, lock_path), lock_path)
+        .run_async("double-2")
+    )
 
     inner = workflow.get_output("double-2", name="inner")
     outer = workflow.get_output("double-2", name="outer")
@@ -156,10 +165,8 @@ def test_get_named_step_output_running(workflow_start_regular, tmp_path):
 
     # Make sure nothing is finished.
     ready, waiting = ray.wait(
-        [wait.remote([output]),
-         wait.remote([inner]),
-         wait.remote([outer])],
-        timeout=1)
+        [wait.remote([output]), wait.remote([inner]), wait.remote([outer])], timeout=1
+    )
     assert 0 == len(ready)
     assert 3 == len(waiting)
 
@@ -193,7 +200,8 @@ def test_get_named_step_output_error(workflow_start_regular, tmp_path):
     # Force it to fail for the outer step
     with pytest.raises(Exception):
         double.options(name="outer").step(
-            double.options(name="inner").step(1, False), True).run("double")
+            double.options(name="inner").step(1, False), True
+        ).run("double")
 
     # For the inner step, it should have already been executed.
     assert 2 == ray.get(workflow.get_output("double", name="inner"))
@@ -210,15 +218,18 @@ def test_get_named_step_default(workflow_start_regular, tmp_path):
         return factorial.step(n - 1, r * n)
 
     import math
+
     assert math.factorial(5) == factorial.step(5).run("factorial")
     for i in range(5):
-        step_name = ("test_basic_workflows_2."
-                     "test_get_named_step_default.locals.factorial")
+        step_name = (
+            "test_basic_workflows_2." "test_get_named_step_default.locals.factorial"
+        )
         if i != 0:
             step_name += "_" + str(i)
         # All outputs will be 120
         assert math.factorial(5) == ray.get(
-            workflow.get_output("factorial", name=step_name))
+            workflow.get_output("factorial", name=step_name)
+        )
 
 
 def test_get_named_step_duplicate(workflow_start_regular):
@@ -242,8 +253,8 @@ def test_no_init(shutdown_only):
         pass
 
     fail_wf_init_error_msg = re.escape(
-        "`workflow.init()` must be called prior to using "
-        "the workflows API.")
+        "`workflow.init()` must be called prior to using " "the workflows API."
+    )
 
     with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
         f.step().run()
@@ -324,4 +335,5 @@ def test_dedupe_indirect(workflow_start_regular, tmp_path):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

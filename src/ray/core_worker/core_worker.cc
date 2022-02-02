@@ -112,8 +112,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       options_.worker_type, worker_context_.GetCurrentJobID(), options_.runtime_env_hash,
       options_.language, options_.node_ip_address, &raylet_client_status,
-      &local_raylet_id, &assigned_port, &serialized_job_config, options_.worker_shim_pid,
-      options_.startup_token);
+      &local_raylet_id, &assigned_port, &serialized_job_config, options_.startup_token);
 
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
@@ -371,7 +370,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       std::move(lease_policy), memory_store_, task_manager_, local_raylet_id,
       GetWorkerType(), RayConfig::instance().worker_lease_timeout_milliseconds(),
       actor_creator_, worker_context_.GetCurrentJobID(),
-      RayConfig::instance().max_tasks_in_flight_per_worker(),
       boost::asio::steady_timer(io_service_),
       RayConfig::instance().max_pending_lease_requests_per_scheduling_category());
   auto report_locality_data_callback =
@@ -1393,18 +1391,21 @@ rpc::RuntimeEnv CoreWorker::OverrideRuntimeEnv(
   rpc::RuntimeEnv result_runtime_env(*parent);
   // TODO(SongGuyang): avoid dupliacated fields.
   result_runtime_env.MergeFrom(child);
-  if (child.py_modules().size() > 0 && parent->py_modules().size() > 0) {
-    result_runtime_env.clear_py_modules();
-    for (auto &module : child.py_modules()) {
-      result_runtime_env.add_py_modules(module);
+  if (child.python_runtime_env().py_modules().size() > 0 &&
+      parent->python_runtime_env().py_modules().size() > 0) {
+    result_runtime_env.mutable_python_runtime_env()->clear_py_modules();
+    for (auto &module : child.python_runtime_env().py_modules()) {
+      result_runtime_env.mutable_python_runtime_env()->add_py_modules(module);
     }
     result_runtime_env.mutable_uris()->clear_py_modules_uris();
     result_runtime_env.mutable_uris()->mutable_py_modules_uris()->CopyFrom(
         child.uris().py_modules_uris());
   }
-  if (child.has_pip_runtime_env() && parent->has_pip_runtime_env()) {
-    result_runtime_env.clear_pip_runtime_env();
-    result_runtime_env.mutable_pip_runtime_env()->CopyFrom(child.pip_runtime_env());
+  if (child.python_runtime_env().has_pip_runtime_env() &&
+      parent->python_runtime_env().has_pip_runtime_env()) {
+    result_runtime_env.mutable_python_runtime_env()->clear_pip_runtime_env();
+    result_runtime_env.mutable_python_runtime_env()->mutable_pip_runtime_env()->CopyFrom(
+        child.python_runtime_env().pip_runtime_env());
   }
   if (!result_env_vars.empty()) {
     result_runtime_env.mutable_env_vars()->insert(result_env_vars.begin(),
@@ -2444,12 +2445,6 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
         },
         "CoreWorker.HandlePushTask");
   }
-}
-
-void CoreWorker::HandleStealTasks(const rpc::StealTasksRequest &request,
-                                  rpc::StealTasksReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) {
-  direct_task_receiver_->HandleStealTasks(request, reply, send_reply_callback);
 }
 
 void CoreWorker::HandleDirectActorCallArgWaitComplete(

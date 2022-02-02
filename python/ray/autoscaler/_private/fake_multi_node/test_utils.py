@@ -11,8 +11,10 @@ from typing import Dict, Any, Optional
 import yaml
 
 import ray
-from ray.autoscaler._private.fake_multi_node.node_provider import \
-    FAKE_DOCKER_DEFAULT_CLIENT_PORT, FAKE_DOCKER_DEFAULT_GCS_PORT
+from ray.autoscaler._private.fake_multi_node.node_provider import (
+    FAKE_DOCKER_DEFAULT_CLIENT_PORT,
+    FAKE_DOCKER_DEFAULT_GCS_PORT,
+)
 from ray.util.ml_utils.dict import deep_update
 
 logger = logging.getLogger(__name__)
@@ -31,7 +33,8 @@ class DockerCluster:
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self._base_config_file = os.path.join(
-            os.path.dirname(__file__), "example_docker.yaml")
+            os.path.dirname(__file__), "example_docker.yaml"
+        )
         self._tempdir = None
         self._config_file = None
         self._nodes_file = None
@@ -43,7 +46,8 @@ class DockerCluster:
         self._docker_image = None
 
         self._monitor_script = os.path.join(
-            os.path.dirname(__file__), "docker_monitor.py")
+            os.path.dirname(__file__), "docker_monitor.py"
+        )
         self._monitor_process = None
 
     @property
@@ -57,12 +61,14 @@ class DockerCluster:
     @property
     def gcs_port(self):
         return self._cluster_config.get("provider", {}).get(
-            "host_gcs_port", FAKE_DOCKER_DEFAULT_GCS_PORT)
+            "host_gcs_port", FAKE_DOCKER_DEFAULT_GCS_PORT
+        )
 
     @property
     def client_port(self):
         return self._cluster_config.get("provider", {}).get(
-            "host_client_port", FAKE_DOCKER_DEFAULT_CLIENT_PORT)
+            "host_client_port", FAKE_DOCKER_DEFAULT_CLIENT_PORT
+        )
 
     def connect(self, client: bool = True, timeout: int = 120):
         """Connect to the docker-compose Ray cluster.
@@ -114,10 +120,9 @@ class DockerCluster:
         timeout = time.monotonic() + timeout
 
         available = ray.cluster_resources()
-        while any(available.get(k, 0.) < v for k, v in resources.items()):
+        while any(available.get(k, 0.0) < v for k, v in resources.items()):
             if time.monotonic() > timeout:
-                raise RuntimeError(
-                    f"Timed out waiting for resources: {resources}")
+                raise RuntimeError(f"Timed out waiting for resources: {resources}")
             time.sleep(1)
             available = ray.cluster_resources()
 
@@ -156,8 +161,7 @@ class DockerCluster:
             cluster_config = yaml.safe_load(f)
 
         if self._partial_config:
-            deep_update(
-                cluster_config, self._partial_config, new_keys_allowed=True)
+            deep_update(cluster_config, self._partial_config, new_keys_allowed=True)
 
         if self._docker_image:
             cluster_config["provider"]["image"] = self._docker_image
@@ -175,20 +179,20 @@ class DockerCluster:
         if self._docker_image:
             try:
                 images_str = subprocess.check_output(
-                    f"docker image inspect {self._docker_image}", shell=True)
+                    f"docker image inspect {self._docker_image}", shell=True
+                )
                 images = json.loads(images_str)
             except Exception as e:
-                logger.error(
-                    f"Error inspecting image {self._docker_image}: {e}")
+                logger.error(f"Error inspecting image {self._docker_image}: {e}")
                 return
 
             if not images:
                 try:
                     subprocess.check_output(
-                        f"docker pull {self._docker_image}", shell=True)
+                        f"docker pull {self._docker_image}", shell=True
+                    )
                 except Exception as e:
-                    logger.error(
-                        f"Error pulling image {self._docker_image}: {e}")
+                    logger.error(f"Error pulling image {self._docker_image}: {e}")
 
     def setup(self):
         """Setup docker compose cluster environment.
@@ -196,8 +200,7 @@ class DockerCluster:
         Creates the temporary directory, writes the initial config file,
         and pulls the docker image, if required.
         """
-        self._tempdir = tempfile.mkdtemp(
-            dir=os.environ.get("RAY_TEMPDIR", None))
+        self._tempdir = tempfile.mkdtemp(dir=os.environ.get("RAY_TEMPDIR", None))
         os.chmod(self._tempdir, 0o777)
         self._config_file = os.path.join(self._tempdir, "cluster.yaml")
         self._nodes_file = os.path.join(self._tempdir, "nodes.json")
@@ -213,7 +216,8 @@ class DockerCluster:
 
     def _start_monitor(self):
         self._monitor_process = subprocess.Popen(
-            ["python", self._monitor_script, self.config_file])
+            ["python", self._monitor_script, self.config_file]
+        )
         time.sleep(2)
 
     def _stop_monitor(self):
@@ -231,7 +235,8 @@ class DockerCluster:
         self._start_monitor()
 
         subprocess.check_output(
-            f"RAY_FAKE_CLUSTER=1 ray up -y {self.config_file}", shell=True)
+            f"RAY_FAKE_CLUSTER=1 ray up -y {self.config_file}", shell=True
+        )
 
     def stop(self):
         """Stop docker compose cluster.
@@ -242,7 +247,8 @@ class DockerCluster:
             ray.shutdown()
 
         subprocess.check_output(
-            f"RAY_FAKE_CLUSTER=1 ray down -y {self.config_file}", shell=True)
+            f"RAY_FAKE_CLUSTER=1 ray down -y {self.config_file}", shell=True
+        )
 
         self._stop_monitor()
 
@@ -254,33 +260,40 @@ class DockerCluster:
         with open(self._status_file, "rt") as f:
             self._status = json.load(f)
 
-    def _get_node(self,
-                  node_id: Optional[str] = None,
-                  num: Optional[int] = None,
-                  rand: Optional[str] = None) -> str:
+    def _get_node(
+        self,
+        node_id: Optional[str] = None,
+        num: Optional[int] = None,
+        rand: Optional[str] = None,
+    ) -> str:
         self._update_nodes()
         if node_id:
-            assert not num and not rand, (
-                "Only provide either `node_id`, `num`, or `random`.")
+            assert (
+                not num and not rand
+            ), "Only provide either `node_id`, `num`, or `random`."
         elif num:
-            assert not node_id and not rand, (
-                "Only provide either `node_id`, `num`, or `random`.")
+            assert (
+                not node_id and not rand
+            ), "Only provide either `node_id`, `num`, or `random`."
             base = "fffffffffffffffffffffffffffffffffffffffffffffffffff"
             node_id = base + str(num).zfill(5)
         elif rand:
-            assert not node_id and not num, (
-                "Only provide either `node_id`, `num`, or `random`.")
-            assert rand in ["worker", "any"
-                            ], ("`random` must be one of ['worker', 'any']")
+            assert (
+                not node_id and not num
+            ), "Only provide either `node_id`, `num`, or `random`."
+            assert rand in [
+                "worker",
+                "any",
+            ], "`random` must be one of ['worker', 'any']"
             choices = list(self._nodes.keys())
             if rand == "worker":
                 choices.remove(
-                    "fffffffffffffffffffffffffffffffffffffffffffffffffff00000")
+                    "fffffffffffffffffffffffffffffffffffffffffffffffffff00000"
+                )
             # Else: any
             node_id = random.choice(choices)
 
-        assert node_id in self._nodes, (
-            f"Node with ID {node_id} is not in active nodes.")
+        assert node_id in self._nodes, f"Node with ID {node_id} is not in active nodes."
         return node_id
 
     def _get_docker_container(self, node_id: str) -> Optional[str]:
@@ -291,10 +304,12 @@ class DockerCluster:
 
         return node_status["Name"]
 
-    def kill_node(self,
-                  node_id: Optional[str] = None,
-                  num: Optional[int] = None,
-                  rand: Optional[str] = None):
+    def kill_node(
+        self,
+        node_id: Optional[str] = None,
+        num: Optional[int] = None,
+        rand: Optional[str] = None,
+    ):
         """Kill node.
 
         If ``node_id`` is given, kill that node.

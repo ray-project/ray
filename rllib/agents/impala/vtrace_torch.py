@@ -29,8 +29,7 @@ multi_from_logits method accepts lists of tensors instead of just
 tensors.
 """
 
-from ray.rllib.agents.impala.vtrace_tf import VTraceFromLogitsReturns, \
-    VTraceReturns
+from ray.rllib.agents.impala.vtrace_tf import VTraceFromLogitsReturns, VTraceReturns
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.utils import force_list
 from ray.rllib.utils.framework import try_import_torch
@@ -39,16 +38,15 @@ from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 torch, nn = try_import_torch()
 
 
-def log_probs_from_logits_and_actions(policy_logits,
-                                      actions,
-                                      dist_class=TorchCategorical,
-                                      model=None):
-    return multi_log_probs_from_logits_and_actions([policy_logits], [actions],
-                                                   dist_class, model)[0]
+def log_probs_from_logits_and_actions(
+    policy_logits, actions, dist_class=TorchCategorical, model=None
+):
+    return multi_log_probs_from_logits_and_actions(
+        [policy_logits], [actions], dist_class, model
+    )[0]
 
 
-def multi_log_probs_from_logits_and_actions(policy_logits, actions, dist_class,
-                                            model):
+def multi_log_probs_from_logits_and_actions(policy_logits, actions, dist_class, model):
     """Computes action log-probs from policy logits and actions.
 
     In the notation used throughout documentation and comments, T refers to the
@@ -75,32 +73,36 @@ def multi_log_probs_from_logits_and_actions(policy_logits, actions, dist_class,
     for i in range(len(policy_logits)):
         p_shape = policy_logits[i].shape
         a_shape = actions[i].shape
-        policy_logits_flat = torch.reshape(policy_logits[i],
-                                           (-1, ) + tuple(p_shape[2:]))
-        actions_flat = torch.reshape(actions[i], (-1, ) + tuple(a_shape[2:]))
+        policy_logits_flat = torch.reshape(policy_logits[i], (-1,) + tuple(p_shape[2:]))
+        actions_flat = torch.reshape(actions[i], (-1,) + tuple(a_shape[2:]))
         log_probs.append(
             torch.reshape(
-                dist_class(policy_logits_flat, model).logp(actions_flat),
-                a_shape[:2]))
+                dist_class(policy_logits_flat, model).logp(actions_flat), a_shape[:2]
+            )
+        )
 
     return log_probs
 
 
-def from_logits(behaviour_policy_logits,
-                target_policy_logits,
-                actions,
-                discounts,
-                rewards,
-                values,
-                bootstrap_value,
-                dist_class=TorchCategorical,
-                model=None,
-                clip_rho_threshold=1.0,
-                clip_pg_rho_threshold=1.0):
+def from_logits(
+    behaviour_policy_logits,
+    target_policy_logits,
+    actions,
+    discounts,
+    rewards,
+    values,
+    bootstrap_value,
+    dist_class=TorchCategorical,
+    model=None,
+    clip_rho_threshold=1.0,
+    clip_pg_rho_threshold=1.0,
+):
     """multi_from_logits wrapper used only for tests"""
 
     res = multi_from_logits(
-        [behaviour_policy_logits], [target_policy_logits], [actions],
+        [behaviour_policy_logits],
+        [target_policy_logits],
+        [actions],
         discounts,
         rewards,
         values,
@@ -108,7 +110,8 @@ def from_logits(behaviour_policy_logits,
         dist_class,
         model,
         clip_rho_threshold=clip_rho_threshold,
-        clip_pg_rho_threshold=clip_pg_rho_threshold)
+        clip_pg_rho_threshold=clip_pg_rho_threshold,
+    )
 
     assert len(res.behaviour_action_log_probs) == 1
     assert len(res.target_action_log_probs) == 1
@@ -121,18 +124,20 @@ def from_logits(behaviour_policy_logits,
     )
 
 
-def multi_from_logits(behaviour_policy_logits,
-                      target_policy_logits,
-                      actions,
-                      discounts,
-                      rewards,
-                      values,
-                      bootstrap_value,
-                      dist_class,
-                      model,
-                      behaviour_action_log_probs=None,
-                      clip_rho_threshold=1.0,
-                      clip_pg_rho_threshold=1.0):
+def multi_from_logits(
+    behaviour_policy_logits,
+    target_policy_logits,
+    actions,
+    discounts,
+    rewards,
+    values,
+    bootstrap_value,
+    dist_class,
+    model,
+    behaviour_action_log_probs=None,
+    clip_rho_threshold=1.0,
+    clip_pg_rho_threshold=1.0,
+):
     """V-trace for softmax policies.
 
     Calculates V-trace actor critic targets for softmax polices as described in
@@ -196,9 +201,9 @@ def multi_from_logits(behaviour_policy_logits,
     """
 
     behaviour_policy_logits = convert_to_torch_tensor(
-        behaviour_policy_logits, device="cpu")
-    target_policy_logits = convert_to_torch_tensor(
-        target_policy_logits, device="cpu")
+        behaviour_policy_logits, device="cpu"
+    )
+    target_policy_logits = convert_to_torch_tensor(target_policy_logits, device="cpu")
     actions = convert_to_torch_tensor(actions, device="cpu")
 
     # Make sure tensor ranks are as expected.
@@ -208,21 +213,22 @@ def multi_from_logits(behaviour_policy_logits,
         assert len(target_policy_logits[i].size()) == 3
 
     target_action_log_probs = multi_log_probs_from_logits_and_actions(
-        target_policy_logits, actions, dist_class, model)
+        target_policy_logits, actions, dist_class, model
+    )
 
-    if (len(behaviour_policy_logits) > 1
-            or behaviour_action_log_probs is None):
+    if len(behaviour_policy_logits) > 1 or behaviour_action_log_probs is None:
         # can't use precalculated values, recompute them. Note that
         # recomputing won't work well for autoregressive action dists
         # which may have variables not captured by 'logits'
         behaviour_action_log_probs = multi_log_probs_from_logits_and_actions(
-            behaviour_policy_logits, actions, dist_class, model)
+            behaviour_policy_logits, actions, dist_class, model
+        )
 
     behaviour_action_log_probs = convert_to_torch_tensor(
-        behaviour_action_log_probs, device="cpu")
+        behaviour_action_log_probs, device="cpu"
+    )
     behaviour_action_log_probs = force_list(behaviour_action_log_probs)
-    log_rhos = get_log_rhos(target_action_log_probs,
-                            behaviour_action_log_probs)
+    log_rhos = get_log_rhos(target_action_log_probs, behaviour_action_log_probs)
 
     vtrace_returns = from_importance_weights(
         log_rhos=log_rhos,
@@ -231,22 +237,26 @@ def multi_from_logits(behaviour_policy_logits,
         values=values,
         bootstrap_value=bootstrap_value,
         clip_rho_threshold=clip_rho_threshold,
-        clip_pg_rho_threshold=clip_pg_rho_threshold)
+        clip_pg_rho_threshold=clip_pg_rho_threshold,
+    )
 
     return VTraceFromLogitsReturns(
         log_rhos=log_rhos,
         behaviour_action_log_probs=behaviour_action_log_probs,
         target_action_log_probs=target_action_log_probs,
-        **vtrace_returns._asdict())
+        **vtrace_returns._asdict()
+    )
 
 
-def from_importance_weights(log_rhos,
-                            discounts,
-                            rewards,
-                            values,
-                            bootstrap_value,
-                            clip_rho_threshold=1.0,
-                            clip_pg_rho_threshold=1.0):
+def from_importance_weights(
+    log_rhos,
+    discounts,
+    rewards,
+    values,
+    bootstrap_value,
+    clip_rho_threshold=1.0,
+    clip_pg_rho_threshold=1.0,
+):
     """V-trace from log importance weights.
 
     Calculates V-trace actor critic targets as described in
@@ -298,8 +308,9 @@ def from_importance_weights(log_rhos,
     # Make sure tensor ranks are consistent.
     rho_rank = len(log_rhos.size())  # Usually 2.
     assert rho_rank == len(values.size())
-    assert rho_rank - 1 == len(bootstrap_value.size()),\
-        "must have rank {}".format(rho_rank - 1)
+    assert rho_rank - 1 == len(bootstrap_value.size()), "must have rank {}".format(
+        rho_rank - 1
+    )
     assert rho_rank == len(discounts.size())
     assert rho_rank == len(rewards.size())
 
@@ -312,7 +323,8 @@ def from_importance_weights(log_rhos,
     cs = torch.clamp_max(rhos, 1.0)
     # Append bootstrapped value to get [v1, ..., v_t+1]
     values_t_plus_1 = torch.cat(
-        [values[1:], torch.unsqueeze(bootstrap_value, 0)], dim=0)
+        [values[1:], torch.unsqueeze(bootstrap_value, 0)], dim=0
+    )
     deltas = clipped_rhos * (rewards + discounts * values_t_plus_1 - values)
 
     vs_minus_v_xs = [torch.zeros_like(bootstrap_value)]
@@ -326,14 +338,12 @@ def from_importance_weights(log_rhos,
     vs = vs_minus_v_xs + values
 
     # Advantage for policy gradient.
-    vs_t_plus_1 = torch.cat(
-        [vs[1:], torch.unsqueeze(bootstrap_value, 0)], dim=0)
+    vs_t_plus_1 = torch.cat([vs[1:], torch.unsqueeze(bootstrap_value, 0)], dim=0)
     if clip_pg_rho_threshold is not None:
         clipped_pg_rhos = torch.clamp_max(rhos, clip_pg_rho_threshold)
     else:
         clipped_pg_rhos = rhos
-    pg_advantages = (
-        clipped_pg_rhos * (rewards + discounts * vs_t_plus_1 - values))
+    pg_advantages = clipped_pg_rhos * (rewards + discounts * vs_t_plus_1 - values)
 
     # Make sure no gradients backpropagated through the returned values.
     return VTraceReturns(vs=vs.detach(), pg_advantages=pg_advantages.detach())

@@ -13,9 +13,11 @@ def env_integer(key, default):
         if value.isdigit():
             return int(os.environ[key])
 
-        logger.debug(f"Found {key} in environment, but value must "
-                     f"be an integer. Got: {value}. Returning "
-                     f"provided default {default}.")
+        logger.debug(
+            f"Found {key} in environment, but value must "
+            f"be an integer. Got: {value}. Returning "
+            f"provided default {default}."
+        )
         return default
     return default
 
@@ -26,11 +28,19 @@ def env_bool(key, default):
     return default
 
 
+# Whether event logging to driver is enabled. Set to 0 to disable.
+AUTOSCALER_EVENTS = env_integer("RAY_SCHEDULER_EVENTS", 1)
+
+# Internal kv keys for storing monitor debug status.
+DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
+DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
+DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
+
 ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
-DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 200 * 10**9
+DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 200 * 10 ** 9
 # The default proportion of available memory allocated to the object store
 DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = 0.3
 # The smallest cap on the memory used by the object store that we allow.
@@ -38,12 +48,18 @@ DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = 0.3
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
 # The default maximum number of bytes that the non-primary Redis shards are
 # allowed to use unless overridden by the user.
-DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
+DEFAULT_REDIS_MAX_MEMORY_BYTES = 10 ** 10
 # The smallest cap on the memory used by Redis that we allow.
-REDIS_MINIMUM_MEMORY_BYTES = 10**7
+REDIS_MINIMUM_MEMORY_BYTES = 10 ** 7
 # Above this number of bytes, raise an error by default unless the user sets
 # RAY_ALLOW_SLOW_STORAGE=1. This avoids swapping with large object stores.
-REQUIRE_SHM_SIZE_THRESHOLD = 10**10
+REQUIRE_SHM_SIZE_THRESHOLD = 10 ** 10
+# Mac with 16GB memory has degraded performance when the object store size is
+# greater than 2GB.
+# (see https://github.com/ray-project/ray/issues/20388 for details)
+# The workaround here is to limit capacity to 2GB for Mac by default,
+# and raise error if the capacity is overwritten by user.
+MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT = 2 * 2 ** 30
 # If a user does not specify a port for the primary Ray service,
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
@@ -72,9 +88,8 @@ DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD = 30
 
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
-FUNCTION_SIZE_WARN_THRESHOLD = 10**7
-FUNCTION_SIZE_ERROR_THRESHOLD = env_integer("FUNCTION_SIZE_ERROR_THRESHOLD",
-                                            (10**8))
+FUNCTION_SIZE_WARN_THRESHOLD = 10 ** 7
+FUNCTION_SIZE_ERROR_THRESHOLD = env_integer("FUNCTION_SIZE_ERROR_THRESHOLD", (10 ** 8))
 
 # If remote functions with the same source are imported this many times, then
 # print a warning.
@@ -108,8 +123,10 @@ def to_memory_units(memory_bytes, round_up):
     if value < 1:
         raise ValueError(
             "The minimum amount of memory that can be requested is {} bytes, "
-            "however {} bytes was asked.".format(MEMORY_RESOURCE_UNIT_BYTES,
-                                                 memory_bytes))
+            "however {} bytes was asked.".format(
+                MEMORY_RESOURCE_UNIT_BYTES, memory_bytes
+            )
+        )
     if isinstance(value, float) and not value.is_integer():
         # TODO(ekl) Ray currently does not support fractional resources when
         # the quantity is greater than one. We should fix memory resources to
@@ -161,16 +178,26 @@ REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 # `services.py::create_redis_client()`
 START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 16)
 
-LOGGER_FORMAT = (
-    "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
+LOGGER_FORMAT = "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
 LOGGER_FORMAT_HELP = f"The logging format. default='{LOGGER_FORMAT}'"
 LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
-LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
-                     " 'warning', 'error', 'critical'], default='info'")
+LOGGER_LEVEL_HELP = (
+    "The logging level threshold, choices=['debug', 'info',"
+    " 'warning', 'error', 'critical'], default='info'"
+)
 
 LOGGING_ROTATE_BYTES = 512 * 1024 * 1024  # 512MB.
 LOGGING_ROTATE_BACKUP_COUNT = 5  # 5 Backup files at max.
+
+LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE = "RAY_LOG_TO_STDERR"
+# Logging format when logging stderr. This should be formatted with the
+# component before setting the formatter, e.g. via
+#   format = LOGGER_FORMAT_STDERR.format(component="dashboard")
+#   handler.setFormatter(logging.Formatter(format))
+LOGGER_FORMAT_STDERR = (
+    "%(asctime)s\t%(levelname)s ({component}) %(filename)s:%(lineno)s -- %(message)s"
+)
 
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
@@ -197,17 +224,21 @@ WORKER_PROCESS_TYPE_IDLE_WORKER = "ray::IDLE"
 WORKER_PROCESS_TYPE_SPILL_WORKER_NAME = "SpillWorker"
 WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME = "RestoreWorker"
 WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE = (
-    f"ray::IDLE_{WORKER_PROCESS_TYPE_SPILL_WORKER_NAME}")
+    f"ray::IDLE_{WORKER_PROCESS_TYPE_SPILL_WORKER_NAME}"
+)
 WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE = (
-    f"ray::IDLE_{WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME}")
-WORKER_PROCESS_TYPE_SPILL_WORKER = (
-    f"ray::SPILL_{WORKER_PROCESS_TYPE_SPILL_WORKER_NAME}")
+    f"ray::IDLE_{WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME}"
+)
+WORKER_PROCESS_TYPE_SPILL_WORKER = f"ray::SPILL_{WORKER_PROCESS_TYPE_SPILL_WORKER_NAME}"
 WORKER_PROCESS_TYPE_RESTORE_WORKER = (
-    f"ray::RESTORE_{WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME}")
+    f"ray::RESTORE_{WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME}"
+)
 WORKER_PROCESS_TYPE_SPILL_WORKER_DELETE = (
-    f"ray::DELETE_{WORKER_PROCESS_TYPE_SPILL_WORKER_NAME}")
+    f"ray::DELETE_{WORKER_PROCESS_TYPE_SPILL_WORKER_NAME}"
+)
 WORKER_PROCESS_TYPE_RESTORE_WORKER_DELETE = (
-    f"ray::DELETE_{WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME}")
+    f"ray::DELETE_{WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME}"
+)
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
 
