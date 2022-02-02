@@ -1,62 +1,24 @@
-import sys
-
 import argparse
 import asyncio
-import errno
 import logging
 import logging.handlers
-import os
 import platform
 import traceback
 
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
-import ray.dashboard.optional_utils as dashboard_optional_utils
+import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services
 import ray._private.utils
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
 from ray._private.ray_logging import setup_component_logger
-from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
-
-# All third-party dependencies that are not included in the minimal Ray
-# installation must be included in this file. This allows us to determine if
-# the agent has the necessary dependencies to be started.
-from ray.dashboard.optional_deps import aiohttp
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
-
-
-class FrontendNotFoundError(OSError):
-    pass
-
-
-def setup_static_dir():
-    build_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "client", "build"
-    )
-    module_name = os.path.basename(os.path.dirname(__file__))
-    if not os.path.isdir(build_dir):
-        raise FrontendNotFoundError(
-            errno.ENOENT,
-            "Dashboard build directory not found. If installing "
-            "from source, please follow the additional steps "
-            "required to build the dashboard"
-            f"(cd python/ray/{module_name}/client "
-            "&& npm install "
-            "&& npm ci "
-            "&& npm run build)",
-            build_dir,
-        )
-
-    static_dir = os.path.join(build_dir, "static")
-    routes.static("/static", static_dir, follow_symlinks=True)
-    return build_dir
 
 
 class Dashboard:
@@ -85,6 +47,8 @@ class Dashboard:
         redis_address,
         redis_password=None,
         log_dir=None,
+        temp_dir=None,
+        minimal=False,
     ):
         self.dashboard_head = dashboard_head.DashboardHead(
             http_host=host,
@@ -94,36 +58,8 @@ class Dashboard:
             redis_address=redis_address,
             redis_password=redis_password,
             log_dir=log_dir,
-        )
-
-        # Setup Dashboard Routes
-        try:
-            build_dir = setup_static_dir()
-            logger.info("Setup static dir for dashboard: %s", build_dir)
-        except FrontendNotFoundError as ex:
-            # Not to raise FrontendNotFoundError due to NPM incompatibilities
-            # with Windows.
-            # Please refer to ci.sh::build_dashboard_front_end()
-            if sys.platform in ["win32", "cygwin"]:
-                logger.warning(ex)
-            else:
-                raise ex
-        dashboard_optional_utils.ClassMethodRouteTable.bind(self)
-
-    @routes.get("/")
-    async def get_index(self, req) -> aiohttp.web.FileResponse:
-        return aiohttp.web.FileResponse(
-            os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "client/build/index.html"
-            )
-        )
-
-    @routes.get("/favicon.ico")
-    async def get_favicon(self, req) -> aiohttp.web.FileResponse:
-        return aiohttp.web.FileResponse(
-            os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "client/build/favicon.ico"
-            )
+            temp_dir=temp_dir,
+            minimal=minimal,
         )
 
     async def run(self):
@@ -250,17 +186,9 @@ if __name__ == "__main__":
             args.redis_address,
             redis_password=args.redis_password,
             log_dir=args.log_dir,
+            temp_dir=args.temp_dir,
+            minimal=args.minimal,
         )
-        # TODO(fyrestone): Avoid using ray.state in dashboard, it's not
-        # asynchronous and will lead to low performance. ray disconnect()
-        # will be hang when the ray.state is connected and the GCS is exit.
-        # Please refer to: https://github.com/ray-project/ray/issues/16328
-        service_discovery = PrometheusServiceDiscoveryWriter(
-            args.redis_address, args.redis_password, args.gcs_address, args.temp_dir
-        )
-        # Need daemon True to avoid dashboard hangs at exit.
-        service_discovery.daemon = True
-        service_discovery.start()
         loop = asyncio.get_event_loop()
         loop.run_until_complete(dashboard.run())
     except Exception as e:
@@ -270,7 +198,7 @@ if __name__ == "__main__":
             f"failed with the following "
             f"error:\n{traceback_str}"
         )
-        if isinstance(e, FrontendNotFoundError):
+        if isinstance(e, dashboard_utils.FrontendNotFoundError):
             logger.warning(message)
         else:
             logger.error(message)
