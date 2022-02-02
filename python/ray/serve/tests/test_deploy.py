@@ -1246,10 +1246,8 @@ class TestDeployGroup:
     responses = ["f reached", "g reached", "C reached", "D reached"]
 
     def test_basic_deploy_group(self, serve_instance):
-        # controller: ServeController = serve_instance._controller
 
-        deployment_list = [(d, {}) for d in self.deployments]
-        deploy_group(deployment_list)
+        deploy_group(self.deployments)
 
         for deployment, response in zip(self.deployments, self.responses):
             assert ray.get(deployment.get_handle().remote()) == response
@@ -1258,8 +1256,7 @@ class TestDeployGroup:
         deployments = [self.E, self.F]
         responses = ["E reached", "F reached"]
 
-        deployment_list = [(d, {}) for d in deployments]
-        deploy_group(deployment_list)
+        deploy_group(deployments)
 
         for deployment, response in zip(deployments, responses):
             assert ray.get(deployment.get_handle().remote()) == response
