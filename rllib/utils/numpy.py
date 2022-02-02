@@ -128,6 +128,9 @@ def convert_to_numpy(
     # to the CPU beforehand).
     def mapping(item):
         if torch and isinstance(item, torch.Tensor):
+            # Torch AMP
+            if item.dtype == torch.bfloat16:
+                item = item.float()
             ret = (
                 item.cpu().item()
                 if len(item.size()) == 0

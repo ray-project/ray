@@ -142,11 +142,13 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         seq_lens: TensorType,
     ) -> (TensorType, List[TensorType]):
         obs = input_dict["obs_flat"].float()
-        self._last_flat_in = obs.reshape(obs.shape[0], -1)
-        self._features = self._hidden_layers(self._last_flat_in)
-        logits = self._logits(self._features) if self._logits else self._features
-        if self.free_log_std:
-            logits = self._append_free_log_std(logits)
+        # TODO: use the correct type for CUDA
+        with torch.autocast(dtype=torch.bfloat16, device_type="cpu"):
+            self._last_flat_in = obs.reshape(obs.shape[0], -1)
+            self._features = self._hidden_layers(self._last_flat_in)
+            logits = self._logits(self._features) if self._logits else self._features
+            if self.free_log_std:
+                logits = self._append_free_log_std(logits)
         return logits, state
 
     @override(TorchModelV2)
