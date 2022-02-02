@@ -74,6 +74,7 @@ def get_anyscale_sdk() -> AnyscaleSDK:
     return _anyscale_sdk
 
 
+# Todo: remove to get rid of threading
 def run_with_timeout(fn: Callable[[], None],
                      timeout: float,
                      status_fn: Callable[[float], None],

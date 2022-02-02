@@ -1,11 +1,10 @@
 import time
 
-from e2e import SessionTimeoutError
-from ray_release.exception import ReleaseTestInfraError
+from ray_release.exception import (ClusterCreationError, ClusterStartupError,
+                                   ClusterStartupTimeout, ClusterStartupFailed)
 from ray_release.logger import logger
 from ray_release.session_manager.minimal import MinimalSessionManager
-from ray_release.util import (format_link, anyscale_session_url,
-                              run_with_timeout)
+from ray_release.util import (format_link, anyscale_session_url)
 
 REPORT_S = 30.
 
@@ -19,62 +18,67 @@ class FullSessionManager(MinimalSessionManager):
 
     def start_cluster(self, timeout: float = 600.):
         logger.info(f"Creating cluster {self.cluster_name}")
-        result = self.sdk.create_cluster(
-            dict(
-                name=self.cluster_name,
-                project_id=self.project_id,
-                cluster_environment_build_id=self.cluster_env_build_id,
-                cluster_compute_id=self.cluster_compute_id,
-                idle_timeout_minutes=30))
-        self.cluster_id = result.result.id
+        try:
+            result = self.sdk.create_cluster(
+                dict(
+                    name=self.cluster_name,
+                    project_id=self.project_id,
+                    cluster_environment_build_id=self.cluster_env_build_id,
+                    cluster_compute_id=self.cluster_compute_id,
+                    idle_timeout_minutes=30))
+            self.cluster_id = result.result.id
+        except Exception as e:
+            raise ClusterCreationError(f"Error creating cluster: {e}") from e
 
         # Trigger session start
         logger.info(
             f"Starting cluster {self.cluster_name} ({self.cluster_id})")
-        session_url = anyscale_session_url(
+        cluster_url = anyscale_session_url(
             project_id=self.project_id, session_id=self.cluster_id)
-        logger.info(f"Link to cluster: {format_link(session_url)}")
+        logger.info(f"Link to cluster: {format_link(cluster_url)}")
 
-        result = self.sdk.start_cluster(
-            self.cluster_id, start_cluster_options={})
-        cop_id = result.result.id
-        completed = result.result.completed
+        try:
+            result = self.sdk.start_cluster(
+                self.cluster_id, start_cluster_options={})
+            cop_id = result.result.id
+            completed = result.result.completed
+        except Exception as e:
+            raise ClusterStartupError(
+                f"Error starting cluster with name "
+                f"{self.cluster_name} and {self.cluster_id} ({cluster_url}): "
+                f"{e}") from e
 
         # Wait for session
         logger.info(f"Waiting for cluster {self.cluster_name}...")
 
-        def _start_cluster():
-            completed = False
-            while not completed:
-                # Sleep 1 sec before next check.
-                time.sleep(1)
+        start_time = time.monotonic()
+        timeout_at = start_time + timeout
+        next_status = start_time + 30
+        while not completed:
+            now = time.monotonic()
+            if now >= timeout_at:
+                raise ClusterStartupTimeout(
+                    f"Time out when creating cluster {self.cluster_name}")
 
-                cluster_operation_response = self.sdk.get_cluster_operation(
-                    cop_id, _request_timeout=30)
-                cluster_operation = cluster_operation_response.result
-                completed = cluster_operation.completed
+            if now >= next_status:
+                logger.info(
+                    f"... still waiting for cluster {self.cluster_name} "
+                    f"({int(now - start_time)} seconds) ...")
+                next_status += 30
 
-        def _status_fn(time_elapsed: float):
-            logger.info(f"... still waiting for cluster {self.cluster_name} "
-                        f"({int(time_elapsed)} seconds) ...")
+            # Sleep 1 sec before next check.
+            time.sleep(1)
 
-        def _error_fn():
-            raise SessionTimeoutError(
-                f"Time out when creating cluster {self.cluster_name}")
-
-        if not completed:
-            run_with_timeout(
-                _start_cluster,
-                timeout=timeout,
-                status_fn=_status_fn,
-                error_fn=_error_fn)
+            result = self.sdk.get_cluster_operation(
+                cop_id, _request_timeout=30)
+            completed = result.result.completed
 
         result = self.sdk.get_cluster(self.cluster_id)
-        if not result.result.state != "Active":
-            raise ReleaseTestInfraError(
+        if result.result.state != "Active":
+            raise ClusterStartupFailed(
                 f"Cluster did not come up - most likely the nodes are currently "
                 f"not available. Please check the cluster startup logs: "
-                f"{anyscale_session_url(self.project_id, self.cluster_id)}")
+                f"{cluster_url}")
 
     def terminate_cluster(self, wait: bool = False):
         if self.cluster_id:

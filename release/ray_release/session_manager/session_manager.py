@@ -43,7 +43,7 @@ class SessionManager(abc.ABC):
     def delete_configs(self):
         raise NotImplementedError
 
-    def start_cluster(self):
+    def start_cluster(self, timeout: float = 600.):
         raise NotImplementedError
 
     def terminate_cluster(self):

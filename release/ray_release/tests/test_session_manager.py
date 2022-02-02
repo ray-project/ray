@@ -7,7 +7,8 @@ from uuid import uuid4
 
 from freezegun import freeze_time
 
-from ray_release.exception import AppConfigBuildFailure
+from ray_release.exception import AppConfigBuildFailure, ClusterCreationError, \
+    ClusterStartupError, ClusterStartupTimeout, ClusterStartupFailed
 from ray_release.session_manager.full import FullSessionManager
 from ray_release.session_manager.minimal import MinimalSessionManager
 from ray_release.tests.utils import (UNIT_TEST_PROJECT_ID, UNIT_TEST_CLOUD_ID,
@@ -42,21 +43,29 @@ TEST_CLUSTER_COMPUTE = {
 }
 
 
-class _ClusterEnvBuild:
-    def __init__(self,
-                 callback: Callable[[], None],
-                 finish_after: float,
-                 status: str = "succceeded"):
+def _fail(*args, **kwargs):
+    raise RuntimeError()
+
+
+class _DelayedResponse:
+    def __init__(
+            self,
+            callback: Callable[[], None],
+            finish_after: float,
+            before: APIDict,
+            after: APIDict,
+    ):
         self.callback = callback
         self.finish_after = time.monotonic() + finish_after
-        self.status = status
+        self.before = before
+        self.after = after
 
     def __call__(self, *args, **kwargs):
         self.callback()
         if time.monotonic() > self.finish_after:
-            return APIDict(result=APIDict(status=self.status))
+            return self.after
         else:
-            return APIDict(result=APIDict(status="in_progress"))
+            return self.before
 
 
 class MinimalSessionManagerTest(unittest.TestCase):
@@ -356,10 +365,12 @@ class MinimalSessionManagerTest(unittest.TestCase):
         ])
         with freeze_time() as frozen_time, self.assertRaisesRegex(
                 AppConfigBuildFailure, "Cluster env build failed"):
-            self.sdk.returns["get_build"] = _ClusterEnvBuild(
+            self.sdk.returns["get_build"] = _DelayedResponse(
                 lambda: frozen_time.tick(delta=10),
                 finish_after=300,
-                status="failed")
+                before=APIDict(result=APIDict(status="in_progress")),
+                after=APIDict(result=APIDict(status="failed")),
+            )
             self.session_manager.build_cluster_env(timeout=600)
 
         self.assertFalse(self.session_manager.cluster_env_build_id)
@@ -390,10 +401,12 @@ class MinimalSessionManagerTest(unittest.TestCase):
         ])
         with freeze_time() as frozen_time, self.assertRaisesRegex(
                 AppConfigBuildFailure, "Time out when building cluster env"):
-            self.sdk.returns["get_build"] = _ClusterEnvBuild(
+            self.sdk.returns["get_build"] = _DelayedResponse(
                 lambda: frozen_time.tick(delta=10),
                 finish_after=300,
-                status="succeeded")
+                before=APIDict(result=APIDict(status="in_progress")),
+                after=APIDict(result=APIDict(status="succeeded")),
+            )
             self.session_manager.build_cluster_env(timeout=100)
 
         self.assertFalse(self.session_manager.cluster_env_build_id)
@@ -422,10 +435,12 @@ class MinimalSessionManagerTest(unittest.TestCase):
             )
         ])
         with freeze_time() as frozen_time:
-            self.sdk.returns["get_build"] = _ClusterEnvBuild(
+            self.sdk.returns["get_build"] = _DelayedResponse(
                 lambda: frozen_time.tick(delta=10),
                 finish_after=300,
-                status="succeeded")
+                before=APIDict(result=APIDict(status="in_progress")),
+                after=APIDict(result=APIDict(status="succeeded")),
+            )
             self.session_manager.build_cluster_env(timeout=600)
 
         self.assertTrue(self.session_manager.cluster_env_build_id)
@@ -438,8 +453,98 @@ class MinimalSessionManagerTest(unittest.TestCase):
 class FullSessionManagerTest(MinimalSessionManagerTest):
     cls = FullSessionManager
 
-    def testSessionStart(self):
-        pass  # Todo
+    def testSessionStartCreationError(self):
+        self.session_manager.cluster_env_id = "correct"
+        self.session_manager.cluster_compute_id = "correct"
+
+        self.sdk.returns["create_cluster"] = _fail
+
+        with self.assertRaises(ClusterCreationError):
+            self.session_manager.start_cluster()
+
+    def testSessionStartStartupError(self):
+        self.session_manager.cluster_env_id = "correct"
+        self.session_manager.cluster_compute_id = "correct"
+
+        self.sdk.returns["create_cluster"] = APIDict(
+            result=APIDict(id="success"))
+        self.sdk.returns["start_cluster"] = _fail
+
+        with self.assertRaises(ClusterStartupError):
+            self.session_manager.start_cluster()
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    def testSessionStartStartupTimeout(self):
+        self.session_manager.cluster_env_id = "correct"
+        self.session_manager.cluster_compute_id = "correct"
+
+        self.sdk.returns["create_cluster"] = APIDict(
+            result=APIDict(id="success"))
+        self.sdk.returns["start_cluster"] = APIDict(
+            result=APIDict(id="cop_id", completed=False))
+
+        with freeze_time() as frozen_time, self.assertRaises(
+                ClusterStartupTimeout):
+            self.sdk.returns["get_cluster_operation"] = _DelayedResponse(
+                lambda: frozen_time.tick(delta=10),
+                finish_after=300,
+                before=APIDict(result=APIDict(completed=False)),
+                after=APIDict(result=APIDict(completed=True)),
+            )
+
+            # Timeout before startup finishes
+            self.session_manager.start_cluster(timeout=200)
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    def testSessionStartStartupFailed(self):
+        self.session_manager.cluster_env_id = "correct"
+        self.session_manager.cluster_compute_id = "correct"
+
+        self.sdk.returns["create_cluster"] = APIDict(
+            result=APIDict(id="success"))
+        self.sdk.returns["start_cluster"] = APIDict(
+            result=APIDict(id="cop_id", completed=False))
+
+        with freeze_time() as frozen_time, self.assertRaises(
+                ClusterStartupFailed):
+            frozen_time.tick(delta=0.1)
+            self.sdk.returns["get_cluster_operation"] = _DelayedResponse(
+                lambda: frozen_time.tick(delta=10),
+                finish_after=300,
+                before=APIDict(result=APIDict(completed=False)),
+                after=APIDict(result=APIDict(completed=True)),
+            )
+
+            self.sdk.returns["get_cluster"] = APIDict(
+                result=APIDict(state="Terminated"))
+
+            # Timeout is long enough
+            self.session_manager.start_cluster(timeout=400)
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    def testSessionStartStartupSuccess(self):
+        self.session_manager.cluster_env_id = "correct"
+        self.session_manager.cluster_compute_id = "correct"
+
+        self.sdk.returns["create_cluster"] = APIDict(
+            result=APIDict(id="success"))
+        self.sdk.returns["start_cluster"] = APIDict(
+            result=APIDict(id="cop_id", completed=False))
+
+        with freeze_time() as frozen_time:
+            frozen_time.tick(delta=0.1)
+            self.sdk.returns["get_cluster_operation"] = _DelayedResponse(
+                lambda: frozen_time.tick(delta=10),
+                finish_after=300,
+                before=APIDict(result=APIDict(completed=False)),
+                after=APIDict(result=APIDict(completed=True)),
+            )
+
+            self.sdk.returns["get_cluster"] = APIDict(
+                result=APIDict(state="Active"))
+
+            # Timeout is long enough
+            self.session_manager.start_cluster(timeout=400)
 
 
 @unittest.skipUnless(

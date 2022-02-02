@@ -1,3 +1,23 @@
+class ClusterManagerError(RuntimeError):
+    pass
+
+
+class ClusterCreationError(ClusterManagerError):
+    pass
+
+
+class ClusterStartupError(ClusterManagerError):
+    pass
+
+
+class ClusterStartupTimeout(ClusterManagerError):
+    pass
+
+
+class ClusterStartupFailed(ClusterManagerError):
+    pass
+
+
 class PrepareCommandRuntimeError(RuntimeError):
     pass
 
