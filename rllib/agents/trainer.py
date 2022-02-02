@@ -55,6 +55,7 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
 )
 from ray.rllib.models import MODEL_DEFAULTS
+from ray.rllib.offline import get_offline_io_resource_bundles
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils import deep_update, FilterManager, merge_dicts
@@ -2071,7 +2072,10 @@ class Trainer(Trainable):
                 ]
                 if cf["evaluation_interval"]
                 else []
-            ),
+            )
+            +
+            # In case our I/O reader/writer requires conmpute resources.
+            get_offline_io_resource_bundles(cf),
             strategy=config.get("placement_strategy", "PACK"),
         )
 
