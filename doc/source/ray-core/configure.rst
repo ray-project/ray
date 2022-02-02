@@ -86,35 +86,7 @@ Change the *root temporary directory* by passing ``--temp-dir={your temp path}``
 
 (There is not currently a stable way to change the root temporary directory when calling ``ray.init()``, but if you need to, you can provide the ``_temp_dir`` argument to ``ray.init()``.)
 
-You can also use ``default_worker.py --temp-dir={your temp path}`` to
-start a new worker with the given *root temporary directory*.
-
-**Layout of logs**:
-
-.. code-block:: text
-
-  /tmp
-  └── ray
-      └── session_{datetime}_{pid}
-          ├── logs  # for logging
-          │   ├── log_monitor.err
-          │   ├── log_monitor.out
-          │   ├── monitor.err
-          │   ├── monitor.out
-          │   ├── raylet.err  # outputs of the raylet process
-          │   ├── raylet.out
-          │   ├── redis-shard_0.err   # outputs of redis shards
-          │   ├── redis-shard_0.out
-          │   ├── redis.err  # redis
-          │   ├── redis.out
-          │   ├── webui.err  # ipython notebook web ui
-          │   ├── webui.out
-          │   ├── worker-{worker_id}.err  # redirected output of workers
-          │   ├── worker-{worker_id}.out
-          │   └── {other workers}
-          └── sockets  # for sockets
-              ├── plasma_store
-              └── raylet  # this could be deleted by Ray's shutdown cleanup.
+Look :ref:`Logging Directory Structure <logging-directory-structure>` for more details.
 
 .. _ray-ports:
 

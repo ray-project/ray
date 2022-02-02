@@ -86,14 +86,11 @@ class CometLoggerCallback(LoggerCallback):
     # These values should be logged as "Other" instead of as metrics.
     _other_results = ["trial_id", "experiment_id", "experiment_tag"]
 
-    _episode_results = [
-        "hist_stats/episode_reward", "hist_stats/episode_lengths"
-    ]
+    _episode_results = ["hist_stats/episode_reward", "hist_stats/episode_lengths"]
 
-    def __init__(self,
-                 online: bool = True,
-                 tags: List[str] = None,
-                 **experiment_kwargs):
+    def __init__(
+        self, online: bool = True, tags: List[str] = None, **experiment_kwargs
+    ):
         _import_comet()
         self.online = online
         self.tags = tags
@@ -184,13 +181,10 @@ class CometLoggerCallback(LoggerCallback):
             if any(self._check_key_name(k, item) for item in self._to_other):
                 other_logs[k] = v
 
-            elif any(
-                    self._check_key_name(k, item) for item in self._to_system):
+            elif any(self._check_key_name(k, item) for item in self._to_system):
                 system_logs[k] = v
 
-            elif any(
-                    self._check_key_name(k, item)
-                    for item in self._to_episodes):
+            elif any(self._check_key_name(k, item) for item in self._to_episodes):
                 episode_logs[k] = v
 
             else:

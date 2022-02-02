@@ -19,8 +19,11 @@ from sklearn.metrics import mean_squared_error
 # __doc_train_model_begin__
 # Load data
 iris_dataset = load_iris()
-data, target, target_names = iris_dataset["data"], iris_dataset[
-    "target"], iris_dataset["target_names"]
+data, target, target_names = (
+    iris_dataset["data"],
+    iris_dataset["target"],
+    iris_dataset["target_names"],
+)
 
 # Instantiate model
 model = GradientBoostingClassifier()
@@ -35,8 +38,7 @@ model.fit(train_x, train_y)
 print("MSE:", mean_squared_error(model.predict(val_x), val_y))
 
 # Save the model and label to file
-MODEL_PATH = os.path.join(tempfile.gettempdir(),
-                          "iris_model_logistic_regression.pkl")
+MODEL_PATH = os.path.join(tempfile.gettempdir(), "iris_model_logistic_regression.pkl")
 LABEL_PATH = os.path.join(tempfile.gettempdir(), "iris_labels.json")
 
 with open(MODEL_PATH, "wb") as f:
@@ -85,8 +87,7 @@ sample_request_input = {
     "petal length": 1.1,
     "petal width": 0.9,
 }
-response = requests.get(
-    "http://localhost:8000/regressor", json=sample_request_input)
+response = requests.get("http://localhost:8000/regressor", json=sample_request_input)
 print(response.text)
 # Result:
 # {

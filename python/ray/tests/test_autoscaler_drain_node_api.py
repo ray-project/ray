@@ -5,8 +5,7 @@ import time
 import pytest
 
 import ray
-from ray.autoscaler._private.fake_multi_node.node_provider import\
-    FakeMultiNodeProvider
+from ray.autoscaler._private.fake_multi_node.node_provider import FakeMultiNodeProvider
 from ray.cluster_utils import AutoscalingCluster
 import ray.ray_constants as ray_constants
 from ray._private.test_utils import get_error_message, init_error_pubsub
@@ -26,20 +25,18 @@ class MockFakeProvider(FakeMultiNodeProvider):
 
 
 class MockAutoscalingCluster(AutoscalingCluster):
-    """AutoscalingCluster modified to used the above MockFakeProvider.
-    """
+    """AutoscalingCluster modified to used the above MockFakeProvider."""
 
     def _generate_config(self, head_resources, worker_node_types):
         config = super()._generate_config(head_resources, worker_node_types)
         config["provider"]["type"] = "external"
         config["provider"]["module"] = (
-            "ray.tests"
-            ".test_autoscaler_drain_node_api.MockFakeProvider")
+            "ray.tests" ".test_autoscaler_drain_node_api.MockFakeProvider"
+        )
         return config
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_drain_api(shutdown_only):
     """E2E test of the autoscaler's use of the DrainNode API.
 
@@ -70,7 +67,8 @@ def test_drain_api(shutdown_only):
                 "min_workers": 0,
                 "max_workers": 2,
             },
-        })
+        },
+    )
 
     try:
         cluster.start()
@@ -96,7 +94,8 @@ def test_drain_api(shutdown_only):
         try:
             p = init_error_pubsub()
             errors = get_error_message(
-                p, 1, ray_constants.REMOVED_NODE_ERROR, timeout=5)
+                p, 1, ray_constants.REMOVED_NODE_ERROR, timeout=5
+            )
             assert len(errors) == 0
         finally:
             p.close()
@@ -106,4 +105,5 @@ def test_drain_api(shutdown_only):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))
