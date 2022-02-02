@@ -138,8 +138,10 @@ class _ClientContext:
 
     def disconnect(self):
         """Disconnect the Ray Client."""
+
         if self.client_worker is not None:
             self.client_worker.close()
+        self.api.worker = None
         self.client_worker = None
 
     # remote can be called outside of a connection, which is why it
