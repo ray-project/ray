@@ -470,6 +470,7 @@ def read_text(
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = 200,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    **read_args,
 ) -> Dataset[str]:
     """Create a dataset from lines stored in text files.
 
@@ -488,6 +489,7 @@ def read_text(
             limited by the number of files of the dataset.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
+        read_args: kwargs passed to BinaryDatasource._read_file().
 
     Returns:
         Dataset holding lines of text read from the specified paths.
@@ -498,6 +500,7 @@ def read_text(
         filesystem=filesystem,
         parallelism=parallelism,
         arrow_open_stream_args=arrow_open_stream_args,
+        **read_args,
     ).flat_map(lambda x: x.decode(encoding).split("\n"))
 
 
@@ -554,6 +557,7 @@ def read_binary_files(
     parallelism: int = 200,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    **read_args,
 ) -> Dataset[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
 
@@ -575,6 +579,7 @@ def read_binary_files(
             limited by the number of files of the dataset.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
+        read_args: kwargs passed to BinaryDatasource._read_file().
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -588,6 +593,7 @@ def read_binary_files(
         ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         schema=bytes,
+        **read_args,
     )
 
 

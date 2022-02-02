@@ -144,6 +144,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         file_sizes = [file_info.size for file_info in file_infos]
 
         read_stream = self._read_stream
+        read_file = self._read_file
 
         filesystem = _wrap_s3_serialization_workaround(filesystem)
 
@@ -154,6 +155,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             read_paths: List[str],
             fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
         ) -> Iterable[Block]:
+            import pyarrow as pa
+
             logger.debug(f"Reading {len(read_paths)} files.")
             if isinstance(fs, _S3FileSystemWrapper):
                 fs = fs.unwrap()
@@ -162,8 +165,32 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
             )
             for read_path in read_paths:
-                with fs.open_input_stream(read_path, **open_stream_args) as f:
-                    for data in read_stream(f, read_path, **reader_args):
+                compression = open_stream_args.get("compression")
+                if compression is None:
+                    try:
+                        compression = pa.Codec.detect(read_path)
+                    except (ValueError, TypeError):
+                        compression = None
+                if compression is None or compression != "snappy":
+                    with fs.open_input_stream(read_path, **open_stream_args) as f:
+                        for data in read_stream(f, read_path, **reader_args):
+                            output_buffer.add_block(data)
+                            if output_buffer.has_next():
+                                yield output_buffer.next()
+                else:
+                    if "buffer_size" in open_stream_args:
+                        raise ValueError(
+                            "Snappy compression not supported for streaming reads, so "
+                            f"provided buffer_size={open_stream_args['buffer_size']} "
+                            "won't be respected."
+                        )
+                    # Streaming reads not supported for Snappy compression.
+                    with fs.open_input_file(read_path) as f:
+                        # Rely on FileDatasource subclasses to decompress the file
+                        # after reading it into memory.
+                        data = read_file(
+                            f, read_path, compression=compression, **reader_args
+                        )
                         output_buffer.add_block(data)
                         if output_buffer.has_next():
                             yield output_buffer.next()

@@ -1007,6 +1007,21 @@ def test_read_text(ray_start_regular_shared, tmp_path):
     assert sorted(ds.take()) == ["goodbye", "hello", "world"]
 
 
+def test_read_binary_snappy(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_binary")
+    os.mkdir(path)
+    with open(os.path.join(path, "file"), "wb") as f:
+        byte_str = "hello, world".encode()
+        compressed = pa.compress(byte_str, codec="snappy", asbytes=True)
+        f.write(compressed)
+    ds = ray.data.read_binary_files(
+        path,
+        arrow_open_stream_args=dict(compression="snappy"),
+        decompressed_size=len(byte_str),
+    )
+    assert sorted(ds.take()) == [byte_str]
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_write_datasource(ray_start_regular_shared, pipelined):
     output = DummyOutputDatasource()
