@@ -12,6 +12,7 @@ from numbers import Number
 
 from typing import Any, Callable, Optional
 
+from ray.util.ml_utils.checkpoint import LocalStorageCheckpoint, Checkpoint
 from six.moves import queue
 
 from ray.util.debug import log_once
@@ -439,7 +440,7 @@ class FunctionRunner(Trainable):
     def execute(self, fn):
         return fn(self)
 
-    def save(self, checkpoint_path=None) -> str:
+    def save(self, checkpoint_path=None) -> Checkpoint:
         if checkpoint_path:
             raise ValueError("Checkpoint path should not be used with function API.")
 
@@ -479,11 +480,13 @@ class FunctionRunner(Trainable):
             checkpoint, parent_dir, state
         )
 
-        self._maybe_save_to_cloud(parent_dir)
+        cloud_checkpoint = self._maybe_save_to_cloud(parent_dir)
+        local_checkpoint = LocalStorageCheckpoint(path=checkpoint_path)
 
-        return checkpoint_path
+        return local_checkpoint
 
     def save_to_object(self):
+        # WIP: Continue here
         checkpoint_path = self.save()
         obj = TrainableUtil.checkpoint_to_object(checkpoint_path)
         return obj

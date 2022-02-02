@@ -45,6 +45,8 @@ from ray.tune.utils.log import disable_ipython
 from ray.tune.utils.util import Tee
 from ray.util.debug import log_once
 from ray.util.annotations import PublicAPI
+from ray.util.ml_utils.checkpoint import LocalStorageCheckpoint, \
+    CloudStorageCheckpoint, Checkpoint
 
 logger = logging.getLogger(__name__)
 
@@ -403,7 +405,7 @@ class Trainable:
             "ray_version": ray.__version__,
         }
 
-    def save(self, checkpoint_dir=None) -> str:
+    def save(self, checkpoint_dir=None) -> Checkpoint:
         """Saves the current model state to a checkpoint.
 
         Subclasses should override ``save_checkpoint()`` instead to save state.
@@ -431,17 +433,20 @@ class Trainable:
         )
 
         # Maybe sync to cloud
-        self._maybe_save_to_cloud(checkpoint_dir)
+        cloud_checkpoint = self._maybe_save_to_cloud(checkpoint_dir)
+        local_checkpoint = LocalStorageCheckpoint(path=checkpoint_dir)
 
-        return checkpoint_path
+        return local_checkpoint
 
-    def _maybe_save_to_cloud(self, checkpoint_dir):
+    def _maybe_save_to_cloud(self, checkpoint_dir) -> Optional[CloudStorageCheckpoint]:
         # Derived classes like the FunctionRunner might call this
         if self.uses_cloud_checkpointing:
+            cloud_location = self._storage_path(checkpoint_dir)
             self.storage_client.sync_up(
-                checkpoint_dir, self._storage_path(checkpoint_dir)
+                checkpoint_dir, cloud_location
             )
             self.storage_client.wait()
+            return CloudStorageCheckpoint(location=cloud_location)
 
     def save_to_object(self):
         """Saves the current model state to a Python object.
