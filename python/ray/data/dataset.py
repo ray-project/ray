@@ -74,6 +74,7 @@ from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
+from ray.data.impl.table_block import TableRow
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 
 # An output type of iter_batches() determined by the batch_format parameter.
@@ -220,8 +221,9 @@ class Dataset(Generic[T]):
                 blocks as batches. Defaults to a system-chosen batch size.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or "actors" to use an autoscaling Ray actor pool.
-            batch_format: Specify "native" to use the native block format,
-                "pandas" to select ``pandas.DataFrame`` as the batch format,
+            batch_format: Specify "native" to use the native block format
+                (promotes Arrow to pandas), "pandas" to select
+                ``pandas.DataFrame`` as the batch format,
                 or "pyarrow" to select ``pyarrow.Table``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
@@ -251,7 +253,9 @@ class Dataset(Generic[T]):
                 # bug where we include the entire base view on serialization.
                 view = block.slice(start, end, copy=batch_size is not None)
                 if batch_format == "native":
-                    pass
+                    # Always promote Arrow blocks to pandas for consistency.
+                    if isinstance(view, pa.Table) or isinstance(view, bytes):
+                        view = BlockAccessor.for_block(view).to_pandas()
                 elif batch_format == "pandas":
                     view = BlockAccessor.for_block(view).to_pandas()
                 elif batch_format == "pyarrow":
@@ -263,11 +267,11 @@ class Dataset(Generic[T]):
                     )
 
                 applied = fn(view)
-                if isinstance(applied, list) or isinstance(applied, pa.Table):
-                    applied = applied
-                elif isinstance(applied, pd.core.frame.DataFrame):
-                    applied = pa.Table.from_pandas(applied)
-                else:
+                if not (
+                    isinstance(applied, list)
+                    or isinstance(applied, pa.Table)
+                    or isinstance(applied, pd.core.frame.DataFrame)
+                ):
                     raise ValueError(
                         "The map batches UDF returned the value "
                         f"{applied}, which is not allowed. "
@@ -440,12 +444,15 @@ class Dataset(Generic[T]):
         # Handle empty blocks.
         if len(new_blocks) < num_blocks:
             from ray.data.impl.arrow_block import ArrowBlockBuilder
+            from ray.data.impl.pandas_block import PandasBlockBuilder
             from ray.data.impl.simple_block import SimpleBlockBuilder
 
             num_empties = num_blocks - len(new_blocks)
             dataset_format = self._dataset_format()
             if dataset_format == "arrow":
                 builder = ArrowBlockBuilder()
+            elif dataset_format == "pandas":
+                builder = PandasBlockBuilder()
             else:
                 builder = SimpleBlockBuilder()
             empty_block = builder.build()
@@ -1030,10 +1037,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Sum, on)
         if ret is None:
             return 0
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def min(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute minimum over entire dataset.
@@ -1085,10 +1090,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Min, on)
         if ret is None:
             raise ValueError("Cannot compute min on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def max(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute maximum over entire dataset.
@@ -1140,10 +1143,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Max, on)
         if ret is None:
             raise ValueError("Cannot compute max on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def mean(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute mean over entire dataset.
@@ -1195,10 +1196,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Mean, on)
         if ret is None:
             raise ValueError("Cannot compute mean on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def std(self, on: Union[KeyFn, List[KeyFn]] = None, ddof: int = 1) -> U:
         """Compute standard deviation over entire dataset.
@@ -1260,10 +1259,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Std, on, ddof=ddof)
         if ret is None:
             raise ValueError("Cannot compute std on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def sort(self, key: KeyFn = None, descending: bool = False) -> "Dataset[T]":
         """Sort the dataset by the specified key column or key function.
@@ -1837,7 +1834,8 @@ class Dataset(Generic[T]):
                 current block during the scan.
             batch_size: Record batch size, or None to let the system pick.
             batch_format: The format in which to return each batch.
-                Specify "native" to use the current block format, "pandas" to
+                Specify "native" to use the current block format (promoting
+                Arrow to pandas automatically), "pandas" to
                 select ``pandas.DataFrame`` or "pyarrow" to select
                 ``pyarrow.Table``. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
@@ -1846,10 +1844,17 @@ class Dataset(Generic[T]):
             A list of iterators over record batches.
         """
 
+        import pyarrow as pa
+
         time_start = time.perf_counter()
 
         def format_batch(batch: Block, format: str) -> BatchType:
             if batch_format == "native":
+                # Always promote Arrow blocks to pandas for consistency, since
+                # we lazily convert pandas->Arrow internally for efficiency.
+                if isinstance(batch, pa.Table) or isinstance(batch, bytes):
+                    batch = BlockAccessor.for_block(batch)
+                    batch = batch.to_pandas()
                 return batch
             elif batch_format == "pandas":
                 batch = BlockAccessor.for_block(batch)
@@ -2261,10 +2266,10 @@ Dict[str, List[str]]]): The names of the columns
     def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
         """Convert this dataset into a single Pandas DataFrame.
 
-        This is only supported for datasets convertible to Arrow records. An
-        error is raised if the number of records exceeds the provided limit.
-        Note that you can use ``.limit()`` on the dataset beforehand to
-        truncate the dataset manually.
+        This is only supported for datasets convertible to Arrow or Pandas
+        records. An error is raised if the number of records exceeds the
+        provided limit. Note that you can use ``.limit()`` on the dataset
+        beforehand to truncate the dataset manually.
 
         Time complexity: O(dataset size)
 
@@ -2606,6 +2611,10 @@ Dict[str, List[str]]]): The names of the columns
                 return "arrow"
         except ModuleNotFoundError:
             pass
+        from ray.data.impl.pandas_block import PandasBlockSchema
+
+        if isinstance(schema, PandasBlockSchema):
+            return "pandas"
         return "simple"
 
     def _aggregate_on(
@@ -2651,6 +2660,18 @@ Dict[str, List[str]]]): The names of the columns
         if not isinstance(on, list):
             on = [on]
         return [agg_cls(on_, *args, **kwargs) for on_ in on]
+
+    def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
+        if len(result) == 1:
+            if isinstance(result, tuple):
+                return result[0]
+            else:
+                # NOTE (kfstorm): We cannot call `result[0]` directly on
+                # `PandasRow` because indexing a column with position is not
+                # supported by pandas.
+                return list(result.values())[0]
+        else:
+            return result
 
     def __repr__(self) -> str:
         schema = self.schema()
