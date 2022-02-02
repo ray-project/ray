@@ -195,6 +195,7 @@ RAY_EXPORT void c_worker_Initialize() {
   ray::core::CoreWorkerOptions options = stored_worker_options;
   auto redis_ip = stored_config.redis_ip;
   if (options.worker_type == ray::core::WorkerType::DRIVER
+    // This is not the desired behaviour. We want the ray node to be started...
     && stored_config.redis_ip.empty()
   ) {
     redis_ip = "127.0.0.1";
