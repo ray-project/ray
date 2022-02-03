@@ -12,7 +12,11 @@ from ray import tune
 from ray.rllib import _register_all
 from ray.tune.checkpoint_manager import Checkpoint
 from ray.tune.logger import DEFAULT_LOGGERS, LoggerCallback, LegacyLoggerCallback
-from ray.tune.ray_trial_executor import RayTrialExecutor, ExecutorEvent
+from ray.tune.ray_trial_executor import (
+    RayTrialExecutor,
+    ExecutorEvent,
+    ExecutorEventType,
+)
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.syncer import SyncConfig, SyncerCallback
 
@@ -106,7 +110,9 @@ class TrialRunnerCallbacks(unittest.TestCase):
         for t in trials:
             self.trial_runner.add_trial(t)
 
-        self.executor.next_future_result = ExecutorEvent(type=RayTrialExecutor.PG_READY)
+        self.executor.next_future_result = ExecutorEvent(
+            event_type=ExecutorEventType.PG_READY
+        )
         self.trial_runner.step()
 
         # Trial 1 has been started
@@ -128,7 +134,9 @@ class TrialRunnerCallbacks(unittest.TestCase):
             )
         )
 
-        self.executor.next_future_result = ExecutorEvent(type=RayTrialExecutor.PG_READY)
+        self.executor.next_future_result = ExecutorEvent(
+            event_type=ExecutorEventType.PG_READY
+        )
         self.trial_runner.step()
 
         # Iteration not increased yet
@@ -145,7 +153,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         # Let the first trial save a checkpoint
         self.executor.next_future_result = ExecutorEvent(
-            type=RayTrialExecutor.SAVING_RESULT, trial=trials[0]
+            event_type=ExecutorEventType.SAVING_RESULT, trial=trials[0]
         )
         trials[0].saving_to = cp
         self.trial_runner.step()
@@ -155,7 +163,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         # Let the second trial send a result
         result = {TRAINING_ITERATION: 1, "metric": 800, "done": False}
         self.executor.next_future_result = ExecutorEvent(
-            type=RayTrialExecutor.TRAINING_RESULT, trial=trials[1], result=result
+            event_type=ExecutorEventType.TRAINING_RESULT, trial=trials[1], result=result
         )
         self.assertTrue(not trials[1].has_reported_at_least_once)
         self.trial_runner.step()
@@ -167,7 +175,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         # Let the second trial restore from a checkpoint
         trials[1].restoring_from = cp
         self.executor.next_future_result = ExecutorEvent(
-            type=RayTrialExecutor.RESTORING_RESULT, trial=trials[1]
+            event_type=ExecutorEventType.RESTORING_RESULT, trial=trials[1]
         )
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_restore"]["iteration"], 4)
@@ -176,7 +184,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         # Let the second trial finish
         trials[1].restoring_from = None
         self.executor.next_future_result = ExecutorEvent(
-            type=RayTrialExecutor.TRAINING_RESULT,
+            event_type=ExecutorEventType.TRAINING_RESULT,
             trial=trials[1],
             result={TRAINING_ITERATION: 2, "metric": 900, "done": True},
         )
@@ -186,7 +194,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         # Let the first trial error
         self.executor.next_future_result = ExecutorEvent(
-            type=RayTrialExecutor.ERROR, trial=trials[0]
+            event_type=ExecutorEventType.ERROR, trial=trials[0]
         )
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_fail"]["iteration"], 6)

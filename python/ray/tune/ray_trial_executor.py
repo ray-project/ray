@@ -93,16 +93,29 @@ def post_stop_cleanup(future, pg):
         # This should not be blocking as
         # we are only here when triggered.
         ray.get(future, timeout=0)
+    except GetTimeoutError:
+        if log_once("tune_trial_cleanup_timeout"):
+            logger.error(
+                f"Timed out when trying to stop the Ray actor gracefully. "
+                f"Consider making `stop` a faster operation."
+            )
     except Exception:
-        logger.error(
-            f"An exception occurred when trying to stop the Ray actor for Trial:"
-            f"{traceback.format_exc()}"
-        )
+        if log_once("tune_trial_cleanup_exception"):
+            logger.error(
+                f"An exception occurred when trying to stop the Ray actor:"
+                f"{traceback.format_exc()}"
+            )
     finally:
         remove_placement_group(pg)
 
 
 class _TrialCleanup:
+    """Responsible for triggering force cleanup of remote actors,
+    without waiting for `Trainable.stop()` to finish.
+
+    Only instantiated when `TUNE_FORCE_TRIAL_CLEANUP_S` is set up.
+    """
+
     def __init__(self, force_cleanup):
         assert force_cleanup
         self._force_cleanup = force_cleanup
@@ -145,9 +158,8 @@ class ExecutorEventType(Enum):
     SAVING_RESULT = 4
     RESTORING_RESULT = 5
     STOP_RESULT = 6  # Internally to executor only.
-    # This is to signal to TrialRunner that there is an error.
-    ERROR = 7
-    YIELD = 8  # yielding back to TrialRunner's main event loop.
+    ERROR = 7  # This is to signal to TrialRunner that there is an error.
+    YIELD = 8  # Yielding back to TrialRunner's main event loop.
 
 
 class ExecutorEvent:
@@ -916,7 +928,7 @@ class RayTrialExecutor(TrialExecutor):
         namely, `is_saving`, `is_restoring` etc.
 
         Also you may notice that the boundary between RayTrialExecutor and
-        PlacementGroupManager right now is really blurred. This will be
+        PlacementGroupManager right now is really blurry. This will be
         improved once we move to an ActorPool abstraction.
 
         `next_trial_exists` means that there is a trial to run - prioritize

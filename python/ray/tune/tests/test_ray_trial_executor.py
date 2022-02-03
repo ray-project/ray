@@ -289,7 +289,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         class B(Trainable):
             def step(self):
                 print("Step start")
-                time.sleep(10)
+                time.sleep(4)
                 print("Step done")
                 return dict(my_metric=1, timesteps_this_iter=1, done=True)
 
@@ -299,7 +299,7 @@ class RayTrialExecutorTest(unittest.TestCase):
 
             def cleanup(self):
                 print("Cleanup start")
-                time.sleep(10)
+                time.sleep(4)
                 print("Cleanup done")
 
         # First check if the trials terminate gracefully by default
@@ -312,13 +312,14 @@ class RayTrialExecutorTest(unittest.TestCase):
         )
         trial = trials[0]
         self._simulate_starting_trial(trial)
-        time.sleep(5)
+        time.sleep(1)
         print("Stop trial")
         self.trial_executor.stop_trial(trial)
         print("Start trial cleanup")
         start = time.time()
         self.trial_executor.cleanup([trial])
-        self.assertGreaterEqual(time.time() - start, 12.0)
+        # 4 - 1 + 4.
+        self.assertGreaterEqual(time.time() - start, 6)
 
         # Check forceful termination. It should run for much less than the
         # sleep periods in the Trainable
@@ -335,13 +336,14 @@ class RayTrialExecutorTest(unittest.TestCase):
         os.environ["TUNE_FORCE_TRIAL_CLEANUP_S"] = "0"
         self._simulate_starting_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        time.sleep(5)
+        time.sleep(1)
         print("Stop trial")
         self.trial_executor.stop_trial(trial)
         print("Start trial cleanup")
         start = time.time()
         self.trial_executor.cleanup([trial])
-        self.assertLess(time.time() - start, 5.0)
+        # less than 1 with some margin.
+        self.assertLess(time.time() - start, 2.0)
 
         # also check if auto-filled metrics were returned
         self.assertIn(PID, trial.last_result)
