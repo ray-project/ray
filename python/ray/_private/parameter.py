@@ -119,58 +119,60 @@ class RayParams:
         env_vars (dict): Override environment variables for the raylet.
     """
 
-    def __init__(self,
-                 redis_address=None,
-                 gcs_address=None,
-                 num_cpus=None,
-                 num_gpus=None,
-                 resources=None,
-                 memory=None,
-                 object_store_memory=None,
-                 redis_max_memory=None,
-                 redis_port=None,
-                 redis_shard_ports=None,
-                 object_manager_port=None,
-                 node_manager_port=0,
-                 gcs_server_port=None,
-                 node_ip_address=None,
-                 raylet_ip_address=None,
-                 min_worker_port=None,
-                 max_worker_port=None,
-                 worker_port_list=None,
-                 ray_client_server_port=None,
-                 object_ref_seed=None,
-                 driver_mode=None,
-                 redirect_output=None,
-                 external_addresses=None,
-                 num_redis_shards=None,
-                 redis_max_clients=None,
-                 redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
-                 plasma_directory=None,
-                 worker_path=None,
-                 setup_worker_path=None,
-                 huge_pages=False,
-                 include_dashboard=None,
-                 dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
-                 dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
-                 dashboard_agent_listen_port=0,
-                 logging_level=logging.INFO,
-                 logging_format=ray_constants.LOGGER_FORMAT,
-                 plasma_store_socket_name=None,
-                 raylet_socket_name=None,
-                 temp_dir=None,
-                 runtime_env_dir_name=None,
-                 include_log_monitor=None,
-                 autoscaling_config=None,
-                 start_initial_python_workers_for_first_job=False,
-                 ray_debugger_external=False,
-                 _system_config=None,
-                 enable_object_reconstruction=False,
-                 metrics_agent_port=None,
-                 metrics_export_port=None,
-                 tracing_startup_hook=None,
-                 no_monitor=False,
-                 env_vars=None):
+    def __init__(
+        self,
+        redis_address=None,
+        gcs_address=None,
+        num_cpus=None,
+        num_gpus=None,
+        resources=None,
+        memory=None,
+        object_store_memory=None,
+        redis_max_memory=None,
+        redis_port=None,
+        redis_shard_ports=None,
+        object_manager_port=None,
+        node_manager_port=0,
+        gcs_server_port=None,
+        node_ip_address=None,
+        raylet_ip_address=None,
+        min_worker_port=None,
+        max_worker_port=None,
+        worker_port_list=None,
+        ray_client_server_port=None,
+        object_ref_seed=None,
+        driver_mode=None,
+        redirect_output=None,
+        external_addresses=None,
+        num_redis_shards=None,
+        redis_max_clients=None,
+        redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
+        plasma_directory=None,
+        worker_path=None,
+        setup_worker_path=None,
+        huge_pages=False,
+        include_dashboard=None,
+        dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
+        dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
+        dashboard_agent_listen_port=0,
+        logging_level=logging.INFO,
+        logging_format=ray_constants.LOGGER_FORMAT,
+        plasma_store_socket_name=None,
+        raylet_socket_name=None,
+        temp_dir=None,
+        runtime_env_dir_name=None,
+        include_log_monitor=None,
+        autoscaling_config=None,
+        start_initial_python_workers_for_first_job=False,
+        ray_debugger_external=False,
+        _system_config=None,
+        enable_object_reconstruction=False,
+        metrics_agent_port=None,
+        metrics_export_port=None,
+        tracing_startup_hook=None,
+        no_monitor=False,
+        env_vars=None,
+    ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
         self.num_cpus = num_cpus
@@ -208,7 +210,8 @@ class RayParams:
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
         self.runtime_env_dir_name = (
-            runtime_env_dir_name or ray_constants.DEFAULT_RUNTIME_ENV_DIR_NAME)
+            runtime_env_dir_name or ray_constants.DEFAULT_RUNTIME_ENV_DIR_NAME
+        )
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
         self.metrics_agent_port = metrics_agent_port
@@ -217,7 +220,8 @@ class RayParams:
         self.no_monitor = no_monitor
         self.object_ref_seed = object_ref_seed
         self.start_initial_python_workers_for_first_job = (
-            start_initial_python_workers_for_first_job)
+            start_initial_python_workers_for_first_job
+        )
         self.ray_debugger_external = ray_debugger_external
         self.env_vars = env_vars
         self._system_config = _system_config or {}
@@ -242,8 +246,7 @@ class RayParams:
             if hasattr(self, arg):
                 setattr(self, arg, kwargs[arg])
             else:
-                raise ValueError(
-                    f"Invalid RayParams parameter in update: {arg}")
+                raise ValueError(f"Invalid RayParams parameter in update: {arg}")
 
         self._check_usage()
 
@@ -258,8 +261,9 @@ class RayParams:
                 if getattr(self, arg) is None:
                     setattr(self, arg, kwargs[arg])
             else:
-                raise ValueError("Invalid RayParams parameter in"
-                                 " update_if_absent: %s" % arg)
+                raise ValueError(
+                    "Invalid RayParams parameter in" " update_if_absent: %s" % arg
+                )
 
         self._check_usage()
 
@@ -286,8 +290,7 @@ class RayParams:
             "client_server": wrap_port(self.ray_client_server_port),
             "dashboard": wrap_port(self.dashboard_port),
             "dashboard_agent_grpc": wrap_port(self.metrics_agent_port),
-            "dashboard_agent_http": wrap_port(
-                self.dashboard_agent_listen_port),
+            "dashboard_agent_http": wrap_port(self.dashboard_agent_listen_port),
             "metrics_export": wrap_port(self.metrics_export_port),
         }
         redis_shard_ports = self.redis_shard_ports
@@ -295,10 +298,10 @@ class RayParams:
             redis_shard_ports = []
         pre_selected_ports["redis_shards"] = redis_shard_ports
         if self.worker_port_list is None:
-            if (self.min_worker_port is not None
-                    and self.max_worker_port is not None):
+            if self.min_worker_port is not None and self.max_worker_port is not None:
                 pre_selected_ports["worker_ports"] = list(
-                    range(self.min_worker_port, self.max_worker_port + 1))
+                    range(self.min_worker_port, self.max_worker_port + 1)
+                )
             else:
                 # The dict is not updated when it requires random ports.
                 pre_selected_ports["worker_ports"] = []
@@ -320,7 +323,8 @@ class RayParams:
                         f"{self._format_ports(pre_selected_ports)}\n"
                         "If you allocate ports, "
                         "please make sure the same port is not used by "
-                        "multiple components.")
+                        "multiple components."
+                    )
                 self.reserved_ports.add(port)
 
     def _check_usage(self):
@@ -330,13 +334,15 @@ class RayParams:
                     port = int(port_str)
                 except ValueError as e:
                     raise ValueError(
-                        "worker_port_list must be a comma-separated " +
-                        "list of integers: {}".format(e)) from None
+                        "worker_port_list must be a comma-separated "
+                        + "list of integers: {}".format(e)
+                    ) from None
 
                 if port < 1024 or port > 65535:
                     raise ValueError(
                         "Ports in worker_port_list must be "
-                        "between 1024 and 65535. Got: {}".format(port))
+                        "between 1024 and 65535. Got: {}".format(port)
+                    )
 
         # Used primarily for testing.
         if os.environ.get("RAY_USE_RANDOM_PORTS", False):
@@ -345,48 +351,60 @@ class RayParams:
                 self.max_worker_port = 0
 
         if self.min_worker_port is not None:
-            if self.min_worker_port != 0 and (self.min_worker_port < 1024
-                                              or self.min_worker_port > 65535):
-                raise ValueError("min_worker_port must be 0 or an integer "
-                                 "between 1024 and 65535.")
+            if self.min_worker_port != 0 and (
+                self.min_worker_port < 1024 or self.min_worker_port > 65535
+            ):
+                raise ValueError(
+                    "min_worker_port must be 0 or an integer " "between 1024 and 65535."
+                )
 
         if self.max_worker_port is not None:
             if self.min_worker_port is None:
-                raise ValueError("If max_worker_port is set, min_worker_port "
-                                 "must also be set.")
+                raise ValueError(
+                    "If max_worker_port is set, min_worker_port " "must also be set."
+                )
             elif self.max_worker_port != 0:
                 if self.max_worker_port < 1024 or self.max_worker_port > 65535:
                     raise ValueError(
                         "max_worker_port must be 0 or an integer between "
-                        "1024 and 65535.")
+                        "1024 and 65535."
+                    )
                 elif self.max_worker_port <= self.min_worker_port:
-                    raise ValueError("max_worker_port must be higher than "
-                                     "min_worker_port.")
+                    raise ValueError(
+                        "max_worker_port must be higher than " "min_worker_port."
+                    )
 
         if self.ray_client_server_port is not None:
-            if (self.ray_client_server_port < 1024
-                    or self.ray_client_server_port > 65535):
-                raise ValueError("ray_client_server_port must be an integer "
-                                 "between 1024 and 65535.")
+            if (
+                self.ray_client_server_port < 1024
+                or self.ray_client_server_port > 65535
+            ):
+                raise ValueError(
+                    "ray_client_server_port must be an integer "
+                    "between 1024 and 65535."
+                )
 
         if self.resources is not None:
             assert "CPU" not in self.resources, (
                 "'CPU' should not be included in the resource dictionary. Use "
-                "num_cpus instead.")
+                "num_cpus instead."
+            )
             assert "GPU" not in self.resources, (
                 "'GPU' should not be included in the resource dictionary. Use "
-                "num_gpus instead.")
+                "num_gpus instead."
+            )
 
         if self.redirect_output is not None:
-            raise DeprecationWarning(
-                "The redirect_output argument is deprecated.")
+            raise DeprecationWarning("The redirect_output argument is deprecated.")
 
         # Parse the numpy version.
         numpy_version = np.__version__.split(".")
         numpy_major, numpy_minor = int(numpy_version[0]), int(numpy_version[1])
         if numpy_major <= 1 and numpy_minor < 16:
-            logger.warning("Using ray with numpy < 1.16.0 will result in slow "
-                           "serialization. Upgrade numpy if using with ray.")
+            logger.warning(
+                "Using ray with numpy < 1.16.0 will result in slow "
+                "serialization. Upgrade numpy if using with ray."
+            )
 
     def _format_ports(self, pre_selected_ports):
         """Format the pre selected ports information to be more
@@ -408,5 +426,5 @@ class RayParams:
                     port_range_str = str(port_list)
                 else:
                     port_range_str = f"from {min_port} to {max_port}"
-                ports[comp] = (f"{len(port_list)} ports {port_range_str}")
+                ports[comp] = f"{len(port_list)} ports {port_range_str}"
         return ports

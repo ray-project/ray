@@ -60,14 +60,13 @@ void OutOfOrderActorSchedulingQueue::Add(
     std::function<void(rpc::SendReplyCallback)> accept_request,
     std::function<void(rpc::SendReplyCallback)> reject_request,
     rpc::SendReplyCallback send_reply_callback, const std::string &concurrency_group_name,
-    const ray::FunctionDescriptor &function_descriptor,
-    std::function<void(rpc::SendReplyCallback)> steal_request, TaskID task_id,
+    const ray::FunctionDescriptor &function_descriptor, TaskID task_id,
     const std::vector<rpc::ObjectReference> &dependencies) {
   RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
-  auto request = InboundRequest(std::move(accept_request), std::move(reject_request),
-                                std::move(steal_request), std::move(send_reply_callback),
-                                task_id, dependencies.size() > 0, concurrency_group_name,
-                                function_descriptor);
+  auto request =
+      InboundRequest(std::move(accept_request), std::move(reject_request),
+                     std::move(send_reply_callback), task_id, dependencies.size() > 0,
+                     concurrency_group_name, function_descriptor);
 
   if (dependencies.size() > 0) {
     waiter_.Wait(dependencies, [this, request = std::move(request)]() mutable {
@@ -81,11 +80,6 @@ void OutOfOrderActorSchedulingQueue::Add(
     pending_actor_tasks_.push_back(std::move(request));
     ScheduleRequests();
   }
-}
-
-size_t OutOfOrderActorSchedulingQueue::Steal(rpc::StealTasksReply *reply) {
-  RAY_CHECK(false) << "Cannot steal actor tasks";
-  return 0;
 }
 
 bool OutOfOrderActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {

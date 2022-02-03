@@ -1,8 +1,11 @@
 import abc
 from typing import List, Dict
 
-from ray.train.callbacks.results_preprocessors import ResultsPreprocessor, \
-    ExcludedKeysResultsPreprocessor, SequentialResultsPreprocessor
+from ray.train.callbacks.results_preprocessors import (
+    ResultsPreprocessor,
+    ExcludedKeysResultsPreprocessor,
+    SequentialResultsPreprocessor,
+)
 from ray.train.constants import ALL_RESERVED_KEYS
 
 
@@ -61,11 +64,11 @@ class TrainingCallback(abc.ABC):
 
         """
         results_to_exclude = ALL_RESERVED_KEYS.difference(self.RESERVED_KEYS)
-        system_preprocessor = ExcludedKeysResultsPreprocessor(
-            results_to_exclude)
+        system_preprocessor = ExcludedKeysResultsPreprocessor(results_to_exclude)
         if self.results_preprocessor:
             self.results_preprocessor = SequentialResultsPreprocessor(
-                [system_preprocessor, self.results_preprocessor])
+                [system_preprocessor, self.results_preprocessor]
+            )
         else:
             self.results_preprocessor = system_preprocessor
         results = self.results_preprocessor.preprocess(results)

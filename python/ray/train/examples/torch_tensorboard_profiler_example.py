@@ -8,16 +8,19 @@ import ray
 import ray.train as train
 from ray.train import Trainer
 from ray.train.callbacks import TBXLoggerCallback
-from ray.train.callbacks.profile import TorchTensorboardProfilerCallback, \
-    TorchWorkerProfiler
+from ray.train.callbacks.profile import (
+    TorchTensorboardProfilerCallback,
+    TorchWorkerProfiler,
+)
 
 
 def train_func():
     twp = TorchWorkerProfiler()
     with profile(
-            activities=[],
-            schedule=schedule(wait=0, warmup=0, active=1),
-            on_trace_ready=twp.trace_handler) as p:
+        activities=[],
+        schedule=schedule(wait=0, warmup=0, active=1),
+        on_trace_ready=twp.trace_handler,
+    ) as p:
 
         # Setup model.
         model = torch.nn.Linear(1, 1)
@@ -57,21 +60,18 @@ def train_func():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--address",
-        required=False,
-        type=str,
-        help="the address to use for Ray")
+        "--address", required=False, type=str, help="the address to use for Ray"
+    )
     parser.add_argument(
         "--num-workers",
         "-n",
         type=int,
         default=2,
-        help="Sets number of workers for training.")
+        help="Sets number of workers for training.",
+    )
     parser.add_argument(
-        "--use-gpu",
-        action="store_true",
-        default=False,
-        help="Enables GPU training")
+        "--use-gpu", action="store_true", default=False, help="Enables GPU training"
+    )
 
     args = parser.parse_args()
 
@@ -79,7 +79,8 @@ if __name__ == "__main__":
 
     callbacks = [TorchTensorboardProfilerCallback(), TBXLoggerCallback()]
     trainer = Trainer(
-        backend="torch", num_workers=args.num_workers, use_gpu=args.use_gpu)
+        backend="torch", num_workers=args.num_workers, use_gpu=args.use_gpu
+    )
     trainer.start()
     trainer.run(train_func, callbacks=callbacks)
     trainer.shutdown()

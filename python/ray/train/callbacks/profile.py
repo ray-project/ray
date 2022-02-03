@@ -17,17 +17,18 @@ WORKER_TRACE_DIR_NAME = "pytorch_profiler_worker_traces"
 DRIVER_TRACE_DIR_NAME = "pytorch_profiler"
 
 
-class TorchWorkerProfiler():
+class TorchWorkerProfiler:
     """Utility class for running PyTorch Profiler on a Train worker.
 
-     Args:
-         trace_dir (Optional[str]): The directory to store traces on the
-            worker node. If ``None``, this will use a default temporary dir.
+    Args:
+        trace_dir (Optional[str]): The directory to store traces on the
+           worker node. If ``None``, this will use a default temporary dir.
     """
 
     def __init__(self, trace_dir: Optional[str] = None):
-        trace_dir = trace_dir or Path(
-            tempfile.gettempdir()).joinpath(WORKER_TRACE_DIR_NAME)
+        trace_dir = trace_dir or Path(tempfile.gettempdir()).joinpath(
+            WORKER_TRACE_DIR_NAME
+        )
         self.trace_dir = Path(trace_dir)
         self.trace_dir.mkdir(parents=True, exist_ok=True)
         # Accumulated traces.
@@ -44,8 +45,7 @@ class TorchWorkerProfiler():
         Args:
             p (profile): A PyTorch Profiler profile.
         """
-        trace_filename = \
-            f"worker_{train.world_rank()}_epoch_{p.step_num}.pt.trace.json"
+        trace_filename = f"worker_{train.world_rank()}_epoch_{p.step_num}.pt.trace.json"
         trace_path = self.trace_dir.joinpath(trace_filename)
 
         logger.debug(f"Writing worker trace to {trace_path}.")
@@ -64,8 +64,10 @@ class TorchWorkerProfiler():
             trace_path = self.trace_dir.joinpath(filename)
             return trace_path.read_text()
 
-        traces = [(trace_filename, get_trace(trace_filename))
-                  for trace_filename in self.profiler_trace_filenames]
+        traces = [
+            (trace_filename, get_trace(trace_filename))
+            for trace_filename in self.profiler_trace_filenames
+        ]
 
         self.profiler_trace_files = []
         return {PYTORCH_PROFILER_KEY: traces}
@@ -89,14 +91,14 @@ class TorchTensorboardProfilerCallback(TrainingCallback):
     RESERVED_KEYS = [PYTORCH_PROFILER_KEY]
 
     def __init__(
-            self,
-            logdir: Optional[str] = None,
-            workers_to_log: Optional[Union[int, List[int]]] = None) -> None:
+        self,
+        logdir: Optional[str] = None,
+        workers_to_log: Optional[Union[int, List[int]]] = None,
+    ) -> None:
         super().__init__()
         self._logdir = logdir
         self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
-        self.results_preprocessor = IndexedResultsPreprocessor(
-            indices=workers_to_log)
+        self.results_preprocessor = IndexedResultsPreprocessor(indices=workers_to_log)
 
     def start_training(self, logdir: str, **info):
         default_logdir = Path(logdir).joinpath(DRIVER_TRACE_DIR_NAME)

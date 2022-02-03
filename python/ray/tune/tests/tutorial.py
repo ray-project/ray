@@ -115,8 +115,8 @@ def train_mnist(config):
 
 # __eval_func_begin__
 search_space = {
-    "lr": tune.sample_from(lambda spec: 10**(-10 * np.random.rand())),
-    "momentum": tune.uniform(0.1, 0.9)
+    "lr": tune.sample_from(lambda spec: 10 ** (-10 * np.random.rand())),
+    "momentum": tune.uniform(0.1, 0.9),
 }
 
 # Uncomment this to enable distributed execution
@@ -128,17 +128,18 @@ datasets.MNIST("~/data", train=True, download=True)
 analysis = tune.run(train_mnist, config=search_space)
 # __eval_func_end__
 
-#__plot_begin__
+# __plot_begin__
 dfs = analysis.trial_dataframes
 [d.mean_accuracy.plot() for d in dfs.values()]
-#__plot_end__
+# __plot_end__
 
 # __run_scheduler_begin__
 analysis = tune.run(
     train_mnist,
     num_samples=20,
     scheduler=ASHAScheduler(metric="mean_accuracy", mode="max"),
-    config=search_space)
+    config=search_space,
+)
 
 # Obtain a trial dataframe from all run trials of this `tune.run` call.
 dfs = analysis.trial_dataframes
@@ -187,10 +188,9 @@ from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
 
 # __trainable_run_begin__
 search_space = {
-    "lr": tune.sample_from(lambda spec: 10**(-10 * np.random.rand())),
-    "momentum": tune.uniform(0.1, 0.9)
+    "lr": tune.sample_from(lambda spec: 10 ** (-10 * np.random.rand())),
+    "momentum": tune.uniform(0.1, 0.9),
 }
 
-analysis = tune.run(
-    TrainMNIST, config=search_space, stop={"training_iteration": 10})
+analysis = tune.run(TrainMNIST, config=search_space, stop={"training_iteration": 10})
 # __trainable_run_end__

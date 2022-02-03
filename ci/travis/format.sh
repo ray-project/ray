@@ -5,7 +5,7 @@
 # Cause the script to exit if a single command fails
 set -euo pipefail
 
-BLACK_IS_ENABLED=false
+BLACK_IS_ENABLED=true
 
 FLAKE8_VERSION_REQUIRED="3.9.1"
 BLACK_VERSION_REQUIRED="21.12b0"
@@ -127,7 +127,8 @@ MYPY_FLAGS=(
 MYPY_FILES=(
     # Relative to python/ray
     'autoscaler/node_provider.py'
-    'autoscaler/sdk.py'
+    'autoscaler/sdk/__init__.py'
+    'autoscaler/sdk/sdk.py'
     'autoscaler/_private/commands.py'
     # TODO(dmitri) Fails with meaningless error, maybe due to a bug in the mypy version
     # in the CI. Type check once we get serious about type checking:

@@ -8,13 +8,21 @@ from typing import List, Optional, Dict, Set, Tuple, Union
 import numpy as np
 
 from ray.train.callbacks import TrainingCallback
-from ray.train.callbacks.results_preprocessors import IndexedResultsPreprocessor, \
-    ExcludedKeysResultsPreprocessor
-from ray.train.callbacks.results_preprocessors.preprocessor import \
-    SequentialResultsPreprocessor
-from ray.train.constants import (RESULT_FILE_JSON, TRAINING_ITERATION,
-                                 TIME_TOTAL_S, TIMESTAMP, PID,
-                                 TRAIN_CHECKPOINT_SUBDIR)
+from ray.train.callbacks.results_preprocessors import (
+    IndexedResultsPreprocessor,
+    ExcludedKeysResultsPreprocessor,
+)
+from ray.train.callbacks.results_preprocessors.preprocessor import (
+    SequentialResultsPreprocessor,
+)
+from ray.train.constants import (
+    RESULT_FILE_JSON,
+    TRAINING_ITERATION,
+    TIME_TOTAL_S,
+    TIMESTAMP,
+    PID,
+    TRAIN_CHECKPOINT_SUBDIR,
+)
 from ray.util.debug import log_once
 from ray.util.ml_utils.dict import flatten_dict
 from ray.util.ml_utils.json import SafeFallbackEncoder
@@ -23,7 +31,7 @@ from ray.util.ml_utils.mlflow import MLflowLoggerUtil
 logger = logging.getLogger(__name__)
 
 
-class TrainCallbackLogdirManager():
+class TrainCallbackLogdirManager:
     """Sets up a logging directory for a callback.
 
     The path of the ``logdir`` can be set during initialization. Otherwise, the
@@ -44,9 +52,9 @@ class TrainCallbackLogdirManager():
             not be available until ``setup_logdir`` is called.
     """
 
-    def __init__(self,
-                 logdir: Optional[Union[str, Path]] = None,
-                 create_logdir: bool = True):
+    def __init__(
+        self, logdir: Optional[Union[str, Path]] = None, create_logdir: bool = True
+    ):
         self._default_logdir = None
         self._logdir = Path(logdir) if logdir else None
         self._create_logdir = create_logdir
@@ -70,8 +78,7 @@ class TrainCallbackLogdirManager():
             self.logdir_path.mkdir(parents=True, exist_ok=True)
 
         if not self.logdir_path.is_dir():
-            raise ValueError(
-                f"logdir '{self.logdir_path}' must be a directory.")
+            raise ValueError(f"logdir '{self.logdir_path}' must be a directory.")
 
         return self.logdir_path
 
@@ -98,14 +105,15 @@ class JsonLoggerCallback(TrainingCallback):
 
     _default_filename: Union[str, Path] = RESULT_FILE_JSON
 
-    def __init__(self,
-                 logdir: Optional[str] = None,
-                 filename: Optional[str] = None,
-                 workers_to_log: Optional[Union[int, List[int]]] = 0):
+    def __init__(
+        self,
+        logdir: Optional[str] = None,
+        filename: Optional[str] = None,
+        workers_to_log: Optional[Union[int, List[int]]] = 0,
+    ):
         self._filename = filename
         self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
-        self.results_preprocessor = IndexedResultsPreprocessor(
-            indices=workers_to_log)
+        self.results_preprocessor = IndexedResultsPreprocessor(indices=workers_to_log)
 
     def start_training(self, logdir: str, **info):
         self._logdir_manager.setup_logdir(default_logdir=logdir)
@@ -170,18 +178,19 @@ class MLflowLoggerCallback(TrainingCallback):
             worker with index 0.
     """
 
-    def __init__(self,
-                 tracking_uri: Optional[str] = None,
-                 registry_uri: Optional[str] = None,
-                 experiment_id: Optional[str] = None,
-                 experiment_name: Optional[str] = None,
-                 tags: Optional[Dict] = None,
-                 save_artifact: bool = False,
-                 logdir: Optional[str] = None,
-                 worker_to_log: int = 0):
+    def __init__(
+        self,
+        tracking_uri: Optional[str] = None,
+        registry_uri: Optional[str] = None,
+        experiment_id: Optional[str] = None,
+        experiment_name: Optional[str] = None,
+        tags: Optional[Dict] = None,
+        save_artifact: bool = False,
+        logdir: Optional[str] = None,
+        worker_to_log: int = 0,
+    ):
         self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
-        self.results_preprocessor = IndexedResultsPreprocessor(
-            indices=worker_to_log)
+        self.results_preprocessor = IndexedResultsPreprocessor(indices=worker_to_log)
 
         self.tracking_uri = tracking_uri
         self.registry_uri = registry_uri
@@ -195,17 +204,16 @@ class MLflowLoggerCallback(TrainingCallback):
     def start_training(self, logdir: str, config: Dict, **info):
         self._logdir_manager.setup_logdir(default_logdir=logdir)
 
-        tracking_uri = self.tracking_uri or os.path.join(
-            str(self.logdir), "mlruns")
-        registry_uri = self.registry_uri or os.path.join(
-            str(self.logdir), "mlruns")
+        tracking_uri = self.tracking_uri or os.path.join(str(self.logdir), "mlruns")
+        registry_uri = self.registry_uri or os.path.join(str(self.logdir), "mlruns")
 
         self.mlflow_util.setup_mlflow(
             tracking_uri=tracking_uri,
             registry_uri=registry_uri,
             experiment_id=self.experiment_id,
             experiment_name=self.experiment_name,
-            create_experiment_if_not_exists=True)
+            create_experiment_if_not_exists=True,
+        )
 
         self.mlflow_util.start_run(tags=self.tags, set_active=True)
         self.mlflow_util.log_params(params_to_log=config)
@@ -214,7 +222,8 @@ class MLflowLoggerCallback(TrainingCallback):
         result = results[0]
 
         self.mlflow_util.log_metrics(
-            metrics_to_log=result, step=result[TRAINING_ITERATION])
+            metrics_to_log=result, step=result[TRAINING_ITERATION]
+        )
 
     def finish_training(self, error: bool = False, **info):
         checkpoint_dir = self.logdir.joinpath(TRAIN_CHECKPOINT_SUBDIR)
@@ -237,20 +246,24 @@ class TBXLoggerCallback(TrainingCallback):
             worker with index 0.
     """
 
-    VALID_SUMMARY_TYPES: Tuple[type] = (int, float, np.float32, np.float64,
-                                        np.int32, np.int64)
+    VALID_SUMMARY_TYPES: Tuple[type] = (
+        int,
+        float,
+        np.float32,
+        np.float64,
+        np.int32,
+        np.int64,
+    )
     IGNORE_KEYS: Set[str] = {PID, TIMESTAMP, TIME_TOTAL_S}
 
-    def __init__(self, logdir: Optional[str] = None,
-                 worker_to_log: int = 0) -> None:
+    def __init__(self, logdir: Optional[str] = None, worker_to_log: int = 0) -> None:
         self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
 
         results_preprocessors = [
             IndexedResultsPreprocessor(indices=worker_to_log),
-            ExcludedKeysResultsPreprocessor(excluded_keys=self.IGNORE_KEYS)
+            ExcludedKeysResultsPreprocessor(excluded_keys=self.IGNORE_KEYS),
         ]
-        self.results_preprocessor = SequentialResultsPreprocessor(
-            results_preprocessors)
+        self.results_preprocessor = SequentialResultsPreprocessor(results_preprocessors)
 
     def start_training(self, logdir: str, **info):
         self._logdir_manager.setup_logdir(default_logdir=logdir)
@@ -259,8 +272,7 @@ class TBXLoggerCallback(TrainingCallback):
             from tensorboardX import SummaryWriter
         except ImportError:
             if log_once("tbx-install"):
-                warnings.warn(
-                    "pip install 'tensorboardX' to see TensorBoard files.")
+                warnings.warn("pip install 'tensorboardX' to see TensorBoard files.")
             raise
 
         self._file_writer = SummaryWriter(str(self.logdir), flush_secs=30)
@@ -275,30 +287,29 @@ class TBXLoggerCallback(TrainingCallback):
         # same logic as in ray.tune.logger.TBXLogger
         for attr, value in flat_result.items():
             full_attr = "/".join(path + [attr])
-            if (isinstance(value, self.VALID_SUMMARY_TYPES)
-                    and not np.isnan(value)):
-                self._file_writer.add_scalar(
-                    full_attr, value, global_step=step)
-            elif ((isinstance(value, list) and len(value) > 0)
-                  or (isinstance(value, np.ndarray) and value.size > 0)):
+            if isinstance(value, self.VALID_SUMMARY_TYPES) and not np.isnan(value):
+                self._file_writer.add_scalar(full_attr, value, global_step=step)
+            elif (isinstance(value, list) and len(value) > 0) or (
+                isinstance(value, np.ndarray) and value.size > 0
+            ):
 
                 # Must be video
                 if isinstance(value, np.ndarray) and value.ndim == 5:
                     self._file_writer.add_video(
-                        full_attr, value, global_step=step, fps=20)
+                        full_attr, value, global_step=step, fps=20
+                    )
                     continue
 
                 try:
-                    self._file_writer.add_histogram(
-                        full_attr, value, global_step=step)
+                    self._file_writer.add_histogram(full_attr, value, global_step=step)
                 # In case TensorboardX still doesn't think it's a valid value
                 # (e.g. `[[]]`), warn and move on.
                 except (ValueError, TypeError):
                     if log_once("invalid_tbx_value"):
                         warnings.warn(
                             "You are trying to log an invalid value ({}={}) "
-                            "via {}!".format(full_attr, value,
-                                             type(self).__name__))
+                            "via {}!".format(full_attr, value, type(self).__name__)
+                        )
         self._file_writer.flush()
 
     def finish_training(self, error: bool = False, **info):
