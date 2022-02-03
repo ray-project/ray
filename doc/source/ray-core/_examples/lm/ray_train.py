@@ -26,8 +26,7 @@ class RayDistributedActor:
         """
 
         # Set the init_method and rank of the process for distributed training.
-        print("Ray worker at {url} rank {rank}".format(
-            url=url, rank=world_rank))
+        print("Ray worker at {url} rank {rank}".format(url=url, rank=world_rank))
         self.url = url
         self.world_rank = world_rank
         args.distributed_rank = world_rank
@@ -55,8 +54,10 @@ class RayDistributedActor:
                 n_cpus = int(ray.cluster_resources()["CPU"])
                 if n_cpus > original_n_cpus:
                     raise Exception(
-                        "New CPUs find (original %d CPUs, now %d CPUs)" %
-                        (original_n_cpus, n_cpus))
+                        "New CPUs find (original %d CPUs, now %d CPUs)"
+                        % (original_n_cpus, n_cpus)
+                    )
+
         else:
             original_n_gpus = args.distributed_world_size
 
@@ -65,8 +66,9 @@ class RayDistributedActor:
                 n_gpus = int(ray.cluster_resources().get("GPU", 0))
                 if n_gpus > original_n_gpus:
                     raise Exception(
-                        "New GPUs find (original %d GPUs, now %d GPUs)" %
-                        (original_n_gpus, n_gpus))
+                        "New GPUs find (original %d GPUs, now %d GPUs)"
+                        % (original_n_gpus, n_gpus)
+                    )
 
         fairseq.checkpoint_utils.save_checkpoint = _new_save_checkpoint
 
@@ -103,8 +105,7 @@ def run_fault_tolerant_loop():
         set_batch_size(args)
 
         # Set up Ray distributed actors.
-        Actor = ray.remote(
-            num_cpus=1, num_gpus=int(not args.cpu))(RayDistributedActor)
+        Actor = ray.remote(num_cpus=1, num_gpus=int(not args.cpu))(RayDistributedActor)
         workers = [Actor.remote() for i in range(args.distributed_world_size)]
 
         # Get the IP address and a free port of actor 0, which is used for
@@ -116,8 +117,7 @@ def run_fault_tolerant_loop():
         # Start the remote processes, and check whether their are any process
         # fails. If so, restart all the processes.
         unfinished = [
-            worker.run.remote(address, i, args)
-            for i, worker in enumerate(workers)
+            worker.run.remote(address, i, args) for i, worker in enumerate(workers)
         ]
         try:
             while len(unfinished) > 0:
@@ -135,10 +135,8 @@ def add_ray_args(parser):
     """Add ray and fault-tolerance related parser arguments to the parser."""
     group = parser.add_argument_group("Ray related arguments")
     group.add_argument(
-        "--ray-address",
-        default="auto",
-        type=str,
-        help="address for ray initialization")
+        "--ray-address", default="auto", type=str, help="address for ray initialization"
+    )
     group.add_argument(
         "--fix-batch-size",
         default=None,
@@ -147,7 +145,8 @@ def add_ray_args(parser):
         help="fix the actual batch size (max_sentences * update_freq "
         "* n_GPUs) to be the fixed input values by adjusting update_freq "
         "accroding to actual n_GPUs; the batch size is fixed to B_i for "
-        "epoch i; all epochs >N are fixed to B_N")
+        "epoch i; all epochs >N are fixed to B_N",
+    )
     return group
 
 
@@ -168,13 +167,13 @@ def set_batch_size(args):
     """Fixes the total batch_size to be agnostic to the GPU count."""
     if args.fix_batch_size is not None:
         args.update_freq = [
-            math.ceil(batch_size /
-                      (args.max_sentences * args.distributed_world_size))
+            math.ceil(batch_size / (args.max_sentences * args.distributed_world_size))
             for batch_size in args.fix_batch_size
         ]
-        print("Training on %d GPUs, max_sentences=%d, update_freq=%s" %
-              (args.distributed_world_size, args.max_sentences,
-               repr(args.update_freq)))
+        print(
+            "Training on %d GPUs, max_sentences=%d, update_freq=%s"
+            % (args.distributed_world_size, args.max_sentences, repr(args.update_freq))
+        )
 
 
 if __name__ == "__main__":

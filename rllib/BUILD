@@ -100,6 +100,17 @@ py_test(
     args = ["--yaml-dir=tuned_examples/a3c"]
 )
 
+# AlphaStar
+py_test(
+    name = "learning_tests_cartpole_alpha_star",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/alpha_star/multi-agent-cartpole-alpha-star.yaml"],
+    args = ["--yaml-dir=tuned_examples/alpha_star", "--num-cpus=20"]
+)
+
 # APEX-DQN
 py_test(
     name = "learning_tests_cartpole_apex",
@@ -571,6 +582,14 @@ py_test(
     srcs = ["agents/a3c/tests/test_a3c.py"]
 )
 
+# AlphaStar
+py_test(
+    name = "test_alpha_star",
+    tags = ["team:ml", "trainers_dir"],
+    size = "large",
+    srcs = ["agents/alpha_star/tests/test_alpha_star.py"]
+)
+
 # APEXTrainer (DQN)
 py_test(
     name = "test_apex_dqn",
@@ -593,6 +612,14 @@ py_test(
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
     srcs = ["agents/ars/tests/test_ars.py"]
+)
+
+# Bandits
+py_test(
+    name = "test_bandits",
+    tags = ["team:ml", "trainers_dir"],
+    size = "small",
+    srcs = ["agents/bandit/tests/test_bandits.py"],
 )
 
 # CQLTrainer
@@ -2741,46 +2768,37 @@ py_test(
     args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=PG"]
 )
 
+
 py_test(
-    name = "contrib/bandits/examples/lin_ts",
-    main = "contrib/bandits/examples/simple_context_bandit.py",
-    tags = ["team:ml", "examples", "examples_T"],
+    name = "examples/bandit/lin_ts_train_wheel_env",
+    main = "examples/bandit/lin_ts_train_wheel_env.py",
+    tags = ["team:ml", "examples"],
     size = "small",
-    srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
-    args = ["--as-test", "--stop-reward=10", "--run=contrib/LinTS"],
+    srcs = ["examples/bandit/lin_ts_train_wheel_env.py"],
 )
 
 py_test(
-    name = "contrib/bandits/examples/lin_ucb",
-    main = "contrib/bandits/examples/simple_context_bandit.py",
-    tags = ["team:ml", "examples", "examples_U"],
+    name = "examples/bandit/tune_lin_ts_train_wheel_env",
+    main = "examples/bandit/tune_lin_ts_train_wheel_env.py",
+    tags = ["team:ml", "examples"],
     size = "small",
-    srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
-    args = ["--as-test", "--stop-reward=10", "--run=contrib/LinUCB"],
+    srcs = ["examples/bandit/tune_lin_ts_train_wheel_env.py"],
 )
 
 py_test(
-    name = "contrib/bandits/examples/lin_ts_train_wheel_env",
-    main = "contrib/bandits/examples/LinTS_train_wheel_env.py",
-    tags = ["team:ml", "examples", "examples_U"],
+    name = "examples/bandit/tune_lin_ucb_train_recommendation",
+    main = "examples/bandit/tune_lin_ucb_train_recommendation.py",
+    tags = ["team:ml", "examples", ],
     size = "small",
-    srcs = ["contrib/bandits/examples/LinTS_train_wheel_env.py"],
+    srcs = ["examples/bandit/tune_lin_ucb_train_recommendation.py"],
 )
 
 py_test(
-    name = "contrib/bandits/examples/tune_lin_ts_train_wheel_env",
-    main = "contrib/bandits/examples/tune_LinTS_train_wheel_env.py",
-    tags = ["team:ml", "examples", "examples_U"],
+    name = "examples/bandit/tune_lin_ucb_train_recsim_env",
+    main = "examples/bandit/tune_lin_ucb_train_recsim_env.py",
+    tags = ["team:ml", "examples", ],
     size = "small",
-    srcs = ["contrib/bandits/examples/tune_LinTS_train_wheel_env.py"],
-)
-
-py_test(
-    name = "contrib/bandits/examples/tune_lin_ucb_train_recommendation",
-    main = "contrib/bandits/examples/tune_LinUCB_train_recommendation.py",
-    tags = ["team:ml", "examples", "examples_U"],
-    size = "small",
-    srcs = ["contrib/bandits/examples/tune_LinUCB_train_recommendation.py"],
+    srcs = ["examples/bandit/tune_lin_ucb_train_recsim_env.py"],
 )
 
 # --------------------------------------------------------------------
