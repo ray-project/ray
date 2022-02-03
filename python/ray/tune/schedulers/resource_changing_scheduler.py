@@ -338,6 +338,13 @@ class DistributeResourcesToTopJob(DistributeResources):
         return -1.0
 
     def _get_upper_limits(self) -> Tuple[int, int]:
+        if self.metric is None:
+            raise ValueError(
+                "The metric parameter cannot be None. The parameter can be set in "
+                "either `DistributeResourcesToTopJob`, the base scheduler or in "
+                "`tune.run` (highest to lowest priority)."
+            )
+
         sorted_trials = sorted(
             self.trial_runner.get_live_trials(),
             key=lambda t: -self._metric_op * t.last_result.get(self.metric, np.inf),
