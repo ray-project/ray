@@ -54,7 +54,7 @@ end
 
 using Base.Libc.Libdl
 
-const c_worker_lib = dlopen(
+c_worker_lib = dlopen(
     "/home/jonch/Desktop/Programming/systems/ray/python/ray/rust/lib/libcore_worker_library_c.so",
 )
 
@@ -80,6 +80,7 @@ end
 
 function shutdown()
     ccall(dlsym(c_worker_lib, :c_worker_Shutdown), Cvoid, ())
+    run(`ray stop --force`)
 end
 
 function register_callback(f)

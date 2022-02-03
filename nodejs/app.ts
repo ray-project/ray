@@ -14,3 +14,7 @@ cw.c_worker_Shutdown();
 
 // TODO: create node.js C callback with stable address
 // ffi.Callback
+
+// TODO: figure out how to capture child stdout from
+// RAY_CHECK(!ray::Process::Spawn(cmdargs, true).second);
+// e.g. for ray start and ray stop...
