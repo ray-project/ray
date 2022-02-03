@@ -560,6 +560,8 @@ class ResourceChangingScheduler(TrialScheduler):
             Trial, Union[None, dict, PlacementGroupFactory]
         ] = {}
         self._reallocated_trial_ids: Set[str] = set()
+        self._metric = None
+        self._mode = None
 
     @property
     def metric(self):
@@ -572,6 +574,8 @@ class ResourceChangingScheduler(TrialScheduler):
     def set_search_properties(
         self, metric: Optional[str], mode: Optional[str], **spec
     ) -> bool:
+        self._metric = metric
+        self._mode = mode
         return self._base_scheduler.set_search_properties(metric, mode, **spec)
 
     def on_trial_add(
@@ -723,11 +727,11 @@ class ResourceChangingScheduler(TrialScheduler):
 
         if not getattr(self._resources_allocation_function, "metric", None):
             self._resources_allocation_function.metric = getattr(
-                self._base_scheduler, "_metric", None
+                self._base_scheduler, "_metric", self._metric
             )
         if not getattr(self._resources_allocation_function, "mode", None):
             self._resources_allocation_function.mode = getattr(
-                self._base_scheduler, "_mode", None
+                self._base_scheduler, "_mode", self._mode
             )
 
         new_resources = self._resources_allocation_function(
