@@ -120,7 +120,7 @@ DEFAULT_CONFIG = with_common_config({
     # you're using the Async or Ape-X optimizers.
     "num_workers": 1,
     # Prevent iterations from going lower than this time span
-    "min_iter_time_s": 0,
+    "min_time_s_per_reporting": 0,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -134,8 +134,7 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
         i = p.config["agent_id"]
         keys = multi_agent_batch.policy_batches[pid].keys()
         keys = ["_".join([k, str(i)]) for k in keys]
-        samples.update(
-            dict(zip(keys, multi_agent_batch.policy_batches[pid].values())))
+        samples.update(dict(zip(keys, multi_agent_batch.policy_batches[pid].values())))
 
     # Make ops and feed_dict to get "new_obs" from target action sampler.
     new_obs_ph_n = [p.new_obs_ph for p in policies.values()]
@@ -171,14 +170,13 @@ class MADDPGTrainer(DQNTrainer):
         super().validate_config(config)
 
         def f(batch, workers, config):
-            policies = dict(workers.local_worker()
-                            .foreach_trainable_policy(lambda p, i: (i, p)))
-            return before_learn_on_batch(batch, policies,
-                                         config["train_batch_size"])
+            policies = dict(
+                workers.local_worker().foreach_policy_to_train(lambda p, i: (i, p))
+            )
+            return before_learn_on_batch(batch, policies, config["train_batch_size"])
 
         config["before_learn_on_batch"] = f
 
     @override(DQNTrainer)
-    def get_default_policy_class(self,
-                                 config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return MADDPGTFPolicy

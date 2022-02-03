@@ -19,7 +19,7 @@ np.random.seed(1234)
 
 # We will run inference with this test batch
 test_data = {
-    "obs": np.random.uniform(0, 1., size=(10, 4)).astype(np.float32),
+    "obs": np.random.uniform(0, 1.0, size=(10, 4)).astype(np.float32),
 }
 
 # Start Ray and initialize a PPO trainer
@@ -49,13 +49,11 @@ session = onnxruntime.InferenceSession(exported_model_file, None)
 # Pass the same test batch to the ONNX model (rename to match tensor names)
 onnx_test_data = {f"default_policy/{k}:0": v for k, v in test_data.items()}
 
-result_onnx = session.run(["default_policy/model/fc_out/BiasAdd:0"],
-                          onnx_test_data)
+result_onnx = session.run(["default_policy/model/fc_out/BiasAdd:0"], onnx_test_data)
 
 # These results should be equal!
 print("TENSORFLOW", result_tf)
 print("ONNX", result_onnx)
 
-assert np.allclose(result_tf, result_onnx), \
-   "Model outputs are NOT equal. FAILED"
+assert np.allclose(result_tf, result_onnx), "Model outputs are NOT equal. FAILED"
 print("Model outputs are equal. PASSED")

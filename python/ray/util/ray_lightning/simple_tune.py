@@ -8,8 +8,7 @@ from torchvision import transforms
 import pytorch_lightning as pl
 
 from ray.util.ray_lightning import RayPlugin
-from ray.util.ray_lightning.tune import TuneReportCallback, \
-    get_tune_ddp_resources
+from ray.util.ray_lightning.tune import TuneReportCallback, get_tune_ddp_resources
 
 num_cpus_per_actor = 1
 num_workers = 1
@@ -19,9 +18,11 @@ class LitAutoEncoder(pl.LightningModule):
     def __init__(self, lr):
         super().__init__()
         self.encoder = nn.Sequential(
-            nn.Linear(28 * 28, 128), nn.ReLU(), nn.Linear(128, 3))
+            nn.Linear(28 * 28, 128), nn.ReLU(), nn.Linear(128, 3)
+        )
         self.decoder = nn.Sequential(
-            nn.Linear(3, 128), nn.ReLU(), nn.Linear(128, 28 * 28))
+            nn.Linear(3, 128), nn.ReLU(), nn.Linear(128, 28 * 28)
+        )
         self.lr = lr
 
     def forward(self, x):
@@ -45,8 +46,7 @@ class LitAutoEncoder(pl.LightningModule):
 
 
 def train(config):
-    dataset = MNIST(
-        os.getcwd(), download=True, transform=transforms.ToTensor())
+    dataset = MNIST(os.getcwd(), download=True, transform=transforms.ToTensor())
     train, val = random_split(dataset, [55000, 5000])
 
     metrics = {"loss": "train_loss"}
@@ -54,7 +54,8 @@ def train(config):
     trainer = pl.Trainer(
         callbacks=[TuneReportCallback(metrics, on="batch_end")],
         plugins=[RayPlugin(num_workers=num_workers)],
-        max_steps=10)
+        max_steps=10,
+    )
     trainer.fit(autoencoder, DataLoader(train), DataLoader(val))
 
 
@@ -70,7 +71,9 @@ def main():
         metric="loss",
         mode="min",
         resources_per_trial=get_tune_ddp_resources(
-            num_workers=num_workers, cpus_per_worker=num_cpus_per_actor))
+            num_workers=num_workers, cpus_per_worker=num_cpus_per_actor
+        ),
+    )
 
     print("Best hyperparameters: ", analysis.best_config)
 

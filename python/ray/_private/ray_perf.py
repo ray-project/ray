@@ -3,8 +3,7 @@
 import asyncio
 import logging
 from ray._private.ray_microbenchmark_helpers import timeit
-from ray._private.ray_client_microbenchmark import (main as
-                                                    client_microbenchmark_main)
+from ray._private.ray_client_microbenchmark import main as client_microbenchmark_main
 import numpy as np
 import multiprocessing
 import ray
@@ -79,13 +78,15 @@ def create_object_containing_ref():
 
 def check_optimized_build():
     if not ray._raylet.OPTIMIZED:
-        msg = ("WARNING: Unoptimized build! "
-               "To benchmark an optimized build, try:\n"
-               "\tbazel build -c opt //:ray_pkg\n"
-               "You can also make this permanent by adding\n"
-               "\tbuild --compilation_mode=opt\n"
-               "to your user-wide ~/.bazelrc file. "
-               "(Do not add this to the project-level .bazelrc file.)")
+        msg = (
+            "WARNING: Unoptimized build! "
+            "To benchmark an optimized build, try:\n"
+            "\tbazel build -c opt //:ray_pkg\n"
+            "You can also make this permanent by adding\n"
+            "\tbuild --compilation_mode=opt\n"
+            "to your user-wide ~/.bazelrc file. "
+            "(Do not add this to the project-level .bazelrc file.)"
+        )
         logger.warning(msg)
 
 
@@ -120,8 +121,7 @@ def main(results=None):
 
     results += timeit("single client put calls (Plasma Store)", put_small)
 
-    results += timeit("multi client put calls (Plasma Store)", put_multi_small,
-                      1000)
+    results += timeit("multi client put calls (Plasma Store)", put_multi_small, 1000)
 
     def put_large():
         ray.put(arr)
@@ -150,8 +150,9 @@ def main(results=None):
     def get_containing_object_ref():
         ray.get(obj_containing_ref)
 
-    results += timeit("single client get object containing 10k refs",
-                      get_containing_object_ref)
+    results += timeit(
+        "single client get object containing 10k refs", get_containing_object_ref
+    )
 
     def small_task():
         ray.get(small_value.remote())
@@ -202,8 +203,7 @@ def main(results=None):
     def actor_async_direct():
         ray.get(client.small_value_batch.remote(n))
 
-    results += timeit("1:n actor calls async", actor_async_direct,
-                      n * len(actors))
+    results += timeit("1:n actor calls async", actor_async_direct, n * len(actors))
 
     n_cpu = multiprocessing.cpu_count() // 2
     a = [Actor.remote() for _ in range(n_cpu)]
@@ -224,8 +224,9 @@ def main(results=None):
     def actor_multi2_direct_arg():
         ray.get([c.small_value_batch_arg.remote(n) for c in clients])
 
-    results += timeit("n:n actor calls with arg async",
-                      actor_multi2_direct_arg, n * len(clients))
+    results += timeit(
+        "n:n actor calls with arg async", actor_multi2_direct_arg, n * len(clients)
+    )
 
     a = AsyncActor.remote()
 
@@ -246,8 +247,7 @@ def main(results=None):
     def async_actor():
         ray.get([a.small_value_with_arg.remote(i) for i in range(1000)])
 
-    results += timeit("1:1 async-actor calls with args async", async_actor,
-                      1000)
+    results += timeit("1:1 async-actor calls with args async", async_actor, 1000)
 
     n = 5000
     n_cpu = multiprocessing.cpu_count() // 2
@@ -257,8 +257,7 @@ def main(results=None):
     def async_actor_async():
         ray.get(client.small_value_batch.remote(n))
 
-    results += timeit("1:n async-actor calls async", async_actor_async,
-                      n * len(actors))
+    results += timeit("1:n async-actor calls async", async_actor_async, n * len(actors))
 
     n = 5000
     m = 4
@@ -281,9 +280,10 @@ def main(results=None):
 
     def placement_group_create_removal(num_pgs):
         pgs = [
-            ray.util.placement_group(bundles=[{
-                "custom": 0.001
-            } for _ in range(NUM_BUNDLES)]) for _ in range(num_pgs)
+            ray.util.placement_group(
+                bundles=[{"custom": 0.001} for _ in range(NUM_BUNDLES)]
+            )
+            for _ in range(num_pgs)
         ]
         [pg.wait(timeout_seconds=30) for pg in pgs]
         # Include placement group removal here to clean up.
@@ -294,8 +294,11 @@ def main(results=None):
         for pg in pgs:
             ray.util.remove_placement_group(pg)
 
-    results += timeit("placement group create/removal",
-                      lambda: placement_group_create_removal(NUM_PGS), NUM_PGS)
+    results += timeit(
+        "placement group create/removal",
+        lambda: placement_group_create_removal(NUM_PGS),
+        NUM_PGS,
+    )
     ray.shutdown()
 
     client_microbenchmark_main(results)

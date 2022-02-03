@@ -39,8 +39,10 @@ class JobStatusInfo:
     def __post_init__(self):
         if self.message is None:
             if self.status == JobStatus.PENDING:
-                self.message = ("Job has not started yet, likely waiting "
-                                "for the runtime_env to be set up.")
+                self.message = (
+                    "Job has not started yet, likely waiting "
+                    "for the runtime_env to be set up."
+                )
             elif self.status == JobStatus.RUNNING:
                 self.message = "Job is currently running."
             elif self.status == JobStatus.STOPPED:
@@ -55,6 +57,7 @@ class JobStatusStorageClient:
     """
     Handles formatting of status storage key given job id.
     """
+
     JOB_STATUS_KEY = "_ray_internal_job_status_{job_id}"
 
     def __init__(self):
@@ -69,12 +72,14 @@ class JobStatusStorageClient:
         _internal_kv_put(
             self.JOB_STATUS_KEY.format(job_id=job_id),
             pickle.dumps(status),
-            namespace=ray_constants.KV_NAMESPACE_JOB)
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+        )
 
     def get_status(self, job_id: str) -> Optional[JobStatusInfo]:
         pickled_status = _internal_kv_get(
             self.JOB_STATUS_KEY.format(job_id=job_id),
-            namespace=ray_constants.KV_NAMESPACE_JOB)
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+        )
         if pickled_status is None:
             return None
         else:
@@ -87,18 +92,16 @@ def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
     # We need to strip the gcs:// prefix and .zip suffix to make it
     # possible to pass the package_uri over HTTP.
     protocol, package_name = parse_uri(package_uri)
-    return protocol.value, package_name[:-len(".zip")]
+    return protocol.value, package_name[: -len(".zip")]
 
 
 def http_uri_components_to_uri(protocol: str, package_name: str) -> str:
     if package_name.endswith(".zip"):
-        raise ValueError(
-            f"package_name ({package_name}) should not end in .zip")
+        raise ValueError(f"package_name ({package_name}) should not end in .zip")
     return f"{protocol}://{package_name}.zip"
 
 
-def validate_request_type(json_data: Dict[str, Any],
-                          request_type: dataclass) -> Any:
+def validate_request_type(json_data: Dict[str, Any], request_type: dataclass) -> Any:
     return request_type(**json_data)
 
 
@@ -124,8 +127,7 @@ class JobSubmitRequest:
 
     def __post_init__(self):
         if not isinstance(self.entrypoint, str):
-            raise TypeError(
-                f"entrypoint must be a string, got {type(self.entrypoint)}")
+            raise TypeError(f"entrypoint must be a string, got {type(self.entrypoint)}")
 
         if self.job_id is not None and not isinstance(self.job_id, str):
             raise TypeError(
@@ -141,21 +143,21 @@ class JobSubmitRequest:
                 for k in self.runtime_env.keys():
                     if not isinstance(k, str):
                         raise TypeError(
-                            f"runtime_env keys must be strings, got {type(k)}")
+                            f"runtime_env keys must be strings, got {type(k)}"
+                        )
 
         if self.metadata is not None:
             if not isinstance(self.metadata, dict):
-                raise TypeError(
-                    f"metadata must be a dict, got {type(self.metadata)}")
+                raise TypeError(f"metadata must be a dict, got {type(self.metadata)}")
             else:
                 for k in self.metadata.keys():
                     if not isinstance(k, str):
-                        raise TypeError(
-                            f"metadata keys must be strings, got {type(k)}")
+                        raise TypeError(f"metadata keys must be strings, got {type(k)}")
                 for v in self.metadata.values():
                     if not isinstance(v, str):
                         raise TypeError(
-                            f"metadata values must be strings, got {type(v)}")
+                            f"metadata values must be strings, got {type(v)}"
+                        )
 
 
 @dataclass

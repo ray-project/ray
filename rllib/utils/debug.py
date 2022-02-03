@@ -40,17 +40,23 @@ def _summarize(obj):
         return tuple(_summarize(x) for x in obj)
     elif isinstance(obj, np.ndarray):
         if obj.size == 0:
-            return _StringValue("np.ndarray({}, dtype={})".format(
-                obj.shape, obj.dtype))
+            return _StringValue("np.ndarray({}, dtype={})".format(obj.shape, obj.dtype))
         elif obj.dtype == object or obj.dtype.type is np.str_:
-            return _StringValue("np.ndarray({}, dtype={}, head={})".format(
-                obj.shape, obj.dtype, _summarize(obj[0])))
+            return _StringValue(
+                "np.ndarray({}, dtype={}, head={})".format(
+                    obj.shape, obj.dtype, _summarize(obj[0])
+                )
+            )
         else:
             return _StringValue(
                 "np.ndarray({}, dtype={}, min={}, max={}, mean={})".format(
-                    obj.shape, obj.dtype, round(float(np.min(obj)), 3),
-                    round(float(np.max(obj)), 3), round(
-                        float(np.mean(obj)), 3)))
+                    obj.shape,
+                    obj.dtype,
+                    round(float(np.min(obj)), 3),
+                    round(float(np.max(obj)), 3),
+                    round(float(np.mean(obj)), 3),
+                )
+            )
     elif isinstance(obj, MultiAgentBatch):
         return {
             "type": "MultiAgentBatch",
@@ -60,8 +66,7 @@ def _summarize(obj):
     elif isinstance(obj, SampleBatch):
         return {
             "type": "SampleBatch",
-            "data": {k: _summarize(v)
-                     for k, v in obj.items()},
+            "data": {k: _summarize(v) for k, v in obj.items()},
         }
     else:
         return obj
@@ -75,8 +80,9 @@ class _StringValue:
         return self.value
 
 
-def update_global_seed_if_necessary(framework: Optional[str] = None,
-                                    seed: Optional[int] = None) -> None:
+def update_global_seed_if_necessary(
+    framework: Optional[str] = None, seed: Optional[int] = None
+) -> None:
     """Seed global modules such as random, numpy, torch, or tf.
 
     This is useful for debugging and testing.

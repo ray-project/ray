@@ -51,9 +51,7 @@ class TrialRunnerTest2(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         runner = TrialRunner()
         kwargs = {
-            "stopping_criterion": {
-                "training_iteration": 1
-            },
+            "stopping_criterion": {"training_iteration": 1},
             "resources": Resources(cpu=1, gpu=1),
         }
         _global_registry.register(TRAINABLE_CLASS, "asdf", None)
@@ -217,9 +215,7 @@ class TrialRunnerTest2(unittest.TestCase):
         ray.init(num_cpus=1, num_gpus=1)
         runner = TrialRunner()
         kwargs = {
-            "stopping_criterion": {
-                "training_iteration": 1
-            },
+            "stopping_criterion": {"training_iteration": 1},
             "resources": Resources(cpu=1, gpu=1),
             "checkpoint_freq": 1,
         }
@@ -286,9 +282,7 @@ class TrialRunnerTest2(unittest.TestCase):
         ray.init(num_cpus=1, num_gpus=1)
         runner = TrialRunner()
         kwargs = {
-            "stopping_criterion": {
-                "training_iteration": 2
-            },
+            "stopping_criterion": {"training_iteration": 2},
             "checkpoint_at_end": True,
             "resources": Resources(cpu=1, gpu=1),
         }
@@ -308,9 +302,7 @@ class TrialRunnerTest2(unittest.TestCase):
         ray.init(num_cpus=1, num_gpus=1)
         runner = TrialRunner()
         kwargs = {
-            "stopping_criterion": {
-                "training_iteration": 2
-            },
+            "stopping_criterion": {"training_iteration": 2},
             "resources": Resources(cpu=1, gpu=1),
         }
         runner.add_trial(Trial("__fake", **kwargs))
@@ -327,9 +319,7 @@ class TrialRunnerTest2(unittest.TestCase):
         ray.init(num_cpus=1, num_gpus=1)
         runner = TrialRunner()
         kwargs = {
-            "stopping_criterion": {
-                "training_iteration": 2
-            },
+            "stopping_criterion": {"training_iteration": 2},
             "resources": Resources(cpu=1, gpu=1),
         }
         runner.add_trial(Trial("__fake", **kwargs))
@@ -348,4 +338,5 @@ class TrialRunnerTest2(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

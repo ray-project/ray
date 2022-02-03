@@ -1,4 +1,5 @@
 import gym
+import numpy as np
 import random
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv, make_multi_agent
@@ -10,13 +11,18 @@ from ray.rllib.utils.deprecation import Deprecated
 @Deprecated(
     old="ray.rllib.examples.env.multi_agent.make_multiagent",
     new="ray.rllib.env.multi_agent_env.make_multi_agent",
-    error=False)
+    error=False,
+)
 def make_multiagent(env_name_or_creator):
     return make_multi_agent(env_name_or_creator)
 
 
 class BasicMultiAgent(MultiAgentEnv):
     """Env of N independent agents, each of which exits after 25 steps."""
+
+    metadata = {
+        "render.modes": ["rgb_array"],
+    }
 
     def __init__(self, num):
         super().__init__()
@@ -39,6 +45,12 @@ class BasicMultiAgent(MultiAgentEnv):
                 self.dones.add(i)
         done["__all__"] = len(self.dones) == len(self.agents)
         return obs, rew, done, info
+
+    def render(self, mode="rgb_array"):
+        # Just generate a random image here for demonstration purposes.
+        # Also see `gym/envs/classic_control/cartpole.py` for
+        # an example on how to use a Viewer object.
+        return np.random.randint(0, 256, size=(200, 300, 3), dtype=np.uint8)
 
 
 class EarlyDoneMultiAgent(MultiAgentEnv):
@@ -75,8 +87,12 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
     def step(self, action_dict):
         assert len(self.dones) != len(self.agents)
         for i, action in action_dict.items():
-            (self.last_obs[i], self.last_rew[i], self.last_done[i],
-             self.last_info[i]) = self.agents[i].step(action)
+            (
+                self.last_obs[i],
+                self.last_rew[i],
+                self.last_done[i],
+                self.last_info[i],
+            ) = self.agents[i].step(action)
         obs = {self.i: self.last_obs[self.i]}
         rew = {self.i: self.last_rew[self.i]}
         done = {self.i: self.last_done[self.i]}
@@ -188,8 +204,12 @@ class RoundRobinMultiAgent(MultiAgentEnv):
     def step(self, action_dict):
         assert len(self.dones) != len(self.agents)
         for i, action in action_dict.items():
-            (self.last_obs[i], self.last_rew[i], self.last_done[i],
-             self.last_info[i]) = self.agents[i].step(action)
+            (
+                self.last_obs[i],
+                self.last_rew[i],
+                self.last_done[i],
+                self.last_info[i],
+            ) = self.agents[i].step(action)
         obs = {self.i: self.last_obs[self.i]}
         rew = {self.i: self.last_rew[self.i]}
         done = {self.i: self.last_done[self.i]}
@@ -205,5 +225,4 @@ class RoundRobinMultiAgent(MultiAgentEnv):
 MultiAgentCartPole = make_multi_agent("CartPole-v0")
 MultiAgentMountainCar = make_multi_agent("MountainCarContinuous-v0")
 MultiAgentPendulum = make_multi_agent("Pendulum-v1")
-MultiAgentStatelessCartPole = make_multi_agent(
-    lambda config: StatelessCartPole(config))
+MultiAgentStatelessCartPole = make_multi_agent(lambda config: StatelessCartPole(config))

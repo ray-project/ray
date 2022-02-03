@@ -75,6 +75,11 @@ Take a look at any of the below tutorials to get started with Tune.
     :figure: /images/mlflow.png
     :description: :doc:`Log and track your hyperparameter sweep with MLflow Tracking & AutoLogging <tune-mlflow>`
 
+.. customgalleryitem::
+    :tooltip: Use Comet with Ray Tune.
+    :figure: /images/comet_logo_full.png
+    :description: :doc:`Log and analyze your Tune trial runs with Comet's Experiment Management Tools <tune-comet>`
+
 
 .. raw:: html
 
@@ -95,6 +100,7 @@ Take a look at any of the below tutorials to get started with Tune.
    tune-sklearn.rst
    tune-xgboost.rst
    tune-wandb.rst
+   tune-comet.rst
 
 Colab Exercises
 ---------------
@@ -148,6 +154,16 @@ Learn how to use Tune in your browser with the following Colab-based exercises.
           </a>
         </td>
       </tr>
+
+      <tr>
+        <td class="tune-colab">Logging Tune Runs to Comet ML.</td>
+        <td class="tune-colab">Comet</td>
+        <td class="tune-colab">
+          <a href="https://colab.research.google.com/drive/1dp3VwVoAH1acn_kG7RuT62mICnOqxU1z?usp=sharing" target="_parent">
+          <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Tune Tutorial"/>
+          </a>
+        </td>
+      </tr>
     </table>
 
 Tutorial source files `can be found here <https://github.com/ray-project/tutorial>`_.
@@ -159,7 +175,3 @@ Check out:
 
  * :doc:`/tune/user-guide`: A comprehensive overview of Tune's features.
  * :doc:`/tune/examples/index`: End-to-end examples and templates for using Tune with your preferred machine learning library.
-
-.. _tune-faq:
-
-.. include:: _faq.inc

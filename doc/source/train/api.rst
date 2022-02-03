@@ -86,6 +86,32 @@ MLflowLoggerCallback
 
 .. autoclass:: ray.train.callbacks.MLflowLoggerCallback
 
+ResultsPreprocessors
+~~~~~~~~~~~~~~~~~~~~
+
+.. _train-api-results-preprocessor:
+
+ResultsPreprocessor
++++++++++++++++++++
+
+.. autoclass:: ray.train.callbacks.results_preprocessors.ResultsPreprocessor
+    :members:
+
+SequentialResultsPreprocessor
++++++++++++++++++++++++++++++++
+
+.. autoclass:: ray.train.callbacks.results_preprocessors.SequentialResultsPreprocessor
+
+IndexedResultsPreprocessor
++++++++++++++++++++++++++++++++
+
+.. autoclass:: ray.train.callbacks.results_preprocessors.IndexedResultsPreprocessor
+
+ExcludedKeysResultsPreprocessor
++++++++++++++++++++++++++++++++
+
+.. autoclass:: ray.train.callbacks.results_preprocessors.ExcludedKeysResultsPreprocessor
+
 Checkpointing
 -------------
 
@@ -148,3 +174,11 @@ train.torch.get_device
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.get_device
+
+TensorFlow Training Function Utilities
+--------------------------------------
+
+train.tensorflow.prepare_dataset_shard
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.tensorflow.prepare_dataset_shard
