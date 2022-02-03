@@ -26,27 +26,12 @@ from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.plugin import decode_plugin_uri
 from ray._private.runtime_env.utils import RuntimeEnv
-from ray._private.runtime_env.uri_cache import URICache
 
-default_logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # TODO(edoakes): this is used for unit tests. We should replace it with a
 # better pluggability mechanism once available.
 SLEEP_FOR_TESTING_S = os.environ.get("RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S")
-
-# Sizes for the URI cache for each runtime_env field.  Defaults to 10 GB.
-WORKING_DIR_CACHE_SIZE_BYTES = int(
-    (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB", 10))
-)
-PY_MODULES_CACHE_SIZE_BYTES = int(
-    (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB", 10))
-)
-CONDA_CACHE_SIZE_BYTES = int(
-    (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB", 10))
-)
-PIP_CACHE_SIZE_BYTES = int(
-    (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_PIP_CACHE_SIZE_GB", 10))
-)
 
 
 @dataclass
@@ -93,20 +78,6 @@ class RuntimeEnvAgent(
         self._working_dir_manager = WorkingDirManager(self._runtime_env_dir)
         self._container_manager = ContainerManager(dashboard_agent.temp_dir)
 
-        self._working_dir_uri_cache = URICache(
-            self._working_dir_manager.delete_uri, WORKING_DIR_CACHE_SIZE_BYTES
-        )
-        self._py_modules_uri_cache = URICache(
-            self._py_modules_manager.delete_uri, PY_MODULES_CACHE_SIZE_BYTES
-        )
-        self._conda_uri_cache = URICache(
-            self._conda_manager.delete_uri, CONDA_CACHE_SIZE_BYTES
-        )
-        self._pip_uri_cache = URICache(
-            self._pip_manager.delete_uri, PIP_CACHE_SIZE_BYTES
-        )
-        self._logger = default_logger
-
     def get_or_create_logger(self, job_id: bytes):
         job_id = job_id.decode()
         if job_id not in self._per_job_logger_cache:
@@ -134,49 +105,16 @@ class RuntimeEnvAgent(
                 # avoid lint error. That will be moved to cgroup plugin.
                 per_job_logger.debug(f"Worker has resource :" f"{allocated_resource}")
                 context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
-                self._container_manager.setup(
+                self._pip_manager.setup(runtime_env, context, logger=per_job_logger)
+                self._conda_manager.setup(runtime_env, context, logger=per_job_logger)
+                self._py_modules_manager.setup(
                     runtime_env, context, logger=per_job_logger
                 )
-
-                for (manager, uri_cache) in [
-                    (self._working_dir_manager, self._working_dir_uri_cache),
-                    (self._conda_manager, self._conda_uri_cache),
-                    (self._pip_manager, self._pip_uri_cache),
-                ]:
-                    uri = manager.get_uri(runtime_env)
-                    if uri is not None:
-                        if uri not in uri_cache:
-                            per_job_logger.debug(f"Cache miss for URI {uri}.")
-                            size_bytes = manager.create(
-                                uri, runtime_env, context, logger=per_job_logger
-                            )
-                            uri_cache.add(uri, size_bytes, logger=per_job_logger)
-                        else:
-                            per_job_logger.debug(f"Cache hit for URI {uri}.")
-                            uri_cache.mark_used(uri, logger=per_job_logger)
-                    manager.modify_context(uri, runtime_env, context)
-
-                # Set up py_modules. For now, py_modules uses multiple URIs so
-                # the logic is slightly different from working_dir, conda, and
-                # pip above.
-                py_modules_uris = self._py_modules_manager.get_uris(runtime_env)
-                if py_modules_uris is not None:
-                    for uri in py_modules_uris:
-                        if uri not in self._py_modules_uri_cache:
-                            per_job_logger.debug(f"Cache miss for URI {uri}.")
-                            size_bytes = self._py_modules_manager.create(
-                                uri, runtime_env, context, logger=per_job_logger
-                            )
-                            self._py_modules_uri_cache.add(
-                                uri, size_bytes, logger=per_job_logger
-                            )
-                        else:
-                            per_job_logger.debug(f"Cache hit for URI {uri}.")
-                            self._py_modules_uri_cache.mark_used(
-                                uri, logger=per_job_logger
-                            )
-                self._py_modules_manager.modify_context(
-                    py_modules_uris, runtime_env, context
+                self._working_dir_manager.setup(
+                    runtime_env, context, logger=per_job_logger
+                )
+                self._container_manager.setup(
+                    runtime_env, context, logger=per_job_logger
                 )
 
                 # Add the mapping of URIs -> the serialized environment to be
@@ -199,9 +137,7 @@ class RuntimeEnvAgent(
 
                 # Run setup function from all the plugins
                 for plugin_class_path, config in runtime_env.plugins():
-                    per_job_logger.debug(
-                        f"Setting up runtime env plugin {plugin_class_path}"
-                    )
+                    logger.debug(f"Setting up runtime env plugin {plugin_class_path}")
                     plugin_class = import_attr(plugin_class_path)
                     # TODO(simon): implement uri support
                     plugin_class.create(
@@ -228,10 +164,9 @@ class RuntimeEnvAgent(
                 result = self._env_cache[serialized_env]
                 if result.success:
                     context = result.result
-                    self._logger.info(
-                        "Runtime env already created "
-                        f"successfully. Env: {serialized_env}, "
-                        f"context: {context}"
+                    logger.info(
+                        "Runtime env already created successfully. "
+                        f"Env: {serialized_env}, context: {context}"
                     )
                     return runtime_env_agent_pb2.CreateRuntimeEnvReply(
                         status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
@@ -239,7 +174,7 @@ class RuntimeEnvAgent(
                     )
                 else:
                     error_message = result.result
-                    self._logger.info(
+                    logger.info(
                         "Runtime env already failed. "
                         f"Env: {serialized_env}, err: {error_message}"
                     )
@@ -249,10 +184,10 @@ class RuntimeEnvAgent(
                     )
 
             if SLEEP_FOR_TESTING_S:
-                self._logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
+                logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
                 time.sleep(int(SLEEP_FOR_TESTING_S))
 
-            self._logger.info(f"Creating runtime env: {serialized_env}")
+            logger.info(f"Creating runtime env: {serialized_env}")
             runtime_env_context: RuntimeEnvContext = None
             error_message = None
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
@@ -262,13 +197,13 @@ class RuntimeEnvAgent(
                     )
                     break
                 except Exception as ex:
-                    self._logger.exception("Runtime env creation failed.")
+                    logger.exception("Runtime env creation failed.")
                     error_message = str(ex)
                     await asyncio.sleep(
                         runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
                     )
             if error_message:
-                self._logger.error(
+                logger.error(
                     "Runtime env creation failed for %d times, "
                     "don't retry any more.",
                     runtime_env_consts.RUNTIME_ENV_RETRY_TIMES,
@@ -281,7 +216,7 @@ class RuntimeEnvAgent(
 
             serialized_context = runtime_env_context.serialize()
             self._env_cache[serialized_env] = CreatedEnvResult(True, serialized_context)
-            self._logger.info(
+            logger.info(
                 "Successfully created runtime env: %s, the context: %s",
                 serialized_env,
                 serialized_context,
@@ -292,7 +227,9 @@ class RuntimeEnvAgent(
             )
 
     async def DeleteURIs(self, request, context):
-        self._logger.info(f"Got request to mark URIs unused: {request.uris}.")
+        logger.info(f"Got request to delete URIs: {request.uris}.")
+
+        failed_uris = []  # URIs that we failed to delete.
 
         for plugin_uri in request.uris:
             plugin, uri = decode_plugin_uri(plugin_uri)
@@ -302,22 +239,32 @@ class RuntimeEnvAgent(
                     del self._env_cache[env]
 
             if plugin == "working_dir":
-                self._working_dir_uri_cache.mark_unused(uri)
+                if not self._working_dir_manager.delete_uri(uri):
+                    failed_uris.append(uri)
             elif plugin == "py_modules":
-                self._py_modules_uri_cache.mark_unused(uri)
+                if not self._py_modules_manager.delete_uri(uri):
+                    failed_uris.append(uri)
             elif plugin == "conda":
-                self._conda_uri_cache.mark_unused(uri)
+                if not self._conda_manager.delete_uri(uri):
+                    failed_uris.append(uri)
             elif plugin == "pip":
-                self._pip_uri_cache.mark_unused(uri)
+                if not self._pip_manager.delete_uri(uri):
+                    failed_uris.append(uri)
             else:
                 raise ValueError(
                     "RuntimeEnvAgent received DeleteURI request "
                     f"for unsupported plugin {plugin}. URI: {uri}"
                 )
 
-        return runtime_env_agent_pb2.DeleteURIsReply(
-            status=agent_manager_pb2.AGENT_RPC_STATUS_OK
-        )
+        if failed_uris:
+            return runtime_env_agent_pb2.DeleteURIsReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                error_message="Local files for URI(s) " f"{failed_uris} not found.",
+            )
+        else:
+            return runtime_env_agent_pb2.DeleteURIsReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_OK
+            )
 
     async def run(self, server):
         runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(self, server)

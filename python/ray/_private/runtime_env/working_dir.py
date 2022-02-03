@@ -3,13 +3,12 @@ import os
 from typing import Any, Dict, Optional
 from pathlib import Path
 
-from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.utils import RuntimeEnv
+from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package,
     delete_package,
-    get_local_dir_from_uri,
     get_uri_for_directory,
     get_uri_for_package,
     upload_package_to_gcs,
@@ -17,7 +16,7 @@ from ray._private.runtime_env.packaging import (
     Protocol,
     upload_package_if_needed,
 )
-from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray._private.utils import try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
 
@@ -91,53 +90,32 @@ class WorkingDirManager:
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
-    ) -> int:
-        """Delete URI and return the number of bytes deleted."""
-        local_dir = get_local_dir_from_uri(uri, self._resources_dir)
-        local_dir_size = get_directory_size_bytes(local_dir)
+    ) -> bool:
 
         deleted = delete_package(uri, self._resources_dir)
         if not deleted:
             logger.warning(f"Tried to delete nonexistent URI: {uri}.")
-            return 0
 
-        return local_dir_size
+        return deleted
 
-    def get_uri(self, runtime_env: RuntimeEnv) -> Optional[str]:
-        working_dir_uri = runtime_env.working_dir()
-        if working_dir_uri != "":
-            return working_dir_uri
-        return None
-
-    def create(
+    def setup(
         self,
-        uri: str,
-        runtime_env: dict,
+        runtime_env: RuntimeEnv,
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
-    ) -> int:
-        local_dir = download_and_unpack_package(uri, self._resources_dir, logger=logger)
-        return get_directory_size_bytes(local_dir)
-
-    def modify_context(
-        self, uri: Optional[str], runtime_env_dict: Dict, context: RuntimeEnvContext
     ):
-        if uri is None:
+        if not runtime_env.working_dir():
             return
 
-        local_dir = get_local_dir_from_uri(uri, self._resources_dir)
-        if not local_dir.exists():
-            raise ValueError(
-                f"Local directory {local_dir} for URI {uri} does "
-                "not exist on the cluster. Something may have gone wrong while "
-                "downloading or unpacking the working_dir."
-            )
-
-        context.command_prefix += [f"cd {local_dir}"]
+        logger.info(f"Setup working dir for {runtime_env.working_dir()}")
+        working_dir = download_and_unpack_package(
+            runtime_env.working_dir(), self._resources_dir, logger=logger
+        )
+        context.command_prefix += [f"cd {working_dir}"]
 
         # Insert the working_dir as the first entry in PYTHONPATH. This is
         # compatible with users providing their own PYTHONPATH in env_vars.
-        python_path = str(local_dir)
+        python_path = working_dir
         if "PYTHONPATH" in context.env_vars:
             python_path += os.pathsep + context.env_vars["PYTHONPATH"]
         context.env_vars["PYTHONPATH"] = python_path
