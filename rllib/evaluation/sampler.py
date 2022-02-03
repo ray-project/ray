@@ -1151,18 +1151,7 @@ def _do_policy_eval(
             )
             policy: Policy = _get_or_raise(policies, policy_id)
 
-        active_envs_and_episodes = [
-            f"{env_id} -> {episode.episode_id}"
-            for env_id, episode in active_episodes.items()
-        ]
-        print(
-            f"Getting input_dict for ongoing episodes {active_envs_and_episodes}"
-        )  # TODO
-        print(
-            f"sample_collector.forward_pass_agent_keys = {sample_collector.forward_pass_agent_keys['default_policy']}"
-        )
         input_dict = sample_collector.get_inference_input_dict(policy_id)
-        print(f"Input dict has size {len(input_dict)}")
         eval_results[policy_id] = policy.compute_actions_from_input_dict(
             input_dict,
             timestep=policy.global_timestep,

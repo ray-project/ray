@@ -824,15 +824,8 @@ class SimpleListCollector(SampleCollector):
         # Build SampleBatches for the given episode.
         pre_batches = {}
         for (eps_id, agent_id), collector in self.agent_collectors.items():
-            # Build only if there is data and agent is part of given episode and
-            # info does not contain the training_enabled=True flag (used by our
-            # PolicyClients).
-            last_info = episode.last_info_for(agent_id)
-            if (
-                collector.agent_steps == 0
-                or eps_id != episode_id
-                or (last_info and not last_info.get("training_enabled", True))
-            ):
+            # Build only if there is data and agent is part of given episode.
+            if collector.agent_steps == 0 or eps_id != episode_id:
                 continue
             pid = self.agent_key_to_policy_id[(eps_id, agent_id)]
             policy = self.policy_map[pid]
@@ -869,6 +862,13 @@ class SimpleListCollector(SampleCollector):
                     "True. Alternatively, set no_done_at_end=True to "
                     "allow this."
                 )
+
+            # Skip a trajectory's postprocessing (and thus using it for training),
+            # if its agent's info exists and contains the training_enabled=False
+            # setting (used by our PolicyClients).
+            last_info = episode.last_info_for(agent_id)
+            if last_info and not last_info.get("training_enabled", True):
+                continue
 
             if len(pre_batches) > 1:
                 other_batches = pre_batches.copy()
