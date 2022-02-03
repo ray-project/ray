@@ -177,6 +177,11 @@ rust/ray-rs-examples/*/target/
 rust/ray-rs-sys/target/
 rust/**/**/*/Cargo.lock
 
+# CSharp
+csharp/bin/Debug/
+csharp/bin/Release/
+csharp/obj/
+csharp/obj/*
 
 # streaming/python
 streaming/python/generated/

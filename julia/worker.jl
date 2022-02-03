@@ -54,7 +54,7 @@ end
 
 using Base.Libc.Libdl
 
-c_worker_lib = dlopen(
+const c_worker_lib = dlopen(
     "/home/jonch/Desktop/Programming/systems/ray/python/ray/rust/lib/libcore_worker_library_c.so",
 )
 
@@ -114,7 +114,7 @@ const julia_worker_execute_c = @cfunction(
 
 register_callback(julia_worker_execute_c)
 init_config()
-init()
+# init()
 shutdown()
 
 dlclose(c_worker_lib)

@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern "C" { // Also declare: __declspec(dllexport)?
 #endif
 #ifndef RAY_NATIVE_PROLOGUE_H
 #define RAY_NATIVE_PROLOGUE_H
