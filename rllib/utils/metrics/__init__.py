@@ -8,11 +8,15 @@ NUM_AGENT_STEPS_TRAINED = "num_agent_steps_trained"
 LAST_TARGET_UPDATE_TS = "last_target_update_ts"
 NUM_TARGET_UPDATES = "num_target_updates"
 
-# Performance timers (keys for metrics.timers).
+# Performance timers (keys for Trainer._timers or metrics.timers).
 APPLY_GRADS_TIMER = "apply_grad"
 COMPUTE_GRADS_TIMER = "compute_grads"
-WORKER_UPDATE_TIMER = "update"
+SYNCH_WORKER_WEIGHTS_TIMER = "synch_weights"
 GRAD_WAIT_TIMER = "grad_wait"
 SAMPLE_TIMER = "sample"
 LEARN_ON_BATCH_TIMER = "learn"
 LOAD_BATCH_TIMER = "load"
+TARGET_NET_UPDATE_TIMER = "target_net_update"
+
+# Deprecated: Use `SYNCH_WORKER_WEIGHTS_TIMER` instead.
+WORKER_UPDATE_TIMER = "update"

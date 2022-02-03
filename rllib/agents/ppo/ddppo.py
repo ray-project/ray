@@ -21,15 +21,19 @@ import sys
 import time
 
 import ray
-from ray.rllib.agents.ppo.ppo import DEFAULT_CONFIG as PPO_DEFAULT_CONFIG, \
-    PPOTrainer
+from ray.rllib.agents.ppo.ppo import DEFAULT_CONFIG as PPO_DEFAULT_CONFIG, PPOTrainer
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    STEPS_TRAINED_COUNTER, STEPS_TRAINED_THIS_ITER_COUNTER,\
-    LEARN_ON_BATCH_TIMER, _get_shared_metrics, _get_global_vars
+from ray.rllib.execution.common import (
+    STEPS_SAMPLED_COUNTER,
+    STEPS_TRAINED_COUNTER,
+    STEPS_TRAINED_THIS_ITER_COUNTER,
+    LEARN_ON_BATCH_TIMER,
+    _get_shared_metrics,
+    _get_global_vars,
+)
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
@@ -115,39 +119,43 @@ class DDPPOTrainer(PPOTrainer):
 
         # Error if run on Win.
         if sys.platform in ["win32", "cygwin"]:
-            raise ValueError("DD-PPO not supported on Win yet! "
-                             "Due to usage of torch.distributed.")
+            raise ValueError(
+                "DD-PPO not supported on Win yet! " "Due to usage of torch.distributed."
+            )
 
         # Auto-train_batch_size: Calculate from rollout len and
         # envs-per-worker.
         if config["train_batch_size"] == -1:
-            config["train_batch_size"] = (config["rollout_fragment_length"] *
-                                          config["num_envs_per_worker"])
+            config["train_batch_size"] = (
+                config["rollout_fragment_length"] * config["num_envs_per_worker"]
+            )
         # Users should not define `train_batch_size` directly (always -1).
         else:
             raise ValueError(
-                "Set rollout_fragment_length instead of train_batch_size "
-                "for DDPPO.")
+                "Set rollout_fragment_length instead of train_batch_size " "for DDPPO."
+            )
 
         # Only supported for PyTorch so far.
         if config["framework"] != "torch":
-            raise ValueError(
-                "Distributed data parallel is only supported for PyTorch")
+            raise ValueError("Distributed data parallel is only supported for PyTorch")
         if config["torch_distributed_backend"] not in ("gloo", "mpi", "nccl"):
-            raise ValueError("Only gloo, mpi, or nccl is supported for "
-                             "the backend of PyTorch distributed.")
+            raise ValueError(
+                "Only gloo, mpi, or nccl is supported for "
+                "the backend of PyTorch distributed."
+            )
         # `num_gpus` must be 0/None, since all optimization happens on Workers.
         if config["num_gpus"]:
             raise ValueError(
                 "When using distributed data parallel, you should set "
                 "num_gpus=0 since all optimization "
                 "is happening on workers. Enable GPUs for workers by setting "
-                "num_gpus_per_worker=1.")
+                "num_gpus_per_worker=1."
+            )
         # `batch_mode` must be "truncate_episodes".
         if config["batch_mode"] != "truncate_episodes":
             raise ValueError(
-                "Distributed data parallel requires truncate_episodes "
-                "batch mode.")
+                "Distributed data parallel requires truncate_episodes " "batch mode."
+            )
         # DDPPO doesn't support KL penalties like PPO-1.
         # In order to support KL penalties, DDPPO would need to become
         # undecentralized, which defeats the purpose of the algorithm.
@@ -158,8 +166,9 @@ class DDPPOTrainer(PPOTrainer):
 
     @staticmethod
     @override(PPOTrainer)
-    def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
-                       **kwargs) -> LocalIterator[dict]:
+    def execution_plan(
+        workers: WorkerSet, config: TrainerConfigDict, **kwargs
+    ) -> LocalIterator[dict]:
         """Execution plan of the DD-PPO algorithm. Defines the distributed dataflow.
 
         Args:
@@ -171,8 +180,9 @@ class DDPPOTrainer(PPOTrainer):
             LocalIterator[dict]: The Policy class to use with PGTrainer.
                 If None, use `default_policy` provided in build_trainer().
         """
-        assert len(kwargs) == 0, (
-            "DDPPO execution_plan does NOT take any additional parameters")
+        assert (
+            len(kwargs) == 0
+        ), "DDPPO execution_plan does NOT take any additional parameters"
 
         rollouts = ParallelRollouts(workers, mode="raw")
 
@@ -182,35 +192,48 @@ class DDPPOTrainer(PPOTrainer):
         ip = ray.get(workers.remote_workers()[0].get_node_ip.remote())
         port = ray.get(workers.remote_workers()[0].find_free_port.remote())
         address = "tcp://{ip}:{port}".format(ip=ip, port=port)
-        logger.info(
-            "Creating torch process group with leader {}".format(address))
+        logger.info("Creating torch process group with leader {}".format(address))
 
         # Get setup tasks in order to throw errors on failure.
-        ray.get([
-            worker.setup_torch_data_parallel.remote(
-                url=address,
-                world_rank=i,
-                world_size=len(workers.remote_workers()),
-                backend=config["torch_distributed_backend"])
-            for i, worker in enumerate(workers.remote_workers())
-        ])
+        ray.get(
+            [
+                worker.setup_torch_data_parallel.remote(
+                    url=address,
+                    world_rank=i,
+                    world_size=len(workers.remote_workers()),
+                    backend=config["torch_distributed_backend"],
+                )
+                for i, worker in enumerate(workers.remote_workers())
+            ]
+        )
         logger.info("Torch process group init completed")
 
         # This function is applied remotely on each rollout worker.
         def train_torch_distributed_allreduce(batch):
-            expected_batch_size = (config["rollout_fragment_length"] *
-                                   config["num_envs_per_worker"])
+            expected_batch_size = (
+                config["rollout_fragment_length"] * config["num_envs_per_worker"]
+            )
             this_worker = get_global_worker()
-            assert batch.count == expected_batch_size, \
-                ("Batch size possibly out of sync between workers, expected:",
-                 expected_batch_size, "got:", batch.count)
-            logger.info("Executing distributed minibatch SGD "
-                        "with epoch size {}, minibatch size {}".format(
-                            batch.count, config["sgd_minibatch_size"]))
-            info = do_minibatch_sgd(batch, this_worker.policy_map, this_worker,
-                                    config["num_sgd_iter"],
-                                    config["sgd_minibatch_size"],
-                                    ["advantages"])
+            assert batch.count == expected_batch_size, (
+                "Batch size possibly out of sync between workers, expected:",
+                expected_batch_size,
+                "got:",
+                batch.count,
+            )
+            logger.info(
+                "Executing distributed minibatch SGD "
+                "with epoch size {}, minibatch size {}".format(
+                    batch.count, config["sgd_minibatch_size"]
+                )
+            )
+            info = do_minibatch_sgd(
+                batch,
+                this_worker.policy_map,
+                this_worker,
+                config["num_sgd_iter"],
+                config["sgd_minibatch_size"],
+                ["advantages"],
+            )
             return info, batch.count
 
         # Broadcast the local set of global vars.
@@ -236,12 +259,14 @@ class DDPPOTrainer(PPOTrainer):
                 # Since SGD happens remotely, the time delay between fetch and
                 # completion is approximately the SGD step time.
                 metrics.timers[LEARN_ON_BATCH_TIMER].push(
-                    time.perf_counter() - self.fetch_start_time)
+                    time.perf_counter() - self.fetch_start_time
+                )
 
         train_op = (
             rollouts.for_each(train_torch_distributed_allreduce)  # allreduce
             .batch_across_shards()  # List[(grad_info, count)]
-            .for_each(RecordStats()))
+            .for_each(RecordStats())
+        )
 
         train_op = train_op.for_each(update_worker_global_vars)
 
@@ -251,7 +276,8 @@ class DDPPOTrainer(PPOTrainer):
 
             def download_weights(item):
                 workers.local_worker().set_weights(
-                    ray.get(workers.remote_workers()[0].get_weights.remote()))
+                    ray.get(workers.remote_workers()[0].get_weights.remote())
+                )
                 return item
 
             train_op = train_op.for_each(download_weights)
@@ -261,7 +287,8 @@ class DDPPOTrainer(PPOTrainer):
 
             def check_sync(item):
                 weights = ray.get(
-                    [w.get_weights.remote() for w in workers.remote_workers()])
+                    [w.get_weights.remote() for w in workers.remote_workers()]
+                )
                 sums = []
                 for w in weights:
                     acc = 0

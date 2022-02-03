@@ -67,13 +67,16 @@ class Work {
  public:
   RayTask task;
   const bool grant_or_reject;
+  const bool is_selected_based_on_locality;
   rpc::RequestWorkerLeaseReply *reply;
   std::function<void(void)> callback;
   std::shared_ptr<TaskResourceInstances> allocated_instances;
-  Work(RayTask task, bool grant_or_reject, rpc::RequestWorkerLeaseReply *reply,
-       std::function<void(void)> callback, WorkStatus status = WorkStatus::WAITING)
+  Work(RayTask task, bool grant_or_reject, bool is_selected_based_on_locality,
+       rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> callback,
+       WorkStatus status = WorkStatus::WAITING)
       : task(task),
         grant_or_reject(grant_or_reject),
+        is_selected_based_on_locality(is_selected_based_on_locality),
         reply(reply),
         callback(callback),
         allocated_instances(nullptr),
@@ -175,6 +178,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
   void QueueAndScheduleTask(const RayTask &task, bool grant_or_reject,
+                            bool is_selected_based_on_locality,
                             rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
@@ -195,12 +199,14 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Attempt to cancel an already queued task.
   ///
   /// \param task_id: The id of the task to remove.
-  /// \param runtime_env_setup_failed: If this is being cancelled because the env setup
-  ///                                  failed.
+  /// \param failure_type: The failure type.
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
-  bool CancelTask(const TaskID &task_id, bool runtime_env_setup_failed = false) override;
+  bool CancelTask(
+      const TaskID &task_id,
+      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED) override;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///

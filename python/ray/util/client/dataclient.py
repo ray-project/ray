@@ -18,8 +18,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-ResponseCallable = Callable[[Union[ray_client_pb2.DataResponse, Exception]],
-                            None]
+ResponseCallable = Callable[[Union[ray_client_pb2.DataResponse, Exception]], None]
 
 # Send an acknowledge on every 32nd response received
 ACKNOWLEDGE_BATCH_SIZE = 32
@@ -48,7 +47,8 @@ class ChunkCollector:
                 RuntimeError(
                     f"Received chunk {chunk_id} when we expected "
                     f"{self.last_seen_chunk + 1} for request {response.req_id}"
-                ))
+                )
+            )
             return True
 
         if get_resp.chunk_id == get_resp.total_chunks - 1:
@@ -60,8 +60,7 @@ class ChunkCollector:
 
 
 class DataClient:
-    def __init__(self, client_worker: "Worker", client_id: str,
-                 metadata: list):
+    def __init__(self, client_worker: "Worker", client_id: str, metadata: list):
         """Initializes a thread-safe datapath over a Ray Client gRPC channel.
 
         Args:
@@ -114,20 +113,22 @@ class DataClient:
             target=self._data_main,
             name="ray_client_streaming_rpc",
             args=(),
-            daemon=True)
+            daemon=True,
+        )
 
     def _data_main(self) -> None:
         reconnecting = False
         try:
             while not self.client_worker._in_shutdown:
                 stub = ray_client_pb2_grpc.RayletDataStreamerStub(
-                    self.client_worker.channel)
-                metadata = self._metadata + \
-                    [("reconnecting", str(reconnecting))]
+                    self.client_worker.channel
+                )
+                metadata = self._metadata + [("reconnecting", str(reconnecting))]
                 resp_stream = stub.Datapath(
                     iter(self.request_queue.get, None),
                     metadata=metadata,
-                    wait_for_ready=True)
+                    wait_for_ready=True,
+                )
                 try:
                     for response in resp_stream:
                         self._process_response(response)
@@ -208,11 +209,13 @@ class DataClient:
             # Abort async requests with the error.
             err = ConnectionError(
                 "Failed during this or a previous request. Exception that "
-                f"broke the connection: {self._last_exception}")
+                f"broke the connection: {self._last_exception}"
+            )
         else:
             err = ConnectionError(
                 "Request cannot be fulfilled because the data client has "
-                "disconnected.")
+                "disconnected."
+            )
         for callback in callbacks:
             if callback:
                 callback(err)
@@ -233,8 +236,9 @@ class DataClient:
         if self._acknowledge_counter % ACKNOWLEDGE_BATCH_SIZE == 0:
             self.request_queue.put(
                 ray_client_pb2.DataRequest(
-                    acknowledge=ray_client_pb2.AcknowledgeRequest(
-                        req_id=req_id)))
+                    acknowledge=ray_client_pb2.AcknowledgeRequest(req_id=req_id)
+                )
+            )
 
     def _reconnect_channel(self) -> None:
         """
@@ -258,7 +262,8 @@ class DataClient:
             # Ping failed, try refreshing the data channel
             logger.warning(
                 "Encountered connection issues in the data channel. "
-                "Attempting to reconnect.")
+                "Attempting to reconnect."
+            )
             try:
                 self.client_worker._connect_channel(reconnecting=True)
             except ConnectionError:
@@ -284,8 +289,8 @@ class DataClient:
                 # Intentional shutdown, tell server it can clean up the
                 # connection immediately and ignore the reconnect grace period.
                 cleanup_request = ray_client_pb2.DataRequest(
-                    connection_cleanup=ray_client_pb2.ConnectionCleanupRequest(
-                    ))
+                    connection_cleanup=ray_client_pb2.ConnectionCleanupRequest()
+                )
                 self.request_queue.put(cleanup_request)
                 self.request_queue.put(None)
             if self.data_thread is not None:
@@ -294,8 +299,9 @@ class DataClient:
         if thread is not None:
             thread.join()
 
-    def _blocking_send(self, req: ray_client_pb2.DataRequest
-                       ) -> ray_client_pb2.DataResponse:
+    def _blocking_send(
+        self, req: ray_client_pb2.DataRequest
+    ) -> ray_client_pb2.DataResponse:
         with self.lock:
             self._check_shutdown()
             req_id = self._next_id()
@@ -303,8 +309,7 @@ class DataClient:
             self.request_queue.put(req)
             self.outstanding_requests[req_id] = req
 
-            self.cv.wait_for(
-                lambda: req_id in self.ready_data or self._in_shutdown)
+            self.cv.wait_for(lambda: req_id in self.ready_data or self._in_shutdown)
             self._check_shutdown()
 
             data = self.ready_data[req_id]
@@ -314,9 +319,11 @@ class DataClient:
 
         return data
 
-    def _async_send(self,
-                    req: ray_client_pb2.DataRequest,
-                    callback: Optional[ResponseCallable] = None) -> None:
+    def _async_send(
+        self,
+        req: ray_client_pb2.DataRequest,
+        callback: Optional[ResponseCallable] = None,
+    ) -> None:
         with self.lock:
             self._check_shutdown()
             req_id = self._next_id()
@@ -339,82 +346,108 @@ class DataClient:
             return
 
         from ray.util import disconnect
+
         disconnect()
 
         self.lock.acquire()
 
         if self._last_exception is not None:
-            msg = ("Request can't be sent because the Ray client has already "
-                   "been disconnected due to an error. Last exception: "
-                   f"{self._last_exception}")
+            msg = (
+                "Request can't be sent because the Ray client has already "
+                "been disconnected due to an error. Last exception: "
+                f"{self._last_exception}"
+            )
         else:
-            msg = ("Request can't be sent because the Ray client has already "
-                   "been disconnected.")
+            msg = (
+                "Request can't be sent because the Ray client has already "
+                "been disconnected."
+            )
 
         raise ConnectionError(msg)
 
-    def Init(self, request: ray_client_pb2.InitRequest,
-             context=None) -> ray_client_pb2.InitResponse:
-        datareq = ray_client_pb2.DataRequest(init=request, )
+    def Init(
+        self, request: ray_client_pb2.InitRequest, context=None
+    ) -> ray_client_pb2.InitResponse:
+        datareq = ray_client_pb2.DataRequest(
+            init=request,
+        )
         resp = self._blocking_send(datareq)
         return resp.init
 
-    def PrepRuntimeEnv(self,
-                       request: ray_client_pb2.PrepRuntimeEnvRequest,
-                       context=None) -> ray_client_pb2.PrepRuntimeEnvResponse:
-        datareq = ray_client_pb2.DataRequest(prep_runtime_env=request, )
+    def PrepRuntimeEnv(
+        self, request: ray_client_pb2.PrepRuntimeEnvRequest, context=None
+    ) -> ray_client_pb2.PrepRuntimeEnvResponse:
+        datareq = ray_client_pb2.DataRequest(
+            prep_runtime_env=request,
+        )
         resp = self._blocking_send(datareq)
         return resp.prep_runtime_env
 
-    def ConnectionInfo(self,
-                       context=None) -> ray_client_pb2.ConnectionInfoResponse:
+    def ConnectionInfo(self, context=None) -> ray_client_pb2.ConnectionInfoResponse:
         datareq = ray_client_pb2.DataRequest(
-            connection_info=ray_client_pb2.ConnectionInfoRequest())
+            connection_info=ray_client_pb2.ConnectionInfoRequest()
+        )
         resp = self._blocking_send(datareq)
         return resp.connection_info
 
-    def GetObject(self, request: ray_client_pb2.GetRequest,
-                  context=None) -> ray_client_pb2.GetResponse:
-        datareq = ray_client_pb2.DataRequest(get=request, )
+    def GetObject(
+        self, request: ray_client_pb2.GetRequest, context=None
+    ) -> ray_client_pb2.GetResponse:
+        datareq = ray_client_pb2.DataRequest(
+            get=request,
+        )
         resp = self._blocking_send(datareq)
         return resp.get
 
-    def RegisterGetCallback(self, request: ray_client_pb2.GetRequest,
-                            callback: ResponseCallable) -> None:
+    def RegisterGetCallback(
+        self, request: ray_client_pb2.GetRequest, callback: ResponseCallable
+    ) -> None:
         if len(request.ids) != 1:
             raise ValueError(
                 "RegisterGetCallback() must have exactly 1 Object ID. "
-                f"Actual: {request}")
-        datareq = ray_client_pb2.DataRequest(get=request, )
+                f"Actual: {request}"
+            )
+        datareq = ray_client_pb2.DataRequest(
+            get=request,
+        )
         self._async_send(datareq, ChunkCollector(callback=callback))
 
     # TODO: convert PutObject to async
-    def PutObject(self, request: ray_client_pb2.PutRequest,
-                  context=None) -> ray_client_pb2.PutResponse:
-        datareq = ray_client_pb2.DataRequest(put=request, )
+    def PutObject(
+        self, request: ray_client_pb2.PutRequest, context=None
+    ) -> ray_client_pb2.PutResponse:
+        datareq = ray_client_pb2.DataRequest(
+            put=request,
+        )
         resp = self._blocking_send(datareq)
         return resp.put
 
-    def ReleaseObject(self,
-                      request: ray_client_pb2.ReleaseRequest,
-                      context=None) -> None:
-        datareq = ray_client_pb2.DataRequest(release=request, )
+    def ReleaseObject(
+        self, request: ray_client_pb2.ReleaseRequest, context=None
+    ) -> None:
+        datareq = ray_client_pb2.DataRequest(
+            release=request,
+        )
         self._async_send(datareq)
 
-    def Schedule(self, request: ray_client_pb2.ClientTask,
-                 callback: ResponseCallable):
+    def Schedule(self, request: ray_client_pb2.ClientTask, callback: ResponseCallable):
         datareq = ray_client_pb2.DataRequest(task=request)
         self._async_send(datareq, callback)
 
-    def Terminate(self, request: ray_client_pb2.TerminateRequest
-                  ) -> ray_client_pb2.TerminateResponse:
-        req = ray_client_pb2.DataRequest(terminate=request, )
+    def Terminate(
+        self, request: ray_client_pb2.TerminateRequest
+    ) -> ray_client_pb2.TerminateResponse:
+        req = ray_client_pb2.DataRequest(
+            terminate=request,
+        )
         resp = self._blocking_send(req)
         return resp.terminate
 
-    def ListNamedActors(self,
-                        request: ray_client_pb2.ClientListNamedActorsRequest
-                        ) -> ray_client_pb2.ClientListNamedActorsResponse:
-        req = ray_client_pb2.DataRequest(list_named_actors=request, )
+    def ListNamedActors(
+        self, request: ray_client_pb2.ClientListNamedActorsRequest
+    ) -> ray_client_pb2.ClientListNamedActorsResponse:
+        req = ray_client_pb2.DataRequest(
+            list_named_actors=request,
+        )
         resp = self._blocking_send(req)
         return resp.list_named_actors

@@ -8,8 +8,13 @@ from ray.rllib.utils.framework import TensorType
 torch, nn = try_import_torch()
 if torch:
     from torch import distributions as td
-    from ray.rllib.agents.dreamer.utils import Linear, Conv2d, \
-        ConvTranspose2d, GRUCell, TanhBijector
+    from ray.rllib.agents.dreamer.utils import (
+        Linear,
+        Conv2d,
+        ConvTranspose2d,
+        GRUCell,
+        TanhBijector,
+    )
 
 ActFunc = Any
 
@@ -21,10 +26,9 @@ class ConvEncoder(nn.Module):
     RSSM model in PlaNET.
     """
 
-    def __init__(self,
-                 depth: int = 32,
-                 act: ActFunc = None,
-                 shape: Tuple[int] = (3, 64, 64)):
+    def __init__(
+        self, depth: int = 32, act: ActFunc = None, shape: Tuple[int] = (3, 64, 64)
+    ):
         """Initializes Conv Encoder
 
         Args:
@@ -72,11 +76,13 @@ class ConvDecoder(nn.Module):
     logging gifs for imagined trajectories.
     """
 
-    def __init__(self,
-                 input_size: int,
-                 depth: int = 32,
-                 act: ActFunc = None,
-                 shape: Tuple[int] = (3, 64, 64)):
+    def __init__(
+        self,
+        input_size: int,
+        depth: int = 32,
+        act: ActFunc = None,
+        shape: Tuple[int] = (3, 64, 64),
+    ):
         """Initializes a ConvDecoder instance.
 
         Args:
@@ -125,13 +131,15 @@ class DenseDecoder(nn.Module):
     Used later in DreamerLoss.
     """
 
-    def __init__(self,
-                 input_size: int,
-                 output_size: int,
-                 layers: int,
-                 units: int,
-                 dist: str = "normal",
-                 act: ActFunc = None):
+    def __init__(
+        self,
+        input_size: int,
+        output_size: int,
+        layers: int,
+        units: int,
+        dist: str = "normal",
+        act: ActFunc = None,
+    ):
         """Initializes FC network
 
         Args:
@@ -181,16 +189,18 @@ class ActionDecoder(nn.Module):
     transformed by a custom TanhBijector in utils.py for Dreamer.
     """
 
-    def __init__(self,
-                 input_size: int,
-                 action_size: int,
-                 layers: int,
-                 units: int,
-                 dist: str = "tanh_normal",
-                 act: ActFunc = None,
-                 min_std: float = 1e-4,
-                 init_std: float = 5.0,
-                 mean_scale: float = 5.0):
+    def __init__(
+        self,
+        input_size: int,
+        action_size: int,
+        layers: int,
+        units: int,
+        dist: str = "tanh_normal",
+        act: ActFunc = None,
+        min_std: float = 1e-4,
+        init_std: float = 5.0,
+        mean_scale: float = 5.0,
+    ):
         """Initializes Policy
 
         Args:
@@ -240,8 +250,7 @@ class ActionDecoder(nn.Module):
             std = self.softplus(std + raw_init_std) + self.min_std
             dist = td.Normal(mean, std)
             transforms = [TanhBijector()]
-            dist = td.transformed_distribution.TransformedDistribution(
-                dist, transforms)
+            dist = td.transformed_distribution.TransformedDistribution(dist, transforms)
             dist = td.Independent(dist, 1)
         elif self.dist == "onehot":
             dist = td.OneHotCategorical(logits=x)
@@ -259,13 +268,15 @@ class RSSM(nn.Module):
     observation.
     """
 
-    def __init__(self,
-                 action_size: int,
-                 embed_size: int,
-                 stoch: int = 30,
-                 deter: int = 200,
-                 hidden: int = 200,
-                 act: ActFunc = None):
+    def __init__(
+        self,
+        action_size: int,
+        embed_size: int,
+        stoch: int = 30,
+        deter: int = 200,
+        hidden: int = 200,
+        act: ActFunc = None,
+    ):
         """Initializes RSSM
 
         Args:
@@ -294,8 +305,9 @@ class RSSM(nn.Module):
 
         self.softplus = nn.Softplus
 
-        self.device = (torch.device("cuda")
-                       if torch.cuda.is_available() else torch.device("cpu"))
+        self.device = (
+            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        )
 
     def get_initial_state(self, batch_size: int) -> List[TensorType]:
         """Returns the inital state for the RSSM, which consists of mean,
@@ -316,11 +328,9 @@ class RSSM(nn.Module):
             torch.zeros(batch_size, self.deter_size).to(self.device),
         ]
 
-    def observe(self,
-                embed: TensorType,
-                action: TensorType,
-                state: List[TensorType] = None
-                ) -> Tuple[List[TensorType], List[TensorType]]:
+    def observe(
+        self, embed: TensorType, action: TensorType, state: List[TensorType] = None
+    ) -> Tuple[List[TensorType], List[TensorType]]:
         """Returns the corresponding states from the embedding from ConvEncoder
         and actions. This is accomplished by rolling out the RNN from the
         starting state through each index of embed and action, saving all
@@ -363,8 +373,9 @@ class RSSM(nn.Module):
 
         return post, prior
 
-    def imagine(self, action: TensorType,
-                state: List[TensorType] = None) -> List[TensorType]:
+    def imagine(
+        self, action: TensorType, state: List[TensorType] = None
+    ) -> List[TensorType]:
         """Imagines the trajectory starting from state through a list of actions.
         Similar to observe(), requires rolling out the RNN for each timestep.
 
@@ -392,8 +403,8 @@ class RSSM(nn.Module):
         return prior
 
     def obs_step(
-            self, prev_state: TensorType, prev_action: TensorType,
-            embed: TensorType) -> Tuple[List[TensorType], List[TensorType]]:
+        self, prev_state: TensorType, prev_action: TensorType, embed: TensorType
+    ) -> Tuple[List[TensorType], List[TensorType]]:
         """Runs through the posterior model and returns the posterior state
 
         Args:
@@ -403,7 +414,7 @@ class RSSM(nn.Module):
 
         Returns:
             Post and Prior state
-      """
+        """
         prior = self.img_step(prev_state, prev_action)
         x = torch.cat([prior[3], embed], dim=-1)
         x = self.obs1(x)
@@ -415,8 +426,9 @@ class RSSM(nn.Module):
         post = [mean, std, stoch, prior[3]]
         return post, prior
 
-    def img_step(self, prev_state: TensorType,
-                 prev_action: TensorType) -> List[TensorType]:
+    def img_step(
+        self, prev_state: TensorType, prev_action: TensorType
+    ) -> List[TensorType]:
         """Runs through the prior model and returns the prior state
 
         Args:
@@ -449,10 +461,8 @@ class RSSM(nn.Module):
 
 # Represents all models in Dreamer, unifies them all into a single interface
 class DreamerModel(TorchModelV2, nn.Module):
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        super().__init__(obs_space, action_space, num_outputs, model_config,
-                         name)
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        super().__init__(obs_space, action_space, num_outputs, model_config, name)
 
         nn.Module.__init__(self)
         self.depth = model_config["depth_size"]
@@ -463,26 +473,31 @@ class DreamerModel(TorchModelV2, nn.Module):
         self.action_size = action_space.shape[0]
 
         self.encoder = ConvEncoder(self.depth)
-        self.decoder = ConvDecoder(
-            self.stoch_size + self.deter_size, depth=self.depth)
-        self.reward = DenseDecoder(self.stoch_size + self.deter_size, 1, 2,
-                                   self.hidden_size)
+        self.decoder = ConvDecoder(self.stoch_size + self.deter_size, depth=self.depth)
+        self.reward = DenseDecoder(
+            self.stoch_size + self.deter_size, 1, 2, self.hidden_size
+        )
         self.dynamics = RSSM(
             self.action_size,
             32 * self.depth,
             stoch=self.stoch_size,
-            deter=self.deter_size)
-        self.actor = ActionDecoder(self.stoch_size + self.deter_size,
-                                   self.action_size, 4, self.hidden_size)
-        self.value = DenseDecoder(self.stoch_size + self.deter_size, 1, 3,
-                                  self.hidden_size)
+            deter=self.deter_size,
+        )
+        self.actor = ActionDecoder(
+            self.stoch_size + self.deter_size, self.action_size, 4, self.hidden_size
+        )
+        self.value = DenseDecoder(
+            self.stoch_size + self.deter_size, 1, 3, self.hidden_size
+        )
         self.state = None
 
-        self.device = (torch.device("cuda")
-                       if torch.cuda.is_available() else torch.device("cpu"))
+        self.device = (
+            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        )
 
-    def policy(self, obs: TensorType, state: List[TensorType], explore=True
-               ) -> Tuple[TensorType, List[float], List[TensorType]]:
+    def policy(
+        self, obs: TensorType, state: List[TensorType], explore=True
+    ) -> Tuple[TensorType, List[float], List[TensorType]]:
         """Returns the action. Runs through the encoder, recurrent model,
         and policy to obtain action.
         """
@@ -507,10 +522,8 @@ class DreamerModel(TorchModelV2, nn.Module):
         self.state = post + [action]
         return action, logp, self.state
 
-    def imagine_ahead(self, state: List[TensorType],
-                      horizon: int) -> TensorType:
-        """Given a batch of states, rolls out more state of length horizon.
-        """
+    def imagine_ahead(self, state: List[TensorType], horizon: int) -> TensorType:
+        """Given a batch of states, rolls out more state of length horizon."""
         start = []
         for s in state:
             s = s.contiguous().detach()

@@ -24,42 +24,41 @@ To start, let's try to maximize this objective function:
 
 To use Tune, you will need to wrap this function in a lightweight :ref:`trainable API <trainable-docs>`. You can either use a :ref:`function-based version <tune-function-api>` or a :ref:`class-based version <tune-class-api>`.
 
-.. tabs::
-    .. group-tab:: Function API
+.. tabbed:: Function API
 
-        Here's an example of specifying the objective function using :ref:`the function-based Trainable API <tune-function-api>`:
+    Here's an example of specifying the objective function using :ref:`the function-based Trainable API <tune-function-api>`:
 
-        .. code-block:: python
+    .. code-block:: python
 
-            def trainable(config):
-                # config (dict): A dict of hyperparameters.
+        def trainable(config):
+            # config (dict): A dict of hyperparameters.
 
-                for x in range(20):
-                    score = objective(x, config["a"], config["b"])
+            for x in range(20):
+                score = objective(x, config["a"], config["b"])
 
-                    tune.report(score=score)  # This sends the score to Tune.
+                tune.report(score=score)  # This sends the score to Tune.
 
-    .. group-tab:: Class API
+.. tabbed:: Class API
 
-        Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
+    Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
 
-        .. code-block:: python
+    .. code-block:: python
 
-            from ray import tune
+        from ray import tune
 
-            class Trainable(tune.Trainable):
-                def setup(self, config):
-                    # config (dict): A dict of hyperparameters
-                    self.x = 0
-                    self.a = config["a"]
-                    self.b = config["b"]
+        class Trainable(tune.Trainable):
+            def setup(self, config):
+                # config (dict): A dict of hyperparameters
+                self.x = 0
+                self.a = config["a"]
+                self.b = config["b"]
 
-                def step(self):  # This is called iteratively.
-                    score = objective(self.x, self.a, self.b)
-                    self.x += 1
-                    return {"score": score}
+            def step(self):  # This is called iteratively.
+                score = objective(self.x, self.a, self.b)
+                self.x += 1
+                return {"score": score}
 
-        .. tip:: Do not use ``tune.report`` within a ``Trainable`` class.
+    .. tip:: Do not use ``tune.report`` within a ``Trainable`` class.
 
 See the documentation: :ref:`trainable-docs` and :ref:`examples <tune-general-examples>`.
 

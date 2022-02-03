@@ -22,9 +22,7 @@ def standardized(array: np.ndarray):
     return (array - array.mean()) / max(1e-4, array.std())
 
 
-def minibatches(samples: SampleBatch,
-                sgd_minibatch_size: int,
-                shuffle: bool = True):
+def minibatches(samples: SampleBatch, sgd_minibatch_size: int, shuffle: bool = True):
     """Return a generator yielding minibatches from a sample batch.
 
     Args:
@@ -44,7 +42,8 @@ def minibatches(samples: SampleBatch,
 
     if isinstance(samples, MultiAgentBatch):
         raise NotImplementedError(
-            "Minibatching not implemented for multi-agent in simple mode")
+            "Minibatching not implemented for multi-agent in simple mode"
+        )
 
     if "state_in_0" not in samples and "state_out_0" not in samples:
         samples.shuffle()
@@ -66,8 +65,14 @@ def minibatches(samples: SampleBatch,
             yield samples.slice(i, j, si, sj)
 
 
-def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
-                     sgd_minibatch_size, standardize_fields):
+def do_minibatch_sgd(
+    samples,
+    policies,
+    local_worker,
+    num_sgd_iter,
+    sgd_minibatch_size,
+    standardize_fields,
+):
     """Execute minibatch SGD.
 
     Args:
@@ -103,21 +108,25 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
         # Check to make sure that the sgd_minibatch_size is not smaller
         # than max_seq_len otherwise this will cause indexing errors while
         # performing sgd when using a RNN or Attention model
-        if policy.is_recurrent() and \
-           policy.config["model"]["max_seq_len"] > sgd_minibatch_size:
-            raise ValueError("`sgd_minibatch_size` ({}) cannot be smaller than"
-                             "`max_seq_len` ({}).".format(
-                                 sgd_minibatch_size,
-                                 policy.config["model"]["max_seq_len"]))
+        if (
+            policy.is_recurrent()
+            and policy.config["model"]["max_seq_len"] > sgd_minibatch_size
+        ):
+            raise ValueError(
+                "`sgd_minibatch_size` ({}) cannot be smaller than"
+                "`max_seq_len` ({}).".format(
+                    sgd_minibatch_size, policy.config["model"]["max_seq_len"]
+                )
+            )
 
         for i in range(num_sgd_iter):
             for minibatch in minibatches(batch, sgd_minibatch_size):
-                results = (local_worker.learn_on_batch(
-                    MultiAgentBatch({
-                        policy_id: minibatch
-                    }, minibatch.count)))[policy_id]
-                learner_info_builder.add_learn_on_batch_results(
-                    results, policy_id)
+                results = (
+                    local_worker.learn_on_batch(
+                        MultiAgentBatch({policy_id: minibatch}, minibatch.count)
+                    )
+                )[policy_id]
+                learner_info_builder.add_learn_on_batch_results(results, policy_id)
 
     learner_info = learner_info_builder.finalize()
     return learner_info

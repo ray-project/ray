@@ -60,9 +60,7 @@ Update training function
 First, you'll want to update your training function to support distributed
 training.
 
-.. tabs::
-
-  .. group-tab:: PyTorch
+.. tabbed:: PyTorch
 
     Ray Train will set up your distributed process group for you and also provides utility methods
     to automatically prepare your model and data for distributed training.
@@ -128,11 +126,11 @@ training.
        Keep in mind that ``DataLoader`` takes in a ``batch_size`` which is the batch size for each worker.
        The global batch size can be calculated from the worker batch size (and vice-versa) with the following equation:
 
-       .. code-block::
+        .. code-block::
 
             global_batch_size = worker_batch_size * train.world_size()
 
-  .. group-tab:: TensorFlow
+.. tabbed:: TensorFlow
 
     .. note::
        The current TensorFlow implementation supports
@@ -169,7 +167,7 @@ training.
         -batch_size = worker_batch_size
         +batch_size = worker_batch_size * train.world_size()
 
-  .. group-tab:: Horovod
+.. tabbed:: Horovod
 
     If you have a training function that already runs with the `Horovod Ray
     Executor <https://horovod.readthedocs.io/en/stable/ray_include.html#horovod-ray-executor>`_,
@@ -185,9 +183,7 @@ The ``Trainer`` is the primary Ray Train class that is used to manage state and
 execute training. You can create a simple ``Trainer`` for the backend of choice
 with one of the following:
 
-.. tabs::
-
-  .. group-tab:: PyTorch
+.. tabbed:: PyTorch
 
     .. code-block:: python
 
@@ -198,7 +194,7 @@ with one of the following:
         # trainer = Trainer(backend="torch", num_workers=2, use_gpu=True)
 
 
-  .. group-tab:: TensorFlow
+.. tabbed:: TensorFlow
 
     .. code-block:: python
 
@@ -208,7 +204,7 @@ with one of the following:
         # For GPU Training, set `use_gpu` to True.
         # trainer = Trainer(backend="tensorflow", num_workers=2, use_gpu=True)
 
-  .. group-tab:: Horovod
+.. tabbed:: Horovod
 
     .. code-block:: python
 
@@ -221,9 +217,7 @@ with one of the following:
 To customize the ``backend`` setup, you can replace the string argument with a
 :ref:`train-api-backend-config` object.
 
-.. tabs::
-
-  .. group-tab:: PyTorch
+.. tabbed:: PyTorch
 
     .. code-block:: python
 
@@ -233,7 +227,7 @@ To customize the ``backend`` setup, you can replace the string argument with a
         trainer = Trainer(backend=TorchConfig(...), num_workers=2)
 
 
-  .. group-tab:: TensorFlow
+.. tabbed:: TensorFlow
 
     .. code-block:: python
 
@@ -242,7 +236,7 @@ To customize the ``backend`` setup, you can replace the string argument with a
 
         trainer = Trainer(backend=TensorflowConfig(...), num_workers=2)
 
-  .. group-tab:: Horovod
+.. tabbed:: Horovod
 
     .. code-block:: python
 
@@ -578,9 +572,7 @@ The latest saved checkpoint can be accessed through the ``Trainer``'s
 Concrete examples are provided to demonstrate how checkpoints (model weights but not models) are saved
 appropriately in distributed training.
 
-.. tabs::
-
-  .. group-tab:: PyTorch
+.. tabbed:: PyTorch
 
     .. code-block:: python
         :emphasize-lines: 37, 38, 39
@@ -635,7 +627,7 @@ appropriately in distributed training.
         # {'epoch': 4, 'model_weights': OrderedDict([('bias', tensor([0.1533])), ('weight', tensor([[0.4529, 0.4618, 0.2730, 0.0190]]))]), '_timestamp': 1639117274}
 
 
-  .. group-tab:: TensorFlow
+.. tabbed:: TensorFlow
 
     .. code-block:: python
         :emphasize-lines: 24
@@ -764,9 +756,7 @@ Checkpoints can be loaded into the training function in 2 steps:
 2. The checkpoint to start training with can be bootstrapped by passing in a
    ``checkpoint`` to ``trainer.run()``.
 
-.. tabs::
-
-  .. group-tab:: PyTorch
+.. tabbed:: PyTorch
 
     .. code-block:: python
         :emphasize-lines: 24, 26, 27, 30, 31, 35
@@ -831,7 +821,7 @@ Checkpoints can be loaded into the training function in 2 steps:
         print(trainer.latest_checkpoint)
         # {'epoch': 3, 'model_weights': OrderedDict([('bias', tensor([-0.3304])), ('weight', tensor([[-0.0197, -0.3704,  0.2944,  0.3117]]))]), '_timestamp': 1639117865}
 
-  .. group-tab:: TensorFlow
+  .. tabbed:: TensorFlow
 
     .. code-block:: python
         :emphasize-lines: 16, 22, 23, 26, 27, 30
@@ -944,7 +934,7 @@ Ray Train provides native support for :ref:`Ray Datasets <datasets>` to support 
    worker will only load its assigned shard into memory rather than the entire ``Dataset``.
 3. **Pipelined Execution**: Ray Datasets also supports pipelining, meaning that data processing operations
    can be run concurrently with training. Training is no longer blocked on expensive data processing operations (such as global shuffling)
-   and this minimizes the amount of time your GPUs are idle. See :ref:`dataset-pipeline` for more information.
+   and this minimizes the amount of time your GPUs are idle. See :ref:`dataset-pipeline-api` for more information.
 
 To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Underneath the hood, Ray Train will automatically shard the given dataset.
 
@@ -955,14 +945,14 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
     already sharded.
 
     .. code-block:: python
+        :emphasize-lines: 1, 6
+
+        from ray.train.tensorflow import prepare_dataset_shard
 
         def train_func():
             ...
-            tf_dataset = ray.train.get_dataset_shard().to_tf()
-            options = tf.data.Options()
-            options.experimental_distribute.auto_shard_policy = \
-                tf.data.experimental.AutoShardPolicy.OFF
-            tf_dataset = tf_dataset.with_options(options)
+            tf_dataset = ray.train.get_dataset_shard().to_tf(...)
+            tf_dataset = prepare_dataset_shard(tf_dataset)
 
 
 **Simple Dataset Example**
@@ -1014,10 +1004,10 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
 
 Pipelined Execution
 ~~~~~~~~~~~~~~~~~~~
-For pipelined execution, you just need to convert your :ref:`Dataset <datasets>` into a :ref:`DatasetPipeline <dataset-pipeline>`.
+For pipelined execution, you just need to convert your :ref:`Dataset <datasets>` into a :ref:`DatasetPipeline <dataset-pipeline-api>`.
 All operations after this conversion will be executed in a pipelined fashion.
 
-See :ref:`dataset-pipeline` for more semantics on pipelining.
+See :ref:`dataset-pipeline-api` for more semantics on pipelining.
 
 Example: Per-Epoch Shuffle Pipeline
 +++++++++++++++++++++++++++++++++++

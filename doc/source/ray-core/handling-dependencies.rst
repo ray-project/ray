@@ -323,11 +323,11 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
 - ``container`` (dict): Require a given (Docker) image, and the worker process will run in a container with this image.
   The `worker_path` is the default_worker.py path. It is required only if ray installation directory in the container is different from raylet host.
-  The `run_options` list spec is here: https://docs.docker.com/engine/reference/run/.
+  The `run_options` list spec is `here <https://docs.docker.com/engine/reference/run/>`__.
 
   - Example: ``{"image": "anyscale/ray-ml:nightly-py38-cpu", "worker_path": "/root/python/ray/workers/default_worker.py", "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]}``
 
-  Note: ``container`` is experimental now. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`.
+  Note: ``container`` is experimental now. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`__.
 
 - ``eager_install`` (bool): Indicates whether to install the runtime environment on the cluster at ``ray.init()`` time, before the workers are leased. This flag is set to ``True`` by default.
   If set to ``False``, the runtime environment will be only installed when the first task is invoked or when the first actor is created.
@@ -335,8 +335,13 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
   - Example: ``{"eager_install": False}``
 
-**Garbage Collection**.  Runtime environment resources on each node (such as conda environments, pip packages, or downloaded ``working_dir`` or ``py_modules`` folders) will be removed when they are no longer
-referenced by any actor, task or job.  To disable this (for example, for debugging purposes) set the environment variable ``RAY_runtime_env_skip_local_gc`` to ``1`` on each node in your cluster before starting Ray (e.g. with ``ray start``).
+Caching and Garbage Collection
+""""""""""""""""""""""""""""""
+Runtime environment resources on each node (such as conda environments, pip packages, or downloaded ``working_dir`` or ``py_modules`` directories) will be cached on the cluster to enable quick reuse across different runtime environments within a job.  Each field (``working_dir``, ``py_modules``, etc.) has its own cache whose size defaults to 10 GB.  To change this default, you may set the environment variable ``RAY_RUNTIME_ENV_<field>_CACHE_SIZE_GB`` on each node in your cluster before starting Ray e.g. ``export RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB=1.5``.
+
+When the cache size limit is exceeded, resources not currently used by any actor, task or job will be deleted.
+
+To disable all deletion behavior (for example, for debugging purposes) you may set the environment variable ``RAY_RUNTIME_ENV_SKIP_LOCAL_GC`` to ``1`` on each node in your cluster before starting Ray.
 
 Inheritance
 """""""""""

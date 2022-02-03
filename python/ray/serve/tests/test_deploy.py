@@ -302,9 +302,8 @@ def test_redeploy_single_replica(serve_instance, use_handle):
             ret = ray.get(handle.handler.remote(block))
         else:
             ret = requests.get(
-                f"http://localhost:8000/{name}", params={
-                    "block": block
-                }).text
+                f"http://localhost:8000/{name}", params={"block": block}
+            ).text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -393,9 +392,8 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
             ret = ray.get(handle.handler.remote(block))
         else:
             ret = requests.get(
-                f"http://localhost:8000/{name}", params={
-                    "block": block
-                }).text
+                f"http://localhost:8000/{name}", params={"block": block}
+            ).text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -435,10 +433,9 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
             for ref in not_ready:
                 blocking.extend(not_ready)
 
-            if (all(
-                    len(responses[val]) == num
-                    for val, num in expected.items())
-                    and (expect_blocking is False or len(blocking) > 0)):
+            if all(len(responses[val]) == num for val, num in expected.items()) and (
+                expect_blocking is False or len(blocking) > 0
+            ):
                 break
         else:
             assert False, f"Timed out, responses: {responses}."
@@ -452,10 +449,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     # ref2 will block a single replica until the signal is sent. Check that
     # some requests are now blocking.
     ref2 = call.remote(block=True)
-    responses2, blocking2 = make_nonblocking_calls(
-        {
-            "1": 1
-        }, expect_blocking=True)
+    responses2, blocking2 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
     assert list(responses2["1"])[0] in pids1
 
     # Redeploy new version. Since there is one replica blocking, only one new
@@ -463,10 +457,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     V2 = V1.options(func_or_class=V2, version="2")
     goal_ref = V2.deploy(_blocking=False)
     assert not client._wait_for_goal(goal_ref, timeout=0.1)
-    responses3, blocking3 = make_nonblocking_calls(
-        {
-            "1": 1
-        }, expect_blocking=True)
+    responses3, blocking3 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
 
     # Signal the original call to exit.
     ray.get(signal.send.remote())
@@ -534,10 +525,9 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
             for ref in not_ready:
                 blocking.extend(not_ready)
 
-            if (all(
-                    len(responses[val]) == num
-                    for val, num in expected.items())
-                    and (expect_blocking is False or len(blocking) > 0)):
+            if all(len(responses[val]) == num for val, num in expected.items()) and (
+                expect_blocking is False or len(blocking) > 0
+            ):
                 break
         else:
             assert False, f"Timed out, responses: {responses}."
@@ -551,10 +541,7 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
     # Reconfigure should block one replica until the signal is sent. Check that
     # some requests are now blocking.
     goal_ref = V1.options(user_config="2").deploy(_blocking=False)
-    responses2, blocking2 = make_nonblocking_calls(
-        {
-            "1": 1
-        }, expect_blocking=True)
+    responses2, blocking2 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
     assert list(responses2["1"])[0] in pids1
 
     # Signal reconfigure to finish. Now the goal should complete and both
@@ -628,9 +615,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
                 val, pid = ray.get(ref)
                 responses[val].add(pid)
 
-            if all(
-                    len(responses[val]) == num
-                    for val, num in expected.items()):
+            if all(len(responses[val]) == num for val, num in expected.items()):
                 break
         else:
             assert False, f"Timed out, responses: {responses}."
@@ -681,9 +666,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
                 val, pid = ray.get(ref)
                 responses[val].add(pid)
 
-            if all(
-                    len(responses[val]) == num
-                    for val, num in expected.items()):
+            if all(len(responses[val]) == num for val, num in expected.items()):
                 break
         else:
             assert False, f"Timed out, responses: {responses}."
@@ -912,7 +895,7 @@ def test_input_validation():
 
 
 def test_deployment_properties():
-    class DClass():
+    class DClass:
         pass
 
     D = serve.deployment(
@@ -923,7 +906,8 @@ def test_deployment_properties():
         user_config="hi",
         max_concurrent_queries=100,
         route_prefix="/hello",
-        ray_actor_options={"num_cpus": 2})(DClass)
+        ray_actor_options={"num_cpus": 2},
+    )(DClass)
 
     assert D.name == "name"
     assert D.init_args == ("hello", 123)
@@ -1069,8 +1053,7 @@ class TestGetDeployment:
 
         def check_num_replicas(num):
             handle = self.get_deployment(name, use_list_api).get_handle()
-            assert len(set(ray.get(
-                [handle.remote() for _ in range(50)]))) == num
+            assert len(set(ray.get([handle.remote() for _ in range(50)]))) == num
 
         d.deploy()
         check_num_replicas(1)
@@ -1152,19 +1135,16 @@ def test_deployment_error_handling(serve_instance):
         # directories is not supported. The error this causes in the controller
         # code should be caught and reported back to the `deploy` caller.
 
-        f.options(ray_actor_options={
-            "runtime_env": {
-                "working_dir": "."
-            }
-        }).deploy()
+        f.options(ray_actor_options={"runtime_env": {"working_dir": "."}}).deploy()
 
     assert isinstance(exception_info.value, RayTaskError)
 
     # This is the file where deployment exceptions should
     # be caught. If this frame is not present in the stacktrace,
     # the stacktrace is incomplete.
-    assert os.sep.join(("ray", "serve",
-                        "deployment_state.py")) in str(exception_info.value)
+    assert os.sep.join(("ray", "serve", "deployment_state.py")) in str(
+        exception_info.value
+    )
 
 
 def test_http_proxy_request_cancellation(serve_instance):
@@ -1188,7 +1168,8 @@ def test_http_proxy_request_cancellation(serve_instance):
     with ThreadPoolExecutor() as pool:
         # Send the first request, it should block for the result
         first_blocking_fut = pool.submit(
-            functools.partial(requests.get, url, timeout=100))
+            functools.partial(requests.get, url, timeout=100)
+        )
         time.sleep(1)
         assert not first_blocking_fut.done()
 
@@ -1214,4 +1195,5 @@ def test_http_proxy_request_cancellation(serve_instance):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

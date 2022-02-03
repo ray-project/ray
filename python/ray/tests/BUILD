@@ -81,6 +81,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
     "test_memory_scheduling.py",
     "test_metrics.py",
     "test_multi_node.py",

@@ -1,8 +1,12 @@
 import numpy as np
 
 from ray.rllib.models.utils import get_activation_fn
-from ray.rllib.utils.framework import get_variable, try_import_tf, \
-    TensorType, TensorShape
+from ray.rllib.utils.framework import (
+    get_variable,
+    try_import_tf,
+    TensorType,
+    TensorShape,
+)
 
 tf1, tf, tfv = try_import_tf()
 
@@ -19,11 +23,9 @@ class NoisyLayer(tf.keras.layers.Layer if tf else object):
     vanish along the training procedure.
     """
 
-    def __init__(self,
-                 prefix: str,
-                 out_size: int,
-                 sigma0: float,
-                 activation: str = "relu"):
+    def __init__(
+        self, prefix: str, out_size: int, sigma0: float, activation: str = "relu"
+    ):
         """Initializes a NoisyLayer object.
 
         Args:
@@ -52,15 +54,16 @@ class NoisyLayer(tf.keras.layers.Layer if tf else object):
         self.sigma_w = get_variable(
             value=tf.keras.initializers.RandomUniform(
                 minval=-1.0 / np.sqrt(float(in_size)),
-                maxval=1.0 / np.sqrt(float(in_size))),
+                maxval=1.0 / np.sqrt(float(in_size)),
+            ),
             trainable=True,
             tf_name=self.prefix + "_sigma_w",
             shape=[in_size, self.out_size],
-            dtype=tf.float32)
+            dtype=tf.float32,
+        )
 
         self.sigma_b = get_variable(
-            value=tf.keras.initializers.Constant(
-                self.sigma0 / np.sqrt(float(in_size))),
+            value=tf.keras.initializers.Constant(self.sigma0 / np.sqrt(float(in_size))),
             trainable=True,
             tf_name=self.prefix + "_sigma_b",
             shape=[self.out_size],
@@ -90,13 +93,15 @@ class NoisyLayer(tf.keras.layers.Layer if tf else object):
         epsilon_in = self._f_epsilon(epsilon_in)
         epsilon_out = self._f_epsilon(epsilon_out)
         epsilon_w = tf.matmul(
-            a=tf.expand_dims(epsilon_in, -1), b=tf.expand_dims(epsilon_out, 0))
+            a=tf.expand_dims(epsilon_in, -1), b=tf.expand_dims(epsilon_out, 0)
+        )
         epsilon_b = epsilon_out
 
-        action_activation = tf.matmul(
-            inputs,
-            self.w + self.sigma_w * epsilon_w) + \
-            self.b + self.sigma_b * epsilon_b
+        action_activation = (
+            tf.matmul(inputs, self.w + self.sigma_w * epsilon_w)
+            + self.b
+            + self.sigma_b * epsilon_b
+        )
 
         fn = get_activation_fn(self.activation, framework="tf")
         if fn is not None:

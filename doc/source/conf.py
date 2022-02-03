@@ -52,19 +52,12 @@ import ray
 
 # -- General configuration ------------------------------------------------
 
-# If your documentation needs a minimal Sphinx version, state it here.
-# needs_sphinx = '1.0'
-
-# Add any Sphinx extension module names here, as strings. They can be
-# extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
-# ones.
 extensions = [
+    "sphinx_panels",
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
     "sphinx_click.ext",
-    # "sphinx_panels",
-    "sphinx_tabs.tabs",
     "sphinx-jsonschema",
     "sphinx_gallery.gen_gallery",
     "sphinxemoji.sphinxemoji",
@@ -72,15 +65,30 @@ extensions = [
     "sphinxcontrib.yt",
     "versionwarning.extension",
     "sphinx_sitemap",
-    "myst_parser",
-    # "myst_nb",
+    "myst_nb",
     "sphinx.ext.doctest",
     "sphinx.ext.coverage",
     "sphinx_external_toc",
 ]
 
+myst_enable_extensions = [
+    "dollarmath",
+    "amsmath",
+    "deflist",
+    "html_admonition",
+    "html_image",
+    "colon_fence",
+    "smartquotes",
+    "replacements",
+]
+
+# Cache notebook outputs in _build/.jupyter_cache
+# To prevent notebook execution, set this to "off". To force re-execution, set this to "force".
+# To cache previous runs, set this to "cache".
+jupyter_execute_notebooks = os.getenv("RUN_NOTEBOOKS", "off")
+
 external_toc_exclude_missing = False
-external_toc_path = '_toc.yml'
+external_toc_path = "_toc.yml"
 
 # There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
 # of imports.
@@ -103,7 +111,8 @@ versionwarning_messages = {
         "<b>Got questions?</b> Join "
         f'<a href="{FORUM_LINK}">the Ray Community forum</a> '
         "for Q&A on all things Ray, as well as to share and learn use cases "
-        "and best practices with the Ray community."),
+        "and best practices with the Ray community."
+    ),
 }
 
 versionwarning_body_selector = "#main-content"
@@ -180,11 +189,16 @@ exclude_patterns += sphinx_gallery_conf["examples_dirs"]
 # If "DOC_LIB" is found, only build that top-level navigation item.
 build_one_lib = os.getenv("DOC_LIB")
 
-all_toc_libs = [
-    f.path for f in os.scandir(".") if f.is_dir() and "ray-" in f.path
-]
+all_toc_libs = [f.path for f in os.scandir(".") if f.is_dir() and "ray-" in f.path]
 all_toc_libs += [
-    "cluster", "tune", "data", "raysgd", "train", "rllib", "serve", "workflows"
+    "cluster",
+    "tune",
+    "data",
+    "raysgd",
+    "train",
+    "rllib",
+    "serve",
+    "workflows",
 ]
 if build_one_lib and build_one_lib in all_toc_libs:
     all_toc_libs.remove(build_one_lib)
@@ -231,6 +245,11 @@ html_theme_options = {
     "path_to_docs": "doc/source",
     "home_page_in_toc": False,
     "show_navbar_depth": 0,
+    "launch_buttons": {
+        "notebook_interface": "jupyterlab",
+        "binderhub_url": "https://mybinder.org",
+        "colab_url": "https://colab.research.google.com",
+    },
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
@@ -255,19 +274,6 @@ html_favicon = "_static/favicon.ico"
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-# TODO: this adds algolia search. can activate this once sphinx-tabs has been
-# replaced by sphinx-panels.
-# html_css_files = [
-#     "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css",
-# ]
-#
-# html_js_files = [
-#     (
-#         "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js",
-#         {"defer": "defer"},
-#     ),
-#     ("docsearch.sbt.js", {"defer": "defer"}),
-# ]
 html_static_path = ["_static"]
 
 # Add any extra paths that contain custom files (such as robots.txt or
@@ -400,9 +406,21 @@ autodoc_member_order = "bysource"
 
 
 def setup(app):
+    # myst-nb adds notebooks into the registry, which leads to sphinx-gallery warnings
+    app.registry.source_suffix.pop(".ipynb", None)
+
     app.connect("html-page-context", update_context)
     # Custom CSS
-    app.add_css_file("css/custom.css")
+    app.add_css_file("css/custom.css", priority=800)
+    app.add_css_file(
+        "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css"
+    )
+    # Custom JS
+    app.add_js_file(
+        "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js",
+        defer="defer",
+    )
+    app.add_js_file("js/docsearch.js", defer="defer")
     # Custom Sphinx directives
     app.add_directive("customgalleryitem", CustomGalleryItemDirective)
     # Custom docstring processor

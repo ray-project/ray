@@ -244,8 +244,16 @@
       python/ray/tests/test_output
     - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
       python/ray/tests/test_runtime_env_ray_minimal
+    - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
+      python/ray/tests/test_runtime_env
+    - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
+      python/ray/tests/test_runtime_env_complicated
+    - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
+      python/ray/tests/test_runtime_env_validation
     - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
       python/ray/tests/test_serve_ray_minimal
+    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
+      python/ray/dashboard/test_dashboard 
 
 - label: ":python: (Small & Client)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
