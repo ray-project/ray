@@ -6,6 +6,7 @@ import pytest
 
 TYPING_TEST_DIRS = os.path.join(os.path.dirname(__file__), "typing_files")
 
+
 def test_typing_good():
     script = "check_typing_good.py"
     if os.getenv("RUNNING_BAZEL", None) != "true":
