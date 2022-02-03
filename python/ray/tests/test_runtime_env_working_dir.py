@@ -9,6 +9,13 @@ import pytest
 
 import ray
 import time
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.utils import get_directory_size_bytes
+from ray._private.runtime_env.working_dir import WorkingDirManager
+from ray._private.runtime_env.packaging import (
+    get_uri_for_directory,
+    upload_package_if_needed,
+)
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -21,6 +28,31 @@ HTTPS_PACKAGE_URI = (
 )
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+def test_create_delete_size_equal(tmpdir, ray_start_regular):
+    """Tests that `create` and `delete_uri` return the same size for a URI."""
+
+    # Create an arbitrary nonempty directory to upload.
+    path = Path(tmpdir)
+    dir_to_upload = path / "dir_to_upload"
+    dir_to_upload.mkdir(parents=True)
+    filepath = dir_to_upload / "file"
+    with filepath.open("w") as file:
+        file.write("F" * 100)
+
+    uri = get_uri_for_directory(dir_to_upload)
+    assert get_directory_size_bytes(dir_to_upload) > 0
+
+    uploaded = upload_package_if_needed(uri, tmpdir, dir_to_upload)
+    assert uploaded
+
+    manager = WorkingDirManager(tmpdir)
+
+    created_size_bytes = manager.create(uri, {}, RuntimeEnvContext())
+    deleted_size_bytes = manager.delete_uri(uri)
+    assert created_size_bytes == deleted_size_bytes
 
 
 @pytest.mark.parametrize(

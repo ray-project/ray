@@ -221,8 +221,9 @@ class Dataset(Generic[T]):
                 blocks as batches. Defaults to a system-chosen batch size.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or "actors" to use an autoscaling Ray actor pool.
-            batch_format: Specify "native" to use the native block format,
-                "pandas" to select ``pandas.DataFrame`` as the batch format,
+            batch_format: Specify "native" to use the native block format
+                (promotes Arrow to pandas), "pandas" to select
+                ``pandas.DataFrame`` as the batch format,
                 or "pyarrow" to select ``pyarrow.Table``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
@@ -252,7 +253,9 @@ class Dataset(Generic[T]):
                 # bug where we include the entire base view on serialization.
                 view = block.slice(start, end, copy=batch_size is not None)
                 if batch_format == "native":
-                    pass
+                    # Always promote Arrow blocks to pandas for consistency.
+                    if isinstance(view, pa.Table) or isinstance(view, bytes):
+                        view = BlockAccessor.for_block(view).to_pandas()
                 elif batch_format == "pandas":
                     view = BlockAccessor.for_block(view).to_pandas()
                 elif batch_format == "pyarrow":
@@ -286,6 +289,53 @@ class Dataset(Generic[T]):
         compute = get_compute(compute)
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
         return Dataset(blocks, self._epoch, stats_builder.build(blocks))
+
+    def add_column(
+        self,
+        col: str,
+        fn: Callable[["pandas.DataFrame"], "pandas.Series"],
+        *,
+        compute: Optional[str] = None,
+        **ray_remote_args,
+    ) -> "Dataset[T]":
+        """Add the given column to the dataset.
+
+        This is only supported for datasets convertible to pandas format.
+        A function generating the new column values given the batch in pandas
+        format must be specified.
+
+        This is a convenience wrapper over ``.map_batches()``.
+
+        Examples:
+            >>> ds = ray.data.range_arrow(100)
+            >>> # Add a new column equal to value * 2.
+            >>> ds = ds.add_column("new_col", lambda df: df["value"] * 2)
+            >>> # Overwrite the existing "value" with zeros.
+            >>> ds = ds.add_column("value", lambda df: 0)
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            col: Name of the column to add. If the name already exists, the
+                column will be overwritten.
+            fn: Map function generating the column values given a batch of
+                records in pandas format.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or "actors" to use an autoscaling Ray actor pool.
+            ray_remote_args: Additional resource requirements to request from
+                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+        """
+
+        def process_batch(batch):
+            batch[col] = fn(batch)
+            return batch
+
+        if not callable(fn):
+            raise ValueError("`fn` must be callable, got {}".format(fn))
+
+        return self.map_batches(
+            process_batch, batch_format="pandas", compute=compute, **ray_remote_args
+        )
 
     def flat_map(
         self,
@@ -1831,7 +1881,8 @@ class Dataset(Generic[T]):
                 current block during the scan.
             batch_size: Record batch size, or None to let the system pick.
             batch_format: The format in which to return each batch.
-                Specify "native" to use the current block format, "pandas" to
+                Specify "native" to use the current block format (promoting
+                Arrow to pandas automatically), "pandas" to
                 select ``pandas.DataFrame`` or "pyarrow" to select
                 ``pyarrow.Table``. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
@@ -1840,10 +1891,17 @@ class Dataset(Generic[T]):
             A list of iterators over record batches.
         """
 
+        import pyarrow as pa
+
         time_start = time.perf_counter()
 
         def format_batch(batch: Block, format: str) -> BatchType:
             if batch_format == "native":
+                # Always promote Arrow blocks to pandas for consistency, since
+                # we lazily convert pandas->Arrow internally for efficiency.
+                if isinstance(batch, pa.Table) or isinstance(batch, bytes):
+                    batch = BlockAccessor.for_block(batch)
+                    batch = batch.to_pandas()
                 return batch
             elif batch_format == "pandas":
                 batch = BlockAccessor.for_block(batch)
