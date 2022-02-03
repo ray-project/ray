@@ -279,7 +279,7 @@ class BlockAccessor(Generic[T]):
 
             return SimpleBlockAccessor(block)
         else:
-            raise TypeError("Not a block type: {}".format(block))
+            raise TypeError("Not a block type: {} ({})".format(block, type(block)))
 
     def sample(self, n_samples: int, key: Any) -> "Block[T]":
         """Return a random sample of items from this block."""
