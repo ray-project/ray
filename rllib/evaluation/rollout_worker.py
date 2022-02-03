@@ -1706,7 +1706,7 @@ class RolloutWorker(ParallelIteratorWorker):
     def _get_make_sub_env_fn(
         self, env_creator, env_context, validate_env, env_wrapper, seed
     ):
-        def _make_sub_env(vector_index):
+        def _make_sub_env_local(vector_index):
             # Used to created additional environments during environment
             # vectorization.
 
@@ -1732,8 +1732,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
         if not env_context.remote:
 
-            def make_sub_env(vector_index):
-                sub_env = _make_sub_env(vector_index)
+            def _make_sub_env_remote(vector_index):
+                sub_env = _make_sub_env_local(vector_index)
                 self.callbacks.on_sub_environment_created(
                     worker=self,
                     sub_environment=sub_env,
@@ -1745,10 +1745,10 @@ class RolloutWorker(ParallelIteratorWorker):
                 )
                 return sub_env
 
-        else:
-            make_sub_env = _make_sub_env
+            return _make_sub_env_remote
 
-        return make_sub_env
+        else:
+            return _make_sub_env_local
 
     @Deprecated(
         new="Trainer.get_policy().export_model([export_dir], [onnx]?)", error=False
