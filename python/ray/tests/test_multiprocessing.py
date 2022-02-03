@@ -565,16 +565,17 @@ def test_maxtasksperchild(shutdown_only):
 
 def test_deadlock_avoidance_in_recursive_tasks():
     def poolit_a(_):
-        with Pool(ray_address='auto') as pool:
+        with Pool(ray_address="auto") as pool:
             return list(pool.map(math.sqrt, range(0, 2, 1)))
 
     def poolit_b():
-        with Pool(ray_address='auto') as pool:
+        with Pool(ray_address="auto") as pool:
             return list(pool.map(poolit_a, range(2, 4, 1)))
 
     ray.init(num_cpus=1)
     result = poolit_b()
-    assert result == [[0., 1.], [0., 1.]]
+    assert result == [[0.0, 1.0], [0.0, 1.0]]
+
 
 if __name__ == "__main__":
     import pytest
