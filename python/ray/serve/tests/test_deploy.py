@@ -1241,6 +1241,17 @@ class TestDeployGroup:
 
         async def get_output(self):
             return "F reached"
+    
+    @serve.deployment
+    class MutHandles:
+        async def __init__(self, handle_name):
+            self.handle = serve.get_deployment(handle_name).get_handle()
+        
+        async def __call__(self, echo: str):
+            return await self.handle.request_echo.remote(echo)
+        
+        async def request_echo(self, echo: str):
+            return echo
 
     deployments = [f, g, C, D]
     responses = ["f reached", "g reached", "C reached", "D reached"]
@@ -1260,6 +1271,25 @@ class TestDeployGroup:
 
         for deployment, response in zip(deployments, responses):
             assert ray.get(deployment.get_handle().remote()) == response
+
+    def test_mutual_handles_extensive(self, serve_instance):
+        names = []
+        for i in range(10):
+            names.append("a" * i)
+        
+        deployments = []
+        for idx in range(len(names)):
+            # Each deployment will hold a ServeHandle with the next name in
+            # the list
+            deployment_name = names[idx] 
+            handle_name = names[(idx + 1) % len(names)]
+
+            deployments.append(self.MutHandles.options(name=deployment_name, init_args=(handle_name,)))
+        
+        deploy_group(deployments)
+
+        for deployment in deployments:
+            assert(ray.get(deployment.get_handle().remote("hello"))) == "hello"
 
 
 if __name__ == "__main__":
