@@ -69,11 +69,13 @@ class WorkerLeaseInterface {
   virtual void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size = -1) = 0;
+      const int64_t backlog_size = -1,
+      const bool is_selected_based_on_locality = false) = 0;
   virtual void RequestWorkerLease(
       const rpc::TaskSpec &task_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size = -1) = 0;
+      const int64_t backlog_size = -1,
+      const bool is_selected_based_on_locality = false) = 0;
 
   /// Returns a worker to the raylet.
   /// \param worker_port The local port of the worker on the raylet node.
@@ -244,7 +246,6 @@ class RayletClient : public RayletClientInterface {
   /// \param serialized_job_config If this is a driver connection, the job config
   /// provided by driver will be passed to Raylet. If this is a worker connection,
   /// this will be populated with the current job config.
-  /// \param worker_shim_pid The PID of the process for setup worker runtime env.
   /// \param startup_token The startup token of the process assigned to
   /// it during startup as a command line argument.
   RayletClient(instrumented_io_context &io_service,
@@ -253,8 +254,7 @@ class RayletClient : public RayletClientInterface {
                rpc::WorkerType worker_type, const JobID &job_id,
                const int &runtime_env_hash, const Language &language,
                const std::string &ip_address, Status *status, NodeID *raylet_id,
-               int *port, std::string *serialized_job_config, pid_t worker_shim_pid,
-               StartupToken startup_token);
+               int *port, std::string *serialized_job_config, StartupToken startup_token);
 
   /// Connect to the raylet via grpc only.
   ///
@@ -369,15 +369,15 @@ class RayletClient : public RayletClientInterface {
   void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size) override {
+      const int64_t backlog_size, const bool is_selected_based_on_locality) override {
     RequestWorkerLease(resource_spec.GetMessage(), grant_or_reject, callback,
-                       backlog_size);
+                       backlog_size, is_selected_based_on_locality);
   }
 
   void RequestWorkerLease(
       const rpc::TaskSpec &resource_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size) override;
+      const int64_t backlog_size, const bool is_selected_based_on_locality) override;
 
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,

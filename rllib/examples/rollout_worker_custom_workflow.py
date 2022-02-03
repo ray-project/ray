@@ -37,17 +37,18 @@ class CustomPolicy(Policy):
         # example parameter
         self.w = 1.0
 
-    def compute_actions(self,
-                        obs_batch,
-                        state_batches=None,
-                        prev_action_batch=None,
-                        prev_reward_batch=None,
-                        info_batch=None,
-                        episodes=None,
-                        **kwargs):
+    def compute_actions(
+        self,
+        obs_batch,
+        state_batches=None,
+        prev_action_batch=None,
+        prev_reward_batch=None,
+        info_batch=None,
+        episodes=None,
+        **kwargs
+    ):
         # return random actions
-        return np.array(
-            [self.action_space.sample() for _ in obs_batch]), [], {}
+        return np.array([self.action_space.sample() for _ in obs_batch]), [], {}
 
     def learn_on_batch(self, samples):
         # implement your learning code here
@@ -70,7 +71,8 @@ def training_workflow(config, reporter):
     policy = CustomPolicy(env.observation_space, env.action_space, {})
     workers = [
         RolloutWorker.as_remote().remote(
-            env_creator=lambda c: gym.make("CartPole-v0"), policy=CustomPolicy)
+            env_creator=lambda c: gym.make("CartPole-v0"), policy=CustomPolicy
+        )
         for _ in range(config["num_workers"])
     ]
 
@@ -81,8 +83,7 @@ def training_workflow(config, reporter):
             w.set_weights.remote(weights)
 
         # Gather a batch of samples
-        T1 = SampleBatch.concat_samples(
-            ray.get([w.sample.remote() for w in workers]))
+        T1 = SampleBatch.concat_samples(ray.get([w.sample.remote() for w in workers]))
 
         # Update the remote policy replicas and gather another batch of samples
         new_value = policy.w * 2.0
@@ -90,8 +91,7 @@ def training_workflow(config, reporter):
             w.for_policy.remote(lambda p: p.update_some_value(new_value))
 
         # Gather another batch of samples
-        T2 = SampleBatch.concat_samples(
-            ray.get([w.sample.remote() for w in workers]))
+        T2 = SampleBatch.concat_samples(ray.get([w.sample.remote() for w in workers]))
 
         # Improve the policy using the T1 batch
         policy.learn_on_batch(T1)
@@ -108,12 +108,12 @@ if __name__ == "__main__":
 
     tune.run(
         training_workflow,
-        resources_per_trial=PlacementGroupFactory(([{
-            "CPU": 1,
-            "GPU": 1 if args.gpu else 0
-        }] + [{
-            "CPU": 1
-        }] * args.num_workers)),
+        resources_per_trial=PlacementGroupFactory(
+            (
+                [{"CPU": 1, "GPU": 1 if args.gpu else 0}]
+                + [{"CPU": 1}] * args.num_workers
+            )
+        ),
         config={
             "num_workers": args.num_workers,
             "num_iters": args.num_iters,

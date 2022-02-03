@@ -18,9 +18,11 @@ class DatasetWriter(OutputWriter):
     """Writer object that saves experiences using Datasets."""
 
     @PublicAPI
-    def __init__(self,
-                 ioctx: IOContext = None,
-                 compress_columns: List[str] = frozenset(["obs", "new_obs"])):
+    def __init__(
+        self,
+        ioctx: IOContext = None,
+        compress_columns: List[str] = frozenset(["obs", "new_obs"]),
+    ):
         """Initializes a DatasetWriter instance.
 
         Examples:
@@ -40,16 +42,20 @@ class DatasetWriter(OutputWriter):
         self.ioctx = ioctx or IOContext()
 
         output_config: Dict = ioctx.output_config
-        assert "format" in output_config, (
-            "output_config.type must be specified when using Dataset output.")
-        assert "path" in output_config, (
-            "output_config.path must be specified when using Dataset output.")
+        assert (
+            "format" in output_config
+        ), "output_config.type must be specified when using Dataset output."
+        assert (
+            "path" in output_config
+        ), "output_config.path must be specified when using Dataset output."
 
         self.format = output_config["format"]
         self.path = os.path.abspath(os.path.expanduser(output_config["path"]))
         self.max_num_samples_per_file = (
             output_config["max_num_samples_per_file"]
-            if "max_num_samples_per_file" in output_config else 100000)
+            if "max_num_samples_per_file" in output_config
+            else 100000
+        )
         self.compress_columns = compress_columns
 
         self.samples = []
@@ -63,8 +69,7 @@ class DatasetWriter(OutputWriter):
         self.samples.append(d)
 
         if len(self.samples) >= self.max_num_samples_per_file:
-            ds = data.from_items(self.samples).repartition(
-                num_blocks=1, shuffle=False)
+            ds = data.from_items(self.samples).repartition(num_blocks=1, shuffle=False)
             if self.format == "json":
                 ds.write_json(self.path, try_create_dir=True)
             elif self.format == "parquet":

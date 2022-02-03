@@ -46,23 +46,21 @@ class WindowStat:
         self.idx %= len(self.items)
 
     def mean(self) -> float:
-        """Returns the (NaN-)mean of the last `self.window_size` items.
-        """
-        return float(np.nanmean(self.items[:self.count]))
+        """Returns the (NaN-)mean of the last `self.window_size` items."""
+        return float(np.nanmean(self.items[: self.count]))
 
     def std(self) -> float:
-        """Returns the (NaN)-stddev of the last `self.window_size` items.
-        """
-        return float(np.nanstd(self.items[:self.count]))
+        """Returns the (NaN)-stddev of the last `self.window_size` items."""
+        return float(np.nanstd(self.items[: self.count]))
 
     def quantiles(self) -> np.ndarray:
-        """Returns ndarray with 0, 10, 50, 90, and 100 percentiles.
-        """
+        """Returns ndarray with 0, 10, 50, 90, and 100 percentiles."""
         if not self.count:
             return np.ndarray([], dtype=np.float32)
         else:
-            return np.nanpercentile(self.items[:self.count],
-                                    [0, 10, 50, 90, 100]).tolist()
+            return np.nanpercentile(
+                self.items[: self.count], [0, 10, 50, 90, 100]
+            ).tolist()
 
     def stats(self):
         return {
