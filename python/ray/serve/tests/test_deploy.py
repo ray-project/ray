@@ -1252,25 +1252,33 @@ class TestDeployGroup:
         
         async def request_echo(self, echo: str):
             return echo
-
-    deployments = [f, g, C, D]
-    responses = ["f reached", "g reached", "C reached", "D reached"]
+    
+    @serve.deployment(num_replicas=2, max_concurrent_queries=5)
+    class DecoratedClass1:
+        async def __call__(self):
+            return "DecoratedClass1 reached"
+    
+    @serve.deployment(num_replicas=4, max_concurrent_queries=2)
+    class DecoratedClass2:
+        async def __call__(self):
+            return "DecoratedClass2 reached"
+    
+    def deploy_and_check_responses(self, deployments, responses):
+        deploy_group(deployments)
+        for deployment, response in zip(deployments, responses):
+            assert ray.get(deployment.get_handle().remote()) == response
 
     def test_basic_deploy_group(self, serve_instance):
+        deployments = [self.f, self.g, self.C, self.D]
+        responses = ["f reached", "g reached", "C reached", "D reached"]
 
-        deploy_group(self.deployments)
-
-        for deployment, response in zip(self.deployments, self.responses):
-            assert ray.get(deployment.get_handle().remote()) == response
+        self.deploy_and_check_responses(deployments, responses)
 
     def test_mutual_handles(self, serve_instance):
         deployments = [self.E, self.F]
         responses = ["E reached", "F reached"]
 
-        deploy_group(deployments)
-
-        for deployment, response in zip(deployments, responses):
-            assert ray.get(deployment.get_handle().remote()) == response
+        self.deploy_and_check_responses(deployments, responses)
 
     def test_mutual_handles_extensive(self, serve_instance):
         names = []
@@ -1290,6 +1298,11 @@ class TestDeployGroup:
 
         for deployment in deployments:
             assert(ray.get(deployment.get_handle().remote("hello"))) == "hello"
+    
+    def test_decorated_deployments(self, serve_instance):
+        deployments = [self.DecoratedClass1, self.DecoratedClass2]
+        responses = ["DecoratedClass1 reached", "DecoratedClass2 reached"]
+        self.deploy_and_check_responses(deployments, responses)
 
 
 if __name__ == "__main__":
