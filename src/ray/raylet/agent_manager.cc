@@ -199,7 +199,6 @@ void AgentManager::CreateRuntimeEnv(
           } else {
             RAY_LOG(INFO) << "Failed to create runtime env: " << serialized_runtime_env
                           << ", error message: " << reply.error_message();
-            // TODO-SANG
             callback(false, reply.serialized_runtime_env_context(),
                      /*setup_error_message*/ reply.error_message());
           }

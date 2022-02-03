@@ -63,9 +63,11 @@ enum PopWorkerStatus {
 
 /// \param[in] worker The started worker instance. Nullptr if worker is not started.
 /// \param[in] status The pop worker status. OK if things go well. Otherwise, it will
-/// contain the error status. \param[in] runtime_env_setup_error_message The error message
+/// contain the error status.
+/// \param[in] runtime_env_setup_error_message The error message
 /// when runtime env setup is failed. This should be empty unless status ==
-/// RuntimeEnvCreationFailed. \return true if the worker was used. Otherwise, return false
+/// RuntimeEnvCreationFailed.
+/// \return true if the worker was used. Otherwise, return false
 /// and the worker will be returned to the worker pool.
 using PopWorkerCallback = std::function<bool(
     const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,

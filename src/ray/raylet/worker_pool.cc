@@ -172,6 +172,10 @@ void WorkerPool::SetAgentManager(std::shared_ptr<AgentManager> agent_manager) {
 void WorkerPool::PopWorkerCallbackAsync(const PopWorkerCallback &callback,
                                         std::shared_ptr<WorkerInterface> worker,
                                         PopWorkerStatus status) {
+  // This method shouldn't be invoked when runtime env creation has failed because
+  // when runtime env is failed to be created, they are all
+  // invoking the callback immediately.
+  RAY_CHECK(status != PopWorkerStatus::RuntimeEnvCreationFailed);
   // Call back this function asynchronously to make sure executed in different stack.
   io_service_->post([this, callback, worker,
                      status]() { PopWorkerCallbackInternal(callback, worker, status); },
@@ -182,8 +186,6 @@ void WorkerPool::PopWorkerCallbackInternal(const PopWorkerCallback &callback,
                                            std::shared_ptr<WorkerInterface> worker,
                                            PopWorkerStatus status) {
   RAY_CHECK(callback);
-  // This method shouldn't be used with RuntimeEnvCreationFailed.
-  RAY_CHECK(status != PopWorkerStatus::RuntimeEnvCreationFailed);
   auto used = callback(worker, status, /*runtime_env_setup_error_message*/ "");
   if (worker && !used) {
     // The invalid worker not used, restore it to worker pool.
@@ -885,7 +887,9 @@ void WorkerPool::InvokePopWorkerCallbackForProcess(
     *task_id = it->second.task_id;
     const auto &callback = it->second.callback;
     RAY_CHECK(callback);
-    // This method shouldn't be invoked when runtime env creation has failed.
+    // This method shouldn't be invoked when runtime env creation has failed because
+    // when runtime env is failed to be created, they are all
+    // invoking the callback immediately.
     RAY_CHECK(status != PopWorkerStatus::RuntimeEnvCreationFailed);
     *worker_used = callback(worker, status, /*runtime_env_setup_error_message*/ "");
     starting_workers_to_tasks.erase(it);

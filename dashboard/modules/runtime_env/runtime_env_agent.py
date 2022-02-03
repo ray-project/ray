@@ -200,8 +200,8 @@ class RuntimeEnvAgent(
                 except Exception as ex:
                     logger.exception("Runtime env creation failed.")
                     error_message = (
-                        f"Traceback:\n{traceback.format_exc()}\n"
-                        f"ErrorMessage:\n{str(ex)}"
+                        f"{traceback.format_exc()}"
+                        f"\nErrorMessage:\n{str(ex)}"
                     )
                     await asyncio.sleep(
                         runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000

@@ -83,7 +83,7 @@ message RequestWorkerLeaseReply {
   // Scheduling failure type.
   // Must be set only when canceled is set.
   SchedulingFailureType failure_type = 9;
-  // The error message explaining why scheduleing has failed.
+  // The error message explaining why scheduling has failed.
   // Must be an empty string if failure_type is `NOT_FAILED`.
   string scheduling_failure_message = 10;
 }
