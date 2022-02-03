@@ -142,6 +142,7 @@ def _rewrite_pip_list_ray_libraries(pip_list: List[str]) -> List[str]:
             # Requirement.parse would raise an InvalidRequirement in this
             # case.  Since we are only interested in lines specifying Ray
             # or its libraries, we should just skip this line.
+            result.append(specifier)
             continue
         package_name = requirement.name
         if package_name == "ray":
