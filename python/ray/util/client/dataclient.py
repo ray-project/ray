@@ -37,7 +37,20 @@ class ChunkCollector:
             self.callback(response)
             return True
         chunk_data = get_resp.data
-        self.data.extend(chunk_data)
+        chunk_id = get_resp.chunk_id
+        if chunk_id == self.last_seen_chunk + 1:
+            self.data.extend(chunk_data)
+            self.last_seen_chunk = chunk_id
+        elif chunk_id > self.last_seen_chunk + 1:
+            # A chunk was skipped. This shouldn't happen in practice since
+            # grpc guarantees that chunks will arrive in order.
+            self.callback(
+                RuntimeError(
+                    f"Received chunk {chunk_id} when we expected "
+                    f"{self.last_seen_chunk + 1} for request {response.req_id}"
+                ))
+            return True
+
         if get_resp.chunk_id == get_resp.total_chunks - 1:
             self.callback(self.data)
             return True
