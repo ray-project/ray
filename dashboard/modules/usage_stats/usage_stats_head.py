@@ -40,21 +40,9 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
 
         # In order to not block the event loop, we run blocking IOs
         # within a thread pool.
-        loop = asyncio.get_running_loop()
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            try:
-                await loop.run_in_executor(
-                    pool, ray_usage_lib.write_usage_data, data, self.session_dir
-                )
-                logger.info(f"The data is written: {data}")
-            except Exception as e:
-                logger.exception(e)
-
-            try:
-                await loop.run_in_executor(pool, ray_usage_lib.report_usage_data, data)
-                logger.info(f"The data is reported: {data}")
-            except Exception as e:
-                logger.exception(e)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            await ray_usage_lib.write_usage_data_async(data, self.session_dir, executor)
+            await ray_usage_lib.report_usage_data_async(data, executor)
 
     async def run(self, server):
         if not USAGE_REPORT_ENABLED:

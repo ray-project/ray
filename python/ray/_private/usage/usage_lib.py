@@ -43,16 +43,18 @@ Note that it is also possible to configure the interval using the environment va
 
 To see collected / reported data, see `ray._private.usage.schema.py`.
 """
+import asyncio
 import os
 import uuid
 import sys
 import json
 import logging
 
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
 import ray
 import requests
-
-from pathlib import Path
 
 import ray.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
@@ -171,7 +173,7 @@ def write_usage_data(data: dict, dir_path: str) -> None:
     temp = dir_path / "usage_stats_tmp.json"
     with temp.open(mode="w") as json_file:
         json_file.write(json.dumps(data))
-        temp.rename(destination)
+    temp.rename(destination)
 
 
 def report_usage_data(data: dict) -> None:
@@ -194,3 +196,23 @@ def report_usage_data(data: dict) -> None:
     )
     r.raise_for_status()
     logger.error(f"Status code: {r.status_code}, body: {r.json()}")
+
+
+async def write_usage_data_async(
+    data: dict, dir_path: str, executor: ThreadPoolExecutor
+) -> None:
+    loop = asyncio.get_running_loop()
+    try:
+        await loop.run_in_executor(executor, write_usage_data, data, dir_path)
+        logger.info(f"The data is written: {data}")
+    except Exception as e:
+        logger.exception(e)
+
+
+async def report_usage_data_async(data: dict, executor: ThreadPoolExecutor) -> None:
+    loop = asyncio.get_running_loop()
+    try:
+        await loop.run_in_executor(executor, report_usage_data, data)
+        logger.info(f"The data is reported: {data}")
+    except Exception as e:
+        logger.exception(e)

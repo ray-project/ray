@@ -189,7 +189,7 @@ class Node:
                 self.get_gcs_client(),
                 "session_name",
                 ray_constants.KV_NAMESPACE_SESSION,
-                num_retires=NUM_REDIS_GET_RETRIES,
+                num_retries=NUM_REDIS_GET_RETRIES,
             )
             self.session_name = ray._private.utils.decode(session_name)
             # setup gcs client
