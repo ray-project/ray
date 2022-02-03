@@ -278,7 +278,7 @@ class _ExternalEnvEpisode:
             self.new_observation = observation
             self.new_action = action
         self._send()
-        self.action_queue.get(True, timeout=60000.0)
+        self.action_queue.get(True, timeout=60.0)
 
     def wait_for_action(self, observation):
         if self.multiagent:
@@ -286,7 +286,7 @@ class _ExternalEnvEpisode:
         else:
             self.new_observation = observation
         self._send()
-        return self.action_queue.get(True, timeout=300000.0)
+        return self.action_queue.get(True, timeout=300.0)
 
     def done(self, observation):
         if self.multiagent:

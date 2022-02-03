@@ -1,12 +1,8 @@
 #!/bin/bash
 
-"""
-Driver script for testing RLlib's client/server setup.
-
-Run as follows:
-$ test_policy_client_server_setup.sh [inference-mode: local|remote] [env: cartpole|cartpole-dummy-2-episodes|unity3d]
-
-"""
+# Driver script for testing RLlib's client/server setup.
+# Run as follows:
+# $ test_policy_client_server_setup.sh [inference-mode: local|remote] [env: cartpole|cartpole-dummy-2-episodes|unity3d]
 
 rm -f last_checkpoint.out
 
@@ -74,6 +70,6 @@ client2_pid=$!
 # x reward (CartPole) or n episodes (dummy Unity3D).
 # Then stop everything.
 sleep 2
-python $basedir/$client_script $stop_criterion --inference-mode=$inference_mode --port=9901
+python $basedir/$client_script --inference-mode=$inference_mode --port=9901 $stop_criterion
 
 kill $server_pid $client1_pid $client2_pid || true
