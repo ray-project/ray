@@ -25,6 +25,7 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
+    from ray.data.lazy_dataset import LazyDatasetPipeline
 
 # Operations that can be naively applied per dataset row in the pipeline.
 PER_DATASET_OPS = ["map", "map_batches", "flat_map", "filter"]
@@ -562,6 +563,19 @@ class DatasetPipeline(Generic[T]):
                 return self
 
         return EpochDelimitedIterator(self)
+
+    def lazy(self) -> "LazyDatasetPipeline":
+        """
+        Convert this DatasetPipeline into a LazyDatasetPipeline, where all subsequent
+        operations won't be applied until .compute() or a consuming
+        function (such as .iter_batches(), .to_torch(), etc.) is called.
+
+        Returns:
+            A LazyDatasetPipeline.
+        """
+        from ray.data.lazy_dataset import LazyDatasetPipeline
+
+        return LazyDatasetPipeline(lambda: self)
 
     @DeveloperAPI
     def iter_datasets(self) -> Iterator[Dataset[T]]:

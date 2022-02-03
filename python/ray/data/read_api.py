@@ -37,6 +37,7 @@ from ray.data.block import (
 )
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset
+from ray.data.lazy_dataset import add_lazy_option
 from ray.data.datasource import (
     Datasource,
     RangeDatasource,
@@ -65,6 +66,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="beta")
+@add_lazy_option
 def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
     """Create a dataset from a list of local Python objects.
 
@@ -106,6 +108,7 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
 
 
 @PublicAPI(stability="beta")
+@add_lazy_option
 def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
     """Create a dataset from a range of integers [0..n).
 
@@ -126,6 +129,7 @@ def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
 
 
 @PublicAPI(stability="beta")
+@add_lazy_option
 def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from a range of integers [0..n).
 
@@ -150,6 +154,7 @@ def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
 
 
 @PublicAPI(stability="beta")
+@add_lazy_option
 def range_tensor(
     n: int, *, shape: Tuple = (1,), parallelism: int = 200
 ) -> Dataset[ArrowRow]:
@@ -181,6 +186,7 @@ def range_tensor(
 
 
 @PublicAPI(stability="beta")
+@add_lazy_option
 def read_datasource(
     datasource: Datasource[T],
     *,
@@ -291,6 +297,7 @@ def read_datasource(
 
 
 @PublicAPI(stability="beta")
+@add_lazy_option
 def read_parquet(
     paths: Union[str, List[str]],
     *,
@@ -369,6 +376,7 @@ def read_parquet(
 
 
 @PublicAPI(stability="beta")
+@add_lazy_option
 def read_json(
     paths: Union[str, List[str]],
     *,
@@ -416,6 +424,7 @@ def read_json(
 
 
 @PublicAPI(stability="beta")
+@add_lazy_option
 def read_csv(
     paths: Union[str, List[str]],
     *,
@@ -463,6 +472,7 @@ def read_csv(
 
 
 @PublicAPI(stability="beta")
+@add_lazy_option
 def read_text(
     paths: Union[str, List[str]],
     *,
@@ -502,6 +512,7 @@ def read_text(
 
 
 @PublicAPI(stability="beta")
+@add_lazy_option
 def read_numpy(
     paths: Union[str, List[str]],
     *,
@@ -546,6 +557,7 @@ def read_numpy(
 
 
 @PublicAPI(stability="beta")
+@add_lazy_option
 def read_binary_files(
     paths: Union[str, List[str]],
     *,
@@ -592,6 +604,7 @@ def read_binary_files(
 
 
 @PublicAPI(stability="beta")
+@add_lazy_option
 def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
     """Create a dataset from a Dask DataFrame.
 
@@ -625,6 +638,7 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
 
 
 @PublicAPI(stability="beta")
+@add_lazy_option
 def from_mars(df: "mars.DataFrame") -> Dataset[ArrowRow]:
     """Create a dataset from a MARS dataframe.
 
@@ -638,6 +652,7 @@ def from_mars(df: "mars.DataFrame") -> Dataset[ArrowRow]:
 
 
 @PublicAPI(stability="beta")
+@add_lazy_option
 def from_modin(df: "modin.DataFrame") -> Dataset[ArrowRow]:
     """Create a dataset from a Modin dataframe.
 
@@ -654,6 +669,7 @@ def from_modin(df: "modin.DataFrame") -> Dataset[ArrowRow]:
 
 
 @PublicAPI(stability="beta")
+@add_lazy_option
 def from_pandas(
     dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]]
 ) -> Dataset[ArrowRow]:
@@ -673,6 +689,7 @@ def from_pandas(
 
 
 @DeveloperAPI
+@add_lazy_option
 def from_pandas_refs(
     dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef["pandas.DataFrame"]]]
 ) -> Dataset[ArrowRow]:
@@ -717,6 +734,7 @@ def from_pandas_refs(
     )
 
 
+@add_lazy_option
 def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
     """Create a dataset from a set of NumPy ndarrays.
 
@@ -738,6 +756,7 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
 
 
 @PublicAPI(stability="beta")
+@add_lazy_option
 def from_arrow(
     tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]]
 ) -> Dataset[ArrowRow]:
@@ -758,6 +777,7 @@ def from_arrow(
 
 
 @DeveloperAPI
+@add_lazy_option
 def from_arrow_refs(
     tables: Union[
         ObjectRef[Union["pyarrow.Table", bytes]],
@@ -786,6 +806,7 @@ def from_arrow_refs(
 
 
 @PublicAPI(stability="beta")
+@add_lazy_option
 def from_spark(
     df: "pyspark.sql.DataFrame", *, parallelism: Optional[int] = None
 ) -> Dataset[ArrowRow]:

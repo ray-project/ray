@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     import tensorflow as tf
     from ray.data.dataset_pipeline import DatasetPipeline
     from ray.data.grouped_dataset import GroupedDataset
+    from ray.data.lazy_dataset import LazyDataset
 
 import collections
 import itertools
@@ -2492,6 +2493,19 @@ Dict[str, List[str]]]): The names of the columns
 
         it = Iterable(self._blocks, self._epoch)
         return DatasetPipeline(it, length=len(it._splits))
+
+    def lazy(self) -> "LazyDataset":
+        """
+        Convert this Dataset into a LazyDataset, where all subsequent
+        operations won't be applied until .compute() or a consuming
+        function (such as .iter_batches(), .to_torch(), etc.) is called.
+
+        Returns:
+            A LazyDataset.
+        """
+        from ray.data.lazy_dataset import LazyDataset
+
+        return LazyDataset(lambda: self)
 
     @DeveloperAPI
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
