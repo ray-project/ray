@@ -20,6 +20,7 @@ In this guide, we cover examples for the following use cases:
 * How do I :ref:`monitor <train-monitoring>` my training?
 * How do I run my training on pre-emptible instances
   (:ref:`fault tolerance <train-fault-tolerance>`)?
+* How do I :ref:`profile <train-profiling>` my training?
 * How do I use Ray Train to :ref:`train with a large dataset <train-datasets>`?
 * How do I :ref:`tune <train-tune>` my Ray Train model?
 
