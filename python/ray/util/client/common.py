@@ -83,6 +83,8 @@ GRPC_OPTIONS = [
 
 CLIENT_SERVER_MAX_THREADS = float(os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
 
+OBJECT_CHUNK_SIZE = 2 ** 20 * 64  # 64 MiB
+
 # Aliases for compatibility.
 ClientObjectRef = raylet.ClientObjectRef
 ClientActorRef = raylet.ClientActorRef

@@ -122,6 +122,9 @@ message GetRequest {
   float timeout = 2;
   // Whether to schedule this as a callback on the server side.
   bool asynchronous = 3;
+  // The chunk_id to start retrieving data from, in case the request is interrupted
+  // after partial retrieval by a disconnect
+  int32 start_chunk_id = 5;
 
   // Deprecated fields.
   bytes id = 1 [deprecated = true];

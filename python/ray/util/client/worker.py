@@ -309,6 +309,41 @@ class Worker:
                 continue
         raise ConnectionError("Client is shutting down.")
 
+    def _call_chunked_get(self, req: ray_client_pb2.GetRequest, *args, **kwargs) -> Any:
+        """
+        Calls the stub specified by stub_name (Schedule, WaitObject, etc...).
+        If a recoverable error occurrs while calling the stub, attempts to
+        retry the RPC.
+        """
+        highest_chunk_seen = -1
+        while not self._in_shutdown:
+            # If we disconnect partway through, restart the get request
+            # at the first chunk we haven't seen
+            req.start_chunk_id = highest_chunk_seen + 1
+            try:
+                for chunk in self.server.GetObject(req, *args, **kwargs):
+                    print(chunk.chunk_id, chunk.total_size)
+                    if chunk.chunk_id <= highest_chunk_seen:
+                        # Ignore repeat chunks
+                        continue
+                    assert highest_chunk_seen + 1 == chunk.chunk_id
+                    highest_chunk_seen = chunk.chunk_id
+                    yield chunk
+                return
+            except grpc.RpcError as e:
+                if self._can_reconnect(e):
+                    time.sleep(0.5)
+                    continue
+                raise
+            except ValueError:
+                # Trying to use the stub on a cancelled channel will raise
+                # ValueError. This should only happen when the data client
+                # is attempting to reset the connection -- sleep and try
+                # again.
+                time.sleep(0.5)
+                continue
+        raise ConnectionError("Client is shutting down.")
+
     def _add_ids_to_metadata(self, metadata: Any):
         """
         Adds a unique req_id and the current thread's identifier to the
@@ -400,7 +435,7 @@ class Worker:
     def _get(self, ref: List[ClientObjectRef], timeout: float):
         req = ray_client_pb2.GetRequest(ids=[r.id for r in ref], timeout=timeout)
         try:
-            resp = self._call_stub("GetObject", req, metadata=self.metadata)
+            resp = self._call_chunked_get(req, metadata=self.metadata)
         except grpc.RpcError as e:
             raise decode_exception(e)
         data = bytearray()
