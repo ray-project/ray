@@ -14,11 +14,13 @@ enable_dask_on_ray()
 # All Ray tasks that underly the Dask operations performed in an annotation
 # context will require the indicated resources: 2 CPUs and 0.01 of the custom
 # resource.
-with dask.annotate(num_cpus=2, resources={"custom_resource": 0.01}):
+with dask.annotate(
+    ray_remote_args=dict(num_cpus=2, resources={"custom_resource": 0.01})
+):
     d_arr = da.ones(100)
 
 # Operations on the same collection can have different annotations.
-with dask.annotate(resources={"other_custom_resource": 0.01}):
+with dask.annotate(ray_remote_args=dict(resources={"other_custom_resource": 0.01})):
     d_arr = 2 * d_arr
 
 # This happens outside of the annotation context, so no resource constraints
@@ -35,8 +37,7 @@ sum_ = d_arr.sum()
 # NOTE: We disable graph optimization since it can break annotations,
 # see this issue: https://github.com/dask/dask/issues/7036.
 result = sum_.compute(
-    resources={"another_custom_resource": 0.01},
-    ray_remote_args={"max_retries": 5},
+    ray_remote_args=dict(max_retries=5, resources={"another_custom_resource": 0.01}),
     optimize_graph=False,
 )
 print(result)

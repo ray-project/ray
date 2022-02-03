@@ -21,12 +21,11 @@ default_pool = None
 pools = defaultdict(dict)
 pools_lock = threading.Lock()
 
-DASK_TO_RAY_RESOURCES = [
-    ("CPU", "num_cpus"),
-    ("GPU", "num_gpus"),
-    ("memory", "memory"),
-    ("object_store_memory", "object_store_memory"),
-]
+TOP_LEVEL_RESOURCES_ERR_MSG = (
+    'Use ray_remote_args={"resources": {...}} instead of resources={...} to specify '
+    "required Ray task resources; see "
+    "https://docs.ray.io/en/master/ray-core/package-ref.html#ray-remote."
+)
 
 
 def enable_dask_on_ray(
@@ -143,15 +142,18 @@ def ray_dask_get(dsk, keys, **kwargs):
     enable_progress_bar = kwargs.pop("_ray_enable_progress_bar", None)
 
     # Handle Ray remote args and resource annotations.
+    if "resources" in kwargs:
+        raise ValueError(TOP_LEVEL_RESOURCES_ERR_MSG)
     ray_remote_args = kwargs.pop("ray_remote_args", {})
-    resources = kwargs.pop("resources", ray_remote_args.pop("resources", {}))
     try:
         annotations = dask.config.get("annotations")
     except KeyError:
         annotations = {}
+    if "resources" in annotations:
+        raise ValueError(TOP_LEVEL_RESOURCES_ERR_MSG)
 
     scoped_ray_remote_args = _build_key_scoped_ray_remote_args(
-        dsk, annotations, resources, ray_remote_args
+        dsk, annotations, ray_remote_args
     )
 
     with local_ray_callbacks(ray_callbacks) as ray_callbacks:
@@ -595,7 +597,7 @@ def multiple_return_get(multiple_returns, idx):
     return multiple_returns[idx]
 
 
-def _build_key_scoped_ray_remote_args(dsk, annotations, resources, ray_remote_args):
+def _build_key_scoped_ray_remote_args(dsk, annotations, ray_remote_args):
     # Handle per-layer annotations.
     if not isinstance(dsk, dask.highlevelgraph.HighLevelGraph):
         dsk = dask.highlevelgraph.HighLevelGraph.from_collections(
@@ -608,6 +610,8 @@ def _build_key_scoped_ray_remote_args(dsk, annotations, resources, ray_remote_ar
         layer_annotations = layer.annotations
         if layer_annotations is None:
             layer_annotations = annotations
+        elif "resources" in layer_annotations:
+            raise ValueError(TOP_LEVEL_RESOURCES_ERR_MSG)
         for key in layer.get_output_keys():
             layer_annotations_for_key = annotations.copy()
             # Layer annotations override global annotations.
@@ -618,27 +622,9 @@ def _build_key_scoped_ray_remote_args(dsk, annotations, resources, ray_remote_ar
     # Build key-scoped Ray remote args.
     scoped_ray_remote_args = {}
     for key, annotations in scoped_annotations.items():
-        # Layer resources override global resources given in the compute call.
-        # The override is a full overwrite, with no merging.
-        try:
-            layer_resources = annotations["resources"]
-        except KeyError:
-            layer_resources = resources
         layer_ray_remote_args = ray_remote_args.copy()
-        # Layer Ray remote args overriide global Ray remote args given in the compute
+        # Layer Ray remote args override global Ray remote args given in the compute
         # call.
         layer_ray_remote_args.update(annotations.get("ray_remote_args", {}))
-        # Map Dask resources to the equivalent top-level Ray resources.
-        for dask_resource, ray_resource in DASK_TO_RAY_RESOURCES:
-            try:
-                layer_ray_remote_args[ray_resource] = layer_resources.pop(dask_resource)
-            except KeyError:
-                pass
-            # Support special Ray resources as top-level annotations.
-            try:
-                layer_ray_remote_args[ray_resource] = annotations[ray_resource]
-            except KeyError:
-                pass
-        layer_ray_remote_args["resources"] = layer_resources
         scoped_ray_remote_args[key] = layer_ray_remote_args
     return scoped_ray_remote_args

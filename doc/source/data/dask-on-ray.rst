@@ -144,7 +144,7 @@ annotation API <https://docs.dask.org/en/stable/api.html#dask.annotate>`__. This
 annotation context manager can be used to attach resource requests (or any other Ray task
 option) to specific Dask operations, with the annotations funneling down to the
 underlying Ray tasks. Resource requests and other Ray task options can also be specified
-globally via the ``.compute(resources={...}, ray_remote_args={...})`` API, which will
+globally via the ``.compute(ray_remote_args={...})`` API, which will
 serve as a default for all Ray tasks launched via the Dask workload. Annotations on
 individual Dask operations will override this global default.
 
