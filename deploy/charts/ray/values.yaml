@@ -102,5 +102,7 @@ operatorImage: rayproject/ray:latest
 # For a particular official release version of Ray, use `rayproject/ray:1.x.y`.
 # For a specific master commit, use the first 6 characters of the commit SHA, e.g. `rayproject/ray:050a07`.
 # The operator and Ray cluster can use different Ray versions, provided both versions are >= 1.2.0
+# operatorTolerations - The tolerations that apply to the operator deployment
+operatorTolerations: []
 
 
