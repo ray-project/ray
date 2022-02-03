@@ -1294,10 +1294,16 @@ def deploy_group(
             deploying or not.
     """
 
+    if len(deployments) == 0:
+        return
+
     client = _get_global_client()
 
     deployment_args_list = []
     for deployment in deployments:
+        if not isinstance(deployment, Deployment):
+            raise TypeError(f"Passed in object with type {type(deployment)} "
+                            f"as a Deployment.")
         deployment_args_list.append(
             client.get_deploy_args(
                 deployment._name,
