@@ -45,8 +45,14 @@ from ray.tune.utils.log import disable_ipython
 from ray.tune.utils.util import Tee
 from ray.util.debug import log_once
 from ray.util.annotations import PublicAPI
-from ray.util.ml_utils.checkpoint import LocalStorageCheckpoint, \
-    CloudStorageCheckpoint, Checkpoint
+from ray.util.ml_utils.checkpoint import (
+    LocalStorageCheckpoint,
+    CloudStorageCheckpoint,
+    Checkpoint,
+    MultiLocationCheckpoint,
+    ObjectStoreCheckpoint,
+    DataCheckpoint,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -405,7 +411,7 @@ class Trainable:
             "ray_version": ray.__version__,
         }
 
-    def save(self, checkpoint_dir=None) -> Checkpoint:
+    def save(self, checkpoint_dir: str = None) -> Checkpoint:
         """Saves the current model state to a checkpoint.
 
         Subclasses should override ``save_checkpoint()`` instead to save state.
@@ -418,23 +424,28 @@ class Trainable:
             checkpoint_dir (str): Optional dir to place the checkpoint.
 
         Returns:
-            str: path that points to xxx.pkl file.
+            Checkpoint: A FSStorageCheckpoint, ObjectStoreCheckpoint, or
+                MultiLocationCheckpoint (including a CloudCheckpoint).
 
-        Note the return path should match up with what is expected of
-        `restore()`.
         """
+        # Create dir if needed and creates .is_checkpoint
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             checkpoint_dir or self.logdir, index=self.iteration
         )
-        checkpoint = self.save_checkpoint(checkpoint_dir)
+        # Calls user function to store checkpoint
+        checkpoint_path_or_obj = self.save_checkpoint(checkpoint_dir)
+
         trainable_state = self.get_state()
-        checkpoint_path = TrainableUtil.process_checkpoint(
-            checkpoint, parent_dir=checkpoint_dir, trainable_state=trainable_state
+
+        local_checkpoint = TrainableUtil.process_checkpoint(
+            checkpoint_path_or_obj, parent_dir=checkpoint_dir, metadata=trainable_state
         )
 
         # Maybe sync to cloud
-        cloud_checkpoint = self._maybe_save_to_cloud(checkpoint_dir)
-        local_checkpoint = LocalStorageCheckpoint(path=checkpoint_dir)
+        cloud_checkpoint = self._maybe_save_to_cloud(local_checkpoint.path)
+
+        if cloud_checkpoint:
+            return MultiLocationCheckpoint(local_checkpoint, cloud_checkpoint)
 
         return local_checkpoint
 
@@ -442,11 +453,10 @@ class Trainable:
         # Derived classes like the FunctionRunner might call this
         if self.uses_cloud_checkpointing:
             cloud_location = self._storage_path(checkpoint_dir)
-            self.storage_client.sync_up(
-                checkpoint_dir, cloud_location
-            )
+            self.storage_client.sync_up(checkpoint_dir, cloud_location)
             self.storage_client.wait()
             return CloudStorageCheckpoint(location=cloud_location)
+        return None
 
     def save_to_object(self):
         """Saves the current model state to a Python object.
@@ -457,11 +467,20 @@ class Trainable:
             Object holding checkpoint data.
         """
         tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
-        checkpoint_path = self.save(tmpdir)
-        # Save all files in subtree and delete the tmpdir.
-        obj = TrainableUtil.checkpoint_to_object(checkpoint_path)
+
+        checkpoint_dir = TrainableUtil.make_checkpoint_dir(tmpdir, index=self.iteration)
+        checkpoint_path_or_obj = self.save_checkpoint(checkpoint_dir)
+
+        trainable_state = self.get_state()
+
+        data_checkpoint = TrainableUtil.process_checkpoint(
+            checkpoint_path_or_obj,
+            parent_dir=checkpoint_dir,
+            metadata=trainable_state,
+            return_data_checkpoint=True,
+        )
         shutil.rmtree(tmpdir)
-        return obj
+        return data_checkpoint
 
     def restore(self, checkpoint_path):
         """Restores training state from a given model checkpoint.

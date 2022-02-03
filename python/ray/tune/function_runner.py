@@ -12,7 +12,11 @@ from numbers import Number
 
 from typing import Any, Callable, Optional
 
-from ray.util.ml_utils.checkpoint import LocalStorageCheckpoint, Checkpoint
+from ray.util.ml_utils.checkpoint import (
+    LocalStorageCheckpoint,
+    Checkpoint,
+    MultiLocationCheckpoint,
+)
 from six.moves import queue
 
 from ray.util.debug import log_once
@@ -482,6 +486,9 @@ class FunctionRunner(Trainable):
 
         cloud_checkpoint = self._maybe_save_to_cloud(parent_dir)
         local_checkpoint = LocalStorageCheckpoint(path=checkpoint_path)
+
+        if cloud_checkpoint:
+            return MultiLocationCheckpoint(local_checkpoint, cloud_checkpoint)
 
         return local_checkpoint
 

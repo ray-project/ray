@@ -12,6 +12,7 @@ import ray.cloudpickle as pickle
 from ray.tune.registry import _ParameterRegistry
 from ray.tune.utils import detect_checkpoint_function
 from ray.util import placement_group
+from ray.util.ml_utils.checkpoint import LocalStorageCheckpoint, DataCheckpoint
 from six import string_types
 
 logger = logging.getLogger(__name__)
@@ -20,8 +21,11 @@ logger = logging.getLogger(__name__)
 class TrainableUtil:
     @staticmethod
     def process_checkpoint(
-        checkpoint: Union[Dict, str], parent_dir: str, trainable_state: Dict
-    ) -> str:
+        checkpoint_path_or_obj: Union[Dict, str],
+        parent_dir: str,
+        metadata: Dict,
+        return_data_checkpoint: bool = False,
+    ) -> LocalStorageCheckpoint:
         """Creates checkpoint file structure and writes metadata
         under `parent_dir`.
 
@@ -36,33 +40,36 @@ class TrainableUtil:
         -- checkpoint (returned path)
         -- checkpoint.tune_metadata
         """
-        saved_as_dict = False
-        if isinstance(checkpoint, string_types):
-            if not checkpoint.startswith(parent_dir):
+        if isinstance(checkpoint_path_or_obj, string_types):
+            if not checkpoint_path_or_obj.startswith(parent_dir):
                 raise ValueError(
-                    "The returned checkpoint path must be within the "
-                    "given checkpoint dir {}: {}".format(parent_dir, checkpoint)
+                    f"The returned checkpoint path must be within the "
+                    f"given checkpoint dir ({parent_dir}). "
+                    f"Got: {checkpoint_path_or_obj}"
                 )
-            checkpoint_path = checkpoint
-            if os.path.isdir(checkpoint_path):
-                # Add trailing slash to prevent tune metadata from
-                # being written outside the directory.
-                checkpoint_path = os.path.join(checkpoint_path, "")
-        elif isinstance(checkpoint, dict):
-            saved_as_dict = True
-            checkpoint_path = os.path.join(parent_dir, "checkpoint")
-            with open(checkpoint_path, "wb") as f:
-                pickle.dump(checkpoint, f)
+            metadata["suffix"] = os.path.relpath(checkpoint_path_or_obj, parent_dir)
+            local_checkpoint = LocalStorageCheckpoint(
+                path=checkpoint_path_or_obj, metadata=metadata
+            )
+            if return_data_checkpoint:
+                return local_checkpoint.to_data()
+
+        elif isinstance(checkpoint_path_or_obj, dict):
+            data_checkpoint = DataCheckpoint(
+                data=checkpoint_path_or_obj, metadata=metadata
+            )
+            if return_data_checkpoint:
+                return data_checkpoint
+            local_checkpoint = data_checkpoint.to_local_storage(parent_dir)
         else:
             raise ValueError(
-                "Returned unexpected type {}. "
-                "Expected str or dict.".format(type(checkpoint))
+                f"Returned unexpected type {type(checkpoint_path_or_obj)}. "
+                f"Expected str or dict."
             )
 
-        with open(checkpoint_path + ".tune_metadata", "wb") as f:
-            trainable_state["saved_as_dict"] = saved_as_dict
-            pickle.dump(trainable_state, f)
-        return checkpoint_path
+        local_checkpoint.write_metadata()
+
+        return local_checkpoint
 
     @staticmethod
     def pickle_checkpoint(checkpoint_path):
