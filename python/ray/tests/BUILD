@@ -269,7 +269,8 @@ py_test(
 py_test(
     name = "test_typing",
     size = "medium",
-    srcs = SRCS + ["test_typing.py"],
+    srcs = SRCS + ["test_typing.py", "typing_files/check_typing_bad.py",
+                   "typing_files/check_typing_good.py"],
     tags = ["exclusive", "small_size_python_tests", "team:core"],
     deps = ["//:ray_lib"],
 )
