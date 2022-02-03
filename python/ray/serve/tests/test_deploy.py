@@ -1303,6 +1303,9 @@ class TestDeployGroup:
         deployments = [self.DecoratedClass1, self.DecoratedClass2]
         responses = ["DecoratedClass1 reached", "DecoratedClass2 reached"]
         self.deploy_and_check_responses(deployments, responses)
+    
+    def test_empty_list(self, serve_instance):
+        self.deploy_and_check_responses([], [])
 
 
 if __name__ == "__main__":
