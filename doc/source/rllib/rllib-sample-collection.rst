@@ -37,10 +37,12 @@ are determined by the following Trainer config keys:
      It does not matter, whether one or more episodes end within this rollout or whether
      the rollout starts in the middle of an already ongoing episode.
     *complete_episodes*:
-     Each rollout is exactly one episode long and always starts
-     at the beginning of an episode. It does not matter how long an episode lasts.
-     The ``rollout_fragment_length`` setting will be ignored. Note that you have to be
-     careful when chosing ``complete_episodes`` as batch_mode: If your environment does not
+     Each rollout always only contains completed episodes (at least one, but possibly more) and always starts
+     at the beginning of an episode. The ``rollout_fragment_length`` setting defines the minimum number of
+     timesteps that will be covered in the rollout. For example, if ``rollout_fragment_length=100`` and your episodes
+     are always 98 timesteps long, all rollouts will happen over two complete episodes
+     (98 < 100 -> too short; 98+98 >= 100 -> good).
+     Note that you have to be careful when chosing ``complete_episodes`` as batch_mode: If your environment does not
      terminate easily, this setting could lead to enormous batch sizes.
 
 **rollout_fragment_length [int]**:
