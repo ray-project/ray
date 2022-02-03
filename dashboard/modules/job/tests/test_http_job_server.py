@@ -156,7 +156,7 @@ def test_runtime_env_setup_failure(job_sdk_client):
 
     wait_for_condition(_check_job_failed, client=client, job_id=job_id)
     status = client.get_job_status(job_id)
-    assert "The runtime_env failed to be set up" in status.message
+    assert "Failed to setup runtime environment" in status.message
 
 
 def test_submit_job_with_exception_in_driver(job_sdk_client):
