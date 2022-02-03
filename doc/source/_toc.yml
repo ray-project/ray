@@ -30,10 +30,11 @@ parts:
       - file: tune/index
         title: Ray Tune
         sections:
-          - file: tune/key-concepts
-          - file: tune/user-guide
+          - file: tune/getting-started
           - file: tune/tutorials/overview
+          - file: tune/key-concepts
           - file: tune/examples/index
+          - file: tune/faq
       - file: serve/index
         title: Ray Serve
         sections:
@@ -93,7 +94,7 @@ parts:
   - caption: References
     chapters:
       - file: ray-references/api
-      - file: ray-references/faq
+#      - file: ray-references/faq
 
   - caption: Developer Guides
     chapters:

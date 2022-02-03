@@ -1,28 +1,20 @@
 .. _tune-guides:
 
-===============
-Tutorials & FAQ
-===============
+===========
+User Guides
+===========
 
 .. tip:: We'd love to hear your feedback on using Tune - `get in touch <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
 
-In this section, you can find material on how to use Tune and its various features. If any of the materials is out of date or broken, or if you'd like to add an example to this page, feel free to raise an issue on our Github repository.
+In this section, you can find material on how to use Tune and its various features.
+If any of the materials is out of date or broken, or if you'd like to add an example to this page,
+feel free to raise an issue on our Github repository.
 
 Take a look at any of the below tutorials to get started with Tune.
 
 .. raw:: html
 
     <div class="sphx-glr-bigcontainer">
-
-.. customgalleryitem::
-   :tooltip: Key concepts in 60 seconds.
-   :figure: /images/tune-workflow.png
-   :description: :doc:`Key concepts in 60 seconds </tune/key-concepts>`
-
-.. customgalleryitem::
-   :tooltip: A simple Tune walkthrough.
-   :figure: /images/tune.png
-   :description: :doc:`A walkthrough to setup your first Tune experiment <tune-tutorial>`
 
 .. customgalleryitem::
    :tooltip: A deep dive into Tune's workings.
@@ -59,7 +51,6 @@ Take a look at any of the below tutorials to get started with Tune.
    :figure: /images/serve.png
    :description: :doc:`Model selection and serving with Ray Tune and Ray Serve <tune-serve-integration-mnist>`
 
-
 .. customgalleryitem::
    :tooltip: Tuning XGBoost parameters.
    :figure: /images/xgboost_logo.png
@@ -81,26 +72,59 @@ Take a look at any of the below tutorials to get started with Tune.
     :description: :doc:`Log and analyze your Tune trial runs with Comet's Experiment Management Tools <tune-comet>`
 
 
+
+.. customgalleryitem::
+   :tooltip: Stopping & Resuming
+   :figure: /images/tune.png
+   :description: :doc:`A Guide To Stopping and Resuming Tune Experiments<tune-stopping>`
+
+.. customgalleryitem::
+   :tooltip: Callbacks & Metrics
+   :figure: /images/tune.png
+   :description: :doc:`Using Callbacks and Metrics in Tune<tune-metrics>`
+
+.. customgalleryitem::
+   :tooltip: Logging & Debugging
+   :figure: /images/tune.png
+   :description: :doc:`Logging Outputs & Debugging Tune<tune-output>`
+
+.. customgalleryitem::
+   :tooltip: Resources
+   :figure: /images/tune.png
+   :description: :doc:`Using Resources (GPUs, Parallel & Distributed Runs) <tune-resources>`
+
+.. customgalleryitem::
+   :tooltip: Checkpoints
+   :figure: /images/tune.png
+   :description: :doc:`Using Checkpoints For Your Experiments<tune-checkpoints>`
+
+
 .. raw:: html
 
     </div>
 
 
 .. toctree::
-   :hidden:
+    :hidden:
 
-   tune-tutorial.rst
-   tune-advanced-tutorial.rst
-   tune-distributed.rst
-   tune-lifecycle.rst
-   tune-mlflow.rst
-   tune-pytorch-cifar.rst
-   tune-pytorch-lightning.rst
-   tune-serve-integration-mnist.rst
-   tune-sklearn.rst
-   tune-xgboost.rst
-   tune-wandb.rst
-   tune-comet.rst
+    tune-advanced-tutorial.rst
+    tune-distributed.rst
+    tune-lifecycle.rst
+    tune-mlflow.rst
+    tune-pytorch-cifar.rst
+    tune-pytorch-lightning.rst
+    tune-serve-integration-mnist.rst
+    tune-sklearn.rst
+    tune-xgboost.rst
+    tune-wandb.rst
+    tune-comet.rst
+
+    tune-stopping.rst
+    tune-metrics.rst
+    tune-output.rst
+    tune-resources.rst
+    tune-checkpoints.rst
+
 
 Colab Exercises
 ---------------
@@ -173,5 +197,4 @@ What's Next?
 
 Check out:
 
- * :doc:`/tune/user-guide`: A comprehensive overview of Tune's features.
  * :doc:`/tune/examples/index`: End-to-end examples and templates for using Tune with your preferred machine learning library.

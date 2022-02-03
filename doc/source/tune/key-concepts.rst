@@ -133,6 +133,51 @@ You can also easily run 10 trials. Tune automatically :ref:`determines how many 
 
 Finally, you can randomly sample or grid search hyperparameters via Tune's :ref:`search space API <tune-default-search-space>`:
 
+
+.. _tune-default-search-space:
+
+Search Space (Grid/Random)
+--------------------------
+
+You can specify a grid search or sampling distribution via the dict passed into ``tune.run(config=)``.
+
+TODO work this in
+
+.. code-block:: python
+
+    parameters = {
+        "qux": tune.sample_from(lambda spec: 2 + 2),
+        "bar": tune.grid_search([True, False]),
+        "foo": tune.grid_search([1, 2, 3]),
+        "baz": "asd",  # a constant value
+    }
+
+    tune.run(trainable, config=parameters)
+
+By default, each random variable and grid search point is sampled once. To take multiple random samples, add ``num_samples: N`` to the experiment config. If `grid_search` is provided as an argument, the grid will be repeated ``num_samples`` of times.
+
+.. code-block:: python
+   :emphasize-lines: 13
+
+    # num_samples=10 repeats the 3x3 grid search 10 times, for a total of 90 trials
+    tune.run(
+        my_trainable,
+        name="my_trainable",
+        config={
+            "alpha": tune.uniform(100),
+            "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
+            "nn_layers": [
+                tune.grid_search([16, 64, 256]),
+                tune.grid_search([16, 64, 256]),
+            ],
+        },
+        num_samples=10
+    )
+
+Note that search spaces may not be interoperable across different search algorithms. For example, for many search algorithms, you will not be able to use a ``grid_search`` parameter. Read about this in the :ref:`Search Space API <tune-search-space>` page.
+
+
+
 .. code-block:: python
 
     space = {"x": tune.uniform(0, 1)}
@@ -279,7 +324,6 @@ What's Next?
 
 Now that you have a working understanding of Tune, check out:
 
-* :doc:`/tune/user-guide`: A comprehensive overview of Tune's features.
 * :ref:`tune-guides`: Tutorials for using Tune with your preferred machine learning library.
 * :doc:`/tune/examples/index`: End-to-end examples and templates for using Tune with your preferred machine learning library.
 * :ref:`tune-tutorial`: A simple tutorial that walks you through the process of setting up a Tune experiment.
