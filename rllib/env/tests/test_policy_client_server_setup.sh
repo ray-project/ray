@@ -20,6 +20,10 @@ if [ "$2" == "cartpole" ]; then
   server_script=cartpole_server.py
   client_script=cartpole_client.py
   stop_criterion="--stop-reward=150.0"
+elif [ "$2" == "unity3d" ]; then
+  server_script=unity3d_server.py
+  client_script=unity3d_dummy_client.py
+  stop_criterion="--num-episodes=10"
 else
   server_script=unity3d_server.py
   client_script=unity3d_dummy_client.py
