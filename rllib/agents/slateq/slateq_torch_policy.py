@@ -1,6 +1,7 @@
 """PyTorch policy class used for SlateQ."""
 
 import gym
+import logging
 import numpy as np
 import time
 from typing import Dict, List, Tuple, Type
@@ -21,6 +22,7 @@ from ray.rllib.utils.torch_utils import apply_grad_clipping, huber_loss
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
+logger = logging.getLogger(__name__)
 
 
 def build_slateq_model_and_distribution(
@@ -32,13 +34,13 @@ def build_slateq_model_and_distribution(
     """Build models for SlateQ
 
     Args:
-        policy (Policy): The policy, which will use the model for optimization.
-        obs_space (gym.spaces.Space): The policy's observation space.
-        action_space (gym.spaces.Space): The policy's action space.
-        config (TrainerConfigDict):
+        policy: The policy, which will use the model for optimization.
+        obs_space: The policy's observation space.
+        action_space: The policy's action space.
+        config: The Trainer's config dict.
 
     Returns:
-        (q_model, TorchCategorical)
+        Tuple consisting of 1) Q-model and 2) an action distribution class.
     """
     model = SlateQModel(
         obs_space,
@@ -73,15 +75,15 @@ def build_slateq_losses(
     _: Type[TorchDistributionWrapper],
     train_batch: SampleBatch,
 ) -> TensorType:
-    """Constructs the losses for SlateQPolicy.
+    """Constructs the choice- and Q-value losses for the SlateQTorchPolicy.
 
     Args:
-        policy (Policy): The Policy to calculate the loss for.
-        model (ModelV2): The Model to calculate the loss for.
-        train_batch (SampleBatch): The training data.
+        policy: The Policy to calculate the loss for.
+        model: The Model to calculate the loss for.
+        train_batch: The training data.
 
     Returns:
-        TensorType: A single loss tensor.
+        Tuple consisting of 1) the choice loss- and 2) the Q-value loss tensors.
     """
     start = time.time()
     obs = restore_original_dimensions(
@@ -141,7 +143,7 @@ def build_slateq_losses(
             index=next_actions.unsqueeze(2).expand(-1, -1, embedding_size).long(),
         )
         next_user = next_obs["user"]
-        dones = train_batch["dones"]
+        dones = train_batch[SampleBatch.DONES]
         with torch.no_grad():
             # q_values.shape: [batch_size, slate_size+1]
             q_values = model.q_model(next_user, next_selected_doc)
@@ -160,7 +162,7 @@ def build_slateq_losses(
         # next_doc.shape: [batch_size, num_docs, embedding_size]
         next_doc = torch.cat([val.unsqueeze(1) for val in next_obs["doc"].values()], 1)
         next_user = next_obs["user"]
-        dones = train_batch["dones"]
+        dones = train_batch[SampleBatch.DONES]
         with torch.no_grad():
             if policy.config["double_q"]:
                 next_target_per_slate_q_values = policy.target_models[
@@ -178,7 +180,9 @@ def build_slateq_losses(
     else:
         raise ValueError(learning_strategy)
     # target_q_values.shape: [batch_size]
-    target_q_values = train_batch["rewards"] + policy.config["gamma"] * next_q_values
+    target_q_values = (
+        train_batch[SampleBatch.REWARDS] + policy.config["gamma"] * next_q_values
+    )
 
     # q_values.shape: [batch_size, slate_size+1].
     q_values = model.q_model(user, selected_doc)
@@ -203,8 +207,8 @@ def build_slateq_losses(
     model.tower_stats["target_q_values"] = target_q_values
     model.tower_stats["raw_scores"] = raw_scores
 
-    print(f"loss calculation took {time.time()-start}s")
-    return [choice_loss, q_value_loss]
+    logger.debug(f"loss calculation took {time.time()-start}s")
+    return choice_loss, q_value_loss
 
 
 def build_slateq_stats(policy: Policy, batch) -> Dict[str, TensorType]:
@@ -263,7 +267,6 @@ def action_distribution_fn(
     doc = torch.cat([val.unsqueeze(1) for val in obs["doc"].values()], 1)
 
     _, _, per_slate_q_values = model.choose_slate(user, doc)
-    # print(f"action calculation took {time.time() - start}s")
 
     return per_slate_q_values, TorchCategorical, []
 
@@ -289,14 +292,13 @@ def setup_late_mixins(
     action_space: gym.spaces.Space,
     config: TrainerConfigDict,
 ) -> None:
-    """Call all mixin classes' constructors before SlateQTorchPolicy
-    initialization.
+    """Call all mixin classes' constructors before SlateQTorchPolicy initialization.
 
     Args:
-        policy (Policy): The Policy object.
-        obs_space (gym.spaces.Space): The Policy's observation space.
-        action_space (gym.spaces.Space): The Policy's action space.
-        config (TrainerConfigDict): The Policy's config.
+        policy: The Policy object.
+        obs_space: The Policy's observation space.
+        action_space: The Policy's action space.
+        config: The Policy's config.
     """
     TargetNetworkMixin.__init__(policy)
 

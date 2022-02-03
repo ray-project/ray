@@ -72,7 +72,7 @@ DEFAULT_CONFIG = with_common_config({
         # Config for the Exploration class' constructor:
         "initial_epsilon": 1.0,
         "final_epsilon": 0.02,
-        "epsilon_timesteps": 50000,  # Timesteps over which to anneal epsilon.
+        "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
     },
     # Switch to greedy actions in evaluation workers.
     "evaluation_config": {

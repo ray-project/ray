@@ -17,7 +17,6 @@ from recsim.user import AbstractUserModel, AbstractResponse
 from typing import Callable, List, Optional, Type
 
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
 
