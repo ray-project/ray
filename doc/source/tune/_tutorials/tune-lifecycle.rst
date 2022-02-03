@@ -1,5 +1,3 @@
-.. _tune-lifecycle:
-
 How does Tune work?
 ===================
 

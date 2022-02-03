@@ -35,6 +35,8 @@ parts:
           - file: tune/key-concepts
           - file: tune/examples/index
           - file: tune/faq
+          - file: tune/tune-sklearn
+          - file: tune-serve-integration-mnist
       - file: serve/index
         title: Ray Serve
         sections:

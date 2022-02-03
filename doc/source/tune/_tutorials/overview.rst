@@ -10,6 +10,43 @@ In this section, you can find material on how to use Tune and its various featur
 If any of the materials is out of date or broken, or if you'd like to add an example to this page,
 feel free to raise an issue on our Github repository.
 
+.. panels::
+    :container: container pb-4 full-width
+    :column: col-lg-3 px-2 py-2
+
+    ---
+    :img-top: /images/tune.png
+
+    .. link-button:: tune-lifecycle
+        :type: ref
+        :text: Go To Reference
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /images/tune.png
+
+    .. link-button:: tune-lifecycle
+        :type: ref
+        :text: Go To Reference
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /images/tune.png
+
+    .. link-button:: tune-lifecycle
+        :type: ref
+        :text: Go To Reference
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /images/tune.png
+
+    .. link-button:: tune-lifecycle
+        :type: ref
+        :text: Go To Reference
+        :classes: btn-link btn-block stretched-link
+
+
 Take a look at any of the below tutorials to get started with Tune.
 
 .. raw:: html
