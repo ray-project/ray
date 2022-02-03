@@ -15,7 +15,7 @@ from ray.tune import TuneError
 from ray.tune.callback import CallbackList
 from ray.tune.experiment import Experiment
 from ray.tune.insufficient_resources_manager import InsufficientResourcesManager
-from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.ray_trial_executor import RayTrialExecutor, ExecutorEventType
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_METRIC,
@@ -684,13 +684,8 @@ class TrialRunner:
         ) and all(trial.is_finished() for trial in self._trials)
         return trials_done and self._search_alg.is_finished()
 
-    def _do_pre_wait_work(self) -> Optional[Trial]:
-        """Work within a single step before entering single wait.
-
-        Roughly:
-        - Adding suggested trials to the live queue of trials
-            (they start as PENDING trials).
-        - Staging the pending trials (requesting the resources from Core).
+    def _update_trial_queue_and_get_next_trial(self) -> Optional[Trial]:
+        """Adding suggested trials to the live queue of trials (they start as PENDING trials).
 
         Returns:
             next_trial: Trial
@@ -710,38 +705,35 @@ class TrialRunner:
                     break
                 num_pending_trials += 1
 
-        # Update status of staged placement groups
-        self.trial_executor.stage_and_update_status(self._live_trials)
-
         return next_trial
 
     def _wait_and_handle_event(self, next_trial: Optional[Trial]):
         try:
             # Single wait of entire tune loop.
-            future_result = self.trial_executor.get_next_future_result(
-                next_trial is not None
+            future_result = self.trial_executor.get_next_executor_event(
+                self._live_trials, next_trial is not None
             )
-            if future_result.type == RayTrialExecutor.PG_READY:
+            if future_result.type == ExecutorEventType.PG_READY:
                 self._on_pg_ready(next_trial)
-            elif future_result.type == RayTrialExecutor.NO_RUNNING_TRIAL_TIMEOUT:
+            elif future_result.type == ExecutorEventType.NO_RUNNING_TRIAL_TIMEOUT:
                 self._insufficient_resources_manager.on_no_available_trials(
                     self.get_trials()
                 )
-            elif future_result.type == RayTrialExecutor.PUNT:
+            elif future_result.type == ExecutorEventType.YIELD:
                 pass
             else:
                 trial = future_result.trial
                 result = future_result.result
-                if future_result.type == RayTrialExecutor.ERROR:
+                if future_result.type == ExecutorEventType.ERROR:
                     self._on_executor_error(trial, result)
-                elif future_result.type == RayTrialExecutor.RESTORING_RESULT:
+                elif future_result.type == ExecutorEventType.RESTORING_RESULT:
                     self._on_restoring_result(trial)
                 else:
                     assert future_result.type in (
-                        RayTrialExecutor.SAVING_RESULT,
-                        RayTrialExecutor.TRAINING_RESULT,
+                        ExecutorEventType.SAVING_RESULT,
+                        ExecutorEventType.TRAINING_RESULT,
                     ), f"Unexpected future type - {future_result.type}"
-                    if future_result.type == RayTrialExecutor.TRAINING_RESULT:
+                    if future_result.type == ExecutorEventType.TRAINING_RESULT:
                         self._on_training_result(trial, result)
                     else:
                         self._on_saving_result(trial, result)
@@ -768,7 +760,7 @@ class TrialRunner:
                 iteration=self._iteration, trials=self._trials
             )
 
-        next_trial = self._do_pre_wait_work()
+        next_trial = self._update_trial_queue_and_get_next_trial()
 
         self._wait_and_handle_event(next_trial)
 
@@ -778,7 +770,6 @@ class TrialRunner:
             self.checkpoint()
         except Exception as e:
             logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
-        logger.info("incrementing iteration!!")
         self._iteration += 1
 
         if self._server:
