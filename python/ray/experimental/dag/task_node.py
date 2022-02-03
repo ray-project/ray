@@ -8,9 +8,9 @@ from ray.experimental.dag import DAGNode
 class TaskNode(DAGNode):
     """Represents a bound task node in a Ray task DAG."""
 
-    def __init__(self, func_body, func_args, func_kwargs, task_options=None):
+    def __init__(self, func_body, func_args, func_kwargs, func_options):
         self._body = func_body
-        DAGNode.__init__(self, func_args, func_kwargs, task_options)
+        DAGNode.__init__(self, func_args, func_kwargs, func_options)
 
     def _copy(
         self,

@@ -20,7 +20,6 @@ from ray.util.tracing.tracing_helper import (
     _tracing_task_invocation,
     _inject_tracing_into_function,
 )
-from ray.util.annotations import DeveloperAPI
 
 
 # Default parameters for remote functions.
@@ -228,7 +227,7 @@ class RemoteFunction:
             # runtime_env specified in the @ray.remote decorator.
             new_runtime_env = None
 
-        task_options = dict(
+        options = dict(
             num_returns=num_returns,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
@@ -248,11 +247,13 @@ class RemoteFunction:
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
-                return func_cls._remote(args=args, kwargs=kwargs, **task_options)
+                return func_cls._remote(args=args, kwargs=kwargs, **options)
 
-            @DeveloperAPI
             def _bind(self, *args, **kwargs):
-                """For ray DAG building. Implementation and interface subject
+                """
+                **Experimental**
+
+                For ray DAG building. Implementation and interface subject
                 to chagnes
                 """
                 from ray.experimental.dag.task_node import TaskNode
@@ -261,7 +262,7 @@ class RemoteFunction:
                     func_cls._function,
                     args,
                     kwargs,
-                    task_options=task_options,
+                    options,
                 )
 
         return FuncWrapper()
@@ -460,12 +461,14 @@ class RemoteFunction:
 
         return invocation(args, kwargs)
 
-    @DeveloperAPI
     def _bind(self, *args, **kwargs):
-        """For ray DAG building. Implementation and interface subject to
+        """
+        **Experimental**
+
+        For ray DAG building. Implementation and interface subject to
         chagne.
         """
 
         from ray.experimental.dag.task_node import TaskNode
 
-        return TaskNode(self._function, args, kwargs)
+        return TaskNode(self._function, args, kwargs, {})

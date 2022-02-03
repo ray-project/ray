@@ -1,16 +1,16 @@
 import ray
 from ray.experimental.dag.dag_node import DAGNode
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class ActorNode(DAGNode):
     """Represents an actor creation in a Ray task DAG."""
 
-    def __init__(self, actor_cls: type, cls_args, cls_kwargs, cls_options=None):
+    def __init__(self, actor_cls: type, cls_args, cls_kwargs, cls_options):
         self._actor_cls = actor_cls
         self._last_call: Optional["ActorMethodNode"] = None
-        DAGNode.__init__(self, cls_args, cls_kwargs, options=cls_options)
+        DAGNode.__init__(self, cls_args, cls_kwargs, cls_options)
 
     def _copy(
         self,
@@ -43,7 +43,7 @@ class _UnboundActorMethodNode(object):
     def __init__(self, actor: ActorNode, method_name: str):
         self._actor = actor
         self._method_name = method_name
-        self._options = None
+        self._options = {}
 
     def _bind(self, *args, **kwargs):
         node = ActorMethodNode(
@@ -52,7 +52,7 @@ class _UnboundActorMethodNode(object):
             self._method_name,
             args,
             kwargs,
-            method_options=self._options,
+            self._options,
         )
         self._actor._last_call = node
         return node
@@ -70,9 +70,9 @@ class ActorMethodNode(DAGNode):
         actor: ActorNode,
         prev_call: Optional["ActorMethodNode"],
         method_name: str,
-        method_args,
-        method_kwargs,
-        method_options: Optional[Dict[str, Any]] = None,
+        method_args: Tuple[Any],
+        method_kwargs: Dict[str, Any],
+        method_options: Dict[str, Any],
     ):
         self._method_name: str = method_name
         # The actor creation task dependency is encoded as the first argument,
@@ -82,7 +82,7 @@ class ActorMethodNode(DAGNode):
             self,
             (actor, prev_call) + method_args,
             method_kwargs,
-            options=method_options,
+            method_options,
         )
 
     def _copy(
@@ -97,7 +97,7 @@ class ActorMethodNode(DAGNode):
             self._method_name,
             new_args[2:],
             new_kwargs,
-            method_options=new_options,
+            new_options,
         )
 
     def _execute(self):

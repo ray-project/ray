@@ -37,14 +37,17 @@ class DAGNode:
         self,
         args: Tuple[Any],
         kwargs: Dict[str, Any],
-        options: Optional[Dict[str, Any]] = None,
+        options: Dict[str, Any],
+        kwargs_to_resolve: Optional[Dict[str, Any]] = None,
     ):
         # Bound node arguments, ex: func_or_class.bind(1)
-        self._bound_args: Tuple[Any] = args
+        self._bound_args: Tuple[Any] = [] if args is None else args
         # Bound node keyword arguments, ex: func_or_class.bind(a=1)
-        self._bound_kwargs: Dict[str, Any] = kwargs
+        self._bound_kwargs: Dict[str, Any] = {} if kwargs is None else kwargs
         # Bound node options arguments, ex: func_or_class.options(num_cpus=2)
-        self._bound_options: Optional[Dict[str, Any]] = options
+        self._bound_options: Dict[str, Any] = {} if options is None else options
+        # Bound kwargs to resolve that's specific to subclass implementation
+        self._bound_kwargs_to_resolve: Optional[Dict[str, Any]] = kwargs_to_resolve
         # UUID that is not changed over copies of this node.
         self._stable_uuid = uuid.uuid4().hex
 
@@ -61,8 +64,6 @@ class DAGNode:
     def get_options(self) -> Optional[Dict[str, Any]]:
         """Return the dict of options arguments for this node."""
 
-        if not self._bound_options:
-            return None
         return self._bound_options.copy()
 
     def get_toplevel_child_nodes(self) -> Set["DAGNode"]:
@@ -133,10 +134,10 @@ class DAGNode:
         Args:
             fn: Callable that will be applied once to each node in the
                 DAG. It will be applied recursively bottom-up, so nodes can
-                assume the visitor has been applied to their args already.
+                assume the fn has been applied to their args already.
 
         Returns:
-            Return type of the visitor after application to the tree.
+            Return type of the fn after application to the tree.
         """
 
         class _CachingFn:

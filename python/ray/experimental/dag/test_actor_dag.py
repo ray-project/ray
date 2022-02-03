@@ -30,7 +30,7 @@ class Actor:
 
 
 def test_serialize_warning():
-    node = DAGNode([], {})
+    node = DAGNode([], {}, {})
     with pytest.raises(ValueError):
         pickle.dumps(node)
 
@@ -114,7 +114,7 @@ def test_actor_options_complicated():
     assert ray.get(dag.execute()) == 32
     test_a1 = dag.get_args()[0]  # call graph for a1.get._bind()
     test_a2 = dag.get_args()[1]  # call graph for a2.get._bind()
-    assert test_a2.get_options() is None  # No .options() at outer call
+    assert test_a2.get_options() == {}  # No .options() at outer call
     # refer to a2 constructor .options() call
     assert test_a2.get_args()[0].get_options().get("name") == "a2_v0"
     # refer to actor method a2.inc.options() call
