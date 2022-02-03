@@ -1,8 +1,8 @@
 .. _datasets_getting_started:
 
-=============================
+=================================
 Getting Started with Ray Datasets
-=============================
+=================================
 
 In this tutorial you will learn how to:
 
@@ -12,9 +12,9 @@ In this tutorial you will learn how to:
 
 .. _ray_datasets_quick_start:
 
---------------------
+-------------------
 Dataset Quick Start
---------------------
+-------------------
 
 Ray Datasets implements `Distributed Arrow <https://arrow.apache.org/>`__.
 A Dataset consists of a list of Ray object references to *blocks*.
@@ -230,7 +230,7 @@ This is a common pattern useful for loading and splitting data between distribut
     # -> [650, 650, ...]
 
 
-.. _data_pipelines_quick_start:
+.. _dataset_pipelines_quick_start:
 
 -----------------------------
 Dataset Pipelines Quick Start

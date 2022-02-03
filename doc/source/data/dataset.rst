@@ -48,7 +48,7 @@ Ray Datasets is not intended as a replacement for more general data processing s
 Where to Go from Here?
 ----------------------
 
-As new user of Ray Datasets, you may want to start with our :ref:`Getting Started Guide<data_getting_started>`.
+As new user of Ray Datasets, you may want to start with our :ref:`Getting Started Guide<datasets_getting_started>`.
 If you've run your first examples already, you might want to dive into Ray Datasets' key concepts or our User Guide instead.
 Advanced users can utilize the Ray Datasets API reference for their projects.
 
@@ -60,8 +60,8 @@ Advanced users can utilize the Ray Datasets API reference for their projects.
     Getting Started
     ^^^
 
-    Start with our quick start tutorials for :ref:`working with Datasets<ray_data_quick_start>`
-    and :ref:`Dataset Pipelines<data_pipelines_quick_start>`.
+    Start with our quick start tutorials for :ref:`working with Datasets<ray_datasets_quick_start>`
+    and :ref:`Dataset Pipelines<dataset_pipelines_quick_start>`.
     These concrete examples will give you an idea of how to use Ray Datasets.
 
     +++
