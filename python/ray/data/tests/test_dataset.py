@@ -1230,10 +1230,8 @@ def test_from_numpy(ray_start_regular_shared):
     arr1 = np.expand_dims(np.arange(0, 4), axis=1)
     arr2 = np.expand_dims(np.arange(4, 8), axis=1)
     ds = ray.data.from_numpy([ray.put(arr1), ray.put(arr2)])
-    values = np.array(ds.take(8))
-    np.testing.assert_array_equal(
-        values, np.expand_dims(np.concatenate((arr1, arr2)), axis=1)
-    )
+    values = np.stack([x["value"] for x in ds.take(8)])
+    np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
 
 
 def test_from_arrow(ray_start_regular_shared):

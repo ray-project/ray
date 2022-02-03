@@ -61,19 +61,18 @@ def _get_conda_env_name(conda_env_path: str) -> str:
     return "ray-%s" % hashlib.sha1(conda_env_contents.encode("utf-8")).hexdigest()
 
 
-def create_conda_env(
+def create_conda_env_if_needed(
     conda_yaml_file: str, prefix: str, logger: Optional[logging.Logger] = None
 ) -> None:
     """
-    Given a conda YAML file and a path, creates a conda environment containing
-    the required dependencies.
-
+    Given a conda YAML, creates a conda environment containing the required
+    dependencies if such a conda environment doesn't already exist.
     Args:
         conda_yaml_file (str): The path to a conda `environment.yml` file.
         prefix (str): Directory to install the environment into via
             the `--prefix` option to conda create.  This also becomes the name
             of the conda env; i.e. it can be passed into `conda activate` and
-            `conda remove`.
+            `conda remove`
     """
     if logger is None:
         logger = logging.getLogger(__name__)
@@ -91,6 +90,13 @@ def create_conda_env(
             "environment variable to the path of the Conda executable."
         )
 
+    _, stdout, _ = exec_cmd([conda_path, "env", "list", "--json"])
+    envs = json.loads(stdout)["envs"]
+
+    if prefix in envs:
+        logger.info(f"Conda environment {prefix} already exists.")
+        return
+
     create_cmd = [
         conda_path,
         "env",
@@ -101,14 +107,11 @@ def create_conda_env(
         prefix,
     ]
 
-    if create_cmd is not None:
-        logger.info(f"Creating conda environment {prefix}")
-        exit_code, output = exec_cmd_stream_to_logger(create_cmd, logger)
-        if exit_code != 0:
-            shutil.rmtree(prefix)
-            raise RuntimeError(
-                f"Failed to install conda environment {prefix}:\n{output}"
-            )
+    logger.info(f"Creating conda environment {prefix}")
+    exit_code, output = exec_cmd_stream_to_logger(create_cmd, logger)
+    if exit_code != 0:
+        shutil.rmtree(prefix)
+        raise RuntimeError(f"Failed to install conda environment {prefix}:\n{output}")
 
 
 def delete_conda_env(prefix: str, logger: Optional[logging.Logger] = None) -> bool:

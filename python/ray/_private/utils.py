@@ -13,7 +13,7 @@ import sys
 import tempfile
 import threading
 import time
-from typing import Optional, Sequence, Tuple, Any
+from typing import Optional, Sequence, Tuple, Any, Union
 import uuid
 import grpc
 import warnings
@@ -1247,3 +1247,16 @@ def compute_version_info():
     ray_version = ray.__version__
     python_version = ".".join(map(str, sys.version_info[:3]))
     return ray_version, python_version
+
+
+def get_directory_size_bytes(path: Union[str, Path] = ".") -> int:
+    """Get the total size of a directory in bytes, including subdirectories."""
+    total_size_bytes = 0
+    for dirpath, dirnames, filenames in os.walk(path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            # skip if it is a symbolic link
+            if not os.path.islink(fp):
+                total_size_bytes += os.path.getsize(fp)
+
+    return total_size_bytes
