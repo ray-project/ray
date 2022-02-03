@@ -33,20 +33,7 @@ parts:
           - file: tune/key-concepts
           - file: tune/user-guide
           - file: tune/tutorials/overview
-            sections:
-              - file: tune/tutorials/tune-tutorial.rst
-              - file: tune/tutorials/tune-advanced-tutorial.rst
-              - file: tune/tutorials/tune-distributed.rst
-              - file: tune/tutorials/tune-lifecycle.rst
-              - file: tune/tutorials/tune-mlflow.rst
-              - file: tune/tutorials/tune-pytorch-cifar.rst
-              - file: tune/tutorials/tune-pytorch-lightning.rst
-              - file: tune/tutorials/tune-serve-integration-mnist.rst
-              - file: tune/tutorials/tune-sklearn.rst
-              - file: tune/tutorials/tune-xgboost.rst
-              - file: tune/tutorials/tune-wandb.rst
           - file: tune/examples/index
-          - file: tune/contrib
       - file: serve/index
         title: Ray Serve
         sections:

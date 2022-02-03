@@ -516,3 +516,33 @@ should maybe process a larger chunk of data. In function trainables, you can rep
 of the training loop. Try to balance the number of results you really need to make scheduling or searching
 decisions. If you need more fine grained metrics for logging or tracking, consider using a separate logging
 mechanism for this instead of the Ray Tune-provided progress logging of results.
+
+How can I develop and test Tune locally?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+First, follow the instructions in :ref:`python-develop` to develop Tune without compiling Ray.
+After Ray is set up, run ``pip install -r ray/python/ray/tune/requirements-dev.txt`` to install all packages
+required for Tune development. Now, to run all Tune tests simply run:
+
+.. code-block:: shell
+
+    pytest ray/python/ray/tune/tests/
+
+If you plan to submit a pull request, we recommend you to run unit tests locally beforehand to speed up the review process.
+Even though we have hooks to run unit tests automatically for each pull request, it's usually quicker to run them
+on your machine first to avoid any obvious mistakes.
+
+
+How can I get started contributing to Tune?
+-------------------------------------------
+
+We use Github to track issues, feature requests, and bugs. Take a look at the
+ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22>`__ and `"help wanted" <https://github.com/ray-project/ray/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22>`__ for a place to start. Look for issues with "[tune]" in the title.
+
+.. note::
+
+  If raising a new issue or PR related to Tune, be sure to include "[tune]" in the title and add a ``tune`` label.
+
+For project organization, Tune maintains a relatively up-to-date organization of
+issues on the `Tune Github Project Board <https://github.com/ray-project/ray/projects/4>`__.
+Here, you can track and identify how issues are organized.
