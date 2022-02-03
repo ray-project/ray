@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from typing import (
     List,
@@ -56,6 +57,11 @@ from ray.data.datasource import (
     ParquetDatasource,
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
+    WriteResult,
+)
+from ray.data.datasource.file_based_datasource import (
+    _wrap_s3_filesystem_workaround,
+    _unwrap_s3_filesystem_workaround,
 )
 from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -68,6 +74,7 @@ from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
+from ray.data.impl.table_block import TableRow
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 
 # An output type of iter_batches() determined by the batch_format parameter.
@@ -214,8 +221,9 @@ class Dataset(Generic[T]):
                 blocks as batches. Defaults to a system-chosen batch size.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or "actors" to use an autoscaling Ray actor pool.
-            batch_format: Specify "native" to use the native block format,
-                "pandas" to select ``pandas.DataFrame`` as the batch format,
+            batch_format: Specify "native" to use the native block format
+                (promotes Arrow to pandas), "pandas" to select
+                ``pandas.DataFrame`` as the batch format,
                 or "pyarrow" to select ``pyarrow.Table``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
@@ -245,7 +253,9 @@ class Dataset(Generic[T]):
                 # bug where we include the entire base view on serialization.
                 view = block.slice(start, end, copy=batch_size is not None)
                 if batch_format == "native":
-                    pass
+                    # Always promote Arrow blocks to pandas for consistency.
+                    if isinstance(view, pa.Table) or isinstance(view, bytes):
+                        view = BlockAccessor.for_block(view).to_pandas()
                 elif batch_format == "pandas":
                     view = BlockAccessor.for_block(view).to_pandas()
                 elif batch_format == "pyarrow":
@@ -257,11 +267,11 @@ class Dataset(Generic[T]):
                     )
 
                 applied = fn(view)
-                if isinstance(applied, list) or isinstance(applied, pa.Table):
-                    applied = applied
-                elif isinstance(applied, pd.core.frame.DataFrame):
-                    applied = pa.Table.from_pandas(applied)
-                else:
+                if not (
+                    isinstance(applied, list)
+                    or isinstance(applied, pa.Table)
+                    or isinstance(applied, pd.core.frame.DataFrame)
+                ):
                     raise ValueError(
                         "The map batches UDF returned the value "
                         f"{applied}, which is not allowed. "
@@ -434,12 +444,15 @@ class Dataset(Generic[T]):
         # Handle empty blocks.
         if len(new_blocks) < num_blocks:
             from ray.data.impl.arrow_block import ArrowBlockBuilder
+            from ray.data.impl.pandas_block import PandasBlockBuilder
             from ray.data.impl.simple_block import SimpleBlockBuilder
 
             num_empties = num_blocks - len(new_blocks)
             dataset_format = self._dataset_format()
             if dataset_format == "arrow":
                 builder = ArrowBlockBuilder()
+            elif dataset_format == "pandas":
+                builder = PandasBlockBuilder()
             else:
                 builder = SimpleBlockBuilder()
             empty_block = builder.build()
@@ -1024,10 +1037,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Sum, on)
         if ret is None:
             return 0
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def min(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute minimum over entire dataset.
@@ -1079,10 +1090,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Min, on)
         if ret is None:
             raise ValueError("Cannot compute min on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def max(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute maximum over entire dataset.
@@ -1134,10 +1143,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Max, on)
         if ret is None:
             raise ValueError("Cannot compute max on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def mean(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute mean over entire dataset.
@@ -1189,10 +1196,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Mean, on)
         if ret is None:
             raise ValueError("Cannot compute mean on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def std(self, on: Union[KeyFn, List[KeyFn]] = None, ddof: int = 1) -> U:
         """Compute standard deviation over entire dataset.
@@ -1254,10 +1259,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Std, on, ddof=ddof)
         if ret is None:
             raise ValueError("Cannot compute std on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def sort(self, key: KeyFn = None, descending: bool = False) -> "Dataset[T]":
         """Sort the dataset by the specified key column or key function.
@@ -1755,8 +1758,28 @@ class Dataset(Generic[T]):
             write_args: Additional write args to pass to the datasource.
         """
 
+        ctx = DatasetContext.get_current()
         blocks, metadata = zip(*self._blocks.get_blocks_with_metadata())
-        write_results = datasource.do_write(blocks, metadata, **write_args)
+
+        # TODO(ekl) remove this feature flag.
+        if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
+            write_results: List[ObjectRef[WriteResult]] = datasource.do_write(
+                blocks, metadata, **write_args
+            )
+        else:
+            # Prepare write in a remote task so that in Ray client mode, we
+            # don't do metadata resolution from the client machine.
+            do_write = cached_remote_fn(_do_write, retry_exceptions=False, num_cpus=0)
+            write_results: List[ObjectRef[WriteResult]] = ray.get(
+                do_write.remote(
+                    datasource,
+                    ctx,
+                    blocks,
+                    metadata,
+                    _wrap_s3_filesystem_workaround(write_args),
+                )
+            )
+
         progress = ProgressBar("Write Progress", len(write_results))
         try:
             progress.block_until_complete(write_results)
@@ -1811,7 +1834,8 @@ class Dataset(Generic[T]):
                 current block during the scan.
             batch_size: Record batch size, or None to let the system pick.
             batch_format: The format in which to return each batch.
-                Specify "native" to use the current block format, "pandas" to
+                Specify "native" to use the current block format (promoting
+                Arrow to pandas automatically), "pandas" to
                 select ``pandas.DataFrame`` or "pyarrow" to select
                 ``pyarrow.Table``. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
@@ -1820,10 +1844,17 @@ class Dataset(Generic[T]):
             A list of iterators over record batches.
         """
 
+        import pyarrow as pa
+
         time_start = time.perf_counter()
 
         def format_batch(batch: Block, format: str) -> BatchType:
             if batch_format == "native":
+                # Always promote Arrow blocks to pandas for consistency, since
+                # we lazily convert pandas->Arrow internally for efficiency.
+                if isinstance(batch, pa.Table) or isinstance(batch, bytes):
+                    batch = BlockAccessor.for_block(batch)
+                    batch = batch.to_pandas()
                 return batch
             elif batch_format == "pandas":
                 batch = BlockAccessor.for_block(batch)
@@ -2235,10 +2266,10 @@ Dict[str, List[str]]]): The names of the columns
     def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
         """Convert this dataset into a single Pandas DataFrame.
 
-        This is only supported for datasets convertible to Arrow records. An
-        error is raised if the number of records exceeds the provided limit.
-        Note that you can use ``.limit()`` on the dataset beforehand to
-        truncate the dataset manually.
+        This is only supported for datasets convertible to Arrow or Pandas
+        records. An error is raised if the number of records exceeds the
+        provided limit. Note that you can use ``.limit()`` on the dataset
+        beforehand to truncate the dataset manually.
 
         Time complexity: O(dataset size)
 
@@ -2367,7 +2398,7 @@ Dict[str, List[str]]]): The names of the columns
                     raise StopIteration
                 self._ds._set_epoch(self._i)
                 self._i += 1
-                return lambda: self._ds
+                return lambda: self._ds.force_reads()
 
         class Iterable:
             def __init__(self, ds: "Dataset[T]"):
@@ -2446,7 +2477,8 @@ Dict[str, List[str]]]): The names of the columns
                 blocks = self._splits.pop(0)
 
                 def gen():
-                    return Dataset(blocks, self._epoch, outer_stats)
+                    ds = Dataset(blocks, self._epoch, outer_stats)
+                    return ds
 
                 return gen
 
@@ -2474,6 +2506,18 @@ Dict[str, List[str]]]): The names of the columns
             A list of references to this dataset's blocks.
         """
         return self._blocks.get_blocks()
+
+    @DeveloperAPI
+    def force_reads(self) -> "Dataset[T]":
+        """Force full evaluation of the blocks of this dataset.
+
+        This can be used to read all blocks into memory. By default, Datasets
+        doesn't read blocks from the datasource until the first transform.
+        """
+        blocks = self.get_internal_block_refs()
+        bar = ProgressBar("Force reads", len(blocks))
+        bar.block_until_complete(blocks)
+        return self
 
     @DeveloperAPI
     def stats(self) -> str:
@@ -2567,6 +2611,10 @@ Dict[str, List[str]]]): The names of the columns
                 return "arrow"
         except ModuleNotFoundError:
             pass
+        from ray.data.impl.pandas_block import PandasBlockSchema
+
+        if isinstance(schema, PandasBlockSchema):
+            return "pandas"
         return "simple"
 
     def _aggregate_on(
@@ -2612,6 +2660,18 @@ Dict[str, List[str]]]): The names of the columns
         if not isinstance(on, list):
             on = [on]
         return [agg_cls(on_, *args, **kwargs) for on_ in on]
+
+    def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
+        if len(result) == 1:
+            if isinstance(result, tuple):
+                return result[0]
+            else:
+                # NOTE (kfstorm): We cannot call `result[0]` directly on
+                # `PandasRow` because indexing a column with position is not
+                # supported by pandas.
+                return list(result.values())[0]
+        else:
+            return result
 
     def __repr__(self) -> str:
         schema = self.schema()
@@ -2745,3 +2805,15 @@ def _split_block(
         b1 = None
         m1 = None
     return b0, m0, b1, m1
+
+
+def _do_write(
+    ds: Datasource,
+    ctx: DatasetContext,
+    blocks: List[Block],
+    meta: List[BlockMetadata],
+    write_args: dict,
+) -> List[ObjectRef[WriteResult]]:
+    write_args = _unwrap_s3_filesystem_workaround(write_args)
+    DatasetContext._set_current(ctx)
+    return ds.do_write(blocks, meta, **write_args)
