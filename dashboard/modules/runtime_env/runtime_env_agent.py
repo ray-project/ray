@@ -262,12 +262,10 @@ class RuntimeEnvAgent(
                         serialized_env, request.serialized_allocated_resource_instances
                     )
                     break
-                except Exception as ex:
-                    logger.exception("Runtime env creation failed.")
-                    error_message = (
-                        f"{traceback.format_exc()}"
-                        f"\nErrorMessage:\n{str(ex)}"
-                    )
+                except Exception:
+                    err_msg = f"Failed to create runtime env {serialized_env}."
+                    self._logger.exception(err_msg)
+                    error_message = f"{err_msg}\n{traceback.format_exc()}"
                     await asyncio.sleep(
                         runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
                     )

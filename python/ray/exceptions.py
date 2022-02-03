@@ -533,7 +533,7 @@ class RuntimeEnvSetupError(RayError):
         self.error_message = error_message
 
     def __str__(self):
-        msgs = ["The runtime_env failed to be set up."]
+        msgs = ["Failed to setup runtime environment."]
         if self.error_message:
             msgs.append(self.error_message)
         return "\n".join(msgs)
