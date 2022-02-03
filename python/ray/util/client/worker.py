@@ -405,7 +405,6 @@ class Worker:
             raise decode_exception(e)
         data = bytearray()
         for chunk in resp:
-            print(chunk.chunk_id)
             if not chunk.valid:
                 try:
                     err = cloudpickle.loads(chunk.error)
