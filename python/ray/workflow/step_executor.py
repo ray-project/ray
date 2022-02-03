@@ -518,7 +518,7 @@ def _workflow_wait_executor(
 
     # Part 3: Save the outputs.
     store = workflow_storage.get_workflow_storage()
-    commit_step(store, step_id, persisted_output, exception=None)
+    commit_step(store, step_id, persisted_output, exception=None, checkpoint=False)
     if context.last_step_of_workflow:
         # advance the progress of the workflow
         store.advance_progress(step_id)
