@@ -12,7 +12,7 @@ class ActorNode(DAGNode):
         self._last_call: Optional["ActorMethodNode"] = None
         DAGNode.__init__(self, cls_args, cls_kwargs, cls_options)
 
-    def _copy(
+    def _copy_impl(
         self,
         new_args: List[Any],
         new_kwargs: Dict[str, Any],
@@ -20,7 +20,7 @@ class ActorNode(DAGNode):
     ):
         return ActorNode(self._actor_cls, new_args, new_kwargs, new_options)
 
-    def _execute(self):
+    def _execute_impl(self):
         if self._bound_options:
             return (
                 ray.remote(self._actor_cls)
@@ -85,7 +85,7 @@ class ActorMethodNode(DAGNode):
             method_options,
         )
 
-    def _copy(
+    def _copy_impl(
         self,
         new_args: List[Any],
         new_kwargs: Dict[str, Any],
@@ -100,7 +100,7 @@ class ActorMethodNode(DAGNode):
             new_options,
         )
 
-    def _execute(self):
+    def _execute_impl(self):
         actor_handle = self._bound_args[0]
         if self._bound_options:
             return (

@@ -66,14 +66,18 @@ class DAGNode:
 
         return self._bound_options.copy()
 
-    def get_toplevel_child_nodes(self) -> Set["DAGNode"]:
+    def execute(self) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
+        """Execute this DAG using the Ray default executor."""
+        return self._apply_recursive(lambda node: node._execute_impl())
+
+    def _get_toplevel_child_nodes(self) -> Set["DAGNode"]:
         """Return the set of nodes specified as top-level args.
 
         For example, in `f.remote(a, [b])`, only `a` is a top-level arg.
 
         This set of nodes are those that are typically resolved prior to
         task execution in Ray. This does not include nodes nested within args.
-        For that, use ``get_all_child_nodes()``.
+        For that, use ``_get_all_child_nodes()``.
         """
 
         children = set()
@@ -85,7 +89,7 @@ class DAGNode:
                 children.add(a)
         return children
 
-    def get_all_child_nodes(self) -> Set["DAGNode"]:
+    def _get_all_child_nodes(self) -> Set["DAGNode"]:
         """Return the set of nodes referenced by the args of this node.
 
         For example, in `f.remote(a, [b])`, this includes both `a` and `b`.
@@ -99,11 +103,11 @@ class DAGNode:
             children.add(n)
         return children
 
-    def replace_all_child_nodes(self, fn: "Callable[[DAGNode], T]") -> "DAGNode":
+    def _replace_all_child_nodes(self, fn: "Callable[[DAGNode], T]") -> "DAGNode":
         """Replace all immediate child nodes using a given function.
 
         This is a shallow replacement only. To recursively transform nodes in
-        the DAG, use ``apply_recursive()``.
+        the DAG, use ``_apply_recursive()``.
 
         Args:
             fn: Callable that will be applied once to each child of this node.
@@ -126,9 +130,9 @@ class DAGNode:
         new_args, new_kwargs, new_options = f.replace_nodes(replace_table)
 
         # Return updated copy of self.
-        return self.copy(new_args, new_kwargs, new_options)
+        return self._copy(new_args, new_kwargs, new_options)
 
-    def apply_recursive(self, fn: "Callable[[DAGNode], T]") -> T:
+    def _apply_recursive(self, fn: "Callable[[DAGNode], T]") -> T:
         """Apply callable on each node in this DAG in a bottom-up tree walk.
 
         Args:
@@ -153,14 +157,19 @@ class DAGNode:
         if not type(fn).__name__ == "_CachingFn":
             fn = _CachingFn(fn)
 
-        return fn(self.replace_all_child_nodes(lambda node: node.apply_recursive(fn)))
+        return fn(self._replace_all_child_nodes(lambda node: node._apply_recursive(fn)))
 
-    def execute(self) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
-        """Execute this DAG using the Ray default executor."""
-        return self.apply_recursive(lambda node: node._execute())
-
-    def _execute(self) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
+    def _execute_impl(self) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this node, assuming args have been transformed already."""
+        raise NotImplementedError
+
+    def _copy_impl(
+        self,
+        new_args: List[Any],
+        new_kwargs: Dict[str, Any],
+        new_options: Dict[str, Any],
+    ) -> "DAGNode":
+        """Return a copy of this node with the given new args."""
         raise NotImplementedError
 
     def _copy(
@@ -170,16 +179,7 @@ class DAGNode:
         new_options: Dict[str, Any],
     ) -> "DAGNode":
         """Return a copy of this node with the given new args."""
-        raise NotImplementedError
-
-    def copy(
-        self,
-        new_args: List[Any],
-        new_kwargs: Dict[str, Any],
-        new_options: Dict[str, Any],
-    ) -> "DAGNode":
-        """Return a copy of this node with the given new args."""
-        instance = self._copy(new_args, new_kwargs, new_options)
+        instance = self._copy_impl(new_args, new_kwargs, new_options)
         instance._stable_uuid = self._stable_uuid
         return instance
 

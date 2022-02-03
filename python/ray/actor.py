@@ -628,7 +628,7 @@ class ActorClass:
                 **Experimental**
 
                 For ray DAG building. Implementation and interface subject
-                to chagnes
+                to changes.
                 """
                 from ray.experimental.dag.actor_node import ActorNode
 
@@ -1016,7 +1016,7 @@ class ActorClass:
         **Experimental**
 
         For ray DAG building. Implementation and interface subject
-        to chagnes
+        to changes.
         """
         from ray.experimental.dag.actor_node import ActorNode
 

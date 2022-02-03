@@ -12,7 +12,7 @@ class TaskNode(DAGNode):
         self._body = func_body
         DAGNode.__init__(self, func_args, func_kwargs, func_options)
 
-    def _copy(
+    def _copy_impl(
         self,
         new_args: List[Any],
         new_kwargs: Dict[str, Any],
@@ -20,7 +20,7 @@ class TaskNode(DAGNode):
     ):
         return TaskNode(self._body, new_args, new_kwargs, new_options)
 
-    def _execute(self):
+    def _execute_impl(self):
         if self._bound_options:
             return (
                 ray.remote(self._body)

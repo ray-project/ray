@@ -254,7 +254,7 @@ class RemoteFunction:
                 **Experimental**
 
                 For ray DAG building. Implementation and interface subject
-                to chagnes
+                to changes.
                 """
                 from ray.experimental.dag.task_node import TaskNode
 
@@ -466,7 +466,7 @@ class RemoteFunction:
         **Experimental**
 
         For ray DAG building. Implementation and interface subject to
-        chagne.
+        changes.
         """
 
         from ray.experimental.dag.task_node import TaskNode
