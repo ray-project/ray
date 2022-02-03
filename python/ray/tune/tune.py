@@ -29,10 +29,19 @@ from ray.tune.schedulers import PopulationBasedTraining, PopulationBasedTraining
 from ray.tune.stopper import Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, SearchGenerator
 from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
+
+# Turn off black here, as it will format the lines to be longer than 88 chars
+# fmt: off
 from ray.tune.suggest.util import (
-    scheduler_set_search_properties_backwards_compatible,
-    set_search_properties_backwards_compatible,
+    set_search_properties_backwards_compatible
+    as searcher_set_search_properties_backwards_compatible,
 )
+from ray.tune.schedulers.util import (
+    set_search_properties_backwards_compatible
+    as scheduler_set_search_properties_backwards_compatible,
+)
+# fmt: on
+
 from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.syncer import SyncConfig, set_sync_periods, wait_for_sync
 from ray.tune.trainable import Trainable
@@ -522,7 +531,7 @@ def run(
     if isinstance(search_alg, Searcher):
         search_alg = SearchGenerator(search_alg)
 
-    if config and not set_search_properties_backwards_compatible(
+    if config and not searcher_set_search_properties_backwards_compatible(
         search_alg.set_search_properties,
         metric,
         mode,
