@@ -399,7 +399,13 @@ class CommandRunnerHack:
         env["RAY_ADDRESS"] = f"anyscale://{session_name}"
         env["ANYSCALE_CLI_TOKEN"] = GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"]
         env["ANYSCALE_HOST"] = GLOBAL_CONFIG["ANYSCALE_HOST"]
-        full_cmd = " ".join(f"{k}={v}" for k, v in env_vars.items()) + " " + cmd_to_run
+        full_cmd = (
+            "/bin/bash -c '"
+            + " ".join(f"{k}={v}" for k, v in env_vars.items())
+            + " "
+            + cmd_to_run
+            + "'"
+        )
         logger.info(f"Executing {cmd_to_run} with {env_vars} via ray job submit")
         proc = subprocess.Popen(
             " ".join(["ray", "job", "submit", shlex.quote(full_cmd)]),
