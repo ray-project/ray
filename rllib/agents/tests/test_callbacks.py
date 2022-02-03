@@ -7,16 +7,19 @@ from ray.rllib.utils.test_utils import framework_iterator
 
 
 class OnSubEnvironmentCreatedCallback(DefaultCallbacks):
-    def on_sub_environment_created(self, *, worker, sub_environment,
-                                   env_context, **kwargs):
+    def on_sub_environment_created(
+        self, *, worker, sub_environment, env_context, **kwargs
+    ):
         # Create a vector-index-sum property per remote worker.
         if not hasattr(worker, "sum_sub_env_vector_indices"):
             worker.sum_sub_env_vector_indices = 0
         # Add the sub-env's vector index to the counter.
         worker.sum_sub_env_vector_indices += env_context.vector_index
-        print(f"sub-env {sub_environment} created; "
-              f"worker={worker.worker_index}; "
-              f"vector-idx={env_context.vector_index}")
+        print(
+            f"sub-env {sub_environment} created; "
+            f"worker={worker.worker_index}; "
+            f"vector-idx={env_context.vector_index}"
+        )
 
 
 class TestCallbacks(unittest.TestCase):
@@ -46,7 +49,8 @@ class TestCallbacks(unittest.TestCase):
 
             # Get sub-env vector index sums from the 2 remote workers:
             sum_sub_env_vector_indices = trainer.workers.foreach_worker(
-                lambda w: w.sum_sub_env_vector_indices)
+                lambda w: w.sum_sub_env_vector_indices
+            )
             # Local worker has no environments -> Expect the -1 special
             # value returned by the above lambda.
             self.assertTrue(sum_sub_env_vector_indices[0] == -1)
@@ -77,7 +81,8 @@ class TestCallbacks(unittest.TestCase):
 
             # Get sub-env vector index sums from the 2 remote workers:
             sum_sub_env_vector_indices = trainer.workers.foreach_worker(
-                lambda w: w.sum_sub_env_vector_indices)
+                lambda w: w.sum_sub_env_vector_indices
+            )
             # Local worker has no environments -> Expect the -1 special
             # value returned by the above lambda.
             self.assertTrue(sum_sub_env_vector_indices[0] == -1)
@@ -91,4 +96,5 @@ class TestCallbacks(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

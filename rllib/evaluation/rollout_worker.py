@@ -548,7 +548,8 @@ class RolloutWorker(ParallelIteratorWorker):
             )
 
             self.make_sub_env_fn = self._get_make_sub_env_fn(
-                env_creator, env_context, validate_env, wrap, seed)
+                env_creator, env_context, validate_env, wrap, seed
+            )
 
         self.spaces = spaces
 
@@ -1702,16 +1703,16 @@ class RolloutWorker(ParallelIteratorWorker):
             logger.info(f"Built policy map: {self.policy_map}")
             logger.info(f"Built preprocessor map: {self.preprocessors}")
 
-    def _get_make_sub_env_fn(self, env_creator, env_context, validate_env, env_wrapper, seed):
-
+    def _get_make_sub_env_fn(
+        self, env_creator, env_context, validate_env, env_wrapper, seed
+    ):
         def _make_sub_env(vector_index):
             # Used to created additional environments during environment
             # vectorization.
 
             # Create the env context (config dict + meta-data) for
             # this particular sub-env within the vectorized one.
-            env_ctx = env_context.copy_with_overrides(
-                vector_index=vector_index)
+            env_ctx = env_context.copy_with_overrides(vector_index=vector_index)
             # Create the sub-env.
             env = env_creator(env_ctx)
             # Validate first.
@@ -1724,8 +1725,9 @@ class RolloutWorker(ParallelIteratorWorker):
 
             # Make sure a deterministic random seed is set on
             # all the sub-environments if specified.
-            _update_env_seed_if_necessary(env, seed, env_context.worker_index,
-                                          vector_index)
+            _update_env_seed_if_necessary(
+                env, seed, env_context.worker_index, vector_index
+            )
             return env
 
         if not env_context.remote:
@@ -1738,9 +1740,11 @@ class RolloutWorker(ParallelIteratorWorker):
                     env_context=env_context.copy_with_overrides(
                         worker_index=env_context.worker_index,
                         vector_index=vector_index,
-                        remote=False),
+                        remote=False,
+                    ),
                 )
                 return sub_env
+
         else:
             make_sub_env = _make_sub_env
 

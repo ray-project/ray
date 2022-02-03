@@ -556,7 +556,7 @@ py_test(
 py_test(
     name = "test_callbacks",
     tags = ["team:ml", "trainers_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/tests/test_callbacks.py"]
 )
 

@@ -82,8 +82,9 @@ class RemoteBaseEnv(BaseEnv):
         self.actors: Optional[List[ray.actor.ActorHandle]] = None
 
         # `self.make_env` already produces Actors: Use it directly.
-        if len(self.existing_envs) > 0 and isinstance(self.existing_envs[0],
-                                                      ray.actor.ActorHandle):
+        if len(self.existing_envs) > 0 and isinstance(
+            self.existing_envs[0], ray.actor.ActorHandle
+        ):
             self.make_env_creates_actors = True
             self.actors = []
             while len(self.actors) < self.num_envs:
@@ -92,8 +93,10 @@ class RemoteBaseEnv(BaseEnv):
                     self.worker.callbacks.on_sub_environment_created(
                         worker=self.worker,
                         sub_environment=sub_env,
-                        env_context=self.worker.env_context.
-                        copy_with_overrides(vector_index=len(self.actors)))
+                        env_context=self.worker.env_context.copy_with_overrides(
+                            vector_index=len(self.actors)
+                        ),
+                    )
                 self.actors.append(sub_env)
         # `self.make_env` produces gym.Envs (or children thereof, such
         # as MultiAgentEnv): Need to auto-wrap it here. The problem with
@@ -115,14 +118,14 @@ class RemoteBaseEnv(BaseEnv):
                     self.worker.callbacks.on_sub_environment_created(
                         worker=self.worker,
                         sub_environment=sub_env,
-                        env_context=self.worker.env_context.
-                        copy_with_overrides(vector_index=i))
+                        env_context=self.worker.env_context.copy_with_overrides(
+                            vector_index=i
+                        ),
+                    )
                 return sub_env
 
             self.actors = [make_remote_env(i) for i in range(self.num_envs)]
-            self._observation_space = ray.get(
-                self.actors[0].observation_space.remote()
-            )
+            self._observation_space = ray.get(self.actors[0].observation_space.remote())
             self._action_space = ray.get(self.actors[0].action_space.remote())
 
         # Dict mapping object refs (return values of @ray.remote calls),
@@ -131,13 +134,13 @@ class RemoteBaseEnv(BaseEnv):
         # that created these return values).
         # Call `reset()` on all @ray.remote sub-environment actors.
         self.pending: Dict[ray.actor.ActorHandle] = {
-            a.reset.remote(): a
-            for a in self.actors
+            a.reset.remote(): a for a in self.actors
         }
 
     @override(BaseEnv)
-    def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
-                            MultiEnvDict, MultiEnvDict]:
+    def poll(
+        self,
+    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
 
         # each keyed by env_id in [0, num_remote_envs)
         obs, rewards, dones, infos = {}, {}, {}, {}

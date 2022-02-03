@@ -713,12 +713,12 @@ class _MultiAgentEnvState:
 
 
 def convert_to_base_env(
-        env: EnvType,
-        make_env: Callable[[int], EnvType] = None,
-        num_envs: int = 1,
-        remote_envs: bool = False,
-        remote_env_batch_wait_ms: int = 0,
-        worker: Optional["RolloutWorker"] = None,
+    env: EnvType,
+    make_env: Callable[[int], EnvType] = None,
+    num_envs: int = 1,
+    remote_envs: bool = False,
+    remote_env_batch_wait_ms: int = 0,
+    worker: Optional["RolloutWorker"] = None,
 ) -> "BaseEnv":
     """Converts an RLlib-supported env into a BaseEnv object.
 
