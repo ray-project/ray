@@ -183,6 +183,9 @@ csharp/bin/Release/
 csharp/obj/
 csharp/obj/*
 
+# Nodejs
+nodejs/node_modules
+
 # streaming/python
 streaming/python/generated/
 streaming/java/streaming-runtime/src/main/java/io/ray/streaming/runtime/generated/

@@ -1,0 +1,10 @@
+{
+  "name": "ray-nodejs",
+  "version": "1.0.0",
+  "dependencies": {
+    "ffi-napi": "^4.0.3"
+  },
+  "scripts": {
+    "run": "node app.ts"
+  }
+}

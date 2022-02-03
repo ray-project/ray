@@ -68,9 +68,9 @@ function init_config()
         3,
         1,
         "",
-        "--port 6380",
+        "",
         0,
-        [""], # --ray_address=192.168.0.96:6385
+        [], # --ray_address=192.168.0.96:6385
     )
 end
 
@@ -102,7 +102,7 @@ function julia_worker_execute!(
     args_len::UInt64,
     return_values::RaySlice,
 )::Cvoid
-    print("Hello world6")
+    print("Hello world")
     return Cvoid
 end
 
@@ -114,7 +114,7 @@ const julia_worker_execute_c = @cfunction(
 
 register_callback(julia_worker_execute_c)
 init_config()
-# init()
+init()
 shutdown()
 
 dlclose(c_worker_lib)
