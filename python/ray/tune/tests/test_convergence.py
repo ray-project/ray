@@ -80,18 +80,18 @@ class ConvergenceTest(unittest.TestCase):
 
         np.random.seed(0)
         searcher = BlendSearch()
-        analysis = self._testConvergence(searcher, patience=10)
+        analysis = self._testConvergence(searcher, patience=100)
 
-        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-5)
+        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-2)
 
     def testConvergenceCFO(self):
         from ray.tune.suggest.flaml import CFO
 
         np.random.seed(0)
         searcher = CFO()
-        analysis = self._testConvergence(searcher, patience=10)
+        analysis = self._testConvergence(searcher, patience=100)
 
-        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-5)
+        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-2)
 
     def testConvergenceDragonfly(self):
         from ray.tune.suggest.dragonfly import DragonflySearch
