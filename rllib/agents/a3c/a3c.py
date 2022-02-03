@@ -1,16 +1,21 @@
 import logging
+import sys
 from typing import Type
 
+from ray.rllib import RolloutWorker
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
 from ray.rllib.execution.rollout_ops import AsyncGradients
 from ray.rllib.execution.train_ops import ApplyGradients
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import TrainerConfigDict, ResultDict
 from ray.util.iter import LocalIterator
+from rllib.utils.metrics import SAMPLE_TIMER
 
 logger = logging.getLogger(__name__)
 
@@ -92,3 +97,33 @@ class A3CTrainer(Trainer):
         train_op = grads.for_each(ApplyGradients(workers, update_all=False))
 
         return StandardMetricsReporting(train_op, workers, config)
+
+    @staticmethod
+    def _sample_and_compute_gradients(worker: RolloutWorker):
+        # Generate a sample.
+        batch = worker.sample()
+        assert (batch, MultiAgentBatch)
+        grads, _ = worker.compute_gradients(batch)
+        return grads, batch.count, batch.agent_steps()
+
+    def training_iteration(self) -> ResultDict:
+        """
+        This function is used to train the model.
+        """
+        self.workers.sync_weights()
+
+        with self._timers[SAMPLE_TIMER]:
+            grads_infos = asynchronous_parallel_requests(
+                remote_requests_in_flight=self.remote_requests_in_flight,
+                actors=self.workers.remote_workers(),
+                ray_wait_timeout_s=0,
+                remote_fn=self._sample_and_compute_gradients,
+                max_remote_requests_in_flight_per_actor=(sys.maxsize),
+            )
+
+        for grads, count, agent_steps in grads_infos:
+            self.workers.local_worker.apply_gradients(grads)
+
+        # Update Timers here on the local worker.
+        # gather other metrics (losses etc) from the workers
+        return {}
