@@ -67,13 +67,16 @@ class Work {
  public:
   RayTask task;
   const bool grant_or_reject;
+  const bool is_selected_based_on_locality;
   rpc::RequestWorkerLeaseReply *reply;
   std::function<void(void)> callback;
   std::shared_ptr<TaskResourceInstances> allocated_instances;
-  Work(RayTask task, bool grant_or_reject, rpc::RequestWorkerLeaseReply *reply,
-       std::function<void(void)> callback, WorkStatus status = WorkStatus::WAITING)
+  Work(RayTask task, bool grant_or_reject, bool is_selected_based_on_locality,
+       rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> callback,
+       WorkStatus status = WorkStatus::WAITING)
       : task(task),
         grant_or_reject(grant_or_reject),
+        is_selected_based_on_locality(is_selected_based_on_locality),
         reply(reply),
         callback(callback),
         allocated_instances(nullptr),
@@ -175,6 +178,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
   void QueueAndScheduleTask(const RayTask &task, bool grant_or_reject,
+                            bool is_selected_based_on_locality,
                             rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
