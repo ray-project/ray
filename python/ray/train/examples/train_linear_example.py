@@ -85,12 +85,20 @@ def train_func(config):
     return results
 
 
+def average_validation_loss(intermediate_results):
+    worker_results = [worker_result["loss"] for worker_result in intermediate_results]
+    return np.mean(worker_results)
+
+
 def train_linear(num_workers=2, use_gpu=False, epochs=3):
     trainer = Trainer(backend="torch", num_workers=num_workers, use_gpu=use_gpu)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
     trainer.start()
     results = trainer.run(
-        train_func, config, callbacks=[JsonLoggerCallback(), TBXLoggerCallback()]
+        train_func,
+        config,
+        callbacks=[JsonLoggerCallback(), TBXLoggerCallback()],
+        aggregate_funcs=[average_validation_loss],
     )
     trainer.shutdown()
 

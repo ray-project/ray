@@ -1,4 +1,5 @@
 from datetime import datetime
+import collections
 import inspect
 import logging
 import os
@@ -269,6 +270,7 @@ class Trainer:
         dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
         checkpoint: Optional[Union[Dict, str, Path]] = None,
         checkpoint_strategy: Optional[CheckpointStrategy] = None,
+        aggregate_funcs: Optional[Union[Dict, List]] = None,
     ) -> List[T]:
         """Runs a training function in a distributed manner.
 
@@ -298,6 +300,9 @@ class Trainer:
                 ``None`` then no checkpoint will be loaded.
             checkpoint_strategy (Optional[CheckpointStrategy]): The
                 configurations for saving checkpoints.
+            aggregate_funcs (Optional[Union[Dict, List]]): The methods
+                used to aggregate intermediate results returned
+                by `train.report()` on each worker.
 
         Returns:
             A list of results from the training function. Each value in the
@@ -330,12 +335,23 @@ class Trainer:
                 checkpoint_strategy=checkpoint_strategy,
                 run_dir=self.latest_run_dir,
             )
+            aggregated_results = collections.defaultdict(list)
+            aggregate_funcs = (
+                aggregate_funcs
+                if isinstance(aggregate_funcs, dict)
+                else {e.__name__: e for e in aggregate_funcs}
+            )
+
             for intermediate_result in iterator:
+                for aggregate_name, func in aggregate_funcs.items():
+                    aggregated_results[aggregate_name].append(func(intermediate_result))
                 for callback in callbacks:
                     callback.process_results(intermediate_result)
 
             assert iterator.is_finished()
-            return iterator.get_final_results()
+            final_results = {"train_func return": iterator.get_final_results()}
+            final_results.update(aggregated_results)
+            return final_results
         finally:
             for callback in callbacks:
                 callback.finish_training(error=finished_with_errors)
