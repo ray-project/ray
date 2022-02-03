@@ -1009,7 +1009,7 @@ class Dataset(Generic[T]):
                   containing the column-wise sum of all columns.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the sum; if ``False``,
-                an error will be raised if a null value is encountered.
+                if a null value is encountered, the output will be null.
                 We consider np.nan, None, and pd.NaT to be null values.
                 Default is ``True``.
 
@@ -1065,7 +1065,7 @@ class Dataset(Generic[T]):
                   containing the column-wise min of all columns.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the min; if ``False``,
-                an error will be raised if a null value is encountered.
+                if a null value is encountered, the output will be null.
                 We consider np.nan, None, and pd.NaT to be null values.
                 Default is ``True``.
 
@@ -1121,7 +1121,7 @@ class Dataset(Generic[T]):
                   containing the column-wise max of all columns.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the max; if ``False``,
-                an error will be raised if a null value is encountered.
+                if a null value is encountered, the output will be null.
                 We consider np.nan, None, and pd.NaT to be null values.
                 Default is ``True``.
 
@@ -1179,7 +1179,7 @@ class Dataset(Generic[T]):
                   containing the column-wise mean of all columns.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the mean; if ``False``,
-                an error will be raised if a null value is encountered.
+                if a null value is encountered, the output will be null.
                 We consider np.nan, None, and pd.NaT to be null values.
                 Default is ``True``.
 
@@ -1250,7 +1250,7 @@ class Dataset(Generic[T]):
                 is ``N - ddof``, where ``N`` represents the number of elements.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the std; if ``False``,
-                an error will be raised if a null value is encountered.
+                if a null value is encountered, the output will be null.
                 We consider np.nan, None, and pd.NaT to be null values.
                 Default is ``True``.
 
