@@ -2,7 +2,8 @@
   "name": "ray-nodejs",
   "version": "1.0.0",
   "dependencies": {
-    "ffi-napi": "^4.0.3"
+    "ffi-napi": "^4.0.3",
+    "ref-array-napi": "^1.2.2"
   },
   "scripts": {
     "run": "node app.ts"
