@@ -39,24 +39,70 @@ class RecSimObservationSpaceWrapper(gym.ObservationWrapper):
         obs_space = self.env.observation_space
         doc_space = Dict(
             OrderedDict(
-                [(str(k), doc)
-                 for k, (_,
-                         doc) in enumerate(obs_space["doc"].spaces.items())]))
+                [
+                    (str(k), doc)
+                    for k, (_, doc) in enumerate(obs_space["doc"].spaces.items())
+                ]
+            )
+        )
         self.observation_space = Dict(
-            OrderedDict([
-                ("user", obs_space["user"]),
-                ("doc", doc_space),
-                ("response", obs_space["response"]),
-            ]))
+            OrderedDict(
+                [
+                    ("user", obs_space["user"]),
+                    ("doc", doc_space),
+                    ("response", obs_space["response"]),
+                ]
+            )
+        )
         self._sampled_obs = self.observation_space.sample()
 
     def observation(self, obs):
         new_obs = OrderedDict()
         new_obs["user"] = obs["user"]
-        new_obs["doc"] = {
-            str(k): v
-            for k, (_, v) in enumerate(obs["doc"].items())
-        }
+        new_obs["doc"] = {str(k): v for k, (_, v) in enumerate(obs["doc"].items())}
+        new_obs["response"] = obs["response"]
+        new_obs = convert_element_to_space_type(new_obs, self._sampled_obs)
+        return new_obs
+
+
+class RecSimObservationBanditWrapper(gym.ObservationWrapper):
+    """Fix RecSim environment's observation format
+
+    RecSim's observations are keyed by document IDs, and nested under
+    "doc" key.
+    Our Bandits agent expects the observations to be flat 2D array
+    and under "item" key.
+
+    This environment wrapper converts obs into the right format.
+    """
+
+    def __init__(self, env: gym.Env):
+        super().__init__(env)
+        obs_space = self.env.observation_space
+
+        num_items = len(obs_space["doc"])
+        embedding_dim = next(iter(obs_space["doc"].values())).shape[-1]
+        self.observation_space = Dict(
+            OrderedDict(
+                [
+                    ("user", obs_space["user"]),
+                    (
+                        "item",
+                        gym.spaces.Box(
+                            low=-np.ones((num_items, embedding_dim)),
+                            high=np.ones((num_items, embedding_dim)),
+                        ),
+                    ),
+                    ("response", obs_space["response"]),
+                ]
+            )
+        )
+        self._sampled_obs = self.observation_space.sample()
+
+    def observation(self, obs):
+        new_obs = OrderedDict()
+        new_obs["user"] = obs["user"]
+        new_obs["item"] = np.vstack(list(obs["doc"].values()))
         new_obs["response"] = obs["response"]
         new_obs = convert_element_to_space_type(new_obs, self._sampled_obs)
         return new_obs
@@ -100,7 +146,8 @@ class MultiDiscreteToDiscreteActionWrapper(gym.ActionWrapper):
         if not isinstance(env.action_space, MultiDiscrete):
             raise UnsupportedSpaceException(
                 f"Action space {env.action_space} "
-                f"is not supported by {self.__class__.__name__}")
+                f"is not supported by {self.__class__.__name__}"
+            )
         self.action_space_dimensions = env.action_space.nvec
         self.action_space = Discrete(np.prod(self.action_space_dimensions))
 
@@ -113,9 +160,11 @@ class MultiDiscreteToDiscreteActionWrapper(gym.ActionWrapper):
         return multi_action
 
 
-def recsim_gym_wrapper(recsim_gym_env: gym.Env,
-                       convert_to_discrete_action_space: bool = False
-                       ) -> gym.Env:
+def recsim_gym_wrapper(
+    recsim_gym_env: gym.Env,
+    convert_to_discrete_action_space: bool = False,
+    wrap_for_bandits: bool = False,
+) -> gym.Env:
     """Makes sure a RecSim gym.Env can ba handled by RLlib.
 
     In RecSim's observation spaces, the "doc" field is a dictionary keyed by
@@ -138,6 +187,8 @@ def recsim_gym_wrapper(recsim_gym_env: gym.Env,
             such as RLlib's DQN. If None, `convert_to_discrete_action_space`
             may also be provided via the EnvContext (config) when creating an
             actual env instance.
+        wrap_for_bandits: Bool indicating, whether this RecSim env should be
+            wrapped for use with our Bandits agent.
 
     Returns:
         An RLlib-ready gym.Env instance.
@@ -146,14 +197,15 @@ def recsim_gym_wrapper(recsim_gym_env: gym.Env,
     env = RecSimObservationSpaceWrapper(env)
     if convert_to_discrete_action_space:
         env = MultiDiscreteToDiscreteActionWrapper(env)
+    if wrap_for_bandits:
+        env = RecSimObservationBanditWrapper(env)
     return env
 
 
 def make_recsim_env(
-        recsim_user_model_creator: Callable[[EnvContext], AbstractUserModel],
-        recsim_document_sampler_creator: Callable[[EnvContext],
-                                                  AbstractDocumentSampler],
-        reward_aggregator: Callable[[List[AbstractResponse]], float],
+    recsim_user_model_creator: Callable[[EnvContext], AbstractUserModel],
+    recsim_document_sampler_creator: Callable[[EnvContext], AbstractDocumentSampler],
+    reward_aggregator: Callable[[List[AbstractResponse]], float],
 ) -> Type[gym.Env]:
     """Creates a RLlib-ready gym.Env class given RecSim user and doc models.
 
@@ -183,6 +235,7 @@ def make_recsim_env(
                 "resample_documents": True,
                 "seed": 0,
                 "convert_to_discrete_action_space": False,
+                "wrap_for_bandits": False,
             }
             if env_ctx is None or isinstance(env_ctx, dict):
                 env_ctx = EnvContext(env_ctx or default_config, worker_index=0)
@@ -202,13 +255,15 @@ def make_recsim_env(
                 resample_documents=env_ctx["resample_documents"],
             )
             # Convert raw RecSim env to a gym.Env.
-            gym_env = recsim_gym.RecSimGymEnv(raw_recsim_env,
-                                              reward_aggregator)
+            gym_env = recsim_gym.RecSimGymEnv(raw_recsim_env, reward_aggregator)
 
             # Fix observation space and - if necessary - convert to discrete
             # action space (from multi-discrete).
             self.env = recsim_gym_wrapper(
-                gym_env, env_ctx["convert_to_discrete_action_space"])
+                gym_env,
+                env_ctx["convert_to_discrete_action_space"],
+                env_ctx["wrap_for_bandits"],
+            )
             self.observation_space = self.env.observation_space
             self.action_space = self.env.action_space
 

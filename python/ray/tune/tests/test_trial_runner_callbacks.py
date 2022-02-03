@@ -12,8 +12,7 @@ from ray import tune
 from ray.exceptions import RayActorError
 from ray.rllib import _register_all
 from ray.tune.checkpoint_manager import Checkpoint
-from ray.tune.logger import DEFAULT_LOGGERS, LoggerCallback, \
-    LegacyLoggerCallback
+from ray.tune.logger import DEFAULT_LOGGERS, LoggerCallback, LegacyLoggerCallback
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.syncer import SyncConfig, SyncerCallback
@@ -53,7 +52,8 @@ class TestCallback(Callback):
         result = info["result"]
         trial = info["trial"]
         assert result.get(TRAINING_ITERATION, None) != trial.last_result.get(
-            TRAINING_ITERATION, None)
+            TRAINING_ITERATION, None
+        )
 
     def on_trial_complete(self, **info):
         self.state["trial_complete"] = info
@@ -75,7 +75,8 @@ class _MockTrialExecutor(RayTrialExecutor):
     def fetch_result(self, trial):
         if self.should_fail_in_fetch_result:
             raise RayActorError(
-                "The actor died unexpectedly before finishing this task.")
+                "The actor died unexpectedly before finishing this task."
+            )
         else:
             return [self.results.get(trial, {})]
 
@@ -92,10 +93,10 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.callback = TestCallback()
         self.executor = _MockTrialExecutor()
         self.trial_runner = TrialRunner(
-            trial_executor=self.executor, callbacks=[self.callback])
+            trial_executor=self.executor, callbacks=[self.callback]
+        )
         # experiment would never be None normally, but it's fine for testing
-        self.trial_runner.setup_experiments(
-            experiments=[None], total_num_samples=1)
+        self.trial_runner.setup_experiments(experiments=[None], total_num_samples=1)
 
     def tearDown(self):
         ray.shutdown()
@@ -105,10 +106,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         shutil.rmtree(self.tmpdir)
 
     def testCallbackSteps(self):
-        trials = [
-            Trial("__fake", trial_id="one"),
-            Trial("__fake", trial_id="two")
-        ]
+        trials = [Trial("__fake", trial_id="one"), Trial("__fake", trial_id="two")]
         for t in trials:
             self.trial_runner.add_trial(t)
 
@@ -117,15 +115,22 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         # Trial 1 has been started
         self.assertEqual(self.callback.state["trial_start"]["iteration"], 0)
-        self.assertEqual(self.callback.state["trial_start"]["trial"].trial_id,
-                         "one")
+        self.assertEqual(self.callback.state["trial_start"]["trial"].trial_id, "one")
 
         # All these events haven't happened, yet
         self.assertTrue(
-            all(k not in self.callback.state for k in [
-                "trial_restore", "trial_save", "trial_result",
-                "trial_complete", "trial_fail", "experiment_end"
-            ]))
+            all(
+                k not in self.callback.state
+                for k in [
+                    "trial_restore",
+                    "trial_save",
+                    "trial_result",
+                    "trial_complete",
+                    "trial_fail",
+                    "experiment_end",
+                ]
+            )
+        )
 
         self.executor.next_trial = trials[1]
         self.trial_runner.step()
@@ -138,19 +143,16 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         # Second trial has been just started
         self.assertEqual(self.callback.state["trial_start"]["iteration"], 1)
-        self.assertEqual(self.callback.state["trial_start"]["trial"].trial_id,
-                         "two")
+        self.assertEqual(self.callback.state["trial_start"]["trial"].trial_id, "two")
 
-        cp = Checkpoint(Checkpoint.PERSISTENT, "__checkpoint",
-                        {TRAINING_ITERATION: 0})
+        cp = Checkpoint(Checkpoint.PERSISTENT, "__checkpoint", {TRAINING_ITERATION: 0})
 
         # Let the first trial save a checkpoint
         self.executor.next_trial = trials[0]
         trials[0].saving_to = cp
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_save"]["iteration"], 2)
-        self.assertEqual(self.callback.state["trial_save"]["trial"].trial_id,
-                         "one")
+        self.assertEqual(self.callback.state["trial_save"]["trial"].trial_id, "one")
 
         # Let the second trial send a result
         result = {TRAINING_ITERATION: 1, "metric": 800, "done": False}
@@ -159,10 +161,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.assertTrue(not trials[1].has_reported_at_least_once)
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_result"]["iteration"], 3)
-        self.assertEqual(self.callback.state["trial_result"]["trial"].trial_id,
-                         "two")
-        self.assertEqual(
-            self.callback.state["trial_result"]["result"]["metric"], 800)
+        self.assertEqual(self.callback.state["trial_result"]["trial"].trial_id, "two")
+        self.assertEqual(self.callback.state["trial_result"]["result"]["metric"], 800)
         self.assertEqual(trials[1].last_result["metric"], 800)
 
         # Let the second trial restore from a checkpoint
@@ -170,28 +170,25 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.executor.results[trials[1]] = trials[1].last_result
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_restore"]["iteration"], 4)
-        self.assertEqual(
-            self.callback.state["trial_restore"]["trial"].trial_id, "two")
+        self.assertEqual(self.callback.state["trial_restore"]["trial"].trial_id, "two")
 
         # Let the second trial finish
         trials[1].restoring_from = None
         self.executor.results[trials[1]] = {
             TRAINING_ITERATION: 2,
             "metric": 900,
-            "done": True
+            "done": True,
         }
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_complete"]["iteration"], 5)
-        self.assertEqual(
-            self.callback.state["trial_complete"]["trial"].trial_id, "two")
+        self.assertEqual(self.callback.state["trial_complete"]["trial"].trial_id, "two")
 
         # Let the first trial error
         self.executor.next_trial = trials[0]
         self.executor.should_fail_in_fetch_result = True
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_fail"]["iteration"], 6)
-        self.assertEqual(self.callback.state["trial_fail"]["trial"].trial_id,
-                         "one")
+        self.assertEqual(self.callback.state["trial_fail"]["trial"].trial_id, "one")
 
     def testCallbacksEndToEnd(self):
         def train(config):
@@ -208,10 +205,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
         config = {"do": tune.grid_search(["save", "fail", "delay"])}
 
         tune.run(
-            train,
-            config=config,
-            raise_on_failed_trial=False,
-            callbacks=[self.callback])
+            train, config=config, raise_on_failed_trial=False, callbacks=[self.callback]
+        )
 
         self.assertIn("setup", self.callback.state)
         self.assertTrue(self.callback.state["setup"] is not None)
@@ -222,14 +217,17 @@ class TrialRunnerCallbacks(unittest.TestCase):
         # check if it was added first
         self.assertTrue(list(self.callback.state)[0] == "setup")
         self.assertEqual(
-            self.callback.state["trial_fail"]["trial"].config["do"], "fail")
+            self.callback.state["trial_fail"]["trial"].config["do"], "fail"
+        )
         self.assertEqual(
-            self.callback.state["trial_save"]["trial"].config["do"], "save")
+            self.callback.state["trial_save"]["trial"].config["do"], "save"
+        )
         self.assertEqual(
-            self.callback.state["trial_result"]["trial"].config["do"], "delay")
+            self.callback.state["trial_result"]["trial"].config["do"], "delay"
+        )
         self.assertEqual(
-            self.callback.state["trial_complete"]["trial"].config["do"],
-            "delay")
+            self.callback.state["trial_complete"]["trial"].config["do"], "delay"
+        )
         self.assertIn("experiment_end", self.callback.state)
         # check if it was added last
         self.assertTrue(list(self.callback.state)[-1] == "experiment_end")
@@ -252,36 +250,31 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         # Auto creation of loggers, no callbacks, no syncer
         callbacks = create_default_callbacks(None, SyncConfig(), None)
-        first_logger_pos, last_logger_pos, syncer_pos = get_positions(
-            callbacks)
+        first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
 
         # Auto creation of loggers with callbacks
         callbacks = create_default_callbacks([Callback()], SyncConfig(), None)
-        first_logger_pos, last_logger_pos, syncer_pos = get_positions(
-            callbacks)
+        first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
 
         # Auto creation of loggers with existing logger (but no CSV/JSON)
-        callbacks = create_default_callbacks([LoggerCallback()], SyncConfig(),
-                                             None)
-        first_logger_pos, last_logger_pos, syncer_pos = get_positions(
-            callbacks)
+        callbacks = create_default_callbacks([LoggerCallback()], SyncConfig(), None)
+        first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
 
         # This should throw an error as the syncer comes before the logger
         with self.assertRaises(ValueError):
             callbacks = create_default_callbacks(
-                [SyncerCallback(None), LoggerCallback()], SyncConfig(), None)
+                [SyncerCallback(None), LoggerCallback()], SyncConfig(), None
+            )
 
         # This should be reordered but preserve the regular callback order
         [mc1, mc2, mc3] = [Callback(), Callback(), Callback()]
         # Has to be legacy logger to avoid logger callback creation
         lc = LegacyLoggerCallback(logger_classes=DEFAULT_LOGGERS)
-        callbacks = create_default_callbacks([mc1, mc2, lc, mc3], SyncConfig(),
-                                             None)
-        first_logger_pos, last_logger_pos, syncer_pos = get_positions(
-            callbacks)
+        callbacks = create_default_callbacks([mc1, mc2, lc, mc3], SyncConfig(), None)
+        first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
         self.assertLess(callbacks.index(mc1), callbacks.index(mc2))
         self.assertLess(callbacks.index(mc2), callbacks.index(mc3))
@@ -299,12 +292,13 @@ class TrialRunnerCallbacks(unittest.TestCase):
         callback = NoExperimentInSetupCallback()
         trial_runner = TrialRunner(callbacks=[callback])
         trial_runner.setup_experiments(
-            experiments=[Experiment("", lambda x: x)], total_num_samples=1)
+            experiments=[Experiment("", lambda x: x)], total_num_samples=1
+        )
         mocked_warning_method.assert_called_once()
-        self.assertIn("Please update",
-                      mocked_warning_method.call_args_list[0][0][0])
+        self.assertIn("Please update", mocked_warning_method.call_args_list[0][0][0])
 
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

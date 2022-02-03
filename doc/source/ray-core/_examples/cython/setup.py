@@ -13,6 +13,7 @@ include_dirs = [numpy.get_include()]
 # dependencies
 try:
     import scipy  # noqa
+
     modules.append("cython_blas.pyx")
     install_requires.append("scipy")
 except ImportError as e:  # noqa
@@ -27,4 +28,5 @@ setup(
     packages=[pkg_dir],
     ext_modules=cythonize(modules),
     install_requires=install_requires,
-    include_dirs=include_dirs)
+    include_dirs=include_dirs,
+)

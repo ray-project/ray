@@ -10,12 +10,14 @@ if TYPE_CHECKING:
 
 @PublicAPI(stability="beta")
 class AggregateFn(object):
-    def __init__(self,
-                 init: Callable[[KeyType], AggType],
-                 accumulate: Callable[[AggType, T], AggType],
-                 merge: Callable[[AggType, AggType], AggType],
-                 finalize: Callable[[AggType], U] = lambda a: a,
-                 name: Optional[str] = None):
+    def __init__(
+        self,
+        init: Callable[[KeyType], AggType],
+        accumulate: Callable[[AggType, T], AggType],
+        merge: Callable[[AggType, AggType], AggType],
+        finalize: Callable[[AggType], U] = lambda a: a,
+        name: Optional[str] = None,
+    ):
         """Defines an aggregate function in the accumulator style.
 
         Aggregates a collection of inputs of type T into
@@ -65,7 +67,8 @@ class Count(AggregateFn):
             init=lambda k: 0,
             accumulate=lambda a, r: a + 1,
             merge=lambda a1, a2: a1 + a2,
-            name="count()")
+            name="count()",
+        )
 
 
 @PublicAPI(stability="beta")
@@ -79,7 +82,8 @@ class Sum(_AggregateOnKeyBase):
             init=lambda k: 0,
             accumulate=lambda a, r: a + on_fn(r),
             merge=lambda a1, a2: a1 + a2,
-            name=(f"sum({str(on)})"))
+            name=(f"sum({str(on)})"),
+        )
 
 
 @PublicAPI(stability="beta")
@@ -91,10 +95,10 @@ class Min(_AggregateOnKeyBase):
         on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: None,
-            accumulate=(
-                lambda a, r: (on_fn(r) if a is None else min(a, on_fn(r)))),
+            accumulate=(lambda a, r: (on_fn(r) if a is None else min(a, on_fn(r)))),
             merge=lambda a1, a2: min(a1, a2),
-            name=(f"min({str(on)})"))
+            name=(f"min({str(on)})"),
+        )
 
 
 @PublicAPI(stability="beta")
@@ -106,10 +110,10 @@ class Max(_AggregateOnKeyBase):
         on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: None,
-            accumulate=(
-                lambda a, r: (on_fn(r) if a is None else max(a, on_fn(r)))),
+            accumulate=(lambda a, r: (on_fn(r) if a is None else max(a, on_fn(r)))),
             merge=lambda a1, a2: max(a1, a2),
-            name=(f"max({str(on)})"))
+            name=(f"max({str(on)})"),
+        )
 
 
 @PublicAPI(stability="beta")
@@ -124,7 +128,8 @@ class Mean(_AggregateOnKeyBase):
             accumulate=lambda a, r: [a[0] + on_fn(r), a[1] + 1],
             merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
             finalize=lambda a: a[0] / a[1],
-            name=(f"mean({str(on)})"))
+            name=(f"mean({str(on)})"),
+        )
 
 
 @PublicAPI(stability="beta")
@@ -173,7 +178,7 @@ class Std(_AggregateOnKeyBase):
             # exact comparison tests to fail.
             mean = (mean_a * count_a + mean_b * count_b) / count
             # Update the sum of squared differences.
-            M2 = M2_a + M2_b + (delta**2) * count_a * count_b / count
+            M2 = M2_a + M2_b + (delta ** 2) * count_a * count_b / count
             return [M2, mean, count]
 
         def finalize(a: List[float]):
@@ -189,7 +194,8 @@ class Std(_AggregateOnKeyBase):
             accumulate=accumulate,
             merge=merge,
             finalize=finalize,
-            name=(f"std({str(on)})"))
+            name=(f"std({str(on)})"),
+        )
 
 
 def _to_on_fn(on: Optional[KeyFn]):

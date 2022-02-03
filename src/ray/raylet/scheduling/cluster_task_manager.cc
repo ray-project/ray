@@ -498,12 +498,12 @@ bool ClusterTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &wor
 }
 
 void ClusterTaskManager::QueueAndScheduleTask(
-    const RayTask &task, bool grant_or_reject, rpc::RequestWorkerLeaseReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+    const RayTask &task, bool grant_or_reject, bool is_selected_based_on_locality,
+    rpc::RequestWorkerLeaseReply *reply, rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
   auto work = std::make_shared<internal::Work>(
-      task, grant_or_reject, reply,
+      task, grant_or_reject, is_selected_based_on_locality, reply,
       [send_reply_callback] { send_reply_callback(Status::OK(), nullptr, nullptr); });
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   // If the scheduling class is infeasible, just add the work to the infeasible queue
@@ -1255,8 +1255,8 @@ void ClusterTaskManager::Dispatch(
       if (predefined_resources[res_idx][inst_idx] > 0.) {
         if (first) {
           resource = reply->add_resource_mapping();
-          resource->set_name(
-              cluster_resource_scheduler_->GetResourceNameFromIndex(res_idx));
+          resource->set_name(cluster_resource_scheduler_->GetClusterResourceManager()
+                                 .GetResourceNameFromIndex(res_idx));
           first = false;
         }
         auto rid = resource->add_resource_ids();
@@ -1273,8 +1273,8 @@ void ClusterTaskManager::Dispatch(
       if (it->second[inst_idx] > 0.) {
         if (first) {
           resource = reply->add_resource_mapping();
-          resource->set_name(
-              cluster_resource_scheduler_->GetResourceNameFromIndex(it->first));
+          resource->set_name(cluster_resource_scheduler_->GetClusterResourceManager()
+                                 .GetResourceNameFromIndex(it->first));
           first = false;
         }
         auto rid = resource->add_resource_ids();
@@ -1500,8 +1500,8 @@ void ClusterTaskManager::SpillWaitingTasks() {
 
 bool ClusterTaskManager::IsLocallySchedulable(const RayTask &task) const {
   const auto &spec = task.GetTaskSpecification();
-  return cluster_resource_scheduler_->IsLocallySchedulable(
-      spec.GetRequiredResources().GetResourceMap());
+  return cluster_resource_scheduler_->IsSchedulableOnNode(
+      self_node_id_.Binary(), spec.GetRequiredResources().GetResourceMap());
 }
 
 ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
@@ -1558,7 +1558,8 @@ std::string ClusterTaskManager::GetBestSchedulableNode(const internal::Work &wor
                                                        bool *is_infeasible) {
   // If the local node is available, we should directly return it instead of
   // going through the full hybrid policy since we don't want spillback.
-  if (work.grant_or_reject && !force_spillback && IsLocallySchedulable(work.task)) {
+  if ((work.grant_or_reject || work.is_selected_based_on_locality) && !force_spillback &&
+      IsLocallySchedulable(work.task)) {
     *is_infeasible = false;
     return self_node_id_.Binary();
   }

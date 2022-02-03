@@ -49,7 +49,8 @@ if __name__ == "__main__":
         config=config,
         stop={"training_iteration": training_iterations},
         num_samples=2,
-        checkpoint_at_end=True)
+        checkpoint_at_end=True,
+    )
 
     print("The trials took", time.time() - start_time, "seconds\n")
 
@@ -58,8 +59,9 @@ if __name__ == "__main__":
     for key, df in analysis.trial_dataframes.items():
         frame = frame.append(df, ignore_index=True)
 
-    x = frame.groupby("agent_timesteps_total")[
-        "episode_reward_mean"].aggregate(["mean", "max", "min", "std"])
+    x = frame.groupby("agent_timesteps_total")["episode_reward_mean"].aggregate(
+        ["mean", "max", "min", "std"]
+    )
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 4))
 

@@ -16,8 +16,9 @@ class ParrotEnv(gym.Env):
 
     def __init__(self, config):
         # Make the space (for actions and observations) configurable.
-        self.action_space = config.get("parrot_shriek_range",
-                                       gym.spaces.Box(-1.0, 1.0, shape=(1, )))
+        self.action_space = config.get(
+            "parrot_shriek_range", gym.spaces.Box(-1.0, 1.0, shape=(1,))
+        )
         # Since actions should repeat observations, their spaces must be the
         # same.
         self.observation_space = self.action_space
@@ -25,8 +26,7 @@ class ParrotEnv(gym.Env):
         self.episode_len = 0
 
     def reset(self):
-        """Resets the episode and returns the initial observation of the new one.
-        """
+        """Resets the episode and returns the initial observation of the new one."""
         # Reset the episode len.
         self.episode_len = 0
         # Sample a random number from our observation space.
@@ -56,12 +56,11 @@ trainer = PPOTrainer(
         # Env class to use (here: our gym.Env sub-class from above).
         "env": ParrotEnv,
         # Config dict to be passed to our custom env's constructor.
-        "env_config": {
-            "parrot_shriek_range": gym.spaces.Box(-5.0, 5.0, (1, ))
-        },
+        "env_config": {"parrot_shriek_range": gym.spaces.Box(-5.0, 5.0, (1,))},
         # Parallelize environment rollouts.
         "num_workers": 3,
-    })
+    }
+)
 
 # Train for n iterations and report results (mean episode rewards).
 # Since we have to guess 10 times and the optimal reward is 0.0
@@ -75,7 +74,7 @@ for i in range(5):
 # Note that we are using a slightly simpler env here (-3.0 to 3.0, instead
 # of -5.0 to 5.0!), however, this should still work as the agent has
 # (hopefully) learned to "just always repeat the observation!".
-env = ParrotEnv({"parrot_shriek_range": gym.spaces.Box(-3.0, 3.0, (1, ))})
+env = ParrotEnv({"parrot_shriek_range": gym.spaces.Box(-3.0, 3.0, (1,))})
 # Get the initial observation (some value between -10.0 and 10.0).
 obs = env.reset()
 done = False

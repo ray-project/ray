@@ -9,6 +9,13 @@ import pytest
 
 import ray
 import time
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.utils import get_directory_size_bytes
+from ray._private.runtime_env.working_dir import WorkingDirManager
+from ray._private.runtime_env.packaging import (
+    get_uri_for_directory,
+    upload_package_if_needed,
+)
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -16,14 +23,41 @@ import time
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
-HTTPS_PACKAGE_URI = ("https://github.com/shrekris-anyscale/"
-                     "test_module/archive/HEAD.zip")
+HTTPS_PACKAGE_URI = (
+    "https://github.com/shrekris-anyscale/" "test_module/archive/HEAD.zip"
+)
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+def test_create_delete_size_equal(tmpdir, ray_start_regular):
+    """Tests that `create` and `delete_uri` return the same size for a URI."""
+
+    # Create an arbitrary nonempty directory to upload.
+    path = Path(tmpdir)
+    dir_to_upload = path / "dir_to_upload"
+    dir_to_upload.mkdir(parents=True)
+    filepath = dir_to_upload / "file"
+    with filepath.open("w") as file:
+        file.write("F" * 100)
+
+    uri = get_uri_for_directory(dir_to_upload)
+    assert get_directory_size_bytes(dir_to_upload) > 0
+
+    uploaded = upload_package_if_needed(uri, tmpdir, dir_to_upload)
+    assert uploaded
+
+    manager = WorkingDirManager(tmpdir)
+
+    created_size_bytes = manager.create(uri, {}, RuntimeEnvContext())
+    deleted_size_bytes = manager.delete_uri(uri)
+    assert created_size_bytes == deleted_size_bytes
+
+
 @pytest.mark.parametrize(
-    "option", ["failure", "working_dir", "working_dir_zip", "py_modules"])
+    "option", ["failure", "working_dir", "working_dir_zip", "py_modules"]
+)
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
     """Tests the case where we lazily read files or import inside a task/actor.
@@ -45,20 +79,21 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
             with tempfile.TemporaryDirectory() as tmp_dir:
                 zip_dir = Path(tmp_working_dir)
                 package = shutil.make_archive(
-                    os.path.join(tmp_dir, "test"), "zip", zip_dir)
+                    os.path.join(tmp_dir, "test"), "zip", zip_dir
+                )
                 ray.init(address, runtime_env={"working_dir": package})
         elif option == "py_modules":
             ray.init(
                 address,
                 runtime_env={
                     "py_modules": [str(Path(tmp_working_dir) / "test_module")]
-                })
+                },
+            )
         elif option == "py_modules_path":
             ray.init(
                 address,
-                runtime_env={
-                    "py_modules": [Path(tmp_working_dir) / "test_module"]
-                })
+                runtime_env={"py_modules": [Path(tmp_working_dir) / "test_module"]},
+            )
 
     call_ray_init()
 
@@ -75,6 +110,7 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
     @ray.remote
     def test_import():
         import test_module
+
         return test_module.one()
 
     if option == "failure":
@@ -101,6 +137,7 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
     class Actor:
         def test_import(self):
             import test_module
+
             return test_module.one()
 
         def test_read(self):
@@ -137,10 +174,9 @@ def test_captured_import(start_cluster, tmp_working_dir, option: str):
             ray.init(
                 address,
                 runtime_env={
-                    "py_modules": [
-                        os.path.join(tmp_working_dir, "test_module")
-                    ]
-                })
+                    "py_modules": [os.path.join(tmp_working_dir, "test_module")]
+                },
+            )
 
     call_ray_init()
 
@@ -306,23 +342,34 @@ def test_exclusion(start_cluster, tmp_working_dir, option):
             return "FAILED"
 
     def get_all():
-        return ray.get([
-            check_file.remote("test1"),
-            check_file.remote("test2"),
-            check_file.remote("test3"),
-            check_file.remote(os.path.join("tmp_dir", "test_1")),
-            check_file.remote(os.path.join("tmp_dir", "test_2")),
-            check_file.remote(os.path.join("tmp_dir", "test_3")),
-            check_file.remote(os.path.join("tmp_dir", "sub_dir", "test_1")),
-            check_file.remote(os.path.join("tmp_dir", "sub_dir", "test_2")),
-            check_file.remote(os.path.join("cache", "test_1")),
-            check_file.remote(os.path.join("tmp_dir", "cache", "test_1")),
-            check_file.remote(os.path.join("another_dir", "cache", "test_1")),
-        ])
+        return ray.get(
+            [
+                check_file.remote("test1"),
+                check_file.remote("test2"),
+                check_file.remote("test3"),
+                check_file.remote(os.path.join("tmp_dir", "test_1")),
+                check_file.remote(os.path.join("tmp_dir", "test_2")),
+                check_file.remote(os.path.join("tmp_dir", "test_3")),
+                check_file.remote(os.path.join("tmp_dir", "sub_dir", "test_1")),
+                check_file.remote(os.path.join("tmp_dir", "sub_dir", "test_2")),
+                check_file.remote(os.path.join("cache", "test_1")),
+                check_file.remote(os.path.join("tmp_dir", "cache", "test_1")),
+                check_file.remote(os.path.join("another_dir", "cache", "test_1")),
+            ]
+        )
 
     assert get_all() == [
-        "Test", "Test", "Test", "Test", "Test", "Test", "Test", "Test", "Test",
-        "Test", "Test"
+        "Test",
+        "Test",
+        "Test",
+        "Test",
+        "Test",
+        "Test",
+        "Test",
+        "Test",
+        "Test",
+        "Test",
+        "Test",
     ]
 
     ray.shutdown()
@@ -341,22 +388,25 @@ def test_exclusion(start_cluster, tmp_working_dir, option):
 
     if option == "working_dir":
         ray.init(
-            address,
-            runtime_env={
-                "working_dir": tmp_working_dir,
-                "excludes": excludes
-            })
+            address, runtime_env={"working_dir": tmp_working_dir, "excludes": excludes}
+        )
     else:
         ray.init(
-            address,
-            runtime_env={
-                "py_modules": [tmp_working_dir],
-                "excludes": excludes
-            })
+            address, runtime_env={"py_modules": [tmp_working_dir], "excludes": excludes}
+        )
 
     assert get_all() == [
-        "Test", "FAILED", "Test", "FAILED", "FAILED", "Test", "FAILED",
-        "FAILED", "Test", "Test", "Test"
+        "Test",
+        "FAILED",
+        "Test",
+        "FAILED",
+        "FAILED",
+        "Test",
+        "FAILED",
+        "FAILED",
+        "Test",
+        "Test",
+        "Test",
     ]
 
     ray.shutdown()
@@ -365,36 +415,41 @@ def test_exclusion(start_cluster, tmp_working_dir, option):
     excludes = ["*"]
     if option == "working_dir":
         ray.init(
-            address,
-            runtime_env={
-                "working_dir": tmp_working_dir,
-                "excludes": excludes
-            })
+            address, runtime_env={"working_dir": tmp_working_dir, "excludes": excludes}
+        )
     else:
         module_name = Path(tmp_working_dir).name
         ray.init(
-            address,
-            runtime_env={
-                "py_modules": [tmp_working_dir],
-                "excludes": excludes
-            })
+            address, runtime_env={"py_modules": [tmp_working_dir], "excludes": excludes}
+        )
 
     assert get_all() == [
-        "FAILED", "FAILED", "FAILED", "FAILED", "FAILED", "FAILED", "FAILED",
-        "FAILED", "FAILED", "FAILED", "FAILED"
+        "FAILED",
+        "FAILED",
+        "FAILED",
+        "FAILED",
+        "FAILED",
+        "FAILED",
+        "FAILED",
+        "FAILED",
+        "FAILED",
+        "FAILED",
+        "FAILED",
     ]
 
     ray.shutdown()
 
     # Test excluding with a .gitignore file.
     with open(f"{tmp_working_dir}/.gitignore", "w") as f:
-        f.write("""
+        f.write(
+            """
 # Comment
 test_[12]
 /test1
 !/tmp_dir/sub_dir/test_1
 cache/
-""")
+"""
+        )
 
     if option == "working_dir":
         ray.init(address, runtime_env={"working_dir": tmp_working_dir})
@@ -403,8 +458,17 @@ cache/
         ray.init(address, runtime_env={"py_modules": [tmp_working_dir]})
 
     assert get_all() == [
-        "FAILED", "Test", "Test", "FAILED", "FAILED", "Test", "Test", "FAILED",
-        "FAILED", "FAILED", "FAILED"
+        "FAILED",
+        "Test",
+        "Test",
+        "FAILED",
+        "FAILED",
+        "Test",
+        "Test",
+        "FAILED",
+        "FAILED",
+        "FAILED",
+        "FAILED",
     ]
 
 
