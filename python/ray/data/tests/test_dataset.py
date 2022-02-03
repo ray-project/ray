@@ -2252,7 +2252,7 @@ def test_split(ray_start_regular_shared):
     assert [1] * 10 + [0] == [
         dataset._blocks.initial_num_blocks() for dataset in datasets
     ]
-    assert 190 == sum([dataset.sum() for dataset in datasets])
+    assert 190 == sum([dataset.sum() or 0 for dataset in datasets])
 
 
 def test_split_hints(ray_start_regular_shared):
