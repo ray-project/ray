@@ -196,7 +196,19 @@ class Client:
     def _wait_for_goal(
         self, goal_id: Optional[GoalId], timeout: Optional[float] = None
     ) -> bool:
-        return wait_for_goal(goal_id, self._controller, timeout=timeout)
+        if goal_id is None:
+            return True
+
+        ready, _ = ray.wait([self._controller.wait_for_goal.remote(goal_id)], timeout=timeout)
+        # AsyncGoal could return exception if set, ray.get()
+        # retrieves and throws it to user code explicitly.
+        if len(ready) == 1:
+            async_goal_exception = ray.get(ready)[0]
+            if async_goal_exception is not None:
+                raise async_goal_exception
+            return True
+        else:
+            return False
 
     @_ensure_connected
     def deploy(
@@ -214,7 +226,7 @@ class Client:
         _blocking: Optional[bool] = True,
     ) -> Optional[GoalId]:
 
-        controller_deploy_args = _get_deploy_args(
+        controller_deploy_args = self.get_deploy_args(
             name=name,
             deployment_def=deployment_def,
             init_args=init_args,
@@ -230,11 +242,11 @@ class Client:
             self._controller.deploy.remote(**controller_deploy_args)
         )
 
-        tag = log_deployment_update_status(name, version, updating)
+        tag = self.log_deployment_update_status(name, version, updating)
 
         if _blocking:
             self._wait_for_goal(goal_id)
-            log_deployment_ready(name, version, url, tag)
+            self.log_deployment_ready(name, version, url, tag)
         else:
             return goal_id
 
@@ -339,6 +351,102 @@ class Client:
             self.handle_cache.pop(evict_key)
 
         return handle
+    
+    @_ensure_connected
+    def get_deploy_args(
+        self,
+        name: str,
+        deployment_def: Union[Callable, Type[Callable], str],
+        init_args: Tuple[Any],
+        init_kwargs: Dict[Any, Any],
+        ray_actor_options: Optional[Dict] = None,
+        config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
+        version: Optional[str] = None,
+        prev_version: Optional[str] = None,
+        route_prefix: Optional[str] = None,
+    ) -> Dict:
+        """
+        Takes a deployment's configuration, and returns the arguments needed
+        for the controller to deploy it.
+        """
+
+        if config is None:
+            config = {}
+        if ray_actor_options is None:
+            ray_actor_options = {}
+
+        curr_job_env = ray.get_runtime_context().runtime_env
+        if "runtime_env" in ray_actor_options:
+            ray_actor_options["runtime_env"].setdefault(
+                "working_dir", curr_job_env.get("working_dir")
+            )
+        else:
+            ray_actor_options["runtime_env"] = curr_job_env
+
+        replica_config = ReplicaConfig(
+            deployment_def,
+            init_args=init_args,
+            init_kwargs=init_kwargs,
+            ray_actor_options=ray_actor_options,
+        )
+
+        if isinstance(config, dict):
+            deployment_config = DeploymentConfig.parse_obj(config)
+        elif isinstance(config, DeploymentConfig):
+            deployment_config = config
+        else:
+            raise TypeError("config must be a DeploymentConfig or a dictionary.")
+
+        if (
+            deployment_config.autoscaling_config is not None
+            and deployment_config.max_concurrent_queries
+            < deployment_config.autoscaling_config.target_num_ongoing_requests_per_replica  # noqa: E501
+        ):
+            logger.warning(
+                "Autoscaling will never happen, "
+                "because 'max_concurrent_queries' is less than "
+                "'target_num_ongoing_requests_per_replica' now."
+            )
+
+        controller_deploy_args = {
+            "name": name,
+            "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
+            "replica_config": replica_config,
+            "version": version,
+            "prev_version": prev_version,
+            "route_prefix": route_prefix,
+            "deployer_job_id": ray.get_runtime_context().job_id,
+        }
+
+        return controller_deploy_args
+
+    @_ensure_connected
+    def log_deployment_update_status(self, name: str, version: str, updating: bool) -> str:
+        tag = f"component=serve deployment={name}"
+
+        if updating:
+            msg = f"Updating deployment '{name}'"
+            if version is not None:
+                msg += f" to version '{version}'"
+            logger.info(f"{msg}. {tag}")
+        else:
+            logger.info(
+                f"Deployment '{name}' is already at version "
+                f"'{version}', not updating. {tag}"
+            )
+
+        return tag
+
+    @_ensure_connected
+    def log_deployment_ready(self, name: str, version: str, url: str, tag: str) -> None:
+        if url is not None:
+            url_part = f" at `{url}`"
+        else:
+            url_part = ""
+        logger.info(
+            f"Deployment '{name}{':'+version if version else ''}' is ready"
+            f"{url_part}. {tag}"
+        )
 
 
 def _check_http_and_checkpoint_options(
@@ -1173,8 +1281,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
 def deploy_group(
     deployments: List[Deployment],
-    _blocking: bool = True,
-    controller: ServeController = None,
+    _blocking: bool = True
 ) -> List[GoalId]:
     """
     EXPERIMENTAL API
@@ -1185,14 +1292,14 @@ def deploy_group(
         deployments(List[Deployment]): a list of deployments to deploy.
         _blocking(bool): whether to wait for the deployments to finish
             deploying or not.
-        controller: the Serve controller to use when deploying the deployments.
-            If None, uses the global_client's controller.
     """
+
+    client = _get_global_client()
 
     deployment_args_list = []
     for deployment in deployments:
         deployment_args_list.append(
-            _get_deploy_args(
+            client.get_deploy_args(
                 deployment._name,
                 deployment._func_or_class,
                 deployment.init_args,
@@ -1205,9 +1312,7 @@ def deploy_group(
             )
         )
 
-    if controller is None:
-        controller = _get_global_client()._controller
-    update_goals = ray.get(controller.deploy_group.remote(deployment_args_list))
+    update_goals = ray.get(client._controller.deploy_group.remote(deployment_args_list))
 
     tags = []
     for i in range(len(deployments)):
@@ -1215,7 +1320,7 @@ def deploy_group(
         name, version = deployment._name, deployment._version
         updating = update_goals[i][1]
 
-        tags.append(log_deployment_update_status(name, version, updating))
+        tags.append(client.log_deployment_update_status(name, version, updating))
 
     nonblocking_goal_ids = []
     for i in range(len(deployments)):
@@ -1224,124 +1329,9 @@ def deploy_group(
         goal_id = update_goals[i][0]
 
         if _blocking:
-            wait_for_goal(goal_id, controller)
-            log_deployment_ready(name, version, url, tags[i])
+            client._wait_for_goal(goal_id)
+            client.log_deployment_ready(name, version, url, tags[i])
         else:
             nonblocking_goal_ids.append(goal_id)
 
     return nonblocking_goal_ids
-
-
-def _get_deploy_args(
-    name: str,
-    deployment_def: Union[Callable, Type[Callable], str],
-    init_args: Tuple[Any],
-    init_kwargs: Dict[Any, Any],
-    ray_actor_options: Optional[Dict] = None,
-    config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
-    version: Optional[str] = None,
-    prev_version: Optional[str] = None,
-    route_prefix: Optional[str] = None,
-) -> Dict:
-    """
-    Takes a deployment's configuration, and returns the arguments needed for
-    the controller to deploy it.
-    """
-
-    if config is None:
-        config = {}
-    if ray_actor_options is None:
-        ray_actor_options = {}
-
-    curr_job_env = ray.get_runtime_context().runtime_env
-    if "runtime_env" in ray_actor_options:
-        ray_actor_options["runtime_env"].setdefault(
-            "working_dir", curr_job_env.get("working_dir")
-        )
-    else:
-        ray_actor_options["runtime_env"] = curr_job_env
-
-    replica_config = ReplicaConfig(
-        deployment_def,
-        init_args=init_args,
-        init_kwargs=init_kwargs,
-        ray_actor_options=ray_actor_options,
-    )
-
-    if isinstance(config, dict):
-        deployment_config = DeploymentConfig.parse_obj(config)
-    elif isinstance(config, DeploymentConfig):
-        deployment_config = config
-    else:
-        raise TypeError("config must be a DeploymentConfig or a dictionary.")
-
-    if (
-        deployment_config.autoscaling_config is not None
-        and deployment_config.max_concurrent_queries
-        < deployment_config.autoscaling_config.target_num_ongoing_requests_per_replica  # noqa: E501
-    ):
-        logger.warning(
-            "Autoscaling will never happen, "
-            "because 'max_concurrent_queries' is less than "
-            "'target_num_ongoing_requests_per_replica' now."
-        )
-
-    controller_deploy_args = {
-        "name": name,
-        "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
-        "replica_config": replica_config,
-        "version": version,
-        "prev_version": prev_version,
-        "route_prefix": route_prefix,
-        "deployer_job_id": ray.get_runtime_context().job_id,
-    }
-
-    return controller_deploy_args
-
-
-def log_deployment_update_status(name: str, version: str, updating: bool) -> str:
-    tag = f"component=serve deployment={name}"
-
-    if updating:
-        msg = f"Updating deployment '{name}'"
-        if version is not None:
-            msg += f" to version '{version}'"
-        logger.info(f"{msg}. {tag}")
-    else:
-        logger.info(
-            f"Deployment '{name}' is already at version "
-            f"'{version}', not updating. {tag}"
-        )
-
-    return tag
-
-
-def log_deployment_ready(name: str, version: str, url: str, tag: str) -> None:
-    if url is not None:
-        url_part = f" at `{url}`"
-    else:
-        url_part = ""
-    logger.info(
-        f"Deployment '{name}{':'+version if version else ''}' is ready"
-        f"{url_part}. {tag}"
-    )
-
-
-def wait_for_goal(
-    goal_id: Optional[GoalId],
-    controller: ServeController,
-    timeout: Optional[float] = None,
-) -> bool:
-    if goal_id is None:
-        return True
-
-    ready, _ = ray.wait([controller.wait_for_goal.remote(goal_id)], timeout=timeout)
-    # AsyncGoal could return exception if set, ray.get()
-    # retrieves and throws it to user code explicitly.
-    if len(ready) == 1:
-        async_goal_exception = ray.get(ready)[0]
-        if async_goal_exception is not None:
-            raise async_goal_exception
-        return True
-    else:
-        return False
