@@ -1,7 +1,5 @@
 import asyncio
-import os
 import logging
-import time
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -15,9 +13,6 @@ from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
 
-# Defines whether or not usage data is reported.
-USAGE_REPORT_ENABLED = int(os.getenv("RAY_USAGE_STATS_ENABLE", "0")) == 1
-
 
 class UsageStatsHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
@@ -25,27 +20,30 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         self.cluster_metadata = None
         self.session_dir = dashboard_head.session_dir
 
-    @async_loop_forever(usage_constants.USAGE_REPORT_INTERVAL)
+    @async_loop_forever(usage_constants.USAGE_REPORT_INTERVAL_S)
     async def _report_usage(self):
-        assert USAGE_REPORT_ENABLED
+        assert usage_constants.USAGE_REPORT_ENABLED
         if not self.cluster_metadata:
             self.cluster_metadata = ray_usage_lib.get_cluster_metadata(
                 ray.experimental.internal_kv.internal_kv_get_gcs_client(),
                 num_retries=20,
             )
 
-        data = self.cluster_metadata.copy()
-        data["collect_timestamp_ms"] = int(time.time() * 1000)
-        ray_usage_lib.validate_schema(data)
+        data = ray_usage_lib.generate_report_data(self.cluster_metadata)
 
         # In order to not block the event loop, we run blocking IOs
         # within a thread pool.
         with ThreadPoolExecutor(max_workers=1) as executor:
             await ray_usage_lib.write_usage_data_async(data, self.session_dir, executor)
-            await ray_usage_lib.report_usage_data_async(data, executor)
+            await ray_usage_lib.report_usage_data_async(
+                usage_constants.USAGE_REPORT_URL, data, executor
+            )
 
     async def run(self, server):
-        if not USAGE_REPORT_ENABLED:
+        logger.error(usage_constants.USAGE_REPORT_ENABLED)
+        logger.error(usage_constants.USAGE_REPORT_URL)
+        logger.error(usage_constants.USAGE_REPORT_INTERVAL_S)
+        if not usage_constants.USAGE_REPORT_ENABLED:
             logger.info(
                 "Usage module won't be started because the usage report is disabled."
             )
