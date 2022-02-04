@@ -65,7 +65,9 @@ class RaySyncer {
     }
 
     current_message = std::make_shared<RaySyncMessage>(std::move(message));
-    RAY_LOG(INFO) << "Current Node: " << node_id_ << ", message node: " << message.node_id() << " receiver: "  << receivers_[message.component_id()];
+    RAY_LOG(INFO) << "Current Node: " << node_id_
+                  << ", message node: " << message.node_id()
+                  << " receiver: " << receivers_[message.component_id()];
     if (receivers_[message.component_id()] != nullptr && message.node_id() != node_id_) {
       receivers_[message.component_id()]->Update(*current_message);
     }
@@ -106,7 +108,7 @@ class RaySyncer {
     cluster_messages_[node_id] = NodeIndexedMessages();
   }
 
-  template<typename T>
+  template <typename T>
   struct Protocol : public T {
     using T::StartRead;
     using T::StartWrite;
@@ -163,8 +165,7 @@ class RaySyncer {
       ResetOutMessage();
       for (auto &message : buffer) {
         RAY_LOG(INFO) << "WMSG: " << message->node_id();
-        out_message->mutable_sync_messages()->UnsafeArenaAddAllocated(
-            message.get());
+        out_message->mutable_sync_messages()->UnsafeArenaAddAllocated(message.get());
       }
       RAY_LOG(INFO) << "client write " << out_message->sync_messages_size()
                     << " messages";
@@ -186,7 +187,8 @@ class RaySyncer {
     SyncerClientReactor(RaySyncer &instance, const std::string &node_id,
                         ray::rpc::syncer::RaySyncer::Stub &stub) {
       this->instance = &instance;
-      this->timer = std::make_unique<boost::asio::deadline_timer>(this->instance->io_context_);
+      this->timer =
+          std::make_unique<boost::asio::deadline_timer>(this->instance->io_context_);
       this->node_id = node_id;
       rpc_context_.AddMetadata("node_id", node_id);
       stub.async()->StartSync(&rpc_context_, this);
@@ -207,11 +209,8 @@ class RaySyncer {
     }
 
     void OnDone(const grpc::Status &status) override {
-      instance->io_context_.dispatch(
-          [this] {
-            instance->followers_.erase(node_id);
-          },
-          "RaySyncDone");
+      instance->io_context_.dispatch([this] { instance->followers_.erase(node_id); },
+                                     "RaySyncDone");
     }
 
    private:
@@ -223,7 +222,8 @@ class RaySyncer {
     SyncerServerReactor(RaySyncer &instance, const std::string &node_id) {
       this->instance = &instance;
       this->node_id = node_id;
-      this->timer = std::make_unique<boost::asio::deadline_timer>(this->instance->io_context_);
+      this->timer =
+          std::make_unique<boost::asio::deadline_timer>(this->instance->io_context_);
       StartSendInitialMetadata();
     }
 
@@ -239,11 +239,8 @@ class RaySyncer {
     }
 
     void OnDone() override {
-      instance->io_context_.dispatch(
-          [this] {
-            instance->followers_.erase(node_id);
-          },
-          "RaySyncDone");
+      instance->io_context_.dispatch([this] { instance->followers_.erase(node_id); },
+                                     "RaySyncDone");
     }
   };
 
