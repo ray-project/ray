@@ -309,25 +309,25 @@ class Worker:
                 continue
         raise ConnectionError("Client is shutting down.")
 
-    def _call_chunked_get(self, req: ray_client_pb2.GetRequest, *args, **kwargs) -> Any:
+    def _call_get_object(self, req: ray_client_pb2.GetRequest, *args, **kwargs) -> Any:
         """
         Calls the stub for GetObject on the underlying server stub. If a
         recoverable error occurs while streaming the response, attempts
         to retry the get starting from the first chunk that hasn't been
         received.
         """
-        highest_chunk_seen = -1
+        last_seen_chunk = -1
         while not self._in_shutdown:
             # If we disconnect partway through, restart the get request
             # at the first chunk we haven't seen
-            req.start_chunk_id = highest_chunk_seen + 1
+            req.start_chunk_id = last_seen_chunk + 1
             try:
                 for chunk in self.server.GetObject(req, *args, **kwargs):
-                    if chunk.chunk_id <= highest_chunk_seen:
+                    if chunk.chunk_id <= last_seen_chunk:
                         # Ignore repeat chunks
                         continue
-                    assert highest_chunk_seen + 1 == chunk.chunk_id
-                    highest_chunk_seen = chunk.chunk_id
+                    assert last_seen_chunk + 1 == chunk.chunk_id
+                    last_seen_chunk = chunk.chunk_id
                     yield chunk
                 return
             except grpc.RpcError as e:
@@ -435,7 +435,7 @@ class Worker:
     def _get(self, ref: List[ClientObjectRef], timeout: float):
         req = ray_client_pb2.GetRequest(ids=[r.id for r in ref], timeout=timeout)
         try:
-            resp = self._call_chunked_get(req, metadata=self.metadata)
+            resp = self._call_get_object(req, metadata=self.metadata)
         except grpc.RpcError as e:
             raise decode_exception(e)
         data = bytearray()

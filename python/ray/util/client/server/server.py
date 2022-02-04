@@ -378,7 +378,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             with disable_client_hook():
 
                 def send_get_response(result: Any) -> None:
-                    """Pushes a GetResponse to the main DataPath loop to send
+                    """Pushes GetResponses to the main DataPath loop to send
                     to the client. This is called when the object is ready
                     on the server side."""
                     try:

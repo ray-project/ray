@@ -25,12 +25,18 @@ ACKNOWLEDGE_BATCH_SIZE = 32
 
 
 class ChunkCollector:
-    def __init__(self, callback):
+    """
+    This object collects chunks from async get requests via __call__, and
+    calls the underlying callback when the object is fully received, or if an
+    exception while retrieving the object occurs.
+    """
+
+    def __init__(self, callback: ResponseCallable):
         self.data = bytearray()
         self.callback = callback
         self.last_seen_chunk = -1
 
-    def __call__(self, response) -> bool:
+    def __call__(self, response: Union[ray_client_pb2.DataResponse, Exception]) -> bool:
         if isinstance(response, Exception):
             self.callback(response)
             return True
