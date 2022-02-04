@@ -11,6 +11,7 @@ from functools import wraps
 from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, overload
 
 from fastapi import APIRouter, FastAPI
+from ray.experimental.dag import DAGNode, TaskNode, ActorNode, ActorMethodNode
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -114,13 +115,18 @@ def _ensure_connected(f: Callable) -> Callable:
 
 class Client:
     def __init__(
-        self, controller: ActorHandle, controller_name: str, detached: bool = False
+        self,
+        controller: ActorHandle,
+        controller_name: str,
+        detached: bool = False,
     ):
         self._controller = controller
         self._controller_name = controller_name
         self._detached = detached
         self._shutdown = False
-        self._http_config: HTTPOptions = ray.get(controller.get_http_config.remote())
+        self._http_config: HTTPOptions = ray.get(
+            controller.get_http_config.remote()
+        )
         self._root_url = ray.get(controller.get_root_url.remote())
         self._checkpoint_path = ray.get(controller.get_checkpoint_path.remote())
 
@@ -178,8 +184,12 @@ class Client:
             started = time.time()
             while True:
                 try:
-                    controller_namespace = _get_controller_namespace(self._detached)
-                    ray.get_actor(self._controller_name, namespace=controller_namespace)
+                    controller_namespace = _get_controller_namespace(
+                        self._detached
+                    )
+                    ray.get_actor(
+                        self._controller_name, namespace=controller_namespace
+                    )
                     if time.time() - started > 5:
                         logger.warning(
                             "Waited 5s for Serve to shutdown gracefully but "
@@ -252,7 +262,9 @@ class Client:
         elif isinstance(config, DeploymentConfig):
             deployment_config = config
         else:
-            raise TypeError("config must be a DeploymentConfig or a dictionary.")
+            raise TypeError(
+                "config must be a DeploymentConfig or a dictionary."
+            )
 
         if (
             deployment_config.autoscaling_config is not None
@@ -306,7 +318,9 @@ class Client:
 
     @_ensure_connected
     def delete_deployment(self, name: str) -> None:
-        self._wait_for_goal(ray.get(self._controller.delete_deployment.remote(name)))
+        self._wait_for_goal(
+            ray.get(self._controller.delete_deployment.remote(name))
+        )
 
     @_ensure_connected
     def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
@@ -429,7 +443,9 @@ def _check_http_and_checkpoint_options(
         different_fields = []
         all_http_option_fields = new_http_options.__dict__
         for field in all_http_option_fields:
-            if getattr(new_http_options, field) != getattr(client_http_options, field):
+            if getattr(new_http_options, field) != getattr(
+                client_http_options, field
+            ):
                 different_fields.append(field)
 
         if len(different_fields):
@@ -507,7 +523,9 @@ def start(
             f"'{controller_namespace}'."
         )
 
-        _check_http_and_checkpoint_options(client, http_options, _checkpoint_path)
+        _check_http_and_checkpoint_options(
+            client, http_options, _checkpoint_path
+        )
 
         return client
     except RayServeException:
@@ -516,7 +534,9 @@ def start(
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
     else:
-        controller_name = format_actor_name(get_random_letters(), SERVE_CONTROLLER_NAME)
+        controller_name = format_actor_name(
+            get_random_letters(), SERVE_CONTROLLER_NAME
+        )
 
     if isinstance(http_options, dict):
         http_options = HTTPOptions.parse_obj(http_options)
@@ -587,7 +607,9 @@ def _connect() -> Client:
 
     # Try to get serve controller if it exists
     try:
-        controller = ray.get_actor(controller_name, namespace=controller_namespace)
+        controller = ray.get_actor(
+            controller_name, namespace=controller_namespace
+        )
     except ValueError:
         raise RayServeException(
             "There is no "
@@ -754,7 +776,9 @@ class Deployment:
                 "directly. Use `@serve.deployment` instead."
             )
         if not callable(func_or_class):
-            raise TypeError("@serve.deployment must be called on a class or function.")
+            raise TypeError(
+                "@serve.deployment must be called on a class or function."
+            )
         if not isinstance(name, str):
             raise TypeError("name must be a string.")
         if not (version is None or isinstance(version, str)):
@@ -776,7 +800,9 @@ class Deployment:
                 )
             if "{" in route_prefix or "}" in route_prefix:
                 raise ValueError("route_prefix may not contain wildcards.")
-        if not (ray_actor_options is None or isinstance(ray_actor_options, dict)):
+        if not (
+            ray_actor_options is None or isinstance(ray_actor_options, dict)
+        ):
             raise TypeError("ray_actor_options must be a dict.")
 
         if init_args is None:
@@ -931,7 +957,9 @@ class Deployment:
         Returns:
             ServeHandle
         """
-        return _get_global_client().get_handle(self._name, missing_ok=True, sync=sync)
+        return _get_global_client().get_handle(
+            self._name, missing_ok=True, sync=sync
+        )
 
     @PublicAPI
     def options(
@@ -990,10 +1018,14 @@ class Deployment:
             new_config.autoscaling_config = _autoscaling_config
 
         if _graceful_shutdown_wait_loop_s is not None:
-            new_config.graceful_shutdown_wait_loop_s = _graceful_shutdown_wait_loop_s
+            new_config.graceful_shutdown_wait_loop_s = (
+                _graceful_shutdown_wait_loop_s
+            )
 
         if _graceful_shutdown_timeout_s is not None:
-            new_config.graceful_shutdown_timeout_s = _graceful_shutdown_timeout_s
+            new_config.graceful_shutdown_timeout_s = (
+                _graceful_shutdown_timeout_s
+            )
 
         return Deployment(
             func_or_class,
@@ -1195,13 +1227,19 @@ def get_deployment(name: str) -> Deployment:
         Deployment
     """
     try:
-        deployment_info, route_prefix = _get_global_client().get_deployment_info(name)
+        (
+            deployment_info,
+            route_prefix,
+        ) = _get_global_client().get_deployment_info(name)
     except KeyError:
         raise KeyError(
-            f"Deployment {name} was not found. " "Did you call Deployment.deploy()?"
+            f"Deployment {name} was not found. "
+            "Did you call Deployment.deploy()?"
         )
     return Deployment(
-        cloudpickle.loads(deployment_info.replica_config.serialized_deployment_def),
+        cloudpickle.loads(
+            deployment_info.replica_config.serialized_deployment_def
+        ),
         name,
         deployment_info.deployment_config,
         version=deployment_info.version,
@@ -1224,7 +1262,9 @@ def list_deployments() -> Dict[str, Deployment]:
     deployments = {}
     for name, (deployment_info, route_prefix) in infos.items():
         deployments[name] = Deployment(
-            cloudpickle.loads(deployment_info.replica_config.serialized_deployment_def),
+            cloudpickle.loads(
+                deployment_info.replica_config.serialized_deployment_def
+            ),
             name,
             deployment_info.deployment_config,
             version=deployment_info.version,
@@ -1236,3 +1276,51 @@ def list_deployments() -> Dict[str, Deployment]:
         )
 
     return deployments
+
+
+def generate_pipeline_from_dag(dag: DAGNode) -> Dict[str, Deployment]:
+    """
+    ** Experimental **
+
+    Given a ray DAG with given root node, generate a list of deployments
+    for further iterative development.
+    """
+
+    deployments = []
+
+    def convert_to_deployments(dag_node):
+        if isinstance(dag_node, TaskNode):
+            deployments.append(
+                Deployment(
+                    dag_node._body,
+                    dag_node.get_options().get("name"),
+                    DeploymentConfig(),
+                    # init_args=dag_node.get_args(),
+                    # init_kwargs=dag_node.get_kwargs(),
+                    # ray_actor_options=dag_node.get_options(),
+                    _internal=True
+                )
+            )
+        elif isinstance(dag_node, ActorNode):
+            deployments.append(
+                Deployment(
+                    dag_node._actor_cls,
+                    dag_node.get_options().get("name"),
+                    DeploymentConfig(),
+                    init_args=dag_node.get_args(),
+                    init_kwargs=dag_node.get_kwargs(),
+                    # ray_actor_options=dag_node.get_options(),
+                     _internal=True
+                )
+            )
+        elif isinstance(dag_node, ActorMethodNode):
+            deployments.append(dag_node._method_name)
+
+    dag._apply_recursive(lambda node: convert_to_deployments(node))
+
+    print(dag)
+    print(deployments)
+    import ipdb
+    ipdb.set_trace()
+    for deployment in deployments:
+        deployment.deploy()

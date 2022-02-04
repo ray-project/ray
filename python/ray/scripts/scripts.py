@@ -711,6 +711,8 @@ def start(
                     " flag of `ray start` command."
                 )
 
+        print(f">>>>>> starting headnode with ray_params: {ray_params}")
+        print(f">>>>>> starting headnode with num_cpus: {ray_params.num_cpus}")
         node = ray.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block
         )

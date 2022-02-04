@@ -1,6 +1,7 @@
 import asyncio
 import time
 import os
+from ray.serve.api import generate_pipeline_from_dag
 
 import requests
 import pytest
@@ -300,6 +301,39 @@ def test_shutdown_destructor(serve_instance):
 
     B.deploy()
     B.delete()
+
+def test_generate_pipeline_from_dag(serve_instance):
+    @ray.remote
+    class Model:
+        def __init__(self, arg):
+            self.arg = arg
+
+        def forward(self, x):
+            return self.arg + str(x)
+
+    @ray.remote
+    class ModelSelection:
+        def __init__(self):
+            pass
+
+        def is_even(self, x):
+            return x % 2 == 0
+
+    @ray.remote
+    def pipeline(x, m1, m2, selection):
+        sel = selection.is_even.remote(x)
+        if ray.get(sel):
+            result = m1.forward.remote(x)
+        else:
+            result = m2.forward.remote(x)
+        return ray.get(result)
+
+    m1 = Model.options(name="m1")._bind("Even: ")
+    m2 = Model.options(name="m2")._bind("Odd: ")
+    selection = ModelSelection.options(name="selection")._bind()
+
+    dag = pipeline.options(name="pipeline")._bind(20, m1, m2, selection)
+    generate_pipeline_from_dag(dag)
 
 
 if __name__ == "__main__":
