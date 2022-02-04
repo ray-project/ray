@@ -2,6 +2,7 @@ import asyncio
 import time
 import os
 from ray.serve.api import generate_pipeline_from_dag
+import ray.experimental.dag as dag_builder
 
 import requests
 import pytest
@@ -29,7 +30,9 @@ def test_e2e(serve_instance):
 def test_starlette_response(serve_instance):
     @serve.deployment(name="basic")
     def basic(_):
-        return starlette.responses.Response("Hello, world!", media_type="text/plain")
+        return starlette.responses.Response(
+            "Hello, world!", media_type="text/plain"
+        )
 
     basic.deploy()
     assert requests.get("http://127.0.0.1:8000/basic").text == "Hello, world!"
@@ -51,7 +54,9 @@ def test_starlette_response(serve_instance):
         return starlette.responses.PlainTextResponse("Hello, world!")
 
     plain_text.deploy()
-    assert requests.get("http://127.0.0.1:8000/plain_text").text == "Hello, world!"
+    assert (
+        requests.get("http://127.0.0.1:8000/plain_text").text == "Hello, world!"
+    )
 
     @serve.deployment(name="json")
     def json(_):
@@ -62,10 +67,14 @@ def test_starlette_response(serve_instance):
 
     @serve.deployment(name="redirect")
     def redirect(_):
-        return starlette.responses.RedirectResponse(url="http://127.0.0.1:8000/basic")
+        return starlette.responses.RedirectResponse(
+            url="http://127.0.0.1:8000/basic"
+        )
 
     redirect.deploy()
-    assert requests.get("http://127.0.0.1:8000/redirect").text == "Hello, world!"
+    assert (
+        requests.get("http://127.0.0.1:8000/redirect").text == "Hello, world!"
+    )
 
     @serve.deployment(name="streaming")
     def streaming(_):
@@ -142,13 +151,19 @@ def test_deploy_async_class_no_params(serve_instance):
     serve.start()
     AsyncCounter.deploy()
 
-    assert requests.get("http://127.0.0.1:8000/AsyncCounter").json() == {"count": 1}
-    assert requests.get("http://127.0.0.1:8000/AsyncCounter").json() == {"count": 2}
+    assert requests.get("http://127.0.0.1:8000/AsyncCounter").json() == {
+        "count": 1
+    }
+    assert requests.get("http://127.0.0.1:8000/AsyncCounter").json() == {
+        "count": 2
+    }
     assert ray.get(AsyncCounter.get_handle().remote()) == {"count": 3}
 
 
 def test_user_config(serve_instance):
-    @serve.deployment("counter", num_replicas=2, user_config={"count": 123, "b": 2})
+    @serve.deployment(
+        "counter", num_replicas=2, user_config={"count": 123, "b": 2}
+    )
     class Counter:
         def __init__(self):
             self.count = 10
@@ -302,38 +317,34 @@ def test_shutdown_destructor(serve_instance):
     B.deploy()
     B.delete()
 
+
 def test_generate_pipeline_from_dag(serve_instance):
     @ray.remote
     class Model:
-        def __init__(self, arg):
-            self.arg = arg
+        def __init__(self, weights):
+            self.model = weights
 
-        def forward(self, x):
-            return self.arg + str(x)
+        def forward(self, input: str, kwreq=""):
+            return str(self.model) + "|" + input + "|" + kwreq
 
     @ray.remote
     class ModelSelection:
-        def __init__(self):
-            pass
+        def __init__(self, m1, m2):
+            self.m1 = m1
+            self.m2 = m2
 
-        def is_even(self, x):
-            return x % 2 == 0
+        def forward(self, req: str, kwreq=""):
+            m1_rst_ref = self.m1.forward.remote(req, kwreq=kwreq)
+            m2_rst_ref = self.m2.forward.remote(req, kwreq=kwreq)
+            return ray.get(m1_rst_ref) + " + " + ray.get(m2_rst_ref)
 
-    @ray.remote
-    def pipeline(x, m1, m2, selection):
-        sel = selection.is_even.remote(x)
-        if ray.get(sel):
-            result = m1.forward.remote(x)
-        else:
-            result = m2.forward.remote(x)
-        return ray.get(result)
-
-    m1 = Model.options(name="m1")._bind("Even: ")
-    m2 = Model.options(name="m2")._bind("Odd: ")
-    selection = ModelSelection.options(name="selection")._bind()
-
-    dag = pipeline.options(name="pipeline")._bind(20, m1, m2, selection)
-    generate_pipeline_from_dag(dag)
+    m1 = Model._bind(1)
+    m2 = Model._bind(2)
+    selection = ModelSelection._bind(m1, m2)
+    dag = selection.forward._bind(dag_builder.ENTRY_POINT)
+    print(dag)
+    print(ray.get(dag.execute("A", kwreq="B")))
+    # generate_pipeline_from_dag(dag)
 
 
 if __name__ == "__main__":

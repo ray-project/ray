@@ -66,9 +66,9 @@ class DAGNode:
 
         return self._bound_options.copy()
 
-    def execute(self) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
+    def execute(self, *args, **kwargs) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this DAG using the Ray default executor."""
-        return self._apply_recursive(lambda node: node._execute_impl())
+        return self._apply_recursive(lambda node: node._execute_impl(*args, **kwargs))
 
     def _get_toplevel_child_nodes(self) -> Set["DAGNode"]:
         """Return the set of nodes specified as top-level args.
@@ -159,7 +159,7 @@ class DAGNode:
 
         return fn(self._replace_all_child_nodes(lambda node: node._apply_recursive(fn)))
 
-    def _execute_impl(self) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
+    def _execute_impl(self, *args, **kwargs) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this node, assuming args have been transformed already."""
         raise NotImplementedError
 

@@ -1,5 +1,6 @@
 import ray
 from ray.experimental.dag.dag_node import DAGNode
+import ray.experimental.dag as dag
 
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,7 +21,7 @@ class ActorNode(DAGNode):
     ):
         return ActorNode(self._actor_cls, new_args, new_kwargs, new_options)
 
-    def _execute_impl(self):
+    def _execute_impl(self, *args, **kwargs):
         if self._bound_options:
             return (
                 ray.remote(self._actor_cls)
@@ -100,7 +101,7 @@ class ActorMethodNode(DAGNode):
             new_options,
         )
 
-    def _execute_impl(self):
+    def _execute_impl(self, *args, **kwargs):
         actor_handle = self._bound_args[0]
         if self._bound_options:
             return (
@@ -112,6 +113,12 @@ class ActorMethodNode(DAGNode):
                 )
             )
         else:
-            return getattr(actor_handle, self._method_name).remote(
-                *self._bound_args[2:], **self._bound_kwargs
-            )
+            if len(self._bound_args[2:]) == 1 and self._bound_args[2:][0] == dag.ENTRY_POINT:
+                print("YOOOOOO !!! Use execute args !!")
+                return getattr(actor_handle, self._method_name).remote(
+                    *args, **kwargs
+                )
+            else:
+                return getattr(actor_handle, self._method_name).remote(
+                    *self._bound_args[2:], **self._bound_kwargs
+                )

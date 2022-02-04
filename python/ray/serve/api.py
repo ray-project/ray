@@ -1302,6 +1302,7 @@ def generate_pipeline_from_dag(dag: DAGNode) -> Dict[str, Deployment]:
                 )
             )
         elif isinstance(dag_node, ActorNode):
+            print(f">>>>> args: {dag_node.get_args()}")
             deployments.append(
                 Deployment(
                     dag_node._actor_cls,

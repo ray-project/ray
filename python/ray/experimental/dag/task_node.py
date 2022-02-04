@@ -20,7 +20,7 @@ class TaskNode(DAGNode):
     ):
         return TaskNode(self._body, new_args, new_kwargs, new_options)
 
-    def _execute_impl(self):
+    def _execute_impl(self, *args, **kwargs):
         if self._bound_options:
             return (
                 ray.remote(self._body)
