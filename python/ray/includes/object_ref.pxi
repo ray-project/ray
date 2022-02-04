@@ -163,9 +163,15 @@ cdef class ClientObjectRef(ObjectRef):
             raise TypeError("Unexpected type for id {}".format(id))
 
     def __dealloc__(self):
+        # This function is necessary, since within `__dealloc__`, we are not
+        # supposed to do any python related operations. It's for C related
+        # resource cleanup.
+        # Besides, we can't use `__del__` here, since cython won't call this
+        # unless it's > 3.0.
         def _connected():
             try:
-                return self._worker is not None and self._worker.is_connected()
+                return client is not None and self._worker is not None \
+                    and self._worker.is_connected()
             except Exception:
                 return False
 
