@@ -19,6 +19,11 @@
 
 namespace ray {
 
+// Return whether a string representation of a runtime env represents an empty
+// runtime env.  It could either be "" (from the default string value in protobuf),
+// or "{}" (from serializing an empty Python dict or a JSON file.)
+bool IsRuntimeEnvEmpty(const std::string &serialized_runtime_env);
+
 /// The class that manages runtime env. The lifetime of runtime env is managed
 /// here. There are two places where runtime env need be managed
 ///    1) central storage, like GCS or global KV storage
