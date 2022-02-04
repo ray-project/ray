@@ -6,6 +6,7 @@ import torch.nn as nn
 import ray.train as train
 from ray.train import Trainer
 from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
+from ray.train.constants import TIME_THIS_ITER_S
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -90,6 +91,11 @@ def average_validation_loss(intermediate_results):
     return np.mean(worker_results)
 
 
+def average_iter_time(intermediate_results):
+    worker_results = [worker_result[TIME_THIS_ITER_S] for worker_result in intermediate_results]
+    return np.mean(worker_results)
+
+
 def train_linear(num_workers=2, use_gpu=False, epochs=3):
     trainer = Trainer(backend="torch", num_workers=num_workers, use_gpu=use_gpu)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
@@ -98,11 +104,12 @@ def train_linear(num_workers=2, use_gpu=False, epochs=3):
         train_func,
         config,
         callbacks=[JsonLoggerCallback(), TBXLoggerCallback()],
-        aggregate_funcs=[average_validation_loss],
+        aggregate_funcs=[average_validation_loss, average_iter_time],
     )
     trainer.shutdown()
 
     print(results)
+    print(trainer.aggregated_metrics)
     return results
 
 

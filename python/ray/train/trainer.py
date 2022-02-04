@@ -157,6 +157,8 @@ class Trainer:
         # Incremental unique run ID.
         self._run_id = 0
 
+        self._aggregated_metrics = None
+
         self.logdir = self.create_logdir(logdir)
 
         # Setup executor.
@@ -347,10 +349,10 @@ class Trainer:
                 for callback in callbacks:
                     callback.process_results(intermediate_result)
 
+            self._aggregated_metrics = aggregated_results
+
             assert iterator.is_finished()
-            final_results = iterator.get_final_results()
-            final_results.append(aggregated_results)
-            return final_results
+            return iterator.get_final_results()
         finally:
             for callback in callbacks:
                 callback.finish_training(error=finished_with_errors)
@@ -496,6 +498,15 @@ class Trainer:
         ``train.checkpoint()`` has not been called from ``train_func``.
         """
         return self.checkpoint_manager.latest_checkpoint
+
+    @property
+    def aggregated_metrics(self) -> Optional[Dict]:
+        """A ``Dict`` of aggregated metrics across all workers.
+
+        Returns ``None`` if ``run()`` has not been called or an empty
+        ``Dict`` if ``train.report()`` has not been called from ``train_func``.
+        """
+        return self._aggregated_metrics
 
     def shutdown(self):
         """Shuts down the training execution service."""
