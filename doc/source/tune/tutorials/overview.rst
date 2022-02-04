@@ -125,7 +125,7 @@ Tune Feature Guides
 
     .. link-button:: tune-output
         :type: ref
-        :text: How To Log & Debug Tune Runs
+        :text: How To Log Tune Runs
         :classes: btn-link btn-block stretched-link
 
     ---

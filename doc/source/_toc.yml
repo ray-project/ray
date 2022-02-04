@@ -31,6 +31,7 @@ parts:
         title: Ray Tune
         sections:
           - file: tune/getting-started
+          - file: tune/key-concepts
           - file: tune/tutorials/overview
             sections:
               - file: tune/tutorials/tune-sklearn
@@ -49,7 +50,6 @@ parts:
               - file: tune/tutorials/tune-lifecycle
               - file: tune/tutorials/tune-advanced-tutorial
               - file: tune/tutorials/tune-distributed
-          - file: tune/key-concepts
           - file: tune/examples/index
           - file: tune/faq
       - file: serve/index

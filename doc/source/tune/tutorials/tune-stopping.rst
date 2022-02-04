@@ -17,6 +17,7 @@ you can then call ``tune.run()`` with ``resume=True`` like this:
 
 .. code-block:: python
     :emphasize-lines: 5
+
     tune.run(
         train,
         # other configuration
@@ -48,7 +49,7 @@ of your original tuning run:
 .. _tune-stopping-ref:
 
 How to stop Tune runs programmatically?
-------------------------------------
+---------------------------------------
 
 We've just covered the case in which you manually interrupt a Tune run.
 But you can also control when trials are stopped early by passing the ``stop`` argument to ``tune.run``.

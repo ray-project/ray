@@ -1,15 +1,13 @@
 A Guide To Callbacks & Metrics in Tune
 ======================================
 
-
 .. _tune-callbacks:
 
-Callbacks
----------
+How to work with Callbacks?
+---------------------------
 
 Ray Tune supports callbacks that are called during various times of the training process.
-Callbacks can be passed as a parameter to ``tune.run()``, and the submethod will be
-invoked automatically.
+Callbacks can be passed as a parameter to ``tune.run()``, and the sub-method you provide will be invoked automatically.
 
 This simple callback just prints a metric each time a result is received:
 
@@ -38,10 +36,10 @@ For more details and available hooks, please :ref:`see the API docs for Ray Tune
 
 .. _tune-autofilled-metrics:
 
-Auto-filled Metrics
--------------------
+How to use log metrics in Tune?
+-------------------------------
 
-You can log arbitrary values and metrics in both training APIs:
+You can log arbitrary values and metrics in both Function and Class training APIs:
 
 .. code-block:: python
 
@@ -56,7 +54,13 @@ You can log arbitrary values and metrics in both training APIs:
             # don't call report here!
             return dict(acc=accuracy, metric_foo=random_metric_1, bar=metric_2)
 
-During training, Tune will automatically log the below metrics in addition to the user-provided values. All of these can be used as stopping conditions or passed as a parameter to Trial Schedulers/Search Algorithms.
+
+Which metrics get automatically filled in?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Tune has the concept of auto-filled metrics.
+During training, Tune will automatically log the below metrics in addition to any user-provided values.
+All of these can be used as stopping conditions or passed as a parameter to Trial Schedulers/Search Algorithms.
 
 * ``config``: The hyperparameter configuration
 * ``date``: String-formatted date and time when the result was processed

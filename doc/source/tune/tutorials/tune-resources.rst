@@ -1,12 +1,10 @@
 .. _tune-parallelism:
 
+A Guide To Parallelism and Resources
+------------------------------------
 
-Resources (Parallelism, GPUs, Distributed)
-------------------------------------------
-
-.. tip:: To run everything sequentially, use :ref:`Ray Local Mode <tune-debugging>`.
-
-Parallelism is determined by ``resources_per_trial`` (defaulting to 1 CPU, 0 GPU per trial) and the resources available to Tune (``ray.cluster_resources()``).
+Parallelism is determined by ``resources_per_trial`` (defaulting to 1 CPU, 0 GPU per trial)
+and the resources available to Tune (``ray.cluster_resources()``).
 
 By default, Tune automatically runs N concurrent trials, where N is the number of CPUs (cores) on your machine.
 
@@ -14,6 +12,8 @@ By default, Tune automatically runs N concurrent trials, where N is the number o
 
     # If you have 4 CPUs on your machine, this will run 4 concurrent trials at a time.
     tune.run(trainable, num_samples=10)
+
+.. tip:: To run your code sequentially, use :ref:`Ray Local Mode <tune-debugging>`.
 
 You can override this parallelism with ``resources_per_trial``. Here you can
 specify your resource requests using either a dictionary or a
@@ -45,10 +45,11 @@ factory objects to request these resources. See the
 for further information. This also applies if you are using other libraries making use of Ray, such
 as Modin. Failure to set resources correctly may result in a deadlock, "hanging" the cluster.
 
-Using GPUs
-~~~~~~~~~~
+How to leverage GPUs?
+~~~~~~~~~~~~~~~~~~~~~
 
-To leverage GPUs, you must set ``gpu`` in ``tune.run(resources_per_trial)``. This will automatically set ``CUDA_VISIBLE_DEVICES`` for each trial.
+To leverage GPUs, you must set ``gpu`` in ``tune.run(resources_per_trial)``.
+This will automatically set ``CUDA_VISIBLE_DEVICES`` for each trial.
 
 .. code-block:: python
 
@@ -66,34 +67,11 @@ You can find an example of this in the :doc:`Keras MNIST example </tune/examples
 due to the previous trial not cleaning up its GPU state fast enough. To avoid this,
 you can use ``tune.utils.wait_for_gpu`` - see :ref:`docstring <tune-util-ref>`.
 
+How to run distributed tuning on a cluster?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Concurrent samples
-~~~~~~~~~~~~~~~~~~
-
-If using a :ref:`search algorithm <tune-search-alg>`, you may want to limit the number of trials that are being evaluated. For example, you may want to serialize the evaluation of trials to do sequential optimization.
-
-In this case, ``ray.tune.suggest.ConcurrencyLimiter`` to limit the amount of concurrency:
-
-.. code-block:: python
-
-    algo = BayesOptSearch(utility_kwargs={
-        "kind": "ucb",
-        "kappa": 2.5,
-        "xi": 0.0
-    })
-    algo = ConcurrencyLimiter(algo, max_concurrent=4)
-    scheduler = AsyncHyperBandScheduler()
-
-See :ref:`limiter` for more details.
-
-
-
-Distributed Tuning
-~~~~~~~~~~~~~~~~~~
-
-.. tip:: This section covers how to run Tune across multiple machines. See :ref:`Distributed Training <tune-dist-training>` for guidance in tuning distributed training jobs.
-
-To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``. See :ref:`start-ray-cli` for more information about ``ray.init``:
+To attach to an existing Ray cluster, simply run ``ray.init`` before ``tune.run``.
+See :ref:`start-ray-cli` for more information about ``ray.init``:
 
 .. code-block:: python
 
@@ -103,10 +81,11 @@ To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``. See :re
 
 Read more in the Tune :ref:`distributed experiments guide <tune-distributed-ref>`.
 
+
 .. _tune-dist-training:
 
-Tune Distributed Training
-~~~~~~~~~~~~~~~~~~~~~~~~~
+How to run distributed training with Tune?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To tune distributed training jobs, Tune provides a set of ``DistributedTrainableCreator`` for different training frameworks.
 Below is an example for tuning distributed TensorFlow jobs:
@@ -122,4 +101,25 @@ Below is an example for tuning distributed TensorFlow jobs:
     tune.run(tf_trainable,
              num_samples=1)
 
-Read more about tuning :ref:`distributed PyTorch <tune-ddp-doc>`, :ref:`TensorFlow <tune-dist-tf-doc>` and :ref:`Horovod <tune-integration-horovod>` jobs.
+Read more about tuning :ref:`distributed PyTorch <tune-ddp-doc>`,
+:ref:`TensorFlow <tune-dist-tf-doc>` and :ref:`Horovod <tune-integration-horovod>` jobs.
+
+How to limit concurrency?
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If using a :ref:`search algorithm <tune-search-alg>`, you may want to limit the number of trials that are being evaluated.
+For example, you may want to serialize the evaluation of trials to do sequential optimization.
+
+In this case, ``ray.tune.suggest.ConcurrencyLimiter`` to limit the amount of concurrency:
+
+.. code-block:: python
+
+    algo = BayesOptSearch(utility_kwargs={
+        "kind": "ucb",
+        "kappa": 2.5,
+        "xi": 0.0
+    })
+    algo = ConcurrencyLimiter(algo, max_concurrent=4)
+    scheduler = AsyncHyperBandScheduler()
+
+See :ref:`limiter` for more details.

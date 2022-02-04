@@ -1,12 +1,13 @@
-Using Checkpoints
-=================
+A Guide To Using Checkpoints
+============================
 
 .. _tune-checkpoint-syncing:
 
 Checkpointing and synchronization
 ---------------------------------
 
-When running a hyperparameter search, Tune can automatically and periodically save/checkpoint your model. This allows you to:
+When running a hyperparameter search, Tune can automatically and periodically save/checkpoint your model.
+This allows you to:
 
 * save intermediate models throughout training
 * use pre-emptible machines (by automatically restoring from last checkpoint)
@@ -152,7 +153,8 @@ Alternatively, a function can be provided with the following signature:
         )
     )
 
-When syncing results back to the driver, the source would be a path similar to ``ubuntu@192.0.0.1:/home/ubuntu/ray_results/trial1``, and the target would be a local path.
+When syncing results back to the driver, the source would be a path similar to
+``ubuntu@192.0.0.1:/home/ubuntu/ray_results/trial1``, and the target would be a local path.
 
 Note that we adjusted the sync period in the example above. Setting this to a lower number will pull
 checkpoints from remote nodes more often. This will lead to more robust trial recovery,
@@ -188,9 +190,12 @@ Your ``my_trainable`` is either a:
 
 2. **Custom training function**
 
-  * All this means is that your function has to expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir``. See :doc:`this example </tune/examples/custom_func_checkpointing>`, it's quite simple to do.
+  * All this means is that your function has to expose a ``checkpoint_dir`` argument in the function signature,
+    and call ``tune.checkpoint_dir``. See :doc:`this example </tune/examples/custom_func_checkpointing>`,
+    it's quite simple to do.
 
-Let's assume for this example you're running this script from your laptop, and connecting to your remote Ray cluster via ``ray.init()``, making your script on your laptop the "driver".
+Let's assume for this example you're running this script from your laptop, and connecting to your remote Ray cluster
+via ``ray.init()``, making your script on your laptop the "driver".
 
 .. code-block:: python
 
@@ -311,9 +316,13 @@ Let's take a look at an example:
 Distributed Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node. This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>` and also requires rsync to be installed.
+On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node.
+This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>` and also
+requires rsync to be installed.
 
-Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing (or use a model type with a built-in Ray Tune integration as described here). See :doc:`/tune/examples/custom_func_checkpointing` for an example.
+Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing
+(or use a model type with a built-in Ray Tune integration as described here).
+See :doc:`/tune/examples/custom_func_checkpointing` for an example.
 
 If you are running Ray Tune on Kubernetes, you should usually use a
 :ref:`cloud checkpointing <tune-sync-config>` or a shared filesystem for checkpoint sharing.
@@ -326,4 +335,3 @@ disable cross-node syncing:
 
     sync_config = tune.SyncConfig(syncer=None)
     tune.run(func, sync_config=sync_config)
-
