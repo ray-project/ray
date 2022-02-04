@@ -121,14 +121,15 @@ py_test(
 py_test(
     name = "tune_sklearn",
     size = "medium",
+    main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
     args = ["--path", "source/tune/tutorials/tune-sklearn.md", "--smoke-test"],
     tags = ["exclusive", "team:ml"],
 )
-
 py_test(
     name = "tune_serve_integration_mnist",
     size = "medium",
+    main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
     args = ["--path", "source/tune/tutorials/tune-serve-integration-mnist.md", "--smoke-test", "--from_scratch", "--day 0"],
     tags = ["exclusive", "team:ml"],
