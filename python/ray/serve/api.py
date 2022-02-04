@@ -215,7 +215,7 @@ class Client:
                 f"Deployments still alive: {live_names}."
             )
 
-    def _wait_for_deployment_healthy(self, name: str, timeout_s: int = -1):
+    def _wait_for_deployment_running(self, name: str, timeout_s: int = -1):
         """Waits for the named deployment to enter "RUNNING" status.
 
         Raises RuntimeError if the deployment enters the "FAILED" status
@@ -344,7 +344,7 @@ class Client:
             logger.info(f"{msg}. {tag}")
 
             if _blocking:
-                self._wait_for_deployment_healthy(name)
+                self._wait_for_deployment_running(name)
 
                 if url is not None:
                     url_part = f" at `{url}`"
