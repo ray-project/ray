@@ -1198,6 +1198,13 @@ def test_http_proxy_request_cancellation(serve_instance):
 class TestDeployGroup:
 
     def deploy_and_check_responses(self, deployments, responses, blocking=True, client=None):
+        """
+        Helper function that deploys the list of deployments, calls them with
+        their handles, and checks whether they return the objects in responses.
+        If blocking is False, this function uses a non-blocking deploy and uses
+        the client to wait until the deployments finish deploying.
+        """
+
         goal_ids = deploy_group(deployments, _blocking=blocking)
 
         if blocking:
@@ -1211,6 +1218,11 @@ class TestDeployGroup:
             assert ray.get(deployment.get_handle().remote()) == response
 
     def test_basic_deploy_group(self, serve_instance):
+        """
+        Atomically deploys a group of deployments, including both functions and
+        classes. Checks whether they deploy correctly.
+        """
+
         @serve.deployment
         def f():
             return "f reached"
@@ -1235,6 +1247,13 @@ class TestDeployGroup:
         self.deploy_and_check_responses(deployments, responses)
 
     def test_mutual_handles(self, serve_instance):
+        """
+        Atomically deploys a group of deployments that get handles to other
+        deployments in the group inside their __init__ functions. The handle
+        references should fail in a non-atomic deployment. Checks whether the
+        deployments deploy correctly.
+        """
+
         @serve.deployment
         class MutualHandles:
             async def __init__(self, handle_name):
@@ -1267,6 +1286,11 @@ class TestDeployGroup:
             assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"
 
     def test_decorated_deployments(self, serve_instance):
+        """
+        Checks deploy_group's behavior when deployments have options set in
+        their @serve.deployment decorator.
+        """
+
         @serve.deployment(num_replicas=2, max_concurrent_queries=5)
         class DecoratedClass1:
             async def __call__(self):
@@ -1281,15 +1305,24 @@ class TestDeployGroup:
         responses = ["DecoratedClass1 reached", "DecoratedClass2 reached"]
         self.deploy_and_check_responses(deployments, responses)
 
-    def test_blocking_deploy_group(self, serve_instance):
+    def test_non_blocking_deploy_group(self, serve_instance):
+        "Checks deploy_group's behavior when _blocking=False."
+
         deployments = [self.f, self.g, self.C, self.D]
         responses = ["f reached", "g reached", "C reached", "D reached"]
         self.deploy_and_check_responses(deployments, responses, blocking=False, client=serve_instance)
 
     def test_empty_list(self, serve_instance):
+        "Checks deploy_group's behavior when deployment group is empty."
+
         self.deploy_and_check_responses([], [])
 
     def test_invalid_input(self, serve_instance):
+        """
+        Checks deploy_group's behavior when deployment group contains
+        non-Deployment objects.
+        """
+        
         with pytest.raises(TypeError):
             deploy_group(["not a Deployment object"])
 
