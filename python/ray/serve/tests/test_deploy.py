@@ -1215,7 +1215,7 @@ class TestDeployGroup:
             return "D reached"
 
     @serve.deployment
-    class MutHandles:
+    class MutualHandles:
         async def __init__(self, handle_name):
             self.handle = serve.get_deployment(handle_name).get_handle()
 
@@ -1246,7 +1246,7 @@ class TestDeployGroup:
 
         self.deploy_and_check_responses(deployments, responses)
 
-    def test_mutual_handles_extensive(self, serve_instance):
+    def test_mutual_handles(self, serve_instance):
         names = []
         for i in range(10):
             names.append("a" * i)
@@ -1259,7 +1259,7 @@ class TestDeployGroup:
             handle_name = names[(idx + 1) % len(names)]
 
             deployments.append(
-                self.MutHandles.options(name=deployment_name, init_args=(handle_name,))
+                self.MutualHandles.options(name=deployment_name, init_args=(handle_name,))
             )
 
         deploy_group(deployments)
