@@ -66,12 +66,15 @@ class MockWorkerPool : public WorkerPoolInterface {
     return {};
   }
 
-  void TriggerCallbacksWithNotOKStatus(PopWorkerStatus status) {
+  void TriggerCallbacksWithNotOKStatus(
+      PopWorkerStatus status, const std::string &runtime_env_setup_error_msg = "") {
     RAY_CHECK(status != PopWorkerStatus::OK);
     for (const auto &pair : callbacks) {
       for (const auto &callback : pair.second) {
         // No task should be dispatched.
-        ASSERT_FALSE(callback(nullptr, status));
+        ASSERT_FALSE(
+            callback(nullptr, status,
+                     /*runtime_env_setup_error_msg*/ runtime_env_setup_error_msg));
       }
     }
     callbacks.clear();
@@ -88,7 +91,7 @@ class MockWorkerPool : public WorkerPoolInterface {
         RAY_CHECK(!list.empty());
         for (auto list_it = list.begin(); list_it != list.end();) {
           auto &callback = *list_it;
-          dispatched = callback(worker, PopWorkerStatus::OK);
+          dispatched = callback(worker, PopWorkerStatus::OK, "");
           list_it = list.erase(list_it);
           if (dispatched) {
             break;
@@ -914,12 +917,15 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerTest) {
   ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
   ASSERT_EQ(NumRunningTasks(), 1);
   // The task should be cancelled.
-  pool_.TriggerCallbacksWithNotOKStatus(PopWorkerStatus::RuntimeEnvCreationFailed);
+  const auto runtime_env_error_msg = "Runtime env error message";
+  pool_.TriggerCallbacksWithNotOKStatus(PopWorkerStatus::RuntimeEnvCreationFailed,
+                                        runtime_env_error_msg);
   ASSERT_TRUE(callback_called);
   ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 0);
   ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
   ASSERT_EQ(NumRunningTasks(), 0);
   ASSERT_TRUE(reply.canceled());
+  ASSERT_EQ(reply.scheduling_failure_message(), runtime_env_error_msg);
 
   AssertNoLeaks();
 }

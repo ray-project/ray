@@ -203,10 +203,10 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
-  bool CancelTask(
-      const TaskID &task_id,
-      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED) override;
+  bool CancelTask(const TaskID &task_id,
+                  rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+                  const std::string &scheduling_failure_message = "") override;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///
@@ -294,7 +294,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                            PopWorkerStatus status, const TaskID &task_id,
                            SchedulingClass scheduling_class,
                            const std::shared_ptr<internal::Work> &work,
-                           bool is_detached_actor, const rpc::Address &owner_address);
+                           bool is_detached_actor, const rpc::Address &owner_address,
+                           const std::string &runtime_env_setup_error_message);
 
   /// (Step 3) Attempts to dispatch all tasks which are ready to run. A task
   /// will be dispatched if it is on `tasks_to_dispatch_` and there are still
