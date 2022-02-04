@@ -326,19 +326,18 @@ def test_disconnect_during_get():
 
 def test_disconnects_during_large_get():
     """
-    Disconnect the repeatedly during a large get.
+    Disconnect repeatedly during a large (multi-chunk) get.
     """
     i = 0
     started = False
 
     def fail_every_three(_):
-        # Inject an error every seventh time this method is called
+        # Inject an error every third time this method is called
         nonlocal i, started
         if not started:
             return
         i += 1
         if i % 3 == 0:
-            print("INJECTING!")
             raise RuntimeError
 
     @ray.remote

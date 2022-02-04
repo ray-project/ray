@@ -30,7 +30,10 @@ class ChunkCollector:
         self.callback = callback
         self.last_seen_chunk = -1
 
-    def __call__(self, response):
+    def __call__(self, response) -> bool:
+        if isinstance(response, Exception):
+            self.callback(response)
+            return True
         get_resp = response.get
         if not get_resp.valid:
             self.callback(response)
