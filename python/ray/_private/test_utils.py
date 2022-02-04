@@ -523,15 +523,6 @@ def put_object(obj, use_ray_put):
         return _put.remote(obj)
 
 
-def put_unpinned_object(obj):
-    value = ray.worker.global_worker.get_serialization_context().serialize(obj)
-    return ray.ObjectRef(
-        ray.worker.global_worker.core_worker.put_serialized_object(
-            value, pin_object=False
-        )
-    )
-
-
 def wait_until_server_available(address, timeout_ms=5000, retry_interval_ms=100):
     ip_port = address.split(":")
     ip = ip_port[0]
@@ -1160,6 +1151,21 @@ def chdir(d: str):
     os.chdir(d)
     yield
     os.chdir(old_dir)
+
+
+def test_get_directory_size_bytes():
+    with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
+        assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 0
+        with open("test_file", "wb") as f:
+            f.write(os.urandom(100))
+        assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 100
+        with open("test_file_2", "wb") as f:
+            f.write(os.urandom(50))
+        assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 150
+        os.mkdir("subdir")
+        with open("subdir/subdir_file", "wb") as f:
+            f.write(os.urandom(2))
+        assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 152
 
 
 def check_local_files_gced(cluster):

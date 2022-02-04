@@ -69,11 +69,13 @@ class WorkerLeaseInterface {
   virtual void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size = -1) = 0;
+      const int64_t backlog_size = -1,
+      const bool is_selected_based_on_locality = false) = 0;
   virtual void RequestWorkerLease(
       const rpc::TaskSpec &task_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size = -1) = 0;
+      const int64_t backlog_size = -1,
+      const bool is_selected_based_on_locality = false) = 0;
 
   /// Returns a worker to the raylet.
   /// \param worker_port The local port of the worker on the raylet node.
@@ -367,15 +369,15 @@ class RayletClient : public RayletClientInterface {
   void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size) override {
+      const int64_t backlog_size, const bool is_selected_based_on_locality) override {
     RequestWorkerLease(resource_spec.GetMessage(), grant_or_reject, callback,
-                       backlog_size);
+                       backlog_size, is_selected_based_on_locality);
   }
 
   void RequestWorkerLease(
       const rpc::TaskSpec &resource_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size) override;
+      const int64_t backlog_size, const bool is_selected_based_on_locality) override;
 
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,

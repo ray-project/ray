@@ -1230,10 +1230,8 @@ def test_from_numpy(ray_start_regular_shared):
     arr1 = np.expand_dims(np.arange(0, 4), axis=1)
     arr2 = np.expand_dims(np.arange(4, 8), axis=1)
     ds = ray.data.from_numpy([ray.put(arr1), ray.put(arr2)])
-    values = np.array(ds.take(8))
-    np.testing.assert_array_equal(
-        values, np.expand_dims(np.concatenate((arr1, arr2)), axis=1)
-    )
+    values = np.stack([x["value"] for x in ds.take(8)])
+    np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
 
 
 def test_from_arrow(ray_start_regular_shared):
@@ -1969,12 +1967,12 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # Batch size larger than dataset.
     batch_size = 15
-    batches = list(
-        ds.iter_batches(batch_size=batch_size, batch_format="pandas"))
+    batches = list(ds.iter_batches(batch_size=batch_size, batch_format="pandas"))
     assert all(len(batch) == ds.count() for batch in batches)
     assert len(batches) == 1
-    assert pd.concat(
-        batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
+    assert pd.concat(batches, ignore_index=True).equals(
+        pd.concat(dfs, ignore_index=True)
+    )
 
     # Batch size drop partial.
     batch_size = 5
@@ -2102,6 +2100,20 @@ def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
     expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
     for _, expected in zip(ds.iter_batches(), expected_num_blocks):
         assert ds._blocks._num_computed() == expected
+
+
+def test_add_column(ray_start_regular_shared):
+    ds = ray.data.range(5).add_column("foo", lambda x: 1)
+    assert ds.take(1) == [{"value": 0, "foo": 1}]
+
+    ds = ray.data.range_arrow(5).add_column("foo", lambda x: x["value"] + 1)
+    assert ds.take(1) == [{"value": 0, "foo": 1}]
+
+    ds = ray.data.range_arrow(5).add_column("value", lambda x: x["value"] + 1)
+    assert ds.take(2) == [{"value": 1}, {"value": 2}]
+
+    with pytest.raises(ValueError):
+        ds = ray.data.range(5).add_column("value", 0)
 
 
 def test_map_batch(ray_start_regular_shared, tmp_path):

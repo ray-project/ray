@@ -70,9 +70,14 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
       // publish the WaitForRefRemoved message that we are now a borrower for
       // the inner IDs. Note that this message can be received *before* the
       // PushTaskReply.
+      // NOTE(swang): We increment the local ref count to ensure that the
+      // object is considered in scope before we return the ObjectRef to the
+      // language frontend. Note that the language bindings should set
+      // skip_adding_local_ref=True to avoid double referencing the object.
       reference_counter_->AddOwnedObject(return_id,
                                          /*inner_ids=*/{}, caller_address, call_site, -1,
-                                         /*is_reconstructable=*/is_reconstructable);
+                                         /*is_reconstructable=*/is_reconstructable,
+                                         /*add_local_ref=*/true);
     }
 
     return_ids.push_back(return_id);
