@@ -338,7 +338,7 @@ class Trainer:
             aggregated_results = collections.defaultdict(list)
             if aggregate_funcs is None:
                 aggregate_funcs = {}
-            elif isinstance(aggregate_funcs, list):
+            elif isinstance(aggregate_funcs, list) and len(aggregate_funcs):
                 aggregate_funcs = {e.__name__: e for e in aggregate_funcs}
 
             for intermediate_result in iterator:
