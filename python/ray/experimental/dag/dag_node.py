@@ -93,16 +93,23 @@ class DAGNode:
         """Return the set of nodes referenced by the args of this node.
 
         For example, in `f.remote(a, [b])`, this includes both `a` and `b`.
+
+        Args:
+            f (_PyObjScanner): A CloudPickler scanner object that finds and
+                keeps track of DAGNode objects in current shallow layer for
+                replacement later on.
         """
 
-        f = _PyObjScanner()
+        scanner = _PyObjScanner()
         children = set()
-        for n in f.find_nodes([self._bound_args, self._bound_kwargs]):
+        for n in scanner.find_nodes([self._bound_args, self._bound_kwargs]):
             children.add(n)
         return children
 
-    def _replace_all_child_nodes(self, fn: "Callable[[DAGNode], T]") -> "DAGNode":
-        """Replace all immediate child nodes using a given function.
+    def _apply_and_replace_all_child_nodes(
+        self, fn: "Callable[[DAGNode], T]"
+    ) -> "DAGNode":
+        """Apply and replace all immediate child nodes using a given function.
 
         This is a shallow replacement only. To recursively transform nodes in
         the DAG, use ``_apply_recursive()``.
@@ -115,15 +122,15 @@ class DAGNode:
         """
 
         replace_table = {}
-
+        # CloudPickler scanner object for current layer of DAGNode. Same
+        # scanner should be use for a full find & replace cycle.
+        scanner = _PyObjScanner()
         # Find all first-level nested DAGNode children in args.
-        f = _PyObjScanner()
-        children = f.find_nodes([self._bound_args, self._bound_kwargs])
         # Update replacement table and execute the replace.
-        for node in children:
+        for node in scanner.find_nodes([self._bound_args, self._bound_kwargs]):
             if node not in replace_table:
                 replace_table[node] = fn(node)
-        new_args, new_kwargs = f.replace_nodes(replace_table)
+        new_args, new_kwargs = scanner.replace_nodes(replace_table)
 
         # Return updated copy of self.
         return self._copy(new_args, new_kwargs, self.get_options())
@@ -153,7 +160,11 @@ class DAGNode:
         if not type(fn).__name__ == "_CachingFn":
             fn = _CachingFn(fn)
 
-        return fn(self._replace_all_child_nodes(lambda node: node._apply_recursive(fn)))
+        return fn(
+            self._apply_and_replace_all_child_nodes(
+                lambda node: node._apply_recursive(fn)
+            )
+        )
 
     def _execute_impl(self) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this node, assuming args have been transformed already."""
