@@ -383,16 +383,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                     on the server side."""
                     try:
                         serialized = dumps_from_server(result, client_id, self)
-                        magick = 64 * 2 ** 20  # 64MiB
                         total_size = len(serialized)
                         # Floor divide to get number of full chunks
-                        total_chunks = total_size // magick
-                        if total_size % magick != 0:
+                        total_chunks = total_size // OBJECT_CHUNK_SIZE
+                        if total_size % OBJECT_CHUNK_SIZE != 0:
                             # +1 if there are any partial chunks
                             total_chunks += 1
                         for chunk_id in range(total_chunks):
-                            start = chunk_id * magick
-                            end = min(total_size, (chunk_id + 1) * magick)
+                            start = chunk_id * OBJECT_CHUNK_SIZE
+                            end = min(total_size, (chunk_id + 1) * OBJECT_CHUNK_SIZE)
                             get_resp = ray_client_pb2.GetResponse(
                                 valid=True,
                                 data=serialized[start:end],

@@ -311,9 +311,10 @@ class Worker:
 
     def _call_chunked_get(self, req: ray_client_pb2.GetRequest, *args, **kwargs) -> Any:
         """
-        Calls the stub specified by stub_name (Schedule, WaitObject, etc...).
-        If a recoverable error occurrs while calling the stub, attempts to
-        retry the RPC.
+        Calls the stub for GetObject on the underlying server stub. If a
+        recoverable error occurs while streaming the response, attempts
+        to retry the get starting from the first chunk that hasn't been
+        received.
         """
         highest_chunk_seen = -1
         while not self._in_shutdown:
@@ -322,7 +323,6 @@ class Worker:
             req.start_chunk_id = highest_chunk_seen + 1
             try:
                 for chunk in self.server.GetObject(req, *args, **kwargs):
-                    print(chunk.chunk_id, chunk.total_size)
                     if chunk.chunk_id <= highest_chunk_seen:
                         # Ignore repeat chunks
                         continue
