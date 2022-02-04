@@ -91,7 +91,8 @@ class RaySyncer {
       if (node_message.first == node_id) {
         continue;
       }
-      // RAY_LOG(INFO) << "CHECK " << node_message.first << " " << node_message.second.size()
+      // RAY_LOG(INFO) << "CHECK " << node_message.first << " " <<
+      // node_message.second.size()
       //               << " " << &node_message.second;
       for (auto &component_message : node_message.second) {
         if (component_message.first.first != node_id) {
@@ -118,13 +119,12 @@ class RaySyncer {
   }
   void DumpClusterMessages() const {
     RAY_LOG(INFO) << "---- DumpClusterMessages ----";
-    for(auto& iter : cluster_messages_) {
+    for (auto &iter : cluster_messages_) {
       RAY_LOG(INFO) << "FromNodeId: " << iter.first << " - " << iter.second.size();
-      for(auto& iterr : iter.second) {
-        RAY_LOG(INFO) << "\tNodeIndexedMessages: "
-                      << iterr.first.first << ":" << iterr.first.second << " - " << iterr.second.get();
+      for (auto &iterr : iter.second) {
+        RAY_LOG(INFO) << "\tNodeIndexedMessages: " << iterr.first.first << ":"
+                      << iterr.first.second << " - " << iterr.second.get();
       }
-
     }
   }
   template <typename T>
