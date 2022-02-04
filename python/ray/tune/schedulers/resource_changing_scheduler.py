@@ -454,8 +454,10 @@ class DistributeResourcesToTopJob(DistributeResources):
             return self._get_used_cpus_and_gpus(trial)
         return total_available_cpus, total_available_gpus
 
+
 _DistributeResourcesDefault = DistributeResources(add_bundles=False)
 _DistributeResourcesDistributedDefault = DistributeResources(add_bundles=True)
+
 
 @Deprecated
 def evenly_distribute_cpus_gpus(
@@ -504,9 +506,7 @@ def evenly_distribute_cpus_gpus(
             "for equivalent functionality."
         )
 
-    return _DistributeResourcesDefault(
-        trial_runner, trial, result, scheduler
-    )
+    return _DistributeResourcesDefault(trial_runner, trial, result, scheduler)
 
 
 @Deprecated
@@ -556,7 +556,9 @@ def evenly_distribute_cpus_gpus_distributed(
             "for equivalent functionality."
         )
 
-    return _DistributeResourcesDistributedDefault(trial_runner, trial, result, scheduler)
+    return _DistributeResourcesDistributedDefault(
+        trial_runner, trial, result, scheduler
+    )
 
 
 class ResourceChangingScheduler(TrialScheduler):
