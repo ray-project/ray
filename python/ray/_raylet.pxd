@@ -93,7 +93,6 @@ cdef class ObjectRef(BaseID):
 cdef class ClientObjectRef(ObjectRef):
     cdef object _mutex
     cdef object _id_future
-    cdef object _client_worker_ref
 
     cdef _set_id(self, id)
     cdef inline _wait_for_id(self, timeout=None)
@@ -108,7 +107,6 @@ cdef class ActorID(BaseID):
 cdef class ClientActorRef(ActorID):
     cdef object _mutex
     cdef object _id_future
-    cdef object _client_worker_ref
 
     cdef _set_id(self, id)
     cdef inline _wait_for_id(self, timeout=None)

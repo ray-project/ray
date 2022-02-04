@@ -18,6 +18,12 @@ def _import_a3c():
     return a3c.A3CTrainer, a3c.DEFAULT_CONFIG
 
 
+def _import_alpha_star():
+    from ray.rllib.agents import alpha_star
+
+    return alpha_star.AlphaStarTrainer, alpha_star.DEFAULT_CONFIG
+
+
 def _import_apex():
     from ray.rllib.agents import dqn
 
@@ -177,6 +183,7 @@ def _import_td3():
 ALGORITHMS = {
     "A2C": _import_a2c,
     "A3C": _import_a3c,
+    "AlphaStar": _import_alpha_star,
     "APEX": _import_apex,
     "APEX_DDPG": _import_apex_ddpg,
     "APPO": _import_appo,

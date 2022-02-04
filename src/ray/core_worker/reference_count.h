@@ -42,7 +42,7 @@ class ReferenceCounterInterface {
   virtual void AddOwnedObject(
       const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
       const rpc::Address &owner_address, const std::string &call_site,
-      const int64_t object_size, bool is_reconstructable,
+      const int64_t object_size, bool is_reconstructable, bool add_local_ref,
       const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>()) = 0;
   virtual bool SetDeleteCallback(
       const ObjectID &object_id,
@@ -167,10 +167,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] object_size Object size if known, otherwise -1;
   /// \param[in] is_reconstructable Whether the object can be reconstructed
   /// through lineage re-execution.
+  /// \param[in] add_local_ref Whether to initialize the local ref count to 1.
+  /// This is used to ensure that the ref is considered in scope before the
+  /// corresponding ObjectRef has been returned to the language frontend.
+  /// \param[in] pinned_at_raylet_id The primary location for the object, if it
+  /// is already known. This is only used for ray.put calls.
   void AddOwnedObject(
       const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
       const rpc::Address &owner_address, const std::string &call_site,
-      const int64_t object_size, bool is_reconstructable,
+      const int64_t object_size, bool is_reconstructable, bool add_local_ref,
       const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>())
       LOCKS_EXCLUDED(mutex_);
 
