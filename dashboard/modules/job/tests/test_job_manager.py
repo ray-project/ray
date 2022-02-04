@@ -21,6 +21,11 @@ TEST_NAMESPACE = "jobs_test_namespace"
 
 @pytest.fixture(scope="session")
 def shared_ray_instance():
+    # Remove ray address for test ray cluster in case we have
+    # lingering RAY_ADDRESS="http://127.0.0.1:8265" from previous local job
+    # submissions.
+    if "RAY_ADDRESS" in os.environ:
+        del os.environ["RAY_ADDRESS"]
     yield ray.init(num_cpus=16, namespace=TEST_NAMESPACE, log_to_driver=True)
 
 
@@ -552,6 +557,25 @@ while True:
     wait_for_condition(lambda: "STREAMED" in job_manager.get_job_logs(job_id))
 
     job_manager.stop_job(job_id)
+
+
+def test_bootstrap_address(job_manager, monkeypatch):
+    """Ensure we always use bootstrap address in job manager even though ray
+    cluster might be started with http://ip:{dashboard_port} from previous
+    runs.
+    """
+    ip = ray.ray_constants.DEFAULT_DASHBOARD_IP
+    port = ray.ray_constants.DEFAULT_DASHBOARD_PORT
+
+    monkeypatch.setenv("RAY_ADDRESS", f"http://{ip}:{port}")
+    print_ray_address_cmd = (
+        'python -c"' "import os;" "import ray;" "ray.init();" "print('SUCCESS!');" '"'
+    )
+
+    job_id = job_manager.submit_job(entrypoint=print_ray_address_cmd)
+
+    wait_for_condition(check_job_succeeded, job_manager=job_manager, job_id=job_id)
+    assert "SUCCESS!" in job_manager.get_job_logs(job_id)
 
 
 if __name__ == "__main__":
