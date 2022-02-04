@@ -23,7 +23,6 @@ class DeploymentStatus(Enum):
     UPDATING = 1
     RUNNING = 2
     FAILED = 3
-    DELETED = 4
 
 
 @dataclass
