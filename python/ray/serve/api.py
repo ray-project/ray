@@ -1350,7 +1350,8 @@ def deploy_group(deployments: List[Deployment], _blocking: bool = True) -> List[
     for deployment in deployments:
         if not isinstance(deployment, Deployment):
             raise TypeError(
-                f"deploy_group only accepts Deployments, but got unexpected type {type(deployment)}."
+                f"deploy_group only accepts Deployments, but got unexpected "
+                f"type {type(deployment)}."
             )
 
         deployment_parameters = {

@@ -1249,7 +1249,7 @@ class TestDeployGroup:
         self.deploy_and_check_responses(deployments, responses)
 
     def test_non_blocking_deploy_group(self, serve_instance):
-        "Checks deploy_group's behavior when _blocking=False."
+        """Checks deploy_group's behavior when _blocking=False."""
 
         deployments = [self.f, self.g, self.C, self.D]
         responses = ["f reached", "g reached", "C reached", "D reached"]
@@ -1317,7 +1317,7 @@ class TestDeployGroup:
         self.deploy_and_check_responses(deployments, responses)
 
     def test_empty_list(self, serve_instance):
-        "Checks deploy_group's behavior when deployment group is empty."
+        """Checks deploy_group's behavior when deployment group is empty."""
 
         self.deploy_and_check_responses([], [])
 
