@@ -18,9 +18,8 @@
 #include <sstream>
 
 #include "ray/common/ray_config.h"
-#include "ray/util/logging.h"
 #include "ray/common/runtime_env_manager.h"
-
+#include "ray/util/logging.h"
 
 namespace ray {
 
@@ -458,8 +457,7 @@ bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
 }
 
 bool WorkerCacheKey::EnvIsEmpty() const {
-  return IsRuntimeEnvEmpty(serialized_runtime_env) &&
-         required_resources.empty();
+  return IsRuntimeEnvEmpty(serialized_runtime_env) && required_resources.empty();
 }
 
 std::size_t WorkerCacheKey::Hash() const {

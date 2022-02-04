@@ -13,9 +13,10 @@
 // limitations under the License.
 
 #include "ray/core_worker/context.h"
-#include "ray/common/runtime_env_manager.h"
 
 #include <google/protobuf/util/json_util.h>
+
+#include "ray/common/runtime_env_manager.h"
 
 namespace ray {
 namespace core {
