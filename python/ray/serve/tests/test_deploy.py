@@ -1306,6 +1306,10 @@ class TestDeployGroup:
     
     def test_empty_list(self, serve_instance):
         self.deploy_and_check_responses([], [])
+    
+    def test_invalid_input(self, serve_instance):
+        with pytest.raises(TypeError):
+            deploy_group([self.f, self.g, "not a deployment"])
 
 
 if __name__ == "__main__":
