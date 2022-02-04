@@ -1047,7 +1047,7 @@ void GcsActorManager::OnActorSchedulingFailed(
   case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED:
     error_msg =
         "Could not create the actor because its associated runtime env failed to be "
-        "created..";
+        "created.";
     break;
   default:
     RAY_LOG(FATAL) << "Unknown error, failure type "
