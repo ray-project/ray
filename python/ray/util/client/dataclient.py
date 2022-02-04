@@ -215,7 +215,6 @@ class DataClient:
         Returns True if the error can be recovered from, False otherwise.
         """
         if not self.client_worker._can_reconnect(e):
-            print(e)
             logger.error("Unrecoverable error in data channel.")
             logger.debug(e)
             return False

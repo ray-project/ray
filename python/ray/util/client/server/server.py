@@ -409,10 +409,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                         get_resp = ray_client_pb2.GetResponse(
                             valid=False, error=cloudpickle.dumps(exc)
                         )
-                        error_resp = ray_client_pb2.DataResponse(
-                            get=get_resp, req_id=req_id
-                        )
-                        result_queue.put(error_resp)
+                        resp = ray_client_pb2.DataResponse(get=get_resp, req_id=req_id)
+                        result_queue.put(resp)
 
                 ref._on_completed(send_get_response)
                 return None
