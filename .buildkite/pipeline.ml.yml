@@ -35,7 +35,7 @@
     - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=learning_tests_continuous,-fake_gpus,-torch_only,-multi_gpu,-gpu, -learning_tests_continuous-tf2-eager-off-policy
+      --test_tag_filters=learning_tests_continuous,-fake_gpus,-torch_only,-multi_gpu,-gpu,-learning_tests_continuous_tf2_eager_off_policy
       --test_arg=--framework=tf2
       rllib/...
 
@@ -46,7 +46,7 @@
     - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=learning_tests_continuous-tf2-eager-off-policy,-fake_gpus,-torch_only,-multi_gpu,-gpu
+      --test_tag_filters=learning_tests_continuous_tf2_eager_off_policy,-fake_gpus,-torch_only,-multi_gpu,-gpu
       --test_arg=--framework=tf2
       rllib/...
 

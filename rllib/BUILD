@@ -228,7 +228,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_ddpg_tf2",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests_continuous-tf2-eager-off-policy"],
+    tags = ["team:ml", "learning_tests_continuous_tf2_eager_off_policy"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
@@ -536,7 +536,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_sac_tf2",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests_continuous-tf2-eager-off-policy"],
+    tags = ["team:ml", "learning_tests_continuous_tf2_eager_off_policy"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac.yaml"],
@@ -546,7 +546,7 @@ py_test(
 py_test(
     name = "learning_tests_transformed_actions_pendulum_sac_tf2",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests_continuous-tf2-eager-off-policy"],
+    tags = ["team:ml", "learning_tests_continuous_tf2_eager_off_policy"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],

@@ -18,7 +18,7 @@ transformed-actions-pendulum-sac-dummy-torch:
             high: 500.0
 
         horizon: 200
-        soft_horizon: False
+        soft_horizon: false
         Q_model:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256]

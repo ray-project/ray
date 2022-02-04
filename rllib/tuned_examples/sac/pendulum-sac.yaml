@@ -11,7 +11,7 @@ pendulum-sac:
         seed: 42
         framework: tf
         horizon: 200
-        soft_horizon: False
+        soft_horizon: false
         Q_model:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256]
@@ -20,10 +20,10 @@ pendulum-sac:
           fcnet_hiddens: [256, 256]
         tau: 0.005
         target_entropy: auto
-        no_done_at_end: True
+        no_done_at_end: true
         n_step: 1
         rollout_fragment_length: 1
-        prioritized_replay: True
+        prioritized_replay: true
         train_batch_size: 256
         target_network_update_freq: 1
         timesteps_per_iteration: 1000
