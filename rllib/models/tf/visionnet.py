@@ -133,6 +133,13 @@ class VisionNetwork(TFModelV2):
                         data_format="channels_last",
                         name="conv_out",
                     )(last_layer)
+
+                    # Flatten the final CNN layer
+                    self.last_layer_is_flattened = True
+                    last_layer = tf.keras.layers.Flatten(data_format="channels_last")(
+                        last_layer
+                    )
+
                     # Add (optional) post-fc-stack after last Conv2D layer.
                     for i, out_size in enumerate(
                         post_fcnet_hiddens[1:] + [num_outputs]
@@ -157,17 +164,17 @@ class VisionNetwork(TFModelV2):
                         name="conv_out",
                     )(last_layer)
 
-                if last_cnn.shape[1] != 1 or last_cnn.shape[2] != 1:
-                    raise ValueError(
-                        "Given `conv_filters` ({}) do not result in a [B, 1, "
-                        "1, {} (`num_outputs`)] shape (but in {})! Please "
-                        "adjust your Conv2D stack such that the dims 1 and 2 "
-                        "are both 1.".format(
-                            self.model_config["conv_filters"],
-                            self.num_outputs,
-                            list(last_cnn.shape),
+                    if last_cnn.shape[1] != 1 or last_cnn.shape[2] != 1:
+                        raise ValueError(
+                            "Given `conv_filters` ({}) do not result in a [B, 1, "
+                            "1, {} (`num_outputs`)] shape (but in {})! Please "
+                            "adjust your Conv2D stack such that the dims 1 and 2 "
+                            "are both 1.".format(
+                                self.model_config["conv_filters"],
+                                self.num_outputs,
+                                list(last_cnn.shape),
+                            )
                         )
-                    )
 
             # num_outputs not known -> Flatten, then set self.num_outputs
             # to the resulting number of nodes.
