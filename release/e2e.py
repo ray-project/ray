@@ -188,8 +188,8 @@ Release test yaml example
 import argparse
 import enum
 import random
-import string
 import shlex
+import string
 
 import boto3
 import collections
@@ -402,7 +402,7 @@ class CommandRunnerHack:
         full_cmd = " ".join(f"{k}={v}" for k, v in env_vars.items()) + " " + cmd_to_run
         logger.info(f"Executing {cmd_to_run} with {env_vars} via ray job submit")
         proc = subprocess.Popen(
-            " ".join(["ray", "job", "submit", shlex.quote(full_cmd)]),
+            f"ray job submit -- bash -c {shlex.quote(full_cmd)}",
             shell=True,
             stdout=sys.stdout,
             stderr=sys.stderr,

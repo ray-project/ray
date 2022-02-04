@@ -110,8 +110,11 @@ def create_conda_env_if_needed(
     logger.info(f"Creating conda environment {prefix}")
     exit_code, output = exec_cmd_stream_to_logger(create_cmd, logger)
     if exit_code != 0:
-        shutil.rmtree(prefix)
-        raise RuntimeError(f"Failed to install conda environment {prefix}:\n{output}")
+        if os.path.exists(prefix):
+            shutil.rmtree(prefix)
+        raise RuntimeError(
+            f"Failed to install conda environment {prefix}:\nOutput:\n{output}"
+        )
 
 
 def delete_conda_env(prefix: str, logger: Optional[logging.Logger] = None) -> bool:
