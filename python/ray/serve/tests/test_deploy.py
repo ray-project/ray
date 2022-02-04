@@ -276,16 +276,6 @@ def test_reconfigure_with_exception(serve_instance):
     with pytest.raises(RuntimeError):
         A.options(user_config="hi").deploy()
 
-    def rolled_back():
-        try:
-            config = ray.get(A.get_handle().remote())
-            return config == "not_hi"
-        except Exception:
-            return False
-
-    # Ensure we should be able to rollback to "hi" config
-    wait_for_condition(rolled_back)
-
 
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_redeploy_single_replica(serve_instance, use_handle):
