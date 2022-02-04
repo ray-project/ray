@@ -652,18 +652,19 @@ def test_reconstruction_stress_spill(ray_start_cluster):
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
-        num_cpus=0, _system_config=config, enable_object_reconstruction=True)
+        num_cpus=0, _system_config=config, enable_object_reconstruction=True
+    )
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
-    cluster.add_node(
-        num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+    )
+    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10 ** 8)
     cluster.wait_for_nodes()
 
     @ray.remote
     def large_object():
-        return np.zeros(10**6, dtype=np.uint8)
+        return np.zeros(10 ** 6, dtype=np.uint8)
 
     @ray.remote
     def dependent_task(x):
@@ -674,19 +675,17 @@ def test_reconstruction_stress_spill(ray_start_cluster):
         ray.get(dependent_task.options(resources={"node2": 1}).remote(obj))
 
         outputs = [
-            large_object.options(resources={
-                "node1": 1
-            }).remote() for _ in range(1000)
+            large_object.options(resources={"node1": 1}).remote() for _ in range(1000)
         ]
         outputs = [
-            dependent_task.options(resources={
-                "node2": 1
-            }).remote(obj) for obj in outputs
+            dependent_task.options(resources={"node2": 1}).remote(obj)
+            for obj in outputs
         ]
 
         cluster.remove_node(node_to_kill, allow_graceful=False)
         node_to_kill = cluster.add_node(
-            num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+            num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+        )
 
         i = 0
         while outputs:
@@ -977,16 +976,18 @@ def test_spilled(ray_start_cluster, reconstruction_enabled):
     cluster.add_node(
         num_cpus=0,
         _system_config=config,
-        enable_object_reconstruction=reconstruction_enabled)
+        enable_object_reconstruction=reconstruction_enabled,
+    )
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+    )
     cluster.wait_for_nodes()
 
     @ray.remote(max_retries=1 if reconstruction_enabled else 0)
     def large_object():
-        return np.zeros(10**7, dtype=np.uint8)
+        return np.zeros(10 ** 7, dtype=np.uint8)
 
     @ray.remote
     def dependent_task(x):
@@ -995,17 +996,14 @@ def test_spilled(ray_start_cluster, reconstruction_enabled):
     obj = large_object.options(resources={"node1": 1}).remote()
     ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
     # Force spilling.
-    objs = [
-        large_object.options(resources={
-            "node1": 1
-        }).remote() for _ in range(20)
-    ]
+    objs = [large_object.options(resources={"node1": 1}).remote() for _ in range(20)]
     for o in objs:
         ray.get(o)
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
     node_to_kill = cluster.add_node(
-        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10 ** 8
+    )
 
     if reconstruction_enabled:
         ray.get(dependent_task.remote(obj), timeout=60)
