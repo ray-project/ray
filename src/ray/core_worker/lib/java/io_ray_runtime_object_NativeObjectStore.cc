@@ -38,7 +38,7 @@ Status PutSerializedObject(JNIEnv *env, jobject obj, ObjectID object_id,
     for (const auto &ref : native_ray_object->GetNestedRefs()) {
       nested_ids.push_back(ObjectID::FromBinary(ref.object_id()));
     }
-    status = CoreWorkerProcess::GetCoreWorker().CreateOwnedAndIncrementLocalRef(
+    status = CoreWorkerProcess::GetCoreWorker().CreateOwned(
         native_ray_object->GetMetadata(), data_size, nested_ids, out_object_id, &data,
         /*created_by_worker=*/true,
         /*owner_address=*/owner_address);

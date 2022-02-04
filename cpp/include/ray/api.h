@@ -163,12 +163,7 @@ inline ray::ObjectRef<T> Put(const T &obj) {
   auto buffer =
       std::make_shared<msgpack::sbuffer>(ray::internal::Serializer::Serialize(obj));
   auto id = ray::internal::GetRayRuntime()->Put(buffer);
-  auto ref = ObjectRef<T>(id);
-  // The core worker will add an initial ref to the put ID to
-  // keep it in scope. Now that we've created the frontend
-  // ObjectRef, remove this initial ref.
-  ray::internal::GetRayRuntime()->RemoveLocalReference(id);
-  return ref;
+  return ray::ObjectRef<T>(id);
 }
 
 template <typename T>
