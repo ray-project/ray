@@ -185,7 +185,7 @@ class MNISTDataInterface(object):
 
 Next, we will introduce our PyTorch neural network model and the
 train and test function. These are adapted directly from
-our :doc:`PyTorch MNIST example </tune/examples/mnist_pytorch>`.
+our {doc}`PyTorch MNIST example </tune/examples/mnist_pytorch>`.
 We only introduced an additional neural network layer with a configurable
 layer size. This is not strictly needed for learning good performance on
 MNIST, but it is useful to demonstrate scenarios where your hyperparameter
@@ -558,33 +558,33 @@ if __name__ == "__main__":
 
     First, we might train a model with all data available at this day:
 
-    .. code-block:: bash
-
-        python tune-serve-integration-mnist.py --from_scratch --day 0
+    ```{code-block} bash
+    python tune-serve-integration-mnist.py --from_scratch --day 0
+    ```
 
     On the coming days, we want to continue to train this model with
     newly available data:
 
-    .. code-block:: bash
-
-        python tune-serve-integration-mnist.py --from_existing --day 1
-        python tune-serve-integration-mnist.py --from_existing --day 2
-        python tune-serve-integration-mnist.py --from_existing --day 3
-        python tune-serve-integration-mnist.py --from_existing --day 4
-        python tune-serve-integration-mnist.py --from_existing --day 5
-        python tune-serve-integration-mnist.py --from_existing --day 6
-        # Retrain from scratch every 7th day:
-        python tune-serve-integration-mnist.py --from_scratch --day 7
+    ```{code-block} bash
+    python tune-serve-integration-mnist.py --from_existing --day 1
+    python tune-serve-integration-mnist.py --from_existing --day 2
+    python tune-serve-integration-mnist.py --from_existing --day 3
+    python tune-serve-integration-mnist.py --from_existing --day 4
+    python tune-serve-integration-mnist.py --from_existing --day 5
+    python tune-serve-integration-mnist.py --from_existing --day 6
+    # Retrain from scratch every 7th day:
+    python tune-serve-integration-mnist.py --from_scratch --day 7
+    ```
 
     We can also use this script to query our served model
     with some test data:
 
-    .. code-block:: bash
-
-        python tune-serve-integration-mnist.py --query 6
-        Querying model with example #6. Label = 1, Response = 1, Correct = T
-        python tune-serve-integration-mnist.py --query 28
-        Querying model with example #28. Label = 2, Response = 7, Correct = F
+    ```{code-block} bash
+    python tune-serve-integration-mnist.py --query 6
+    Querying model with example #6. Label = 1, Response = 1, Correct = T
+    python tune-serve-integration-mnist.py --query 28
+    Querying model with example #28. Label = 2, Response = 7, Correct = F
+    ```
 
     """
     parser = argparse.ArgumentParser(description="MNIST Tune/Serve example")

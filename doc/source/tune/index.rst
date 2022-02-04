@@ -11,7 +11,7 @@ Tune: Scalable Hyperparameter Tuning
 
 Tune is a Python library for experiment execution and hyperparameter tuning at any scale. Core features:
 
-* Launch a multi-node :ref:`distributed hyperparameter sweep <tune-distributed>` in less than 10 lines of code.
+* Launch a multi-node :ref:`distributed hyperparameter sweep <tune-distributed-ref>` in less than 10 lines of code.
 * Supports any machine learning framework, :ref:`including PyTorch, XGBoost, MXNet, and Keras <tune-guides>`.
 * Automatically manages :ref:`checkpoints <tune-checkpoint-syncing>` and logging to :ref:`TensorBoard <tune-logging>`.
 * Choose among state of the art algorithms such as :ref:`Population Based Training (PBT) <tune-scheduler-pbt>`, :ref:`BayesOptSearch <bayesopt>`, :ref:`HyperBand/ASHA <tune-scheduler-hyperband>`.
@@ -78,7 +78,7 @@ Multi-GPU & distributed training out of the box
 
 Hyperparameter tuning is known to be highly time-consuming, so it is often necessary to parallelize this process. Most other tuning frameworks require you to implement your own multi-process framework or build your own distributed system to speed up hyperparameter tuning.
 
-However, Tune allows you to transparently :ref:`parallelize across multiple GPUs and multiple nodes <tune-parallelism>`. Tune even has seamless :ref:`fault tolerance and cloud support <tune-distributed>`, allowing you to scale up your hyperparameter search by 100x while reducing costs by up to 10x by using cheap preemptible instances.
+However, Tune allows you to transparently :ref:`parallelize across multiple GPUs and multiple nodes <tune-parallelism>`. Tune even has seamless :ref:`fault tolerance and cloud support <tune-distributed-ref>`, allowing you to scale up your hyperparameter search by 100x while reducing costs by up to 10x by using cheap preemptible instances.
 
 What if I'm already doing hyperparameter tuning?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
