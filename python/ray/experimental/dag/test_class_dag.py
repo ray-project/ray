@@ -54,6 +54,23 @@ def test_basic_actor_dag():
     print(dag)
     assert ray.get(dag.execute()) == 32
 
+def test_class_as_class_constructor_arg():
+    @ray.remote
+    class OuterActor:
+        def __init__(self, inner_actor):
+            self.inner_actor = inner_actor
+
+        def inc(self, x):
+            self.inner_actor.inc.remote(x)
+
+        def get(self):
+            return ray.get(self.inner_actor.get.remote())
+
+    outer = OuterActor._bind(Actor._bind(10))
+    outer.inc._bind(2)
+    dag = outer.get._bind()
+    print(dag)
+    assert ray.get(dag.execute()) == 12
 
 def test_basic_actor_dag_constructor_options():
     a1 = Actor._bind(10)
