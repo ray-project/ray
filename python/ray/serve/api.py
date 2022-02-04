@@ -116,7 +116,7 @@ class Client:
     def __init__(
         self, controller: ActorHandle, controller_name: str, detached: bool = False
     ):
-        self._controller = controller
+        self._controller: ServeController = controller
         self._controller_name = controller_name
         self._detached = detached
         self._shutdown = False
@@ -251,6 +251,52 @@ class Client:
             self.log_deployment_ready(name, version, url, tag)
         else:
             return goal_id
+
+    @_ensure_connected
+    def deploy_group(self, deployments: List[Dict], _blocking: bool = True) -> List[GoalId]:
+
+        if len(deployments) == 0:
+            return
+
+        deployment_args_list = []
+        for deployment in deployments:
+            deployment_args_list.append(
+                self.get_deploy_args(
+                    deployment["name"],
+                    deployment["func_or_class"],
+                    deployment["init_args"],
+                    deployment["init_kwargs"],
+                    ray_actor_options=deployment["ray_actor_options"],
+                    config=deployment["config"],
+                    version=deployment["version"],
+                    prev_version=deployment["prev_version"],
+                    route_prefix=deployment["route_prefix"],
+                )
+            )
+
+        update_goals = ray.get(self._controller.deploy_group.remote(deployment_args_list))
+
+        tags = []
+        for i in range(len(deployments)):
+            deployment = deployments[i]
+            name, version = deployment["name"], deployment["version"]
+            updating = update_goals[i][1]
+
+            tags.append(self.log_deployment_update_status(name, version, updating))
+
+        nonblocking_goal_ids = []
+        for i in range(len(deployments)):
+            deployment = deployments[i]
+            url = deployment["url"]
+            goal_id = update_goals[i][0]
+
+            if _blocking:
+                self._wait_for_goal(goal_id)
+                self.log_deployment_ready(name, version, url, tags[i])
+            else:
+                nonblocking_goal_ids.append(goal_id)
+
+        return nonblocking_goal_ids
 
     @_ensure_connected
     def delete_deployment(self, name: str) -> None:
@@ -1298,49 +1344,28 @@ def deploy_group(deployments: List[Deployment], _blocking: bool = True) -> List[
 
     if len(deployments) == 0:
         return
+    
+    parameter_group = []
 
-    client = _get_global_client()
-
-    deployment_args_list = []
     for deployment in deployments:
         if not isinstance(deployment, Deployment):
             raise TypeError(
                 f"deploy_group only accepts Deployments, but got unexpected type {type(deployment)}."
             )
-        deployment_args_list.append(
-            client.get_deploy_args(
-                deployment._name,
-                deployment._func_or_class,
-                deployment.init_args,
-                deployment.init_kwargs,
-                ray_actor_options=deployment._ray_actor_options,
-                config=deployment._config,
-                version=deployment._version,
-                prev_version=deployment._prev_version,
-                route_prefix=deployment.route_prefix,
-            )
-        )
 
-    update_goals = ray.get(client._controller.deploy_group.remote(deployment_args_list))
+        deployment_parameters = {
+            "name": deployment._name,
+            "func_or_class": deployment._func_or_class,
+            "init_args": deployment.init_args,
+            "init_kwargs": deployment.init_kwargs,
+            "ray_actor_options": deployment._ray_actor_options,
+            "config": deployment._config,
+            "version": deployment._version,
+            "prev_version": deployment._prev_version,
+            "route_prefix": deployment.route_prefix,
+            "url": deployment.url,
+        }
 
-    tags = []
-    for i in range(len(deployments)):
-        deployment = deployments[i]
-        name, version = deployment._name, deployment._version
-        updating = update_goals[i][1]
+        parameter_group.append(deployment_parameters)
 
-        tags.append(client.log_deployment_update_status(name, version, updating))
-
-    nonblocking_goal_ids = []
-    for i in range(len(deployments)):
-        deployment = deployments[i]
-        url = deployment.url
-        goal_id = update_goals[i][0]
-
-        if _blocking:
-            client._wait_for_goal(goal_id)
-            client.log_deployment_ready(name, version, url, tags[i])
-        else:
-            nonblocking_goal_ids.append(goal_id)
-
-    return nonblocking_goal_ids
+    return _get_global_client().deploy_group(parameter_group, _blocking=_blocking)
