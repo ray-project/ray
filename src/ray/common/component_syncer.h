@@ -65,9 +65,9 @@ class RaySyncer {
     }
 
     current_message = std::make_shared<RaySyncMessage>(std::move(message));
-    RAY_LOG(INFO) << "Current Node: " << node_id_
-                  << ", message node: " << message.node_id()
-                  << " receiver: " << receivers_[message.component_id()];
+    RAY_LOG(INFO) << "DBG: " << message.component_id() << "\t" << receivers_[message.component_id()]
+                  << "\t" << message.node_id()
+                  << "\t" << node_id_;
     if (receivers_[message.component_id()] != nullptr && message.node_id() != node_id_) {
       receivers_[message.component_id()]->Update(*current_message);
     }
@@ -100,6 +100,7 @@ class RaySyncer {
   ServerReactor *Accept(const std::string &node_id) {
     auto reactor = std::make_unique<SyncerServerReactor>(*this, node_id);
     followers_.emplace(node_id, std::move(reactor));
+    AddNode(node_id);
     return followers_[node_id].get();
   }
 

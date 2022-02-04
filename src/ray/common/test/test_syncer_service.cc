@@ -41,8 +41,6 @@ class LocalNode : public Reporter {
     msg.set_sync_message(
         std::string(reinterpret_cast<const char *>(&state_), sizeof(state_)));
     msg.set_node_id(node_id_);
-    RAY_LOG(INFO) << node_id_ << " generate snapshot "
-                  << "(" << state_ << ", v:" << version_ << ")";
     return msg;
   }
 
@@ -58,12 +56,11 @@ class RemoteNodes : public Receiver {
  public:
   RemoteNodes() {}
   void Update(ray::rpc::syncer::RaySyncMessage &msg) override {
-    auto iter = infos_.find(msg.node_id());
     int version = msg.version();
     int state = *reinterpret_cast<const int *>(msg.sync_message().data());
-    if (infos_.end() == iter) {
-      RAY_LOG(INFO) << "Got a new node " << msg.node_id() << " with (" << state
-                    << ", v:" << version << ")";
+    auto iter = infos_.find(msg.node_id());
+    if(iter == infos_.end() || iter->second.second < version) {
+      RAY_LOG(INFO) << "Update node " << msg.node_id() << " to (" << state << ", v:" << version << ")";
       infos_[msg.node_id()] = std::make_pair(state, version);
     }
   }
