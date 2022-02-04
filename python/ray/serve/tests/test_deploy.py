@@ -1215,34 +1215,6 @@ class TestDeployGroup:
             return "D reached"
 
     @serve.deployment
-    class E:
-        async def __init__(self):
-            self.F_handle = serve.get_deployment("F").get_handle()
-
-        async def __call__(self):
-            return await self.F_handle.request_output.remote()
-
-        async def request_output(self):
-            return await self.F_handle.get_output.remote()
-
-        async def get_output(self):
-            return "E reached"
-
-    @serve.deployment
-    class F:
-        async def __init__(self):
-            self.E_handle = serve.get_deployment("E").get_handle()
-
-        async def __call__(self):
-            return await self.E_handle.request_output.remote()
-
-        async def request_output(self):
-            return await self.E_handle.get_output.remote()
-
-        async def get_output(self):
-            return "F reached"
-
-    @serve.deployment
     class MutHandles:
         async def __init__(self, handle_name):
             self.handle = serve.get_deployment(handle_name).get_handle()
@@ -1271,12 +1243,6 @@ class TestDeployGroup:
     def test_basic_deploy_group(self, serve_instance):
         deployments = [self.f, self.g, self.C, self.D]
         responses = ["f reached", "g reached", "C reached", "D reached"]
-
-        self.deploy_and_check_responses(deployments, responses)
-
-    def test_mutual_handles(self, serve_instance):
-        deployments = [self.E, self.F]
-        responses = ["E reached", "F reached"]
 
         self.deploy_and_check_responses(deployments, responses)
 
