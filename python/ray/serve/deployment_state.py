@@ -1014,7 +1014,7 @@ class DeploymentState:
         Checks the difference between the target vs. running replica count for
         the target version.
 
-        TODO(edoakes): we should report the status as UNHEALTHY if replicas are
+        TODO(edoakes): we should report the status as FAILED if replicas are
         repeatedly failing health checks. Need a reasonable heuristic here.
 
         Returns:
@@ -1054,7 +1054,7 @@ class DeploymentState:
             else:
                 return (
                     DeploymentStatusInfo(
-                        status=DeploymentStatus.UNHEALTHY,
+                        status=DeploymentStatus.FAILED,
                         message=(
                             "The Deployment constructor failed "
                             f"{failed_to_start_count} times in a row. See "
@@ -1082,7 +1082,7 @@ class DeploymentState:
 
             # Check for a non-zero number of deployments.
             elif target_replica_count == running_at_target_version_replica_cnt:
-                return DeploymentStatusInfo(status=DeploymentStatus.HEALTHY), False
+                return DeploymentStatusInfo(status=DeploymentStatus.RUNNING), False
 
         return (
             DeploymentStatusInfo(
@@ -1257,7 +1257,7 @@ class DeploymentState:
             status_info, deleted = self._get_curr_status()
         except Exception as e:
             status_info = DeploymentStatusInfo(
-                status=DeploymentStatus.UNHEALTHY,
+                status=DeploymentStatus.FAILED,
                 message=f"Failed to update deployment:\n{e}.",
             )
             deleted = False

@@ -216,9 +216,9 @@ class Client:
             )
 
     def _wait_for_deployment_healthy(self, name: str, timeout_s: int = -1):
-        """Waits for the named deployment to enter "HEALTHY" status.
+        """Waits for the named deployment to enter "RUNNING" status.
 
-        Raises RuntimeError if the deployment enters the "UNHEALTHY" status
+        Raises RuntimeError if the deployment enters the "FAILED" status
         instead.
 
         Raises TimeoutError if this doesn't happen before timeout_s.
@@ -230,14 +230,14 @@ class Client:
                 status = statuses[name]
             except KeyError:
                 raise RuntimeError(
-                    f"Waiting for deployment {name} to be HEALTHY, "
+                    f"Waiting for deployment {name} to be RUNNING, "
                     "but deployment doesn't exist."
                 ) from None
 
-            if status.status == DeploymentStatus.HEALTHY:
+            if status.status == DeploymentStatus.RUNNING:
                 break
-            elif status.status == DeploymentStatus.UNHEALTHY:
-                raise RuntimeError(f"Deployment {name} is UNHEALTHY: {status.message}")
+            elif status.status == DeploymentStatus.FAILED:
+                raise RuntimeError(f"Deployment {name} is FAILED: {status.message}")
             else:
                 # Guard against new unhandled statuses being added.
                 assert status.status == DeploymentStatus.UPDATING
@@ -248,7 +248,7 @@ class Client:
             time.sleep(1)
         else:
             raise TimeoutError(
-                f"Deployment {name} did not become HEALTHY after {timeout_s}s."
+                f"Deployment {name} did not become RUNNING after {timeout_s}s."
             )
 
     def _wait_for_deployment_deleted(self, name: str, timeout_s: int = 60):
