@@ -95,6 +95,7 @@ parser.add_argument(
     "`--env-slate-size` docs from this sample.",
 )
 parser.add_argument("--env-seed", type=int, default=0)
+parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument("--num-gpus", type=float, default=0)
 parser.add_argument("--num-workers", type=int, default=0)
 
@@ -111,7 +112,7 @@ parser.add_argument("--stop-timesteps", type=int, default=4000000)
 
 def main():
     args = parser.parse_args()
-    ray.init(local_mode=args.local_mode)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     env_config = {
         "num_candidates": args.env_num_candidates,
@@ -130,19 +131,19 @@ def main():
             else LongTermSatisfactionRecSimEnv
         ),
         "hiddens": [
-            256,
-            256,
-        ],  # 64, 16],#tune.grid_search([[256, 256, 256], [256, 256]]),#TEST
+            1024,
+            1024,
+        ],
         "num_gpus": args.num_gpus,
         "num_workers": args.num_workers,
         "env_config": env_config,
         "lr_choice_model": 0.003,
-        "lr_q_model": 0.003,  # tune.grid_search([0.003, 0.01]),
+        "lr_q_model": 0.003,
         "rollout_fragment_length": 4,
-        # "exploration_config": {
-        #    "epsilon_timesteps": 50000,
-        #    "final_epsilon": 0.02,
-        # },
+        "exploration_config": {
+            "epsilon_timesteps": 50000,
+            "final_epsilon": 0.02,
+        },
         "target_network_update_freq": 1,
         "tau": 5e-3,
         "evaluation_interval": 1,
