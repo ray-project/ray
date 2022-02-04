@@ -1197,13 +1197,15 @@ def test_http_proxy_request_cancellation(serve_instance):
 
 class TestDeployGroup:
 
-    def deploy_and_check_responses(self, deployments, responses, blocking=True):
-        goal_ids = deploy_group(deployments)
+    def deploy_and_check_responses(self, deployments, responses, blocking=True, client=None):
+        goal_ids = deploy_group(deployments, _blocking=blocking)
 
         if blocking:
             assert len(goal_ids) == 0
         else:
             assert len(goal_ids) == len(deployments)
+            if client:
+                client._wait_for_goal(goal_ids)
 
         for deployment, response in zip(deployments, responses):
             assert ray.get(deployment.get_handle().remote()) == response
@@ -1282,17 +1284,7 @@ class TestDeployGroup:
     def test_blocking_deploy_group(self, serve_instance):
         deployments = [self.f, self.g, self.C, self.D]
         responses = ["f reached", "g reached", "C reached", "D reached"]
-
-        goal_ids = deploy_group(deployments, _blocking=False)
-
-        assert len(goal_ids) == len(deployments)
-
-        client = serve_instance
-        for id in goal_ids:
-            client._wait_for_goal(id)
-
-        for deployment, response in zip(deployments, responses):
-            assert ray.get(deployment.get_handle().remote()) == response
+        self.deploy_and_check_responses(deployments, responses, blocking=False, client=serve_instance)
 
     def test_empty_list(self, serve_instance):
         self.deploy_and_check_responses([], [])
