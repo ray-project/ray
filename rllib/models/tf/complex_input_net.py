@@ -64,6 +64,7 @@ class ComplexInputNetwork(TFModelV2):
                     else get_filter_config(obs_space.shape),
                     "conv_activation": model_config.get("conv_activation"),
                     "post_fcnet_hiddens": [],
+                    "vf_share_layers": True,
                 }
                 self.cnns[i] = ModelCatalog.get_model_v2(
                     component,
