@@ -789,6 +789,14 @@ py_test(
     srcs = ["agents/dqn/tests/test_simple_q.py"]
 )
 
+# SlateQTrainer
+py_test(
+    name = "test_slateq",
+    tags = ["team:ml", "trainers_dir"],
+    size = "small",
+    srcs = ["agents/slateq/tests/test_slateq.py"]
+)
+
 # TD3Trainer
 py_test(
     name = "test_td3",
@@ -2585,6 +2593,15 @@ py_test(
     size = "medium",
     srcs = ["examples/preprocessing_disabled.py"],
     args = ["--framework=torch", "--stop-iters=2"]
+)
+
+py_test(
+    name = "examples/recommender_system_with_recsim_and_slateq",
+    main = "examples/recommender_system_with_recsim_and_slateq.py",
+    tags = ["team:ml", "examples", "examples_R"],
+    size = "medium",
+    srcs = ["examples/recommender_system_with_recsim_and_slateq.py"],
+    args = ["--stop-iters=3", "--use-tune", "--num-cpus=5", "--random-test-episodes=10", "--env-num-candidates=100", "--env-slate-size=2"],
 )
 
 py_test(
