@@ -236,7 +236,6 @@ MOCK_MODULES = [
     "torch.distributed",
     "torch.nn",
     "torch.nn.parallel",
-    "torch.profiler",
     "torch.utils.data",
     "torch.utils.data.distributed",
     "wandb",

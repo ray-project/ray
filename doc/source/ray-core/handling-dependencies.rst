@@ -304,6 +304,8 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
   - Example: ``"./requirements.txt"``
 
+  When specifying a ``requirements.txt`` file, referencing local files `within` that file is not supported (e.g. ``-r ./my-laptop/more-requirements.txt``, ``./my-pkg.whl``).
+
 - ``conda`` (dict | str): Either (1) a dict representing the conda environment YAML, (2) a string containing the path to a
   `conda “environment.yml” <https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually>`_ file,
   or (3) the name of a local conda environment already installed on each node in your cluster (e.g., ``"pytorch_p36"``).
@@ -315,7 +317,6 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
   - Example: ``"./environment.yml"``
 
   - Example: ``"pytorch_p36"``
-
 
 - ``env_vars`` (Dict[str, str]): Environment variables to set.
 
