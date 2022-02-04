@@ -48,7 +48,8 @@ def _install_pip_list_to_dir(
             shutil.rmtree(target_dir)
             raise RuntimeError(f"Failed to install pip requirements:\n{output}")
     finally:
-        os.remove(pip_requirements_file)
+        if os.path.exists(pip_requirements_file):
+            os.remove(pip_requirements_file)
 
 
 def get_uri(runtime_env: Dict) -> Optional[str]:
