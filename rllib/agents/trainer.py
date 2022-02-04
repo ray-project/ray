@@ -75,6 +75,7 @@ from ray.rllib.utils.error import EnvError, ERR_MSG_INVALID_ENV_DESCRIPTOR
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
+    TRAINING_ITERATION_TIMER,
     NUM_ENV_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
@@ -2194,10 +2195,11 @@ class Trainer(Trainable):
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
     def _exec_plan_or_training_iteration_fn(self):
-        if self.config["_disable_execution_plan_api"]:
-            results = self.training_iteration()
-        else:
-            results = next(self.train_exec_impl)
+        with self._timers[TRAINING_ITERATION_TIMER]:
+            if self.config["_disable_execution_plan_api"]:
+                results = self.training_iteration()
+            else:
+                results = next(self.train_exec_impl)
         return results
 
     @classmethod
