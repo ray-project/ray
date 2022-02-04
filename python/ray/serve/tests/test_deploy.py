@@ -1324,7 +1324,7 @@ class TestDeployGroup:
         """
         
         with pytest.raises(TypeError):
-            deploy_group(["not a Deployment object"])
+            deploy_group([self.f, self.C, "not a Deployment object"])
 
 
 if __name__ == "__main__":
