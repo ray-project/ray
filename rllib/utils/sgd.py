@@ -49,9 +49,9 @@ def minibatches(samples: SampleBatch, sgd_minibatch_size: int, shuffle: bool = T
         samples.shuffle()
 
     assert (
-        samples.__len__ >= sgd_minibatch_size
+        len(samples) >= sgd_minibatch_size
     ), "Sample batch size {} should be at least sgd_minibatch_size {}!".format(
-        samples.__len__(), sgd_minibatch_size
+        len(samples), sgd_minibatch_size
     )
 
     all_slices = samples._get_slice_indices(sgd_minibatch_size)
