@@ -782,7 +782,7 @@ result in less overhead and don't require pods to SSH into each other.
 .. _tune-debugging:
 
 How can I debug Tune experiments locally?
------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 By default, Tune will run hyperparameter evaluations on multiple processes.
 However, if you need to debug your training process, it may be easier to do everything on a single process.
@@ -797,3 +797,49 @@ Local mode with multiple configuration evaluations will interleave computation,
 so it is most naturally used when running a single configuration evaluation.
 
 Note that ``local_mode`` has some known issues, so please read :ref:`these tips <local-mode-tips>` for more info.
+
+
+
+.. _tune-default-search-space:
+
+How Do I Configure Search Spaces?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can specify a grid search or sampling distribution via the dict passed into ``tune.run(config=...)``.
+
+.. code-block:: python
+
+    parameters = {
+        "qux": tune.sample_from(lambda spec: 2 + 2),
+        "bar": tune.grid_search([True, False]),
+        "foo": tune.grid_search([1, 2, 3]),
+        "baz": "asd",  # a constant value
+    }
+
+    tune.run(trainable, config=parameters)
+
+By default, each random variable and grid search point is sampled once.
+To take multiple random samples, add ``num_samples: N`` to the experiment config.
+If `grid_search` is provided as an argument, the grid will be repeated ``num_samples`` of times.
+
+.. code-block:: python
+   :emphasize-lines: 13
+
+    # num_samples=10 repeats the 3x3 grid search 10 times, for a total of 90 trials
+    tune.run(
+        my_trainable,
+        name="my_trainable",
+        config={
+            "alpha": tune.uniform(100),
+            "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
+            "nn_layers": [
+                tune.grid_search([16, 64, 256]),
+                tune.grid_search([16, 64, 256]),
+            ],
+        },
+        num_samples=10
+    )
+
+Note that search spaces may not be interoperable across different search algorithms.
+For example, for many search algorithms, you will not be able to use a ``grid_search`` parameter.
+Read about this in the :ref:`Search Space API <tune-search-space>` page.

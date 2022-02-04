@@ -1,3 +1,5 @@
+.. _tune-examples-ref:
+
 ========
 Examples
 ========
