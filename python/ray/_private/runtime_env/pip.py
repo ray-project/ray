@@ -35,12 +35,16 @@ def _install_pip_list_to_dir(
             for line in pip_list:
                 file.write(line + "\n")
         exit_code, output = exec_cmd_stream_to_logger(
-            ["pip", "install", f"--target={target_dir}", "-r", pip_requirements_file],
+            [
+                "pip", "install", f"--target={target_dir}", "-r",
+                pip_requirements_file
+            ],
             logger,
         )
         if exit_code != 0:
             shutil.rmtree(target_dir)
-            raise RuntimeError(f"Failed to install pip requirements:\n{output}")
+            raise RuntimeError(
+                f"Failed to install pip requirements:\n{output}")
     finally:
         if os.path.exists(pip_requirements_file):
             os.remove(pip_requirements_file)
