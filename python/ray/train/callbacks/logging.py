@@ -59,14 +59,14 @@ class TrainCallbackLogdirManager:
         self._logdir = Path(logdir) if logdir else None
         self._create_logdir = create_logdir
 
-    def setup_logdir(self, default_logdir: str) -> Path:
+    def setup_logdir(self, default_logdir: Union[str, Path]) -> Path:
         """Sets up the logdir.
 
         The directory will be created if it does not exist and
          ``create_logdir`` is set to True.
 
         Args:
-            default_logdir (str): The default logdir to use, only if the
+            default_logdir (str|Path): The default logdir to use, only if the
             ``TrainCallbackLogdirManager`` was not initialized with a ``logdir``.
 
         Returns:
