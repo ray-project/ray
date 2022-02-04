@@ -782,7 +782,7 @@ py_test(
     name = "test_slateq",
     tags = ["team:ml", "trainers_dir"],
     size = "small",
-    srcs = ["agents/dqn/tests/test_slateq.py"]
+    srcs = ["agents/slateq/tests/test_slateq.py"]
 )
 
 # TD3Trainer
@@ -2589,7 +2589,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_R"],
     size = "medium",
     srcs = ["examples/recommender_system_with_recsim_and_slateq.py"],
-    args = ["--stop-iters=3"],
+    args = ["--stop-iters=3", "--use-tune", "--random-test-episodes=10", "--env-num-candidates=100", "--env-slate-size=2"],
 )
 
 py_test(
