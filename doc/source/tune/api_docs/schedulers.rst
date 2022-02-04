@@ -245,25 +245,15 @@ An example of this in use can be found here: :doc:`/tune/examples/xgboost_dynami
 
 .. autoclass:: ray.tune.schedulers.ResourceChangingScheduler
 
-evenly_distribute_cpus_gpus
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.tune.schedulers.resource_changing_scheduler.evenly_distribute_cpus_gpus
-
-evenly_distribute_cpus_gpus_distributed
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.tune.schedulers.resource_changing_scheduler.evenly_distribute_cpus_gpus_distributed
-
 DistributeResources
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
 
-.. autofunction:: ray.tune.schedulers.resource_changing_scheduler.DistributeResources
+.. autoclass:: ray.tune.schedulers.resource_changing_scheduler.DistributeResources
 
 DistributeResourcesToTopJob
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. autofunction:: ray.tune.schedulers.resource_changing_scheduler.DistributeResourcesToTopJob
+.. autoclass:: ray.tune.schedulers.resource_changing_scheduler.DistributeResourcesToTopJob
 
 FIFOScheduler
 -------------

@@ -6,7 +6,8 @@ import pickle
 import warnings
 import math
 
-from ray.util import PublicAPI
+from ray.util import log_once
+from ray.util.annotations import PublicAPI, Deprecated
 from ray.tune import trial_runner
 from ray.tune.resources import Resources
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
@@ -453,7 +454,10 @@ class DistributeResourcesToTopJob(DistributeResources):
             return self._get_used_cpus_and_gpus(trial)
         return total_available_cpus, total_available_gpus
 
+_DistributeResourcesDefault = DistributeResources(add_bundles=False)
+_DistributeResourcesDistributedDefault = DistributeResources(add_bundles=True)
 
+@Deprecated
 def evenly_distribute_cpus_gpus(
     trial_runner: "trial_runner.TrialRunner",
     trial: Trial,
@@ -491,11 +495,21 @@ def evenly_distribute_cpus_gpus(
             the function.
     """
 
-    return DistributeResources(add_bundles=False)(
+    if log_once("evenly_distribute_cpus_gpus_deprecated"):
+        warnings.warn(
+            "DeprecationWarning: `evenly_distribute_cpus_gpus` "
+            "and `evenly_distribute_cpus_gpus_distributed` are "
+            "being deprecated. Use `DistributeResources()` and "
+            "`DistributeResources(add_bundles=False)` instead "
+            "for equivalent functionality."
+        )
+
+    return _DistributeResourcesDefault(
         trial_runner, trial, result, scheduler
     )
 
 
+@Deprecated
 def evenly_distribute_cpus_gpus_distributed(
     trial_runner: "trial_runner.TrialRunner",
     trial: Trial,
@@ -533,7 +547,16 @@ def evenly_distribute_cpus_gpus_distributed(
             the function.
     """
 
-    return DistributeResources(add_bundles=True)(trial_runner, trial, result, scheduler)
+    if log_once("evenly_distribute_cpus_gpus_deprecated"):
+        warnings.warn(
+            "DeprecationWarning: `evenly_distribute_cpus_gpus` "
+            "and `evenly_distribute_cpus_gpus_distributed` are "
+            "being deprecated. Use `DistributeResources()` and "
+            "`DistributeResources(add_bundles=False)` instead "
+            "for equivalent functionality."
+        )
+
+    return _DistributeResourcesDistributedDefault(trial_runner, trial, result, scheduler)
 
 
 class ResourceChangingScheduler(TrialScheduler):
@@ -548,7 +571,7 @@ class ResourceChangingScheduler(TrialScheduler):
     scheduler and adjusting the resource requirements of live trials
     in response to the decisions of the wrapped scheduler
     through a user-specified ``resources_allocation_function``.
-    An example of such a function can be found in
+    An example of such a callable can be found in
     :doc:`/tune/examples/xgboost_dynamic_resources_example`.
 
     If the functional API is used, the current trial resources can be obtained
@@ -570,25 +593,25 @@ class ResourceChangingScheduler(TrialScheduler):
     Args:
         base_scheduler (TrialScheduler): The scheduler to provide decisions
             about trials. If None, a default FIFOScheduler will be used.
-        resources_allocation_function (Callable): The function used to change
-            live trial resource requiements during tuning. This function
+        resources_allocation_function (Callable): The callable used to change
+            live trial resource requiements during tuning. This callable
             will be called on each trial as it finishes one step of training.
-            The function must take four arguments: ``TrialRunner``, current
+            The callable must take four arguments: ``TrialRunner``, current
             ``Trial``, current result :class:`dict` and the
-            ``ResourceChangingScheduler`` calling it. The function must
+            ``ResourceChangingScheduler`` calling it. The callable must
             return a ``PlacementGroupFactory``, ``Resources``, :class:`dict`
             or None (signifying no need for an update). If
             ``resources_allocation_function`` is None, no resource
             requirements will be changed at any time.
-            By default, :func:`evenly_distribute_cpus_gpus` will be used,
+            By default, :class:`DistributeResources` will be used,
             distributing available CPUs and GPUs over all running trials
             in a robust way, without any prioritization.
 
     Warning:
         If the ``resources_allocation_function`` sets trial resource
         requirements to values bigger than possible, the trial will
-        not run. Ensure that your function accounts for that possibility
-        by setting upper limits. Consult :func:`evenly_distribute_cpus_gpus`
+        not run. Ensure that your callable accounts for that possibility
+        by setting upper limits. Consult :class:`DistributeResources`
         to see how that may be done.
 
     Example:
@@ -626,7 +649,7 @@ class ResourceChangingScheduler(TrialScheduler):
                 ],
                 Union[None, PlacementGroupFactory, Resources],
             ]
-        ] = evenly_distribute_cpus_gpus,
+        ] = _DistributeResourcesDefault,
     ) -> None:
         super().__init__()
         if resources_allocation_function is None:
