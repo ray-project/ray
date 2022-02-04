@@ -10,6 +10,7 @@ Author: Peishi Jiang
 from functools import partial
 import numpy as np
 import os
+import shutil
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -237,7 +238,8 @@ def test_gridsearch():
     assert all(result.dataframe()['training_iteration'] == 3)
 
     # Clean up the data/training
-    os.rmdir(root)
+    # os.rmdir(root)
+    shutil.rmtree(root)
 
 if __name__ == '__main__':
     test_gridsearch()

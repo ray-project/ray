@@ -564,9 +564,7 @@ def run(
         # Driver should only sync trial checkpoints if
         # checkpoints are not synced to cloud
         driver_sync_trial_checkpoints=not bool(sync_config.upload_dir),
-        # start of edits by Peishi Jiang
         stopping_criterion=experiments[0].spec['stop']
-        # end of edits by Peishi Jiang
     )
 
     if not runner.resumed:

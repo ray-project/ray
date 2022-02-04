@@ -267,9 +267,7 @@ class TrialRunner:
         metric=None,
         # Deprecate on next refactor
         driver_sync_trial_checkpoints=False,
-        # Start of edits by Peishi Jiang
         stopping_criterion=None,
-        # End of edits by Peishi Jiang
     ):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
@@ -277,13 +275,11 @@ class TrialRunner:
         self._insufficient_resources_manager = InsufficientResourcesManager()
         self._pending_trial_queue_times = {}
 
-        # Start of edits by Peishi Jiang
         if "training_iteration" not in stopping_criterion:
             raise Exception(
                 "training_iteration has to be in stopping_criterion of TrialRunner."
                 )
         self._stopping_criterion = stopping_criterion
-        # End of edits by Peishi Jiang
 
         # Set the number of maximum pending trials
         max_pending_trials = os.getenv("TUNE_MAX_PENDING_TRIALS_PG", "auto")
@@ -661,14 +657,12 @@ class TrialRunner:
             )
         )
 
-        # Start of edits by Peishi Jiang 
         # Here, we remove any potential old '_stopping_criterion' in runner_state["runner_data"]
         # because, it is not assumed to be saved there.
         # Note that: '_stopping_criterion' is saved in runner_state["runner_data"]
         #            when tuning and retuning at additional epochs are executed at the same script
         # if '_stopping_criterion' in runner_state["runner_data"]:
         runner_state["runner_data"].pop('_stopping_criterion', None)
-        # End of edits by Peishi Jiang
 
         self.__setstate__(runner_state["runner_data"])
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
@@ -676,7 +670,6 @@ class TrialRunner:
 
         # trials = load_trials_from_experiment_checkpoint(runner_state)
 
-        # Start of edits by Peishi Jiang
         # The goal is to resume the training when more iterations are needed
         checkpoints = [
             json.loads(cp, cls=TuneFunctionDecoder) if isinstance(cp, str) else cp
@@ -696,7 +689,6 @@ class TrialRunner:
             new_trial = Trial(trial_cp["trainable_name"], stub=False)
             new_trial.__setstate__(trial_cp)
             trials.append(new_trial)
-        # End of edits by Peishi Jiang
 
         for trial in sorted(trials, key=lambda t: t.last_update_time, reverse=True):
             if run_errored_only and trial.status == Trial.ERROR:
