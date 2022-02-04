@@ -256,7 +256,7 @@ class Client:
     def deploy_group(self, deployments: List[Dict], _blocking: bool = True) -> List[GoalId]:
 
         if len(deployments) == 0:
-            return
+            return []
 
         deployment_args_list = []
         for deployment in deployments:
