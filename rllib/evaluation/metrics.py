@@ -73,6 +73,7 @@ def collect_metrics(
     remote_workers: Optional[List[ActorHandle]] = None,
     to_be_collected: Optional[List[ObjectRef]] = None,
     timeout_seconds: int = 180,
+    keep_custom_metrics: bool = False,
 ) -> ResultDict:
     """Gathers episode metrics from RolloutWorker instances."""
     if remote_workers is None:
@@ -84,7 +85,9 @@ def collect_metrics(
     episodes, to_be_collected = collect_episodes(
         local_worker, remote_workers, to_be_collected, timeout_seconds=timeout_seconds
     )
-    metrics = summarize_episodes(episodes, episodes)
+    metrics = summarize_episodes(
+        episodes, episodes, keep_custom_metrics=keep_custom_metrics
+    )
     return metrics
 
 
@@ -129,6 +132,7 @@ def collect_episodes(
 def summarize_episodes(
     episodes: List[Union[RolloutMetrics, OffPolicyEstimate]],
     new_episodes: List[Union[RolloutMetrics, OffPolicyEstimate]] = None,
+    keep_custom_metrics: bool = False,
 ) -> ResultDict:
     """Summarizes a set of episode metrics tuples.
 
@@ -196,14 +200,17 @@ def summarize_episodes(
 
     for k, v_list in custom_metrics.copy().items():
         filt = [v for v in v_list if not np.any(np.isnan(v))]
-        custom_metrics[k + "_mean"] = np.mean(filt)
-        if filt:
-            custom_metrics[k + "_min"] = np.min(filt)
-            custom_metrics[k + "_max"] = np.max(filt)
+        if keep_custom_metrics:
+            custom_metrics[k] = filt
         else:
-            custom_metrics[k + "_min"] = float("nan")
-            custom_metrics[k + "_max"] = float("nan")
-        del custom_metrics[k]
+            custom_metrics[k + "_mean"] = np.mean(filt)
+            if filt:
+                custom_metrics[k + "_min"] = np.min(filt)
+                custom_metrics[k + "_max"] = np.max(filt)
+            else:
+                custom_metrics[k + "_min"] = float("nan")
+                custom_metrics[k + "_max"] = float("nan")
+            del custom_metrics[k]
 
     for k, v_list in perf_stats.copy().items():
         perf_stats[k] = np.mean(v_list)
