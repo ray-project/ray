@@ -332,9 +332,11 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   const TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
   rpc::Address best_node_address;
   const bool is_spillback = (raylet_address != nullptr);
+  bool is_selected_based_on_locality = false;
   if (raylet_address == nullptr) {
     // If no raylet address is given, find the best worker for our next lease request.
-    best_node_address = lease_policy_->GetBestNodeForTask(resource_spec);
+    std::tie(best_node_address, is_selected_based_on_locality) =
+        lease_policy_->GetBestNodeForTask(resource_spec);
     raylet_address = &best_node_address;
   }
 
@@ -380,8 +382,12 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                 if (reply.failure_type() ==
                     rpc::RequestWorkerLeaseReply::
                         SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED) {
+                  rpc::RayErrorInfo error_info;
+                  error_info.mutable_runtime_env_setup_failed_error()->set_error_message(
+                      reply.scheduling_failure_message());
                   RAY_UNUSED(task_finisher_->FailPendingTask(
-                      task_spec.TaskId(), rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED));
+                      task_spec.TaskId(), rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED,
+                      /*status*/ nullptr, &error_info));
                 } else {
                   if (task_spec.IsActorCreationTask()) {
                     RAY_UNUSED(task_finisher_->FailPendingTask(
@@ -475,7 +481,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           }
         }
       },
-      task_queue.size());
+      task_queue.size(), is_selected_based_on_locality);
   scheduling_key_entry.pending_lease_requests.emplace(task_id, *raylet_address);
   ReportWorkerBacklogIfNeeded(scheduling_key);
 }

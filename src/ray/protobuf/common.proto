@@ -186,6 +186,7 @@ enum ErrorType {
 message RayErrorInfo {
   oneof error {
     ActorDeathCause actor_died_error = 2;
+    RuntimeEnvFailedContext runtime_env_setup_failed_error = 3;
   }
 }
 
@@ -204,13 +205,13 @@ message ActorDeathCause {
   oneof context {
     // Indicates that this actor is marked as DEAD due to actor creation task failure.
     RayException creation_task_failure_context = 1;
-    ActorDeathRuntimeEnvFailedContext runtime_env_failed_context = 2;
+    RuntimeEnvFailedContext runtime_env_failed_context = 2;
     ActorDiedErrorContext actor_died_error_context = 3;
   }
 }
 // ---Actor death contexts start----
 // Indicates that this actor is marked as DEAD due to runtime environment setup failure.
-message ActorDeathRuntimeEnvFailedContext {
+message RuntimeEnvFailedContext {
   // TODO(sang,lixin) Get this error message from agent.
   string error_message = 1;
 }

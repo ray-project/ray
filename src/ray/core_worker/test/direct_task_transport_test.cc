@@ -161,19 +161,22 @@ class MockRayletClient : public WorkerLeaseInterface {
   void RequestWorkerLease(
       const TaskSpecification &resource_spec, bool grant_or_reject,
       const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size) override {
-    num_workers_requested += 1;
-    if (grant_or_reject) {
-      num_grant_or_reject_leases_requested += 1;
-    }
-    callbacks.push_back(callback);
+      const int64_t backlog_size, const bool is_selected_based_on_locality) override {
+    RequestWorkerLease(resource_spec.GetMessage(), grant_or_reject, callback,
+                       backlog_size, is_selected_based_on_locality);
   }
 
   void RequestWorkerLease(
       const rpc::TaskSpec &task_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size = -1) override {
+      const int64_t backlog_size, const bool is_selected_based_on_locality) override {
     num_workers_requested += 1;
+    if (grant_or_reject) {
+      num_grant_or_reject_leases_requested += 1;
+    }
+    if (is_selected_based_on_locality) {
+      num_is_selected_based_on_locality_leases_requested += 1;
+    }
     callbacks.push_back(callback);
   }
 
@@ -252,6 +255,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   ~MockRayletClient() {}
 
   int num_grant_or_reject_leases_requested = 0;
+  int num_is_selected_based_on_locality_leases_requested = 0;
   int num_workers_requested = 0;
   int num_workers_returned = 0;
   int num_workers_disconnected = 0;
@@ -303,9 +307,9 @@ class MockLeasePolicy : public LeasePolicyInterface {
     fallback_rpc_address_.set_raylet_id(node_id.Binary());
   }
 
-  rpc::Address GetBestNodeForTask(const TaskSpecification &spec) {
+  std::pair<rpc::Address, bool> GetBestNodeForTask(const TaskSpecification &spec) {
     num_lease_policy_consults++;
-    return fallback_rpc_address_;
+    return std::make_pair(fallback_rpc_address_, is_locality_aware);
   };
 
   ~MockLeasePolicy() {}
@@ -313,6 +317,8 @@ class MockLeasePolicy : public LeasePolicyInterface {
   rpc::Address fallback_rpc_address_;
 
   int num_lease_policy_consults = 0;
+
+  bool is_locality_aware = false;
 };
 
 TEST(LocalDependencyResolverTest, TestNoDependencies) {
@@ -512,6 +518,49 @@ TaskSpecification BuildEmptyTaskSpec() {
   return BuildTaskSpec(empty_resources, empty_descriptor);
 }
 
+TEST(DirectTaskTransportTest, TestLocalityAwareSubmitOneTask) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  lease_policy->is_locality_aware = true;
+  CoreWorkerDirectTaskSubmitter submitter(
+      address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
+      NodeID::Nil(), WorkerType::WORKER, kLongTimeout, actor_creator, JobID::Nil());
+
+  TaskSpecification task = BuildEmptyTaskSpec();
+
+  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
+  ASSERT_EQ(raylet_client->num_is_selected_based_on_locality_leases_requested, 1);
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 1);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(task_finisher->num_task_retries_attempted, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
+  // would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
 TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
@@ -530,6 +579,7 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
+  ASSERT_EQ(raylet_client->num_is_selected_based_on_locality_leases_requested, 0);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
