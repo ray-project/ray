@@ -1,4 +1,4 @@
-"""Execute a jupytext markdown notebook"""
+"""Execute a jupytext markdown notebook."""
 
 import runpy
 import argparse
