@@ -46,6 +46,13 @@ def pool_4_processes_python_multiprocessing_lib():
     pool.terminate()
     pool.join()
 
+@pytest.fixture
+def ray_start_1_cpu():
+    address_info = ray.init(num_cpus=1)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
 
 def test_ray_init(shutdown_only):
     def getpid(args):
@@ -563,7 +570,7 @@ def test_maxtasksperchild(shutdown_only):
     pool.join()
 
 
-def test_deadlock_avoidance_in_recursive_tasks():
+def test_deadlock_avoidance_in_recursive_tasks(ray_start_1_cpu):
     def poolit_a(_):
         with Pool(ray_address="auto") as pool:
             return list(pool.map(math.sqrt, range(0, 2, 1)))
@@ -572,7 +579,6 @@ def test_deadlock_avoidance_in_recursive_tasks():
         with Pool(ray_address="auto") as pool:
             return list(pool.map(poolit_a, range(2, 4, 1)))
 
-    ray.init(num_cpus=1)
     result = poolit_b()
     assert result == [[0.0, 1.0], [0.0, 1.0]]
 
