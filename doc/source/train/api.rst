@@ -86,19 +86,6 @@ MLflowLoggerCallback
 
 .. autoclass:: ray.train.callbacks.MLflowLoggerCallback
 
-
-.. _train-api-torch-tensorboard-profiler-callback:
-
-TorchTensorboardProfilerCallback
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.train.callbacks.TorchTensorboardProfilerCallback
-
-.. _train-api-torch-worker-profiler:
-
-.. autoclass:: ray.train.callbacks.profile.TorchWorkerProfiler
-    :members:
-
 ResultsPreprocessors
 ~~~~~~~~~~~~~~~~~~~~
 
