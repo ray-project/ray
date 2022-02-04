@@ -1197,8 +1197,14 @@ def test_http_proxy_request_cancellation(serve_instance):
 
 class TestDeployGroup:
 
-    def deploy_and_check_responses(self, deployments, responses):
-        deploy_group(deployments)
+    def deploy_and_check_responses(self, deployments, responses, blocking=True):
+        goal_ids = deploy_group(deployments)
+
+        if blocking:
+            assert len(goal_ids) == 0
+        else:
+            assert len(goal_ids) == len(deployments)
+
         for deployment, response in zip(deployments, responses):
             assert ray.get(deployment.get_handle().remote()) == response
 
@@ -1293,7 +1299,7 @@ class TestDeployGroup:
 
     def test_invalid_input(self, serve_instance):
         with pytest.raises(TypeError):
-            deploy_group([self.f, self.g, "not a deployment"])
+            deploy_group(["not a Deployment object"])
 
 
 if __name__ == "__main__":
