@@ -74,6 +74,7 @@ class DistributeResources:
         # Don't bother if this is just the first iteration
         if self.result["training_iteration"] < 1:
             return False
+        return True
 
     def _get_total_min_resources(self) -> Tuple[int, int]:
         # Assume that the number of CPUs and GPUs can't go below
