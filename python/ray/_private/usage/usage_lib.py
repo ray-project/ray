@@ -12,10 +12,10 @@ The module consists of 2 parts.
 
 ## Public API
 It contains public APIs to obtain usage report information. 
-APIs will be added in the sooner future before usage report becomes opt-in by default.
+APIs will be added before the usage report becomes opt-in by default.
 
-## Internal APIs for usage processing / report
-Telemetry report consists of 5 components. This module is in charge of the top 2 layers.
+## Internal APIs for usage processing/report
+The telemetry report consists of 5 components. This module is in charge of the top 2 layers.
 
 Report                -> usage_lib
 ---------------------
@@ -23,7 +23,7 @@ Usage data processing -> usage_lib
 ---------------------
 Data storage          -> Ray API server
 ---------------------
-Aggregation           -> Ray API server (curerntly a dashboard server)
+Aggregation           -> Ray API server (currently a dashboard server)
 ---------------------
 Usage data collection -> Various components (Ray agent, GCS, etc.) + usage_lib (cluster metadata).
 
@@ -36,12 +36,11 @@ Or `RAY_USAGE_STATS_ENABLE=1 python [drivers with ray.init()]`.
 
 Data is reported
 - Every `ray._private.usage.usage_constants.USAGE_REPORT_INTERVAL`.
-- When the API server terminates.
 
 Note that it is also possible to configure the interval using the environment variable,
 `RAY_USAGE_REPORT_INTERVAL`.
 
-To see collected / reported data, see `ray._private.usage.schema.py`.
+To see collected/reported data, see `ray._private.usage.schema.py`.
 """
 import asyncio
 import os
