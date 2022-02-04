@@ -1,40 +1,33 @@
-Stopping and resuming a tuning run
-----------------------------------
-Ray Tune periodically checkpoints the experiment state so that it can be
-restarted when it fails or stops. The checkpointing period is
-dynamically adjusted so that at least 95% of the time is used for handling
+Stopping and Resuming Tune Trials
+=================================
+
+Ray Tune periodically checkpoints the experiment state so that it can be restarted when it fails or stops.
+The checkpointing period is dynamically adjusted so that at least 95% of the time is used for handling
 training results and scheduling.
 
 If you send a SIGINT signal to the process running ``tune.run()`` (which is
 usually what happens when you press Ctrl+C in the console), Ray Tune shuts
-down training gracefully and saves a final experiment-level checkpoint. You
-can then call ``tune.run()`` with ``resume=True`` to continue this run in
-the future:
+down training gracefully and saves a final experiment-level checkpoint.
+
+How to resume a Tune run?
+-------------------------
+
+If you've stopped a run and and want to resume from where you left off,
+you can then call ``tune.run()`` with ``resume=True`` like this:
 
 .. code-block:: python
-    :emphasize-lines: 14
-
+    :emphasize-lines: 5
     tune.run(
         train,
-        # ...
-        name="my_experiment"
-    )
-
-    # This is interrupted e.g. by sending a SIGINT signal
-    # Next time, continue the run like so:
-
-    tune.run(
-        train,
-        # ...
+        # other configuration
         name="my_experiment",
         resume=True
     )
 
-You will have to pass a ``name`` if you are using ``resume=True`` so that
-Ray Tune can detect the experiment folder (which is usually stored at e.g.
-``~/ray_results/my_experiment``). If you forgot to pass a name in the first
-call, you can still pass the name when you resume the run. Please note that
-in this case it is likely that your experiment name has a date suffix, so if you
+You will have to pass a ``name`` if you are using ``resume=True`` so that Ray Tune can detect the experiment
+folder (which is usually stored at e.g. ``~/ray_results/my_experiment``).
+If you forgot to pass a name in the first call, you can still pass the name when you resume the run.
+Please note that in this case it is likely that your experiment name has a date suffix, so if you
 ran ``tune.run(my_trainable)``, the ``name`` might look like something like this:
 ``my_trainable_2021-01-29_10-16-44``.
 
@@ -54,16 +47,22 @@ of your original tuning run:
 
 .. _tune-stopping-ref:
 
-Stopping Trials
----------------
+How to stop Tune runs programmatically?
+------------------------------------
 
-You can control when trials are stopped early by passing the ``stop`` argument to ``tune.run``.
-This argument takes, a dictionary, a function, or a :class:`Stopper <ray.tune.stopper.Stopper>` class
-as an argument.
+We've just covered the case in which you manually interrupt a Tune run.
+But you can also control when trials are stopped early by passing the ``stop`` argument to ``tune.run``.
+This argument takes, a dictionary, a function, or a :class:`Stopper <ray.tune.stopper.Stopper>` class as an argument.
 
-If a dictionary is passed in, the keys may be any field in the return result of ``tune.report`` in the Function API or ``step()`` (including the results from ``step`` and auto-filled metrics).
+If a dictionary is passed in, the keys may be any field in the return result of ``tune.report`` in the
+Function API or ``step()`` (including the results from ``step`` and auto-filled metrics).
 
-In the example below, each trial will be stopped either when it completes 10 iterations OR when it reaches a mean accuracy of 0.98. These metrics are assumed to be **increasing**.
+Stopping with a dictionary
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In the example below, each trial will be stopped either when it completes ``10`` iterations or when it
+reaches a mean accuracy of ``0.98``.
+These metrics are assumed to be **increasing**.
 
 .. code-block:: python
 
@@ -73,7 +72,12 @@ In the example below, each trial will be stopped either when it completes 10 ite
         stop={"training_iteration": 10, "mean_accuracy": 0.98}
     )
 
-For more flexibility, you can pass in a function instead. If a function is passed in, it must take ``(trial_id, result)`` as arguments and return a boolean (``True`` if trial should be stopped and ``False`` otherwise).
+Stopping with a function
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+For more flexibility, you can pass in a function instead.
+If a function is passed in, it must take ``(trial_id, result)`` as arguments and return a boolean
+(``True`` if trial should be stopped and ``False`` otherwise).
 
 .. code-block:: python
 
@@ -81,6 +85,9 @@ For more flexibility, you can pass in a function instead. If a function is passe
         return result["mean_accuracy"] / result["training_iteration"] > 5
 
     tune.run(my_trainable, stop=stopper)
+
+Stopping with a class
+~~~~~~~~~~~~~~~~~~~~~
 
 Finally, you can implement the :class:`Stopper <ray.tune.stopper.Stopper>` abstract class for stopping entire experiments. For example, the following example stops all trials after the criteria is fulfilled by any individual trial, and prevents new ones from starting:
 
@@ -105,7 +112,8 @@ Finally, you can implement the :class:`Stopper <ray.tune.stopper.Stopper>` abstr
     tune.run(my_trainable, stop=stopper)
 
 
-Note that in the above example the currently running trials will not stop immediately but will do so once their current iterations are complete.
+Note that in the above example the currently running trials will not stop immediately but will do so
+once their current iterations are complete.
 
 Ray Tune comes with a set of out-of-the-box stopper classes. See the :ref:`Stopper <tune-stoppers>` documentation.
 
@@ -113,7 +121,8 @@ Ray Tune comes with a set of out-of-the-box stopper classes. See the :ref:`Stopp
 Stopping after the first failure
 --------------------------------
 
-By default, ``tune.run`` will continue executing until all trials have terminated or errored. To stop the entire Tune run as soon as **any** trial errors:
+By default, ``tune.run`` will continue executing until all trials have terminated or errored.
+To stop the entire Tune run as soon as **any** trial errors:
 
 .. code-block:: python
 
