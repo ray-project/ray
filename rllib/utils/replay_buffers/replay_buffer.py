@@ -28,7 +28,7 @@ class ReplayBuffer:
             capacity: Max number of timesteps to store in the FIFO
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
-            storage_unit: Either 'sequences' or 'timesteps'. Specified how
+            storage_unit: Either 'sequences' or 'timesteps'. Specifies how
             experiences are stored.
             **kwargs: Forward compatibility kwargs.
         """
