@@ -95,7 +95,7 @@ class DAGNode:
         For example, in `f.remote(a, [b])`, this includes both `a` and `b`.
         """
 
-        f = _PyObjScanner(DAGNode)
+        f = _PyObjScanner()
         children = set()
         for n in f.find_nodes(
             [self._bound_args, self._bound_kwargs, self._bound_options]
@@ -119,7 +119,7 @@ class DAGNode:
         replace_table = {}
 
         # Find all first-level nested DAGNode children in args.
-        f = _PyObjScanner(DAGNode)
+        f = _PyObjScanner()
         children = f.find_nodes(
             [self._bound_args, self._bound_kwargs, self._bound_options]
         )
