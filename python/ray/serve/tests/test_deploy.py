@@ -1304,6 +1304,21 @@ class TestDeployGroup:
         responses = ["DecoratedClass1 reached", "DecoratedClass2 reached"]
         self.deploy_and_check_responses(deployments, responses)
     
+    def test_blocking_deploy_group(self, serve_instance):
+        deployments = [self.f, self.g, self.C, self.D]
+        responses = ["f reached", "g reached", "C reached", "D reached"]
+
+        goal_ids = deploy_group(deployments, _blocking=False)
+
+        assert len(goal_ids) == len(deployments)
+
+        client = serve_instance
+        for id in goal_ids:
+            client._wait_for_goal(id)
+
+        for deployment, response in zip(deployments, responses):
+            assert ray.get(deployment.get_handle().remote()) == response
+    
     def test_empty_list(self, serve_instance):
         self.deploy_and_check_responses([], [])
     
