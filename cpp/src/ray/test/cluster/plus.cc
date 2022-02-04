@@ -17,6 +17,8 @@
 int Return1() { return 1; };
 int Plus1(int x) { return x + 1; };
 int Plus(int x, int y) { return x + y; };
+
+std::array<int, 100000> ReturnLargeArray(std::array<int, 100000> x) { return x; };
 void ThrowTask() { throw std::logic_error("error"); }
 
-RAY_REMOTE(Return1, Plus1, Plus, ThrowTask);
+RAY_REMOTE(Return1, Plus1, Plus, ThrowTask, ReturnLargeArray);

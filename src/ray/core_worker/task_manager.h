@@ -95,6 +95,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Add a task that is pending execution.
   ///
+  /// The local ref count for all return refs (excluding actor creation tasks)
+  /// will be initialized to 1 so that the ref is considered in scope before
+  /// returning to the language frontend. The caller is responsible for
+  /// decrementing the ref count once the frontend ref has gone out of scope.
+  ///
   /// \param[in] caller_address The rpc address of the calling task.
   /// \param[in] spec The spec of the pending task.
   /// \param[in] max_retries Number of times this task may be retried
@@ -141,6 +146,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] error_type The type of the specific error.
   /// \param[in] status Optional status message.
   /// \param[in] ray_error_info The error information of a given error type.
+  /// Nullptr means that there's no error information.
+  /// TODO(sang): Remove nullptr case. Every error message should have metadata.
   /// \param[in] mark_task_object_failed whether or not it marks the task
   /// return object as failed.
   /// \return Whether the task will be retried or not.

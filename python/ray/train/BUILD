@@ -127,6 +127,14 @@ py_test(
 )
 
 py_test(
+    name = "test_results_preprocessors",
+    size = "small",
+    srcs = ["tests/test_results_preprocessors.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_trainer",
     size = "large",
     srcs = ["tests/test_trainer.py"],

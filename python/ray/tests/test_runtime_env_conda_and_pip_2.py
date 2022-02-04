@@ -3,8 +3,7 @@ from typing import Dict
 import pytest
 import sys
 from ray.exceptions import RuntimeEnvSetupError
-from ray._private.test_utils import (wait_for_condition,
-                                     generate_runtime_env_dict)
+from ray._private.test_utils import wait_for_condition, generate_runtime_env_dict
 import ray
 
 if not os.environ.get("CI"):
@@ -16,8 +15,9 @@ if not os.environ.get("CI"):
 @pytest.mark.parametrize("field", ["conda", "pip"])
 @pytest.mark.parametrize("specify_env_in_init", [False, True])
 @pytest.mark.parametrize("spec_format", ["file", "python_object"])
-def test_install_failure_logging(start_cluster, specify_env_in_init, field,
-                                 spec_format, tmp_path, capsys):
+def test_install_failure_logging(
+    start_cluster, specify_env_in_init, field, spec_format, tmp_path, capsys
+):
     cluster, address = start_cluster
     using_ray_client = address.startswith("ray://")
 
@@ -26,7 +26,8 @@ def test_install_failure_logging(start_cluster, specify_env_in_init, field,
     for scope in "init", "actor", "task":
         bad_packages[scope] = "doesnotexist" + scope
         bad_envs[scope] = generate_runtime_env_dict(
-            field, spec_format, tmp_path, pip_list=[bad_packages[scope]])
+            field, spec_format, tmp_path, pip_list=[bad_packages[scope]]
+        )
 
     if specify_env_in_init:
         if using_ray_client:
@@ -36,8 +37,8 @@ def test_install_failure_logging(start_cluster, specify_env_in_init, field,
         else:
             ray.init(address, runtime_env=bad_envs["init"])
             wait_for_condition(
-                lambda: bad_packages["init"] in capsys.readouterr().out,
-                timeout=30)
+                lambda: bad_packages["init"] in capsys.readouterr().out, timeout=30
+            )
         return
 
     ray.init(address)
@@ -49,7 +50,8 @@ def test_install_failure_logging(start_cluster, specify_env_in_init, field,
     a = A.remote()  # noqa
 
     wait_for_condition(
-        lambda: bad_packages["actor"] in capsys.readouterr().out, timeout=30)
+        lambda: bad_packages["actor"] in capsys.readouterr().out, timeout=30
+    )
 
     @ray.remote(runtime_env=bad_envs["task"])
     def f():
@@ -59,7 +61,8 @@ def test_install_failure_logging(start_cluster, specify_env_in_init, field,
         ray.get(f.remote())
 
     wait_for_condition(
-        lambda: bad_packages["task"] in capsys.readouterr().out, timeout=30)
+        lambda: bad_packages["task"] in capsys.readouterr().out, timeout=30
+    )
 
 
 if __name__ == "__main__":

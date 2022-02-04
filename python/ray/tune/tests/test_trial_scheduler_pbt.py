@@ -19,7 +19,7 @@ from ray._private.test_utils import object_memory_usage
 # Import psutil after ray so the packaged version is used.
 import psutil
 
-MB = 1024**2
+MB = 1024 ** 2
 
 
 class MockParam(object):
@@ -189,8 +189,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
             while True:
                 iter += 1
                 with tune.checkpoint_dir(step=iter) as checkpoint_dir:
-                    checkpoint_path = os.path.join(checkpoint_dir,
-                                                   "checkpoint")
+                    checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
                     with open(checkpoint_path, "wb") as fp:
                         pickle.dump((a, iter), fp)
                 # Different sleep times so that asynch test runs do not
@@ -218,7 +217,8 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
             perturbation_interval=1,
             log_config=True,
             hyperparam_mutations={"c": lambda: 1},
-            synch=synch)
+            synch=synch,
+        )
 
         param_a = MockParam(param)
 
@@ -226,10 +226,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
         np.random.seed(100)
         analysis = tune.run(
             self.MockTrainingFuncSync,
-            config={
-                "a": tune.sample_from(lambda _: param_a()),
-                "c": 1
-            },
+            config={"a": tune.sample_from(lambda _: param_a()), "c": 1},
             fail_fast=True,
             num_samples=3,
             scheduler=scheduler,
@@ -242,22 +239,28 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
         analysis = self.synchSetup(False)
         self.assertTrue(
             any(
-                analysis.dataframe(metric="mean_accuracy", mode="max")
-                ["mean_accuracy"] != 43))
+                analysis.dataframe(metric="mean_accuracy", mode="max")["mean_accuracy"]
+                != 43
+            )
+        )
 
     def testSynchPass(self):
         analysis = self.synchSetup(True)
         self.assertTrue(
             all(
-                analysis.dataframe(metric="mean_accuracy", mode="max")[
-                    "mean_accuracy"] == 43))
+                analysis.dataframe(metric="mean_accuracy", mode="max")["mean_accuracy"]
+                == 43
+            )
+        )
 
     def testSynchPassLast(self):
         analysis = self.synchSetup(True, param=[30, 20, 10])
         self.assertTrue(
             all(
-                analysis.dataframe(metric="mean_accuracy", mode="max")[
-                    "mean_accuracy"] == 33))
+                analysis.dataframe(metric="mean_accuracy", mode="max")["mean_accuracy"]
+                == 33
+            )
+        )
 
 
 class PopulationBasedTrainingConfigTest(unittest.TestCase):
@@ -287,8 +290,8 @@ class PopulationBasedTrainingConfigTest(unittest.TestCase):
                 "b": [1, 2, 3],
                 "c": {
                     "c1": lambda: np.random.uniform(0.5),
-                    "c2": tune.choice([2, 3, 4])
-                }
+                    "c2": tune.choice([2, 3, 4]),
+                },
             },
         )
 
@@ -298,7 +301,8 @@ class PopulationBasedTrainingConfigTest(unittest.TestCase):
             num_samples=4,
             scheduler=scheduler,
             name="testNoConfig",
-            stop={"training_iteration": 3})
+            stop={"training_iteration": 3},
+        )
 
 
 class PopulationBasedTrainingResumeTest(unittest.TestCase):
@@ -329,15 +333,13 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
                 return {"mean_accuracy": (self.a - self.iter) * self.b}
 
             def save_checkpoint(self, tmp_checkpoint_dir):
-                checkpoint_path = os.path.join(tmp_checkpoint_dir,
-                                               "model.mock")
+                checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.mock")
                 with open(checkpoint_path, "wb") as fp:
                     pickle.dump((self.a, self.b, self.iter), fp)
                 return tmp_checkpoint_dir
 
             def load_checkpoint(self, tmp_checkpoint_dir):
-                checkpoint_path = os.path.join(tmp_checkpoint_dir,
-                                               "model.mock")
+                checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.mock")
                 with open(checkpoint_path, "rb") as fp:
                     self.a, self.b, self.iter = pickle.load(fp)
 
@@ -347,7 +349,8 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             mode="max",
             perturbation_interval=1,
             log_config=True,
-            hyperparam_mutations={"c": lambda: 1})
+            hyperparam_mutations={"c": lambda: 1},
+        )
 
         param_a = MockParam([10, 20, 30, 40])
         param_b = MockParam([1.2, 0.9, 1.1, 0.8])
@@ -359,7 +362,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             config={
                 "a": tune.sample_from(lambda _: param_a()),
                 "b": tune.sample_from(lambda _: param_b()),
-                "c": 1
+                "c": 1,
             },
             fail_fast=True,
             num_samples=4,
@@ -369,7 +372,8 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             checkpoint_score_attr="min-training_iteration",
             scheduler=scheduler,
             name="testPermutationContinuation",
-            stop={"training_iteration": 3})
+            stop={"training_iteration": 3},
+        )
 
     def testPermutationContinuationFunc(self):
         def MockTrainingFunc(config, checkpoint_dir=None):
@@ -385,8 +389,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             while True:
                 iter += 1
                 with tune.checkpoint_dir(step=iter) as checkpoint_dir:
-                    checkpoint_path = os.path.join(checkpoint_dir,
-                                                   "model.mock")
+                    checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
                     with open(checkpoint_path, "wb") as fp:
                         pickle.dump((a, b, iter), fp)
                 tune.report(mean_accuracy=(a - iter) * b)
@@ -397,7 +400,8 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             mode="max",
             perturbation_interval=1,
             log_config=True,
-            hyperparam_mutations={"c": lambda: 1})
+            hyperparam_mutations={"c": lambda: 1},
+        )
         param_a = MockParam([10, 20, 30, 40])
         param_b = MockParam([1.2, 0.9, 1.1, 0.8])
         random.seed(100)
@@ -407,7 +411,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             config={
                 "a": tune.sample_from(lambda _: param_a()),
                 "b": tune.sample_from(lambda _: param_b()),
-                "c": 1
+                "c": 1,
             },
             fail_fast=True,
             num_samples=4,
@@ -415,7 +419,8 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             checkpoint_score_attr="min-training_iteration",
             scheduler=scheduler,
             name="testPermutationContinuationFunc",
-            stop={"training_iteration": 3})
+            stop={"training_iteration": 3},
+        )
 
     def testBurnInPeriod(self):
         runner = TrialRunner(trial_executor=MagicMock())
@@ -427,7 +432,8 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             perturbation_interval=5,
             burn_in_period=50,
             log_config=True,
-            synch=True)
+            synch=True,
+        )
 
         class MockTrial(Trial):
             @property
@@ -459,35 +465,47 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
 
         # Add initial results.
         scheduler.on_trial_result(
-            runner, trial1, result=dict(training_iteration=1, error=50))
+            runner, trial1, result=dict(training_iteration=1, error=50)
+        )
         scheduler.on_trial_result(
-            runner, trial2, result=dict(training_iteration=1, error=50))
+            runner, trial2, result=dict(training_iteration=1, error=50)
+        )
         scheduler.on_trial_result(
-            runner, trial3, result=dict(training_iteration=1, error=10))
+            runner, trial3, result=dict(training_iteration=1, error=10)
+        )
         scheduler.on_trial_result(
-            runner, trial4, result=dict(training_iteration=1, error=100))
+            runner, trial4, result=dict(training_iteration=1, error=100)
+        )
 
         # Add more results. Without burn-in, this would now exploit
         scheduler.on_trial_result(
-            runner, trial1, result=dict(training_iteration=30, error=50))
+            runner, trial1, result=dict(training_iteration=30, error=50)
+        )
         scheduler.on_trial_result(
-            runner, trial2, result=dict(training_iteration=30, error=50))
+            runner, trial2, result=dict(training_iteration=30, error=50)
+        )
         scheduler.on_trial_result(
-            runner, trial3, result=dict(training_iteration=30, error=10))
+            runner, trial3, result=dict(training_iteration=30, error=10)
+        )
         scheduler.on_trial_result(
-            runner, trial4, result=dict(training_iteration=30, error=100))
+            runner, trial4, result=dict(training_iteration=30, error=100)
+        )
 
         self.assertEqual(trial4.config["num"], 4)
 
         # Add more results. Since this is after burn-in, it should now exploit
         scheduler.on_trial_result(
-            runner, trial1, result=dict(training_iteration=50, error=50))
+            runner, trial1, result=dict(training_iteration=50, error=50)
+        )
         scheduler.on_trial_result(
-            runner, trial2, result=dict(training_iteration=50, error=50))
+            runner, trial2, result=dict(training_iteration=50, error=50)
+        )
         scheduler.on_trial_result(
-            runner, trial3, result=dict(training_iteration=50, error=10))
+            runner, trial3, result=dict(training_iteration=50, error=10)
+        )
         scheduler.on_trial_result(
-            runner, trial4, result=dict(training_iteration=50, error=100))
+            runner, trial4, result=dict(training_iteration=50, error=100)
+        )
 
         self.assertEqual(trial4.config["num"], 3)
 

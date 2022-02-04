@@ -33,13 +33,13 @@ class MockWorkerLeaseInterface : public WorkerLeaseInterface {
       void, RequestWorkerLease,
       (const ray::TaskSpecification &resource_spec, bool grant_or_reject,
        const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-       const int64_t backlog_size),
+       const int64_t backlog_size, const bool is_selected_based_on_locality),
       (override));
   MOCK_METHOD(
       void, RequestWorkerLease,
       (const rpc::TaskSpec &task_spec, bool grant_or_reject,
        const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-       const int64_t backlog_size),
+       const int64_t backlog_size, const bool is_selected_based_on_locality),
       (override));
   MOCK_METHOD(ray::Status, ReturnWorker,
               (int worker_port, const WorkerID &worker_id, bool disconnect_worker),
@@ -67,7 +67,7 @@ class MockResourceReserveInterface : public ResourceReserveInterface {
       (override));
   MOCK_METHOD(
       void, CommitBundleResources,
-      (const BundleSpecification &bundle_spec,
+      (const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
        const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback),
       (override));
   MOCK_METHOD(
@@ -124,13 +124,13 @@ class MockRayletClientInterface : public RayletClientInterface {
       void, RequestWorkerLease,
       (const ray::TaskSpecification &resource_spec, bool grant_or_reject,
        const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-       const int64_t backlog_size),
+       const int64_t backlog_size, const bool is_selected_based_on_locality),
       (override));
   MOCK_METHOD(
       void, RequestWorkerLease,
       (const rpc::TaskSpec &resource_spec, bool grant_or_reject,
        const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-       const int64_t backlog_size),
+       const int64_t backlog_size, const bool is_selected_based_on_locality),
       (override));
 
   MOCK_METHOD(ray::Status, ReturnWorker,
@@ -151,7 +151,7 @@ class MockRayletClientInterface : public RayletClientInterface {
       (override));
   MOCK_METHOD(
       void, CommitBundleResources,
-      (const BundleSpecification &bundle_spec,
+      (const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
        const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback),
       (override));
   MOCK_METHOD(

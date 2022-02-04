@@ -169,6 +169,7 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                       const rpc::Address &owner_address,
                                       const std::string &call_site,
                                       const int64_t object_size, bool is_reconstructable,
+                                      bool add_local_ref,
                                       const absl::optional<NodeID> &pinned_at_raylet_id) {
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
@@ -197,6 +198,10 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   auto back_it = reconstructable_owned_objects_.end();
   back_it--;
   RAY_CHECK(reconstructable_owned_objects_index_.emplace(object_id, back_it).second);
+
+  if (add_local_ref) {
+    it->second.local_ref_count++;
+  }
 }
 
 void ReferenceCounter::RemoveOwnedObject(const ObjectID &object_id) {
@@ -468,7 +473,7 @@ std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
           << " Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
              "(ObjectID.from_binary(...)) cannot be passed to ray.get(), ray.wait(), or "
              "as "
-             "a task argument because Ray does not know which task will create them. "
+             "a task argument because Ray does not know which task created them. "
              "If this was not how your object ID was generated, please file an issue "
              "at https://github.com/ray-project/ray/issues/";
       // TODO(swang): Java does not seem to keep the ref count properly, so the
@@ -648,6 +653,7 @@ void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &raylet_id) {
         objects_to_recover_.push_back(object_id);
       }
     }
+    RemoveObjectLocationInternal(it, raylet_id);
   }
 }
 
@@ -1147,9 +1153,14 @@ bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
                       "object is already evicted.";
     return false;
   }
+  RemoveObjectLocationInternal(it, node_id);
+  return true;
+}
+
+void ReferenceCounter::RemoveObjectLocationInternal(ReferenceTable::iterator it,
+                                                    const NodeID &node_id) {
   it->second.locations.erase(node_id);
   PushToLocationSubscribers(it);
-  return true;
 }
 
 void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id,
