@@ -28,81 +28,26 @@ class RaySyncer {
   static constexpr size_t kComponentArraySize =
       static_cast<size_t>(ray::rpc::syncer::RayComponentId_ARRAYSIZE);
 
-  RaySyncer(std::string node_id, instrumented_io_context &io_context)
-      : node_id_(std::move(node_id)),
-        reporters_({}),
-        receivers_({}),
-        io_context_(io_context) {
-    AddNode(node_id_);
-  }
+  RaySyncer(std::string node_id, instrumented_io_context &io_context);
 
-  void Follow(std::shared_ptr<grpc::Channel> channel) {
-    // We don't allow change the follower for now.
-    RAY_CHECK(leader_ == nullptr);
-    leader_stub_ = ray::rpc::syncer::RaySyncer::NewStub(channel);
-    leader_ = std::make_unique<SyncerClientReactor>(*this, node_id_, *leader_stub_);
-  }
+  // Follower will send its message to leader
+  // Leader will broadcast what it received to followers
+  void Follow(std::shared_ptr<grpc::Channel> channel);
 
+  // Register a component
   void Register(RayComponentId component_id, const Reporter *reporter,
                 Receiver *receiver) {
     reporters_[component_id] = reporter;
     receivers_[component_id] = receiver;
   }
 
-  void Update(const std::string &from_node_id, RaySyncMessage message) {
-    auto iter = cluster_messages_.find(from_node_id);
-    if (iter == cluster_messages_.end()) {
-      RAY_LOG(INFO) << "Can't find node " << from_node_id << ", abort update";
-      return;
-    }
-    auto component_key = std::make_pair(message.node_id(), message.component_id());
-    auto &current_message = iter->second[component_key];
+  // Update the message for component
+  void Update(const std::string &from_node_id, RaySyncMessage message);
 
-    if (current_message != nullptr && message.version() < current_message->version()) {
-      RAY_LOG(INFO) << "Version stale: " << message.version() << " "
-                    << current_message->version();
-      return;
-    }
-
-    // We don't update for local nodes
-    if (receivers_[message.component_id()] != nullptr && message.node_id() != node_id_) {
-      receivers_[message.component_id()]->Update(message);
-    }
-
-    // RAY_LOG(INFO) << "DBG: " << receivers_[message.component_id()]
-    //               << "\t" << from_node_id
-    //               << "\t" << message.node_id()
-    //               << "\t" << node_id_ << "\t" << iter->second.size()
-    //               << "\t" << &iter->second;
-    current_message = std::make_shared<RaySyncMessage>(std::move(message));
-    // DumpClusterMessages();
-  }
-
-  void Update(const std::string &from_node_id, RaySyncMessages messages) {
-    for (auto &message : *messages.mutable_sync_messages()) {
-      Update(from_node_id, std::move(message));
-    }
-  }
+  void Update(const std::string &from_node_id, RaySyncMessages messages);
 
   std::vector<std::shared_ptr<RaySyncMessage>> SyncMessages(
-      const std::string &node_id) const {
-    std::vector<std::shared_ptr<RaySyncMessage>> messages;
-    for (auto &node_message : cluster_messages_) {
-      if (node_message.first == node_id) {
-        continue;
-      }
-      // RAY_LOG(INFO) << "CHECK " << node_message.first << " " <<
-      // node_message.second.size()
-      //               << " " << &node_message.second;
-      for (auto &component_message : node_message.second) {
-        if (component_message.first.first != node_id) {
-          messages.emplace_back(component_message.second);
-        }
-      }
-    }
-    // DumpClusterMessages();
-    return messages;
-  }
+      const std::string &node_id) const;
 
   const std::string &GetNodeId() const { return node_id_; }
 
