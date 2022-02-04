@@ -1,4 +1,3 @@
-from functools import wraps
 from typing import Callable, Optional
 
 HEALTHCHECK_DECORATOR_ATTRIBUTE = "__ray_serve_healthcheck_method"
@@ -12,6 +11,7 @@ def healthcheck(func: Callable) -> Callable:
     """
     setattr(func, HEALTHCHECK_DECORATOR_ATTRIBUTE, True)
     return func
+
 
 def get_healthcheck_method(cls: type) -> Optional[str]:
     """Return the name of the user-defined health check method (if any).
