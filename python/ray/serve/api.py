@@ -254,10 +254,6 @@ class Client:
 
     @_ensure_connected
     def deploy_group(self, deployments: List[Dict], _blocking: bool = True) -> List[GoalId]:
-
-        if len(deployments) == 0:
-            return []
-
         deployment_args_list = []
         for deployment in deployments:
             deployment_args_list.append(
@@ -1343,7 +1339,7 @@ def deploy_group(deployments: List[Deployment], _blocking: bool = True) -> List[
     """
 
     if len(deployments) == 0:
-        return
+        return []
     
     parameter_group = []
 
