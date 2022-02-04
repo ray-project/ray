@@ -103,11 +103,12 @@ int64_t SchedulingPolicy::HybridPolicyWithFilter(
     float critical_resource_utilization =
         node.GetLocalView().CalculateCriticalResourceUtilization();
     RAY_LOG(INFO) << "Node " << node_id << " is "
-                   << (is_available ? "available" : "not available") << " for request "
-                   << resource_request.DebugString()
-                   << " with critical resource utilization "
-                   << critical_resource_utilization << " based on local view "
-                   << node.GetLocalView().DebugString(StringIdMap()) << " " << spread_threshold;
+                  << (is_available ? "available" : "not available") << " for request "
+                  << resource_request.DebugString()
+                  << " with critical resource utilization "
+                  << critical_resource_utilization << " based on local view "
+                  << node.GetLocalView().DebugString(StringIdMap()) << " "
+                  << spread_threshold;
     if (critical_resource_utilization < spread_threshold) {
       critical_resource_utilization = 0;
     }

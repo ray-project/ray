@@ -945,14 +945,14 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
     already sharded.
 
     .. code-block:: python
+        :emphasize-lines: 1, 6
+
+        from ray.train.tensorflow import prepare_dataset_shard
 
         def train_func():
             ...
-            tf_dataset = ray.train.get_dataset_shard().to_tf()
-            options = tf.data.Options()
-            options.experimental_distribute.auto_shard_policy = \
-                tf.data.experimental.AutoShardPolicy.OFF
-            tf_dataset = tf_dataset.with_options(options)
+            tf_dataset = ray.train.get_dataset_shard().to_tf(...)
+            tf_dataset = prepare_dataset_shard(tf_dataset)
 
 
 **Simple Dataset Example**

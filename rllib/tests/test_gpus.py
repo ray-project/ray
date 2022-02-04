@@ -26,24 +26,30 @@ class TestGPUs(unittest.TestCase):
         for num_gpus in [0, 0.1, 1, actual_gpus + 4]:
             # Only allow possible num_gpus_per_worker (so test would not
             # block infinitely due to a down worker).
-            per_worker = [0] if actual_gpus == 0 or actual_gpus < num_gpus \
-                else [0, 0.5, 1]
+            per_worker = (
+                [0] if actual_gpus == 0 or actual_gpus < num_gpus else [0, 0.5, 1]
+            )
             for num_gpus_per_worker in per_worker:
                 for fake_gpus in [False] + ([] if num_gpus == 0 else [True]):
                     config["num_gpus"] = num_gpus
                     config["num_gpus_per_worker"] = num_gpus_per_worker
                     config["_fake_gpus"] = fake_gpus
 
-                    print(f"\n------------\nnum_gpus={num_gpus} "
-                          f"num_gpus_per_worker={num_gpus_per_worker} "
-                          f"_fake_gpus={fake_gpus}")
+                    print(
+                        f"\n------------\nnum_gpus={num_gpus} "
+                        f"num_gpus_per_worker={num_gpus_per_worker} "
+                        f"_fake_gpus={fake_gpus}"
+                    )
 
-                    frameworks = ("tf", "torch") if num_gpus > 1 else \
-                        ("tf2", "tf", "torch")
+                    frameworks = (
+                        ("tf", "torch") if num_gpus > 1 else ("tf2", "tf", "torch")
+                    )
                     for _ in framework_iterator(config, frameworks=frameworks):
                         # Expect that trainer creation causes a num_gpu error.
-                        if actual_gpus < num_gpus + 2 * num_gpus_per_worker \
-                                and not fake_gpus:
+                        if (
+                            actual_gpus < num_gpus + 2 * num_gpus_per_worker
+                            and not fake_gpus
+                        ):
                             # "Direct" RLlib (create Trainer on the driver).
                             # Cannot run through ray.tune.run() as it would
                             # simply wait infinitely for the resources to
@@ -67,9 +73,8 @@ class TestGPUs(unittest.TestCase):
                             if num_gpus == 0:
                                 print("via ray.tune.run()")
                                 tune.run(
-                                    "A2C",
-                                    config=config,
-                                    stop={"training_iteration": 0})
+                                    "A2C", config=config, stop={"training_iteration": 0}
+                                )
         ray.shutdown()
 
     def test_gpus_in_local_mode(self):
@@ -89,15 +94,13 @@ class TestGPUs(unittest.TestCase):
                 print(f"_fake_gpus={fake_gpus}")
                 config["num_gpus"] = num_gpus
                 config["_fake_gpus"] = fake_gpus
-                frameworks = ("tf", "torch") if num_gpus > 1 else \
-                    ("tf2", "tf", "torch")
+                frameworks = ("tf", "torch") if num_gpus > 1 else ("tf2", "tf", "torch")
                 for _ in framework_iterator(config, frameworks=frameworks):
                     print("direct RLlib")
                     trainer = A2CTrainer(config, env="CartPole-v0")
                     trainer.stop()
                     print("via ray.tune.run()")
-                    tune.run(
-                        "A2C", config=config, stop={"training_iteration": 0})
+                    tune.run("A2C", config=config, stop={"training_iteration": 0})
 
         ray.shutdown()
 
@@ -105,4 +108,5 @@ class TestGPUs(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

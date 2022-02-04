@@ -74,8 +74,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // tasks from being scheduled.
       const std::shared_ptr<internal::Work> &work = *work_it;
       RayTask task = work->task;
-      RAY_LOG(INFO) << "Scheduling pending task "
-                     << task.GetTaskSpecification().TaskId();
+      RAY_LOG(INFO) << "Scheduling pending task " << task.GetTaskSpecification().TaskId();
       std::string node_id_string =
           GetBestSchedulableNode(*work,
                                  /*requires_object_store_memory=*/false,
@@ -154,7 +153,8 @@ bool ClusterTaskManager::PoppedWorkerHandler(
     const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,
     const TaskID &task_id, SchedulingClass scheduling_class,
     const std::shared_ptr<internal::Work> &work, bool is_detached_actor,
-    const rpc::Address &owner_address) {
+    const rpc::Address &owner_address,
+    const std::string &runtime_env_setup_error_message) {
   const auto &reply = work->reply;
   const auto &callback = work->callback;
   bool canceled = work->GetState() == internal::WorkStatus::CANCELLED;
@@ -246,7 +246,8 @@ bool ClusterTaskManager::PoppedWorkerHandler(
         // `CancelTask`.
         CancelTask(
             task_id,
-            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED);
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
+            /*scheduling_failure_message*/ runtime_env_setup_error_message);
       } else {
         // In other cases, set the work status `WAITING` to make this task
         // could be re-dispatched.
@@ -452,10 +453,11 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         worker_pool_.PopWorker(
             spec,
             [this, task_id, scheduling_class, work, is_detached_actor, owner_address](
-                const std::shared_ptr<WorkerInterface> worker,
-                PopWorkerStatus status) -> bool {
+                const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,
+                const std::string &runtime_env_setup_error_message) -> bool {
               return PoppedWorkerHandler(worker, status, task_id, scheduling_class, work,
-                                         is_detached_actor, owner_address);
+                                         is_detached_actor, owner_address,
+                                         runtime_env_setup_error_message);
             },
             allocated_instances_serialized_json);
         work_it++;
@@ -499,12 +501,12 @@ bool ClusterTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &wor
 }
 
 void ClusterTaskManager::QueueAndScheduleTask(
-    const RayTask &task, bool grant_or_reject, rpc::RequestWorkerLeaseReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+    const RayTask &task, bool grant_or_reject, bool is_selected_based_on_locality,
+    rpc::RequestWorkerLeaseReply *reply, rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
   auto work = std::make_shared<internal::Work>(
-      task, grant_or_reject, reply,
+      task, grant_or_reject, is_selected_based_on_locality, reply,
       [send_reply_callback] { send_reply_callback(Status::OK(), nullptr, nullptr); });
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   // If the scheduling class is infeasible, just add the work to the infeasible queue
@@ -664,17 +666,20 @@ void ClusterTaskManager::ReleaseTaskArgs(const TaskID &task_id) {
 }
 
 void ReplyCancelled(std::shared_ptr<internal::Work> &work,
-                    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type) {
+                    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+                    const std::string &scheduling_failure_message) {
   auto reply = work->reply;
   auto callback = work->callback;
   reply->set_canceled(true);
   reply->set_failure_type(failure_type);
+  reply->set_scheduling_failure_message(scheduling_failure_message);
   callback();
 }
 
 bool ClusterTaskManager::CancelTask(
     const TaskID &task_id,
-    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type) {
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+    const std::string &scheduling_failure_message) {
   // TODO(sang): There are lots of repetitive code around task backlogs. We should
   // refactor them.
   for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();
@@ -684,7 +689,7 @@ bool ClusterTaskManager::CancelTask(
       const auto &task = (*work_it)->task;
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RAY_LOG(DEBUG) << "Canceling task " << task_id << " from schedule queue.";
-        ReplyCancelled(*work_it, failure_type);
+        ReplyCancelled(*work_it, failure_type, scheduling_failure_message);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           tasks_to_schedule_.erase(shapes_it);
@@ -700,7 +705,7 @@ bool ClusterTaskManager::CancelTask(
       const auto &task = (*work_it)->task;
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RAY_LOG(DEBUG) << "Canceling task " << task_id << " from dispatch queue.";
-        ReplyCancelled(*work_it, failure_type);
+        ReplyCancelled(*work_it, failure_type, scheduling_failure_message);
         if ((*work_it)->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
           // We've already acquired resources so we need to release them.
           cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
@@ -730,7 +735,7 @@ bool ClusterTaskManager::CancelTask(
       const auto &task = (*work_it)->task;
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RAY_LOG(DEBUG) << "Canceling task " << task_id << " from infeasible queue.";
-        ReplyCancelled(*work_it, failure_type);
+        ReplyCancelled(*work_it, failure_type, scheduling_failure_message);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           infeasible_tasks_.erase(shapes_it);
@@ -743,7 +748,7 @@ bool ClusterTaskManager::CancelTask(
   auto iter = waiting_tasks_index_.find(task_id);
   if (iter != waiting_tasks_index_.end()) {
     const auto &task = (*iter->second)->task;
-    ReplyCancelled(*iter->second, failure_type);
+    ReplyCancelled(*iter->second, failure_type, scheduling_failure_message);
     if (!task.GetTaskSpecification().GetDependencies().empty()) {
       task_dependency_manager_.RemoveTaskDependencies(
           task.GetTaskSpecification().TaskId());
@@ -1256,8 +1261,8 @@ void ClusterTaskManager::Dispatch(
       if (predefined_resources[res_idx][inst_idx] > 0.) {
         if (first) {
           resource = reply->add_resource_mapping();
-          resource->set_name(
-              cluster_resource_scheduler_->GetResourceNameFromIndex(res_idx));
+          resource->set_name(cluster_resource_scheduler_->GetClusterResourceManager()
+                                 .GetResourceNameFromIndex(res_idx));
           first = false;
         }
         auto rid = resource->add_resource_ids();
@@ -1274,8 +1279,8 @@ void ClusterTaskManager::Dispatch(
       if (it->second[inst_idx] > 0.) {
         if (first) {
           resource = reply->add_resource_mapping();
-          resource->set_name(
-              cluster_resource_scheduler_->GetResourceNameFromIndex(it->first));
+          resource->set_name(cluster_resource_scheduler_->GetClusterResourceManager()
+                                 .GetResourceNameFromIndex(it->first));
           first = false;
         }
         auto rid = resource->add_resource_ids();
@@ -1465,7 +1470,7 @@ void ClusterTaskManager::SpillWaitingTasks() {
     // placement.
     bool force_spillback = task_dependency_manager_.TaskDependenciesBlocked(task_id);
     RAY_LOG(INFO) << "Attempting to spill back waiting task " << task_id
-                   << " to remote node. Force spillback? " << force_spillback;
+                  << " to remote node. Force spillback? " << force_spillback;
     bool is_infeasible;
     // TODO(swang): The policy currently does not account for the amount of
     // object store memory availability. Ideally, we should pick the node with
@@ -1501,8 +1506,8 @@ void ClusterTaskManager::SpillWaitingTasks() {
 
 bool ClusterTaskManager::IsLocallySchedulable(const RayTask &task) const {
   const auto &spec = task.GetTaskSpecification();
-  return cluster_resource_scheduler_->IsLocallySchedulable(
-      spec.GetRequiredResources().GetResourceMap());
+  return cluster_resource_scheduler_->IsSchedulableOnNode(
+      self_node_id_.Binary(), spec.GetRequiredResources().GetResourceMap());
 }
 
 ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
@@ -1559,7 +1564,8 @@ std::string ClusterTaskManager::GetBestSchedulableNode(const internal::Work &wor
                                                        bool *is_infeasible) {
   // If the local node is available, we should directly return it instead of
   // going through the full hybrid policy since we don't want spillback.
-  if (work.grant_or_reject && !force_spillback && IsLocallySchedulable(work.task)) {
+  if ((work.grant_or_reject || work.is_selected_based_on_locality) && !force_spillback &&
+      IsLocallySchedulable(work.task)) {
     *is_infeasible = false;
     return self_node_id_.Binary();
   }

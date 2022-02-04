@@ -1,30 +1,29 @@
 import numpy as np
 import unittest
 
-from ray.rllib.execution.buffers.mixin_replay_buffer import \
-    MixInMultiAgentReplayBuffer
+from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 
 
 class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
-    """Tests insertion and mixed sampling of the MixInMultiAgentReplayBuffer.
-    """
+    """Tests insertion and mixed sampling of the MixInMultiAgentReplayBuffer."""
 
     capacity = 10
 
     def _generate_data(self):
-        return SampleBatch({
-            "obs": [np.random.random((4, ))],
-            "action": [np.random.choice([0, 1])],
-            "reward": [np.random.rand()],
-            "new_obs": [np.random.random((4, ))],
-            "done": [np.random.choice([False, True])],
-        })
+        return SampleBatch(
+            {
+                "obs": [np.random.random((4,))],
+                "action": [np.random.choice([0, 1])],
+                "reward": [np.random.rand()],
+                "new_obs": [np.random.random((4,))],
+                "done": [np.random.choice([False, True])],
+            }
+        )
 
     def test_mixin_sampling(self):
         # 50% replay ratio.
-        buffer = MixInMultiAgentReplayBuffer(
-            capacity=self.capacity, replay_ratio=0.5)
+        buffer = MixInMultiAgentReplayBuffer(capacity=self.capacity, replay_ratio=0.5)
         # Add a new batch.
         batch = self._generate_data()
         buffer.add_batch(batch)
@@ -42,8 +41,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         self.assertAlmostEqual(np.mean(results), 2.0)
 
         # 33% replay ratio.
-        buffer = MixInMultiAgentReplayBuffer(
-            capacity=self.capacity, replay_ratio=0.333)
+        buffer = MixInMultiAgentReplayBuffer(capacity=self.capacity, replay_ratio=0.333)
         # Expect exactly 0 samples to be returned (buffer empty).
         sample = buffer.replay()
         self.assertTrue(sample is None)
@@ -75,8 +73,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         self.assertAlmostEqual(np.mean(results), 1.5, delta=0.1)
 
         # 90% replay ratio.
-        buffer = MixInMultiAgentReplayBuffer(
-            capacity=self.capacity, replay_ratio=0.9)
+        buffer = MixInMultiAgentReplayBuffer(capacity=self.capacity, replay_ratio=0.9)
         # Expect exactly 0 samples to be returned (buffer empty).
         sample = buffer.replay()
         self.assertTrue(sample is None)
@@ -98,8 +95,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         self.assertAlmostEqual(np.mean(results), 10.0, delta=0.1)
 
         # 0% replay ratio -> Only new samples.
-        buffer = MixInMultiAgentReplayBuffer(
-            capacity=self.capacity, replay_ratio=0.0)
+        buffer = MixInMultiAgentReplayBuffer(capacity=self.capacity, replay_ratio=0.0)
         # Add a new batch.
         batch = self._generate_data()
         buffer.add_batch(batch)
@@ -121,8 +117,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         self.assertAlmostEqual(np.mean(results), 1.0)
 
         # 100% replay ratio -> Only new samples.
-        buffer = MixInMultiAgentReplayBuffer(
-            capacity=self.capacity, replay_ratio=1.0)
+        buffer = MixInMultiAgentReplayBuffer(capacity=self.capacity, replay_ratio=1.0)
         # Expect exactly 0 samples to be returned (buffer empty).
         sample = buffer.replay()
         self.assertTrue(sample is None)
@@ -148,4 +143,5 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

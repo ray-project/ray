@@ -15,7 +15,8 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
 @dashboard_utils.dashboard_module(
-    enable=env_bool(test_consts.TEST_MODULE_ENVIRONMENT_KEY, False))
+    enable=env_bool(test_consts.TEST_MODULE_ENVIRONMENT_KEY, False)
+)
 class TestHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
@@ -62,26 +63,28 @@ class TestHead(dashboard_utils.DashboardHeadModule):
             return dashboard_optional_utils.rest_response(
                 success=True,
                 message="Fetch all data from datacenter success.",
-                **all_data)
+                **all_data,
+            )
         else:
             data = dict(DataSource.__dict__.get(key))
             return dashboard_optional_utils.rest_response(
                 success=True,
                 message=f"Fetch {key} from datacenter success.",
-                **{key: data})
+                **{key: data},
+            )
 
     @routes.get("/test/notified_agents")
     async def get_notified_agents(self, req) -> aiohttp.web.Response:
         return dashboard_optional_utils.rest_response(
             success=True,
             message="Fetch notified agents success.",
-            **self._notified_agents)
+            **self._notified_agents,
+        )
 
     @routes.get("/test/http_get")
     async def get_url(self, req) -> aiohttp.web.Response:
         url = req.query.get("url")
-        result = await test_utils.http_get(self._dashboard_head.http_session,
-                                           url)
+        result = await test_utils.http_get(self._dashboard_head.http_session, url)
         return aiohttp.web.json_response(result)
 
     @routes.get("/test/aiohttp_cache/{sub_path}")
@@ -89,14 +92,16 @@ class TestHead(dashboard_utils.DashboardHeadModule):
     async def test_aiohttp_cache(self, req) -> aiohttp.web.Response:
         value = req.query["value"]
         return dashboard_optional_utils.rest_response(
-            success=True, message="OK", value=value, timestamp=time.time())
+            success=True, message="OK", value=value, timestamp=time.time()
+        )
 
     @routes.get("/test/aiohttp_cache_lru/{sub_path}")
     @dashboard_optional_utils.aiohttp_cache(ttl_seconds=60, maxsize=5)
     async def test_aiohttp_cache_lru(self, req) -> aiohttp.web.Response:
         value = req.query.get("value")
         return dashboard_optional_utils.rest_response(
-            success=True, message="OK", value=value, timestamp=time.time())
+            success=True, message="OK", value=value, timestamp=time.time()
+        )
 
     @routes.get("/test/file")
     async def test_file(self, req) -> aiohttp.web.FileResponse:

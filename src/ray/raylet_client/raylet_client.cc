@@ -101,20 +101,15 @@ raylet::RayletClient::RayletClient(
     rpc::WorkerType worker_type, const JobID &job_id, const int &runtime_env_hash,
     const Language &language, const std::string &ip_address, Status *status,
     NodeID *raylet_id, int *port, std::string *serialized_job_config,
-    pid_t worker_shim_pid, StartupToken startup_token)
+    StartupToken startup_token)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   conn_ = std::make_unique<raylet::RayletConnection>(io_service, raylet_socket, -1, -1);
 
-  // When the "shim process" which is used for setuping runtime_env is not needed,
-  // the worker_shim_pid will be 0.
-  if (worker_shim_pid == 0) {
-    worker_shim_pid = getpid();
-  }
   flatbuffers::FlatBufferBuilder fbb;
   // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
   auto message = protocol::CreateRegisterClientRequest(
       fbb, static_cast<int>(worker_type), to_flatbuf(fbb, worker_id), getpid(),
-      worker_shim_pid, startup_token, to_flatbuf(fbb, job_id), runtime_env_hash, language,
+      startup_token, to_flatbuf(fbb, job_id), runtime_env_hash, language,
       fbb.CreateString(ip_address),
       /*port=*/0, fbb.CreateString(*serialized_job_config));
   fbb.Finish(message);
@@ -292,7 +287,7 @@ Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids
 void raylet::RayletClient::RequestWorkerLease(
     const rpc::TaskSpec &task_spec, bool grant_or_reject,
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
-    const int64_t backlog_size) {
+    const int64_t backlog_size, const bool is_selected_based_on_locality) {
   google::protobuf::Arena arena;
   auto request =
       google::protobuf::Arena::CreateMessage<rpc::RequestWorkerLeaseRequest>(&arena);
@@ -304,6 +299,7 @@ void raylet::RayletClient::RequestWorkerLease(
       const_cast<rpc::TaskSpec *>(&task_spec));
   request->set_grant_or_reject(grant_or_reject);
   request->set_backlog_size(backlog_size);
+  request->set_is_selected_based_on_locality(is_selected_based_on_locality);
   grpc_client_->RequestWorkerLease(*request, callback);
 }
 

@@ -18,15 +18,14 @@ from ray import tune
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--run",
-    type=str,
-    default="PPO",
-    help="The RLlib-registered algorithm to use.")
+    "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
+)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument("--num-workers", type=int, default=1)
 
 # This should be >1, otherwise, remote envs make no sense.
@@ -36,22 +35,17 @@ parser.add_argument(
     "--as-test",
     action="store_true",
     help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.")
+    "be achieved within --stop-timesteps AND --stop-iters.",
+)
 parser.add_argument(
-    "--stop-iters",
-    type=int,
-    default=50,
-    help="Number of iterations to train.")
+    "--stop-iters", type=int, default=50, help="Number of iterations to train."
+)
 parser.add_argument(
-    "--stop-timesteps",
-    type=int,
-    default=100000,
-    help="Number of timesteps to train.")
+    "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
+)
 parser.add_argument(
-    "--stop-reward",
-    type=float,
-    default=180.0,
-    help="Reward at which we stop training.")
+    "--stop-reward", type=float, default=180.0, help="Reward at which we stop training."
+)
 
 
 class NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv(TaskSettableEnv):
@@ -66,8 +60,8 @@ class NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv(TaskSettableEnv):
     """
 
     def __init__(self, config=None):
-        self.action_space = gym.spaces.Box(0, 1, shape=(1, ))
-        self.observation_space = gym.spaces.Box(0, 1, shape=(2, ))
+        self.action_space = gym.spaces.Box(0, 1, shape=(1,))
+        self.observation_space = gym.spaces.Box(0, 1, shape=(2,))
         self.task = 1
 
     def reset(self):
@@ -85,11 +79,10 @@ class NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv(TaskSettableEnv):
 
 
 class TaskSettingCallback(DefaultCallbacks):
-    """Custom callback to verify, we can set the task on each remote sub-env.
-    """
+    """Custom callback to verify, we can set the task on each remote sub-env."""
 
     def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
-        """ Curriculum learning as seen in Ray docs """
+        """Curriculum learning as seen in Ray docs"""
         if result["episode_reward_mean"] > 0.0:
             phase = 0
         else:

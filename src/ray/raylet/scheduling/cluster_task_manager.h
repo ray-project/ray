@@ -67,13 +67,16 @@ class Work {
  public:
   RayTask task;
   const bool grant_or_reject;
+  const bool is_selected_based_on_locality;
   rpc::RequestWorkerLeaseReply *reply;
   std::function<void(void)> callback;
   std::shared_ptr<TaskResourceInstances> allocated_instances;
-  Work(RayTask task, bool grant_or_reject, rpc::RequestWorkerLeaseReply *reply,
-       std::function<void(void)> callback, WorkStatus status = WorkStatus::WAITING)
+  Work(RayTask task, bool grant_or_reject, bool is_selected_based_on_locality,
+       rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> callback,
+       WorkStatus status = WorkStatus::WAITING)
       : task(task),
         grant_or_reject(grant_or_reject),
+        is_selected_based_on_locality(is_selected_based_on_locality),
         reply(reply),
         callback(callback),
         allocated_instances(nullptr),
@@ -175,6 +178,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
   void QueueAndScheduleTask(const RayTask &task, bool grant_or_reject,
+                            bool is_selected_based_on_locality,
                             rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
@@ -199,10 +203,10 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
-  bool CancelTask(
-      const TaskID &task_id,
-      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED) override;
+  bool CancelTask(const TaskID &task_id,
+                  rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+                  const std::string &scheduling_failure_message = "") override;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///
@@ -290,7 +294,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                            PopWorkerStatus status, const TaskID &task_id,
                            SchedulingClass scheduling_class,
                            const std::shared_ptr<internal::Work> &work,
-                           bool is_detached_actor, const rpc::Address &owner_address);
+                           bool is_detached_actor, const rpc::Address &owner_address,
+                           const std::string &runtime_env_setup_error_message);
 
   /// (Step 3) Attempts to dispatch all tasks which are ready to run. A task
   /// will be dispatched if it is on `tasks_to_dispatch_` and there are still

@@ -78,26 +78,17 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         scheduling_key_entry.task_queue.push_back(task_spec);
         scheduling_key_entry.resource_spec = task_spec;
 
-        if (!scheduling_key_entry.AllPipelinesToWorkersFull(
-                max_tasks_in_flight_per_worker_)) {
-          // The pipelines to the current workers are not full yet, so we don't need more
+        if (!scheduling_key_entry.AllWorkersBusy()) {
+          // There are idle workers, so we don't need more
           // workers.
 
-          // Find a worker with a number of tasks in flight that is less than the maximum
-          // value (max_tasks_in_flight_per_worker_) and call OnWorkerIdle to send tasks
-          // to that worker
           for (auto active_worker_addr : scheduling_key_entry.active_workers) {
             RAY_CHECK(worker_to_lease_entry_.find(active_worker_addr) !=
                       worker_to_lease_entry_.end());
             auto &lease_entry = worker_to_lease_entry_[active_worker_addr];
-            if (!lease_entry.PipelineToWorkerFull(max_tasks_in_flight_per_worker_)) {
+            if (!lease_entry.is_busy) {
               OnWorkerIdle(active_worker_addr, scheduling_key, false,
                            lease_entry.assigned_resources);
-              // If we find a worker with a non-full pipeline, all we need to do is to
-              // submit the new task to the worker in question by calling OnWorkerIdle
-              // once. We don't need to worry about other tasks in the queue because the
-              // queue cannot have other tasks in it if there are active workers with
-              // non-full pipelines.
               break;
             }
           }
@@ -132,12 +123,12 @@ void CoreWorkerDirectTaskSubmitter::ReturnWorker(const rpc::WorkerAddress addr,
                                                  bool was_error,
                                                  const SchedulingKey &scheduling_key) {
   RAY_LOG(INFO) << "Returning worker " << addr.worker_id << " to raylet "
-                 << addr.raylet_id;
+                << addr.raylet_id;
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
   auto &lease_entry = worker_to_lease_entry_[addr];
   RAY_CHECK(lease_entry.lease_client);
-  RAY_CHECK(lease_entry.tasks_in_flight == 0);
+  RAY_CHECK(!lease_entry.is_busy);
 
   // Decrement the number of active workers consuming tasks from the queue associated
   // with the current scheduling_key
@@ -173,24 +164,22 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       current_queue.empty()) {
     RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
 
-    // Return the worker only if there are no tasks in flight
-    if (lease_entry.tasks_in_flight == 0) {
+    // Return the worker only if there are no tasks to do.
+    if (!lease_entry.is_busy) {
       ReturnWorker(addr, was_error, scheduling_key);
     }
   } else {
     auto &client = *client_cache_->GetOrConnect(addr.ToProto());
 
-    while (!current_queue.empty() &&
-           !lease_entry.PipelineToWorkerFull(max_tasks_in_flight_per_worker_)) {
+    while (!current_queue.empty() && !lease_entry.is_busy) {
       auto task_spec = current_queue.front();
-      // Increment the number of tasks in flight to the worker
-      lease_entry.tasks_in_flight++;
+      lease_entry.is_busy = true;
 
       // Increment the total number of tasks in flight to any worker associated with the
       // current scheduling_key
 
       RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
-      scheduling_key_entry.total_tasks_in_flight++;
+      scheduling_key_entry.num_busy_workers++;
 
       executing_tasks_.emplace(task_spec.TaskId(), addr);
       PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
@@ -316,12 +305,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   RAY_CHECK(scheduling_key_entry.pending_lease_requests.size() <
             max_pending_lease_requests_per_scheduling_category_);
 
-  // Check whether we really need a new worker or whether we have
-  // enough room in an existing worker's pipeline to send the new tasks. If the pipelines
-  // are not full, we do not request a new worker.
-  if (!scheduling_key_entry.AllPipelinesToWorkersFull(max_tasks_in_flight_per_worker_)) {
-    // The pipelines to the current workers are not full yet, so we don't need more
-    // workers.
+  if (!scheduling_key_entry.AllWorkersBusy()) {
+    // There are idle workers, so we don't need more.
     return;
   }
 
@@ -347,17 +332,19 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   const TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
   rpc::Address best_node_address;
   const bool is_spillback = (raylet_address != nullptr);
+  bool is_selected_based_on_locality = false;
   if (raylet_address == nullptr) {
     // If no raylet address is given, find the best worker for our next lease request.
-    best_node_address = lease_policy_->GetBestNodeForTask(resource_spec);
+    std::tie(best_node_address, is_selected_based_on_locality) =
+        lease_policy_->GetBestNodeForTask(resource_spec);
     raylet_address = &best_node_address;
   }
 
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   const TaskID task_id = resource_spec.TaskId();
   RAY_LOG(INFO) << "Requesting lease from raylet "
-                 << NodeID::FromBinary(raylet_address->raylet_id()) << " for task "
-                 << task_id << " " << resource_spec.GetName();
+                << NodeID::FromBinary(raylet_address->raylet_id()) << " for task "
+                << task_id << " " << resource_spec.GetName();
 
   lease_client->RequestWorkerLease(
       resource_spec,
@@ -395,8 +382,12 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                 if (reply.failure_type() ==
                     rpc::RequestWorkerLeaseReply::
                         SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED) {
+                  rpc::RayErrorInfo error_info;
+                  error_info.mutable_runtime_env_setup_failed_error()->set_error_message(
+                      reply.scheduling_failure_message());
                   RAY_UNUSED(task_finisher_->FailPendingTask(
-                      task_spec.TaskId(), rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED));
+                      task_spec.TaskId(), rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED,
+                      /*status*/ nullptr, &error_info));
                 } else {
                   if (task_spec.IsActorCreationTask()) {
                     RAY_UNUSED(task_finisher_->FailPendingTask(
@@ -429,7 +420,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             // assign work to the worker.
             rpc::WorkerAddress addr(reply.worker_address());
             RAY_LOG(INFO) << "Lease granted to task " << task_id << " from raylet "
-                           << addr.raylet_id << " for worker " << addr.worker_id;
+                          << addr.raylet_id << " for worker " << addr.worker_id;
 
             auto resources_copy = reply.resource_mapping();
 
@@ -490,7 +481,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           }
         }
       },
-      task_queue.size());
+      task_queue.size(), is_selected_based_on_locality);
   scheduling_key_entry.pending_lease_requests.emplace(task_id, *raylet_address);
   ReportWorkerBacklogIfNeeded(scheduling_key);
 }
@@ -499,8 +490,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
     const rpc::WorkerAddress &addr, rpc::CoreWorkerClientInterface &client,
     const SchedulingKey &scheduling_key, const TaskSpecification &task_spec,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
-  RAY_LOG(INFO) << "Pushing task " << task_spec.TaskId() << " " << task_spec.GetName() << " to worker "
-                 << addr.worker_id << " of raylet " << addr.raylet_id;
+  RAY_LOG(INFO) << "Pushing task " << task_spec.TaskId() << " " << task_spec.GetName()
+                << " to worker " << addr.worker_id << " of raylet " << addr.raylet_id;
   auto task_id = task_spec.TaskId();
   auto request = std::make_unique<rpc::PushTaskRequest>();
   bool is_actor = task_spec.IsActorTask();
@@ -524,15 +515,15 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 
           // Decrement the number of tasks in flight to the worker
           auto &lease_entry = worker_to_lease_entry_[addr];
-          RAY_CHECK(lease_entry.tasks_in_flight > 0);
-          lease_entry.tasks_in_flight--;
+          RAY_CHECK(lease_entry.is_busy);
+          lease_entry.is_busy = false;
 
           // Decrement the total number of tasks in flight to any worker with the current
           // scheduling_key.
           auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-          RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
-          RAY_CHECK(scheduling_key_entry.total_tasks_in_flight >= 1);
-          scheduling_key_entry.total_tasks_in_flight--;
+          RAY_CHECK_GE(scheduling_key_entry.active_workers.size(), 1u);
+          RAY_CHECK_GE(scheduling_key_entry.num_busy_workers, 1u);
+          scheduling_key_entry.num_busy_workers--;
 
           if (reply.worker_exiting()) {
             RAY_LOG(DEBUG) << "Worker " << addr.worker_id

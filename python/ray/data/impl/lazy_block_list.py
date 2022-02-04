@@ -5,13 +5,19 @@ import numpy as np
 
 import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockMetadata, BlockPartitionMetadata, \
-    MaybeBlockPartition
+from ray.data.block import (
+    Block,
+    BlockMetadata,
+    BlockPartitionMetadata,
+    MaybeBlockPartition,
+)
 from ray.data.context import DatasetContext
 from ray.data.impl.block_list import BlockList
 
 import logging
+
 logger = logging.getLogger(__name__)
+
 
 class LazyBlockList(BlockList):
     """A BlockList that submits tasks lazily on-demand.
@@ -22,10 +28,11 @@ class LazyBlockList(BlockList):
     """
 
     def __init__(
-            self,
-            calls: Callable[[], ObjectRef[MaybeBlockPartition]],
-            metadata: List[BlockPartitionMetadata],
-            block_partitions: List[ObjectRef[MaybeBlockPartition]] = None):
+        self,
+        calls: Callable[[], ObjectRef[MaybeBlockPartition]],
+        metadata: List[BlockPartitionMetadata],
+        block_partitions: List[ObjectRef[MaybeBlockPartition]] = None,
+    ):
         self._calls = calls
         self._num_blocks = len(self._calls)
         self._metadata = metadata
@@ -37,12 +44,15 @@ class LazyBlockList(BlockList):
             if calls:
                 self._block_partitions[0] = calls[0]()
         assert len(calls) == len(metadata), (calls, metadata)
-        assert len(calls) == len(
-            self._block_partitions), (calls, self._block_partitions)
+        assert len(calls) == len(self._block_partitions), (
+            calls,
+            self._block_partitions,
+        )
 
     def copy(self) -> "LazyBlockList":
-        return LazyBlockList(self._calls.copy(), self._metadata.copy(),
-                             self._block_partitions.copy())
+        return LazyBlockList(
+            self._calls.copy(), self._metadata.copy(), self._block_partitions.copy()
+        )
 
     def clear(self) -> None:
         self._block_partitions = None
@@ -52,7 +62,8 @@ class LazyBlockList(BlockList):
         if self._block_partitions is None:
             raise ValueError(
                 "This Dataset's blocks have been moved, which means that you "
-                "can no longer use this Dataset.")
+                "can no longer use this Dataset."
+            )
 
     # Note: does not force execution prior to splitting.
     def split(self, split_size: int) -> List["LazyBlockList"]:
@@ -69,11 +80,16 @@ class LazyBlockList(BlockList):
     # Note: does not force execution prior to division.
     def divide(self, part_idx: int) -> ("LazyBlockList", "LazyBlockList"):
         self._check_if_cleared()
-        left = LazyBlockList(self._calls[:part_idx], self._metadata[:part_idx],
-                             self._block_partitions[:part_idx])
-        right = LazyBlockList(self._calls[part_idx:],
-                              self._metadata[part_idx:],
-                              self._block_partitions[part_idx:])
+        left = LazyBlockList(
+            self._calls[:part_idx],
+            self._metadata[:part_idx],
+            self._block_partitions[:part_idx],
+        )
+        right = LazyBlockList(
+            self._calls[part_idx:],
+            self._metadata[part_idx:],
+            self._block_partitions[part_idx:],
+        )
         return left, right
 
     def get_blocks(self) -> List[ObjectRef[Block]]:
@@ -82,7 +98,8 @@ class LazyBlockList(BlockList):
         return list(self.iter_blocks())
 
     def iter_blocks_with_metadata(
-            self) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
+        self,
+    ) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
         context = DatasetContext.get_current()
         self._check_if_cleared()
         outer = self
@@ -109,8 +126,9 @@ class LazyBlockList(BlockList):
 
         return Iter()
 
-    def _iter_block_partitions(self) -> Iterator[Tuple[ObjectRef[
-            MaybeBlockPartition], BlockPartitionMetadata]]:
+    def _iter_block_partitions(
+        self,
+    ) -> Iterator[Tuple[ObjectRef[MaybeBlockPartition], BlockPartitionMetadata]]:
         self._check_if_cleared()
         outer = self
 
@@ -124,8 +142,10 @@ class LazyBlockList(BlockList):
             def __next__(self):
                 self._pos += 1
                 if self._pos < len(outer._calls):
-                    return (outer._get_or_compute(self._pos),
-                            outer._metadata[self._pos])
+                    return (
+                        outer._get_or_compute(self._pos),
+                        outer._metadata[self._pos],
+                    )
                 raise StopIteration
 
         return Iter()

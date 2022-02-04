@@ -16,12 +16,14 @@ class EnvContext(dict):
     RLlib auto-sets these attributes when constructing registered envs.
     """
 
-    def __init__(self,
-                 env_config: EnvConfigDict,
-                 worker_index: int,
-                 vector_index: int = 0,
-                 remote: bool = False,
-                 num_workers: Optional[int] = None):
+    def __init__(
+        self,
+        env_config: EnvConfigDict,
+        worker_index: int,
+        vector_index: int = 0,
+        remote: bool = False,
+        num_workers: Optional[int] = None,
+    ):
         """Initializes an EnvContext instance.
 
         Args:
@@ -47,12 +49,14 @@ class EnvContext(dict):
         self.remote = remote
         self.num_workers = num_workers
 
-    def copy_with_overrides(self,
-                            env_config: Optional[EnvConfigDict] = None,
-                            worker_index: Optional[int] = None,
-                            vector_index: Optional[int] = None,
-                            remote: Optional[bool] = None,
-                            num_workers: Optional[int] = None) -> "EnvContext":
+    def copy_with_overrides(
+        self,
+        env_config: Optional[EnvConfigDict] = None,
+        worker_index: Optional[int] = None,
+        vector_index: Optional[int] = None,
+        remote: Optional[bool] = None,
+        num_workers: Optional[int] = None,
+    ) -> "EnvContext":
         """Returns a copy of this EnvContext with some attributes overridden.
 
         Args:
@@ -100,6 +104,8 @@ class EnvContext(dict):
                 self[key] = value
 
     def __str__(self):
-        return super().__str__()[:-1] + \
-               f", worker={self.worker_index}/{self.num_workers}, " \
-               f"vector_idx={self.vector_index}, remote={self.remote}" + "}"
+        return (
+            super().__str__()[:-1]
+            + f", worker={self.worker_index}/{self.num_workers}, "
+            f"vector_idx={self.vector_index}, remote={self.remote}" + "}"
+        )

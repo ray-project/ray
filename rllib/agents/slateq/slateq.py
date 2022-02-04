@@ -143,8 +143,7 @@ def calculate_round_robin_weights(config: TrainerConfigDict) -> List[float]:
     if not config["training_intensity"]:
         return [1, 1]
     # e.g., 32 / 4 -> native ratio of 8.0
-    native_ratio = (
-        config["train_batch_size"] / config["rollout_fragment_length"])
+    native_ratio = config["train_batch_size"] / config["rollout_fragment_length"]
     # Training intensity is specified in terms of
     # (steps_replayed / steps_sampled), so adjust for the native ratio.
     weights = [1, config["training_intensity"] / native_ratio]
@@ -169,17 +168,18 @@ class SlateQTrainer(Trainer):
             raise ValueError("SlateQ only runs on PyTorch")
 
         if config["slateq_strategy"] not in ALL_SLATEQ_STRATEGIES:
-            raise ValueError("Unknown slateq_strategy: "
-                             f"{config['slateq_strategy']}.")
+            raise ValueError(
+                "Unknown slateq_strategy: " f"{config['slateq_strategy']}."
+            )
 
         if config["slateq_strategy"] == "SARSA":
             if config["batch_mode"] != "complete_episodes":
-                raise ValueError("For SARSA strategy, batch_mode must be "
-                                 "'complete_episodes'")
+                raise ValueError(
+                    "For SARSA strategy, batch_mode must be " "'complete_episodes'"
+                )
 
     @override(Trainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> \
-            Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["slateq_strategy"] == "RANDOM":
             return RandomPolicy
         else:
@@ -187,10 +187,12 @@ class SlateQTrainer(Trainer):
 
     @staticmethod
     @override(Trainer)
-    def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
-                       **kwargs) -> LocalIterator[dict]:
-        assert "local_replay_buffer" in kwargs, (
-            "SlateQ execution plan requires a local replay buffer.")
+    def execution_plan(
+        workers: WorkerSet, config: TrainerConfigDict, **kwargs
+    ) -> LocalIterator[dict]:
+        assert (
+            "local_replay_buffer" in kwargs
+        ), "SlateQ execution plan requires a local replay buffer."
 
         rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -198,13 +200,15 @@ class SlateQTrainer(Trainer):
         # (1) Generate rollouts and store them in our local replay buffer.
         # Calling next() on store_op drives this.
         store_op = rollouts.for_each(
-            StoreToReplayBuffer(local_buffer=kwargs["local_replay_buffer"]))
+            StoreToReplayBuffer(local_buffer=kwargs["local_replay_buffer"])
+        )
 
         # (2) Read and train on experiences from the replay buffer. Every batch
         # returned from the LocalReplay() iterator is passed to TrainOneStep to
         # take a SGD step.
-        replay_op = Replay(local_buffer=kwargs["local_replay_buffer"]) \
-            .for_each(TrainOneStep(workers))
+        replay_op = Replay(local_buffer=kwargs["local_replay_buffer"]).for_each(
+            TrainOneStep(workers)
+        )
 
         if config["slateq_strategy"] != "RANDOM":
             # Alternate deterministically between (1) and (2). Only return the
@@ -214,7 +218,8 @@ class SlateQTrainer(Trainer):
                 [store_op, replay_op],
                 mode="round_robin",
                 output_indexes=[1],
-                round_robin_weights=calculate_round_robin_weights(config))
+                round_robin_weights=calculate_round_robin_weights(config),
+            )
         else:
             # No training is needed for the RANDOM strategy.
             train_op = rollouts
