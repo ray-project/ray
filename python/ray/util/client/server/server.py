@@ -27,7 +27,7 @@ from ray.util.client.common import (
     ClientServerHandle,
     GRPC_OPTIONS,
     CLIENT_SERVER_MAX_THREADS,
-    OBJECT_CHUNK_SIZE,
+    OBJECT_TRANSFER_CHUNK_SIZE,
     ResponseCache,
 )
 from ray import ray_constants
@@ -385,13 +385,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                         serialized = dumps_from_server(result, client_id, self)
                         total_size = len(serialized)
                         # Floor divide to get number of full chunks
-                        total_chunks = total_size // OBJECT_CHUNK_SIZE
-                        if total_size % OBJECT_CHUNK_SIZE != 0:
+                        total_chunks = total_size // OBJECT_TRANSFER_CHUNK_SIZE
+                        if total_size % OBJECT_TRANSFER_CHUNK_SIZE != 0:
                             # +1 if there are any partial chunks
                             total_chunks += 1
                         for chunk_id in range(total_chunks):
-                            start = chunk_id * OBJECT_CHUNK_SIZE
-                            end = min(total_size, (chunk_id + 1) * OBJECT_CHUNK_SIZE)
+                            start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
+                            end = min(
+                                total_size, (chunk_id + 1) * OBJECT_TRANSFER_CHUNK_SIZE
+                            )
                             get_resp = ray_client_pb2.GetResponse(
                                 valid=True,
                                 data=serialized[start:end],
@@ -458,13 +460,13 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         serialized = dumps_from_server(items, client_id, self)
         total_size = len(serialized)
         # Floor divide to get number of full chunks
-        total_chunks = total_size // OBJECT_CHUNK_SIZE
-        if total_size % OBJECT_CHUNK_SIZE != 0:
+        total_chunks = total_size // OBJECT_TRANSFER_CHUNK_SIZE
+        if total_size % OBJECT_TRANSFER_CHUNK_SIZE != 0:
             # +1 if there are any partial chunks
             total_chunks += 1
         for chunk_id in range(request.start_chunk_id, total_chunks):
-            start = chunk_id * OBJECT_CHUNK_SIZE
-            end = min(total_size, (chunk_id + 1) * OBJECT_CHUNK_SIZE)
+            start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
+            end = min(total_size, (chunk_id + 1) * OBJECT_TRANSFER_CHUNK_SIZE)
             yield ray_client_pb2.GetResponse(
                 valid=True,
                 data=serialized[start:end],

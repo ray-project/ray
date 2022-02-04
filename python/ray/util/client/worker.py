@@ -41,6 +41,7 @@ from ray.util.client.common import (
     GRPC_OPTIONS,
     GRPC_UNRECOVERABLE_ERRORS,
     INT32_MAX,
+    OBJECT_TRANSFER_WARNING_SIZE,
 )
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
@@ -326,7 +327,11 @@ class Worker:
                     if chunk.chunk_id <= last_seen_chunk:
                         # Ignore repeat chunks
                         continue
-                    assert last_seen_chunk + 1 == chunk.chunk_id
+                    if last_seen_chunk + 1 != chunk.chunk_id:
+                        raise RuntimeError(
+                            f"Received chunk {chunk.chunk_id} when we expected "
+                            f"{self.last_seen_chunk + 1}"
+                        )
                     last_seen_chunk = chunk.chunk_id
                     yield chunk
                 return
@@ -434,20 +439,32 @@ class Worker:
 
     def _get(self, ref: List[ClientObjectRef], timeout: float):
         req = ray_client_pb2.GetRequest(ids=[r.id for r in ref], timeout=timeout)
+        data = bytearray()
         try:
             resp = self._call_get_object(req, metadata=self.metadata)
+            for chunk in resp:
+                if not chunk.valid:
+                    try:
+                        err = cloudpickle.loads(chunk.error)
+                    except (pickle.UnpicklingError, TypeError):
+                        logger.exception("Failed to deserialize {}".format(chunk.error))
+                        raise
+                    raise err
+                if chunk.total_size > OBJECT_TRANSFER_WARNING_SIZE and log_once(
+                    "client_object_transfer_size_warning"
+                ):
+                    size_gb = chunk.total_size / 2 ** 30
+                    warnings.warn(
+                        "Ray Client is attempting to retrieve a "
+                        f"{size_gb:.2f} GiB object over the network, which may "
+                        "be slow. Consider serializing the object to a file "
+                        "and using S3 or rsync instead.",
+                        UserWarning,
+                        stacklevel=5,
+                    )
+                data.extend(chunk.data)
         except grpc.RpcError as e:
             raise decode_exception(e)
-        data = bytearray()
-        for chunk in resp:
-            if not chunk.valid:
-                try:
-                    err = cloudpickle.loads(chunk.error)
-                except (pickle.UnpicklingError, TypeError):
-                    logger.exception("Failed to deserialize {}".format(chunk.error))
-                    raise
-                raise err
-            data.extend(chunk.data)
         return loads_from_server(data)
 
     def put(self, val, *, client_ref_id: bytes = None):

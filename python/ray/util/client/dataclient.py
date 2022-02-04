@@ -4,6 +4,7 @@ back to the ray clientserver.
 import logging
 import queue
 import threading
+import warnings
 import grpc
 
 from collections import OrderedDict
@@ -11,7 +12,8 @@ from typing import Any, Callable, Dict, TYPE_CHECKING, Optional, Union
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-from ray.util.client.common import INT32_MAX
+from ray.util.client.common import INT32_MAX, OBJECT_TRANSFER_WARNING_SIZE
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.util.client.worker import Worker
@@ -29,12 +31,15 @@ class ChunkCollector:
     This object collects chunks from async get requests via __call__, and
     calls the underlying callback when the object is fully received, or if an
     exception while retrieving the object occurs.
+
+    __call__ returns true once the underlying call back has been called.
     """
 
-    def __init__(self, callback: ResponseCallable):
+    def __init__(self, callback: ResponseCallable, get_req: ray_client_pb2.GetRequest):
         self.data = bytearray()
         self.callback = callback
         self.last_seen_chunk = -1
+        self.get_req = get_req
 
     def __call__(self, response: Union[ray_client_pb2.DataResponse, Exception]) -> bool:
         if isinstance(response, Exception):
@@ -44,11 +49,25 @@ class ChunkCollector:
         if not get_resp.valid:
             self.callback(response)
             return True
+        if get_resp.total_size > OBJECT_TRANSFER_WARNING_SIZE and log_once(
+            "client_object_transfer_size_warning"
+        ):
+            size_gb = get_resp.total_size / 2 ** 30
+            warnings.warn(
+                "Ray Client is attempting to retrieve a "
+                f"{size_gb:.2f} GiB object over the network, which may "
+                "be slow. Consider serializing the object to a file and "
+                "using rsync or S3 instead.",
+                UserWarning,
+            )
         chunk_data = get_resp.data
         chunk_id = get_resp.chunk_id
         if chunk_id == self.last_seen_chunk + 1:
             self.data.extend(chunk_data)
             self.last_seen_chunk = chunk_id
+            # If we disconnect partway through, restart the get request
+            # at the first chunk we haven't seen
+            self.get_req.start_chunk_id = self.last_seen_chunk + 1
         elif chunk_id > self.last_seen_chunk + 1:
             # A chunk was skipped. This shouldn't happen in practice since
             # grpc guarantees that chunks will arrive in order.
@@ -419,7 +438,8 @@ class DataClient:
         datareq = ray_client_pb2.DataRequest(
             get=request,
         )
-        self._async_send(datareq, ChunkCollector(callback=callback))
+        collector = ChunkCollector(callback=callback, get_req=request)
+        self._async_send(datareq, collector)
 
     # TODO: convert PutObject to async
     def PutObject(
