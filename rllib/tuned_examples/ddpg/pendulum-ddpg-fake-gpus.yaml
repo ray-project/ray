@@ -22,7 +22,7 @@ pendulum-ddpg-fake-gpus:
         learning_starts: 500
         train_batch_size: 64
         num_workers: 0
-        worker_side_prioritization: False
+        worker_side_prioritization: false
         actor_lr: 0.0001
         critic_lr: 0.0001
 
