@@ -1230,7 +1230,8 @@ class TestDeployGroup:
         else:
             assert len(goal_ids) == len(deployments)
             if client:
-                client._wait_for_goal(goal_ids)
+                for id in goal_ids:
+                    client._wait_for_goal(id)
 
         for deployment, response in zip(deployments, responses):
             assert ray.get(deployment.get_handle().remote()) == response
