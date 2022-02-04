@@ -1196,44 +1196,6 @@ def test_http_proxy_request_cancellation(serve_instance):
 
 
 class TestDeployGroup:
-    @serve.deployment
-    def f(request=None):
-        return "f reached"
-
-    @serve.deployment
-    def g(request=None):
-        return "g reached"
-
-    @serve.deployment
-    class C:
-        async def __call__(self):
-            return "C reached"
-
-    @serve.deployment
-    class D:
-        async def __call__(self):
-            return "D reached"
-
-    @serve.deployment
-    class MutualHandles:
-        async def __init__(self, handle_name):
-            self.handle = serve.get_deployment(handle_name).get_handle()
-
-        async def __call__(self, echo: str):
-            return await self.handle.request_echo.remote(echo)
-
-        async def request_echo(self, echo: str):
-            return echo
-
-    @serve.deployment(num_replicas=2, max_concurrent_queries=5)
-    class DecoratedClass1:
-        async def __call__(self):
-            return "DecoratedClass1 reached"
-
-    @serve.deployment(num_replicas=4, max_concurrent_queries=2)
-    class DecoratedClass2:
-        async def __call__(self):
-            return "DecoratedClass2 reached"
 
     def deploy_and_check_responses(self, deployments, responses):
         deploy_group(deployments)
@@ -1241,12 +1203,41 @@ class TestDeployGroup:
             assert ray.get(deployment.get_handle().remote()) == response
 
     def test_basic_deploy_group(self, serve_instance):
-        deployments = [self.f, self.g, self.C, self.D]
+        @serve.deployment
+        def f():
+            return "f reached"
+
+        @serve.deployment
+        def g():
+            return "g reached"
+
+        @serve.deployment
+        class C:
+            async def __call__(self):
+                return "C reached"
+
+        @serve.deployment
+        class D:
+            async def __call__(self):
+                return "D reached"
+
+        deployments = [f, g, C, D]
         responses = ["f reached", "g reached", "C reached", "D reached"]
 
         self.deploy_and_check_responses(deployments, responses)
 
     def test_mutual_handles(self, serve_instance):
+        @serve.deployment
+        class MutualHandles:
+            async def __init__(self, handle_name):
+                self.handle = serve.get_deployment(handle_name).get_handle()
+
+            async def __call__(self, echo: str):
+                return await self.handle.request_echo.remote(echo)
+
+            async def request_echo(self, echo: str):
+                return echo
+
         names = []
         for i in range(10):
             names.append("a" * i)
@@ -1259,7 +1250,7 @@ class TestDeployGroup:
             handle_name = names[(idx + 1) % len(names)]
 
             deployments.append(
-                self.MutualHandles.options(name=deployment_name, init_args=(handle_name,))
+                MutualHandles.options(name=deployment_name, init_args=(handle_name,))
             )
 
         deploy_group(deployments)
@@ -1268,7 +1259,17 @@ class TestDeployGroup:
             assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"
 
     def test_decorated_deployments(self, serve_instance):
-        deployments = [self.DecoratedClass1, self.DecoratedClass2]
+        @serve.deployment(num_replicas=2, max_concurrent_queries=5)
+        class DecoratedClass1:
+            async def __call__(self):
+                return "DecoratedClass1 reached"
+
+        @serve.deployment(num_replicas=4, max_concurrent_queries=2)
+        class DecoratedClass2:
+            async def __call__(self):
+                return "DecoratedClass2 reached"
+
+        deployments = [DecoratedClass1, DecoratedClass2]
         responses = ["DecoratedClass1 reached", "DecoratedClass2 reached"]
         self.deploy_and_check_responses(deployments, responses)
 
