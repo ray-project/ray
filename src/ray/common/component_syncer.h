@@ -208,6 +208,12 @@ class RaySyncer {
   std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> leader_stub_;
   std::unique_ptr<ClientReactor> leader_;
   // Manage messages
+  //   {from_node_id -> {(node_id, ResourceManager|Cluster) -> SyncMessage} }
+  //   A <- B <- [C1,..,C100]
+  //    \-- D
+  //   When send message to the other node, don't send the message coming from that node
+  //   because it has already got that.
+  // TODO: Spilit it to make it easier to understand.
   using NodeIndexedMessages = absl::flat_hash_map<std::pair<std::string, RayComponentId>,
                                                   std::shared_ptr<RaySyncMessage>>;
   absl::flat_hash_map<std::string, NodeIndexedMessages> cluster_messages_;
