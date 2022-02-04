@@ -12,7 +12,7 @@ struct Reporter {
 };
 
 struct Receiver {
-  virtual void Update(ray::rpc::syncer::RaySyncMessage&) = 0;
+  virtual void Update(ray::rpc::syncer::RaySyncMessage &) = 0;
 };
 
 class RaySyncer {
@@ -29,7 +29,10 @@ class RaySyncer {
       static_cast<size_t>(ray::rpc::syncer::RayComponentId_ARRAYSIZE);
 
   RaySyncer(std::string node_id, instrumented_io_context &io_context)
-      : node_id_(std::move(node_id)), reporters_({}), receivers_({}), io_context_(io_context) {
+      : node_id_(std::move(node_id)),
+        reporters_({}),
+        receivers_({}),
+        io_context_(io_context) {
     AddNode(node_id_);
   }
 
@@ -55,12 +58,14 @@ class RaySyncer {
     auto component_key = std::make_pair(message.node_id(), message.component_id());
     auto &current_message = iter->second[component_key];
 
-    if(current_message != nullptr && message.version() < current_message->version()) {
-      RAY_LOG(INFO) << "Version stale: " << message.version() << " " << current_message->version();
+    if (current_message != nullptr && message.version() < current_message->version()) {
+      RAY_LOG(INFO) << "Version stale: " << message.version() << " "
+                    << current_message->version();
       return;
     }
 
     current_message = std::make_shared<RaySyncMessage>(std::move(message));
+    RAY_LOG(INFO) << "Current Node: " << node_id_ << ", message node: " << message.node_id() << " receiver: "  << receivers_[message.component_id()];
     if (receivers_[message.component_id()] != nullptr && message.node_id() != node_id_) {
       receivers_[message.component_id()]->Update(*current_message);
     }
@@ -88,9 +93,7 @@ class RaySyncer {
     return messages;
   }
 
-  const std::string& GetNodeId() const {
-    return node_id_;
-  }
+  const std::string &GetNodeId() const { return node_id_; }
 
   ServerReactor *Accept(const std::string &node_id) {
     auto reactor = std::make_unique<SyncerServerReactor>(*this, node_id);
@@ -99,55 +102,23 @@ class RaySyncer {
   }
 
  private:
-  void AddNode(const std::string& node_id) {
+  void AddNode(const std::string &node_id) {
     cluster_messages_[node_id] = NodeIndexedMessages();
   }
 
   struct SyncContext {
-    void ResetOutMessage() {
-      arena.Reset();
-      out_message =
-          google::protobuf::Arena::CreateMessage<ray::rpc::syncer::RaySyncMessages>(
-              &arena);
-    }
-
-    std::string node_id;
-    google::protobuf::Arena arena;
-    ray::rpc::syncer::RaySyncMessages in_message;
-    ray::rpc::syncer::RaySyncMessages *out_message;
-    std::vector<std::shared_ptr<RaySyncMessage>> buffer;
   };
 
   // TODO(yic): Find a way to remove the duplicate code.
-  class SyncerClientReactor : public ClientReactor {
-   public:
-    SyncerClientReactor(RaySyncer &instance, const std::string &node_id,
-                        ray::rpc::syncer::RaySyncer::Stub &stub)
-        : instance_(instance), timer_(instance.io_context_) {
-      rpc_context_.AddMetadata("node_id", node_id);
-      stub.async()->StartSync(&rpc_context_, this);
-      context_.ResetOutMessage();
-      StartCall();
-    }
 
-    const std::string &GetNodeId() const { return context_.node_id; }
-
-    void OnReadInitialMetadataDone(bool ok) override {
-      RAY_CHECK(ok) << "Fail to read initial data";
-      const auto& metadata = rpc_context_.GetServerInitialMetadata();
-      auto iter = metadata.find("node_id");
-      RAY_CHECK(iter != metadata.end());
-      RAY_LOG(INFO) << "Start to follow " << iter->second;
-      instance_.AddNode(std::string(iter->second.begin(), iter->second.end()));
-      StartRead(&context_.in_message);
-      instance_.io_context_.dispatch([this] { SendMessage(); }, "RaySyncWrite");
-    }
-
+  template<typename T>
+  struct Protocol(RaySyncer &instance) {
     void OnReadDone(bool ok) override {
       if (ok) {
         instance_.io_context_.dispatch(
             [this] {
-              RAY_LOG(INFO) << "client read " << context_.in_message.sync_messages_size() << " messages";
+              RAY_LOG(INFO) << "client read " << context_.in_message.sync_messages_size()
+                            << " messages";
               instance_.Update(context_.node_id, std::move(context_.in_message));
               context_.in_message.Clear();
               StartRead(&context_.in_message);
@@ -173,6 +144,68 @@ class RaySyncer {
       }
     }
 
+    void ResetOutMessage() {
+      arena.Reset();
+      out_message =
+          google::protobuf::Arena::CreateMessage<ray::rpc::syncer::RaySyncMessages>(
+              &arena);
+    }
+
+    void SendMessage() {
+      for (size_t i = 0; i < kComponentArraySize; ++i) {
+        if (instance_.reporters_[i] != nullptr) {
+          instance_.Update(context_.node_id, instance_.reporters_[i]->Snapshot());
+        }
+      }
+      context_.buffer = instance_.SyncMessages(context_.node_id);
+      if (context_.buffer.empty()) {
+        OnWriteDone(true);
+        return;
+      }
+      context_.ResetOutMessage();
+      for (auto &message : context_.buffer) {
+        RAY_LOG(INFO) << "WMSG: " << message->node_id();
+        context_.out_message->mutable_sync_messages()->UnsafeArenaAddAllocated(
+            message.get());
+      }
+      RAY_LOG(INFO) << "client write " << context_.out_message->sync_messages_size()
+                    << " messages";
+      StartWrite(context_.out_message);
+    }
+
+    RaySyncer &instance_;
+    boost::asio::deadline_timer timer_;
+
+    std::string node_id;
+    google::protobuf::Arena arena;
+    ray::rpc::syncer::RaySyncMessages in_message;
+    ray::rpc::syncer::RaySyncMessages *out_message;
+    std::vector<std::shared_ptr<RaySyncMessage>> buffer;
+  };
+
+  class SyncerClientReactor : public Protocol<ClientReactor> {
+   public:
+    SyncerClientReactor(RaySyncer &instance, const std::string &node_id,
+                        ray::rpc::syncer::RaySyncer::Stub &stub)
+        : instance_(instance), timer_(instance.io_context_) {
+      rpc_context_.AddMetadata("node_id", node_id);
+      stub.async()->StartSync(&rpc_context_, this);
+      context_.ResetOutMessage();
+      StartCall();
+    }
+
+    void OnReadInitialMetadataDone(bool ok) override {
+      RAY_CHECK(ok) << "Fail to read initial data";
+      const auto &metadata = rpc_context_.GetServerInitialMetadata();
+      auto iter = metadata.find("node_id");
+      RAY_CHECK(iter != metadata.end());
+      RAY_LOG(INFO) << "Start to follow " << iter->second;
+      instance_.AddNode(std::string(iter->second.begin(), iter->second.end()));
+      context_.node_id = std::string(iter->second.begin(), iter->second.end());
+      StartRead(&context_.in_message);
+      instance_.io_context_.dispatch([this] { SendMessage(); }, "RaySyncWrite");
+    }
+
     void OnDone(const grpc::Status &status) override {
       instance_.io_context_.dispatch(
           [this] {
@@ -183,34 +216,10 @@ class RaySyncer {
     }
 
    private:
-    void SendMessage() {
-      for (size_t i = 0; i < kComponentArraySize; ++i) {
-        if (instance_.reporters_[i] != nullptr) {
-          instance_.Update(context_.node_id, instance_.reporters_[i]->Snapshot());
-        }
-      }
-      context_.buffer = instance_.SyncMessages(context_.node_id);
-      if(context_.buffer.empty()) {
-        OnWriteDone(true);
-        return;
-      }
-      context_.ResetOutMessage();
-      for (auto &message : context_.buffer) {
-        RAY_LOG(INFO) << "WMSG: " << message->node_id();
-        context_.out_message->mutable_sync_messages()->UnsafeArenaAddAllocated(
-            message.get());
-      }
-      RAY_LOG(INFO) << "client write " << context_.out_message->sync_messages_size() << " messages";
-      StartWrite(context_.out_message);
-    }
-
-    RaySyncer &instance_;
-    boost::asio::deadline_timer timer_;
-    SyncContext context_;
     grpc::ClientContext rpc_context_;
   };
 
-  class SyncerServerReactor : public ServerReactor {
+  class SyncerServerReactor : public Protocol<ServerReactor> {
    public:
     SyncerServerReactor(RaySyncer &instance, const std::string &node_id)
         : instance_(instance), timer_(instance.io_context_) {
@@ -220,38 +229,9 @@ class RaySyncer {
 
     const std::string &GetNodeId() const { return context_.node_id; }
     void OnSendInitialMetadataDone(bool ok) {
-      if(ok) {
+      if (ok) {
         StartRead(&context_.in_message);
         instance_.io_context_.dispatch([this] { SendMessage(); }, "RaySyncWrite");
-      } else {
-        Finish(grpc::Status::OK);
-      }
-    }
-    void OnReadDone(bool ok) override {
-      if (ok) {
-        instance_.io_context_.dispatch(
-            [this] {
-              RAY_LOG(INFO) << "Server read " << context_.in_message.sync_messages_size() << " messages";
-              instance_.Update(context_.node_id, std::move(context_.in_message));
-              context_.in_message.Clear();
-              StartRead(&context_.in_message);
-            },
-            "RaySyncReadDone");
-      } else {
-        Finish(grpc::Status::OK);
-      }
-    }
-
-    void OnWriteDone(bool ok) override {
-      if (ok) {
-        timer_.expires_from_now(boost::posix_time::milliseconds(1000));
-        timer_.async_wait([this](const boost::system::error_code &error) {
-          if (error == boost::asio::error::operation_aborted) {
-            return;
-          }
-          RAY_CHECK(!error) << error.message();
-          SendMessage();
-        });
       } else {
         Finish(grpc::Status::OK);
       }
@@ -265,31 +245,6 @@ class RaySyncer {
           },
           "RaySyncDone");
     }
-
-   private:
-    void SendMessage() {
-      for (size_t i = 0; i < kComponentArraySize; ++i) {
-        if (instance_.reporters_[i] != nullptr) {
-          instance_.Update(instance_.GetNodeId(), instance_.reporters_[i]->Snapshot());
-        }
-      }
-      context_.buffer = instance_.SyncMessages(context_.node_id);
-      if(context_.buffer.empty()) {
-        OnWriteDone(true);
-        return;
-      }
-      context_.ResetOutMessage();
-      for (auto &message : context_.buffer) {
-        RAY_LOG(INFO) << "WMSG: " << message->node_id();
-        context_.out_message->mutable_sync_messages()->UnsafeArenaAddAllocated(
-            message.get());
-      }
-      RAY_LOG(INFO) << "Server sends " << context_.out_message->sync_messages_size() << " messages";
-      StartWrite(context_.out_message);
-    }
-    RaySyncer &instance_;
-    boost::asio::deadline_timer timer_;
-    SyncContext context_;
   };
 
  private:
@@ -298,7 +253,7 @@ class RaySyncer {
   std::unique_ptr<ClientReactor> leader_;
   // Manage messages
   using NodeIndexedMessages = absl::flat_hash_map<std::pair<std::string, RayComponentId>,
-                                                   std::shared_ptr<RaySyncMessage>>;
+                                                  std::shared_ptr<RaySyncMessage>>;
   absl::flat_hash_map<std::string, NodeIndexedMessages> cluster_messages_;
 
   // Manage connections
