@@ -34,11 +34,12 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler):
         self._uuid = uuid.uuid4().hex
         _PyObjScanner._instances[self._uuid] = self
         # Register pickler override for DAGNode types.
-        from ray.experimental.dag.task_node import TaskNode
-        from ray.experimental.dag.actor_node import ActorNode, ActorMethodNode
-        self.dispatch_table[TaskNode] = self._reduce_dag_node
-        self.dispatch_table[ActorNode] = self._reduce_dag_node
-        self.dispatch_table[ActorMethodNode] = self._reduce_dag_node
+        from ray.experimental.dag.function_node import FunctionNode
+        from ray.experimental.dag.class_node import ClassNode, ClassMethodNode
+
+        self.dispatch_table[FunctionNode] = self._reduce_dag_node
+        self.dispatch_table[ClassNode] = self._reduce_dag_node
+        self.dispatch_table[ClassMethodNode] = self._reduce_dag_node
         super().__init__(self._buf)
 
     def find_nodes(self, obj: Any) -> List["DAGNode"]:

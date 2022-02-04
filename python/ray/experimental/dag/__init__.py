@@ -1,6 +1,6 @@
 from ray.experimental.dag.dag_node import DAGNode
-from ray.experimental.dag.task_node import TaskNode
-from ray.experimental.dag.actor_node import ActorNode, ActorMethodNode
+from ray.experimental.dag.function_node import FunctionNode
+from ray.experimental.dag.class_node import ClassNode, ClassMethodNode
 
 
-__all__ = ["ActorNode", "ActorMethodNode", "DAGNode", "TaskNode"]
+__all__ = ["ClassNode", "ClassMethodNode", "DAGNode", "FunctionNode"]

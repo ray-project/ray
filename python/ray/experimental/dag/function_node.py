@@ -5,7 +5,7 @@ import ray
 from ray.experimental.dag import DAGNode
 
 
-class TaskNode(DAGNode):
+class FunctionNode(DAGNode):
     """Represents a bound task node in a Ray task DAG."""
 
     def __init__(self, func_body, func_args, func_kwargs, func_options):
@@ -18,9 +18,10 @@ class TaskNode(DAGNode):
         new_kwargs: Dict[str, Any],
         new_options: Dict[str, Any],
     ):
-        return TaskNode(self._body, new_args, new_kwargs, new_options)
+        return FunctionNode(self._body, new_args, new_kwargs, new_options)
 
     def _execute_impl(self):
+        """Executor of FunctionNode by ray.remote()"""
         if self._bound_options:
             return (
                 ray.remote(self._body)

@@ -27,7 +27,7 @@ T = TypeVar("T")
 class DAGNode:
     """Abstract class for a node in a Ray task graph.
 
-    A node has a type (e.g., TaskNode), data (e.g., function options and body),
+    A node has a type (e.g., FunctionNode), data (e.g., function options and body),
     arguments (Python values, DAGNodes, and DAGNodes nested within Python
     argument values) and options (Ray API .options() used for function, class
     or class method)
@@ -97,9 +97,7 @@ class DAGNode:
 
         f = _PyObjScanner()
         children = set()
-        for n in f.find_nodes(
-            [self._bound_args, self._bound_kwargs, self._bound_options]
-        ):
+        for n in f.find_nodes([self._bound_args, self._bound_kwargs]):
             children.add(n)
         return children
 
@@ -120,17 +118,15 @@ class DAGNode:
 
         # Find all first-level nested DAGNode children in args.
         f = _PyObjScanner()
-        children = f.find_nodes(
-            [self._bound_args, self._bound_kwargs, self._bound_options]
-        )
+        children = f.find_nodes([self._bound_args, self._bound_kwargs])
         # Update replacement table and execute the replace.
         for node in children:
             if node not in replace_table:
                 replace_table[node] = fn(node)
-        new_args, new_kwargs, new_options = f.replace_nodes(replace_table)
+        new_args, new_kwargs = f.replace_nodes(replace_table)
 
         # Return updated copy of self.
-        return self._copy(new_args, new_kwargs, new_options)
+        return self._copy(new_args, new_kwargs, self.get_options())
 
     def _apply_recursive(self, fn: "Callable[[DAGNode], T]") -> T:
         """Apply callable on each node in this DAG in a bottom-up tree walk.
@@ -186,11 +182,9 @@ class DAGNode:
     def __str__(self) -> str:
         indent = get_indentation()
 
-        if isinstance(self, dag.TaskNode):
+        if isinstance(self, (dag.FunctionNode, dag.ClassNode)):
             body_line = str(self._body)
-        elif isinstance(self, dag.ActorNode):
-            body_line = str(self._actor_cls)
-        elif isinstance(self, dag.ActorMethodNode):
+        elif isinstance(self, dag.ClassMethodNode):
             body_line = f"{self._method_name}()"
 
         args_line = get_args_lines(self._bound_args)

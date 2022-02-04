@@ -104,6 +104,7 @@ def test_actor_options_complicated():
     assert a1.get_options().get("name") == "a1_v0"
     assert res.get_options().get("name") == "v1"
 
+    a1 = Actor.options(name="a1_v1")._bind(10)  # Cannot
     a2 = Actor.options(name="a2_v0")._bind(10)
     a1.inc.options(name="v1")._bind(2)
     a1.inc.options(name="v2")._bind(4)
@@ -120,7 +121,7 @@ def test_actor_options_complicated():
     # refer to actor method a2.inc.options() call
     assert test_a2.get_args()[1].get_options().get("name") == "v3"
     # refer to a1 constructor .options() call
-    assert test_a1.get_args()[0].get_options().get("name") == "a1_v0"
+    assert test_a1.get_args()[0].get_options().get("name") == "a1_v1"
     # refer to latest actor method a1.inc.options() call
     assert test_a1.get_args()[1].get_options().get("name") == "v2"
     # refer to first bound actor method a1.inc.options() call

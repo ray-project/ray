@@ -630,9 +630,9 @@ class ActorClass:
                 For ray DAG building. Implementation and interface subject
                 to changes.
                 """
-                from ray.experimental.dag.actor_node import ActorNode
+                from ray.experimental.dag.class_node import ClassNode
 
-                return ActorNode(
+                return ClassNode(
                     actor_cls.__ray_metadata__.modified_class,
                     args,
                     kwargs,
@@ -1018,9 +1018,9 @@ class ActorClass:
         For ray DAG building. Implementation and interface subject
         to changes.
         """
-        from ray.experimental.dag.actor_node import ActorNode
+        from ray.experimental.dag.class_node import ClassNode
 
-        return ActorNode(self.__ray_metadata__.modified_class, args, kwargs, {})
+        return ClassNode(self.__ray_metadata__.modified_class, args, kwargs, {})
 
 
 class ActorHandle:

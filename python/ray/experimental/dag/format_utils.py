@@ -1,7 +1,9 @@
 import ray.experimental.dag as dag
 
+
 def get_indentation(num_spaces=4):
     return " " * num_spaces
+
 
 def get_args_lines(bound_args):
     """Pretty prints bounded args of a DAGNode, and recursively handle
@@ -37,6 +39,7 @@ def get_args_lines(bound_args):
         args_line += f"\n{indent}]"
 
     return args_line
+
 
 def get_kwargs_lines(bound_kwargs):
     """Pretty prints bounded kwargs of a DAGNode, and recursively handle
@@ -78,6 +81,7 @@ def get_kwargs_lines(bound_kwargs):
         kwargs_line = "{}"
 
     return kwargs_line
+
 
 def get_options_lines(bound_options):
     """Pretty prints .options() in DAGNode. Only prints non-empty values."""
