@@ -11,9 +11,13 @@ from ray.rllib.execution.rollout_ops import AsyncGradients
 from ray.rllib.execution.train_ops import ApplyGradients
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.metrics import APPLY_GRADS_TIMER, GRAD_WAIT_TIMER, \
-    NUM_AGENT_STEPS_SAMPLED, NUM_ENV_STEPS_SAMPLED, \
-    SYNCH_WORKER_WEIGHTS_TIMER
+from ray.rllib.utils.metrics import (
+    APPLY_GRADS_TIMER,
+    GRAD_WAIT_TIMER,
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+)
 from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
 from ray.util.iter import LocalIterator
 
@@ -48,11 +52,15 @@ DEFAULT_CONFIG = with_common_config({
     # This causes not every call to `training_iteration` to be reported,
     # but to wait until n seconds have passed and then to summarize the
     # thus far collected results.
-    "min_time_s_per_reporting": 1,
+    "min_time_s_per_reporting": 5,
     # Workers sample async. Note that this increases the effective
     # rollout_fragment_length by up to 5x due to async buffering of batches.
     "sample_async": True,
-    #TODO
+
+    # Use the Trainer's `training_iteration` function instead of `execution_plan`.
+    # Fixes a severe performance problem with A3C. Setting this to True leads to a
+    # speedup of up to 3x for a large number of workers and heavier
+    # gradient computations (e.g. ray/rllib/tuned_examples/a3c/pong-a3c.yaml)).
     "_disable_execution_plan_api": True,
 })
 # __sphinx_doc_end__
@@ -133,7 +141,7 @@ class A3CTrainer(Trainer):
         # Loop through all fetched worker-computed gradients (if any)
         # and apply them - one by one - to the local worker's model.
 
-        result = None #TODO
+        result = None  # TODO
         for worker, result in results.items():
             # Apply gradients to local worker.
             with self._timers[APPLY_GRADS_TIMER]:
@@ -150,14 +158,12 @@ class A3CTrainer(Trainer):
 
             # Synch updated weights back to the particular worker.
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                weights = local_worker.get_weights(
-                    local_worker.get_policies_to_train()
-                )
+                weights = local_worker.get_weights(local_worker.get_policies_to_train())
                 worker.set_weights.remote(weights, global_vars)
 
         # Update global vars of the local worker.
         if global_vars:
             local_worker.set_global_vars(global_vars)
 
-        #TODO: If we have processed more than one gradients
+        # TODO: If we have processed more than one gradients
         return result["infos"] if result else {}

@@ -15,7 +15,7 @@ class TestA3C(unittest.TestCase):
     """Sanity tests for A2C exec impl."""
 
     def setUp(self):
-        ray.init(num_cpus=4, local_mode=True)#TODO
+        ray.init(num_cpus=4)
 
     def tearDown(self):
         ray.shutdown()
@@ -26,11 +26,11 @@ class TestA3C(unittest.TestCase):
         config["num_workers"] = 2
         config["num_envs_per_worker"] = 2
 
-        num_iterations = 10000
+        num_iterations = 2
 
         # Test against all frameworks.
-        for _ in framework_iterator(config, frameworks="tf2"):#, with_eager_tracing=True):
-            for env in ["CartPole-v1"]:#, "Pendulum-v1", "PongDeterministic-v0"]:
+        for _ in framework_iterator(config, with_eager_tracing=True):
+            for env in ["CartPole-v1", "Pendulum-v1", "PongDeterministic-v0"]:
                 print("env={}".format(env))
                 config["model"]["use_lstm"] = env == "CartPole-v1"
                 trainer = a3c.A3CTrainer(config=config, env=env)
