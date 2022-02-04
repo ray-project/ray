@@ -121,9 +121,9 @@ py_test(
 py_test(
     name = "tune_sklearn",
     size = "medium",
-    srcs = ["test_myst_doc.py", "source/ray-core/_examples/doc_code/tune-sklearn.md"],
+    srcs = ["test_myst_doc.py", "source/tune/tutorials/tune-sklearn.md"],
     main = "test_myst_doc.py",
-    args = ["--path", "doc/source/tune/tutorials/tune-sklearn.md", "--smoke-test"],
+    args = ["--path", "source/tune/tutorials/tune-sklearn.md", "--smoke-test"],
     data = ["//doc/source/tune/tutorials:markdowns"],
     tags = ["exclusive", "example", "team:ml"],
 )
@@ -131,9 +131,9 @@ py_test(
 py_test(
     name = "tune_serve_integration_mnist",
     size = "medium",
-    srcs = ["test_myst_doc.py", "source/ray-core/_examples/doc_code/tune-serve-integration-mnist.md"],
+    srcs = ["test_myst_doc.py", "source/tune/tutorials/tune-serve-integration-mnist.md"],
     main = "test_myst_doc.py",
-    args = ["--path", "doc/source/tune/tutorials/tune-serve-integration-mnist.md", "--smoke-test", "--from_scratch", "--day 0"],
+    args = ["--path", "source/tune/tutorials/tune-serve-integration-mnist.md", "--smoke-test", "--from_scratch", "--day 0"],
     data = ["//doc/source/tune/tutorials:markdowns"],
     tags = ["exclusive", "example", "team:ml"],
 )
