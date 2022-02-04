@@ -2,6 +2,7 @@ import logging
 import platform
 from typing import Any, Dict, List
 import numpy as np
+import random
 
 # Import ray before psutil will make sure we use psutil's bundled version
 import ray  # noqa F401
@@ -11,14 +12,16 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
 
 logger = logging.getLogger(__name__)
+
 
 @ExperimentalAPI
 @DeveloperAPI
 class ReplayBuffer:
     def __init__(self, capacity: int = 10000, storage_unit: str =
-        "timesteps", **kwargs):
+    "timesteps", **kwargs):
         """Initializes a ReplayBuffer instance.
 
         Args:
@@ -74,10 +77,34 @@ class ReplayBuffer:
         """Add a batch of experiences.
 
         Args:
-            item: SampleBatch to add to this buffer's storage.
+            batch: SampleBatch to add to this buffer's storage.
             **kwargs: Forward compatibility kwargs.
         """
-        pass
+        assert batch.count > 0, batch
+        warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
+
+        # Update our timesteps counts.
+        self._num_timesteps_added += batch.count
+        self._num_timesteps_added_wrap += batch.count
+
+        if self._next_idx >= len(self._storage):
+            self._storage.append(batch)
+            self._est_size_bytes += batch.size_bytes()
+        else:
+            self._storage[self._next_idx] = batch
+
+        # Wrap around storage as a circular buffer once we hit capacity.
+        if self._num_timesteps_added_wrap >= self.capacity:
+            self._eviction_started = True
+            self._num_timesteps_added_wrap = 0
+            self._next_idx = 0
+        else:
+            self._next_idx += 1
+
+        # Eviction of older samples has already started (buffer is "full").
+        if self._eviction_started:
+            self._evicted_hit_stats.push(self._hit_count[self._next_idx])
+            self._hit_count[self._next_idx] = 0
 
     @ExperimentalAPI
     @DeveloperAPI
@@ -95,7 +122,15 @@ class ReplayBuffer:
         Returns:
             Concatenated batch of items.
         """
-        pass
+        # If we don't have any samples yet in this buffer, return None.
+        if len(self) == 0:
+            return None
+
+        idxes = [random.randint(0, len(self) - 1) for _ in range(num_items)]
+        sample = self._encode_sample(idxes)
+        # Update our timesteps counters.
+        self._num_timesteps_sampled += len(sample)
+        return sample
 
     @ExperimentalAPI
     @DeveloperAPI

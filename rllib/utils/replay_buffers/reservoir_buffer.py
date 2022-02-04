@@ -13,7 +13,7 @@ from ray.rllib.utils.typing import SampleBatchType
 @DeveloperAPI
 class ReservoirBuffer(ReplayBuffer):
     def __init__(self, capacity: int = 10000, storage_unit: str =
-    "timesteps", **kwargs):
+            "timesteps", **kwargs):
         super(ReservoirBuffer, self).__init__(capacity, storage_unit)
         raise NotImplementedError
 

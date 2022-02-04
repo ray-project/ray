@@ -51,7 +51,7 @@ class MixInMultiAgentReplayBuffer(ReplayBuffer):
         ... [<B>]
     """
 
-    def __init__(self, capacity: int, storage_unit = "timesteps",
+    def __init__(self, capacity: int, storage_unit="timesteps",
                  replay_ratio: float = 0.66):
         """Initializes MixInReplay instance.
 
@@ -68,7 +68,8 @@ class MixInMultiAgentReplayBuffer(ReplayBuffer):
         self.replay_ratio = replay_ratio
         self.replay_proportion = None
         if self.replay_ratio != 1.0:
-            self.replay_proportion = self.replay_ratio / (1.0 - self.replay_ratio)
+            self.replay_proportion = self.replay_ratio / (
+                    1.0 - self.replay_ratio)
 
         def new_buffer():
             return ReplayBuffer(capacity, storage_unit)
@@ -113,8 +114,8 @@ class MixInMultiAgentReplayBuffer(ReplayBuffer):
     @DeveloperAPI
     @override(ReplayBuffer)
     def sample(self, num_items: int,
-        policy_id: PolicyID = DEFAULT_POLICY_ID
-    ) -> Optional[SampleBatchType]:
+               policy_id: PolicyID = DEFAULT_POLICY_ID
+               ) -> Optional[SampleBatchType]:
         """Sample a batch of size `num_items` from a specified buffer.
 
         If less than `num_items` records are in this buffer, some samples in
@@ -135,7 +136,8 @@ class MixInMultiAgentReplayBuffer(ReplayBuffer):
         # - `replay_ratio` < 1.0 (new samples required in returned batch)
         #   and no new samples to mix with replayed ones.
         if len(buffer) == 0 or (
-            len(self.last_added_batches[policy_id]) == 0 and self.replay_ratio < 1.0
+            len(self.last_added_batches[
+                    policy_id]) == 0 and self.replay_ratio < 1.0
         ):
             return None
 
@@ -160,4 +162,3 @@ class MixInMultiAgentReplayBuffer(ReplayBuffer):
                 replay_proportion -= 1
                 output_batches.append(buffer.sample(num_items))
             return SampleBatch.concat_samples(output_batches)
-

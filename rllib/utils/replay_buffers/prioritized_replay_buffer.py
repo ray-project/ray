@@ -37,7 +37,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             alpha: How much prioritization is used
                 (0.0=no prioritization, 1.0=full prioritization).
         """
-        super(PrioritizedReplayBuffer, self).__init__(capacity, storage_unit)
+        ReplayBuffer.__init__(self, capacity, storage_unit)
+
         assert alpha > 0
         self._alpha = alpha
 
@@ -163,7 +164,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
     @ExperimentalAPI
     @DeveloperAPI
-    def update_priorities(self, idxes: List[int], priorities: List[float]) -> None:
+    def update_priorities(self, idxes: List[int],
+                          priorities: List[float]) -> None:
         """Update priorities of sampled transitions.
 
         Sets priority of transition at index idxes[i] in buffer
@@ -245,4 +247,3 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self._it_sum.set_state(state["sum_segment_tree"])
         self._it_min.set_state(state["min_segment_tree"])
         self._max_priority = state["max_priority"]
-
