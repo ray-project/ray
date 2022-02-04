@@ -832,7 +832,7 @@ Status CoreWorker::Put(const RayObject &object,
                                      NodeID::FromBinary(rpc_address_.raylet_id()));
   auto status = Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
   if (!status.ok()) {
-    reference_counter_->RemoveOwnedObject(*object_id);
+    RemoveLocalReference(*object_id);
   }
   return status;
 }
@@ -938,9 +938,6 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
     }
     if (!status.ok()) {
       RemoveLocalReference(*object_id);
-      if (owned_by_us) {
-        reference_counter_->RemoveOwnedObject(*object_id);
-      }
       return status;
     } else if (*data == nullptr) {
       // Object already exists in plasma. Store the in-memory value so that the

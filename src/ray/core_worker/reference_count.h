@@ -179,15 +179,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
       const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>())
       LOCKS_EXCLUDED(mutex_);
 
-  /// Remove reference for an object that we own. The reference will only be
-  /// removed if the object's ref count is 0. This should only be used when
-  /// speculatively adding an owned reference that may need to be rolled back, e.g. if
-  /// the creation of the corresponding Plasma object fails. All other references will
-  /// be cleaned up via the reference counting protocol.
-  ///
-  /// \param[in] object_id The ID of the object that we own and wish to remove.
-  void RemoveOwnedObject(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
-
   /// Update the size of the object.
   ///
   /// \param[in] object_id The ID of the object.
