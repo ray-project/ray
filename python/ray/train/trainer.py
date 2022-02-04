@@ -336,11 +336,10 @@ class Trainer:
                 run_dir=self.latest_run_dir,
             )
             aggregated_results = collections.defaultdict(list)
-            aggregate_funcs = (
-                aggregate_funcs
-                if isinstance(aggregate_funcs, dict)
-                else {e.__name__: e for e in aggregate_funcs}
-            )
+            if aggregate_funcs is None:
+                aggregate_funcs = {}
+            elif isinstance(aggregate_funcs, list):
+                aggregate_funcs = {e.__name__: e for e in aggregate_funcs}
 
             for intermediate_result in iterator:
                 for aggregate_name, func in aggregate_funcs.items():
@@ -349,8 +348,8 @@ class Trainer:
                     callback.process_results(intermediate_result)
 
             assert iterator.is_finished()
-            final_results = {"train_func return": iterator.get_final_results()}
-            final_results.update(aggregated_results)
+            final_results = iterator.get_final_results()
+            final_results.append(aggregated_results)
             return final_results
         finally:
             for callback in callbacks:
