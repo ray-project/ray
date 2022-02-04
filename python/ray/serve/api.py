@@ -199,7 +199,9 @@ class Client:
         if goal_id is None:
             return True
 
-        ready, _ = ray.wait([self._controller.wait_for_goal.remote(goal_id)], timeout=timeout)
+        ready, _ = ray.wait(
+            [self._controller.wait_for_goal.remote(goal_id)], timeout=timeout
+        )
         # AsyncGoal could return exception if set, ray.get()
         # retrieves and throws it to user code explicitly.
         if len(ready) == 1:
@@ -351,7 +353,7 @@ class Client:
             self.handle_cache.pop(evict_key)
 
         return handle
-    
+
     @_ensure_connected
     def get_deploy_args(
         self,
@@ -421,7 +423,9 @@ class Client:
         return controller_deploy_args
 
     @_ensure_connected
-    def log_deployment_update_status(self, name: str, version: str, updating: bool) -> str:
+    def log_deployment_update_status(
+        self, name: str, version: str, updating: bool
+    ) -> str:
         tag = f"component=serve deployment={name}"
 
         if updating:
@@ -1279,10 +1283,7 @@ def list_deployments() -> Dict[str, Deployment]:
     return deployments
 
 
-def deploy_group(
-    deployments: List[Deployment],
-    _blocking: bool = True
-) -> List[GoalId]:
+def deploy_group(deployments: List[Deployment], _blocking: bool = True) -> List[GoalId]:
     """
     EXPERIMENTAL API
 
@@ -1302,8 +1303,9 @@ def deploy_group(
     deployment_args_list = []
     for deployment in deployments:
         if not isinstance(deployment, Deployment):
-            raise TypeError(f"Passed in object with type {type(deployment)} "
-                            f"as a Deployment.")
+            raise TypeError(
+                f"Passed in object with type {type(deployment)} " f"as a Deployment."
+            )
         deployment_args_list.append(
             client.get_deploy_args(
                 deployment._name,

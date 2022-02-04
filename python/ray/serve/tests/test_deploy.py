@@ -1241,28 +1241,28 @@ class TestDeployGroup:
 
         async def get_output(self):
             return "F reached"
-    
+
     @serve.deployment
     class MutHandles:
         async def __init__(self, handle_name):
             self.handle = serve.get_deployment(handle_name).get_handle()
-        
+
         async def __call__(self, echo: str):
             return await self.handle.request_echo.remote(echo)
-        
+
         async def request_echo(self, echo: str):
             return echo
-    
+
     @serve.deployment(num_replicas=2, max_concurrent_queries=5)
     class DecoratedClass1:
         async def __call__(self):
             return "DecoratedClass1 reached"
-    
+
     @serve.deployment(num_replicas=4, max_concurrent_queries=2)
     class DecoratedClass2:
         async def __call__(self):
             return "DecoratedClass2 reached"
-    
+
     def deploy_and_check_responses(self, deployments, responses):
         deploy_group(deployments)
         for deployment, response in zip(deployments, responses):
@@ -1284,26 +1284,28 @@ class TestDeployGroup:
         names = []
         for i in range(10):
             names.append("a" * i)
-        
+
         deployments = []
         for idx in range(len(names)):
             # Each deployment will hold a ServeHandle with the next name in
             # the list
-            deployment_name = names[idx] 
+            deployment_name = names[idx]
             handle_name = names[(idx + 1) % len(names)]
 
-            deployments.append(self.MutHandles.options(name=deployment_name, init_args=(handle_name,)))
-        
+            deployments.append(
+                self.MutHandles.options(name=deployment_name, init_args=(handle_name,))
+            )
+
         deploy_group(deployments)
 
         for deployment in deployments:
-            assert(ray.get(deployment.get_handle().remote("hello"))) == "hello"
-    
+            assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"
+
     def test_decorated_deployments(self, serve_instance):
         deployments = [self.DecoratedClass1, self.DecoratedClass2]
         responses = ["DecoratedClass1 reached", "DecoratedClass2 reached"]
         self.deploy_and_check_responses(deployments, responses)
-    
+
     def test_blocking_deploy_group(self, serve_instance):
         deployments = [self.f, self.g, self.C, self.D]
         responses = ["f reached", "g reached", "C reached", "D reached"]
@@ -1318,10 +1320,10 @@ class TestDeployGroup:
 
         for deployment, response in zip(deployments, responses):
             assert ray.get(deployment.get_handle().remote()) == response
-    
+
     def test_empty_list(self, serve_instance):
         self.deploy_and_check_responses([], [])
-    
+
     def test_invalid_input(self, serve_instance):
         with pytest.raises(TypeError):
             deploy_group([self.f, self.g, "not a deployment"])
