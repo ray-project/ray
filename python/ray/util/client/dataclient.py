@@ -60,7 +60,6 @@ class ChunkCollector:
                 "using rsync or S3 instead.",
                 UserWarning,
             )
-        print(f"HERE! {get_resp.chunk_id}")
         chunk_data = get_resp.data
         chunk_id = get_resp.chunk_id
         if chunk_id == self.last_seen_chunk + 1:
