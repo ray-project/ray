@@ -1305,7 +1305,7 @@ def deploy_group(deployments: List[Deployment], _blocking: bool = True) -> List[
     for deployment in deployments:
         if not isinstance(deployment, Deployment):
             raise TypeError(
-                f"Passed in object with type {type(deployment)} " f"as a Deployment."
+                f"deploy_group only accepts Deployments, but got unexpected type {type(deployment)}."
             )
         deployment_args_list.append(
             client.get_deploy_args(
