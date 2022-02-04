@@ -98,7 +98,7 @@ def parse_cluster_info(
     metadata: Optional[Dict[str, Any]] = None,
     headers: Optional[Dict[str, Any]] = None,
 ) -> ClusterInfo:
-    module_string, inner_address = _split_address(address.rstrip("/"))
+    module_string, inner_address = _split_address(address)
 
     # If user passes http(s):// or ray://, go through normal parsing.
     if module_string in {"http", "https", "ray"}:
