@@ -23,7 +23,7 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler):
     # Used in deserialization hooks to reference scanner instances.
     _instances: Dict[str, "_PyObjScanner"] = {}
 
-    def __init__(self, dag_node_type: "DAGNode"):
+    def __init__(self):
         # Buffer to keep intermediate serialized state.
         self._buf = io.BytesIO()
         # List of top-level DAGNodes found during the serialization pass.
@@ -33,12 +33,13 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler):
         # UUID of this scanner.
         self._uuid = uuid.uuid4().hex
         _PyObjScanner._instances[self._uuid] = self
+        # Register pickler override for DAGNode types.
+        from ray.experimental.dag.task_node import TaskNode
+        from ray.experimental.dag.actor_node import ActorNode, ActorMethodNode
+        self.dispatch_table[TaskNode] = self._reduce_dag_node
+        self.dispatch_table[ActorNode] = self._reduce_dag_node
+        self.dispatch_table[ActorMethodNode] = self._reduce_dag_node
         super().__init__(self._buf)
-        # Register pickler override for DAGNodes.
-        from ray.experimental.dag.dag_node import DAGNode
-
-        self.dispatch_table = copyreg.dispatch_table.copy()
-        self.dispatch_table[DAGNode] = self._reduce_dag_node
 
     def find_nodes(self, obj: Any) -> List["DAGNode"]:
         """Find top-level DAGNodes."""
