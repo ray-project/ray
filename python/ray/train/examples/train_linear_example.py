@@ -92,7 +92,9 @@ def average_validation_loss(intermediate_results):
 
 
 def average_iter_time(intermediate_results):
-    worker_results = [worker_result[TIME_THIS_ITER_S] for worker_result in intermediate_results]
+    worker_results = [
+        worker_result[TIME_THIS_ITER_S] for worker_result in intermediate_results
+    ]
     return np.mean(worker_results)
 
 
