@@ -1,6 +1,6 @@
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Dict, Optional
-from uuid import UUID
 
 import ray
 from ray.actor import ActorHandle
@@ -11,13 +11,25 @@ str = str
 EndpointTag = str
 ReplicaTag = str
 NodeId = str
-GoalId = UUID
 Duration = float
 
 
 @dataclass
 class EndpointInfo:
     route: str
+
+
+class DeploymentStatus(Enum):
+    UPDATING = 1
+    HEALTHY = 2
+    UNHEALTHY = 3
+    DELETED = 4
+
+
+@dataclass
+class DeploymentStatusInfo:
+    status: DeploymentStatus
+    message: str = ""
 
 
 class DeploymentInfo:

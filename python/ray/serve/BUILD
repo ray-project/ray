@@ -113,14 +113,6 @@ py_test(
 )
 
 py_test(
-    name = "test_async_goal_manager",
-    size = "small",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
     name = "test_deployment_state",
     size = "small",
     srcs = serve_tests_srcs,

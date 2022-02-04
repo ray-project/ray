@@ -341,8 +341,9 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     # Redeploy new version. This should not go through until the old version
     # replica completely stops.
     V2 = V1.options(func_or_class=V2, version="2")
-    goal_ref = V2.deploy(_blocking=False)
-    assert not client._wait_for_goal(goal_ref, timeout=0.1)
+    V2.deploy(_blocking=False)
+    with pytest.raises(TimeoutError):
+        client._wait_for_deployment_healthy(V2.name, timeout_s=0.1)
 
     # It may take some time for the handle change to propagate and requests
     # to get sent to the new version. Repeatedly send requests until they
@@ -370,7 +371,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     assert pid2 == pid1
 
     # Now the goal and request to the new version should complete.
-    assert client._wait_for_goal(goal_ref)
+    client._wait_for_deployment_healthy(V2.name)
     new_version_val, new_version_pid = ray.get(new_version_ref)
     assert new_version_val == "2"
     assert new_version_pid != pid2
@@ -455,8 +456,9 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     # Redeploy new version. Since there is one replica blocking, only one new
     # replica should be started up.
     V2 = V1.options(func_or_class=V2, version="2")
-    goal_ref = V2.deploy(_blocking=False)
-    assert not client._wait_for_goal(goal_ref, timeout=0.1)
+    V2.deploy(_blocking=False)
+    with pytest.raises(TimeoutError):
+        client._wait_for_deployment_healthy(V2.name, timeout_s=0.1)
     responses3, blocking3 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
 
     # Signal the original call to exit.
@@ -467,7 +469,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
 
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.
-    assert client._wait_for_goal(goal_ref)
+    client._wait_for_deployment_healthy(V2.name)
     make_nonblocking_calls({"2": 2})
 
 
@@ -540,14 +542,14 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
 
     # Reconfigure should block one replica until the signal is sent. Check that
     # some requests are now blocking.
-    goal_ref = V1.options(user_config="2").deploy(_blocking=False)
+    V1.options(user_config="2").deploy(_blocking=False)
     responses2, blocking2 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
     assert list(responses2["1"])[0] in pids1
 
     # Signal reconfigure to finish. Now the goal should complete and both
     # replicas should have the updated config.
     ray.get(signal.send.remote())
-    assert client._wait_for_goal(goal_ref)
+    client._wait_for_deployment_healthy(V1.name)
     make_nonblocking_calls({"2": 2})
 
 
