@@ -136,8 +136,6 @@ class RaySyncer {
       if (ok) {
         instance->io_context_.dispatch(
             [this] {
-              RAY_LOG(INFO) << "client read " << in_message.sync_messages_size()
-                            << " messages";
               instance->Update(node_id, std::move(in_message));
               in_message.Clear();
               StartRead(&in_message);
