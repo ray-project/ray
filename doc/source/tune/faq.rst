@@ -3,8 +3,8 @@
 Ray Tune FAQ
 ------------
 
-Here we try to answer questions that come up often. If you still have questions
-after reading this, let us know!
+Here we try to answer questions that come up often.
+If you still have questions after reading this FAQ, let us know!
 
 .. contents::
     :local:
@@ -534,7 +534,7 @@ on your machine first to avoid any obvious mistakes.
 
 
 How can I get started contributing to Tune?
--------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 We use Github to track issues, feature requests, and bugs. Take a look at the
 ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22>`__ and `"help wanted" <https://github.com/ray-project/ray/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22>`__ for a place to start. Look for issues with "[tune]" in the title.
@@ -551,8 +551,9 @@ Here, you can track and identify how issues are organized.
 
 .. _tune-reproducible:
 
-Reproducible runs
------------------
+How can I make my Tune experiments reproducible?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Exact reproducibility of machine learning runs is hard to achieve. This
 is even more true in a distributed setting, as more non-determinism is
 introduced. For instance, if two trials finish at the same time, the
@@ -613,17 +614,18 @@ way your dataset is split. Thus, we leave it up to the user to make
 these global configuration changes.
 
 
-Handling Large Datasets
------------------------
+How can I use large data sets in Tune?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You often will want to compute a large object (e.g., training data, model weights) on the driver and use that object within each trial.
+You often will want to compute a large object (e.g., training data, model weights) on the driver and use that
+object within each trial.
 
 Tune provides a wrapper function ``tune.with_parameters()`` that allows you to broadcast large objects to your trainable.
-Objects passed with this wrapper will be stored on the :ref:`Ray object store <objects-in-ray>` and will be automatically fetched
-and passed to your trainable as a parameter.
+Objects passed with this wrapper will be stored on the :ref:`Ray object store <objects-in-ray>` and will
+be automatically fetched and passed to your trainable as a parameter.
+
 
 .. tip:: If the objects are small in size or already exist in the :ref:`Ray Object Store <objects-in-ray>`, there's no need to use ``tune.with_parameters()``. You can use `partials <https://docs.python.org/3/library/functools.html#functools.partial>`__ or pass in directly to ``config`` instead.
-
 
 .. code-block:: python
 
@@ -640,12 +642,12 @@ and passed to your trainable as a parameter.
     tune.run(tune.with_parameters(f, data=data))
 
 
+How can I upload my Tune results to cloud storage?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-
-Uploading Results
------------------
-
-If an upload directory is provided, Tune will automatically sync results from the ``local_dir`` to the given directory, natively supporting standard S3/gsutil/HDFS URIs.
+If an upload directory is provided, Tune will automatically sync results from the ``local_dir`` to the given directory,
+natively supporting standard URIs for systems like S3, gsutil or HDFS.
+Here is an example of uploading to S3, using a bucket called ``my-log-dir``:
 
 .. code-block:: python
 
@@ -655,7 +657,8 @@ If an upload directory is provided, Tune will automatically sync results from th
         sync_config=tune.SyncConfig(upload_dir="s3://my-log-dir")
     )
 
-You can customize this to specify arbitrary storages with the ``syncer`` argument in ``tune.SyncConfig``. This argument supports either strings with the same replacement fields OR arbitrary functions.
+You can customize this to specify arbitrary storages with the ``syncer`` argument in ``tune.SyncConfig``.
+This argument supports either strings with the same replacement fields OR arbitrary functions.
 
 .. code-block:: python
 
@@ -667,7 +670,8 @@ You can customize this to specify arbitrary storages with the ``syncer`` argumen
         )
     )
 
-If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``, like ``s3 sync {source} {target}``. Alternatively, a function can be provided with the following signature:
+If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``, like
+``s3 sync {source} {target}``. Alternatively, a function can be provided with the following signature:
 
 .. code-block:: python
 
@@ -679,19 +683,23 @@ If a string is provided, then it must include replacement fields ``{source}`` an
         sync_process = subprocess.Popen(sync_cmd, shell=True)
         sync_process.wait()
 
-By default, syncing occurs every 300 seconds. To change the frequency of syncing, set the ``sync_period`` attribute of the sync config to the desired syncing period.
+By default, syncing occurs every 300 seconds.
+To change the frequency of syncing, set the ``sync_period`` attribute of the sync config to the desired syncing period.
 
-Note that uploading only happens when global experiment state is collected, and the frequency of this is determined by the sync period. So the true upload period is given by ``max(sync period, TUNE_GLOBAL_CHECKPOINT_S)``.
+Note that uploading only happens when global experiment state is collected, and the frequency of this is
+determined by the sync period. So the true upload period is given by ``max(sync period, TUNE_GLOBAL_CHECKPOINT_S)``.
 
-Make sure that worker nodes have the write access to the cloud storage. Failing to do so would cause error messages like ``Error message (1): fatal error: Unable to locate credentials``.
-For AWS set up, this involves adding an IamInstanceProfile configuration for worker nodes. Please :ref:`see here for more tips <aws-cluster-s3>`.
-
+Make sure that worker nodes have the write access to the cloud storage.
+Failing to do so would cause error messages like ``Error message (1): fatal error: Unable to locate credentials``.
+For AWS set up, this involves adding an IamInstanceProfile configuration for worker nodes.
+Please :ref:`see here for more tips <aws-cluster-s3>`.
 
 
 .. _tune-docker:
 
-Using Tune with Docker
-----------------------
+How can I use Tune with Docker?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Tune automatically syncs files and checkpoints between different remote
 containers as needed.
 
@@ -710,8 +718,9 @@ with docker containers, you will need to pass a
 
 .. _tune-kubernetes:
 
-Using Tune with Kubernetes
---------------------------
+How can I use Tune with Kubernetes?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Ray Tune automatically synchronizes files and checkpoints between different remote nodes as needed.
 This usually happens via SSH, but this can be a :ref:`performance bottleneck <tune-bottlenecks>`,
 especially when running many trials in parallel.
