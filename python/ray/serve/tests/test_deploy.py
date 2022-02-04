@@ -1196,7 +1196,6 @@ def test_http_proxy_request_cancellation(serve_instance):
 
 
 class TestDeployGroup:
-
     @serve.deployment
     def f():
         return "f reached"
@@ -1215,7 +1214,9 @@ class TestDeployGroup:
         async def __call__(self):
             return "D reached"
 
-    def deploy_and_check_responses(self, deployments, responses, blocking=True, client=None):
+    def deploy_and_check_responses(
+        self, deployments, responses, blocking=True, client=None
+    ):
         """
         Helper function that deploys the list of deployments, calls them with
         their handles, and checks whether they return the objects in responses.
@@ -1246,13 +1247,15 @@ class TestDeployGroup:
         responses = ["f reached", "g reached", "C reached", "D reached"]
 
         self.deploy_and_check_responses(deployments, responses)
-    
+
     def test_non_blocking_deploy_group(self, serve_instance):
         "Checks deploy_group's behavior when _blocking=False."
 
         deployments = [self.f, self.g, self.C, self.D]
         responses = ["f reached", "g reached", "C reached", "D reached"]
-        self.deploy_and_check_responses(deployments, responses, blocking=False, client=serve_instance)
+        self.deploy_and_check_responses(
+            deployments, responses, blocking=False, client=serve_instance
+        )
 
     def test_mutual_handles(self, serve_instance):
         """
@@ -1323,7 +1326,7 @@ class TestDeployGroup:
         Checks deploy_group's behavior when deployment group contains
         non-Deployment objects.
         """
-        
+
         with pytest.raises(TypeError):
             deploy_group([self.f, self.C, "not a Deployment object"])
 

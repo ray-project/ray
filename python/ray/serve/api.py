@@ -253,7 +253,9 @@ class Client:
             return goal_id
 
     @_ensure_connected
-    def deploy_group(self, deployments: List[Dict], _blocking: bool = True) -> List[GoalId]:
+    def deploy_group(
+        self, deployments: List[Dict], _blocking: bool = True
+    ) -> List[GoalId]:
         deployment_args_list = []
         for deployment in deployments:
             deployment_args_list.append(
@@ -270,7 +272,9 @@ class Client:
                 )
             )
 
-        update_goals = ray.get(self._controller.deploy_group.remote(deployment_args_list))
+        update_goals = ray.get(
+            self._controller.deploy_group.remote(deployment_args_list)
+        )
 
         tags = []
         for i in range(len(deployments)):
@@ -1340,7 +1344,7 @@ def deploy_group(deployments: List[Deployment], _blocking: bool = True) -> List[
 
     if len(deployments) == 0:
         return []
-    
+
     parameter_group = []
 
     for deployment in deployments:
