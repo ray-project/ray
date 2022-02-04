@@ -35,11 +35,11 @@ class ChunkCollector:
     __call__ returns true once the underlying call back has been called.
     """
 
-    def __init__(self, callback: ResponseCallable, get_req: ray_client_pb2.GetRequest):
+    def __init__(self, callback: ResponseCallable, request: ray_client_pb2.DataRequest):
         self.data = bytearray()
         self.callback = callback
         self.last_seen_chunk = -1
-        self.get_req = get_req
+        self.request = request
 
     def __call__(self, response: Union[ray_client_pb2.DataResponse, Exception]) -> bool:
         if isinstance(response, Exception):
@@ -60,6 +60,7 @@ class ChunkCollector:
                 "using rsync or S3 instead.",
                 UserWarning,
             )
+        print(f"HERE! {get_resp.chunk_id}")
         chunk_data = get_resp.data
         chunk_id = get_resp.chunk_id
         if chunk_id == self.last_seen_chunk + 1:
@@ -67,7 +68,7 @@ class ChunkCollector:
             self.last_seen_chunk = chunk_id
             # If we disconnect partway through, restart the get request
             # at the first chunk we haven't seen
-            self.get_req.start_chunk_id = self.last_seen_chunk + 1
+            self.request.get.start_chunk_id = self.last_seen_chunk + 1
         elif chunk_id > self.last_seen_chunk + 1:
             # A chunk was skipped. This shouldn't happen in practice since
             # grpc guarantees that chunks will arrive in order.
@@ -182,6 +183,7 @@ class DataClient:
             logger.debug(f"Got unawaited response {response}")
             return
         if response.req_id in self.asyncio_waiting_data:
+            can_remove = True
             try:
                 # NOTE: calling self.asyncio_waiting_data.pop() results
                 # in the destructor of ClientObjectRef running, which
@@ -191,16 +193,15 @@ class DataClient:
                 callback = self.asyncio_waiting_data.get(response.req_id)
                 if isinstance(callback, ChunkCollector):
                     can_remove = callback(response)
-                    if can_remove:
-                        del self.asyncio_waiting_data[response.req_id]
                 elif callback:
                     callback(response)
+                if can_remove:
                     del self.asyncio_waiting_data[response.req_id]
             except Exception:
                 logger.exception("Callback error:")
             with self.lock:
                 # Update outstanding requests
-                if response.req_id in self.outstanding_requests:
+                if response.req_id in self.outstanding_requests and can_remove:
                     del self.outstanding_requests[response.req_id]
                     # Acknowledge response
                     self._acknowledge(response.req_id)
@@ -215,6 +216,7 @@ class DataClient:
         Returns True if the error can be recovered from, False otherwise.
         """
         if not self.client_worker._can_reconnect(e):
+            print(e)
             logger.error("Unrecoverable error in data channel.")
             logger.debug(e)
             return False
@@ -438,7 +440,7 @@ class DataClient:
         datareq = ray_client_pb2.DataRequest(
             get=request,
         )
-        collector = ChunkCollector(callback=callback, get_req=request)
+        collector = ChunkCollector(callback=callback, request=datareq)
         self._async_send(datareq, collector)
 
     # TODO: convert PutObject to async

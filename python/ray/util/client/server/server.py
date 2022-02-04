@@ -389,7 +389,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                         if total_size % OBJECT_TRANSFER_CHUNK_SIZE != 0:
                             # +1 if there are any partial chunks
                             total_chunks += 1
-                        for chunk_id in range(total_chunks):
+                        for chunk_id in range(request.start_chunk_id, total_chunks):
                             start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
                             end = min(
                                 total_size, (chunk_id + 1) * OBJECT_TRANSFER_CHUNK_SIZE

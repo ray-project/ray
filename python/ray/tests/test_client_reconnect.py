@@ -1,4 +1,5 @@
 from concurrent import futures
+import asyncio
 import contextlib
 import os
 import threading
@@ -352,6 +353,42 @@ def test_disconnects_during_large_get():
     with start_middleman_server(on_task_response=fail_every_three):
         started = True
         result = ray.get(large_result.remote())
+        assert result.shape == (1024, 1024, 128)
+
+
+def test_disconnects_during_large_async_get():
+    """
+    Disconnect repeatedly during a large (multi-chunk) async get.
+    """
+    i = 0
+    started = False
+
+    def fail_every_three(_):
+        # Inject an error every third time this method is called
+        nonlocal i, started
+        if not started:
+            return
+        i += 1
+        if i % 3 == 0:
+            raise RuntimeError
+
+    @ray.remote
+    def large_result():
+        # 1024x1024x128 float64 matrix (1024 MiB). With 64MiB chunk size,
+        # it will take at least 16 chunks to transfer this object. Since
+        # the failure is injected every 3 chunks, this transfer can only
+        # work if the chunked get request retries at the last received chunk
+        # (instead of starting from the beginning each retry)
+        return np.random.random((1024, 1024, 128))
+
+    with start_middleman_server(on_data_response=fail_every_three):
+        started = True
+
+        async def get_large_result():
+            return await large_result.remote()
+
+        loop = asyncio.get_event_loop()
+        result = loop.run_until_complete(get_large_result())
         assert result.shape == (1024, 1024, 128)
 
 
