@@ -64,13 +64,18 @@ class RaySyncer {
       return;
     }
 
-    current_message = std::make_shared<RaySyncMessage>(std::move(message));
-    RAY_LOG(INFO) << "DBG: " << message.component_id() << "\t" << receivers_[message.component_id()]
-                  << "\t" << message.node_id()
-                  << "\t" << node_id_;
+    // We don't update for local nodes
     if (receivers_[message.component_id()] != nullptr && message.node_id() != node_id_) {
-      receivers_[message.component_id()]->Update(*current_message);
+      receivers_[message.component_id()]->Update(message);
     }
+
+    // RAY_LOG(INFO) << "DBG: " << receivers_[message.component_id()]
+    //               << "\t" << from_node_id
+    //               << "\t" << message.node_id()
+    //               << "\t" << node_id_ << "\t" << iter->second.size()
+    //               << "\t" << &iter->second;
+    current_message = std::make_shared<RaySyncMessage>(std::move(message));
+    // DumpClusterMessages();
   }
 
   void Update(const std::string &from_node_id, RaySyncMessages messages) {
@@ -86,12 +91,15 @@ class RaySyncer {
       if (node_message.first == node_id) {
         continue;
       }
+      // RAY_LOG(INFO) << "CHECK " << node_message.first << " " << node_message.second.size()
+      //               << " " << &node_message.second;
       for (auto &component_message : node_message.second) {
         if (component_message.first.first != node_id) {
           messages.emplace_back(component_message.second);
         }
       }
     }
+    // DumpClusterMessages();
     return messages;
   }
 
@@ -108,7 +116,17 @@ class RaySyncer {
   void AddNode(const std::string &node_id) {
     cluster_messages_[node_id] = NodeIndexedMessages();
   }
+  void DumpClusterMessages() const {
+    RAY_LOG(INFO) << "---- DumpClusterMessages ----";
+    for(auto& iter : cluster_messages_) {
+      RAY_LOG(INFO) << "FromNodeId: " << iter.first << " - " << iter.second.size();
+      for(auto& iterr : iter.second) {
+        RAY_LOG(INFO) << "\tNodeIndexedMessages: "
+                      << iterr.first.first << ":" << iterr.first.second << " - " << iterr.second.get();
+      }
 
+    }
+  }
   template <typename T>
   struct Protocol : public T {
     using T::StartRead;
@@ -155,7 +173,7 @@ class RaySyncer {
     void SendMessage() {
       for (size_t i = 0; i < kComponentArraySize; ++i) {
         if (instance->reporters_[i] != nullptr) {
-          instance->Update(node_id, instance->reporters_[i]->Snapshot());
+          instance->Update(instance->GetNodeId(), instance->reporters_[i]->Snapshot());
         }
       }
       buffer = instance->SyncMessages(node_id);
@@ -165,11 +183,8 @@ class RaySyncer {
       }
       ResetOutMessage();
       for (auto &message : buffer) {
-        RAY_LOG(INFO) << "WMSG: " << message->node_id();
         out_message->mutable_sync_messages()->UnsafeArenaAddAllocated(message.get());
       }
-      RAY_LOG(INFO) << "client write " << out_message->sync_messages_size()
-                    << " messages";
       StartWrite(out_message);
     }
 
