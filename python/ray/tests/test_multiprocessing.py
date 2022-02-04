@@ -46,6 +46,7 @@ def pool_4_processes_python_multiprocessing_lib():
     pool.terminate()
     pool.join()
 
+
 @pytest.fixture
 def ray_start_1_cpu():
     address_info = ray.init(num_cpus=1)
