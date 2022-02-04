@@ -5,7 +5,6 @@ import json
 import logging
 import os
 import time
-import traceback
 from typing import Dict, Set
 from ray._private.utils import import_attr
 
