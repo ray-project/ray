@@ -96,8 +96,8 @@ def post_stop_cleanup(future, pg):
     except GetTimeoutError:
         if log_once("tune_trial_cleanup_timeout"):
             logger.error(
-                f"Timed out when trying to stop the Ray actor gracefully. "
-                f"Consider making `stop` a faster operation."
+                "Timed out when trying to stop the Ray actor gracefully. "
+                "Consider making `stop` a faster operation."
             )
     except Exception:
         if log_once("tune_trial_cleanup_exception"):
