@@ -344,6 +344,16 @@ class ServeController:
 
         return updating
 
+    def deploy_group(self, deployment_args_list: List[Dict]) -> List[bool]:
+        """
+        Takes in a list of dictionaries that contain keyword arguments for the
+        controller's deploy() function. Calls deploy on all the argument
+        dictionaries in the list. Effectively executes an atomic deploy on a
+        group of deployments.
+        """
+
+        return [self.deploy(**args for args in deployment_args_list)]
+
     def delete_deployment(self, name: str):
         self.endpoint_state.delete_endpoint(name)
         return self.deployment_state_manager.delete_deployment(name)
