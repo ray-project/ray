@@ -30,7 +30,7 @@ class ReservoirBuffer(ReplayBuffer):
     @DeveloperAPI
     @override(ReplayBuffer)
     def add(self, batch: SampleBatchType, **kwargs) -> None:
-        """Add a batch of experiences.
+        """Adds a batch of experiences.
 
         Args:
             batch: SampleBatch to add to this buffer's storage.

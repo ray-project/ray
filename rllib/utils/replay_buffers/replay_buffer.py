@@ -74,7 +74,7 @@ class ReplayBuffer:
     @ExperimentalAPI
     @DeveloperAPI
     def add(self, batch: SampleBatchType, **kwargs) -> None:
-        """Add a batch of experiences.
+        """Adds a batch of experiences.
 
         Args:
             batch: SampleBatch to add to this buffer's storage.
@@ -109,7 +109,7 @@ class ReplayBuffer:
     @ExperimentalAPI
     @DeveloperAPI
     def sample(self, num_items: int, **kwargs) -> Optional[SampleBatchType]:
-        """Sample a batch of size `num_items` from this buffer.
+        """Samples a batch of size `num_items` from this buffer.
 
         If less than `num_items` records are in this buffer, some samples in
         the results may be repeated to fulfil the batch size (`num_items`)
