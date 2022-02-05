@@ -841,5 +841,5 @@ If `grid_search` is provided as an argument, the grid will be repeated ``num_sam
     )
 
 Note that search spaces may not be interoperable across different search algorithms.
-For example, for many search algorithms, you will not be able to use a ``grid_search`` parameter.
+For example, for many search algorithms, you will not be able to use a ``grid_search`` or ``sample_from`` parameters.
 Read about this in the :ref:`Search Space API <tune-search-space>` page.
