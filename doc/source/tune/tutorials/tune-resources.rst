@@ -39,11 +39,18 @@ the respective placement group. If not enough resources are available, this will
 
 It is also possible to specify memory (``"memory"``, in bytes) and custom resource requirements.
 
-If your trainable function starts more remote workers, you will need to pass placement groups
-factory objects to request these resources. See the
-:class:`PlacementGroupFactory documentation <ray.tune.utils.placement_groups.PlacementGroupFactory>`
-for further information. This also applies if you are using other libraries making use of Ray, such
-as Modin. Failure to set resources correctly may result in a deadlock, "hanging" the cluster.
+If your trainable function starts more remote workers, you will need to pass so-called placement group
+factory objects to request these resources.
+See the :class:`PlacementGroupFactory documentation <ray.tune.utils.placement_groups.PlacementGroupFactory>`
+for further information.
+This also applies if you are using other libraries making use of Ray, such as Modin.
+Failure to set resources correctly may result in a deadlock, "hanging" the cluster.
+
+.. note::
+    The resources specified this way will only be allocated for scheduling Tune trials.
+    These resources will not be enforced on your objective function (Tune trainable) automatically.
+    You will have to make sure your trainable has enough resources to run (e.g. by setting ``n_jobs`` for a
+    scikit-learn model accordingly).
 
 How to leverage GPUs?
 ~~~~~~~~~~~~~~~~~~~~~
