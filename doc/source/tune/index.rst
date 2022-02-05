@@ -141,7 +141,7 @@ If you're new to Tune, you're probably wondering, "what makes Tune different?"
     In this situation, Tune actually allows you to power up your existing workflow.
     Tune's :ref:`Search Algorithms <tune-search-alg>` integrate with a variety of popular hyperparameter tuning
     libraries (such as Nevergrad or HyperOpt) and allow you to seamlessly scale up your optimization
-    process -- without sacrificing performance.
+    process - without sacrificing performance.
 
 
 Reference Materials
