@@ -45,6 +45,9 @@ of your original tuning run:
     Result logdir: /Users/ray/ray_results/my_trainable_2021-01-29_10-16-44
     Number of trials: 1/1 (1 RUNNING)
 
+Another useful option to know about is ``resume="AUTO"``, which will attempt to resume the experiment if possible,
+and otherwise will start a new experiment.
+For more details and other options for ``resume``, see the :ref:`Tune run API documentation <tune-run-ref>`.
 
 .. _tune-stopping-ref:
 
