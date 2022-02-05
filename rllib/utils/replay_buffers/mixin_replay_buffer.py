@@ -51,8 +51,8 @@ class MixInMultiAgentReplayBuffer(ReplayBuffer):
         ... [<B>]
     """
 
-    def __init__(self, capacity: int, storage_unit="timesteps",
-                 replay_ratio: float = 0.66):
+    def __init__(self, capacity: int, replay_ratio: float,
+                 storage_unit="timesteps"):
         """Initializes MixInReplay instance.
 
         Args:
