@@ -760,7 +760,7 @@ Second, you can set up a shared file system like NFS. If you do this, disable au
     )
 
 
-Lastly, if you still want to use ssh for trial synchronization, but are not running
+Lastly, if you still want to use SSH for trial synchronization, but are not running
 on the Ray cluster launcher, you might need to pass a
 ``KubernetesSyncer`` to the ``syncer`` argument of ``tune.SyncConfig``.
 You have to specify your Kubernetes namespace explicitly:
