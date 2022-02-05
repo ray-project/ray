@@ -63,8 +63,10 @@ class MixInMultiAgentReplayBuffer(ReplayBuffer):
                 plus one old one (1:1), a ratio of 0.66 means always return
                 the newest sample plus 2 old (replayed) ones (1:2), etc...
         """
-        ReplayBuffer.__init__(self, capacity, storage_unit)
+        if not 0 < replay_ratio < 1:
+            raise ValueError("Replay ratio must be within [0, 1]")
 
+        ReplayBuffer.__init__(self, capacity, storage_unit)
         self.replay_ratio = replay_ratio
         self.replay_proportion = None
         if self.replay_ratio != 1.0:
