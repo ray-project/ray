@@ -122,4 +122,9 @@ In this case, ``ray.tune.suggest.ConcurrencyLimiter`` to limit the amount of con
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
 
-See :ref:`limiter` for more details.
+.. note::
+
+    It is also possible to directly use ``tune.run(max_concurrent_trials=4, ...)``, which automatically wraps
+    the underlying search algorithm in a ``ConcurrencyLimiter`` for you.
+
+To understand concurrency limiting in depth, please see :ref:`limiter` for more details.
