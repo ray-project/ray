@@ -55,6 +55,10 @@ You can log arbitrary values and metrics in both Function and Class training API
             return dict(acc=accuracy, metric_foo=random_metric_1, bar=metric_2)
 
 
+.. tip::
+    Note that ``tune.report()`` is not meant to transfer large amounts of data, like models or datasets.
+    Doing so can incur large overheads and slow down your Tune run significantly.
+
 Which metrics get automatically filled in?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
