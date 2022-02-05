@@ -9,6 +9,7 @@ from typing import Callable, Any, Union
 
 import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
+import cython
 import ray.util.client as client
 
 logger = logging.getLogger(__name__)
@@ -149,6 +150,7 @@ cdef class ObjectRef(BaseID):
         return self
 
 
+@cython.no_gc_clear
 cdef class ClientObjectRef(ObjectRef):
 
     def __init__(self, id: Union[bytes, concurrent.futures.Future]):

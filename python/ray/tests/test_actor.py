@@ -828,7 +828,7 @@ def test_multiple_actors(ray_start_regular_shared):
         assert v == list(range(i + 1, num_increases + i + 1))
 
     # Reset the actor values.
-    [actor.reset.remote() for actor in actors]
+    holder = [actor.reset.remote() for actor in actors]  # noqa
 
     # Interweave the method calls on the different actors.
     results = []

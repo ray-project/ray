@@ -321,6 +321,7 @@ cdef class ActorID(BaseID):
         return <CActorID>self.data
 
 
+@cython.no_gc_clear
 cdef class ClientActorRef(ActorID):
 
     def __init__(self, id: Union[bytes, concurrent.futures.Future]):
