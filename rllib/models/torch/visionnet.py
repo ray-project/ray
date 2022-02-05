@@ -131,7 +131,18 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 padding, _ = same_padding(in_size, [1, 1], [1, 1])
                 if post_fcnet_hiddens:
                     layers.append(nn.Flatten())
-                    in_size = out_channels
+                    # If we have a post-fc-stack, we can allow arbitrary shapes for the final Conv2D layer.
+                    # So we use a dummy sample to determine the size of the Conv2D output (= post-fc-stack input)
+                    self._convs = nn.Sequential(*layers)
+                    # Create a B=1 dummy sample and push it through out conv-net.
+                    dummy_in = (
+                        torch.from_numpy(self.obs_space.sample())
+                        .permute(2, 0, 1)
+                        .unsqueeze(0)
+                        .float()
+                    )
+                    dummy_out = self._convs(dummy_in)
+                    in_size = dummy_out.shape[1]
                     # Add (optional) post-fc-stack after last Conv2D layer.
                     for i, out_size in enumerate(post_fcnet_hiddens + [num_outputs]):
                         layers.append(
@@ -183,9 +194,15 @@ class VisionNetwork(TorchModelV2, nn.Module):
         # Build the value layers
         self._value_branch_separate = self._value_branch = None
         if vf_share_layers:
-            self._value_branch = SlimFC(
-                out_channels, 1, initializer=normc_initializer(0.01), activation_fn=None
-            )
+            if post_fcnet_hiddens:
+                # If we have a post-fc-stack, the size of the final fc-layer is the input to the value output.
+                self._value_branch = SlimFC(
+                    post_fcnet_hiddens[-1], 1, initializer=normc_initializer(0.01), activation_fn=None
+                )
+            else:
+                self._value_branch = SlimFC(
+                    out_channels, 1, initializer=normc_initializer(0.01), activation_fn=None
+                )
         else:
             vf_layers = []
             (w, h, in_channels) = obs_space.shape
@@ -279,9 +296,13 @@ class VisionNetwork(TorchModelV2, nn.Module):
             value = value.squeeze(2)
             return value.squeeze(1)
         else:
-            if not self.last_layer_is_flattened:
+            # self._features has shape of length 4 if it's an unflattened CNN output. 
+            # In that case we squeeze the extra length-1 dimensions.
+            if len(self._features.shape) == 4:
                 features = self._features.squeeze(3)
                 features = features.squeeze(2)
+            # Otherwise we either have a flattened final layer or a post-CNN FC stack.
+            # In both of these cases, self._features should already be the correct shape.
             else:
                 features = self._features
             return self._value_branch(features).squeeze(1)
