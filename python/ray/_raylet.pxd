@@ -90,14 +90,6 @@ cdef class ObjectRef(BaseID):
 
     cdef CObjectID native(self)
 
-cdef class ClientObjectRef(ObjectRef):
-    cdef object _mutex
-    cdef object _id_future
-    cdef object _worker
-
-    cdef _set_id(self, id)
-    cdef inline _wait_for_id(self, timeout=None)
-
 cdef class ActorID(BaseID):
     cdef CActorID data
 

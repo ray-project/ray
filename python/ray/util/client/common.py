@@ -28,6 +28,7 @@ from typing import Dict
 from typing import Optional
 from typing import Tuple
 from typing import Union
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,113 @@ GRPC_OPTIONS = [
 CLIENT_SERVER_MAX_THREADS = float(os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
 
 # Aliases for compatibility.
-ClientObjectRef = raylet.ClientObjectRef
+class ClientObjectRef(raylet.ObjectRef):
+
+    def __init__(self, id: Union[bytes, concurrent.futures.Future]):
+        self.in_core_worker = False
+        self._mutex = threading.Lock()
+        self._worker = ray.get_context().client_worker
+        self._id_future = None
+        if isinstance(id, bytes):
+            self._set_id(id)
+        elif isinstance(id, concurrent.futures.Future):
+            self._id_future = id
+        else:
+            raise TypeError("Unexpected type for id {}".format(id))
+
+    def __del__(self):
+        if self._worker is not None and self._worker.is_connected():
+            try:
+                self._wait_for_id()
+            # cython would suppress this exception as well, but it tries to
+            # print out the exception which may crash. Log a simpler message
+            # instead.
+            except Exception:
+                logger.info(
+                    "Exception in ObjectRef is ignored in destructor. "
+                    "To receive this exception in application code, call "
+                    "a method on the actor reference before its destructor "
+                    "is run.")
+            if not self.is_nil():
+                self._worker.call_release(self.id)
+
+    def binary(self):
+        self._wait_for_id()
+        return super().binary()
+
+    def hex(self):
+        self._wait_for_id()
+        return super().hex()
+
+    def is_nil(self):
+        self._wait_for_id()
+        return super().is_nil()
+
+    def __hash__(self):
+        self._wait_for_id()
+        return hash(self.id)
+
+    def task_id(self):
+        self._wait_for_id()
+        return super().task_id()
+
+    @property
+    def id(self):
+        return self.binary()
+
+    def future(self) -> concurrent.futures.Future:
+        fut = concurrent.futures.Future()
+
+        def set_future(data: Any) -> None:
+            """Schedules a callback to set the exception or result
+            in the Future."""
+
+            if isinstance(data, Exception):
+                fut.set_exception(data)
+            else:
+                fut.set_result(data)
+
+        self._on_completed(set_future)
+
+        # Prevent this object ref from being released.
+        fut.object_ref = self
+        return fut
+
+    def _on_completed(self, py_callback: Callable[[Any], None]) -> None:
+        """Register a callback that will be called after Object is ready.
+        If the ObjectRef is already ready, the callback will be called soon.
+        The callback should take the result as the only argument. The result
+        can be an exception object in case of task error.
+        """
+        from ray.util.client.client_pickler import loads_from_server
+
+        def deserialize_obj(resp: Union[ray_client_pb2.DataResponse,
+                                        Exception]) -> None:
+            if isinstance(resp, Exception):
+                data = resp
+            else:
+                obj = resp.get
+                data = None
+                if not obj.valid:
+                    data = loads_from_server(resp.get.error)
+                else:
+                    data = loads_from_server(resp.get.data)
+
+            py_callback(data)
+
+        self._worker.register_callback(self, deserialize_obj)
+
+    def _set_id(self, id):
+        super()._set_id(id)
+        self._worker.call_retain(id)
+
+    def _wait_for_id(self, timeout=None):
+        if self._id_future:
+            with self._mutex:
+                if self._id_future:
+                    self._set_id(self._id_future.result(timeout=timeout))
+                    self._id_future = None
+
 ClientActorRef = raylet.ClientActorRef
 
 
