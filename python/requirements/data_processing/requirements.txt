@@ -8,4 +8,4 @@ modin>=0.8.3;  python_version < '3.7'
 modin>=0.11.0; python_version >= '3.7'
 pytest-repeat
 raydp-nightly
-responses==0.13.4
+responses==0.18.0
