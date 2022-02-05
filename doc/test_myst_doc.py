@@ -1,8 +1,9 @@
 """Execute a jupytext markdown notebook."""
 
-import runpy
+import subprocess
 import argparse
 import tempfile
+import sys
 
 import jupytext
 
@@ -13,7 +14,8 @@ parser.add_argument(
 )
 
 if __name__ == "__main__":
-    args = parser.parse_args()
+
+    args, remainder = parser.parse_known_args()
 
     with open(args.path, "r") as f:
         notebook = jupytext.read(f)
@@ -23,5 +25,8 @@ if __name__ == "__main__":
         jupytext.write(notebook, f, fmt="py:percent")
         name = f.name
 
-    # execute the test
-    runpy.run_path(name)
+    remainder.insert(0, name)
+    remainder.insert(0, sys.executable)
+
+    # Run the notebook
+    subprocess.run(remainder)

@@ -115,14 +115,13 @@ If you're new to Tune, you're probably wondering, "what makes Tune different?"
 
 .. dropdown:: First-class Developer Productivity
 
-    A key problem with machine learning frameworks is the need to restructure all of your code to fit the framework.
-
+    A key problem with many hyperparameter optimization frameworks is the need to restructure
+    your code to fit the framework.
     With Tune, you can optimize your model just by :ref:`adding a few code snippets <tune-tutorial>`.
 
-    Also, Tune actually removes boilerplate from your code training workflow,
-    automatically :ref:`managing checkpoints <tune-checkpoint-syncing>` and
-    :ref:`logging results to tools <tune-logging>` such as MLflow and TensorBoard.
-
+    Also, Tune removes boilerplate from your code training workflow,
+    automatically :ref:`manages checkpoints <tune-checkpoint-syncing>` and
+    :ref:`logs results to tools <tune-logging>` such as MLflow and TensorBoard, while also being highly customizable.
 
 .. dropdown:: Multi-GPU & Distributed Training Out Of The Box
 

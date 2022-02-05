@@ -131,6 +131,6 @@ py_test(
     size = "medium",
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
-    args = ["--path", "source/tune/tutorials/tune-serve-integration-mnist.md"],
+    args = ["--path", "source/tune/tutorials/tune-serve-integration-mnist.md", "--smoke-test", "--from_scratch", "--day 0"],
     tags = ["exclusive", "team:ml"],
 )
