@@ -150,6 +150,7 @@ cdef class ObjectRef(BaseID):
         return self
 
 
+# Prevent tp_clear to avoid self._worker being cleared before __dealloc__
 @cython.no_gc_clear
 cdef class ClientObjectRef(ObjectRef):
 

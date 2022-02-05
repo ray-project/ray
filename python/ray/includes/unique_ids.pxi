@@ -321,6 +321,7 @@ cdef class ActorID(BaseID):
         return <CActorID>self.data
 
 
+# Prevent tp_clear to avoid self._worker being cleared before __dealloc__
 @cython.no_gc_clear
 cdef class ClientActorRef(ActorID):
 
