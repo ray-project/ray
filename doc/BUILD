@@ -124,7 +124,7 @@ py_test(
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
     args = ["--path", "source/tune/tutorials/tune-sklearn.md"],
-    data = ["//doc/source/tune/tutorials/tune-sklearn.md"],
+    data = ["//doc/source/tune/tutorials:markdowns"],
     tags = ["exclusive", "team:ml"],
 )
 py_test(
@@ -133,6 +133,6 @@ py_test(
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
     args = ["--path", "source/tune/tutorials/tune-serve-integration-mnist.md", "--smoke-test", "--from_scratch", "--day 0"],
-    data = ["//doc/source/tune/tutorials/tune-serve-integration-mnist.md"],
+    data = ["//doc/source/tune/tutorials:markdowns"],
     tags = ["exclusive", "team:ml"],
 )
