@@ -27,7 +27,7 @@ elif [ "$2" == "unity3d" ]; then
 else
   server_script=cartpole_server.py
   client_script=dummy_client_with_two_episodes.py
-  stop_criterion=""  # no stop criterion: client script terminates either way
+  stop_criterion="--dummy-arg=dummy"  # no stop criterion: client script terminates either way
 fi
 
 pkill -f $server_script
@@ -70,6 +70,6 @@ client2_pid=$!
 # x reward (CartPole) or n episodes (dummy Unity3D).
 # Then stop everything.
 sleep 2
-python $basedir/$client_script --inference-mode=$inference_mode --port=9901 $stop_criterion
+python $basedir/$client_script --inference-mode=$inference_mode --port=9901 "$stop_criterion"
 
 kill $server_pid $client1_pid $client2_pid || true
