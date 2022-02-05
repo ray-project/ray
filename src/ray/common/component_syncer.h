@@ -8,11 +8,12 @@ namespace ray {
 namespace syncing {
 
 struct Reporter {
-  virtual ray::rpc::syncer::RaySyncMessage Snapshot() const = 0;
+  virtual std::optional<ray::rpc::syncer::RaySyncMessage> Snapshot(
+      uint64_t current_version) const = 0;
 };
 
 struct Receiver {
-  virtual void Update(ray::rpc::syncer::RaySyncMessage &) = 0;
+  virtual void Update(const ray::rpc::syncer::RaySyncMessage& message) = 0;
 };
 
 class RaySyncer {
@@ -62,6 +63,18 @@ class RaySyncer {
   void AddNode(const std::string &node_id) {
     cluster_messages_[node_id] = NodeIndexedMessages();
   }
+
+  void DoUpdate(absl::flat_hash_map<std::string, Array<uint64_t>>& node_view,
+                RaySyncer::RaySyncMessage message) {
+    auto& current_message = cluster_view_[message.node_id()];
+    if(current_message && current_message->version() >= message.version()) {
+      // We've already got the newer messages. Skip this.
+      return;
+    }
+    current_message = std::make_shared<RaySyncer::RaySyncMessage>(std::move(message));
+
+  }
+
   void DumpClusterMessages() const {
     RAY_LOG(INFO) << "---- DumpClusterMessages ----";
     for (auto &iter : cluster_messages_) {
@@ -72,6 +85,7 @@ class RaySyncer {
       }
     }
   }
+
   template <typename T>
   struct Protocol : public T {
     using T::StartRead;
@@ -204,19 +218,20 @@ class RaySyncer {
   };
 
  private:
+  template<T>
+  using Array = std::array<T, kkComponentArraySize>;
+
   const std::string node_id_;
   std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> leader_stub_;
   std::unique_ptr<ClientReactor> leader_;
-  // Manage messages
-  //   {from_node_id -> {(node_id, ResourceManager|Cluster) -> SyncMessage} }
-  //   A <- B <- [C1,..,C100]
-  //    \-- D
-  //   When send message to the other node, don't send the message coming from that node
-  //   because it has already got that.
-  // TODO: Spilit it to make it easier to understand.
-  using NodeIndexedMessages = absl::flat_hash_map<std::pair<std::string, RayComponentId>,
-                                                  std::shared_ptr<RaySyncMessage>>;
-  absl::flat_hash_map<std::string, NodeIndexedMessages> cluster_messages_;
+
+  Array<absl::flat_hash_map<std::string, std::shared_ptr<RaySyncMessage>>> cluster_view_;
+
+  // nodes_views_ keeps track about the version of messages on the nodes.
+  //    node_id_A -> node_id_B -> [V]
+  // means A has B's view in version V. With this we can skip sending A messages about B
+  // if A already have that.
+  absl::flat_hash_map<std::string, absl::flat_hash_map<std::string, Array<uint64_t>>> nodes_view_;
 
   // Manage connections
   absl::flat_hash_map<std::string, std::unique_ptr<ServerReactor>> followers_;

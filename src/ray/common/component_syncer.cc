@@ -20,30 +20,14 @@ void RaySyncer::Follow(std::shared_ptr<grpc::Channel> channel) {
 
 void RaySyncer::Update(const std::string &from_node_id,
                        RaySyncer::RaySyncMessage message) {
-  auto iter = cluster_messages_.find(from_node_id);
-  if (iter == cluster_messages_.end()) {
-    RAY_LOG(INFO) << "Can't find node " << from_node_id << ", abort update";
-    return;
-  }
-  auto component_key = std::make_pair(message.node_id(), message.component_id());
-  auto &current_message = iter->second[component_key];
-
-  if (current_message != nullptr && message.version() < current_message->version()) {
-    RAY_LOG(INFO) << "Version stale: " << message.version() << " "
-                  << current_message->version();
-    return;
-  }
-
-  // We don't update for local nodes
-  if (receivers_[message.component_id()] != nullptr && message.node_id() != node_id_) {
-    receivers_[message.component_id()]->Update(message);
-  }
-  current_message = std::make_shared<RaySyncMessage>(std::move(message));
+  auto& node_view = nodes_view_[from_node_id];
+  DoUpdate(node_view, std::move(message));
 }
 
 void RaySyncer::Update(const std::string &from_node_id, RaySyncMessages messages) {
+  auto& node_view = nodes_view_[from_node_id];
   for (auto &message : *messages.mutable_sync_messages()) {
-    Update(from_node_id, std::move(message));
+    DoUpdate(node_view, std::move(message));
   }
 }
 
