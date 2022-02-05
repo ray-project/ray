@@ -28,8 +28,7 @@ def test_e2e(serve_instance):
 def test_starlette_response(serve_instance):
     @serve.deployment(name="basic")
     def basic(_):
-        return starlette.responses.Response(
-            "Hello, world!", media_type="text/plain")
+        return starlette.responses.Response("Hello, world!", media_type="text/plain")
 
     basic.deploy()
     assert requests.get("http://127.0.0.1:8000/basic").text == "Hello, world!"
@@ -37,37 +36,35 @@ def test_starlette_response(serve_instance):
     @serve.deployment(name="html")
     def html(_):
         return starlette.responses.HTMLResponse(
-            "<html><body><h1>Hello, world!</h1></body></html>")
+            "<html><body><h1>Hello, world!</h1></body></html>"
+        )
 
     html.deploy()
-    assert requests.get(
-        "http://127.0.0.1:8000/html"
-    ).text == "<html><body><h1>Hello, world!</h1></body></html>"
+    assert (
+        requests.get("http://127.0.0.1:8000/html").text
+        == "<html><body><h1>Hello, world!</h1></body></html>"
+    )
 
     @serve.deployment(name="plain_text")
     def plain_text(_):
         return starlette.responses.PlainTextResponse("Hello, world!")
 
     plain_text.deploy()
-    assert requests.get(
-        "http://127.0.0.1:8000/plain_text").text == "Hello, world!"
+    assert requests.get("http://127.0.0.1:8000/plain_text").text == "Hello, world!"
 
     @serve.deployment(name="json")
     def json(_):
         return starlette.responses.JSONResponse({"hello": "world"})
 
     json.deploy()
-    assert requests.get("http://127.0.0.1:8000/json").json()[
-        "hello"] == "world"
+    assert requests.get("http://127.0.0.1:8000/json").json()["hello"] == "world"
 
     @serve.deployment(name="redirect")
     def redirect(_):
-        return starlette.responses.RedirectResponse(
-            url="http://127.0.0.1:8000/basic")
+        return starlette.responses.RedirectResponse(url="http://127.0.0.1:8000/basic")
 
     redirect.deploy()
-    assert requests.get(
-        "http://127.0.0.1:8000/redirect").text == "Hello, world!"
+    assert requests.get("http://127.0.0.1:8000/redirect").text == "Hello, world!"
 
     @serve.deployment(name="streaming")
     def streaming(_):
@@ -77,7 +74,8 @@ def test_starlette_response(serve_instance):
                 await asyncio.sleep(0.01)
 
         return starlette.responses.StreamingResponse(
-            slow_numbers(), media_type="text/plain", status_code=418)
+            slow_numbers(), media_type="text/plain", status_code=418
+        )
 
     streaming.deploy()
     resp = requests.get("http://127.0.0.1:8000/streaming")
@@ -143,21 +141,13 @@ def test_deploy_async_class_no_params(serve_instance):
     serve.start()
     AsyncCounter.deploy()
 
-    assert requests.get("http://127.0.0.1:8000/AsyncCounter").json() == {
-        "count": 1
-    }
-    assert requests.get("http://127.0.0.1:8000/AsyncCounter").json() == {
-        "count": 2
-    }
+    assert requests.get("http://127.0.0.1:8000/AsyncCounter").json() == {"count": 1}
+    assert requests.get("http://127.0.0.1:8000/AsyncCounter").json() == {"count": 2}
     assert ray.get(AsyncCounter.get_handle().remote()) == {"count": 3}
 
 
 def test_user_config(serve_instance):
-    @serve.deployment(
-        "counter", num_replicas=2, user_config={
-            "count": 123,
-            "b": 2
-        })
+    @serve.deployment("counter", num_replicas=2, user_config={"count": 123, "b": 2})
     class Counter:
         def __init__(self):
             self.count = 10
@@ -189,26 +179,6 @@ def test_user_config(serve_instance):
     Counter = Counter.options(user_config={"count": 456})
     Counter.deploy()
     wait_for_condition(lambda: check("456", 3))
-
-
-def test_call_method(serve_instance):
-    @serve.deployment(name="method")
-    class CallMethod:
-        def method(self, *args):
-            return "hello"
-
-    CallMethod.deploy()
-
-    # Test HTTP path.
-    resp = requests.get(
-        "http://127.0.0.1:8000/method",
-        timeout=1,
-        headers={"X-SERVE-CALL-METHOD": "method"})
-    assert resp.text == "hello"
-
-    # Test serve handle path.
-    handle = CallMethod.get_handle()
-    assert ray.get(handle.options(method_name="method").remote()) == "hello"
 
 
 def test_reject_duplicate_route(serve_instance):
@@ -334,4 +304,5 @@ def test_shutdown_destructor(serve_instance):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

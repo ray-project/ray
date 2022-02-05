@@ -36,6 +36,12 @@ namespace gcs {
 
 class GcsActor;
 
+using GcsActorSchedulerFailureCallback = std::function<void(
+    std::shared_ptr<GcsActor>, rpc::RequestWorkerLeaseReply::SchedulingFailureType,
+    const std::string &)>;
+using GcsActorSchedulerSuccessCallback =
+    std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>;
+
 class GcsActorSchedulerInterface {
  public:
   /// Schedule the specified actor.
@@ -103,9 +109,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   explicit GcsActorScheduler(
       instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
       const GcsNodeManager &gcs_node_manager,
-      std::function<void(std::shared_ptr<GcsActor>, bool)> schedule_failure_handler,
-      std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
-          schedule_success_handler,
+      GcsActorSchedulerFailureCallback schedule_failure_handler,
+      GcsActorSchedulerSuccessCallback schedule_success_handler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
       rpc::ClientFactoryFn client_factory = nullptr);
   virtual ~GcsActorScheduler() = default;
@@ -261,11 +266,16 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   void HandleWorkerLeaseGrantedReply(std::shared_ptr<GcsActor> actor,
                                      const rpc::RequestWorkerLeaseReply &reply);
 
-  /// Handler to process runtime env setup failure.
+  /// Handler to request worker lease canceled.
   ///
   /// \param actor Contains the resources needed to lease workers from the specified node.
   /// \param node_id The node where the runtime env is failed to setup.
-  void OnRuntimeEnvSetupFailure(std::shared_ptr<GcsActor> actor, const NodeID &node_id);
+  /// \param failure_type The type of the canceling.
+  /// \param scheduling_failure_message The scheduling failure error message.
+  void HandleRequestWorkerLeaseCanceled(
+      std::shared_ptr<GcsActor> actor, const NodeID &node_id,
+      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+      const std::string &scheduling_failure_message);
 
   /// Create the specified actor on the specified worker.
   ///
@@ -315,10 +325,9 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
   /// The handler to handle the scheduling failures.
-  std::function<void(std::shared_ptr<GcsActor>, bool)> schedule_failure_handler_;
+  GcsActorSchedulerFailureCallback schedule_failure_handler_;
   /// The handler to handle the successful scheduling.
-  std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
-      schedule_success_handler_;
+  GcsActorSchedulerSuccessCallback schedule_success_handler_;
   /// The nodes which are releasing unused workers.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_workers_;
   /// The cached raylet clients used to communicate with raylet.

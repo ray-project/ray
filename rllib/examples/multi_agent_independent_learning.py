@@ -1,7 +1,7 @@
 from ray import tune
 from ray.tune.registry import register_env
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
-from pettingzoo.sisl import waterworld_v2
+from pettingzoo.sisl import waterworld_v3
 
 # Based on code from github.com/parametersharingmadrl/parametersharingmadrl
 
@@ -9,7 +9,7 @@ if __name__ == "__main__":
     # RDQN - Rainbow DQN
     # ADQN - Apex DQN
     def env_creator(args):
-        return PettingZooEnv(waterworld_v2.env())
+        return PettingZooEnv(waterworld_v3.env())
 
     env = env_creator({})
     register_env("waterworld", env_creator)
@@ -27,8 +27,7 @@ if __name__ == "__main__":
             # Method specific
             "multiagent": {
                 "policies": set(env.agents),
-                "policy_mapping_fn": (
-                    lambda agent_id, episode, **kwargs: agent_id),
+                "policy_mapping_fn": (lambda agent_id, episode, **kwargs: agent_id),
             },
         },
     )

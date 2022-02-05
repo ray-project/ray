@@ -102,7 +102,13 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         ObjectID id = ObjectID::FromIndex(task_spec.TaskId(), /*index=*/i + 1);
         return_object->set_object_id(id.Binary());
 
-        // The object is nullptr if it already existed in the object store.
+        if (!return_objects[i]) {
+          // This should only happen if the local raylet died. Caller should
+          // retry the task.
+          RAY_LOG(WARNING) << "Failed to create task return object " << id
+                           << " in the object store, exiting.";
+          QuickExit();
+        }
         const auto &result = return_objects[i];
         return_object->set_size(result->GetSize());
         if (result->GetData() != nullptr && result->GetData()->IsPlasmaBuffer()) {
@@ -158,15 +164,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
 
-  auto steal_callback = [this, task_spec,
-                         reply](rpc::SendReplyCallback send_reply_callback) {
-    RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " was stolen from "
-                   << worker_context_.GetWorkerID()
-                   << "'s non_actor_task_queue_! Setting reply->set_task_stolen(true)!";
-    reply->set_task_stolen(true);
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-  };
-
   auto dependencies = task_spec.GetDependencies(false);
 
   if (task_spec.IsActorTask()) {
@@ -195,15 +192,14 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     it->second->Add(request.sequence_number(), request.client_processed_up_to(),
                     std::move(accept_callback), std::move(reject_callback),
                     std::move(send_reply_callback), task_spec.ConcurrencyGroupName(),
-                    task_spec.FunctionDescriptor(), nullptr, task_spec.TaskId(),
-                    dependencies);
+                    task_spec.FunctionDescriptor(), task_spec.TaskId(), dependencies);
   } else {
     // Add the normal task's callbacks to the non-actor scheduling queue.
     normal_scheduling_queue_->Add(
         request.sequence_number(), request.client_processed_up_to(),
         std::move(accept_callback), std::move(reject_callback),
         std::move(send_reply_callback), "", task_spec.FunctionDescriptor(),
-        std::move(steal_callback), task_spec.TaskId(), dependencies);
+        task_spec.TaskId(), dependencies);
   }
 }
 
@@ -215,16 +211,6 @@ void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
 
   // Execute as many tasks as there are in the queue, in sequential order.
   normal_scheduling_queue_->ScheduleRequests();
-}
-
-void CoreWorkerDirectTaskReceiver::HandleStealTasks(
-    const rpc::StealTasksRequest &request, rpc::StealTasksReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  size_t n_tasks_stolen = normal_scheduling_queue_->Steal(reply);
-  RAY_LOG(DEBUG) << "Number of tasks stolen is " << n_tasks_stolen;
-
-  // send reply back
-  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 bool CoreWorkerDirectTaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
