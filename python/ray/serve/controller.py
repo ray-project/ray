@@ -352,7 +352,7 @@ class ServeController:
         group of deployments.
         """
 
-        return [self.deploy(**args for args in deployment_args_list)]
+        return [self.deploy(**args) for args in deployment_args_list]
 
     def delete_deployment(self, name: str):
         self.endpoint_state.delete_endpoint(name)

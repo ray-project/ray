@@ -298,9 +298,7 @@ class Client:
             route_prefix=route_prefix,
         )
 
-        updating = ray.get(
-            self._controller.deploy.remote(**controller_deploy_args)
-        )
+        updating = ray.get(self._controller.deploy.remote(**controller_deploy_args))
 
         tag = self.log_deployment_update_status(name, version, updating)
 
@@ -309,9 +307,7 @@ class Client:
             self.log_deployment_ready(name, version, url, tag)
 
     @_ensure_connected
-    def deploy_group(
-        self, deployments: List[Dict], _blocking: bool = True
-    ) -> List[GoalId]:
+    def deploy_group(self, deployments: List[Dict], _blocking: bool = True):
         deployment_args_list = []
         for deployment in deployments:
             deployment_args_list.append(
@@ -328,14 +324,17 @@ class Client:
                 )
             )
 
-        updating_list = ray.get(self._controller.deploy_group.remote(deployment_args_list))
-        for i, updated in enumerate(updating_list):
+        updating_list = ray.get(
+            self._controller.deploy_group.remote(deployment_args_list)
+        )
+
+        tags = []
+        for i, updating in enumerate(updating_list):
             deployment = deployments[i]
             name, version = deployment["name"], deployment["version"]
 
             tags.append(self.log_deployment_update_status(name, version, updating))
 
-        tags = []
         for i, deployment in enumerate(deployments):
             name = deployment["name"]
             url = deployment["url"]
@@ -1377,7 +1376,7 @@ def list_deployments() -> Dict[str, Deployment]:
     return deployments
 
 
-def deploy_group(deployments: List[Deployment], _blocking: bool = True) -> List[GoalId]:
+def deploy_group(deployments: List[Deployment], _blocking: bool = True):
     """
     EXPERIMENTAL API
 
@@ -1416,4 +1415,4 @@ def deploy_group(deployments: List[Deployment], _blocking: bool = True) -> List[
 
         parameter_group.append(deployment_parameters)
 
-    return _get_global_client().deploy_group(parameter_group, _blocking=_blocking)
+    _get_global_client().deploy_group(parameter_group, _blocking=_blocking)
