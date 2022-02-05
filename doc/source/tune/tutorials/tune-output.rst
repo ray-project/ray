@@ -1,7 +1,7 @@
 A Guide To Logging & Outputs in Tune
 ====================================
 
-Tune by default will log results for Tensorboard, CSV, and JSON formats.
+Tune by default will log results for TensorBoard, CSV, and JSON formats.
 If you need to log something lower level like model weights or gradients, see :ref:`Trainable Logging <trainable-logging>`.
 You can learn more about logging and customizations here: :ref:`loggers-docstring`.
 
@@ -58,7 +58,7 @@ To learn more about Trials, see its detailed API documentation: :ref:`trial-docs
 How to log to TensorBoard?
 --------------------------
 
-Tune automatically outputs Tensorboard files during ``tune.run``.
+Tune automatically outputs TensorBoard files during ``tune.run``.
 To visualize learning in tensorboard, install tensorboardX:
 
 .. code-block:: bash

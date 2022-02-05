@@ -115,7 +115,7 @@ You can run the below in a Jupyter notebook to visualize trial progress.
     :scale: 50%
     :align: center
 
-You can also use :ref:`Tensorboard <tensorboard>` for visualizing results.
+You can also use :ref:`TensorBoard <tensorboard>` for visualizing results.
 
 .. code:: bash
 
