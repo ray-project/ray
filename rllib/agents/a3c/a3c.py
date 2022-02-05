@@ -1,6 +1,7 @@
 import logging
-from typing import Type
+from typing import Any, Dict, Type
 
+from ray.actor import ActorHandle
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -92,31 +93,14 @@ class A3CTrainer(Trainer):
         else:
             return A3CTFPolicy
 
-    @staticmethod
-    @override(Trainer)
-    def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
-    ) -> LocalIterator[dict]:
-        assert (
-            len(kwargs) == 0
-        ), "A3C execution_plan does NOT take any additional parameters"
-
-        # For A3C, compute policy gradients remotely on the rollout workers.
-        grads = AsyncGradients(workers)
-
-        # Apply the gradients as they arrive. We set update_all to False so
-        # that only the worker sending the gradient is updated with new
-        # weights.
-        train_op = grads.for_each(ApplyGradients(workers, update_all=False))
-
-        return StandardMetricsReporting(train_op, workers, config)
-
     def training_iteration(self) -> ResultDict:
-
         # Shortcut.
         local_worker = self.workers.local_worker()
 
-        def sample_and_compute_grads(worker: RolloutWorker):
+        # Define the function executed in parallel by all RolloutWorkers to collect
+        # samples + compute and return gradients.
+
+        def sample_and_compute_grads(worker: RolloutWorker) -> Dict[str, Any]:
             """Call sample() and compute_gradients() remotely on workers."""
             samples = worker.sample()
             grads, infos = worker.compute_gradients(samples)
@@ -129,7 +113,9 @@ class A3CTrainer(Trainer):
 
         # Perform rollouts and gradient calculations asynchronously.
         with self._timers[GRAD_WAIT_TIMER]:
-            results = asynchronous_parallel_requests(
+            # Results are a mapping from ActorHandle (RolloutWorker) to their
+            # returned gradient calculation results.
+            results: Dict[ActorHandle, Dict] = asynchronous_parallel_requests(
                 remote_requests_in_flight=self.remote_requests_in_flight,
                 actors=self.workers.remote_workers(),
                 ray_wait_timeout_s=0.0,
@@ -167,3 +153,22 @@ class A3CTrainer(Trainer):
 
         # TODO: If we have processed more than one gradients
         return result["infos"] if result else {}
+
+    @staticmethod
+    @override(Trainer)
+    def execution_plan(
+        workers: WorkerSet, config: TrainerConfigDict, **kwargs
+    ) -> LocalIterator[dict]:
+        assert (
+            len(kwargs) == 0
+        ), "A3C execution_plan does NOT take any additional parameters"
+
+        # For A3C, compute policy gradients remotely on the rollout workers.
+        grads = AsyncGradients(workers)
+
+        # Apply the gradients as they arrive. We set update_all to False so
+        # that only the worker sending the gradient is updated with new
+        # weights.
+        train_op = grads.for_each(ApplyGradients(workers, update_all=False))
+
+        return StandardMetricsReporting(train_op, workers, config)
