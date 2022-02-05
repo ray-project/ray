@@ -5,7 +5,6 @@ import json
 import logging
 import os
 import time
-import traceback
 from typing import Dict, Set
 from ray._private.utils import import_attr
 
@@ -262,10 +261,10 @@ class RuntimeEnvAgent(
                         serialized_env, request.serialized_allocated_resource_instances
                     )
                     break
-                except Exception:
+                except Exception as e:
                     err_msg = f"Failed to create runtime env {serialized_env}."
                     self._logger.exception(err_msg)
-                    error_message = f"{err_msg}\n{traceback.format_exc()}"
+                    error_message = f"{err_msg}\n{str(e)}"
                     await asyncio.sleep(
                         runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
                     )

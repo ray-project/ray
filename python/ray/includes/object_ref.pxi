@@ -154,6 +154,7 @@ cdef class ClientObjectRef(ObjectRef):
     def __init__(self, id: Union[bytes, concurrent.futures.Future]):
         self.in_core_worker = False
         self._mutex = threading.Lock()
+        self._worker = client.ray.get_context().client_worker
         if isinstance(id, bytes):
             self._set_id(id)
         elif isinstance(id, concurrent.futures.Future):
@@ -162,14 +163,19 @@ cdef class ClientObjectRef(ObjectRef):
             raise TypeError("Unexpected type for id {}".format(id))
 
     def __dealloc__(self):
-        if client is None or client.ray is None:
-            # Similar issue as mentioned in ObjectRef.__dealloc__ above. The
-            # client package or client.ray object might be set
-            # to None when the script exits. Should be safe to skip
-            # call_release in this case, since the client should have already
-            # disconnected at this point.
-            return
-        if client.ray.is_connected():
+        # This function is necessary, since within `__dealloc__`, we are not
+        # supposed to do any python related operations. It's for C related
+        # resource cleanup.
+        # Besides, we can't use `__del__` here, since cython won't call this
+        # unless it's > 3.0.
+        def _connected():
+            try:
+                return client is not None and self._worker is not None \
+                    and self._worker.is_connected()
+            except Exception:
+                return False
+
+        if _connected():
             try:
                 self._wait_for_id()
             # cython would suppress this exception as well, but it tries to
@@ -182,7 +188,7 @@ cdef class ClientObjectRef(ObjectRef):
                     "a method on the actor reference before its destructor "
                     "is run.")
             if not self.data.IsNil():
-                client.ray.call_release(self.id)
+                self._worker.call_release(self.id)
 
     cdef CObjectID native(self):
         self._wait_for_id()
@@ -252,12 +258,12 @@ cdef class ClientObjectRef(ObjectRef):
 
             py_callback(data)
 
-        client.ray._register_callback(self, deserialize_obj)
+        self._worker.register_callback(self, deserialize_obj)
 
     cdef _set_id(self, id):
         check_id(id)
         self.data = CObjectID.FromBinary(<c_string>id)
-        client.ray.call_retain(id)
+        self._worker.call_retain(id)
 
     cdef inline _wait_for_id(self, timeout=None):
         if self._id_future:

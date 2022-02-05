@@ -574,6 +574,13 @@ py_test(
 
 # Generic (all Trainers)
 py_test(
+    name = "test_callbacks",
+    tags = ["team:ml", "trainers_dir"],
+    size = "medium",
+    srcs = ["agents/tests/test_callbacks.py"]
+)
+
+py_test(
     name = "test_trainer",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
