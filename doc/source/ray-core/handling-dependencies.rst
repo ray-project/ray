@@ -65,7 +65,7 @@ The second way to set up dependencies is to install them dynamically while Ray i
 
 A **runtime environment** describes the dependencies your Ray application needs to run, including :ref:`files, packages, environment variables, and more <runtime-environments-api-ref>`.  It is installed dynamically on the cluster at runtime.
 
-Runtime environments can be used in conjunction with the prepared cluster environment from the first approach.
+Runtime environments can be used on top of the prepared cluster environment from the first approach.
 Runtime environments also allow you to set dependencies per-task, per-actor, and per-job on a long-running Ray cluster.
 
 ..
