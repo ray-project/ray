@@ -8,8 +8,6 @@ from ray.data.block import T, U, KeyType, AggType, KeyFn, _validate_key_fn
 if TYPE_CHECKING:
     from ray.data import Dataset
 
-_INIT_SENTINEL = float("inf")
-
 
 @PublicAPI(stability="beta")
 class AggregateFn(object):
@@ -74,34 +72,55 @@ class Count(AggregateFn):
         )
 
 
+def _null_init(init: Callable[[KeyType], AggType], k: KeyType):
+    """
+    Initialize accumulation while handling nulls.
+
+    This adds on a has_data field that the accumulator uses to track whether an
+    aggregation is empty.
+
+    Args:
+        init: The core init function.
+        k: Groupby key.
+
+    Returns:
+        Initialized accumulation that can be fed into the aggregation's
+        accumulate function.
+    """
+    a = init(k)
+    if not isinstance(a, list):
+        a = [a]
+    return a + [0]
+
+
 def _null_accumulate(
     ignore_nulls: bool,
     on_fn: Callable[[T], T],
     accum: Callable[[AggType, T], AggType],
-    first: Callable[[AggType], AggType],
     a: AggType,
     r: T,
 ) -> AggType:
     """
     Accumulate while handling nulls.
 
+    Expects a to be either None or of the form:
+    a = [acc_data_1, ..., acc_data_n, has_data].
+
     This performs an accumulation subject to the following null rules:
-    1. If r is null and ignore_nulls=False, return null.
+    1. If r is null and ignore_nulls=False, return None.
     2. If r is null and ignore_nulls=True, return a.
-    3. If r is non-null and a is null, return null.
-    4. If r is non-null and its the first row, return first(r).
-    5. If r is non-null and a is non-null, return accum(a, r).
+    3. If r is non-null and a is None, return None.
+    5. If r is non-null and a is non-None, return accum(a[:-1], r).
 
     Args:
         ignore_nulls: Whether nulls should be ignored or cause a null result.
         on_fn: Function selecting a subset of the row to apply the aggregation.
         accum: The core accumulator function.
-        first: Function processing the first row in the accumulation.
         a: Accumulated so far.
         r: This row.
 
     Returns:
-        Accumulated result including the provided row
+        Accumulated result including the provided row.
     """
     r = on_fn(r)
     if _is_null(r):
@@ -110,12 +129,16 @@ def _null_accumulate(
         else:
             return None
     else:
-        if a == _INIT_SENTINEL:
-            return first(r)
-        elif a is None:
+        if a is None:
             return None
         else:
-            return accum(a, r)
+            a = a[:-1]
+            if len(a) == 1:
+                a = a[0]
+            res = accum(a, r)
+            if not isinstance(res, list):
+                res = [res]
+            return res + [1]
 
 
 def _null_merge(
@@ -127,15 +150,18 @@ def _null_merge(
     """
     Merge two accumulations while handling nulls.
 
+    Expects a1 and a2 to be either None or of the form:
+    a = [acc_data_1, ..., acc_data_2, has_data].
+
     This merges two accumulations subject to the following null rules:
-    1. If a1 is empty and a2 is empty, return empty sentinel.
-    2. If a1 (a2) is empty and a2 (a1) is null, return null.
-    3. If a1 (a2) is empty and a2 (a1) is non-null, return a2 (a1).
-    4. If a1 (a2) is null, return a2 (a1) if ignoring nulls, null otherwise.
+    1. If a1 is empty and a2 is empty, return empty accumulation.
+    2. If a1 (a2) is empty and a2 (a1) is None, return None.
+    3. If a1 (a2) is empty and a2 (a1) is non-None, return a2 (a1).
+    4. If a1 (a2) is None, return a2 (a1) if ignoring nulls, None otherwise.
     5. If a1 and a2 are both non-null, return merge(a1, a2).
 
     Args:
-        ignore_nulls: Whether nulls should be ignored or cause a null result.
+        ignore_nulls: Whether nulls should be ignored or cause a None result.
         merge: The core merge function.
         a1: One of the intermediate accumulations to merge.
         a2: One of the intermediate accumulations to merge.
@@ -143,28 +169,37 @@ def _null_merge(
     Returns:
         Accumulation of the two provided accumulations.
     """
-    if a1 == _INIT_SENTINEL:
-        # If one operand is the init value, propagate the other.
-        # No matter whether a2 is a real value, the init value, or None,
-        # propagating each of these is correct if a1 is the init value.
-        return a2
     if a1 is None:
-        # If we're ignoring nulls, propagate a2; otherwise, propagate null.
+        # If we're ignoring nulls, propagate a2; otherwise, propagate None.
         return a2 if ignore_nulls else None
-    if a2 == _INIT_SENTINEL:
-        # If one operand is the init value, propagate the other.
-        return a1
+    if a1[-1] == 0:
+        # If a1 is empty, propagate a2.
+        # No matter whether a2 is a real value, the empty, or None,
+        # propagating each of these is correct if a1 is empty.
+        return a2
     if a2 is None:
-        # If we're ignoring nulls, propagate a1; otherwise, propagate null.
+        # If we're ignoring nulls, propagate a1; otherwise, propagate None.
         return a1 if ignore_nulls else None
-    return merge(a1, a2)
+    if a2[-1] == 0:
+        # If a2 is empty, propagate a1.
+        return a1
+    a1 = a1[:-1]
+    if len(a1) == 1:
+        a1 = a1[0]
+    a2 = a2[:-1]
+    if len(a2) == 1:
+        a2 = a2[0]
+    res = merge(a1, a2)
+    if not isinstance(res, list):
+        res = [res]
+    return res + [1]
 
 
 def _null_finalize(finalize: Callable[[AggType], AggType], a: AggType) -> AggType:
     """
     Finalize an accumulation while handling nulls.
 
-    If the accumulation is empty or null, this returns null.
+    If the accumulation is empty or None, this returns None.
 
     Args:
         finalize: The core finalizing function.
@@ -173,7 +208,12 @@ def _null_finalize(finalize: Callable[[AggType], AggType], a: AggType) -> AggTyp
     Returns:
         Finalized accumulation result.
     """
-    return finalize(a) if a != _INIT_SENTINEL and a is not None else None
+    if a is not None and a[-1] == 1:
+        a = a[:-1]
+        if len(a) == 1:
+            a = a[0]
+        return finalize(a)
+    return None
 
 
 @PublicAPI(stability="beta")
@@ -185,13 +225,12 @@ class Sum(_AggregateOnKeyBase):
         on_fn = _to_on_fn(on)
 
         super().__init__(
-            init=lambda k: _INIT_SENTINEL,
+            init=functools.partial(_null_init, lambda k: 0),
             accumulate=functools.partial(
                 _null_accumulate,
                 ignore_nulls,
                 on_fn,
                 lambda a, r: a + r,
-                lambda r: r,
             ),
             merge=functools.partial(_null_merge, ignore_nulls, lambda a1, a2: a1 + a2),
             finalize=functools.partial(_null_finalize, lambda a: a),
@@ -208,10 +247,8 @@ class Min(_AggregateOnKeyBase):
         on_fn = _to_on_fn(on)
 
         super().__init__(
-            init=lambda k: _INIT_SENTINEL,
-            accumulate=functools.partial(
-                _null_accumulate, ignore_nulls, on_fn, min, lambda r: r
-            ),
+            init=functools.partial(_null_init, lambda k: float("inf")),
+            accumulate=functools.partial(_null_accumulate, ignore_nulls, on_fn, min),
             merge=functools.partial(_null_merge, ignore_nulls, min),
             finalize=functools.partial(_null_finalize, lambda a: a),
             name=(f"min({str(on)})"),
@@ -227,10 +264,8 @@ class Max(_AggregateOnKeyBase):
         on_fn = _to_on_fn(on)
 
         super().__init__(
-            init=lambda k: _INIT_SENTINEL,
-            accumulate=functools.partial(
-                _null_accumulate, ignore_nulls, on_fn, max, lambda r: r
-            ),
+            init=functools.partial(_null_init, lambda k: float("-inf")),
+            accumulate=functools.partial(_null_accumulate, ignore_nulls, on_fn, max),
             merge=functools.partial(_null_merge, ignore_nulls, max),
             finalize=functools.partial(_null_finalize, lambda a: a),
             name=(f"max({str(on)})"),
@@ -246,13 +281,12 @@ class Mean(_AggregateOnKeyBase):
         on_fn = _to_on_fn(on)
 
         super().__init__(
-            init=lambda k: _INIT_SENTINEL,
+            init=functools.partial(_null_init, lambda k: [0, 0]),
             accumulate=functools.partial(
                 _null_accumulate,
                 ignore_nulls,
                 on_fn,
                 lambda a, r: [a[0] + r, a[1] + 1],
-                lambda r: [r, 1],
             ),
             merge=functools.partial(
                 _null_merge, ignore_nulls, lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]]
@@ -322,9 +356,9 @@ class Std(_AggregateOnKeyBase):
             return math.sqrt(M2 / (count - ddof))
 
         super().__init__(
-            init=lambda k: _INIT_SENTINEL,
+            init=functools.partial(_null_init, lambda k: [0, 0, 0]),
             accumulate=functools.partial(
-                _null_accumulate, ignore_nulls, on_fn, accumulate, lambda r: [0, r, 1]
+                _null_accumulate, ignore_nulls, on_fn, accumulate
             ),
             merge=functools.partial(_null_merge, ignore_nulls, merge),
             finalize=functools.partial(_null_finalize, finalize),
