@@ -74,6 +74,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                     else get_filter_config(obs_space.shape),
                     "conv_activation": model_config.get("conv_activation"),
                     "post_fcnet_hiddens": [],
+                    "vf_share_layers": True,
                 }
                 # if self.cnn_type == "atari":
                 self.cnns[i] = ModelCatalog.get_model_v2(
