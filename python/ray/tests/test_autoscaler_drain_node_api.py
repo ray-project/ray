@@ -8,7 +8,11 @@ import ray
 from ray.autoscaler._private.fake_multi_node.node_provider import FakeMultiNodeProvider
 from ray.cluster_utils import AutoscalingCluster
 import ray.ray_constants as ray_constants
-from ray._private.test_utils import get_error_message, init_error_pubsub
+from ray._private.test_utils import (
+    get_error_message,
+    init_error_pubsub,
+    wait_for_condition,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +86,12 @@ def test_drain_api(shutdown_only):
         ray.get(f.remote())
 
         # Verify scale-up
-        assert ray.cluster_resources().get("GPU", 0) == 1
+        wait_for_condition(lambda: ray.cluster_resources().get("GPU", 0) == 1)
         # Sleep for double the idle timeout of 6 seconds.
         time.sleep(12)
 
         # Verify scale-down
-        assert ray.cluster_resources().get("GPU", 0) == 0
+        wait_for_condition(lambda: ray.cluster_resources().get("GPU", 0) == 0)
 
         # Check that no errors were raised while draining nodes.
         # (Logic copied from test_failure4::test_gcs_drain.)
