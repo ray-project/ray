@@ -802,7 +802,7 @@ Note that ``local_mode`` has some known issues, so please read :ref:`these tips 
 
 .. _tune-default-search-space:
 
-How Do I Configure Search Spaces?
+How do I configure search spaces?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can specify a grid search or sampling distribution via the dict passed into ``tune.run(config=...)``.
