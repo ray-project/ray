@@ -1208,16 +1208,22 @@ class TestDeployGroup:
 
         goal_ids = deploy_group(deployments, _blocking=blocking)
 
-        if blocking:
-            assert len(goal_ids) == 0
-        else:
-            assert len(goal_ids) == len(deployments)
-            if client:
-                for id in goal_ids:
-                    client._wait_for_goal(id)
+        def check_all_deployed():
+            try:
+                for deployment, response in zip(deployments, responses):
+                    if ray.get(deployment.get_handle().remote()) != response:
+                        return False
+            except Exception:
+                return False
 
-        for deployment, response in zip(deployments, responses):
-            assert ray.get(deployment.get_handle().remote()) == response
+            return True
+
+        if blocking:
+            # If blocking, this should be guaranteed to pass immediately.
+            assert check_all_deployed()
+        else:
+            # If non-blocking, this should pass eventually.
+            wait_for_condition(check_all_deployed)
 
     def test_basic_deploy_group(self, serve_instance):
         """
