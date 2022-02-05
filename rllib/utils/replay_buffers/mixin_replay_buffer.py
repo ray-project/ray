@@ -67,7 +67,7 @@ class MixInMultiAgentReplayBuffer(ReplayBuffer):
             raise ValueError("Replay ratio must be within [0, 1]")
 
         ReplayBuffer.__init__(self, capacity, storage_unit)
-        self.replay_ratio = replay_ratio
+        self.git  = replay_ratio
         self.replay_proportion = None
         if self.replay_ratio != 1.0:
             self.replay_proportion = self.replay_ratio / (

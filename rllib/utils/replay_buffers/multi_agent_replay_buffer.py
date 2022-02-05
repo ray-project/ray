@@ -288,6 +288,11 @@ class MultiAgentReplayBuffer(ReplayBuffer):
     @DeveloperAPI
     @override(ReplayBuffer)
     def get_state(self) -> Dict[str, Any]:
+        """Returns all local state.
+
+        Returns:
+            The serializable local state.
+        """
         state = {"num_added": self.num_added, "replay_buffers": {}}
         for policy_id, replay_buffer in self.replay_buffers.items():
             state["replay_buffers"][policy_id] = replay_buffer.get_state()
@@ -297,6 +302,12 @@ class MultiAgentReplayBuffer(ReplayBuffer):
     @DeveloperAPI
     @override(ReplayBuffer)
     def set_state(self, state: Dict[str, Any]) -> None:
+        """Restores all local state to the provided `state`.
+
+        Args:
+            state: The new state to set this buffer. Can be obtained by
+                calling `self.get_state()`.
+        """
         self.num_added = state["num_added"]
         buffer_states = state["replay_buffers"]
         for policy_id in buffer_states.keys():
