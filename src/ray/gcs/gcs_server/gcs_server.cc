@@ -476,8 +476,8 @@ void GcsServer::InitRuntimeEnvManager() {
         auto protocol_end_pos = plugin_uri.find(protocol_sep);
         if (protocol_end_pos == std::string::npos ||
             plugin_end_pos == std::string::npos) {
-          RAY_LOG(ERROR) << "Plugin URI must be of form "
-                         << "<plugin>|<protocol>://<hash>, got " << plugin_uri;
+          RAY_LOG(WARNING) << "Plugin URI must be of form "
+                           << "<plugin>|<protocol>://<hash>, got " << plugin_uri;
           callback(false);
         } else {
           auto protocol_pos = plugin_end_pos + plugin_sep.size();
