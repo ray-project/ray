@@ -1,5 +1,5 @@
 import random
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import numpy as np
 
 # Import ray before psutil will make sure we use psutil's bundled version
@@ -107,7 +107,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     @ExperimentalAPI
     @DeveloperAPI
     @override(ReplayBuffer)
-    def sample(self, num_items: int, beta: float) -> SampleBatchType:
+    def sample(self, num_items: int, beta: float) -> Optional[SampleBatchType]:
         """Sample `num_items` items from this buffer, including prio. weights.
 
         If less than `num_items` records are in this buffer, some samples in

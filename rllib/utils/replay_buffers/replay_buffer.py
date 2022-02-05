@@ -1,6 +1,6 @@
 import logging
 import platform
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import numpy as np
 import random
 
@@ -108,7 +108,7 @@ class ReplayBuffer:
 
     @ExperimentalAPI
     @DeveloperAPI
-    def sample(self, num_items: int, **kwargs) -> SampleBatchType:
+    def sample(self, num_items: int, **kwargs) -> Optional[SampleBatchType]:
         """Sample a batch of size `num_items` from this buffer.
 
         If less than `num_items` records are in this buffer, some samples in
@@ -120,7 +120,7 @@ class ReplayBuffer:
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            Concatenated batch of items.
+            Concatenated batch of items. None if buffer is empty.
         """
         # If we don't have any samples yet in this buffer, return None.
         if len(self) == 0:

@@ -189,9 +189,21 @@ class MultiAgentReplayBuffer(ReplayBuffer):
     @DeveloperAPI
     @override(ReplayBuffer)
     def sample(self, num_items: int, policy_id: Optional[PolicyID] = None) \
-        -> SampleBatchType:
-        """If this buffer was given a fake batch, return it, otherwise return
-        a MultiAgentBatch with samples.
+            -> Optional[SampleBatchType]:
+        """Sample a batch of size `num_items` from a policy's buffer
+
+        If this buffer was given a fake batch, return it, otherwise
+        return a MultiAgentBatch with samples. If less than `num_items`
+        records are in the policy's buffer, some samples in
+        the results may be repeated to fulfil the batch size (`num_items`)
+        request.
+
+        Args:
+            num_items: Number of items to sample from a policy's buffer.
+            policy_id: ID of the policy that created the experiences we sample
+
+        Returns:
+            Concatenated batch of items. None if buffer is empty.
         """
         if self._fake_batch:
             if not isinstance(self._fake_batch, MultiAgentBatch):
