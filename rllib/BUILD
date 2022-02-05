@@ -1142,7 +1142,7 @@ sh_test(
 sh_test(
     name = "env/tests/test_local_inference_cartpole_w_2_concurrent_episodes",
     tags = ["team:ml", "env"],
-    size = "small",
+    size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["local", "cartpole-dummy-2-episodes"],
     data = glob(["examples/serving/*.py"]),
@@ -1151,7 +1151,7 @@ sh_test(
 sh_test(
     name = "env/tests/test_remote_inference_cartpole_w_2_concurrent_episodes",
     tags = ["team:ml", "env"],
-    size = "small",
+    size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole-dummy-2-episodes"],
     data = glob(["examples/serving/*.py"]),

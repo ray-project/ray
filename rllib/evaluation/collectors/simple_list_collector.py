@@ -933,9 +933,6 @@ class SimpleListCollector(SampleCollector):
             ].add_postprocessed_batch_for_training(post_batch, policy.view_requirements)
 
             if is_done:
-                #if agent_key in self.forward_pass_agent_keys[pid]:
-                #    self.forward_pass_agent_keys[pid].remove(agent_key)
-                #    self.forward_pass_size[pid] = len(self.forward_pass_agent_keys[pid])
                 del self.agent_key_to_policy_id[agent_key]
                 del self.agent_collectors[agent_key]
 
