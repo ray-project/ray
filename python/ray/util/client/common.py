@@ -84,7 +84,7 @@ GRPC_OPTIONS = [
 
 CLIENT_SERVER_MAX_THREADS = float(os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
 
-# Aliases for compatibility.
+
 class ClientObjectRef(raylet.ObjectRef):
     def __init__(self, id: Union[bytes, Future]):
         self.in_core_worker = False
