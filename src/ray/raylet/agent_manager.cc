@@ -216,27 +216,28 @@ void AgentManager::DeleteURIs(const std::vector<std::string> &uris,
   for (const auto &uri : uris) {
     request.add_uris(uri);
   }
-  runtime_env_agent_client_->DeleteURIs(request, [this, uris, callback](
-                                                     Status status,
-                                                     const rpc::DeleteURIsReply &reply) {
-    if (status.ok()) {
-      if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
-        callback(true);
-      } else {
-        // TODO(sang): Find a better way to delivering error messages in this case.
-        RAY_LOG(ERROR) << "Failed to delete URIs"
-                       << ", error message: " << reply.error_message();
-        callback(false);
-      }
+  runtime_env_agent_client_->DeleteURIs(
+      request, [this, uris, callback](Status status, const rpc::DeleteURIsReply &reply) {
+        if (status.ok()) {
+          if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
+            callback(true);
+          } else {
+            // TODO(sang): Find a better way to delivering error messages in this case.
+            RAY_LOG(ERROR) << "Failed to delete URIs"
+                           << ", error message: " << reply.error_message();
+            callback(false);
+          }
 
-    } else {
-      RAY_LOG(WARNING) << "Failed to delete URIs"
-                       << ", status = " << status
-                       << ", maybe there are some network problems, will retry it later.";
-      delay_executor_([this, uris, callback] { DeleteURIs(uris, callback); },
-                      RayConfig::instance().agent_manager_retry_interval_ms());
-    }
-  });
+        } else {
+          RAY_LOG(WARNING)
+              << "Failed to delete URIs"
+              << ", status = " << status
+              << ", it is most likely the ray agent on this node is dead. Please "
+              << "check the log `dashboard_agent.log` on this node.";
+          delay_executor_([this, uris, callback] { DeleteURIs(uris, callback); },
+                          RayConfig::instance().agent_manager_retry_interval_ms());
+        }
+      });
 }
 
 }  // namespace raylet
