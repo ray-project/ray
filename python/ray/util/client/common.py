@@ -86,7 +86,6 @@ CLIENT_SERVER_MAX_THREADS = float(os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100
 
 # Aliases for compatibility.
 class ClientObjectRef(raylet.ObjectRef):
-
     def __init__(self, id: Union[bytes, Future]):
         self.in_core_worker = False
         self._mutex = threading.Lock()
@@ -109,7 +108,8 @@ class ClientObjectRef(raylet.ObjectRef):
                     "Exception in ObjectRef is ignored in destructor. "
                     "To receive this exception in application code, call "
                     "a method on the actor reference before its destructor "
-                    "is run.")
+                    "is run."
+                )
 
     def binary(self):
         self._wait_for_id()
@@ -160,9 +160,11 @@ class ClientObjectRef(raylet.ObjectRef):
         can be an exception object in case of task error.
         """
 
-        def deserialize_obj(resp: Union[ray_client_pb2.DataResponse,
-                                        Exception]) -> None:
+        def deserialize_obj(
+            resp: Union[ray_client_pb2.DataResponse, Exception]
+        ) -> None:
             from ray.util.client.client_pickler import loads_from_server
+
             if isinstance(resp, Exception):
                 data = resp
             else:
@@ -190,7 +192,6 @@ class ClientObjectRef(raylet.ObjectRef):
 
 
 class ClientActorRef(raylet.ActorID):
-
     def __init__(self, id: Union[bytes, Future]):
         self._mutex = threading.Lock()
         self._worker = ray.get_context().client_worker
@@ -212,7 +213,8 @@ class ClientActorRef(raylet.ActorID):
                     "Exception from actor creation is ignored in destructor. "
                     "To receive this exception in application code, call "
                     "a method on the actor reference before its destructor "
-                    "is run.")
+                    "is run."
+                )
 
     def binary(self):
         self._wait_for_id()
