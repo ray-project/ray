@@ -141,6 +141,9 @@ class MockRayletClient : public WorkerLeaseInterface {
       num_workers_disconnected++;
     } else {
       num_workers_returned++;
+      if (worker_exiting) {
+        num_workers_returned_exiting++;
+      }
     }
     return Status::OK();
   }
@@ -258,6 +261,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   int num_is_selected_based_on_locality_leases_requested = 0;
   int num_workers_requested = 0;
   int num_workers_returned = 0;
+  int num_workers_returned_exiting = 0;
   int num_workers_disconnected = 0;
   int num_leases_canceled = 0;
   int reported_backlog_size = 0;
@@ -1180,7 +1184,8 @@ TEST(DirectTaskTransportTest, TestWorkerNotReturnedOnExit) {
 
   // Task 1 finishes with exit status; the worker is not returned.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), /*exit=*/true));
-  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_returned_exiting, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 1);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
@@ -1617,7 +1622,8 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("workerdying"), true));
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
-  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(raylet_client->num_workers_returned_exiting, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
 
@@ -1633,7 +1639,8 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
             task.TaskId().Binary());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
-  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(raylet_client->num_workers_returned_exiting, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
   ASSERT_EQ(task_finisher->num_tasks_complete, 1);
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
 
