@@ -16,9 +16,12 @@ from ray.rllib.utils.metrics import (
     APPLY_GRADS_TIMER,
     GRAD_WAIT_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
 from ray.util.iter import LocalIterator
 
@@ -98,7 +101,7 @@ class A3CTrainer(Trainer):
         local_worker = self.workers.local_worker()
 
         # Define the function executed in parallel by all RolloutWorkers to collect
-        # samples + compute and return gradients.
+        # samples + compute and return gradients (and other information).
 
         def sample_and_compute_grads(worker: RolloutWorker) -> Dict[str, Any]:
             """Call sample() and compute_gradients() remotely on workers."""
@@ -115,7 +118,7 @@ class A3CTrainer(Trainer):
         with self._timers[GRAD_WAIT_TIMER]:
             # Results are a mapping from ActorHandle (RolloutWorker) to their
             # returned gradient calculation results.
-            results: Dict[ActorHandle, Dict] = asynchronous_parallel_requests(
+            async_results: Dict[ActorHandle, Dict] = asynchronous_parallel_requests(
                 remote_requests_in_flight=self.remote_requests_in_flight,
                 actors=self.workers.remote_workers(),
                 ray_wait_timeout_s=0.0,
@@ -123,20 +126,24 @@ class A3CTrainer(Trainer):
                 remote_fn=sample_and_compute_grads,
             )
 
-        global_vars = None
         # Loop through all fetched worker-computed gradients (if any)
         # and apply them - one by one - to the local worker's model.
-
-        result = None  # TODO
-        for worker, result in results.items():
+        # After each apply step (one step per worker that returned some gradients),
+        # update that particular worker's weights.
+        global_vars = None
+        learner_info_builder = LearnerInfoBuilder(num_devices=1)
+        for worker, result in async_results.items():
             # Apply gradients to local worker.
             with self._timers[APPLY_GRADS_TIMER]:
                 local_worker.apply_gradients(result["grads"])
             self._timers[APPLY_GRADS_TIMER].push_units_processed(result["agent_steps"])
 
-            # Update step counters.
+            # Update all step counters.
             self._counters[NUM_AGENT_STEPS_SAMPLED] += result["agent_steps"]
             self._counters[NUM_ENV_STEPS_SAMPLED] += result["env_steps"]
+            self._counters[NUM_AGENT_STEPS_TRAINED] += result["agent_steps"]
+            self._counters[NUM_ENV_STEPS_TRAINED] += result["env_steps"]
+
             # Create current global vars.
             global_vars = {
                 "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
@@ -147,12 +154,13 @@ class A3CTrainer(Trainer):
                 weights = local_worker.get_weights(local_worker.get_policies_to_train())
                 worker.set_weights.remote(weights, global_vars)
 
+            learner_info_builder.add_learn_on_batch_results(result["infos"])
+
         # Update global vars of the local worker.
         if global_vars:
             local_worker.set_global_vars(global_vars)
 
-        # TODO: If we have processed more than one gradients
-        return result["infos"] if result else {}
+        return learner_info_builder.finalize()
 
     @staticmethod
     @override(Trainer)
