@@ -32,6 +32,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list, NullContextManager
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules import PiecewiseSchedule
@@ -465,7 +466,12 @@ class TorchPolicy(Policy):
 
         if self.model:
             fetches["model"] = self.model.metrics()
-        fetches.update({"custom_metrics": learn_stats})
+        fetches.update(
+            {
+                "custom_metrics": learn_stats,
+                NUM_AGENT_STEPS_TRAINED: postprocessed_batch.count,
+            }
+        )
 
         return fetches
 
