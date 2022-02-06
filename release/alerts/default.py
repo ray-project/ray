@@ -13,6 +13,11 @@ def handle_result(
     artifacts: Dict,
     last_logs: str,
     team: str,
+    commit_url: str,
+    session_url: str,
+    runtime: float,
+    stable: bool,
+    return_code: int,
 ) -> Optional[str]:
 
     if not status == "finished":
