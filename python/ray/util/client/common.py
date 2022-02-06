@@ -6,7 +6,7 @@ from ray.util.client.options import validate_options
 from ray._private.signature import get_signature, extract_signature
 from ray._private.utils import check_oversized_function
 
-import concurrent
+from concurrent.futures import Future
 from dataclasses import dataclass
 import grpc
 import os
@@ -87,14 +87,14 @@ CLIENT_SERVER_MAX_THREADS = float(os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100
 # Aliases for compatibility.
 class ClientObjectRef(raylet.ObjectRef):
 
-    def __init__(self, id: Union[bytes, concurrent.futures.Future]):
+    def __init__(self, id: Union[bytes, Future]):
         self.in_core_worker = False
         self._mutex = threading.Lock()
         self._worker = ray.get_context().client_worker
         self._id_future = None
         if isinstance(id, bytes):
             self._set_id(id)
-        elif isinstance(id, concurrent.futures.Future):
+        elif isinstance(id, Future):
             self._id_future = id
         else:
             raise TypeError("Unexpected type for id {}".format(id))
@@ -102,18 +102,14 @@ class ClientObjectRef(raylet.ObjectRef):
     def __del__(self):
         if self._worker is not None and self._worker.is_connected():
             try:
-                self._wait_for_id()
-            # cython would suppress this exception as well, but it tries to
-            # print out the exception which may crash. Log a simpler message
-            # instead.
+                if not self.is_nil():
+                    self._worker.call_release(self.id)
             except Exception:
                 logger.info(
                     "Exception in ObjectRef is ignored in destructor. "
                     "To receive this exception in application code, call "
                     "a method on the actor reference before its destructor "
                     "is run.")
-            if not self.is_nil():
-                self._worker.call_release(self.id)
 
     def binary(self):
         self._wait_for_id()
@@ -139,8 +135,8 @@ class ClientObjectRef(raylet.ObjectRef):
     def id(self):
         return self.binary()
 
-    def future(self) -> concurrent.futures.Future:
-        fut = concurrent.futures.Future()
+    def future(self) -> Future:
+        fut = Future()
 
         def set_future(data: Any) -> None:
             """Schedules a callback to set the exception or result
@@ -163,10 +159,10 @@ class ClientObjectRef(raylet.ObjectRef):
         The callback should take the result as the only argument. The result
         can be an exception object in case of task error.
         """
-        from ray.util.client.client_pickler import loads_from_server
 
         def deserialize_obj(resp: Union[ray_client_pb2.DataResponse,
                                         Exception]) -> None:
+            from ray.util.client.client_pickler import loads_from_server
             if isinstance(resp, Exception):
                 data = resp
             else:
@@ -192,7 +188,62 @@ class ClientObjectRef(raylet.ObjectRef):
                     self._set_id(self._id_future.result(timeout=timeout))
                     self._id_future = None
 
-ClientActorRef = raylet.ClientActorRef
+
+class ClientActorRef(raylet.ActorID):
+
+    def __init__(self, id: Union[bytes, Future]):
+        self._mutex = threading.Lock()
+        self._worker = ray.get_context().client_worker
+        if isinstance(id, bytes):
+            self._set_id(id)
+            self._id_future = None
+        elif isinstance(id, Future):
+            self._id_future = id
+        else:
+            raise TypeError("Unexpected type for id {}".format(id))
+
+    def __del__(self):
+        if self._worker is not None and self._worker.is_connected():
+            try:
+                if not self.is_nil():
+                    self._worker.call_release(self.id)
+            except Exception:
+                logger.info(
+                    "Exception from actor creation is ignored in destructor. "
+                    "To receive this exception in application code, call "
+                    "a method on the actor reference before its destructor "
+                    "is run.")
+
+    def binary(self):
+        self._wait_for_id()
+        return super().binary()
+
+    def hex(self):
+        self._wait_for_id()
+        return super().hex()
+
+    def is_nil(self):
+        self._wait_for_id()
+        return super().is_nil()
+
+    def __hash__(self):
+        self._wait_for_id()
+        return hash(self.id)
+
+    @property
+    def id(self):
+        return self.binary()
+
+    def _set_id(self, id):
+        super()._set_id(id)
+        self._worker.call_retain(id)
+
+    def _wait_for_id(self, timeout=None):
+        if self._id_future:
+            with self._mutex:
+                if self._id_future:
+                    self._set_id(self._id_future.result(timeout=timeout))
+                    self._id_future = None
 
 
 class ClientStub:
@@ -556,7 +607,7 @@ def set_task_options(
 
 
 def return_refs(
-    futures: List[concurrent.futures.Future],
+    futures: List[Future],
 ) -> Union[None, ClientObjectRef, List[ClientObjectRef]]:
     if not futures:
         return None
