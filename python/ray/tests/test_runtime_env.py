@@ -149,7 +149,9 @@ def test_invalid_conda_env(shutdown_only):
     ray.get(f.remote())
 
     a = A.options(runtime_env=bad_env).remote()
-    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+    with pytest.raises(
+        ray.exceptions.RuntimeEnvSetupError, match="ResolvePackageNotFound"
+    ):
         ray.get(a.f.remote())
 
     # The second time this runs it should be faster as the error is cached.
