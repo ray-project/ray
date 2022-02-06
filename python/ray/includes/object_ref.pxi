@@ -37,6 +37,9 @@ def _set_future_helper(
 
 cdef class ObjectRef(BaseID):
 
+    def __cinit__(self):
+        self.in_core_worker = False
+
     def __init__(
             self, id, owner_addr="", call_site_data="",
             skip_adding_local_ref=False):

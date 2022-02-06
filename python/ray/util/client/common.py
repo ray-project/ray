@@ -87,7 +87,6 @@ CLIENT_SERVER_MAX_THREADS = float(os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100
 
 class ClientObjectRef(raylet.ObjectRef):
     def __init__(self, id: Union[bytes, Future]):
-        self.in_core_worker = False
         self._mutex = threading.Lock()
         self._worker = ray.get_context().client_worker
         self._id_future = None
