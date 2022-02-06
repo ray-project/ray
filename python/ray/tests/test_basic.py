@@ -72,7 +72,7 @@ def test_max_calls_releases_resources(shutdown_only):
 
     for i in range(10):
         print(i)
-        ray.get(f.remote())
+        ray.get(f.remote())  # This will hang if GPU resources aren't released.
 
 
 # https://github.com/ray-project/ray/issues/7263
