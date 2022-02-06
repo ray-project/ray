@@ -1,12 +1,8 @@
-import logging
 from typing import Tuple
 
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.typing import MultiAgentPolicyConfigDict, PartialTrainerConfigDict
-
-logger = logging.getLogger(__name__)
 
 
 def check_multi_agent(
@@ -51,10 +47,10 @@ def check_multi_agent(
     # with DEFAULT_POLICY_ID as only policy.
     if not policies:
         policies = {DEFAULT_POLICY_ID}
-    # Policies given as set/list/tuple (of PolicyIDs) -> Setup each policy
-    # automatically via empty PolicySpec (will make RLlib infer obs- and action spaces
+    # Policies given as set (of PolicyIDs) -> Setup each policy automatically
+    # via empty PolicySpec (will make RLlib infer obs- and action spaces
     # as well as the Policy's class).
-    if isinstance(policies, (set, list, tuple)):
+    if isinstance(policies, set):
         policies = multiagent_config["policies"] = {
             pid: PolicySpec() for pid in policies
         }
@@ -91,7 +87,7 @@ def check_multi_agent(
         "agent_steps",
     ]:
         raise ValueError(
-            "config.multiagent.count_steps_by must be one of "
+            "config.multiagent.count_steps_by must be "
             "[env_steps|agent_steps], not "
             f"{multiagent_config['count_steps_by']}!"
         )
@@ -100,30 +96,10 @@ def check_multi_agent(
         "lockstep",
     ]:
         raise ValueError(
-            "`config.multiagent.replay_mode` must be "
+            "config.multiagent.replay_mode must be "
             "[independent|lockstep], not "
             f"{multiagent_config['replay_mode']}!"
         )
-    # Attempt to create a `policy_mapping_fn` from config dict. Helpful
-    # is users would like to specify custom callable classes in yaml files.
-    if isinstance(multiagent_config.get("policy_mapping_fn"), dict):
-        multiagent_config["policy_mapping_fn"] = from_config(
-            multiagent_config["policy_mapping_fn"]
-        )
-    # Check `policies_to_train` for invalid entries.
-    if isinstance(multiagent_config["policies_to_train"], (list, set, tuple)):
-        if len(multiagent_config["policies_to_train"]) == 0:
-            logger.warning(
-                "`config.multiagent.policies_to_train` is empty! "
-                "Make sure - if you would like to learn at least one policy - "
-                "to add its ID to that list."
-            )
-        for pid in multiagent_config["policies_to_train"]:
-            if pid not in policies:
-                raise ValueError(
-                    "`config.multiagent.policies_to_train` contains policy "
-                    f"ID ({pid}) that was not defined in `config.multiagent.policies!"
-                )
 
     # Is this a multi-agent setup? True, iff DEFAULT_POLICY_ID is only
     # PolicyID found in policies dict.

@@ -89,12 +89,7 @@ ObjectRef<boost::callable_traits::return_type_t<F>> TaskCaller<F>::Remote(
 
   auto returned_object_id = runtime_->Call(remote_function_holder_, args_, task_options_);
   using ReturnType = boost::callable_traits::return_type_t<F>;
-  auto return_ref = ObjectRef<ReturnType>(returned_object_id);
-  // The core worker will add an initial ref to each return ID to keep it in
-  // scope. Now that we've created the frontend ObjectRef, remove this initial
-  // ref.
-  runtime_->RemoveLocalReference(returned_object_id);
-  return return_ref;
+  return ObjectRef<ReturnType>(returned_object_id);
 }
 }  // namespace internal
 }  // namespace ray

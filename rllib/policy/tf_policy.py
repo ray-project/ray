@@ -19,7 +19,6 @@ from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
-from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
@@ -446,12 +445,7 @@ class TFPolicy(Policy):
 
         fetches = self._build_learn_on_batch(builder, postprocessed_batch)
         stats = builder.get(fetches)
-        stats.update(
-            {
-                "custom_metrics": learn_stats,
-                NUM_AGENT_STEPS_TRAINED: postprocessed_batch.count,
-            }
-        )
+        stats.update({"custom_metrics": learn_stats})
         return stats
 
     @override(Policy)
