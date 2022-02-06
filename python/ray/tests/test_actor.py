@@ -828,7 +828,10 @@ def test_multiple_actors(ray_start_regular_shared):
         assert v == list(range(i + 1, num_increases + i + 1))
 
     # Reset the actor values.
-    [actor.reset.remote() for actor in actors]
+    # THere is a deadlock because we are running py code in dealloc
+    # Please refer to this for more details
+    #     https://github.com/ray-project/ray/issues/22082
+    holder = [actor.reset.remote() for actor in actors]  # noqa
 
     # Interweave the method calls on the different actors.
     results = []

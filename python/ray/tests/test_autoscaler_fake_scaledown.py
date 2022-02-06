@@ -28,7 +28,7 @@ def test_scaledown_shared_objects(shutdown_only):
     )
 
     try:
-        cluster.start(_system_config={"scheduler_report_pinned_bytes_only": True})
+        cluster.start()
         ray.init("auto")
 
         # Triggers the addition of a GPU node.
