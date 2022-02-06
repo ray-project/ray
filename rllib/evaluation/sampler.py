@@ -922,7 +922,7 @@ def _process_observations(
                     episode.length - 1,
                     filtered_obs,
                 )
-            elif agent_infos is None or agent_infos.get("training_enabled", True):
+            else:
                 # Add actions, rewards, next-obs to collectors.
                 values_dict = {
                     SampleBatch.T: episode.length - 1,
