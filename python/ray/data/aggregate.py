@@ -2,6 +2,13 @@ import functools
 import math
 from typing import Callable, Optional, List, TYPE_CHECKING, Any
 
+try:
+    import pandas as pd
+except ModuleNotFoundError:
+    pd = None
+
+import numpy as np
+
 from ray.util.annotations import PublicAPI
 from ray.data.block import T, U, KeyType, AggType, KeyFn, _validate_key_fn
 
@@ -376,14 +383,9 @@ def _to_on_fn(on: Optional[KeyFn]):
 
 
 def _is_null(r: Any):
-    try:
-        import pandas as pd
-
+    if pd is not None:
         return pd.isnull(r)
-    except ModuleNotFoundError:
-        import numpy as np
-
-        try:
-            return np.isnan(r)
-        except TypeError:
-            return r is None
+    try:
+        return np.isnan(r)
+    except TypeError:
+        return r is None
