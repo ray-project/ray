@@ -7,10 +7,16 @@ HEALTHCHECK_DECORATOR_ATTRIBUTE = "__ray_serve_healthcheck_method"
 
 @PublicAPI(stability="alpha")
 def healthcheck(func: Callable) -> Callable:
-    """Decorator for users to mark the method to use for health checking.
+    """Decorator to define an application-level health check for a deployment.
 
-    This simply sets a well-known attribute on the method object, which we
-    later search for when instantiating the replica.
+    This should be used on a method of a Deployment class. The method should
+    run to completion and return `None` if the replica is healthy, and raise
+    an exception if the replica is unhealthy. Only one method per class may
+    be decorated with this method. If none are defined, the only health check
+    will be verifying that the replica is alive.
+
+    The health check period and timeout can be configured in the deployment
+    options.
     """
     setattr(func, HEALTHCHECK_DECORATOR_ATTRIBUTE, True)
     return func
