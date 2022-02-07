@@ -57,7 +57,7 @@ shared directory) for further processing.
 Using cloud storage
 ~~~~~~~~~~~~~~~~~~~
 If all nodes have access to cloud storage, e.g. S3 or GS, the remote trials can automatically synchronize their
-checkpoints. For the filesyste, we end up with a similar situation as in the first case,
+checkpoints. For the filesystem, we end up with a similar situation as in the first case,
 only that the consolidated directory including all logs and checkpoints lives on cloud storage.
 
 This approach is especially useful when training a large number of distributed trials,
