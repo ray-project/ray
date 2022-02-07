@@ -664,12 +664,15 @@ if __name__ == "__main__":
             self.model = load_model_func().to(self.device)
 
         def __call__(self, batch) -> "pd.DataFrame":
-            tensor = torch.FloatTensor(batch.to_pandas().values).to(self.device)
-            return pd.DataFrame(self.model(tensor).cpu().detach().numpy())
+            tensor = torch.FloatTensor(batch.values).to(self.device)
+            return pd.DataFrame(
+                self.model(tensor).cpu().detach().numpy(), columns=["label"]
+            )
 
     inference_dataset = preprocessor.preprocess_inference_data(
         read_dataset(inference_path)
     )
+
     inference(
         inference_dataset,
         BatchInferModel(load_model_func),
