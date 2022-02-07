@@ -57,7 +57,7 @@ shared directory) for further processing.
 Using cloud storage
 ~~~~~~~~~~~~~~~~~~~
 If all nodes have access to cloud storage, e.g. S3 or GS, the remote trials can automatically synchronize their
-checkpoints. For the filesyste, we end up with a similar situation as in the first case,
+checkpoints. For the filesystem, we end up with a similar situation as in the first case,
 only that the consolidated directory including all logs and checkpoints lives on cloud storage.
 
 This approach is especially useful when training a large number of distributed trials,
@@ -158,7 +158,7 @@ When syncing results back to the driver, the source would be a path similar to
 
 Note that we adjusted the sync period in the example above. Setting this to a lower number will pull
 checkpoints from remote nodes more often. This will lead to more robust trial recovery,
-but it will also lead to more synchronization overhead (as SHH is usually slow).
+but it will also lead to more synchronization overhead (as SSH is usually slow).
 
 As in the first case, the driver (on the head node) will have access to all checkpoints locally
 for further processing.
