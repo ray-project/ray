@@ -1,7 +1,26 @@
+---
+jupytext:
+    text_representation:
+        extension: .md
+        format_name: myst
+kernelspec:
+    display_name: Python 3
+    language: python
+    name: python3
+---
+
+```{code-cell}
+:tags: [remove-cell]
+%matplotlib inline
+```
+
+```{code-cell}
+:tags: [remove-cell]
 # flake8: noqa
-"""
-Model selection and serving with Ray Tune and Ray Serve
-=======================================================
+```
+
+# Model selection and serving with Ray Tune and Ray Serve
+
 This tutorial will show you an end-to-end example how to train a
 model using Ray Tune on incrementally arriving data and deploy
 the model using Ray Serve.
@@ -37,8 +56,8 @@ By the end of this tutorial you will be able to
    newly arriving data
 3. Automatically create and serve data deployments with Ray Serve
 
-Roadmap and desired functionality
----------------------------------
+## Roadmap and desired functionality
+
 The general idea of this example is that we simulate newly arriving
 data each day. So at day 0 we might have some initial data available
 already, but at each day, new data arrives.
@@ -48,43 +67,45 @@ from an existing model. Maybe you would like to train and select models
 from scratch each week with all data available until then, e.g. each
 Sunday, like this:
 
-.. code-block:: bash
-
-    # Train with all data available at day 0
-    python tune-serve-integration-mnist.py --from_scratch --day 0
+```{code-block} bash
+# Train with all data available at day 0
+python tune-serve-integration-mnist.py --from_scratch --day 0
+```
 
 During the other days you might want to improve your model, but
 not train everything from scratch, saving some cluster resources.
 
-.. code-block:: bash
-
-    # Train with data arriving between day 0 and day 1
-    python tune-serve-integration-mnist.py --from_existing --day 1
-    # Train with incremental data on the other days, too
-    python tune-serve-integration-mnist.py --from_existing --day 2
-    python tune-serve-integration-mnist.py --from_existing --day 3
-    python tune-serve-integration-mnist.py --from_existing --day 4
-    python tune-serve-integration-mnist.py --from_existing --day 5
-    python tune-serve-integration-mnist.py --from_existing --day 6
-    # Retrain from scratch every 7th day:
-    python tune-serve-integration-mnist.py --from_scratch --day 7
+```{code-block} bash
+# Train with data arriving between day 0 and day 1
+python tune-serve-integration-mnist.py --from_existing --day 1
+# Train with incremental data on the other days, too
+python tune-serve-integration-mnist.py --from_existing --day 2
+python tune-serve-integration-mnist.py --from_existing --day 3
+python tune-serve-integration-mnist.py --from_existing --day 4
+python tune-serve-integration-mnist.py --from_existing --day 5
+python tune-serve-integration-mnist.py --from_existing --day 6
+# Retrain from scratch every 7th day:
+python tune-serve-integration-mnist.py --from_scratch --day 7
+```
 
 This example will support both modes. After each model selection run,
 we will tell Ray Serve to serve an updated model. We also include a
 small utility to query our served model to see if it works as it should.
 
-.. code-block:: bash
+```{code-block} bash
+$ python tune-serve-integration-mnist.py --query 6
+Querying model with example #6. Label = 1, Response = 1, Correct = True
+```
 
-    $ python tune-serve-integration-mnist.py --query 6
-    Querying model with example #6. Label = 1, Response = 1, Correct = True
 
-Imports
--------
+## Imports
+
 Let's start with our dependencies. Most of these should be familiar
 if you worked with PyTorch before. The most notable import for Ray
 is the ``from ray import tune, serve`` import statement - which
 includes almost all the things we need from the Ray side.
-"""
+
+```{code-cell}
 import argparse
 import json
 import os
@@ -106,18 +127,19 @@ from ray.tune.schedulers import ASHAScheduler
 from torch.utils.data import random_split, Subset
 from torchvision.datasets import MNIST
 from torchvision.transforms import transforms
+```
 
+## Data interface
 
-#######################################################################
-# Data interface
-# --------------
-# Let's start with a simulated data interface. This class acts as the
-# interface between your training code and your database. We simulate
-# that new data arrives each day with a ``day`` parameter. So, calling
-# ``get_data(day=3)`` would return all data we received until day 3.
-# We also implement an incremental data method, so calling
-# ``get_incremental_data(day=3)`` would return all data collected
-# between day 2 and day 3.
+Let's start with a simulated data interface. This class acts as the
+interface between your training code and your database. We simulate
+that new data arrives each day with a ``day`` parameter. So, calling
+``get_data(day=3)`` would return all data we received until day 3.
+We also implement an incremental data method, so calling
+``get_incremental_data(day=3)`` would return all data collected
+between day 2 and day 3.
+
+```{code-cell}
 class MNISTDataInterface(object):
     """Data interface. Simulates that new data arrives every day."""
 
@@ -157,18 +179,19 @@ class MNISTDataInterface(object):
         train_n = int(0.8 * (end - start))  # 80% train data, 20% validation data
 
         return random_split(available_data, [train_n, end - start - train_n])
+```
 
+## PyTorch neural network classifier
 
-#######################################################################
-# PyTorch neural network classifier
-# ---------------------------------
-# Next, we will introduce our PyTorch neural network model and the
-# train and test function. These are adapted directly from
-# our :doc:`PyTorch MNIST example </tune/examples/mnist_pytorch>`.
-# We only introduced an additional neural network layer with a configurable
-# layer size. This is not strictly needed for learning good performance on
-# MNIST, but it is useful to demonstrate scenarios where your hyperparameter
-# search space affects the model complexity.
+Next, we will introduce our PyTorch neural network model and the
+train and test function. These are adapted directly from
+our {doc}`PyTorch MNIST example </tune/examples/mnist_pytorch>`.
+We only introduced an additional neural network layer with a configurable
+layer size. This is not strictly needed for learning good performance on
+MNIST, but it is useful to demonstrate scenarios where your hyperparameter
+search space affects the model complexity.
+
+```{code-cell}
 class ConvNet(nn.Module):
     def __init__(self, layer_size=192):
         super(ConvNet, self).__init__()
@@ -211,17 +234,18 @@ def test(model, data_loader, device=None):
             correct += (predicted == target).sum().item()
 
     return correct / total
+```
 
+## Tune trainable for model selection
 
-#######################################################################
-# Tune trainable for model selection
-# ----------------------------------
-# We'll now define our Tune trainable function. This function takes
-# a ``config`` parameter containing the hyperparameters we should train
-# the model on, and will start a full training run. This means it
-# will take care of creating the model and optimizer and repeatedly
-# call the ``train`` function to train the model. Also, this function
-# will report the training progress back to Tune.
+We'll now define our Tune trainable function. This function takes
+a ``config`` parameter containing the hyperparameters we should train
+the model on, and will start a full training run. This means it
+will take care of creating the model and optimizer and repeatedly
+call the ``train`` function to train the model. Also, this function
+will report the training progress back to Tune.
+
+```{code-cell}
 def train_mnist(
     config,
     start_model=None,
@@ -277,20 +301,21 @@ def train_mnist(
             tune.report(mean_accuracy=acc, done=True)
         else:
             tune.report(mean_accuracy=acc)
+```
 
+## Configuring the search space and starting Ray Tune
 
-#######################################################################
-# Configuring the search space and starting Ray Tune
-# --------------------------------------------------
-# We would like to support two modes of training the model: Training
-# a model from scratch, and continuing to train a model from an
-# existing one.
-#
-# This is our function to train a number of models with different
-# hyperparameters from scratch, i.e. from all data that is available
-# until the given day. Our search space can thus also contain parameters
-# that affect the model complexity (such as the layer size), since it
-# does not have to be compatible to an existing model.
+We would like to support two modes of training the model: Training
+a model from scratch, and continuing to train a model from an
+existing one.
+
+This is our function to train a number of models with different
+hyperparameters from scratch, i.e. from all data that is available
+until the given day. Our search space can thus also contain parameters
+that affect the model complexity (such as the layer size), since it
+does not have to be compatible to an existing model.
+
+```{code-cell}
 def tune_from_scratch(num_samples=10, num_epochs=10, gpus_per_trial=0.0, day=0):
     data_interface = MNISTDataInterface("~/data", max_days=10)
     num_examples = data_interface._get_day_slice(day)
@@ -339,17 +364,18 @@ def tune_from_scratch(num_samples=10, num_epochs=10, gpus_per_trial=0.0, day=0):
     best_checkpoint = best_trial.checkpoint.value
 
     return best_accuracy, best_trial_config, best_checkpoint, num_examples
+```
 
+To continue training from an existing model, we can use this function
+instead. It takes a starting model (a checkpoint) as a parameter and
+the old config.
 
-#######################################################################
-# To continue training from an existing model, we can use this function
-# instead. It takes a starting model (a checkpoint) as a parameter and
-# the old config.
-#
-# Note that this time the search space does _not_ contain the
-# layer size parameter. Since we continue to train an existing model,
-# we cannot change the layer size mid training, so we just continue
-# to use the existing one.
+Note that this time the search space does _not_ contain the
+layer size parameter. Since we continue to train an existing model,
+we cannot change the layer size mid training, so we just continue
+to use the existing one.
+
+```{code-cell}
 def tune_from_existing(
     start_model, start_config, num_samples=10, num_epochs=10, gpus_per_trial=0.0, day=0
 ):
@@ -404,20 +430,21 @@ def tune_from_existing(
     best_checkpoint = best_trial.checkpoint.value
 
     return best_accuracy, best_trial_config, best_checkpoint, num_examples
+```
 
+## Serving tuned models with Ray Serve
 
-#######################################################################
-# Serving tuned models with Ray Serve
-# -----------------------------------
-# Let's now turn to the model serving part with Ray Serve. Serve allows
-# you to deploy your models as multiple _deployments_. Broadly speaking,
-# a deployment handles incoming requests and replies with a result. For
-# instance, our MNIST deployment takes an image as input and outputs the
-# digit it recognized from it. This deployment can be exposed over HTTP.
-#
-# First, we will define our deployment. This loads our PyTorch
-# MNIST model from a checkpoint, takes an image as an input and
-# outputs our digit prediction according to our trained model:
+Let's now turn to the model serving part with Ray Serve. Serve allows
+you to deploy your models as multiple _deployments_. Broadly speaking,
+a deployment handles incoming requests and replies with a result. For
+instance, our MNIST deployment takes an image as input and outputs the
+digit it recognized from it. This deployment can be exposed over HTTP.
+
+First, we will define our deployment. This loads our PyTorch
+MNIST model from a checkpoint, takes an image as an input and
+outputs our digit prediction according to our trained model:
+
+```{code-cell}
 @serve.deployment(name="mnist", route_prefix="/mnist")
 class MNISTDeployment:
     def __init__(self, checkpoint_dir, config, metrics, use_gpu=False):
@@ -442,13 +469,14 @@ class MNISTDeployment:
         outputs = self.model(images)
         predicted = torch.max(outputs.data, 1)[1]
         return {"result": predicted.numpy().tolist()}
+```
 
+We would like to have a fixed location where we store the currently
+active model. We call this directory ``model_dir``. Every time we
+would like to update our model, we copy the checkpoint of the new
+model to this directory. We then update the deployment to the new version.
 
-#######################################################################
-# We would like to have a fixed location where we store the currently
-# active model. We call this directory ``model_dir``. Every time we
-# would like to update our model, we copy the checkpoint of the new
-# model to this directory. We then update the deployment to the new version.
+```{code-cell}
 def serve_new_model(model_dir, checkpoint, config, metrics, day, use_gpu=False):
     print("Serving checkpoint: {}".format(checkpoint))
 
@@ -478,13 +506,14 @@ def _move_checkpoint_to_model_dir(model_dir, checkpoint, config, metrics):
         json.dump(dict(config=config, metrics=metrics), fp)
 
     return checkpoint_path
+```
 
+Since we would like to continue training from the current existing
+model, we introduce an utility function that fetches the currently
+served checkpoint as well as the hyperparameter config and achieved
+accuracy.
 
-#######################################################################
-# Since we would like to continue training from the current existing
-# model, we introduce an utility function that fetches the currently
-# served checkpoint as well as the hyperparameter config and achieved
-# accuracy.
+```{code-cell}
 def get_current_model(model_dir):
     checkpoint_path = os.path.join(model_dir, "checkpoint")
     meta_path = os.path.join(model_dir, "meta.json")
@@ -496,23 +525,23 @@ def get_current_model(model_dir):
         meta = json.load(fp)
 
     return checkpoint_path, meta["config"], meta["metrics"]
+```
 
+## Putting everything together
 
-#######################################################################
-# Putting everything together
-# ---------------------------
-# Now we only need to glue this code together. This is the main
-# entrypoint of the script, and we will define three methods:
-#
-# 1. Train new model from scratch with all data
-# 2. Continue training from existing model with new data only
-# 3. Query the model with test data
-#
-# Internally, this will just call the ``tune_from_scratch`` and
-# ``tune_from_existing()`` functions.
-# Both training functions will then call ``serve_new_model()`` to serve
-# the newly trained or updated model.
+Now we only need to glue this code together. This is the main
+entrypoint of the script, and we will define three methods:
 
+1. Train new model from scratch with all data
+2. Continue training from existing model with new data only
+3. Query the model with test data
+
+Internally, this will just call the ``tune_from_scratch`` and
+``tune_from_existing()`` functions.
+Both training functions will then call ``serve_new_model()`` to serve
+the newly trained or updated model.
+
+```{code-cell}
 # The query function will send a HTTP request to Serve with some
 # test data obtained from the MNIST dataset.
 if __name__ == "__main__":
@@ -529,33 +558,33 @@ if __name__ == "__main__":
 
     First, we might train a model with all data available at this day:
 
-    .. code-block:: bash
-
-        python tune-serve-integration-mnist.py --from_scratch --day 0
+    ```{code-block} bash
+    python tune-serve-integration-mnist.py --from_scratch --day 0
+    ```
 
     On the coming days, we want to continue to train this model with
     newly available data:
 
-    .. code-block:: bash
-
-        python tune-serve-integration-mnist.py --from_existing --day 1
-        python tune-serve-integration-mnist.py --from_existing --day 2
-        python tune-serve-integration-mnist.py --from_existing --day 3
-        python tune-serve-integration-mnist.py --from_existing --day 4
-        python tune-serve-integration-mnist.py --from_existing --day 5
-        python tune-serve-integration-mnist.py --from_existing --day 6
-        # Retrain from scratch every 7th day:
-        python tune-serve-integration-mnist.py --from_scratch --day 7
+    ```{code-block} bash
+    python tune-serve-integration-mnist.py --from_existing --day 1
+    python tune-serve-integration-mnist.py --from_existing --day 2
+    python tune-serve-integration-mnist.py --from_existing --day 3
+    python tune-serve-integration-mnist.py --from_existing --day 4
+    python tune-serve-integration-mnist.py --from_existing --day 5
+    python tune-serve-integration-mnist.py --from_existing --day 6
+    # Retrain from scratch every 7th day:
+    python tune-serve-integration-mnist.py --from_scratch --day 7
+    ```
 
     We can also use this script to query our served model
     with some test data:
 
-    .. code-block:: bash
-
-        python tune-serve-integration-mnist.py --query 6
-        Querying model with example #6. Label = 1, Response = 1, Correct = T
-        python tune-serve-integration-mnist.py --query 28
-        Querying model with example #28. Label = 2, Response = 7, Correct = F
+    ```{code-block} bash
+    python tune-serve-integration-mnist.py --query 6
+    Querying model with example #6. Label = 1, Response = 1, Correct = T
+    python tune-serve-integration-mnist.py --query 28
+    Querying model with example #28. Label = 2, Response = 7, Correct = F
+    ```
 
     """
     parser = argparse.ArgumentParser(description="MNIST Tune/Serve example")
@@ -669,23 +698,23 @@ if __name__ == "__main__":
         serve_new_model(
             model_dir, best_checkpoint, config, acc, args.day, use_gpu=serve_gpu
         )
+```
 
-#######################################################################
-# That's it! We now have an end-to-end workflow to train and update a
-# model every day with newly arrived data. Every week we might retrain
-# the whole model. At every point in time we make sure to serve the
-# model that achieved the best validation set accuracy.
-#
-# There are some ways we might extend this example. For instance, right
-# now we only serve the latest trained model. We could  also choose to
-# route only a certain percentage of users to the new model, maybe to
-# see if the new model really does it's job right. These kind of
-# deployments are called canary deployments.
-# These kind of deployments would also require us to keep more than one
-# model in our ``model_dir`` - which should be quite easy: We could just
-# create subdirectories for each training day.
-#
-# Still, this example should show you how easy it is to integrate the
-# Ray libraries Ray Tune and Ray Serve in your workflow. While both tools
-# also work independently of each other, they complement each other
-# nicely and support a large number of use cases.
+That's it! We now have an end-to-end workflow to train and update a
+model every day with newly arrived data. Every week we might retrain
+the whole model. At every point in time we make sure to serve the
+model that achieved the best validation set accuracy.
+
+There are some ways we might extend this example. For instance, right
+now we only serve the latest trained model. We could  also choose to
+route only a certain percentage of users to the new model, maybe to
+see if the new model really does it's job right. These kind of
+deployments are called canary deployments.
+These kind of deployments would also require us to keep more than one
+model in our ``model_dir`` - which should be quite easy: We could just
+create subdirectories for each training day.
+
+Still, this example should show you how easy it is to integrate the
+Ray libraries Ray Tune and Ray Serve in your workflow. While both tools
+also work independently of each other, they complement each other
+nicely and support a large number of use cases.
