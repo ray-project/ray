@@ -10,7 +10,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.tf_ops import get_placeholder
+from ray.rllib.utils.tf_utils import get_placeholder
 from ray.rllib.utils.typing import FromConfigSpec, ModelConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
@@ -19,14 +19,12 @@ tf1, tf, tfv = try_import_tf()
 class MovingMeanStd:
     """Track moving mean, std and count."""
 
-    def __init__(self,
-                 epsilon: float = 1e-4,
-                 shape: Optional[List[int]] = None):
+    def __init__(self, epsilon: float = 1e-4, shape: Optional[List[int]] = None):
         """Initialize object.
 
         Args:
-            epsilon (float): Initial count.
-            shape (List[int]): Shape of the trackables mean and std.
+            epsilon: Initial count.
+            shape: Shape of the trackables mean and std.
         """
         if not shape:
             shape = []
@@ -38,7 +36,7 @@ class MovingMeanStd:
         """Normalize input batch using moving mean and std.
 
         Args:
-            inputs (np.ndarray): Input batch to normalize.
+            inputs: Input batch to normalize.
 
         Returns:
             Logarithmic scaled normalized output.
@@ -49,14 +47,15 @@ class MovingMeanStd:
         self.update_params(batch_mean, batch_var, batch_count)
         return np.log(inputs / self.std + 1)
 
-    def update_params(self, batch_mean: float, batch_var: float,
-                      batch_count: float) -> None:
+    def update_params(
+        self, batch_mean: float, batch_var: float, batch_count: float
+    ) -> None:
         """Update moving mean, std and count.
 
         Args:
-            batch_mean (float): Input batch mean.
-            batch_var (float): Input batch variance.
-            batch_count (float): Number of cases in the batch.
+            batch_mean: Input batch mean.
+            batch_var: Input batch variance.
+            batch_count: Number of cases in the batch.
         """
         delta = batch_mean - self.mean
         tot_count = self.count + batch_count
@@ -65,8 +64,7 @@ class MovingMeanStd:
         self.mean = self.mean + delta + batch_count / tot_count
         m_a = self.var * self.count
         m_b = batch_var * batch_count
-        M2 = m_a + m_b + np.power(delta,
-                                  2) * self.count * batch_count / tot_count
+        M2 = m_a + m_b + np.power(delta, 2) * self.count * batch_count / tot_count
         self.var = M2 / tot_count
         self.count = tot_count
 
@@ -80,40 +78,39 @@ class MovingMeanStd:
         return np.sqrt(self.var)
 
 
-def update_beta(beta_schedule: str, beta: float, rho: float,
-                step: int) -> float:
+def update_beta(beta_schedule: str, beta: float, rho: float, step: int) -> float:
     """Update beta based on schedule and training step.
 
     Args:
-        beta_schedule (str): Schedule for beta update.
-        beta (float): Initial beta.
-        rho (float): Schedule decay parameter.
-        step (int): Current training iteration.
+        beta_schedule: Schedule for beta update.
+        beta: Initial beta.
+        rho: Schedule decay parameter.
+        step: Current training iteration.
 
     Returns:
         Updated beta as per input schedule.
     """
     if beta_schedule == "linear_decay":
-        return beta * ((1.0 - rho)**step)
+        return beta * ((1.0 - rho) ** step)
     return beta
 
 
-def compute_states_entropy(obs_embeds: np.ndarray, embed_dim: int,
-                           k_nn: int) -> np.ndarray:
+def compute_states_entropy(
+    obs_embeds: np.ndarray, embed_dim: int, k_nn: int
+) -> np.ndarray:
     """Compute states entropy using K nearest neighbour method.
 
     Args:
-        obs_embeds (np.ndarray): Observation latent representation using
+        obs_embeds: Observation latent representation using
             encoder model.
-        embed_dim (int): Embedding vector dimension.
-        k_nn (int): Number of nearest neighbour for K-NN estimation.
+        embed_dim: Embedding vector dimension.
+        k_nn: Number of nearest neighbour for K-NN estimation.
 
     Returns:
         Computed states entropy.
     """
     obs_embeds_ = np.reshape(obs_embeds, [-1, embed_dim])
-    dist = np.linalg.norm(
-        obs_embeds_[:, None, :] - obs_embeds_[None, :, :], axis=-1)
+    dist = np.linalg.norm(obs_embeds_[:, None, :] - obs_embeds_[None, :, :], axis=-1)
     return dist.argsort(axis=-1)[:, :k_nn][:, -1]
 
 
@@ -135,47 +132,48 @@ class RE3(Exploration):
     the entire replay buffer into consideration.
     """
 
-    def __init__(self,
-                 action_space: Space,
-                 *,
-                 framework: str,
-                 model: ModelV2,
-                 embeds_dim: int = 128,
-                 encoder_net_config: Optional[ModelConfigDict] = None,
-                 beta: float = 0.2,
-                 beta_schedule: str = "constant",
-                 rho: float = 0.1,
-                 k_nn: int = 50,
-                 random_timesteps: int = 10000,
-                 sub_exploration: Optional[FromConfigSpec] = None,
-                 **kwargs):
+    def __init__(
+        self,
+        action_space: Space,
+        *,
+        framework: str,
+        model: ModelV2,
+        embeds_dim: int = 128,
+        encoder_net_config: Optional[ModelConfigDict] = None,
+        beta: float = 0.2,
+        beta_schedule: str = "constant",
+        rho: float = 0.1,
+        k_nn: int = 50,
+        random_timesteps: int = 10000,
+        sub_exploration: Optional[FromConfigSpec] = None,
+        **kwargs
+    ):
         """Initialize RE3.
 
         Args:
-            action_space (Space): The action space in which to explore.
-            framework (str): Supports "tf", this implementation does not
+            action_space: The action space in which to explore.
+            framework: Supports "tf", this implementation does not
                 support torch.
-            model (ModelV2): The policy's model.
-            embeds_dim (int): The dimensionality of the observation embedding
+            model: The policy's model.
+            embeds_dim: The dimensionality of the observation embedding
                 vectors in latent space.
-            encoder_net_config (Optional[ModelConfigDict]): Optional model
+            encoder_net_config: Optional model
                 configuration for the encoder network, producing embedding
                 vectors from observations. This can be used to configure
                 fcnet- or conv_net setups to properly process any
                 observation space.
-            beta (float): Hyperparameter to choose between exploration and
+            beta: Hyperparameter to choose between exploration and
                 exploitation.
-            beta_schedule (str): Schedule to use for beta decay, one of
+            beta_schedule: Schedule to use for beta decay, one of
                 "constant" or "linear_decay".
-            rho (float): Beta decay factor, used for on-policy algorithm.
-            k_nn (int): Number of neighbours to set for K-NN entropy
+            rho: Beta decay factor, used for on-policy algorithm.
+            k_nn: Number of neighbours to set for K-NN entropy
                 estimation.
-            random_timesteps (int): The number of timesteps to act completely
+            random_timesteps: The number of timesteps to act completely
                 randomly (see [1]).
-            sub_exploration (Optional[FromConfigSpec]): The config dict for
-                the underlying Exploration to use (e.g. epsilon-greedy for
-                DQN). If None, uses the FromSpecDict provided in the Policy's
-                default config.
+            sub_exploration: The config dict for the underlying Exploration
+                to use (e.g. epsilon-greedy for DQN). If None, uses the
+                FromSpecDict provided in the Policy's default config.
 
         Raises:
             ValueError: If the input framework is Torch.
@@ -183,8 +181,7 @@ class RE3(Exploration):
         # TODO(gjoliver): Add supports for Pytorch.
         if framework == "torch":
             raise ValueError("This RE3 implementation does not support Torch.")
-        super().__init__(
-            action_space, model=model, framework=framework, **kwargs)
+        super().__init__(action_space, model=model, framework=framework, **kwargs)
 
         self.beta = beta
         self.rho = rho
@@ -233,11 +230,11 @@ class RE3(Exploration):
         )
         if self.framework == "tf":
             self._obs_ph = get_placeholder(
-                space=self.model.obs_space, name="_encoder_obs")
+                space=self.model.obs_space, name="_encoder_obs"
+            )
             self._obs_embeds = tf.stop_gradient(
-                self._encoder_net({
-                    SampleBatch.OBS: self._obs_ph
-                })[0])
+                self._encoder_net({SampleBatch.OBS: self._obs_ph})[0]
+            )
 
         # This is only used to select the correct action
         self.exploration_submodule = from_config(
@@ -252,16 +249,17 @@ class RE3(Exploration):
         )
 
     @override(Exploration)
-    def get_exploration_action(self,
-                               *,
-                               action_distribution: ActionDistribution,
-                               timestep: Union[int, TensorType],
-                               explore: bool = True):
+    def get_exploration_action(
+        self,
+        *,
+        action_distribution: ActionDistribution,
+        timestep: Union[int, TensorType],
+        explore: bool = True
+    ):
         # Simply delegate to sub-Exploration module.
         return self.exploration_submodule.get_exploration_action(
-            action_distribution=action_distribution,
-            timestep=timestep,
-            explore=explore)
+            action_distribution=action_distribution, timestep=timestep, explore=explore
+        )
 
     @override(Exploration)
     def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
@@ -285,8 +283,7 @@ class RE3(Exploration):
             )
         else:
             obs_embeds = tf.stop_gradient(
-                self._encoder_net({
-                    SampleBatch.OBS: sample_batch[SampleBatch.OBS]
-                })[0])
+                self._encoder_net({SampleBatch.OBS: sample_batch[SampleBatch.OBS]})[0]
+            )
         sample_batch[SampleBatch.OBS_EMBEDS] = obs_embeds
         return sample_batch

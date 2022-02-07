@@ -465,7 +465,6 @@ class DeploymentReplica(VersionedReplica):
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
         )
-        return self._actor.get_running_replica_info()
 
     @property
     def replica_tag(self) -> ReplicaTag:
@@ -1354,6 +1353,14 @@ class DeploymentState:
             self._goal_manager.complete_goal(self._curr_goal)
 
         return status == GoalStatus.SUCCESSFULLY_DELETED
+
+    def _stop_one_running_replica_for_testing(self):
+        running_replicas = self._replicas.pop(states=[ReplicaState.RUNNING])
+        replica_to_stop = running_replicas.pop()
+        replica_to_stop.stop(graceful=False)
+        self._replicas.add(ReplicaState.STOPPING, replica_to_stop)
+        for replica in running_replicas:
+            self._replicas.add(ReplicaState.RUNNING, replica)
 
 
 class DeploymentStateManager:

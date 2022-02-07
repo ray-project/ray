@@ -88,42 +88,49 @@ GcsClient::GcsClient(
 
 Status GcsClient::Connect(instrumented_io_context &io_service) {
   RAY_CHECK(!is_connected_);
-
-  if (options_.server_ip_.empty()) {
-    RAY_LOG(ERROR) << "Failed to connect, gcs service address is empty.";
+  if (options_.redis_ip_.empty() && options_.gcs_address_.empty()) {
+    RAY_LOG(ERROR) << "Failed to connect, server ip and gcs address both are empty.";
     return Status::Invalid("gcs service address is invalid!");
   }
 
-  // Connect to redis.
-  // We don't access redis shardings in GCS client, so we set `enable_sharding_conn` to
-  // false.
-  RedisClientOptions redis_client_options(
-      options_.server_ip_, options_.server_port_, options_.password_,
-      /*enable_sharding_conn=*/false, options_.enable_sync_conn_,
-      options_.enable_async_conn_, options_.enable_subscribe_conn_);
-  redis_client_ = std::make_shared<RedisClient>(redis_client_options);
-  RAY_CHECK_OK(redis_client_->Connect(io_service));
-
-  // Get gcs service address.
-  if (get_server_address_func_) {
-    get_server_address_func_(&current_gcs_server_address_);
-    int i = 0;
-    while (current_gcs_server_address_.first.empty() &&
-           i < RayConfig::instance().gcs_service_connect_retries()) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(
-          RayConfig::instance().internal_gcs_service_connect_wait_milliseconds()));
-      get_server_address_func_(&current_gcs_server_address_);
-      i++;
-    }
+  if (options_.gcs_address_.empty()) {
+    // Connect to redis.
+    // We don't access redis shardings in GCS client, so we set `enable_sharding_conn`
+    // to false.
+    RedisClientOptions redis_client_options(
+        options_.redis_ip_, options_.redis_port_, options_.password_,
+        /*enable_sharding_conn=*/false, options_.enable_sync_conn_,
+        options_.enable_async_conn_, options_.enable_subscribe_conn_);
+    redis_client_ = std::make_shared<RedisClient>(redis_client_options);
+    RAY_CHECK_OK(redis_client_->Connect(io_service));
   } else {
-    get_server_address_func_ = [this](std::pair<std::string, int> *address) {
-      return GetGcsServerAddressFromRedis(
-          redis_client_->GetPrimaryContext()->sync_context(), address);
-    };
-    RAY_CHECK(GetGcsServerAddressFromRedis(
-        redis_client_->GetPrimaryContext()->sync_context(), &current_gcs_server_address_,
-        RayConfig::instance().gcs_service_connect_retries()))
-        << "Failed to get gcs server address when init gcs client.";
+    RAY_CHECK(::RayConfig::instance().gcs_grpc_based_pubsub())
+        << "If using gcs_address to start client, gRPC based pubsub has to be enabled";
+  }
+
+  // Setup gcs server address fetcher
+  if (get_server_address_func_ == nullptr) {
+    if (!options_.gcs_address_.empty()) {
+      get_server_address_func_ = [this](std::pair<std::string, int> *addr) {
+        *addr = std::make_pair(options_.gcs_address_, options_.gcs_port_);
+        return true;
+      };
+    } else {
+      get_server_address_func_ = [this](std::pair<std::string, int> *address) {
+        return GetGcsServerAddressFromRedis(
+            redis_client_->GetPrimaryContext()->sync_context(), address);
+      };
+    }
+  }
+
+  // Get gcs address
+  int i = 0;
+  while (current_gcs_server_address_.first.empty() &&
+         i < RayConfig::instance().gcs_service_connect_retries()) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+        RayConfig::instance().internal_gcs_service_connect_wait_milliseconds()));
+    get_server_address_func_(&current_gcs_server_address_);
+    i++;
   }
 
   resubscribe_func_ = [this](bool is_pubsub_server_restarted) {
@@ -131,7 +138,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
     actor_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     node_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     node_resource_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-    task_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     worker_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
   };
 
@@ -174,7 +180,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   actor_accessor_ = std::make_unique<ActorInfoAccessor>(this);
   node_accessor_ = std::make_unique<NodeInfoAccessor>(this);
   node_resource_accessor_ = std::make_unique<NodeResourceInfoAccessor>(this);
-  task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
   stats_accessor_ = std::make_unique<StatsInfoAccessor>(this);
   error_accessor_ = std::make_unique<ErrorInfoAccessor>(this);
   worker_accessor_ = std::make_unique<WorkerInfoAccessor>(this);
@@ -199,10 +204,6 @@ void GcsClient::Disconnect() {
     return;
   }
   is_connected_ = false;
-  periodical_runner_.reset();
-  gcs_subscriber_.reset();
-  redis_client_->Disconnect();
-  redis_client_.reset();
   disconnected_ = true;
   RAY_LOG(DEBUG) << "GcsClient Disconnected.";
 }
@@ -252,6 +253,9 @@ bool GcsClient::GetGcsServerAddressFromRedis(redisContext *context,
 }
 
 void GcsClient::PeriodicallyCheckGcsServerAddress() {
+  if (disconnected_) {
+    return;
+  }
   std::pair<std::string, int> address;
   if (get_server_address_func_(&address)) {
     if (address != current_gcs_server_address_) {
@@ -264,6 +268,9 @@ void GcsClient::PeriodicallyCheckGcsServerAddress() {
 }
 
 void GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type) {
+  if (disconnected_) {
+    return;
+  }
   switch (type) {
   case rpc::GcsServiceFailureType::RPC_DISCONNECT:
     // If the GCS server address does not change, reconnect to GCS server.

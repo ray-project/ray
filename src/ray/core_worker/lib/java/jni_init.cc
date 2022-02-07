@@ -98,6 +98,7 @@ jfieldID java_call_options_concurrency_group_name;
 
 jclass java_actor_creation_options_class;
 jfieldID java_actor_creation_options_name;
+jfieldID java_actor_creation_options_lifetime;
 jfieldID java_actor_creation_options_max_restarts;
 jfieldID java_actor_creation_options_jvm_options;
 jfieldID java_actor_creation_options_max_concurrency;
@@ -105,6 +106,9 @@ jfieldID java_actor_creation_options_group;
 jfieldID java_actor_creation_options_bundle_index;
 jfieldID java_actor_creation_options_concurrency_groups;
 jfieldID java_actor_creation_options_max_pending_calls;
+
+jclass java_actor_lifetime_class;
+jobject STATUS_DETACHED;
 
 jclass java_placement_group_creation_options_class;
 jclass java_placement_group_creation_options_strategy_class;
@@ -146,6 +150,20 @@ JavaVM *jvm;
 
 inline jclass LoadClass(JNIEnv *env, const char *class_name) {
   jclass tempLocalClassRef = env->FindClass(class_name);
+  if (tempLocalClassRef == nullptr) {
+    const std::string shaded_class_prefix = "io/ray/shaded/";
+    const auto class_name_str = std::string(class_name);
+    const auto this_prefix = class_name_str.substr(0, shaded_class_prefix.size());
+    if (this_prefix == shaded_class_prefix) {
+      // This is a shaded class, and try to load the original class.
+      env->ExceptionClear();
+      auto no_shaded_class_name =
+          class_name_str.substr(shaded_class_prefix.size(), class_name_str.size());
+      tempLocalClassRef = env->FindClass(no_shaded_class_name.c_str());
+    }
+  }
+  RAY_CHECK(tempLocalClassRef) << "Can't load Java class " << class_name;
+
   jclass ret = (jclass)env->NewGlobalRef(tempLocalClassRef);
   RAY_CHECK(ret) << "Can't load Java class " << class_name;
   env->DeleteLocalRef(tempLocalClassRef);
@@ -236,7 +254,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_base_id_get_bytes = env->GetMethodID(java_base_id_class, "getBytes", "()[B");
 
   java_abstract_message_lite_class =
-      LoadClass(env, "com/google/protobuf/AbstractMessage");
+      LoadClass(env, "io/ray/shaded/com/google/protobuf/AbstractMessage");
+
   java_abstract_message_lite_to_byte_array =
       env->GetMethodID(java_abstract_message_lite_class, "toByteArray", "()[B");
 
@@ -297,6 +316,9 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       LoadClass(env, "io/ray/api/options/ActorCreationOptions");
   java_actor_creation_options_name =
       env->GetFieldID(java_actor_creation_options_class, "name", "Ljava/lang/String;");
+  java_actor_creation_options_lifetime =
+      env->GetFieldID(java_actor_creation_options_class, "lifetime",
+                      "Lio/ray/api/options/ActorLifetime;");
   java_actor_creation_options_max_restarts =
       env->GetFieldID(java_actor_creation_options_class, "maxRestarts", "I");
   java_actor_creation_options_jvm_options = env->GetFieldID(
@@ -312,6 +334,13 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       java_actor_creation_options_class, "concurrencyGroups", "Ljava/util/List;");
   java_actor_creation_options_max_pending_calls =
       env->GetFieldID(java_actor_creation_options_class, "maxPendingCalls", "I");
+
+  java_actor_lifetime_class = LoadClass(env, "io/ray/api/options/ActorLifetime");
+  jfieldID java_actor_lifetime_detached_field = env->GetStaticFieldID(
+      java_actor_lifetime_class, "DETACHED", "Lio/ray/api/options/ActorLifetime;");
+  STATUS_DETACHED = env->GetStaticObjectField(java_actor_lifetime_class,
+                                              java_actor_lifetime_detached_field);
+
   java_concurrency_group_impl_class =
       LoadClass(env, "io/ray/runtime/ConcurrencyGroupImpl");
   java_concurrency_group_impl_get_function_descriptors = env->GetMethodID(
@@ -385,6 +414,7 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_function_arg_class);
   env->DeleteGlobalRef(java_base_task_options_class);
   env->DeleteGlobalRef(java_actor_creation_options_class);
+  env->DeleteGlobalRef(java_actor_lifetime_class);
   env->DeleteGlobalRef(java_placement_group_creation_options_class);
   env->DeleteGlobalRef(java_placement_group_creation_options_strategy_class);
   env->DeleteGlobalRef(java_native_ray_object_class);

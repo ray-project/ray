@@ -21,9 +21,6 @@ from ray.includes.unique_ids cimport (
     CWorkerID,
 )
 
-from ray.includes.gcs_client cimport CGcsClient
-
-
 from ray.includes.common cimport (
     CAddress,
     CObjectReference,
@@ -255,8 +252,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CJobConfig GetJobConfig()
 
-        shared_ptr[CGcsClient] GetGcsClient() const
-
         c_bool IsExiting() const
 
         int64_t GetNumTasksSubmitted() const
@@ -323,7 +318,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int metrics_agent_port
         c_bool connect_on_start
         int runtime_env_hash
-        int worker_shim_pid
         int startup_token
 
     cdef cppclass CCoreWorkerProcess "ray::core::CoreWorkerProcess":

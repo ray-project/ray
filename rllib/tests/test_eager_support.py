@@ -27,13 +27,11 @@ def check_support(alg, config, test_eager=False, test_trace=True):
         if test_eager:
             print("tf-eager: alg={} cont.act={}".format(alg, cont))
             config["eager_tracing"] = False
-            tune.run(
-                a, config=config, stop={"training_iteration": 1}, verbose=1)
+            tune.run(a, config=config, stop={"training_iteration": 1}, verbose=1)
         if test_trace:
             config["eager_tracing"] = True
             print("tf-eager-tracing: alg={} cont.act={}".format(alg, cont))
-            tune.run(
-                a, config=config, stop={"training_iteration": 1}, verbose=1)
+            tune.run(a, config=config, stop={"training_iteration": 1}, verbose=1)
 
 
 class TestEagerSupportPG(unittest.TestCase):
@@ -75,11 +73,7 @@ class TestEagerSupportPG(unittest.TestCase):
         check_support("APPO", {"num_workers": 1, "num_gpus": 0})
 
     def test_impala(self):
-        check_support(
-            "IMPALA", {
-                "num_workers": 1,
-                "num_gpus": 0
-            }, test_eager=True)
+        check_support("IMPALA", {"num_workers": 1, "num_gpus": 0}, test_eager=True)
 
 
 class TestEagerSupportOffPolicy(unittest.TestCase):
@@ -106,16 +100,18 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
 
     def test_apex_dqn(self):
         check_support(
-            "APEX", {
+            "APEX",
+            {
                 "num_workers": 2,
                 "learning_starts": 0,
                 "num_gpus": 0,
-                "min_iter_time_s": 1,
+                "min_time_s_per_reporting": 1,
                 "timesteps_per_iteration": 100,
                 "optimizer": {
                     "num_replay_buffer_shards": 1,
                 },
-            })
+            },
+        )
 
     def test_sac(self):
         check_support("SAC", {"num_workers": 0, "learning_starts": 0})
@@ -123,6 +119,7 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     # Don't test anything for version 2.x (all tests are eager anyways).
     # TODO: (sven) remove entire file in the future.
     if tfv == 2:
@@ -132,7 +129,6 @@ if __name__ == "__main__":
     # One can specify the specific TestCase class to run.
     # None for all unittest.TestCase classes in this file.
     import pytest
+
     class_ = sys.argv[1] if len(sys.argv) > 1 else None
-    sys.exit(
-        pytest.main(
-            ["-v", __file__ + ("" if class_ is None else "::" + class_)]))
+    sys.exit(pytest.main(["-v", __file__ + ("" if class_ is None else "::" + class_)]))

@@ -1,4 +1,5 @@
 import gym
+import numpy as np
 import random
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv, make_multi_agent
@@ -10,7 +11,8 @@ from ray.rllib.utils.deprecation import Deprecated
 @Deprecated(
     old="ray.rllib.examples.env.multi_agent.make_multiagent",
     new="ray.rllib.env.multi_agent_env.make_multi_agent",
-    error=False)
+    error=False,
+)
 def make_multiagent(env_name_or_creator):
     return make_multi_agent(env_name_or_creator)
 
@@ -18,7 +20,12 @@ def make_multiagent(env_name_or_creator):
 class BasicMultiAgent(MultiAgentEnv):
     """Env of N independent agents, each of which exits after 25 steps."""
 
+    metadata = {
+        "render.modes": ["rgb_array"],
+    }
+
     def __init__(self, num):
+        super().__init__()
         self.agents = [MockEnv(25) for _ in range(num)]
         self.dones = set()
         self.observation_space = gym.spaces.Discrete(2)
@@ -39,11 +46,18 @@ class BasicMultiAgent(MultiAgentEnv):
         done["__all__"] = len(self.dones) == len(self.agents)
         return obs, rew, done, info
 
+    def render(self, mode="rgb_array"):
+        # Just generate a random image here for demonstration purposes.
+        # Also see `gym/envs/classic_control/cartpole.py` for
+        # an example on how to use a Viewer object.
+        return np.random.randint(0, 256, size=(200, 300, 3), dtype=np.uint8)
+
 
 class EarlyDoneMultiAgent(MultiAgentEnv):
     """Env for testing when the env terminates (after agent 0 does)."""
 
     def __init__(self):
+        super().__init__()
         self.agents = [MockEnv(3), MockEnv(5)]
         self.dones = set()
         self.last_obs = {}
@@ -73,8 +87,12 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
     def step(self, action_dict):
         assert len(self.dones) != len(self.agents)
         for i, action in action_dict.items():
-            (self.last_obs[i], self.last_rew[i], self.last_done[i],
-             self.last_info[i]) = self.agents[i].step(action)
+            (
+                self.last_obs[i],
+                self.last_rew[i],
+                self.last_done[i],
+                self.last_info[i],
+            ) = self.agents[i].step(action)
         obs = {self.i: self.last_obs[self.i]}
         rew = {self.i: self.last_rew[self.i]}
         done = {self.i: self.last_done[self.i]}
@@ -91,6 +109,7 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
     """Env of independent agents, each of which exits after n steps."""
 
     def __init__(self):
+        super().__init__()
         self.agents = {}
         self.agentID = 0
         self.dones = set()
@@ -149,6 +168,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
     On each step() of the env, only one agent takes an action."""
 
     def __init__(self, num, increment_obs=False):
+        super().__init__()
         if increment_obs:
             # Observations are 0, 1, 2, 3... etc. as time advances
             self.agents = [MockEnv2(5) for _ in range(num)]
@@ -184,8 +204,12 @@ class RoundRobinMultiAgent(MultiAgentEnv):
     def step(self, action_dict):
         assert len(self.dones) != len(self.agents)
         for i, action in action_dict.items():
-            (self.last_obs[i], self.last_rew[i], self.last_done[i],
-             self.last_info[i]) = self.agents[i].step(action)
+            (
+                self.last_obs[i],
+                self.last_rew[i],
+                self.last_done[i],
+                self.last_info[i],
+            ) = self.agents[i].step(action)
         obs = {self.i: self.last_obs[self.i]}
         rew = {self.i: self.last_rew[self.i]}
         done = {self.i: self.last_done[self.i]}
@@ -201,5 +225,4 @@ class RoundRobinMultiAgent(MultiAgentEnv):
 MultiAgentCartPole = make_multi_agent("CartPole-v0")
 MultiAgentMountainCar = make_multi_agent("MountainCarContinuous-v0")
 MultiAgentPendulum = make_multi_agent("Pendulum-v1")
-MultiAgentStatelessCartPole = make_multi_agent(
-    lambda config: StatelessCartPole(config))
+MultiAgentStatelessCartPole = make_multi_agent(lambda config: StatelessCartPole(config))

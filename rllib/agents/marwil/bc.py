@@ -1,5 +1,7 @@
-from ray.rllib.agents.marwil.marwil import MARWILTrainer, \
-    DEFAULT_CONFIG as MARWIL_CONFIG
+from ray.rllib.agents.marwil.marwil import (
+    MARWILTrainer,
+    DEFAULT_CONFIG as MARWIL_CONFIG,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 
@@ -33,8 +35,8 @@ class BCTrainer(MARWILTrainer):
 
     @override(MARWILTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["beta"] != 0.0:
-            raise ValueError(
-                "For behavioral cloning, `beta` parameter must be 0.0!")
+            raise ValueError("For behavioral cloning, `beta` parameter must be 0.0!")

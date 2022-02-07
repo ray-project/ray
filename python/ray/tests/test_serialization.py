@@ -29,12 +29,8 @@ def is_named_tuple(cls):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
+    "ray_start_regular", [{"local_mode": True}, {"local_mode": False}], indirect=True
+)
 def test_simple_serialization(ray_start_regular):
     primitive_objects = [
         # Various primitive types.
@@ -77,11 +73,10 @@ def test_simple_serialization(ray_start_regular):
     ]
 
     composite_objects = (
-        [[obj]
-         for obj in primitive_objects] + [(obj, )
-                                          for obj in primitive_objects] + [{
-                                              (): obj
-                                          } for obj in primitive_objects])
+        [[obj] for obj in primitive_objects]
+        + [(obj,) for obj in primitive_objects]
+        + [{(): obj} for obj in primitive_objects]
+    )
 
     @ray.remote
     def f(x):
@@ -102,32 +97,31 @@ def test_simple_serialization(ray_start_regular):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
+    "ray_start_regular", [{"local_mode": True}, {"local_mode": False}], indirect=True
+)
 def test_complex_serialization(ray_start_regular):
     def assert_equal(obj1, obj2):
-        module_numpy = (type(obj1).__module__ == np.__name__
-                        or type(obj2).__module__ == np.__name__)
+        module_numpy = (
+            type(obj1).__module__ == np.__name__ or type(obj2).__module__ == np.__name__
+        )
         if module_numpy:
-            empty_shape = ((hasattr(obj1, "shape") and obj1.shape == ())
-                           or (hasattr(obj2, "shape") and obj2.shape == ()))
+            empty_shape = (hasattr(obj1, "shape") and obj1.shape == ()) or (
+                hasattr(obj2, "shape") and obj2.shape == ()
+            )
             if empty_shape:
                 # This is a special case because currently
                 # np.testing.assert_equal fails because we do not properly
                 # handle different numerical types.
-                assert obj1 == obj2, ("Objects {} and {} are "
-                                      "different.".format(obj1, obj2))
+                assert obj1 == obj2, "Objects {} and {} are " "different.".format(
+                    obj1, obj2
+                )
             else:
                 np.testing.assert_equal(obj1, obj2)
         elif hasattr(obj1, "__dict__") and hasattr(obj2, "__dict__"):
             special_keys = ["_pytype_"]
-            assert (set(list(obj1.__dict__.keys()) + special_keys) == set(
-                list(obj2.__dict__.keys()) + special_keys)), (
-                    "Objects {} and {} are different.".format(obj1, obj2))
+            assert set(list(obj1.__dict__.keys()) + special_keys) == set(
+                list(obj2.__dict__.keys()) + special_keys
+            ), "Objects {} and {} are different.".format(obj1, obj2)
             for key in obj1.__dict__.keys():
                 if key not in special_keys:
                     assert_equal(obj1.__dict__[key], obj2.__dict__[key])
@@ -136,33 +130,53 @@ def test_complex_serialization(ray_start_regular):
             for key in obj1.keys():
                 assert_equal(obj1[key], obj2[key])
         elif type(obj1) is list or type(obj2) is list:
-            assert len(obj1) == len(obj2), ("Objects {} and {} are lists with "
-                                            "different lengths.".format(
-                                                obj1, obj2))
+            assert len(obj1) == len(
+                obj2
+            ), "Objects {} and {} are lists with " "different lengths.".format(
+                obj1, obj2
+            )
             for i in range(len(obj1)):
                 assert_equal(obj1[i], obj2[i])
         elif type(obj1) is tuple or type(obj2) is tuple:
-            assert len(obj1) == len(obj2), ("Objects {} and {} are tuples "
-                                            "with different lengths.".format(
-                                                obj1, obj2))
+            assert len(obj1) == len(
+                obj2
+            ), "Objects {} and {} are tuples " "with different lengths.".format(
+                obj1, obj2
+            )
             for i in range(len(obj1)):
                 assert_equal(obj1[i], obj2[i])
-        elif (is_named_tuple(type(obj1)) or is_named_tuple(type(obj2))):
-            assert len(obj1) == len(obj2), (
-                "Objects {} and {} are named "
-                "tuples with different lengths.".format(obj1, obj2))
+        elif is_named_tuple(type(obj1)) or is_named_tuple(type(obj2)):
+            assert len(obj1) == len(
+                obj2
+            ), "Objects {} and {} are named " "tuples with different lengths.".format(
+                obj1, obj2
+            )
             for i in range(len(obj1)):
                 assert_equal(obj1[i], obj2[i])
         else:
-            assert obj1 == obj2, "Objects {} and {} are different.".format(
-                obj1, obj2)
+            assert obj1 == obj2, "Objects {} and {} are different.".format(obj1, obj2)
 
     long_extras = [0, np.array([["hi", u"hi"], [1.3, 1]])]
 
     PRIMITIVE_OBJECTS = [
-        0, 0.0, 0.9, 1 << 62, 1 << 100, 1 << 999, [1 << 100, [1 << 100]], "a",
-        string.printable, "\u262F", u"hello world",
-        u"\xff\xfe\x9c\x001\x000\x00", None, True, False, [], (), {},
+        0,
+        0.0,
+        0.9,
+        1 << 62,
+        1 << 100,
+        1 << 999,
+        [1 << 100, [1 << 100]],
+        "a",
+        string.printable,
+        "\u262F",
+        u"hello world",
+        u"\xff\xfe\x9c\x001\x000\x00",
+        None,
+        True,
+        False,
+        [],
+        (),
+        {},
         np.int8(3),
         np.int32(4),
         np.int64(5),
@@ -174,28 +188,16 @@ def test_complex_serialization(ray_start_regular):
         np.zeros([100, 100]),
         np.random.normal(size=[100, 100]),
         np.array(["hi", 3]),
-        np.array(["hi", 3], dtype=object)
+        np.array(["hi", 3], dtype=object),
     ] + long_extras
 
     COMPLEX_OBJECTS = [
         [[[[[[[[[[[[]]]]]]]]]]]],
-        {
-            "obj{}".format(i): np.random.normal(size=[100, 100])
-            for i in range(10)
-        },
+        {"obj{}".format(i): np.random.normal(size=[100, 100]) for i in range(10)},
         # {(): {(): {(): {(): {(): {(): {(): {(): {(): {(): {
         #      (): {(): {}}}}}}}}}}}}},
-        (
-            (((((((((), ), ), ), ), ), ), ), ), ),
-        {
-            "a": {
-                "b": {
-                    "c": {
-                        "d": {}
-                    }
-                }
-            }
-        },
+        ((((((((((),),),),),),),),),),
+        {"a": {"b": {"c": {"d": {}}}}},
     ]
 
     class Foo:
@@ -234,7 +236,8 @@ def test_complex_serialization(ray_start_regular):
 
     Point = collections.namedtuple("Point", ["x", "y"])
     NamedTupleExample = collections.namedtuple(
-        "Example", "field1, field2, field3, field4, field5")
+        "Example", "field1, field2, field3, field4, field5"
+    )
 
     CUSTOM_OBJECTS = [
         Exception("Test object."),
@@ -267,27 +270,27 @@ def test_complex_serialization(ray_start_regular):
                 return cls(custom)
 
             def __reduce__(self):
-                return (self.from_custom, (self.custom.value, ))
+                return (self.from_custom, (self.custom.value,))
 
         CUSTOM_OBJECTS.append(DataClass2(custom=CustomClass(43)))
 
     BASE_OBJECTS = PRIMITIVE_OBJECTS + COMPLEX_OBJECTS + CUSTOM_OBJECTS
 
     LIST_OBJECTS = [[obj] for obj in BASE_OBJECTS]
-    TUPLE_OBJECTS = [(obj, ) for obj in BASE_OBJECTS]
+    TUPLE_OBJECTS = [(obj,) for obj in BASE_OBJECTS]
     # The check that type(obj).__module__ != "numpy" should be unnecessary, but
     # otherwise this seems to fail on Mac OS X on Travis.
-    DICT_OBJECTS = ([{
-        obj: obj
-    } for obj in PRIMITIVE_OBJECTS if (
-        obj.__hash__ is not None and type(obj).__module__ != "numpy")] + [{
-            0: obj
-        } for obj in BASE_OBJECTS] + [{
-            Foo(123): Foo(456)
-        }])
+    DICT_OBJECTS = (
+        [
+            {obj: obj}
+            for obj in PRIMITIVE_OBJECTS
+            if (obj.__hash__ is not None and type(obj).__module__ != "numpy")
+        ]
+        + [{0: obj} for obj in BASE_OBJECTS]
+        + [{Foo(123): Foo(456)}]
+    )
 
-    RAY_TEST_OBJECTS = (
-        BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS)
+    RAY_TEST_OBJECTS = BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS
 
     @ray.remote
     def f(x):
@@ -310,6 +313,7 @@ def test_complex_serialization(ray_start_regular):
 def test_numpy_serialization(ray_start_regular):
     array = np.zeros(314)
     from ray.cloudpickle import dumps
+
     buffers = []
     inband = dumps(array, protocol=5, buffer_callback=buffers.append)
     assert len(inband) < array.nbytes
@@ -351,6 +355,7 @@ def test_inspect_serialization(enable_pickle_debug):
             self.lock = lock
 
     from ray.util.check_serialize import inspect_serializability
+
     results = inspect_serializability(lock)
     assert list(results[1])[0].obj == lock, results
 
@@ -362,12 +367,8 @@ def test_inspect_serialization(enable_pickle_debug):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }],
-    indirect=True)
+    "ray_start_regular", [{"local_mode": True}, {"local_mode": False}], indirect=True
+)
 def test_serialization_final_fallback(ray_start_regular):
     pytest.importorskip("catboost")
     # This test will only run when "catboost" is installed.
@@ -378,11 +379,13 @@ def test_serialization_final_fallback(ray_start_regular):
         depth=2,
         learning_rate=1,
         loss_function="Logloss",
-        logging_level="Verbose")
+        logging_level="Verbose",
+    )
 
     reconstructed_model = ray.get(ray.put(model))
     assert set(model.get_params().items()) == set(
-        reconstructed_model.get_params().items())
+        reconstructed_model.get_params().items()
+    )
 
 
 def test_register_class(ray_start_2_cpus):
@@ -479,7 +482,7 @@ def test_register_class(ray_start_2_cpus):
     for _ in range(5):
         results += j.remote()
     for i in range(len(results) // 3):
-        c0, c1, c2 = ray.get(results[(3 * i):(3 * (i + 1))])
+        c0, c1, c2 = ray.get(results[(3 * i) : (3 * (i + 1))])
 
         c0.method0()
         c1.method1()
@@ -529,12 +532,11 @@ def test_register_class(ray_start_2_cpus):
 
 
 def test_deserialized_from_buffer_immutable(ray_start_shared_local_modes):
-    x = np.full((2, 2), 1.)
+    x = np.full((2, 2), 1.0)
     o = ray.put(x)
     y = ray.get(o)
-    with pytest.raises(
-            ValueError, match="assignment destination is read-only"):
-        y[0, 0] = 9.
+    with pytest.raises(ValueError, match="assignment destination is read-only"):
+        y[0, 0] = 9.0
 
 
 def test_reducer_override_no_reference_cycle(ray_start_shared_local_modes):
@@ -550,6 +552,7 @@ def test_reducer_override_no_reference_cycle(ray_start_shared_local_modes):
 
     bio = io.BytesIO()
     from ray.cloudpickle import CloudPickler, loads, dumps
+
     p = CloudPickler(bio, protocol=5)
     p.dump(f)
     new_f = loads(bio.getvalue())
@@ -586,13 +589,13 @@ def test_buffer_alignment(ray_start_shared_local_modes):
     for y in ys:
         assert y.ctypes.data % 8 == 0
 
-    xs = [np.random.normal(size=i * (1, )) for i in range(20)]
+    xs = [np.random.normal(size=i * (1,)) for i in range(20)]
     ys = ray.get(ray.put(xs))
     for y in ys:
         assert y.ctypes.data % 8 == 0
 
-    xs = [np.random.normal(size=i * (5, )) for i in range(1, 8)]
-    xs = [xs[i][(i + 1) * (slice(1, 3), )] for i in range(len(xs))]
+    xs = [np.random.normal(size=i * (5,)) for i in range(1, 8)]
+    xs = [xs[i][(i + 1) * (slice(1, 3),)] for i in range(len(xs))]
     ys = ray.get(ray.put(xs))
     for y in ys:
         assert y.ctypes.data % 8 == 0
@@ -613,7 +616,8 @@ def test_custom_serializer(ray_start_shared_local_modes):
         return A(x)
 
     ray.util.register_serializer(
-        A, serializer=custom_serializer, deserializer=custom_deserializer)
+        A, serializer=custom_serializer, deserializer=custom_deserializer
+    )
     ray.get(ray.put(A(1)))
 
     ray.util.deregister_serializer(A)
@@ -640,7 +644,7 @@ class _SelfDereferenceObject:
         self.ref = ref
 
     def __reduce__(self):
-        return ray.get, (self.ref, )
+        return ray.get, (self.ref,)
 
 
 def test_recursive_resolve(ray_start_shared_local_modes):
@@ -652,4 +656,5 @@ def test_recursive_resolve(ray_start_shared_local_modes):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))
