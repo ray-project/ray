@@ -64,15 +64,14 @@ class RaySyncer {
     cluster_messages_[node_id] = NodeIndexedMessages();
   }
 
-  void DoUpdate(absl::flat_hash_map<std::string, Array<uint64_t>>& node_view,
+  void DoUpdate(absl::flat_hash_map<std::string, Array<uint64_t>>& node_views,
                 RaySyncer::RaySyncMessage message) {
-    auto& current_message = cluster_view_[message.node_id()];
+    auto& current_message = cluster_view_[message.component_id()][message.node_id()];
     if(current_message && current_message->version() >= message.version()) {
       // We've already got the newer messages. Skip this.
       return;
     }
     current_message = std::make_shared<RaySyncer::RaySyncMessage>(std::move(message));
-
   }
 
   void DumpClusterMessages() const {
@@ -231,7 +230,7 @@ class RaySyncer {
   //    node_id_A -> node_id_B -> [V]
   // means A has B's view in version V. With this we can skip sending A messages about B
   // if A already have that.
-  absl::flat_hash_map<std::string, absl::flat_hash_map<std::string, Array<uint64_t>>> nodes_view_;
+  absl::flat_hash_map<std::string, absl::flat_hash_map<std::string, Array<uint64_t>>> nodes_views_;
 
   // Manage connections
   absl::flat_hash_map<std::string, std::unique_ptr<ServerReactor>> followers_;
