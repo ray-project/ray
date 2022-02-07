@@ -16,7 +16,7 @@
 
 #include <google/protobuf/util/json_util.h>
 
-#include "ray/common/runtime_env_manager.h"
+#include "ray/common/runtime_env_common.h"
 
 namespace ray {
 namespace core {

@@ -18,7 +18,7 @@
 #include <sstream>
 
 #include "ray/common/ray_config.h"
-#include "ray/common/runtime_env_manager.h"
+#include "ray/common/runtime_env_common.h"
 #include "ray/util/logging.h"
 
 namespace ray {

@@ -79,8 +79,4 @@ void RuntimeEnvManager::PrintDebugString() const {
   }
 };
 
-bool IsRuntimeEnvEmpty(const std::string &serialized_runtime_env) {
-  return serialized_runtime_env == "{}" || serialized_runtime_env == "";
-}
-
 }  // namespace ray
