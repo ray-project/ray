@@ -87,8 +87,8 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                       worker_to_lease_entry_.end());
             auto &lease_entry = worker_to_lease_entry_[active_worker_addr];
             if (!lease_entry.is_busy) {
-OnWorkerIdle(active_worker_addr, scheduling_key, /*was_error*/false, /*worker_exiting*/false,
-                           lease_entry.assigned_resources);
+              OnWorkerIdle(active_worker_addr, scheduling_key, /*was_error*/ false,
+                           /*worker_exiting*/ false, lease_entry.assigned_resources);
               break;
             }
           }
