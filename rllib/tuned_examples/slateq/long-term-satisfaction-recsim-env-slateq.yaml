@@ -2,11 +2,16 @@ long-term-satisfaction-recsim-env-slateq:
     env: ray.rllib.examples.env.recsim_recommender_system_envs.LongTermSatisfactionRecSimEnv
     run: SlateQ
     stop:
-        episode_reward_mean: 1100.0
-        timesteps_total: 2000000
+        # Random baseline rewards:
+        # num_candidates=20; slate_size=2; resample=true: ~951
+        # num_candidates=50; slate_size=3; resample=true: ~948
+        evaluation/episode_reward_mean: 1010.0
+        timesteps_total: 4000000
     config:
         # SlateQ only supported for torch so far.
         framework: torch
+
+        metrics_num_episodes_for_smoothing: 1000
 
         # RLlib/RecSim wrapper specific settings:
         env_config:
@@ -15,27 +20,34 @@ long-term-satisfaction-recsim-env-slateq:
                 # document sampler model (a logic that creates n documents to select
                 # the slate from).
                 resample_documents: true
-                num_candidates: 15 #25
+                num_candidates: 50
                 # How many documents to recommend (out of `num_candidates`) each
                 # timestep?
-                slate_size: 2
+                slate_size: 3
                 # Should the action space be purely Discrete? Useful for algos that
                 # don't support MultiDiscrete (e.g. DQN).
                 # SlateQ handles MultiDiscrete action spaces.
                 convert_to_discrete_action_space: false
                 seed: 42
 
-        hiddens: [128, 128]
+        hiddens: [256, 256]
 
         num_workers: 0
         num_gpus: 0
 
-        lr_choice_model: 0.00001 #0.003
-        lr_q_model:      0.00001 #0.003
+        lr_choice_model: 0.00001
+        lr_q_model:      0.00003
         rollout_fragment_length: 4
-        #batch_mode: complete_episodes
+        batch_mode: truncate_episodes
         exploration_config:
             epsilon_timesteps: 100000
 
         target_network_update_freq: 800
         tau: 1.0
+
+        # Evaluation settings.
+        evaluation_interval: 1
+        evaluation_num_workers: 4
+        evaluation_duration: 200
+        evaluation_duration_unit: episodes
+        evaluation_parallel_to_training: true
