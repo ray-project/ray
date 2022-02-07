@@ -254,15 +254,18 @@ def run(
         restore (str): Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
         server_port (int): Port number for launching TuneServer.
-        resume (str|bool): One of "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY",
-            or bool. LOCAL/True restores the checkpoint from the
+        resume (str|bool): One of "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY", "AUTO",
+            or bool. "LOCAL"/True restores the checkpoint from the
             local experiment directory, determined
-            by ``name`` and ``local_dir``. REMOTE restores the checkpoint
+            by ``name`` and ``local_dir``. "REMOTE" restores the checkpoint
             from ``upload_dir`` (as passed to ``sync_config``).
-            PROMPT provides CLI feedback.
-            False forces a new experiment. ERRORED_ONLY resets and reruns
-            ERRORED trials upon resume - previous trial artifacts will
-            be left untouched.  If resume is set but checkpoint does not exist,
+            "PROMPT" provides the CLI feedback.
+            False forces a new experiment. "ERRORED_ONLY" resets and reruns
+            errored trials upon resume - previous trial artifacts will
+            be left untouched.
+            "AUTO" will attempt to resume from a checkpoint and otherwise
+            start a new experiment.
+            If resume is set but checkpoint does not exist,
             ValueError will be thrown.
         reuse_actors (bool): Whether to reuse actors between different trials
             when possible. This can drastically speed up experiments that start

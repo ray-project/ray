@@ -1,4 +1,4 @@
-.. _tune-distributed:
+.. _tune-distributed-ref:
 
 Tune Distributed Experiments
 ============================
@@ -307,7 +307,7 @@ Below are some commonly used commands for submitting experiments. Please see the
     # Shut-down all instances of your cluster:
     $ ray down CLUSTER.YAML [-y]
 
-    # Run Tensorboard and forward the port to your own machine.
+    # Run TensorBoard and forward the port to your own machine.
     $ ray exec CLUSTER.YAML 'tensorboard --logdir ~/ray_results/ --port 6006' --port-forward 6006
 
     # Run Jupyter Lab and forward the port to your own machine.
