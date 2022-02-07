@@ -112,7 +112,8 @@ def test_generate_job_id():
     assert len(ids) == 10000
 
 
-def test_pass_job_id(job_manager):
+@pytest.mark.asyncio
+async def test_pass_job_id(job_manager):
     job_id = "my_custom_id"
 
     returned_id = job_manager.submit_job(entrypoint="echo hello", job_id=job_id)
@@ -125,27 +126,28 @@ def test_pass_job_id(job_manager):
         job_manager.submit_job(entrypoint="echo hello", job_id=job_id)
 
 
+@pytest.mark.asyncio
 class TestShellScriptExecution:
-    def test_submit_basic_echo(self, job_manager):
+    async def test_submit_basic_echo(self, job_manager):
         job_id = job_manager.submit_job(entrypoint="echo hello")
 
         wait_for_condition(check_job_succeeded, job_manager=job_manager, job_id=job_id)
         assert job_manager.get_job_logs(job_id) == "hello\n"
 
-    def test_submit_stderr(self, job_manager):
+    async def test_submit_stderr(self, job_manager):
         job_id = job_manager.submit_job(entrypoint="echo error 1>&2")
 
         wait_for_condition(check_job_succeeded, job_manager=job_manager, job_id=job_id)
         assert job_manager.get_job_logs(job_id) == "error\n"
 
-    def test_submit_ls_grep(self, job_manager):
+    async def test_submit_ls_grep(self, job_manager):
         grep_cmd = f"ls {os.path.dirname(__file__)} | grep test_job_manager.py"
         job_id = job_manager.submit_job(entrypoint=grep_cmd)
 
         wait_for_condition(check_job_succeeded, job_manager=job_manager, job_id=job_id)
         assert job_manager.get_job_logs(job_id) == "test_job_manager.py\n"
 
-    def test_subprocess_exception(self, job_manager):
+    async def test_subprocess_exception(self, job_manager):
         """
         Run a python script with exception, ensure:
         1) Job status is marked as failed
@@ -167,7 +169,7 @@ class TestShellScriptExecution:
 
         wait_for_condition(cleaned_up)
 
-    def test_submit_with_s3_runtime_env(self, job_manager):
+    async def test_submit_with_s3_runtime_env(self, job_manager):
         job_id = job_manager.submit_job(
             entrypoint="python script.py",
             runtime_env={"working_dir": "s3://runtime-env-test/script_runtime_env.zip"},
@@ -180,11 +182,7 @@ class TestShellScriptExecution:
 
 
 class TestRuntimeEnv:
-    def test_inheritance(self, job_manager):
-        # Test that the driver and actors/tasks inherit the right runtime_env.
-        pass
-
-    def test_pass_env_var(self, job_manager):
+    async def test_pass_env_var(self, job_manager):
         """Test we can pass env vars in the subprocess that executes job's
         driver script.
         """
@@ -196,7 +194,7 @@ class TestRuntimeEnv:
         wait_for_condition(check_job_succeeded, job_manager=job_manager, job_id=job_id)
         assert job_manager.get_job_logs(job_id) == "233\n"
 
-    def test_multiple_runtime_envs(self, job_manager):
+    async def test_multiple_runtime_envs(self, job_manager):
         # Test that you can run two jobs in different envs without conflict.
         job_id_1 = job_manager.submit_job(
             entrypoint=f"python {_driver_script_path('print_runtime_env.py')}",
@@ -228,7 +226,7 @@ class TestRuntimeEnv:
             "{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_2_VAR'}}" in logs
         )  # noqa: E501
 
-    def test_env_var_and_driver_job_config_warning(self, job_manager):
+    async def test_env_var_and_driver_job_config_warning(self, job_manager):
         """Ensure we got error message from worker.py and job logs
         if user provided runtime_env in both driver script and submit()
         """
@@ -246,7 +244,7 @@ class TestRuntimeEnv:
         )
         assert "JOB_1_VAR" in logs
 
-    def test_failed_runtime_env_validation(self, job_manager):
+    async def test_failed_runtime_env_validation(self, job_manager):
         """Ensure job status is correctly set as failed if job has an invalid
         runtime_env.
         """
@@ -259,7 +257,7 @@ class TestRuntimeEnv:
         assert status.status == JobStatus.FAILED
         assert "path_not_exist is not a valid URI" in status.message
 
-    def test_failed_runtime_env_setup(self, job_manager):
+    async def test_failed_runtime_env_setup(self, job_manager):
         """Ensure job status is correctly set as failed if job has a valid
         runtime_env that fails to be set up.
         """
@@ -273,7 +271,7 @@ class TestRuntimeEnv:
         status = job_manager.get_job_status(job_id)
         assert "runtime_env setup failed" in status.message
 
-    def test_pass_metadata(self, job_manager):
+    async def test_pass_metadata(self, job_manager):
         def dict_to_str(d):
             return str(dict(sorted(d.items())))
 
@@ -325,7 +323,7 @@ class TestRuntimeEnv:
 
 
 class TestAsyncAPI:
-    def test_status_and_logs_while_blocking(self, job_manager):
+    async def test_status_and_logs_while_blocking(self, job_manager):
         with tempfile.TemporaryDirectory() as tmp_dir:
             pid_file, tmp_file, job_id = _run_hanging_command(job_manager, tmp_dir)
             with open(pid_file, "r") as file:
@@ -343,7 +341,7 @@ class TestAsyncAPI:
             # termination state
             wait_for_condition(check_subprocess_cleaned, pid=pid)
 
-    def test_stop_job(self, job_manager):
+    async def test_stop_job(self, job_manager):
         with tempfile.TemporaryDirectory() as tmp_dir:
             _, _, job_id = _run_hanging_command(job_manager, tmp_dir)
 
@@ -356,7 +354,7 @@ class TestAsyncAPI:
             # Assert stopping non-existent job returns False
             assert job_manager.stop_job(str(uuid4())) is False
 
-    def test_kill_job_actor_in_before_driver_finish(self, job_manager):
+    async def test_kill_job_actor_in_before_driver_finish(self, job_manager):
         """
         Test submitting a long running / blocker driver script, and kill
         the job supervisor actor before script returns and ensure
@@ -379,7 +377,7 @@ class TestAsyncAPI:
             # termination state
             wait_for_condition(check_subprocess_cleaned, pid=pid)
 
-    def test_stop_job_in_pending(self, job_manager):
+    async def test_stop_job_in_pending(self, job_manager):
         """
         Kick off a job that is in PENDING state, stop the job and ensure
 
@@ -403,7 +401,7 @@ class TestAsyncAPI:
                 check_job_stopped, job_manager=job_manager, job_id=job_id
             )
 
-    def test_kill_job_actor_in_pending(self, job_manager):
+    async def test_kill_job_actor_in_pending(self, job_manager):
         """
         Kick off a job that is in PENDING state, kill the job actor and ensure
 
@@ -425,7 +423,7 @@ class TestAsyncAPI:
             ray.kill(actor, no_restart=True)
             wait_for_condition(check_job_failed, job_manager=job_manager, job_id=job_id)
 
-    def test_stop_job_subprocess_cleanup_upon_stop(self, job_manager):
+    async def test_stop_job_subprocess_cleanup_upon_stop(self, job_manager):
         """
         Ensure driver scripts' subprocess is cleaned up properly when we
         stopped a running job.
@@ -448,6 +446,7 @@ class TestAsyncAPI:
             wait_for_condition(check_subprocess_cleaned, pid=pid)
 
 
+@pytest.mark.asyncio
 class TestTailLogs:
     async def _tail_and_assert_logs(
         self, job_id, job_manager, expected_log="", num_iteration=5
@@ -460,13 +459,11 @@ class TestTailLogs:
                 break
             i += 1
 
-    @pytest.mark.asyncio
     async def test_unknown_job(self, job_manager):
         with pytest.raises(RuntimeError, match="Job 'unknown' does not exist."):
             async for _ in job_manager.tail_job_logs("unknown"):
                 pass
 
-    @pytest.mark.asyncio
     async def test_successful_job(self, job_manager):
         """Test tailing logs for a PENDING -> RUNNING -> SUCCESSFUL job."""
         start_signal_actor = SignalActor.remote()
@@ -499,7 +496,6 @@ class TestTailLogs:
                 check_job_succeeded, job_manager=job_manager, job_id=job_id
             )
 
-    @pytest.mark.asyncio
     async def test_failed_job(self, job_manager):
         """Test tailing logs for a job that unexpectedly exits."""
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -519,7 +515,6 @@ class TestTailLogs:
 
             wait_for_condition(check_job_failed, job_manager=job_manager, job_id=job_id)
 
-    @pytest.mark.asyncio
     async def test_stopped_job(self, job_manager):
         """Test tailing logs for a job that unexpectedly exits."""
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -541,7 +536,8 @@ class TestTailLogs:
             )
 
 
-def test_logs_streaming(job_manager):
+@pytest.mark.asyncio
+async def test_logs_streaming(job_manager):
     """Test that logs are streamed during the job, not just at the end."""
 
     stream_logs_script = """
@@ -559,7 +555,8 @@ while True:
     job_manager.stop_job(job_id)
 
 
-def test_bootstrap_address(job_manager, monkeypatch):
+@pytest.mark.asyncio
+async def test_bootstrap_address(job_manager, monkeypatch):
     """Ensure we always use bootstrap address in job manager even though ray
     cluster might be started with http://ip:{dashboard_port} from previous
     runs.
