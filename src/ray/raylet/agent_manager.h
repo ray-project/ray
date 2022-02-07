@@ -72,12 +72,14 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   /// \param[in] job_id The job id of the runtime env.
   /// \param[in] serialized_runtime_env Serialized runtime env.
   /// \param[in] serialized_allocated_resource_instances Resource limit allocated to this
-  /// runtime env. \param[in] callback Callback invoked after creating runtime env request
-  /// is finished. \param[in] retried_count The retry count of the same creation request.
+  /// runtime env.
+  /// \param[in] callback Callback invoked after creating runtime env request
+  /// is finished.
+  /// \param[in] num_retried The retry count of the same creation request.
   virtual void CreateRuntimeEnv(
       const JobID &job_id, const std::string &serialized_runtime_env,
       const std::string &serialized_allocated_resource_instances,
-      CreateRuntimeEnvCallback callback, size_t retried_count = 0);
+      CreateRuntimeEnvCallback callback, int num_retried = 0);
 
   /// Request agent to delete a list of URIs.
   /// \param[in] URIs The list of URIs to delete.
@@ -93,9 +95,6 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   int agent_port_ = 0;
   /// The number of times the agent is restarted.
   std::atomic<uint32_t> agent_restart_count_ = 0;
-  /// Whether or not we intend to start the agent.  This is false if we
-  /// are missing Ray Dashboard dependencies, for example.
-  bool should_start_agent_ = true;
   std::string agent_ip_address_;
   DelayExecutorFn delay_executor_;
   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory_;

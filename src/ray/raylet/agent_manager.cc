@@ -124,7 +124,7 @@ void AgentManager::StartAgent() {
 void AgentManager::CreateRuntimeEnv(
     const JobID &job_id, const std::string &serialized_runtime_env,
     const std::string &serialized_allocated_resource_instances,
-    CreateRuntimeEnvCallback callback, size_t retried_count) {
+    CreateRuntimeEnvCallback callback, int num_retried) {
   // If the client is not set, it means the agent wasn't started.
   if (runtime_env_agent_client_ == nullptr) {
     // If the agent cannot be restarted anymore, fail the request.
@@ -165,7 +165,7 @@ void AgentManager::CreateRuntimeEnv(
   request.set_serialized_allocated_resource_instances(
       serialized_allocated_resource_instances);
   runtime_env_agent_client_->CreateRuntimeEnv(
-      request, [this, job_id, serialized_runtime_env, retried_count,
+      request, [this, job_id, serialized_runtime_env, num_retried,
                 serialized_allocated_resource_instances, callback = std::move(callback)](
                    const Status &status, const rpc::CreateRuntimeEnvReply &reply) {
         if (status.ok()) {
@@ -184,7 +184,7 @@ void AgentManager::CreateRuntimeEnv(
                  << ", status = " << status
                  << ", it is most likely the ray agent on this node is dead. Please "
                     "check the log `dashboard_agent.log` on this node.";
-          if (retried_count >= kMaxRetry) {
+          if (num_retried >= kMaxRetry) {
             callback(false, "",
                      /*setup_error_message*/ stream.str());
             return;
@@ -193,10 +193,11 @@ void AgentManager::CreateRuntimeEnv(
           RAY_LOG(INFO) << stream.str() << " Will retry.";
           delay_executor_(
               [this, job_id, serialized_runtime_env,
-               serialized_allocated_resource_instances, callback = std::move(callback)] {
+               serialized_allocated_resource_instances, callback = std::move(callback),
+               num_retried] {
                 CreateRuntimeEnv(job_id, serialized_runtime_env,
                                  serialized_allocated_resource_instances, callback,
-                                 retried_count + 1);
+                                 num_retried + 1);
               },
               RayConfig::instance().agent_manager_retry_interval_ms());
         }
