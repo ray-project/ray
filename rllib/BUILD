@@ -542,7 +542,6 @@ py_test(
     args = ["--yaml-dir=tuned_examples/sac" ,"--override-mean-reward=-850.0"]
 )
 
-
 py_test(
     name = "learning_tests_pendulum_sac_fake_gpus",
     main = "tests/run_regression_tests.py",

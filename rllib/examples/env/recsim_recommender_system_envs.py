@@ -21,8 +21,6 @@ from ray.tune import register_env
 # a) unhealthy, but taste good, or b) healthy, but have bad taste.
 # Best strategy is to pick a mix of both to ensure long-term
 # engagement.
-
-
 def lts_user_model_creator(env_ctx):
     return lts.LTSUserModel(
         env_ctx["slate_size"],
@@ -41,13 +39,12 @@ LongTermSatisfactionRecSimEnv = make_recsim_env(
     reward_aggregator=lts.clicked_engagement_reward,
 )
 
+
 # Interest exploration env: Models the problem of active exploration
 # of user interests. It is meant to illustrate popularity bias in
 # recommender systems, where myopic maximization of engagement leads
 # to bias towards documents that have wider appeal,
 # whereas niche user interests remain unexplored.
-
-
 def iex_user_model_creator(env_ctx):
     return iex.IEUserModel(
         env_ctx["slate_size"],
@@ -67,10 +64,9 @@ InterestExplorationRecSimEnv = make_recsim_env(
     reward_aggregator=iex.total_clicks_reward,
 )
 
+
 # Interest evolution env: See https://github.com/google-research/recsim
 # for more information.
-
-
 def iev_user_model_creator(env_ctx):
     return iev.IEvUserModel(
         env_ctx["slate_size"],
@@ -90,6 +86,7 @@ InterestEvolutionRecSimEnv = make_recsim_env(
     recsim_document_sampler_creator=iev_document_sampler_creator,
     reward_aggregator=iev.clicked_watchtime_reward,
 )
+
 
 # Backward compatibility.
 register_env(
