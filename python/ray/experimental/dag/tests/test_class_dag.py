@@ -35,7 +35,7 @@ def test_serialize_warning():
         pickle.dumps(node)
 
 
-def test_basic_actor_dag():
+def test_basic_actor_dag(shared_ray_instance):
     @ray.remote
     def combine(x, y):
         return x + y
@@ -55,7 +55,7 @@ def test_basic_actor_dag():
     assert ray.get(dag.execute()) == 32
 
 
-def test_class_as_class_constructor_arg():
+def test_class_as_class_constructor_arg(shared_ray_instance):
     @ray.remote
     class OuterActor:
         def __init__(self, inner_actor):
@@ -74,7 +74,7 @@ def test_class_as_class_constructor_arg():
     assert ray.get(dag.execute()) == 12
 
 
-def test_class_as_function_constructor_arg():
+def test_class_as_function_constructor_arg(shared_ray_instance):
     @ray.remote
     def f(actor_handle):
         return ray.get(actor_handle.get.remote())
@@ -84,7 +84,7 @@ def test_class_as_function_constructor_arg():
     assert ray.get(dag.execute()) == 10
 
 
-def test_basic_actor_dag_constructor_options():
+def test_basic_actor_dag_constructor_options(shared_ray_instance):
     a1 = Actor._bind(10)
     dag = a1.get._bind()
     print(dag)
@@ -101,7 +101,7 @@ def test_basic_actor_dag_constructor_options():
     assert a1.get_options().get("max_pending_calls") == 10
 
 
-def test_actor_method_options():
+def test_actor_method_options(shared_ray_instance):
     a1 = Actor._bind(10)
     dag = a1.get.options(name="actor_method_options")._bind()
     print(dag)
@@ -109,14 +109,14 @@ def test_actor_method_options():
     assert dag.get_options().get("name") == "actor_method_options"
 
 
-def test_basic_actor_dag_constructor_invalid_options():
+def test_basic_actor_dag_constructor_invalid_options(shared_ray_instance):
     a1 = Actor.options(num_cpus=-1)._bind(10)
     invalid_dag = a1.get._bind()
     with pytest.raises(ValueError, match=".*Resource quantities may not be negative.*"):
         ray.get(invalid_dag.execute())
 
 
-def test_actor_options_complicated():
+def test_actor_options_complicated(shared_ray_instance):
     """Test a more complicated setup where we apply .options() in both
     constructor and method call with overlapping keys, and ensure end to end
     options correctness.
@@ -179,7 +179,7 @@ def test_actor_options_complicated():
     )
 
 
-def test_pass_actor_handle():
+def test_pass_actor_handle(shared_ray_instance):
     @ray.remote
     class Actor:
         def ping(self):
@@ -196,7 +196,7 @@ def test_pass_actor_handle():
     assert ray.get(dag.execute()) == "hello"
 
 
-def test_dynamic_pipeline():
+def test_dynamic_pipeline(shared_ray_instance):
     @ray.remote
     class Model:
         def __init__(self, arg):

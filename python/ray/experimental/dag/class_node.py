@@ -1,10 +1,11 @@
+from multiprocessing.sharedctypes import Value
 import ray
-import ray.experimental.dag as dag
+import ray.experimental.dag as ray_dag
 
 from typing import Any, Dict, List, Optional, Tuple
 
 
-class ClassNode(dag.DAGNode):
+class ClassNode(ray_dag.DAGNode):
     """Represents an actor creation in a Ray task DAG."""
 
     def __init__(
@@ -15,9 +16,14 @@ class ClassNode(dag.DAGNode):
         cls_options,
         kwargs_to_resolve=None,
     ):
+        if len(cls_args) == 1 and cls_args[0] == ray_dag.DAG_ENTRY_POINT:
+            raise ValueError(
+                "DAG_ENTRY_POINT cannot be used as ClassNode args. "
+                "Please bind to function or class method only."
+            )
         self._body = cls
         self._last_call: Optional["ClassMethodNode"] = None
-        dag.DAGNode.__init__(
+        ray_dag.DAGNode.__init__(
             self,
             cls_args,
             cls_kwargs,
@@ -84,7 +90,7 @@ class _UnboundClassMethodNode(object):
         return self
 
 
-class ClassMethodNode(dag.DAGNode):
+class ClassMethodNode(ray_dag.DAGNode):
     """Represents an actor method invocation in a Ray function DAG."""
 
     def __init__(
@@ -106,7 +112,7 @@ class ClassMethodNode(dag.DAGNode):
         # The actor creation task dependency is encoded as the first argument,
         # and the ordering dependency as the second, which ensures they are
         # executed prior to this node.
-        dag.DAGNode.__init__(
+        ray_dag.DAGNode.__init__(
             self,
             method_args,
             method_kwargs,
@@ -133,7 +139,10 @@ class ClassMethodNode(dag.DAGNode):
         method_body = getattr(self._parent_class_node, self._method_name)
         # import ipdb
         # ipdb.set_trace()
-        if len(self._bound_args) == 1 and self._bound_args[0] == dag.DAG_ENTRY_POINT:
+        if (
+            len(self._bound_args) == 1
+            and self._bound_args[0] == ray_dag.DAG_ENTRY_POINT
+        ):
             # DAG entrypoint, execute with user input rather than bound args.
             return method_body.options(**self._bound_options).remote(*args, **kwargs)
         else:
