@@ -1,4 +1,4 @@
-import ray.experimental.dag as dag
+import ray.experimental.dag as ray_dag
 
 
 def get_indentation(num_spaces=4):
@@ -12,7 +12,7 @@ def get_args_lines(bound_args):
     indent = get_indentation()
     lines = []
     for arg in bound_args:
-        if isinstance(arg, dag.DAGNode):
+        if isinstance(arg, ray_dag.DAGNode):
             node_repr_lines = str(arg).split("\n")
             for node_repr_line in node_repr_lines:
                 lines.append(f"{indent}" + node_repr_line)
@@ -48,7 +48,7 @@ def get_kwargs_lines(bound_kwargs):
     indent = get_indentation()
     kwargs_lines = []
     for key, val in bound_kwargs.items():
-        if isinstance(val, dag.DAGNode):
+        if isinstance(val, ray_dag.DAGNode):
             node_repr_lines = str(val).split("\n")
             for index, node_repr_line in enumerate(node_repr_lines):
                 if index == 0:
@@ -85,8 +85,6 @@ def get_kwargs_lines(bound_kwargs):
 
 def get_options_lines(bound_options):
     """Pretty prints .options() in DAGNode. Only prints non-empty values."""
-    if not bound_options:
-        return "{}"
     indent = get_indentation()
     options_lines = []
     for key, val in bound_options.items():
@@ -98,3 +96,30 @@ def get_options_lines(bound_options):
         options_line += f"\n{indent}{line}"
     options_line += f"\n{indent}}}"
     return options_line
+
+
+def get_kwargs_to_resolve_lines(kwargs_to_resolve):
+    indent = get_indentation()
+    kwargs_to_resolve_lines = []
+    for key, val in kwargs_to_resolve.items():
+        if isinstance(val, ray_dag.DAGNode):
+            node_repr_lines = str(val).split("\n")
+            for index, node_repr_line in enumerate(node_repr_lines):
+                if index == 0:
+                    kwargs_to_resolve_lines.append(
+                        f"{indent}{key}:"
+                        + f"{indent}"
+                        + "\n"
+                        + f"{indent}{indent}{indent}"
+                        + node_repr_line
+                    )
+                else:
+                    kwargs_to_resolve_lines.append(f"{indent}{indent}" + node_repr_line)
+        else:
+            kwargs_to_resolve_lines.append(f"{indent}{key}: " + str(val))
+
+    kwargs_to_resolve_line = "{"
+    for line in kwargs_to_resolve_lines:
+        kwargs_to_resolve_line += f"\n{indent}{line}"
+    kwargs_to_resolve_line += f"\n{indent}}}"
+    return kwargs_to_resolve_line
