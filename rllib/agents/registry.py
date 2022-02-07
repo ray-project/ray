@@ -183,10 +183,10 @@ def _import_td3():
 ALGORITHMS = {
     "A2C": _import_a2c,
     "A3C": _import_a3c,
+    "APPO": _import_appo,
     "AlphaStar": _import_alpha_star,
     "APEX": _import_apex,
     "APEX_DDPG": _import_apex_ddpg,
-    "APPO": _import_appo,
     "ARS": _import_ars,
     "BanditLinTS": _import_bandit_lints,
     "BanditLinUCB": _import_bandit_linucb,
