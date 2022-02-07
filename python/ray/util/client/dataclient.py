@@ -51,6 +51,8 @@ class DataClient:
         self.cv = threading.Condition(lock=self.lock)
 
         self.request_queue = queue.Queue()
+        # This is to avoid deadlock in gc and the code.
+        self.gc_queue = queue.Queue()
         self.ready_data: Dict[int, Any] = {}
         # NOTE: Dictionary insertion is guaranteed to complete before lookup
         # and/or removal because of synchronization via the request_queue.
@@ -284,13 +286,24 @@ class DataClient:
         req: ray_client_pb2.DataRequest,
         callback: Optional[ResponseCallable] = None,
     ) -> None:
-        with self.lock:
-            self._check_shutdown()
-            req_id = self._next_id()
-            req.req_id = req_id
-            self.asyncio_waiting_data[req_id] = callback
-            self.outstanding_requests[req_id] = req
-            self.request_queue.put(req)
+        block = req.WhichOneof("type") != "release"
+        if self.lock.acquire(blocking=block):
+            try:
+                self._check_shutdown()
+                while req is not None:
+                    req_id = self._next_id()
+                    req.req_id = req_id
+                    self.asyncio_waiting_data[req_id] = callback
+                    self.outstanding_requests[req_id] = req
+                    self.request_queue.put(req)
+                    try:
+                        (req, callback) = self.gc_queue.get(False)
+                    except queue.Empty:
+                        (req, callback) = (None, None)
+            finally:
+                self.lock.release()
+        else:
+            self.gc_queue.put((req, callback))
 
     # Must hold self.lock when calling this function.
     def _check_shutdown(self):
