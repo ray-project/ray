@@ -22,7 +22,10 @@ Your Ray application may have dependencies that exist outside of your Ray script
 
 One frequent problem when running on a cluster is that Ray expects these "dependencies" to exist on each Ray node. If these are not present, you may run into issues such as ``ModuleNotFoundError``, ``FileNotFoundError`` and so on.
 
-To address this problem, you can either prepare your dependencies on the cluster in advance using the Ray cluster launcher, or use Ray's :ref:`runtime environments<runtime-environments>`.
+To address this problem, you can (1) prepare your dependencies on the cluster in advance using the Ray cluster launcher, or (2) use Ray's :ref:`runtime environments<runtime-environments>` to install them on the fly.
+
+For production usage or non-changing environments, we recommend using the first approach and installing your dependencies into a container image.
+For dynamic environments (e.g. for development and experimentation), we recommend using runtime environments.
 
 
 Concepts
@@ -44,9 +47,9 @@ Concepts
 Preparing an environment using the Ray Cluster launcher
 -------------------------------------------------------
 
-The first way to set up dependencies is to is to prepare a single environment across the cluster before starting the Ray runtime.
+The first way to set up dependencies is to is to prepare a single environment across the cluster before starting the Ray runtime.  
 
-- You can build all your files and dependencies into a Docker image and specify this in your your :ref:`Cluster YAML Configuration<cluster-config>`.
+- You can build all your files and dependencies into a container image and specify this in your your :ref:`Cluster YAML Configuration<cluster-config>`.
 
 - You can also install packages using ``setup_commands`` in the Ray Cluster configuration file (:ref:`reference<cluster-configuration-setup-commands>`).
 
