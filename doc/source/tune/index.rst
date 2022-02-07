@@ -116,7 +116,7 @@ And you can move your models from training to serving on the same infrastructure
     ^^^
 
     Our guides teach you about key features of Tune, such as distributed training or early stopping.
-    You can also find practical scikit-learn, PyTorch, mlflow, and many more.
+    You can also find practical tutorials for scikit-learn, PyTorch, mlflow, and many more.
 
     +++
     .. link-button:: tune-guides
