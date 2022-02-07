@@ -87,13 +87,7 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
     assert conda is not None
 
     result = None
-    if sys.platform == "win32":
-        raise NotImplementedError(
-            "The 'conda' field in runtime_env "
-            "is not currently supported on "
-            "Windows."
-        )
-    elif isinstance(conda, str):
+    if isinstance(conda, str):
         yaml_file = Path(conda)
         if yaml_file.suffix in (".yaml", ".yml"):
             if not yaml_file.is_file():
@@ -192,13 +186,7 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     assert pip is not None
 
     pip_list = None
-    if sys.platform == "win32":
-        raise NotImplementedError(
-            "The 'pip' field in runtime_env "
-            "is not currently supported on "
-            "Windows."
-        )
-    elif isinstance(pip, str):
+    if isinstance(pip, str):
         # We have been given a path to a requirements.txt file.
         pip_file = Path(pip)
         if not pip_file.is_file():
