@@ -95,7 +95,7 @@ And you can move your models from training to serving on the same infrastructure
     +++
     .. link-button:: tune-tutorial
         :type: ref
-        :text: Get Started with Ray Tune
+        :text: Get Started with Tune
         :classes: btn-outline-info btn-block
     ---
 
@@ -108,7 +108,7 @@ And you can move your models from training to serving on the same infrastructure
     +++
     .. link-button:: tune-60-seconds
         :type: ref
-        :text: Know Tune's Key Concepts
+        :text: Tune's Key Concepts
         :classes: btn-outline-info btn-block
     ---
 
