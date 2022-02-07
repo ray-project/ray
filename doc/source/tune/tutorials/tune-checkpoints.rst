@@ -158,7 +158,7 @@ When syncing results back to the driver, the source would be a path similar to
 
 Note that we adjusted the sync period in the example above. Setting this to a lower number will pull
 checkpoints from remote nodes more often. This will lead to more robust trial recovery,
-but it will also lead to more synchronization overhead (as SHH is usually slow).
+but it will also lead to more synchronization overhead (as SSH is usually slow).
 
 As in the first case, the driver (on the head node) will have access to all checkpoints locally
 for further processing.
