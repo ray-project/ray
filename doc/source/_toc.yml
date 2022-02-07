@@ -52,6 +52,7 @@ parts:
               - file: tune/tutorials/tune-distributed
           - file: tune/examples/index
           - file: tune/faq
+          - file: tune/api_docs/overview.rst
       - file: serve/index
         title: Ray Serve
         sections:
@@ -111,7 +112,6 @@ parts:
   - caption: References
     chapters:
       - file: ray-references/api
-#      - file: ray-references/faq
 
   - caption: Developer Guides
     chapters:

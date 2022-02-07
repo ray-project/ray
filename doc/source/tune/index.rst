@@ -4,7 +4,7 @@ Tune: Scalable Hyperparameter Tuning
 ====================================
 
 .. image:: images/tune_overview.png
-    :scale: 60%
+    :scale: 50%
     :align: center
 
 Tune is a Python library for experiment execution and hyperparameter tuning at any scale.
@@ -14,14 +14,76 @@ and choose among state of the art algorithms such as :ref:`Population Based Trai
 Tune integrates with a wide range of hyperparameter optimization tools, like
 :ref:`Optuna, Hyperopt, Ax, and Nevergrad <tune-search-alg>`, to name a few.
 
+.. tabbed:: Examples
+
+    Learn how to use Ray Tune for various machine learning frameworks in just a few steps.
+    **Click on the tabs to see code examples**.
+
+.. tabbed:: Quickstart
+
+    .. tip:: We'd love to hear your feedback on using Tune - `get in touch <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
+
+    To run this example, install the following: ``pip install "ray[tune]"``.
+
+    In this quick-start example you _minimize_ a simple function of the form ``f(x) = a**2 + b``, our `objective` function.
+    The closer ``a`` is to zero and the smaller ``b`` is, the smaller the total value of ``f(x)``.
+    We will define a so-called `search space` for  ``a`` and ``b`` and let Ray Tune explore the space for good values.
+
+    .. literalinclude:: ../../../python/ray/tune/tests/example.py
+       :language: python
+       :start-after: __quick_start_begin__
+       :end-before: __quick_start_end__
+
+.. tabbed:: Keras+Hyperopt
+
+    To tune your Keras models with Hyperopt, you wrap your model in an objective function whose ``config`` you
+    can access for selecting hyperparameters.
+    In the example below we only tune the ``activation`` parameter of the first layer of the model, but you can
+    tune any parameter of the model you want.
+    After defining the search space, you can simply initialize the ``HyperOptSearch`` object and pass it to ``run``.
+    It's important to tell Ray Tune which metric you want to optimize and whether you want to maximize or minimize it.
+
+    .. code-block:: python
+
+        from ray import tune
+        from ray.tune.suggest.hyperopt import HyperOptSearch
+        import keras
+
+        # 1. Wrap a Keras model in an objective function.
+        def objective(config):
+            model = keras.models.Sequential()
+            model.add(keras.layers.Dense(784, activation=config["activation"]))
+            model.add(keras.layers.Dense(10, activation="softmax"))
+
+            model.compile(loss="binary_crossentropy", optimizer="adam", metrics=["accuracy"])
+            model.fit(...)
+            loss, accuracy = model.evaluate(...)
+            return {"accuracy": accuracy}
+
+        # 2. Define a search space and initialize the search algorithm.
+        search_space = {"activation": tune.choice(["relu", "tanh"])}
+        algo = HyperOptSearch()
+
+        # 3. Start a Tune run that maximizes accuracy.
+        analysis = tune.run(
+            objective, search_alg=algo, config=search_space, metric="accuracy", mode="max"
+        )
+
+.. TODO add .. tabbed:: PyTorch+Optuna
+
+.. TODO add .. tabbed:: Scikit+PBT
+
 With Tune you can also launch a multi-node :ref:`distributed hyperparameter sweep <tune-distributed-ref>`
 in less than 10 lines of code.
 It automatically manages :ref:`checkpoints <tune-checkpoint-syncing>` and logging to :ref:`TensorBoard <tune-logging>`.
 And you can move your models from training to serving on the same infrastructure with `Ray Serve`_.
 
+.. _`Ray Serve`: ../serve/index.html
+
+
 .. panels::
     :container: text-center
-    :column: col-lg-6 px-2 py-2
+    :column: col-md-4 px-2 py-2
     :card:
 
     **Getting Started**
@@ -53,10 +115,8 @@ And you can move your models from training to serving on the same infrastructure
     **User Guides**
     ^^^
 
-    Our guides teach you about key features of Tune, such as distributed training, early stopping,
-    logging to TensorBoard, and how to use checkpointing.
-    You can also find practical guides to many of our integrations, such as scikit-learn, PyTorch (Lightning),
-    mlflow, Weights&Biases, and many more.
+    Our guides teach you about key features of Tune, such as distributed training or early stopping.
+    You can also find practical scikit-learn, PyTorch, mlflow, and many more.
 
     +++
     .. link-button:: tune-guides
@@ -76,27 +136,31 @@ And you can move your models from training to serving on the same infrastructure
         :type: ref
         :text: Read the API Reference
         :classes: btn-outline-info btn-block
+    ---
 
+    **FAQ**
+    ^^^
 
-.. _`Ray Serve`: ../serve/index.html
+    Find answers to commonly asked questions in our detailed FAQ.
 
-You can also check out :ref:`one of our many examples <tune-examples-ref>` or see if you
-:ref:`find answers to common questions in our FAQ <tune-faq>`.
+    +++
+    .. link-button:: tune-faq
+        :type: ref
+        :text: Ray Tune FAQ
+        :classes: btn-outline-info btn-block
+    ---
 
-Quick Start
------------
+    **Examples**
+    ^^^
 
-.. tip:: We'd love to hear your feedback on using Tune - `get in touch <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
+    Check out some of our many examples on Ray Tune.
 
+    +++
+    .. link-button:: tune-examples-ref
+        :type: ref
+        :text: Ray Tune Examples
+        :classes: btn-outline-info btn-block
 
-To run this example, install the following: ``pip install "ray[tune]"``.
-
-This example runs a parallel grid search to optimize an example objective function.
-
-.. literalinclude:: ../../../python/ray/tune/tests/example.py
-   :language: python
-   :start-after: __quick_start_begin__
-   :end-before: __quick_start_end__
 
 Why choose Tune?
 ----------------
@@ -106,12 +170,13 @@ If you're new to Tune, you're probably wondering, "what makes Tune different?"
 
 .. dropdown:: Cutting-Edge Optimization Algorithms
 
-    As a user, you're probably looking into hyperparameter optimization because you want to quickly increase your model performance.
+    As a user, you're probably looking into hyperparameter optimization because you want to quickly increase your
+    model performance.
 
     Tune enables you to leverage a variety of these cutting edge optimization algorithms, reducing the cost of tuning
-    by `aggressively terminating bad hyperparameter evaluations <tune-scheduler-hyperband>`_,
-    intelligently :ref:`choosing better parameters to evaluate <tune-search-alg>`, or even
-    :ref:`changing the hyperparameters during training <tune-scheduler-pbt>` to optimize hyperparameter schedules.
+    by `terminating bad runs early <tune-scheduler-hyperband>`_,
+    :ref:`choosing better parameters to evaluate <tune-search-alg>`, or even
+    :ref:`changing the hyperparameters during training <tune-scheduler-pbt>` to optimize schedules.
 
 .. dropdown:: First-class Developer Productivity
 
