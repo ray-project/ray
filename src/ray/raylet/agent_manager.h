@@ -99,7 +99,7 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   DelayExecutorFn delay_executor_;
   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory_;
   std::shared_ptr<rpc::RuntimeEnvAgentClientInterface> runtime_env_agent_client_;
-  const size_t kMaxRetry = 5;
+  const int kMaxRetry = 5;
 };
 
 class DefaultAgentManagerServiceHandler : public rpc::AgentManagerServiceHandler {
