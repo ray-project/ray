@@ -74,7 +74,6 @@ CORE_NIGHTLY_TESTS = {
         "autoscaling_shuffle_1tb_1000_partitions",
         SmokeTest("stress_test_many_tasks"),
         SmokeTest("stress_test_dead_actors"),
-        "shuffle_data_loader",
         SmokeTest("threaded_actors_stress_test"),
         "pg_long_running_performance_test",
     ],
