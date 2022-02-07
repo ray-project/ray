@@ -919,8 +919,18 @@ def start(
     is_flag=True,
     help="If set, ray will send SIGKILL instead of SIGTERM.",
 )
+@click.option(
+    "-g",
+    "--grace-period",
+    default=10,
+    help=(
+        "The time ray waits for processes to be properly terminated. "
+        "If processes are not terminated within the grace period, "
+        "they are forcefully terminated after the grace period."
+    ),
+)
 @add_click_logging_options
-def stop(force):
+def stop(force, grace_period):
     """Stop Ray processes manually on the local machine."""
 
     # Note that raylet needs to exit before object store, otherwise
@@ -1012,16 +1022,19 @@ def stop(force):
     procs_to_kill = stopped + alive
     total_found = len(procs_to_kill)
 
+    # Wait for grace period to terminate processes.
     gone_procs = set()
 
     def on_terminate(proc):
         gone_procs.add(proc)
         cli_logger.print(f"{len(gone_procs)}/{total_found} stopped.", end="\r")
 
-    # Wait for 10 seconds at max.
-    stopped, alive = psutil.wait_procs(procs_to_kill, timeout=10, callback=on_terminate)
+    stopped, alive = psutil.wait_procs(
+        procs_to_kill, timeout=grace_period, callback=on_terminate
+    )
     total_stopped = len(stopped)
 
+    # Print the termination result.
     if total_found == 0:
         cli_logger.print("Did not find any active Ray processes.")
     else:
@@ -1029,16 +1042,23 @@ def stop(force):
             cli_logger.success("Stopped all {} Ray processes.", total_stopped)
         else:
             cli_logger.warning(
-                f"Stopped only {total_stopped} out of {total_found} Ray processes. "
+                f"Stopped only {total_stopped} out of {total_found} Ray processes "
+                f"within the grace period {grace_period} seconds. "
                 f"Set `{cf.bold('-v')}` to see more details. "
-                "Remaining processes will be forcefully cleaned up.",
+                f"Remaining processes {alive} will be forcefully terminated.",
             )
             cli_logger.warning(
-                "Try running the command again, or use `{}`.", cf.bold("--force")
+                f"You can also use `{cf.bold('--force')}` to forcefully terminate "
+                "processes or set higher `--grace-period` to wait longer time for "
+                "proper termination."
             )
 
+    # For processes that are not killed within the grace period,
+    # we send force termination signals.
     for proc in alive:
         proc.kill()
+    # Wait a little bit to make sure processes are killed forcefully.
+    psutil.wait_procs(alive, timeout=2)
 
 
 @cli.command()
