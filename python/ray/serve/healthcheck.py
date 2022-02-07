@@ -1,8 +1,11 @@
 from typing import Callable, Optional
 
+from ray.util.annotations import PublicAPI
+
 HEALTHCHECK_DECORATOR_ATTRIBUTE = "__ray_serve_healthcheck_method"
 
 
+@PublicAPI(stability="alpha")
 def healthcheck(func: Callable) -> Callable:
     """Decorator for users to mark the method to use for health checking.
 
