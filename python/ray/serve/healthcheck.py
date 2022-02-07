@@ -25,7 +25,8 @@ def get_healthcheck_method(cls: type) -> Optional[str]:
                 raise ValueError(
                     f"@serve.healthcheck can only be defined on one method, "
                     f"but it was defined on both '{healthcheck_method}' and "
-                    f"'{attr}'.")
+                    f"'{attr}'."
+                )
             else:
                 healthcheck_method = attr
 

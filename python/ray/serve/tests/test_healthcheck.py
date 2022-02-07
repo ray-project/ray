@@ -36,8 +36,7 @@ class TestHealthcheckDecorator:
             def healthz(self):
                 pass
 
-        with pytest.raises(
-                ValueError, match="defined on both 'healthz' and 'hi'"):
+        with pytest.raises(ValueError, match="defined on both 'healthz' and 'hi'"):
             get_healthcheck_method(A)
 
     def test_inheritance(self):
@@ -50,8 +49,7 @@ class TestHealthcheckDecorator:
             def child_method(self):
                 pass
 
-        assert get_healthcheck_method(
-            ChildWithoutHealthcheck) == "parent_method"
+        assert get_healthcheck_method(ChildWithoutHealthcheck) == "parent_method"
 
         class ParentWithoutHealthcheck:
             def parent_method(self):
@@ -70,8 +68,8 @@ class TestHealthcheckDecorator:
                 pass
 
         with pytest.raises(
-                ValueError,
-                match="defined on both 'child_method' and 'parent_method'"):
+            ValueError, match="defined on both 'child_method' and 'parent_method'"
+        ):
             get_healthcheck_method(BothParentAndChild)
 
 
@@ -85,6 +83,7 @@ class Patient:
     def __call__(self, *args):
         if self.should_hang:
             import time
+
             time.sleep(10000)
         elif not self.healthy:
             raise Exception("intended to fail")
@@ -118,6 +117,7 @@ def test_no_user_defined_method(serve_instance, use_class):
         class A:
             def __call__(self, *args):
                 return ray.get_runtime_context().current_actor
+
     else:
 
         @serve.deployment
@@ -129,8 +129,7 @@ def test_no_user_defined_method(serve_instance, use_class):
     actor = ray.get(h.remote())
     ray.kill(actor)
 
-    wait_for_condition(
-        check_new_actor_started, handle=h, original_actors=actor)
+    wait_for_condition(check_new_actor_started, handle=h, original_actors=actor)
 
 
 def test_user_defined_method_fails(serve_instance):
@@ -139,8 +138,7 @@ def test_user_defined_method_fails(serve_instance):
     actor = ray.get(h.remote())
     h.set_should_fail.remote()
 
-    wait_for_condition(
-        check_new_actor_started, handle=h, original_actors=actor)
+    wait_for_condition(check_new_actor_started, handle=h, original_actors=actor)
     [ray.get(h.remote()) for _ in range(100)]
 
 
@@ -150,8 +148,7 @@ def test_user_defined_method_hangs(serve_instance):
     actor = ray.get(h.remote())
     h.set_should_hang.remote()
 
-    wait_for_condition(
-        check_new_actor_started, handle=h, original_actors=actor)
+    wait_for_condition(check_new_actor_started, handle=h, original_actors=actor)
     [ray.get(h.remote()) for _ in range(100)]
 
 
@@ -164,8 +161,7 @@ def test_multiple_replicas(serve_instance):
 
     h.set_should_fail.remote()
 
-    wait_for_condition(
-        check_new_actor_started, handle=h, original_actors=actors)
+    wait_for_condition(check_new_actor_started, handle=h, original_actors=actors)
 
     new_actors = set(ray.get(h.remote())._actor_id for _ in range(100))
     assert len(new_actors) == 2
@@ -196,10 +192,10 @@ def test_inherit_healthcheck(serve_instance):
     assert len(actors) == 1
 
     h.set_should_fail.remote()
-    wait_for_condition(
-        check_new_actor_started, handle=h, original_actors=actors)
+    wait_for_condition(check_new_actor_started, handle=h, original_actors=actors)
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))
