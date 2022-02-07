@@ -155,15 +155,14 @@ def test_user_defined_method_hangs(serve_instance):
 def test_multiple_replicas(serve_instance):
     Patient.options(num_replicas=2).deploy()
     h = Patient.get_handle()
-    actors = set(ray.get(h.remote())._actor_id for _ in range(100))
-    print(actors)
+    actors = {ray.get(h.remote())._actor_id for _ in range(100)}
     assert len(actors) == 2
 
     h.set_should_fail.remote()
 
     wait_for_condition(check_new_actor_started, handle=h, original_actors=actors)
 
-    new_actors = set(ray.get(h.remote())._actor_id for _ in range(100))
+    new_actors = {ray.get(h.remote())._actor_id for _ in range(100)}
     assert len(new_actors) == 2
     assert len(new_actors.intersection(actors)) == 1
 
@@ -188,7 +187,7 @@ def test_inherit_healthcheck(serve_instance):
 
     Child.deploy()
     h = Child.get_handle()
-    actors = set(ray.get(h.remote())._actor_id for _ in range(100))
+    actors = {ray.get(h.remote())._actor_id for _ in range(100)}
     assert len(actors) == 1
 
     h.set_should_fail.remote()
