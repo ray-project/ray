@@ -374,10 +374,7 @@ class Worker:
 
         while True:
             if deadline:
-                op_timeout = min(
-                    MAX_BLOCKING_OPERATION_TIME_S,
-                    max(deadline - time.monotonic(), 0.001),
-                )
+                op_timeout = max(deadline - time.monotonic(), 0.001)
             else:
                 op_timeout = MAX_BLOCKING_OPERATION_TIME_S
             try:
