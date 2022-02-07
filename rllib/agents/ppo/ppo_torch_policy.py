@@ -154,11 +154,11 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
         # Ignore the value function.
         else:
-            vf_loss = mean_vf_loss = 0.0
+            vf_loss_clipped = mean_vf_loss = 0.0
 
         total_loss = reduce_mean_valid(
             -surrogate_loss
-            + self.config["vf_loss_coeff"] * vf_loss
+            + self.config["vf_loss_coeff"] * vf_loss_clipped
             - self.entropy_coeff * curr_entropy
         )
 
