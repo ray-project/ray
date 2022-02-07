@@ -614,7 +614,7 @@ way your dataset is split. Thus, we leave it up to the user to make
 these global configuration changes.
 
 
-How can I use large data sets in Tune?
+How can I use large datasets in Tune?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You often will want to compute a large object (e.g., training data, model weights) on the driver and use that
