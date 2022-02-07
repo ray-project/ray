@@ -291,18 +291,17 @@ class JobManager:
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
 
-        self._running_jobs: Dict[str, JobStatusInfo] = dict()
         self._recover_running_jobs()
 
     def _recover_running_jobs(self):
         """Recovers all running jobs from the status client.
 
+        For each job, we will spawn a coroutine to monitor it.
         Each will be added to self._running_jobs and reconciled.
         """
         all_jobs = self._status_client.get_all_jobs()
         for job_id, status_info in all_jobs.items():
             if not status_info.status.is_terminal():
-                self._running_jobs[job_id] = status_info
                 create_task(self._monitor_job(job_id))
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
