@@ -44,7 +44,6 @@ class RaySyncer {
 
   // Update the message for component
   void Update(const std::string &from_node_id, RaySyncMessage message);
-
   void Update(const std::string &from_node_id, RaySyncMessages messages);
 
   std::vector<std::shared_ptr<RaySyncMessage>> SyncMessages(
@@ -62,16 +61,6 @@ class RaySyncer {
  private:
   void AddNode(const std::string &node_id) {
     cluster_messages_[node_id] = NodeIndexedMessages();
-  }
-
-  void DoUpdate(absl::flat_hash_map<std::string, Array<uint64_t>>& node_views,
-                RaySyncer::RaySyncMessage message) {
-    auto& current_message = cluster_view_[message.component_id()][message.node_id()];
-    if(current_message && current_message->version() >= message.version()) {
-      // We've already got the newer messages. Skip this.
-      return;
-    }
-    current_message = std::make_shared<RaySyncer::RaySyncMessage>(std::move(message));
   }
 
   void DumpClusterMessages() const {

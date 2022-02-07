@@ -1,4 +1,5 @@
 #include "ray/common/component_syncer.h"
+#include "ray/util/container_util.h"
 
 namespace ray {
 namespace syncing {
@@ -18,17 +19,38 @@ void RaySyncer::Follow(std::shared_ptr<grpc::Channel> channel) {
   leader_ = std::make_unique<SyncerClientReactor>(*this, node_id_, *leader_stub_);
 }
 
-void RaySyncer::Update(const std::string &from_node_id,
-                       RaySyncer::RaySyncMessage message) {
-  auto& node_view = nodes_view_[from_node_id];
-  DoUpdate(node_view, std::move(message));
+// Update the message for component
+void RaySyncer::Update(const std::string &from_node_id, RaySyncMessage message) {
+  auto& node_views = map_find_or_die(nodes_view_, from_node_id);
+  DoUpdate(node_views, std::move(message));
 }
 
 void RaySyncer::Update(const std::string &from_node_id, RaySyncMessages messages) {
-  auto& node_view = nodes_view_[from_node_id];
-  for (auto &message : *messages.mutable_sync_messages()) {
-    DoUpdate(node_view, std::move(message));
+  auto& node_views = map_find_or_die(nodes_view_, from_node_id);
+  for (RaySyncer::RaySyncMessage &message : *messages.mutable_sync_messages()) {
+    DoUpdate(node_views, std::move(message));
   }
+}
+
+void RaySyncer::DoUpdate(absl::flat_hash_map<std::string, Array<uint64_t>>& node_views,
+                         RaySyncer::RaySyncMessage message) {
+  // Update view of node version
+  auto iter = node_views.find(message.node_id());
+  if(iter == node_views.end()) {
+    iter = node_views.insert(message.node_id(), Array<uint64_t>{});
+  }
+
+  if(iter->second[message.component_id()] < message.version()) {
+    iter->second[message.component_id()] = message.version();
+  }
+
+  // Update cluster resources
+  auto& current_message = cluster_view_[message.component_id()][message.node_id()];
+  if(current_message && current_message->version() >= message.version()) {
+    // We've already got the newer messages. Skip this.
+    return;
+  }
+  current_message = std::make_shared<RaySyncer::RaySyncMessage>(std::move(message));
 }
 
 std::vector<std::shared_ptr<RaySyncer::RaySyncMessage>> RaySyncer::SyncMessages(
