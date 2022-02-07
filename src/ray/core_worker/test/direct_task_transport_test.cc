@@ -159,14 +159,6 @@ class MockRayletClient : public WorkerLeaseInterface {
   }
 
   void RequestWorkerLease(
-      const TaskSpecification &resource_spec, bool grant_or_reject,
-      const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size, const bool is_selected_based_on_locality) override {
-    RequestWorkerLease(resource_spec.GetMessage(), grant_or_reject, callback,
-                       backlog_size, is_selected_based_on_locality);
-  }
-
-  void RequestWorkerLease(
       const rpc::TaskSpec &task_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size, const bool is_selected_based_on_locality) override {
