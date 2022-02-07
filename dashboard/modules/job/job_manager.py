@@ -303,7 +303,6 @@ class JobManager:
         for job_id, status_info in all_jobs.items():
             if not status_info.status.is_terminal():
                 self._running_jobs[job_id] = status_info
-                self._create_job_monitor_task(job_id)
                 create_task(self._monitor_job(job_id))
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
@@ -339,8 +338,8 @@ class JobManager:
 
         while is_alive:
             try:
-                await job_supervisor.ping.remote()
-                asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
+                result = await job_supervisor.ping.remote()
+                await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
                 is_alive = False
                 if self._status_client.get_status(job_id).status.is_terminal():
@@ -357,7 +356,9 @@ class JobManager:
                         ),
                     )
                 else:
-                    logger.error(f"Job supervisor failed unexpectedly {job_id}: {e}.")
+                    logger.warning(
+                        f"Job supervisor for job {job_id} failed unexpectedly: {e}."
+                    )
                     self._status_client.put_status(
                         job_id,
                         JobStatusInfo(
@@ -461,7 +462,7 @@ class JobManager:
 
             # Monitor the job in the background so we can detect errors without
             # requiring a client to poll.
-            create_task(self._monitor_job(job_id, supervisor))
+            create_task(self._monitor_job(job_id, job_supervisor=supervisor))
         except Exception as e:
             self._status_client.put_status(
                 job_id,
