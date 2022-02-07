@@ -43,7 +43,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.utils import force_list, merge_dicts
+from ray.rllib.utils import force_list, merge_dicts, check_env
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import deprecation_warning
@@ -492,7 +492,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         if self.env is not None:
             # Validate environment (general validation function).
-            _validate_env(self.env, env_context=self.env_context)
+            check_env(env_creator(copy.deepcopy(self.env_context)))
             # Custom validation function given.
             if validate_env is not None:
                 validate_env(self.env, self.env_context)
@@ -1716,7 +1716,7 @@ class RolloutWorker(ParallelIteratorWorker):
             # Create the sub-env.
             env = env_creator(env_ctx)
             # Validate first.
-            _validate_env(env, env_context=env_ctx)
+            check_env(env)
             # Custom validation function given by user.
             if validate_env is not None:
                 validate_env(env, env_ctx)
@@ -1859,52 +1859,3 @@ def _determine_spaces_for_multi_agent_dict(
                 action_space=act_space
             )
     return multi_agent_dict
-
-
-def _validate_env(env: EnvType, env_context: EnvContext = None):
-    # Base message for checking the env for vector-index=0
-    msg = f"Validating sub-env at vector index={env_context.vector_index} ..."
-
-    allowed_types = [gym.Env, ExternalEnv, VectorEnv, BaseEnv, ray.actor.ActorHandle]
-    if not any(isinstance(env, tpe) for tpe in allowed_types):
-        # Allow this as a special case (assumed gym.Env).
-        # TODO: Disallow this early-out. Everything should conform to a few
-        #  supported classes, i.e. gym.Env/MultiAgentEnv/etc...
-        if hasattr(env, "observation_space") and hasattr(env, "action_space"):
-            logger.warning(msg + f" (warning; invalid env-type={type(env)})")
-            return
-        else:
-            logger.warning(msg + " (NOT OK)")
-            raise EnvError(
-                "Returned env should be an instance of gym.Env (incl. "
-                "MultiAgentEnv), ExternalEnv, VectorEnv, or BaseEnv. "
-                f"The provided env creator function returned {env} "
-                f"(type={type(env)})."
-            )
-
-    # Do some test runs with the provided env.
-    if isinstance(env, gym.Env) and not isinstance(env, MultiAgentEnv):
-        # Make sure the gym.Env has the two space attributes properly set.
-        assert hasattr(env, "observation_space") and hasattr(env, "action_space")
-        # Get a dummy observation by resetting the env.
-        dummy_obs = env.reset()
-        # Convert lists to np.ndarrays.
-        if type(dummy_obs) is list and isinstance(env.observation_space, Box):
-            dummy_obs = np.array(dummy_obs)
-        # Ignore float32/float64 diffs.
-        if (
-            isinstance(env.observation_space, Box)
-            and env.observation_space.dtype != dummy_obs.dtype
-        ):
-            dummy_obs = dummy_obs.astype(env.observation_space.dtype)
-        # Check, if observation is ok (part of the observation space). If not,
-        # error.
-        if not env.observation_space.contains(dummy_obs):
-            logger.warning(msg + " (NOT OK)")
-            raise EnvError(
-                f"Env's `observation_space` {env.observation_space} does not "
-                f"contain returned observation after a reset ({dummy_obs})!"
-            )
-
-    # Log that everything is ok.
-    logger.info(msg + " (ok)")
