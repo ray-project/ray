@@ -35,24 +35,10 @@ ClusterTaskManager::ClusterTaskManager(
       cluster_resource_scheduler_(cluster_resource_scheduler),
       get_node_info_(get_node_info),
       announce_infeasible_task_(announce_infeasible_task),
-      scheduler_resource_reporter_(tasks_to_schedule_, tasks_to_dispatch_,
-                                   infeasible_tasks_, backlog_tracker_),
-<<<<<<< HEAD
-      worker_pool_(worker_pool),
-      leased_workers_(leased_workers),
-      get_task_arguments_(get_task_arguments),
-      max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes),
-      get_time_ms_(get_time_ms),
-      sched_cls_cap_enabled_(RayConfig::instance().worker_cap_enabled()),
-      sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
-      sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()),
-      internal_stats_(*this) {}
-=======
       local_scheduler_(std::move(local_scheduler)),
-      max_resource_shapes_per_load_report_(
-          RayConfig::instance().max_resource_shapes_per_load_report()),
+      scheduler_resource_reporter_(tasks_to_schedule_, infeasible_tasks_,
+                                   *local_scheduler),
       get_time_ms_(get_time_ms) {}
->>>>>>> 1f6c3a5185 (refactor)
 
 void ClusterTaskManager::QueueAndScheduleTask(
     const RayTask &task, bool grant_or_reject, bool is_selected_based_on_locality,
@@ -126,6 +112,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       shapes_it++;
     }
   }
+  local_scheduler_->ScheduleAndDispatchTasks();
 }
 
 void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {

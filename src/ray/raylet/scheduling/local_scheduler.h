@@ -115,20 +115,6 @@ class LocalScheduler {
                       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
                   const std::string &scheduling_failure_message = "");
 
-  /// Populate the relevant parts of the heartbeat table. This is intended for
-  /// sending resource usage of raylet to gcs. In particular, this should fill in
-  /// resource_load and resource_load_by_shape.
-  ///
-  /// \param[out] data: Output parameter. `resource_load` and `resource_load_by_shape` are
-  /// the only
-  ///                   fields used.
-  /// \param[in] last_reported_resources: The last reported resources. Used to check
-  /// whether
-  ///                                     resources have been changed.
-  void FillResourceUsage(
-      rpc::ResourcesData &data,
-      const std::shared_ptr<SchedulingResources> &last_reported_resources = nullptr);
-
   /// Return if any tasks are pending resource acquisition.
   ///
   /// \param[out] exemplar: An example task that is deadlocking.
@@ -407,7 +393,7 @@ class LocalScheduler {
   };
 
   mutable InternalStats internal_stats_;
-
+  friend class SchedulerResourceReporter;
   friend class LocalSchedulerTest;
   FRIEND_TEST(LocalSchedulerTest, FeasibleToNonFeasible);
 };

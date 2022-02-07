@@ -27,17 +27,14 @@ SchedulerResourceReporter::SchedulerResourceReporter(
     const absl::flat_hash_map<
         SchedulingClass, std::deque<std::shared_ptr<internal::Work>>> &tasks_to_schedule,
     const absl::flat_hash_map<
-        SchedulingClass, std::deque<std::shared_ptr<internal::Work>>> &tasks_to_dispatch,
-    const absl::flat_hash_map<
         SchedulingClass, std::deque<std::shared_ptr<internal::Work>>> &infeasible_tasks,
-    const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
-        &backlog_tracker)
+    const LocalScheduler &local_scheduler)
     : max_resource_shapes_per_load_report_(
           RayConfig::instance().max_resource_shapes_per_load_report()),
       tasks_to_schedule_(tasks_to_schedule),
-      tasks_to_dispatch_(tasks_to_dispatch),
+      tasks_to_dispatch_(local_scheduler.tasks_to_dispatch_),
       infeasible_tasks_(infeasible_tasks),
-      backlog_tracker_(backlog_tracker) {}
+      backlog_tracker_(local_scheduler.backlog_tracker_) {}
 
 int64_t SchedulerResourceReporter::TotalBacklogSize(
     SchedulingClass scheduling_class) const {

@@ -23,12 +23,9 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/scheduling/internal.h"
-#include "ray/raylet/scheduling/scheduler_resource_reporter.h"
-<<<<<<< HEAD
-#include "ray/raylet/scheduling/scheduler_stats.h"
-=======
 #include "ray/raylet/scheduling/local_scheduler.h"
->>>>>>> 1f6c3a5185 (refactor)
+#include "ray/raylet/scheduling/scheduler_resource_reporter.h"
+#include "ray/raylet/scheduling/scheduler_stats.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
@@ -176,8 +173,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   std::function<void(const RayTask &)> announce_infeasible_task_;
 
   std::shared_ptr<LocalScheduler> local_scheduler_;
-
-  const int max_resource_shapes_per_load_report_;
 
   /// TODO(swang): Add index from TaskID -> Work to avoid having to iterate
   /// through queues to cancel tasks, etc.

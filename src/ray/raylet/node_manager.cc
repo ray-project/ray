@@ -604,8 +604,6 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
       resources_data);
   cluster_task_manager_->FillResourceUsage(
       resources_data, gcs_client_->NodeResources().GetLastResourceUsage());
-  local_scheduler_->FillResourceUsage(
-      resources_data, gcs_client_->NodeResources().GetLastResourceUsage());
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     FillNormalTaskResourceUsage(resources_data);
   }
