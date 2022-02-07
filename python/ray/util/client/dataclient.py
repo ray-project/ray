@@ -291,7 +291,7 @@ class DataClient:
         #     1. _async_send is executing
         #     2. gc is triggered
         # In this case 1) is holding the lock, and 2) is trying to hold the
-        # lock which actually are deadlock.
+        # lock which actually make a deadlock.
         # To avoid this, when in case 2) we put request into gc_queue, and
         # and when it returns to 1) it'll finish sending the request.
         # But there is a race condition where 1) is just about to release
