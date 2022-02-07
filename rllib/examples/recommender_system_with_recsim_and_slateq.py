@@ -145,7 +145,7 @@ def main():
             "final_epsilon": 0.02,
         },
         "target_network_update_freq": 800,
-        "tau": 1.0,#5e-3,
+        "tau": 1.0,  # 5e-3,
         "evaluation_interval": 1,
         "evaluation_num_workers": 4,
         "evaluation_duration": 200,

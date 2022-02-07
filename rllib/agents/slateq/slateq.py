@@ -64,15 +64,12 @@ DEFAULT_CONFIG = with_common_config({
     # === Exploration Settings ===
     "exploration_config": {
         # The Exploration class to use.
-        # Must be SlateEpsilonGreedy to deal with the fact that e.g.:
-        # action_space=MultiDiscrete([5, 5]) <- slate-size=2, num-docs=5
-        # but action distribution is Categorical(5*4 / 2)
-        # -> all possible unique slates.
-        "type": "SlateEpsilonGreedy",
-        # Config for the Exploration class' constructor:
-        "initial_epsilon": 1.0,
-        "final_epsilon": 0.02,
-        "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
+        # Must be SlateSoftQ (recommended) or SlateEpsilonGreedy
+        # to deal with the fact that the action space of the policy is different
+        # from the space used inside the exploration component.
+        # E.g.: action_space=MultiDiscrete([5, 5]) <- slate-size=2, num-docs=5,
+        # but action distribution is Categorical(5*4 / 2) -> all possible unique slates.
+        "type": "SlateSoftQ",
     },
     # Switch to greedy actions in evaluation workers.
     "evaluation_config": {

@@ -4,9 +4,9 @@ long-term-satisfaction-recsim-env-slateq:
     stop:
         # Random baseline rewards:
         # num_candidates=20; slate_size=2; resample=true: ~951
-        # num_candidates=50; slate_size=3; resample=true: ~948
-        evaluation/episode_reward_mean: 1010.0
-        timesteps_total: 4000000
+        # num_candidates=50; slate_size=3; resample=true: ~946
+        evaluation/episode_reward_mean: 980.0
+        timesteps_total: 200000
     config:
         # SlateQ only supported for torch so far.
         framework: torch
@@ -39,15 +39,13 @@ long-term-satisfaction-recsim-env-slateq:
         lr_q_model:      0.00003
         rollout_fragment_length: 4
         batch_mode: truncate_episodes
-        exploration_config:
-            epsilon_timesteps: 100000
 
         target_network_update_freq: 800
         tau: 1.0
 
         # Evaluation settings.
         evaluation_interval: 1
-        evaluation_num_workers: 4
-        evaluation_duration: 200
+        evaluation_num_workers: 6
+        evaluation_duration: 500
         evaluation_duration_unit: episodes
         evaluation_parallel_to_training: true
