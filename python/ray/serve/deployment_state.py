@@ -1235,7 +1235,9 @@ class DeploymentState:
         return running_replicas_changed
 
     def update(self) -> bool:
-        """Updates the state of all deployments to match their goal state.
+        """Attempts to reconcile this deployment to match its goal state.
+
+        This is an asynchronous call; it's expected to be called repeatedly.
 
         Also updates the internal DeploymentStatusInfo based on the current
         state of the system.
