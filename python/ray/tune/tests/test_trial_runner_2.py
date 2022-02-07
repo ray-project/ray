@@ -252,10 +252,8 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(trials[1].last_result["iterations_since_restore"], 1)
         self.assertGreater(trials[1].last_result["time_since_restore"], 0)
 
-        while True:
+        while not observer.just_received_a_result():
             runner.step()
-            if observer.just_received_a_result():
-                break
 
         self.assertEqual(trials[1].last_result["timesteps_since_restore"], 20)
         self.assertEqual(trials[1].last_result["iterations_since_restore"], 2)

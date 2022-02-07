@@ -197,12 +197,10 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
     assert trial.last_result.get("training_iteration") == 1
 
     # Process result: discover failure, recover, _train (from scratch)
-    while trial.last_result.get("training_iteration") != 1:
-        runner.step()
-    while trial.last_result.get("training_iteration") != 2:
-        runner.step()
     while trial.status != Trial.TERMINATED:
         runner.step()
+
+    assert trial.last_result.get("training_iteration") > 1
 
     with pytest.raises(TuneError):
         runner.step()
