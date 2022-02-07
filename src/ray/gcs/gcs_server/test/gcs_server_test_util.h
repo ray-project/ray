@@ -77,14 +77,6 @@ struct GcsServerMocker {
 
     /// WorkerLeaseInterface
     void RequestWorkerLease(
-        const ray::TaskSpecification &resource_spec, bool grant_or_reject,
-        const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
-        const int64_t backlog_size, const bool is_selected_based_on_locality) override {
-      num_workers_requested += 1;
-      callbacks.push_back(callback);
-    }
-
-    void RequestWorkerLease(
         const rpc::TaskSpec &spec, bool grant_or_reject,
         const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
         const int64_t backlog_size, const bool is_selected_based_on_locality) override {
