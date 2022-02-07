@@ -1,4 +1,4 @@
-.. _tune-pytorch-cifar:
+.. _tune-pytorch-cifar-ref:
 
 How to use Tune with PyTorch
 ============================

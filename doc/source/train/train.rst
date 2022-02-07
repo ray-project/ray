@@ -38,7 +38,7 @@ Ray Train is a library that aims to simplify distributed deep learning.
 
 * Callbacks for early stopping
 * Checkpointing
-* Integration with Tensorboard, Weights/Biases, and MLflow
+* Integration with TensorBoard, Weights/Biases, and MLflow
 * Jupyter notebooks
 
 **Integration with Ray Ecosystem**: Distributed deep learning often comes with a lot of complexity.
