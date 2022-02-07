@@ -455,7 +455,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         # We are in a thread: Switch on eager execution mode, iff framework==tf2|tfe.
         if (
             tf1
-            and self.worker.policy_config["framework"] in ["tf2", "tfe"]
+            and self.worker.policy_config.get("framework", "tf") in ["tf2", "tfe"]
             and not tf1.executing_eagerly()
         ):
             tf1.enable_eager_execution()

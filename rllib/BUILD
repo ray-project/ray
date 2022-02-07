@@ -598,7 +598,7 @@ py_test(
 py_test(
     name = "test_a3c",
     tags = ["team:ml", "trainers_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/a3c/tests/test_a3c.py"]
 )
 
