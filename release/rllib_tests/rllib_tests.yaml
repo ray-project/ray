@@ -76,16 +76,16 @@
         timeout: 2000
 
 # Tests that exercise auto-scaling and Anyscale connect.
-- name: connect_tests
-  team: ml
-  cluster:
-    app_config: app_config.yaml
-    compute_template: auto_scale.yaml
+# - name: connect_tests
+#   team: ml
+#   cluster:
+#     app_config: app_config.yaml
+#     compute_template: auto_scale.yaml
 
-  run:
-    use_connect: True
-    timeout: 3000
-    script: python connect_tests/run_connect_tests.py
+#   run:
+#     use_connect: True
+#     timeout: 3000
+#     script: python connect_tests/run_connect_tests.py
 
 # Nightly performance regression for popular algorithms.
 # These algorithms run nightly for pre-determined amount of time without
