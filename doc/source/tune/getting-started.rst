@@ -1,7 +1,7 @@
 .. _tune-tutorial:
 
-Getting Started With Ray Tune
-=============================
+Getting Started
+===============
 
 This tutorial will walk you through the process of setting up a Tune experiment.
 We'll start with a PyTorch model and show you how to leverage Ray Tune to optimize the hyperparameters of this model.

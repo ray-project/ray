@@ -14,6 +14,7 @@ and choose among state of the art algorithms such as :ref:`Population Based Trai
 Tune integrates with a wide range of hyperparameter optimization tools, like
 :ref:`Optuna, Hyperopt, Ax, and Nevergrad <tune-search-alg>`, to name a few.
 
+
 .. tabbed:: Examples
 
     Learn how to use Ray Tune for various machine learning frameworks in just a few steps.
@@ -125,20 +126,19 @@ And you can move your models from training to serving on the same infrastructure
         :classes: btn-outline-info btn-block
     ---
 
-    **API References**
+    **Examples**
     ^^^
 
-    Get more in-depth information about the Ray Tune API, including all about search spaces,
-    algorithms and training configurations.
+    Check out some of our many examples on Ray Tune.
 
     +++
-    .. link-button:: tune-api-ref
+    .. link-button:: tune-examples-ref
         :type: ref
-        :text: Read the API Reference
+        :text: Ray Tune Examples
         :classes: btn-outline-info btn-block
     ---
 
-    **FAQ**
+    **Ray Tune FAQ**
     ^^^
 
     Find answers to commonly asked questions in our detailed FAQ.
@@ -150,15 +150,16 @@ And you can move your models from training to serving on the same infrastructure
         :classes: btn-outline-info btn-block
     ---
 
-    **Examples**
+    **Ray Tune API**
     ^^^
 
-    Check out some of our many examples on Ray Tune.
+    Get more in-depth information about the Ray Tune API, including all about search spaces,
+    algorithms and training configurations.
 
     +++
-    .. link-button:: tune-examples-ref
+    .. link-button:: tune-api-ref
         :type: ref
-        :text: Ray Tune Examples
+        :text: Read the API Reference
         :classes: btn-outline-info btn-block
 
 
@@ -169,6 +170,7 @@ There are many other hyperparameter optimization libraries out there.
 If you're new to Tune, you're probably wondering, "what makes Tune different?"
 
 .. dropdown:: Cutting-Edge Optimization Algorithms
+    :animate: fade-in-slide-down
 
     As a user, you're probably looking into hyperparameter optimization because you want to quickly increase your
     model performance.
@@ -179,6 +181,7 @@ If you're new to Tune, you're probably wondering, "what makes Tune different?"
     :ref:`changing the hyperparameters during training <tune-scheduler-pbt>` to optimize schedules.
 
 .. dropdown:: First-class Developer Productivity
+    :animate: fade-in-slide-down
 
     A key problem with many hyperparameter optimization frameworks is the need to restructure
     your code to fit the framework.
@@ -189,6 +192,7 @@ If you're new to Tune, you're probably wondering, "what makes Tune different?"
     :ref:`logs results to tools <tune-logging>` such as MLflow and TensorBoard, while also being highly customizable.
 
 .. dropdown:: Multi-GPU & Distributed Training Out Of The Box
+    :animate: fade-in-slide-down
 
     Hyperparameter tuning is known to be highly time-consuming, so it is often necessary to parallelize this process.
     Most other tuning frameworks require you to implement your own multi-process framework or build your own
@@ -199,6 +203,7 @@ If you're new to Tune, you're probably wondering, "what makes Tune different?"
     your hyperparameter search by 100x while reducing costs by up to 10x by using cheap preemptible instances.
 
 .. dropdown:: Coming From Another Hyperparameter Optimization Tool?
+    :animate: fade-in-slide-down
 
     You might be already using an existing hyperparameter tuning tool such as HyperOpt or Bayesian Optimization.
 
@@ -211,12 +216,7 @@ If you're new to Tune, you're probably wondering, "what makes Tune different?"
 Reference Materials
 -------------------
 
-Here are some reference materials for Tune:
-
-* :ref:`Frequently asked questions <tune-faq>`
-* `Code <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__: GitHub repository for Tune
-
-Below are some blog posts and talks about Tune:
+Below you can find blog posts and talks about Ray Tune:
 
 - [blog] `Tune: a Python library for fast hyperparameter tuning at any scale <https://towardsdatascience.com/fast-hyperparameter-tuning-at-scale-d428223b081c>`_
 - [blog] `Cutting edge hyperparameter tuning with Ray Tune <https://medium.com/riselab/cutting-edge-hyperparameter-tuning-with-ray-tune-be6c0447afdf>`_
@@ -228,7 +228,8 @@ Below are some blog posts and talks about Tune:
 Citing Tune
 -----------
 
-If Tune helps you in your academic research, you are encouraged to cite `our paper <https://arxiv.org/abs/1807.05118>`__. Here is an example bibtex:
+If Tune helps you in your academic research, you are encouraged to cite `our paper <https://arxiv.org/abs/1807.05118>`__.
+Here is an example bibtex:
 
 .. code-block:: tex
 
