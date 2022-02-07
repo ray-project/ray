@@ -935,8 +935,6 @@ def stop(force):
         except psutil.Error:
             pass
 
-    total_found = 0
-    total_stopped = 0
     stopped = []
     for keyword, filter_by_cmd in processes_to_kill:
         if filter_by_cmd and is_linux and len(keyword) > 15:
@@ -966,8 +964,6 @@ def stop(force):
                 found.append(candidate)
 
         for proc, proc_cmd, proc_args in found:
-            total_found += 1
-
             proc_string = str(subprocess.list2cmdline(proc_args))
             try:
                 if force:
@@ -991,35 +987,16 @@ def stop(force):
                         cf.dimmed("(via SIGTERM)"),
                     )
 
-                total_stopped += 1
                 stopped.append(proc)
             except psutil.NoSuchProcess:
                 cli_logger.verbose(
                     "Attempted to stop `{}`, but process was already dead.",
                     cf.bold(proc_string),
                 )
-                total_stopped += 1
             except (psutil.Error, OSError) as ex:
                 cli_logger.error(
                     "Could not terminate `{}` due to {}", cf.bold(proc_string), str(ex)
                 )
-
-    if total_found == 0:
-        cli_logger.print("Did not find any active Ray processes.")
-    else:
-        if total_stopped == total_found:
-            cli_logger.success("Stopped all {} Ray processes.", total_stopped)
-        else:
-            cli_logger.warning(
-                "Stopped only {} out of {} Ray processes. "
-                "Set `{}` to see more details.",
-                total_stopped,
-                total_found,
-                cf.bold("-v"),
-            )
-            cli_logger.warning(
-                "Try running the command again, or use `{}`.", cf.bold("--force")
-            )
 
     try:
         os.remove(
@@ -1028,8 +1005,40 @@ def stop(force):
     except OSError:
         # This just means the file doesn't exist.
         pass
+
     # Wait for the processes to actually stop.
-    psutil.wait_procs(stopped, timeout=2)
+    # Dedup processes.
+    stopped, alive = psutil.wait_procs(stopped, timeout=0)
+    procs_to_kill = stopped + alive
+    total_found = len(procs_to_kill)
+
+    gone_procs = set()
+
+    def on_terminate(proc):
+        gone_procs.add(proc)
+        cli_logger.print(f"{len(gone_procs)}/{total_found} stopped.", end="\r")
+
+    # Wait for 10 seconds at max.
+    stopped, alive = psutil.wait_procs(procs_to_kill, timeout=10, callback=on_terminate)
+    total_stopped = len(stopped)
+
+    if total_found == 0:
+        cli_logger.print("Did not find any active Ray processes.")
+    else:
+        if total_stopped == total_found:
+            cli_logger.success("Stopped all {} Ray processes.", total_stopped)
+        else:
+            cli_logger.warning(
+                f"Stopped only {total_stopped} out of {total_found} Ray processes. "
+                f"Set `{cf.bold('-v')}` to see more details. "
+                "Remaining processes will be forcefully cleaned up.",
+            )
+            cli_logger.warning(
+                "Try running the command again, or use `{}`.", cf.bold("--force")
+            )
+
+    for proc in alive:
+        proc.kill()
 
 
 @cli.command()
