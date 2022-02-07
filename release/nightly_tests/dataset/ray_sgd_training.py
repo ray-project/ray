@@ -254,7 +254,9 @@ def train_epoch(dataset, model, device, criterion, optimizer, feature_size):
 
         # Forward + backward + optimize
         # check the input's shape matches the expectation
-        assert inputs.size()[1] == feature_size
+        assert (
+            inputs.size()[1] == feature_size
+        ), f"input size: {inputs.size()[1]}, expected: {feature_size}"
         outputs = model(inputs.float())
         loss = criterion(outputs, labels.float())
         loss.backward()
@@ -529,9 +531,13 @@ if __name__ == "__main__":
     preprocessing_end_time = timeit.default_timer()
     print("Preprocessing time (s): ", preprocessing_end_time - e2e_start_time)
 
-    num_columns = len(train_dataset.schema().names)
-    # remove label column and internal Arrow column.
-    num_features = num_columns - 2
+    # filter label column and internal Arrow column.
+    def is_feature_column(column_name):
+        return column_name != "label" and not column_name.startswith("__")
+
+    num_features = len(
+        list(filter(lambda name: is_feature_column(name), train_dataset.schema().names))
+    )
 
     BATCH_SIZE = 512
     NUM_HIDDEN = 50  # 200
