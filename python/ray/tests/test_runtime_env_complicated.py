@@ -6,7 +6,7 @@ import sys
 import tempfile
 import time
 from typing import List
-from unittest import mock, skipIf
+from unittest import mock
 import yaml
 
 import ray
@@ -494,7 +494,6 @@ def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
     assert ray.get(f.remote())
 
 
-@skipIf(sys.platform == "win32", "Fail to create temp dir.")
 def test_experimental_package(shutdown_only):
     ray.init(num_cpus=2)
     pkg = ray.experimental.load_package(
@@ -508,7 +507,6 @@ def test_experimental_package(shutdown_only):
     assert ray.get(pkg.my_func.remote()) == "hello world"
 
 
-@skipIf(sys.platform == "win32", "Fail to create temp dir.")
 def test_experimental_package_lazy(shutdown_only):
     pkg = ray.experimental.load_package(
         os.path.join(
@@ -522,7 +520,6 @@ def test_experimental_package_lazy(shutdown_only):
     assert ray.get(pkg.my_func.remote()) == "hello world"
 
 
-@skipIf(sys.platform == "win32", "Fail to create temp dir.")
 def test_experimental_package_github(shutdown_only):
     ray.init(num_cpus=2)
     pkg = ray.experimental.load_package(

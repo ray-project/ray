@@ -120,9 +120,6 @@ def test_container_option_serialize():
     assert job_config_serialized.count(b"--name=test") == 1
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
-)
 def test_invalid_conda_env(shutdown_only):
     ray.init()
 
@@ -162,9 +159,6 @@ def test_invalid_conda_env(shutdown_only):
     assert (time.time() - start) < (first_time / 2.0)
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="runtime_env unsupported on Windows."
-)
 def test_no_spurious_worker_startup(shutdown_only):
     """Test that no extra workers start up during a long env installation."""
 
@@ -231,7 +225,6 @@ def runtime_env_local_dev_env_var():
     del os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"]
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="very slow on Windows.")
 def test_runtime_env_no_spurious_resource_deadlock_msg(
     runtime_env_local_dev_env_var, ray_start_regular, error_pubsub
 ):
@@ -411,9 +404,6 @@ def enable_dev_mode(local_env_var_enabled):
     del os.environ["RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED"]
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
-)
 @pytest.mark.parametrize("local_env_var_enabled", [False, True])
 def test_runtime_env_log_msg(
     local_env_var_enabled, enable_dev_mode, ray_start_cluster_head, log_pubsub

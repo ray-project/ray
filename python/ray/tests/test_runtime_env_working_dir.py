@@ -30,7 +30,6 @@ S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_create_delete_size_equal(tmpdir, ray_start_regular):
     """Tests that `create` and `delete_uri` return the same size for a URI."""
 
@@ -58,7 +57,6 @@ def test_create_delete_size_equal(tmpdir, ray_start_regular):
 @pytest.mark.parametrize(
     "option", ["failure", "working_dir", "working_dir_zip", "py_modules"]
 )
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
     """Tests the case where we lazily read files or import inside a task/actor.
 
@@ -155,7 +153,6 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
 
 
 @pytest.mark.parametrize("option", ["failure", "working_dir", "py_modules"])
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_captured_import(start_cluster, tmp_working_dir, option: str):
     """Tests importing a module in the driver and capturing it in a task/actor.
 
@@ -220,7 +217,6 @@ def test_captured_import(start_cluster, tmp_working_dir, option: str):
         assert ray.get(a.test_import.remote()) == 1
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_empty_working_dir(start_cluster):
     """Tests the case where we pass an empty directory as the working_dir."""
     cluster, address = start_cluster
@@ -248,7 +244,6 @@ def test_empty_working_dir(start_cluster):
 
 
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_input_validation(start_cluster, option: str):
     """Tests input validation for working_dir and py_modules."""
     cluster, address = start_cluster
@@ -293,7 +288,6 @@ def test_input_validation(start_cluster, option: str):
 
 
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_exclusion(start_cluster, tmp_working_dir, option):
     """Tests various forms of the 'excludes' parameter."""
     cluster, address = start_cluster

@@ -48,7 +48,6 @@ def tmp_dir():
 
 
 @pytest.mark.parametrize("use_ray_client", [False, True])
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_failure_condition(ray_start, tmp_dir, use_ray_client):
     # Verify that the test conditions fail without passing the working dir.
     with open("hello", "w") as f:
@@ -93,7 +92,6 @@ def connect_with_working_dir(use_ray_client: bool, ray_client_addr: str):
 
 
 @pytest.mark.parametrize("use_ray_client", [False, True])
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_working_dir_basic(ray_start, tmp_dir, use_ray_client):
     with open("hello", "w") as f:
         f.write("world")
@@ -126,7 +124,6 @@ assert ray.get(handle.remote()) == "world"
 
 
 @pytest.mark.parametrize("use_ray_client", [False, True])
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_working_dir_connect_from_new_driver(ray_start, tmp_dir, use_ray_client):
     with open("hello", "w") as f:
         f.write("world")
@@ -181,7 +178,6 @@ Test.delete()
 
 
 @pytest.mark.parametrize("use_ray_client", [False, True])
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_working_dir_scale_up_in_new_driver(ray_start, tmp_dir, use_ray_client):
     with open("hello", "w") as f:
         f.write("world")
@@ -247,7 +243,6 @@ Test.delete()
 
 
 @pytest.mark.parametrize("use_ray_client", [False, True])
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_working_dir_deploy_new_version(ray_start, tmp_dir, use_ray_client):
     with open("hello", "w") as f:
         f.write("world")
@@ -310,9 +305,6 @@ Test.delete()
 
 
 @pytest.mark.parametrize("use_ray_client", [False, True])
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="Runtime env unsupported on Windows"
-)
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="Post-wheel-build test is only run on linux CI machines.",

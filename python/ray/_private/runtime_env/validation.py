@@ -1,7 +1,7 @@
 import logging
 import os
 from pathlib import Path
-import sys
+
 from typing import Any, Dict, List, Optional, Set, Union
 from pkg_resources import Requirement
 from collections import OrderedDict

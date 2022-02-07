@@ -53,7 +53,6 @@ def URI_cache_10_MB():
         yield
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_inheritance(start_cluster, option: str):
     """Tests that child tasks/actors inherit URIs properly."""
@@ -103,7 +102,6 @@ def test_inheritance(start_cluster, option: str):
             EnvGetter.options(runtime_env=env).remote()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_large_file_boundary(shutdown_only, option: str):
     """Check that packages just under the max size work as expected."""
@@ -127,7 +125,6 @@ def test_large_file_boundary(shutdown_only, option: str):
         assert ray.get(t.get_size.remote()) == size
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_large_file_error(shutdown_only, option: str):
     with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
@@ -147,7 +144,6 @@ def test_large_file_error(shutdown_only, option: str):
                 ray.init(runtime_env={"py_modules": ["."]})
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_large_dir_upload_message(start_cluster, option):
     cluster, address = start_cluster
@@ -269,7 +265,6 @@ def check_internal_kv_gced():
 
 
 class TestGC:
-    @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     @pytest.mark.parametrize(
         "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
@@ -324,7 +319,6 @@ class TestGC:
         wait_for_condition(check_internal_kv_gced)
         wait_for_condition(lambda: check_local_files_gced(cluster))
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     def test_actor_level_gc(
         self, start_cluster, runtime_env_disable_URI_cache, option: str
@@ -359,7 +353,6 @@ class TestGC:
             ray.kill(actors[i])
         wait_for_condition(lambda: check_local_files_gced(cluster))
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     @pytest.mark.parametrize(
         "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
@@ -418,7 +411,6 @@ class TestGC:
         wait_for_condition(check_internal_kv_gced)
         wait_for_condition(lambda: check_local_files_gced(cluster))
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     def test_hit_cache_size_limit(self, start_cluster, URI_cache_10_MB):
         """Test eviction happens when we exceed a nonzero (10MB) cache size."""
         NUM_NODES = 3
@@ -456,7 +448,6 @@ class TestGC:
                 assert 3 < get_directory_size_bytes(local_dir) / (1024 ** 2) < 5
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.parametrize("source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
 def test_default_large_cache(start_cluster, option: str, source: str):

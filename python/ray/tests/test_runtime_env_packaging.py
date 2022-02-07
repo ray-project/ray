@@ -89,7 +89,6 @@ def random_zip_file_with_top_level_dir():
         yield str(path / ARCHIVE_NAME)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 class TestGetURIForDirectory:
     def test_invalid_directory(self):
         with pytest.raises(ValueError):
@@ -142,7 +141,6 @@ class TestGetURIForDirectory:
         assert len(hex_hash) == 16
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 class TestUploadPackageIfNeeded:
     def test_create_upload_once(self, empty_dir, random_dir, ray_start_regular):
         uri = get_uri_for_directory(random_dir)
@@ -161,7 +159,6 @@ class TestUploadPackageIfNeeded:
         assert uploaded
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 class TestGetTopLevelDirFromCompressedPackage:
     def test_get_top_level_valid(self, random_zip_file_with_top_level_dir):
         top_level_dir_name = get_top_level_dir_from_compressed_package(
@@ -176,7 +173,6 @@ class TestGetTopLevelDirFromCompressedPackage:
         assert top_level_dir_name is None
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 class TestRemoveDirFromFilepaths:
     def test_valid_removal(self, random_zip_file_with_top_level_dir):
         # This test copies the TOP_LEVEL_DIR_NAME directory, and then it
@@ -206,7 +202,6 @@ class TestRemoveDirFromFilepaths:
         assert len(dcmp.right_only) == 0
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("remove_top_level_directory", [False, True])
 @pytest.mark.parametrize("unlink_zip", [False, True])
 class TestUnzipPackage:
@@ -285,7 +280,6 @@ class TestUnzipPackage:
             )
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_travel():
     with tempfile.TemporaryDirectory() as tmp_dir:
         dir_paths = set()
