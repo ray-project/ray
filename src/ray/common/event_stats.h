@@ -94,7 +94,7 @@ struct StatsHandle {
 
 class EventTracker {
  public:
-  /// Initializes the global stats struct after calling the base constructor.
+  /// Initializes the global stats struct after calling the base contructor.
   EventTracker() : global_stats_(std::make_shared<GuardedGlobalStats>()) {}
 
   /// Sets the queueing start time, increments the current and cumulative counts and
