@@ -220,7 +220,7 @@ def _null_finalize(finalize: Callable[[AggType], AggType], a: AggType) -> AggTyp
 class Sum(_AggregateOnKeyBase):
     """Defines sum aggregation."""
 
-    def __init__(self, on: KeyFn = None, ignore_nulls: bool = True):
+    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
         self._set_key_fn(on)
         on_fn = _to_on_fn(on)
 
@@ -242,7 +242,7 @@ class Sum(_AggregateOnKeyBase):
 class Min(_AggregateOnKeyBase):
     """Defines min aggregation."""
 
-    def __init__(self, on: KeyFn = None, ignore_nulls: bool = True):
+    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
         self._set_key_fn(on)
         on_fn = _to_on_fn(on)
 
@@ -259,7 +259,7 @@ class Min(_AggregateOnKeyBase):
 class Max(_AggregateOnKeyBase):
     """Defines max aggregation."""
 
-    def __init__(self, on: KeyFn = None, ignore_nulls: bool = True):
+    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
         self._set_key_fn(on)
         on_fn = _to_on_fn(on)
 
@@ -276,7 +276,7 @@ class Max(_AggregateOnKeyBase):
 class Mean(_AggregateOnKeyBase):
     """Defines mean aggregation."""
 
-    def __init__(self, on: KeyFn = None, ignore_nulls: bool = True):
+    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
         self._set_key_fn(on)
         on_fn = _to_on_fn(on)
 
@@ -311,7 +311,7 @@ class Std(_AggregateOnKeyBase):
 
     def __init__(
         self,
-        on: KeyFn = None,
+        on: Optional[KeyFn] = None,
         ddof: int = 1,
         ignore_nulls: bool = True,
     ):
@@ -366,7 +366,7 @@ class Std(_AggregateOnKeyBase):
         )
 
 
-def _to_on_fn(on: KeyFn):
+def _to_on_fn(on: Optional[KeyFn]):
     if on is None:
         return lambda r: r
     elif isinstance(on, str):

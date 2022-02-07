@@ -512,7 +512,7 @@ class Dataset(Generic[T]):
         return Dataset(new_blocks, self._epoch, stats.build_multistage(stage_info))
 
     def split(
-        self, n: int, *, equal: bool = False, locality_hints: List[Any] = None
+        self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
     ) -> List["Dataset[T]"]:
         """Split the dataset into ``n`` disjoint pieces.
 
@@ -925,7 +925,7 @@ class Dataset(Generic[T]):
             LazyBlockList(calls, metadata, block_partitions), max_epoch, dataset_stats
         )
 
-    def groupby(self, key: KeyFn) -> "GroupedDataset[T]":
+    def groupby(self, key: Optional[KeyFn]) -> "GroupedDataset[T]":
         """Group the dataset by the key function or column name.
 
         This is a lazy operation.
@@ -984,7 +984,9 @@ class Dataset(Generic[T]):
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
-    def sum(self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True) -> U:
+    def sum(
+        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
+    ) -> U:
         """Compute sum over entire dataset.
 
         This is a blocking operation.
@@ -1009,7 +1011,7 @@ class Dataset(Generic[T]):
                   containing the column-wise sum of all columns.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the sum; if ``False``,
-                if a null value is encountered, the output will be null.
+                if a null value is encountered, the output will be None.
                 We consider np.nan, None, and pd.NaT to be null values.
                 Default is ``True``.
 
@@ -1040,7 +1042,9 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Sum, on, ignore_nulls)
         return self._aggregate_result(ret)
 
-    def min(self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True) -> U:
+    def min(
+        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
+    ) -> U:
         """Compute minimum over entire dataset.
 
         This is a blocking operation.
@@ -1065,7 +1069,7 @@ class Dataset(Generic[T]):
                   containing the column-wise min of all columns.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the min; if ``False``,
-                if a null value is encountered, the output will be null.
+                if a null value is encountered, the output will be None.
                 We consider np.nan, None, and pd.NaT to be null values.
                 Default is ``True``.
 
@@ -1096,7 +1100,9 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Min, on, ignore_nulls)
         return self._aggregate_result(ret)
 
-    def max(self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True) -> U:
+    def max(
+        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
+    ) -> U:
         """Compute maximum over entire dataset.
 
         This is a blocking operation.
@@ -1121,7 +1127,7 @@ class Dataset(Generic[T]):
                   containing the column-wise max of all columns.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the max; if ``False``,
-                if a null value is encountered, the output will be null.
+                if a null value is encountered, the output will be None.
                 We consider np.nan, None, and pd.NaT to be null values.
                 Default is ``True``.
 
@@ -1153,7 +1159,7 @@ class Dataset(Generic[T]):
         return self._aggregate_result(ret)
 
     def mean(
-        self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
+        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
     ) -> U:
         """Compute mean over entire dataset.
 
@@ -1179,7 +1185,7 @@ class Dataset(Generic[T]):
                   containing the column-wise mean of all columns.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the mean; if ``False``,
-                if a null value is encountered, the output will be null.
+                if a null value is encountered, the output will be None.
                 We consider np.nan, None, and pd.NaT to be null values.
                 Default is ``True``.
 
@@ -1212,7 +1218,7 @@ class Dataset(Generic[T]):
 
     def std(
         self,
-        on: Union[KeyFn, List[KeyFn]] = None,
+        on: Optional[Union[KeyFn, List[KeyFn]]] = None,
         ddof: int = 1,
         ignore_nulls: bool = True,
     ) -> U:
@@ -1250,7 +1256,7 @@ class Dataset(Generic[T]):
                 is ``N - ddof``, where ``N`` represents the number of elements.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the std; if ``False``,
-                if a null value is encountered, the output will be null.
+                if a null value is encountered, the output will be None.
                 We consider np.nan, None, and pd.NaT to be null values.
                 Default is ``True``.
 
@@ -1281,7 +1287,9 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
 
-    def sort(self, key: KeyFn = None, descending: bool = False) -> "Dataset[T]":
+    def sort(
+        self, key: Optional[KeyFn] = None, descending: bool = False
+    ) -> "Dataset[T]":
         """Sort the dataset by the specified key column or key function.
 
         This is a blocking operation.
@@ -1836,7 +1844,7 @@ class Dataset(Generic[T]):
         self,
         *,
         prefetch_blocks: int = 0,
-        batch_size: int = None,
+        batch_size: Optional[int] = None,
         batch_format: str = "native",
         drop_last: bool = False,
     ) -> Iterator[BatchType]:
@@ -1917,12 +1925,12 @@ class Dataset(Generic[T]):
         self,
         *,
         label_column: Optional[str] = None,
-        feature_columns: Union[
-            None, List[str], List[List[str]], Dict[str, List[str]]
+        feature_columns: Optional[
+            Union[List[str], List[List[str]], Dict[str, List[str]]]
         ] = None,
         label_column_dtype: Optional["torch.dtype"] = None,
-        feature_column_dtypes: Union[
-            None, "torch.dtype", List["torch.dtype"], Dict[str, "torch.dtype"]
+        feature_column_dtypes: Optional[
+            Union["torch.dtype", List["torch.dtype"], Dict[str, "torch.dtype"]]
         ] = None,
         batch_size: int = 1,
         prefetch_blocks: int = 0,
@@ -2367,7 +2375,7 @@ Dict[str, List[str]]]): The names of the columns
         block_to_arrow = cached_remote_fn(_block_to_arrow)
         return [block_to_arrow.remote(block) for block in blocks]
 
-    def repeat(self, times: int = None) -> "DatasetPipeline[T]":
+    def repeat(self, times: Optional[int] = None) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by looping over this dataset.
 
         Transformations prior to the call to ``repeat()`` are evaluated once.
@@ -2629,7 +2637,7 @@ Dict[str, List[str]]]): The names of the columns
         return "simple"
 
     def _aggregate_on(
-        self, agg_cls: type, on: Union[KeyFn, List[KeyFn]], *args, **kwargs
+        self, agg_cls: type, on: Optional[Union[KeyFn, List[KeyFn]]], *args, **kwargs
     ):
         """Helper for aggregating on a particular subset of the dataset.
 
@@ -2644,7 +2652,7 @@ Dict[str, List[str]]]): The names of the columns
     def _build_multicolumn_aggs(
         self,
         agg_cls: type,
-        on: Union[KeyFn, List[KeyFn]],
+        on: Optional[Union[KeyFn, List[KeyFn]]],
         ignore_nulls: bool,
         *args,
         skip_cols: Optional[List[str]] = None,
