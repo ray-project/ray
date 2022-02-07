@@ -274,7 +274,7 @@ void RegisterViewWithTagList(const std::string &name, const std::string &descrip
   RegisterViewWithTagList<Ts...>(name, description, tag_keys, buckets);
 }
 
-inline std::vector<opencensus::tags::TagKey> convert_tags(
+inline std::vector<opencensus::tags::TagKey> convertTags(
     const std::vector<std::string> &names) {
   std::vector<opencensus::tags::TagKey> ret;
   for (auto &n : names) {
@@ -303,10 +303,10 @@ class Stats {
                            const std::vector<opencensus::tags::TagKey>,
                            const std::vector<double> &buckets)>
             register_func)
-      : tag_keys_(convert_tags(tag_keys)) {
+      : tag_keys_(tag_keys) {
     auto stats_init = [register_func, measure, description, buckets, this]() {
       measure_ = std::make_unique<Measure>(Measure::Register(measure, description, ""));
-      register_func(measure, description, tag_keys_, buckets);
+      register_func(measure, description, convertTags(tag_keys_), buckets);
     };
 
     if (StatsConfig::instance().IsInitialized()) {
@@ -326,13 +326,8 @@ class Stats {
   /// this metric.
   void Record(double val, std::string tag_val) {
     RAY_CHECK(tag_keys_.size() == 1);
-    if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
-      return;
-    }
-    TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
-    CheckPrintableChar(tag_val);
-    combined_tags.emplace_back(tag_keys_[0], std::move(tag_val));
-    opencensus::stats::Record({{*measure_, val}}, std::move(combined_tags));
+    std::unordered_map<std::string, std::string> tags{{tag_keys_[0], std::move(tag_val)}};
+    Record(val, std::move(tags));
   }
 
   /// Record a value
@@ -343,26 +338,22 @@ class Stats {
       return;
     }
     TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
-    for (auto &[tag_key, tag_val] : tags) {
-      CheckPrintableChar(tag_val);
-      combined_tags.emplace_back(TagKeyType::Register(tag_key), std::move(tag_val));
+    // In case that tag containing non-printable chars we replace them to '?'
+    // It's important here because otherwise, the message will fail to be sent.
+    for (auto &t : tags) {
+      for (auto &c : t.second) {
+        if (!isprint(c)) {
+          c = '?';
+        }
+      }
+      combined_tags.emplace_back(TagKeyType::Register(t.first), std::move(t.second));
     }
-    opencensus::stats::Record({{*measure_, val}}, std::move(combined_tags));
+    opencensus::stats::Record({{*measure_, val}}, combined_tags);
   }
 
  private:
-  void CheckPrintableChar(const std::string &val) {
-#ifndef NDEBUG
-    // In debug build, verify val is printable.
-    for (auto c : val) {
-      RAY_CHECK(isprint(c)) << "Found unprintable character code " << static_cast<int>(c)
-                            << " in " << val;
-    }
-#endif  // NDEBUG
-  }
-
-  const std::vector<opencensus::tags::TagKey> tag_keys_;
   std::unique_ptr<opencensus::stats::Measure<double>> measure_;
+  std::vector<std::string> tag_keys_;
 };
 
 }  // namespace internal
