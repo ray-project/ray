@@ -347,7 +347,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                  << task_id;
 
   lease_client->RequestWorkerLease(
-      resource_spec,
+      resource_spec.GetMessage(),
       /*grant_or_reject=*/is_spillback,
       [this, scheduling_key, task_id, is_spillback, raylet_address = *raylet_address](
           const Status &status, const rpc::RequestWorkerLeaseReply &reply) {

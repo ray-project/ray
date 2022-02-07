@@ -161,10 +161,7 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
     }
   }
 
-  rpc::TaskExecutionSpec execution_spec_message;
-  execution_spec_message.set_num_forwards(1);
-  return RayTask(spec_builder.Build(),
-                 TaskExecutionSpecification(execution_spec_message));
+  return RayTask(spec_builder.Build());
 }
 
 class MockTaskDependencyManager : public TaskDependencyManagerInterface {
