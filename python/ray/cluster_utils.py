@@ -16,7 +16,7 @@ from ray._raylet import GcsClientOptions
 
 logger = logging.getLogger(__name__)
 
-cluster_not_supported = os.name == "nt"
+cluster_not_supported = False
 
 
 class AutoscalingCluster:

@@ -49,7 +49,6 @@ def test_get_locations_inlined(ray_start_regular):
         assert location["object_size"] > 0
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_spilled_locations(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
@@ -76,7 +75,6 @@ def test_spilled_locations(ray_start_cluster):
         assert location["object_size"] > 0
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_get_locations_multi_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     # head node
