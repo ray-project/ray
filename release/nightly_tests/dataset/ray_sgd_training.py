@@ -531,13 +531,11 @@ if __name__ == "__main__":
     preprocessing_end_time = timeit.default_timer()
     print("Preprocessing time (s): ", preprocessing_end_time - e2e_start_time)
 
-    # filter label column and internal Arrow column.
+    # filter label column and internal Arrow column (__index_level_0__).
     def is_feature_column(column_name):
         return column_name != "label" and not column_name.startswith("__")
 
-    num_features = len(
-        list(filter(lambda name: is_feature_column(name), train_dataset.schema().names))
-    )
+    num_features = len(list(filter(is_feature_column, train_dataset.schema().names)))
 
     BATCH_SIZE = 512
     NUM_HIDDEN = 50  # 200
