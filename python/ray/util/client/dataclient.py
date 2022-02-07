@@ -286,6 +286,20 @@ class DataClient:
         req: ray_client_pb2.DataRequest,
         callback: Optional[ResponseCallable] = None,
     ) -> None:
+        # In gc, release will be called. But there is a case which can lead
+        # to a deadlock:
+        #     1. _async_send is executing
+        #     2. gc is triggered
+        # In this case 1) is holding the lock, and 2) is trying to hold the
+        # lock which actually are deadlock.
+        # To avoid this, when in case 2) we put request into gc_queue, and
+        # and when it returns to 1) it'll finish sending the request.
+        # But there is a race condition where 1) is just about to release
+        # the lock, and 2) is triggerred. In this case, the release request
+        # will be queued and won't be sent until next client request comes.
+        # We think it's OK for now since 1) the race condition is not that
+        # high frequently to happen; 2) once we have new request, it'll be
+        # sent.
         block = req.WhichOneof("type") != "release"
         if self.lock.acquire(blocking=block):
             try:
