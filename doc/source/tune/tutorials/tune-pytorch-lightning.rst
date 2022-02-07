@@ -1,4 +1,4 @@
-.. _tune-pytorch-lightning:
+.. _tune-pytorch-lightning-ref:
 
 Using PyTorch Lightning with Tune
 =================================
