@@ -223,7 +223,7 @@ def read_datasource(
     stats_uuid = uuid.uuid4()
     stats_actor.record_start.remote(stats_uuid)
 
-    def remote_read(i: int, task: ReadTask) -> MaybeBlockPartition:
+    def remote_read(i: int, task: ReadTask, stats_actor) -> MaybeBlockPartition:
         DatasetContext._set_current(context)
         stats = BlockExecStats.builder()
 
@@ -268,7 +268,7 @@ def read_datasource(
         calls.append(
             lambda i=i, task=task, resources=next(resource_iter): remote_read.options(
                 **ray_remote_args, resources=resources
-            ).remote(i, task)
+            ).remote(i, task, stats_actor)
         )
         metadata.append(task.get_metadata())
 
