@@ -3,6 +3,4 @@ _build
 source/_static/thumbs
 
 source/ray-core/examples/
-source/tune/tutorials/
-source/tune/generated_guides/
 source/data/examples/
