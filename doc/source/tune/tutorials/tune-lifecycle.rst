@@ -1,5 +1,3 @@
-.. _tune-lifecycle:
-
 How does Tune work?
 ===================
 
@@ -68,11 +66,12 @@ If the trainable is a callable or a function, it will be executed on the Ray act
 Resource Management in Tune
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Before running a trial, the Tune Driver will check whether there are available resources on the cluster (see :ref:`resource-requirements`). It will compare the available resources with the resources required by the trial.
+Before running a trial, the Ray Tune driver will check whether there are available resources on the cluster (see :ref:`resource-requirements`).
+It will compare the available resources with the resources required by the trial.
 
-If there is space on the cluster, then the Tune Driver will start a Ray actor (worker). This actor will be scheduled and executed on some node where the resources are available.
-
-See :ref:`tune-parallelism` for more information.
+If there is space on the cluster, then the Tune Driver will start a Ray actor (worker).
+This actor will be scheduled and executed on some node where the resources are available.
+See :doc:`tune-resources` for more information.
 
 .. _trial-lifecycle:
 

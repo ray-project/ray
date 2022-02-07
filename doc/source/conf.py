@@ -120,11 +120,10 @@ sphinx_gallery_conf = {
     # Example sources are taken from these folders:
     "examples_dirs": [
         "ray-core/_examples",
-        "tune/_tutorials",
         "data/_examples",
     ],
     # and then generated into these respective target folders:
-    "gallery_dirs": ["ray-core/examples", "tune/tutorials", "data/examples"],
+    "gallery_dirs": ["ray-core/examples", "data/examples"],
     "ignore_pattern": "ray-core/examples/doc_code/",
     "plot_gallery": "False",
     "min_reported_time": sys.maxsize,

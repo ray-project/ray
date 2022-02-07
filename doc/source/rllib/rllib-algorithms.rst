@@ -520,7 +520,7 @@ Dreamer
 
 Dreamer is an image-only model-based RL method that learns by imagining trajectories in the future and is evaluated on the DeepMind Control Suite `environments <https://github.com/ray-project/ray/blob/master/rllib/examples/env/dm_control_suite.py>`__. RLlib's Dreamer is adapted from the `official Google research repo <https://github.com/google-research/dreamer>`__.
 
-To visualize learning, RLLib Dreamer's imagined trajectories are logged as gifs in Tensorboard. Examples of such can be seen `here <https://github.com/ray-project/rl-experiments>`__.
+To visualize learning, RLLib Dreamer's imagined trajectories are logged as gifs in TensorBoard. Examples of such can be seen `here <https://github.com/ray-project/rl-experiments>`__.
 
 Tuned examples: `Deepmind Control Environments <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamer/dreamer-deepmind-control.yaml>`__
 

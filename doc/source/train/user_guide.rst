@@ -430,7 +430,7 @@ The following ``TrainingCallback``\s are available and will log the intermediate
 3. :ref:`train-api-tbx-logger-callback`
 4. :ref:`train-api-mlflow-logger-callback`
 
-Example: Logging to MLflow and Tensorboard
+Example: Logging to MLflow and TensorBoard
 ++++++++++++++++++++++++++++++++++++++++++
 
 **Step 1: Install the necessary packages**
