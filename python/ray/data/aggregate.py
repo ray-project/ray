@@ -202,7 +202,7 @@ def _null_merge(
     return res + [1]
 
 
-def _null_finalize(finalize: Callable[[AggType], AggType], a: AggType) -> AggType:
+def _null_finalize(finalize: Callable[[AggType], AggType], a: AggType) -> U:
     """
     Finalize an accumulation while handling nulls.
 
