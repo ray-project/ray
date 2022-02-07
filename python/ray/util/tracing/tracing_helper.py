@@ -516,7 +516,7 @@ def _inject_tracing_into_class(_cls):
         # might not be called directly by remote calls. Additionally, they are
         # tricky to get wrapped and unwrapped.
         if is_static_method(_cls, name) or is_class_method(method):
-            continue
+            pass
 
         # Add _ray_trace_ctx to method signature
         setattr(
