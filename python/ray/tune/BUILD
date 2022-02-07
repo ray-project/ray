@@ -335,6 +335,14 @@ py_test(
 )
 
 py_test(
+    name = "test_trial_scheduler_resource_changing",
+    size = "small",
+    srcs = ["tests/test_trial_scheduler_resource_changing.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
     name = "test_tune_restore_warm_start",
     size = "large",
     srcs = ["tests/test_tune_restore_warm_start.py"],
