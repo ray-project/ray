@@ -1,4 +1,4 @@
-.. _tune-wandb:
+.. _tune-wandb-ref:
 
 Using Weights & Biases with Tune
 ================================

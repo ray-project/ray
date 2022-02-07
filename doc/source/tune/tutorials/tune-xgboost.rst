@@ -1,4 +1,4 @@
-.. _tune-xgboost:
+.. _tune-xgboost-ref:
 
 Tuning XGBoost parameters
 =========================

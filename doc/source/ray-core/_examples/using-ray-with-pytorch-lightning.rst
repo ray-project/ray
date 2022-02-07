@@ -17,7 +17,7 @@ Ray provides 2 integration points with Pytorch Lightning.
 
 1. `Ray Lightning Library <https://github.com/ray-project/ray_lightning>`_ for distributed Pytorch Lightning training with Ray
 
-2. :ref:`Ray Tune with Pytorch Lightning <tune-pytorch-lightning>` for distributed hyperparameter tuning of your PTL models.
+2. :ref:`Ray Tune with Pytorch Lightning <tune-pytorch-lightning-ref>` for distributed hyperparameter tuning of your PTL models.
 
 
 Distributed Training with ``Ray Lightning``
@@ -137,7 +137,7 @@ And if you want to add periodic checkpointing as well, you can use the ``TuneRep
         on="validation_end")
 
 
-Check out the :ref:`Pytorch Lightning with Ray Tune tutorial<tune-pytorch-lightning>` for a full example on how you can use these callbacks and run a tuning experiment for your Pytorch Lightning model.
+Check out the :ref:`Pytorch Lightning with Ray Tune tutorial<tune-pytorch-lightning-ref>` for a full example on how you can use these callbacks and run a tuning experiment for your Pytorch Lightning model.
 
 
 Hyperparameter Tuning with distributed training
