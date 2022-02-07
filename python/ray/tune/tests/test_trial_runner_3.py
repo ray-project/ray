@@ -11,7 +11,7 @@ from unittest.mock import patch
 import ray
 from ray.rllib import _register_all
 
-from ray.tune import TuneError, Callback
+from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
@@ -25,6 +25,7 @@ from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
 from ray.tune.suggest.search_generator import SearchGenerator
 from ray.tune.syncer import SyncConfig
+from ray.tune.tests.test_trial_runner_utils import TrialResultObserver
 
 
 class TrialRunnerTest3(unittest.TestCase):
@@ -625,25 +626,6 @@ class TrialRunnerTest3(unittest.TestCase):
         os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "7"
         os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "0.5"
 
-        # Helper class to control runner.step() count.
-        class TrialResultObserver(Callback):
-            def __init__(self):
-                self._counter = 0
-                self._last_counter = 0
-
-            def reset(self):
-                self._last_counter = self._counter
-
-            def just_received_a_result(self):
-                if self._last_counter == self._counter:
-                    return False
-                else:
-                    self._last_counter = self._counter
-                    return True
-
-            def on_trial_result(self, **kwargs):
-                self._counter += 1
-
         def num_checkpoints(trial):
             return sum(
                 item.startswith("checkpoint_") for item in os.listdir(trial.logdir)
@@ -665,10 +647,8 @@ class TrialRunnerTest3(unittest.TestCase):
         )
         runner.add_trial(trial)
 
-        while True:
+        while not observer.just_received_a_result():
             runner.step()
-            if observer.just_received_a_result():
-                break
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 1)
         self.assertEqual(num_checkpoints(trial), 0)
 

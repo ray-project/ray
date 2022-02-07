@@ -5,7 +5,7 @@ import unittest
 import ray
 from ray.rllib import _register_all
 
-from ray.tune import TuneError, Callback
+from ray.tune import TuneError
 from ray.tune.schedulers import FIFOScheduler
 from ray.tune.result import DONE
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
@@ -13,6 +13,7 @@ from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.resources import Resources
 from ray.tune.suggest import BasicVariantGenerator
+from ray.tune.tests.test_trial_runner_utils import TrialResultObserver
 
 
 def create_mock_components():
@@ -223,25 +224,6 @@ class TrialRunnerTest2(unittest.TestCase):
     def testRestoreMetricsAfterCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
 
-        # Helper class to control runner.step() count.
-        class TrialResultObserver(Callback):
-            def __init__(self):
-                self._counter = 0
-                self._last_counter = 0
-
-            def reset(self):
-                self._last_counter = self._counter
-
-            def just_received_a_result(self):
-                if self._last_counter == self._counter:
-                    return False
-                else:
-                    self._last_counter = self._counter
-                    return True
-
-            def on_trial_result(self, **kwargs):
-                self._counter += 1
-
         observer = TrialResultObserver()
         runner = TrialRunner(callbacks=[observer])
         kwargs = {
@@ -264,10 +246,8 @@ class TrialRunnerTest2(unittest.TestCase):
         trials = runner.get_trials()
 
         observer.reset()
-        while True:
+        while not observer.just_received_a_result():
             runner.step()
-            if observer.just_received_a_result():
-                break
         self.assertEqual(trials[1].last_result["timesteps_since_restore"], 10)
         self.assertEqual(trials[1].last_result["iterations_since_restore"], 1)
         self.assertGreater(trials[1].last_result["time_since_restore"], 0)
