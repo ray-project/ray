@@ -7,6 +7,7 @@ from ray import ray_constants
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_get,
+    _internal_kv_list,
     _internal_kv_put,
 )
 from ray._private.runtime_env.packaging import parse_uri
@@ -21,14 +22,17 @@ CURRENT_VERSION = "1"
 
 
 class JobStatus(str, Enum):
-    def __str__(self):
-        return f"{self.value}"
-
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     STOPPED = "STOPPED"
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
+
+    def __str__(self):
+        return f"{self.value}"
+
+    def is_terminal(self):
+        return self.value in {"STOPPED", "SUCCEEDED", "FAILED"}
 
 
 @dataclass
@@ -58,7 +62,8 @@ class JobStatusStorageClient:
     Handles formatting of status storage key given job id.
     """
 
-    JOB_STATUS_KEY = "_ray_internal_job_status_{job_id}"
+    JOB_STATUS_KEY_PREFIX = "_ray_internal_job_status"
+    JOB_STATUS_KEY = f"{JOB_STATUS_KEY_PREFIX}_{{job_id}}"
 
     def __init__(self):
         assert _internal_kv_initialized()
@@ -84,6 +89,11 @@ class JobStatusStorageClient:
             return None
         else:
             return pickle.loads(pickled_status)
+
+    def get_all_jobs(self) -> Dict[str, JobStatusInfo]:
+        raw_job_ids = _internal_kv_list(self.JOB_STATUS_KEY_PREFIX)
+        job_ids = [job_id.decode() for job_id in raw_job_ids]
+        return {job_id: self.get_status(job_id) for job_id in job_ids}
 
 
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
