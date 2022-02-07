@@ -1206,7 +1206,7 @@ class TestDeployGroup:
         the client to wait until the deployments finish deploying.
         """
 
-        goal_ids = deploy_group(deployments, _blocking=blocking)
+        deploy_group(deployments, _blocking=blocking)
 
         def check_all_deployed():
             try:
