@@ -338,7 +338,7 @@ class JobManager:
 
         while is_alive:
             try:
-                result = await job_supervisor.ping.remote()
+                await job_supervisor.ping.remote()
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
                 is_alive = False
