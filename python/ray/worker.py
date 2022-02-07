@@ -1439,6 +1439,7 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
 
     # TODO: we should just subscribe to the errors for this specific job.
     worker.gcs_error_subscriber.subscribe()
+    print("abc")
 
     try:
         if _internal_kv_initialized():
@@ -1452,10 +1453,14 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
             # Exit if received a signal that the thread should stop.
             if threads_stopped.is_set():
                 return
-
+            print("abcd")
             _, error_data = worker.gcs_error_subscriber.poll()
+            print("polled", error_data)
             if error_data is None:
                 continue
+            print(f"a: {worker.current_job_id.binary()}")
+            print(f"b {error_data.job_id}")
+            print(f"c {worker.current_job_id.binary() == error_data.job_id}")
             if error_data.job_id not in [
                 worker.current_job_id.binary(),
                 JobID.nil().binary(),

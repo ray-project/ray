@@ -4,6 +4,7 @@ import glob
 import json
 import logging
 import logging.handlers
+from multiprocessing.sharedctypes import Value
 import os
 import platform
 import re
@@ -479,6 +480,7 @@ if __name__ == "__main__":
     )
 
     try:
+        raise ValueError
         log_monitor.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
