@@ -22,6 +22,7 @@
 #include "ray/raylet/dependency_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
+#include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
@@ -30,86 +31,6 @@
 
 namespace ray {
 namespace raylet {
-
-namespace internal {
-
-enum class WorkStatus {
-  /// Waiting to be scheduled.
-  WAITING,
-  /// Waiting for a worker to start.
-  WAITING_FOR_WORKER,
-  /// Queued task has been cancelled.
-  CANCELLED,
-};
-
-/// This enum represents the cause of why work hasn't been scheduled yet.
-enum class UnscheduledWorkCause {
-  /// Waiting for acquiring resources.
-  WAITING_FOR_RESOURCE_ACQUISITION,
-  /// Waiting for more plasma store memory to be available. This is set when we can't pin
-  /// task arguments due to the lack of memory.
-  WAITING_FOR_AVAILABLE_PLASMA_MEMORY,
-  /// Pending because there's no node that satisfies the resources in the cluster.
-  WAITING_FOR_RESOURCES_AVAILABLE,
-  /// Waiting because the worker wasn't available since job config for the worker wasn't
-  /// registered yet.
-  WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST,
-  /// Waiting becasue the worker wasn't available since its registration timed out.
-  WORKER_NOT_FOUND_REGISTRATION_TIMEOUT,
-  /// Waiting because the worker wasn't available since it was rate limited.
-  WORKER_NOT_FOUND_RATE_LIMITED,
-};
-
-/// Work represents all the information needed to make a scheduling decision.
-/// This includes the task, the information we need to communicate to
-/// dispatch/spillback and the callback to trigger it.
-class Work {
- public:
-  RayTask task;
-  const bool grant_or_reject;
-  const bool is_selected_based_on_locality;
-  rpc::RequestWorkerLeaseReply *reply;
-  std::function<void(void)> callback;
-  std::shared_ptr<TaskResourceInstances> allocated_instances;
-  Work(RayTask task, bool grant_or_reject, bool is_selected_based_on_locality,
-       rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> callback,
-       WorkStatus status = WorkStatus::WAITING)
-      : task(task),
-        grant_or_reject(grant_or_reject),
-        is_selected_based_on_locality(is_selected_based_on_locality),
-        reply(reply),
-        callback(callback),
-        allocated_instances(nullptr),
-        status_(status){};
-  Work(const Work &Work) = delete;
-  Work &operator=(const Work &work) = delete;
-  ~Work() = default;
-
-  /// Set the state as waiting with the cause.
-  void SetStateWaiting(const UnscheduledWorkCause &cause) {
-    status_ = WorkStatus::WAITING;
-    unscheduled_work_cause_ = cause;
-  }
-
-  /// Set the state as waiting for workers, meaning it is waiting for workers to start.
-  void SetStateWaitingForWorker() { status_ = WorkStatus::WAITING_FOR_WORKER; }
-
-  /// Set the state as cancelled, meaning this task has to be unqueued from the node.
-  void SetStateCancelled() { status_ = WorkStatus::CANCELLED; }
-
-  WorkStatus GetState() const { return status_; }
-
-  UnscheduledWorkCause GetUnscheduledCause() const { return unscheduled_work_cause_; }
-
- private:
-  WorkStatus status_ = WorkStatus::WAITING;
-  UnscheduledWorkCause unscheduled_work_cause_ =
-      UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION;
-};
-
-typedef std::function<const rpc::GcsNodeInfo *(const NodeID &node_id)> NodeInfoGetter;
-
-}  // namespace internal
 
 /// Manages the queuing and dispatching of tasks. The logic is as follows:
 /// 1. Queue tasks for scheduling.
