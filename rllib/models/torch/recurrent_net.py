@@ -256,15 +256,21 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
             # PackedSequence requires this on cpu
             seq_lens = seq_lens.cpu()
         # By packing sequence, LSTM does not see zero-padding
-        packed_input = torch.nn.utils.rnn.pack_padded_sequence(
-            inputs, seq_lens, enforce_sorted=False, batch_first=not time_major
-        )
-        packed_features, [h, c] = self.lstm(
-            packed_input, [torch.unsqueeze(state[0], 0), torch.unsqueeze(state[1], 0)]
-        )
-        self._features, _ = torch.nn.utils.rnn.pad_packed_sequence(
-            packed_features, batch_first=not time_major
-        )
+        if seq_lens.max() > 1:
+            packed_input = torch.nn.utils.rnn.pack_padded_sequence(
+                inputs, seq_lens, enforce_sorted=False, batch_first=not time_major
+            )
+            packed_features, [h, c] = self.lstm(
+                packed_input,
+                [torch.unsqueeze(state[0], 0), torch.unsqueeze(state[1], 0)],
+            )
+            self._features, _ = torch.nn.utils.rnn.pad_packed_sequence(
+                packed_features, batch_first=not time_major
+            )
+        else:
+            self._features, [h, c] = self.lstm(
+                inputs, [torch.unsqueeze(state[0], 0), torch.unsqueeze(state[1], 0)]
+            )
         model_out = self._logits_branch(self._features)
         return model_out, [torch.squeeze(h, 0), torch.squeeze(c, 0)]
 
