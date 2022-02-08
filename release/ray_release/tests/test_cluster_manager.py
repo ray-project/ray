@@ -541,7 +541,7 @@ class FullSessionManagerTest(MinimalSessionManagerTest):
             )
 
             self.sdk.returns["get_cluster"] = APIDict(
-                result=APIDict(state="Active"))
+                result=APIDict(state="Running"))
 
             # Timeout is long enough
             self.session_manager.start_cluster(timeout=400)

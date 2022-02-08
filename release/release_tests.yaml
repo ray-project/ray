@@ -1,7 +1,7 @@
 - name: xgboost_train_small
 
   group: XGBoost
-  workdir: xgboost_tests
+  working_dir: xgboost_tests
 
   frequency: nightly
   team: ml

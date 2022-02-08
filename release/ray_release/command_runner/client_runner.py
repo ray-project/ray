@@ -2,10 +2,10 @@ import time
 
 import ray
 
-from ray_release.exception import NodesTimeoutError
+from ray_release.exception import ClusterStartupTimeout
 from ray_release.logger import logger
 from ray_release.util import run_with_timeout
-from release.ray_release.command_runner.command_runner import CommandRunner
+from ray_release.command_runner.command_runner import CommandRunner
 
 
 class ClientRunner(CommandRunner):
@@ -27,7 +27,7 @@ class ClientRunner(CommandRunner):
                 f"({time_elapsed} seconds, timeout: {timeout} seconds).")
 
         def _error_fn():
-            raise NodesTimeoutError(
+            raise ClusterStartupTimeout(
                 f"Only {len(ray.nodes())}/{num_nodes} are up after "
                 f"{timeout} seconds.")
 

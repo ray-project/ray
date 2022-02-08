@@ -29,6 +29,8 @@ class ClusterManager(abc.ABC):
         self.cluster_compute_name = None
         self.cluster_compute_id = None
 
+        self.autosuspend_minutes = 30  # Todo: set to 10 for prod
+
     def set_cluster_env(self, cluster_env: Dict[str, Any]):
         self.cluster_env = cluster_env
         self.cluster_env_name = (f"{self.project_id}__env__{self.test_name}__"

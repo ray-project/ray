@@ -31,6 +31,9 @@ DEFAULT_ENV = {
                           datetime.timedelta(days=3)).strftime("%Y-%m-%d"))
 }
 
+RELEASE_PACKAGE_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), ".."))
+
 
 class TestEnvironment(dict):
     pass
@@ -130,23 +133,29 @@ def load_and_render_yaml_template(
 
 def load_test_cluster_env(test: Test, ray_wheels_url: str) -> Optional[Dict]:
     cluster_env_file = test["cluster"]["cluster_env"]
+    cluster_env_path = os.path.join(RELEASE_PACKAGE_DIR,
+                                    test.get("working_dir", ""),
+                                    cluster_env_file)
     env = get_test_environment()
 
     commit = env.get("commit", None)
     env["RAY_WHEELS_SANITY_CHECK"] = get_wheels_sanity_check(commit)
     env["RAY_WHEELS"] = ray_wheels_url
 
-    return load_and_render_yaml_template(cluster_env_file, env=env)
+    return load_and_render_yaml_template(cluster_env_path, env=env)
 
 
 def load_test_cluster_compute(test: Test) -> Optional[Dict]:
     cluster_compute_file = test["cluster"]["cluster_compute"]
+    cluster_compute_path = os.path.join(RELEASE_PACKAGE_DIR,
+                                        test.get("working_dir", ""),
+                                        cluster_compute_file)
     env = get_test_environment()
 
     cloud_id = get_test_cloud_id(test)
     env["ANYSCALE_CLOUD_ID"] = cloud_id
 
-    return load_and_render_yaml_template(cluster_compute_file, env=env)
+    return load_and_render_yaml_template(cluster_compute_path, env=env)
 
 
 def get_test_cloud_id(test: Test) -> str:

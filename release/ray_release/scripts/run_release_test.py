@@ -1,4 +1,6 @@
+import logging
 import os
+import sys
 from typing import Optional
 
 import click
@@ -8,6 +10,7 @@ from ray_release.config import (read_and_validate_release_test_collection,
                                 DEFAULT_WHEEL_WAIT_TIMEOUT)
 from ray_release.exception import ReleaseTestCLIError
 from ray_release.glue import run_release_test
+from ray_release.logger import logger
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
 
 
@@ -22,6 +25,7 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
     "--smoke-test",
     default=False,
     type=bool,
+    is_flag=True,
     help="Finish quickly for testing")
 @click.option(
     "--ray-wheels",
@@ -33,10 +37,31 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
           "Ray master branch. Can also be `<repo_url>:<branch>` or "
           "`<repo_url>:<commit>` to specify a different repository to "
           "fetch wheels from, if available."))
-def main(test_name: str,
-         test_collection_file: Optional[str] = None,
-         smoke_test: bool = False,
-         ray_wheels: Optional[str] = None):
+@click.option(
+    "--cluster-id",
+    default=None,
+    type=str,
+    help="Cluster ID of existing cluster to be re-used.")
+@click.option(
+    "--no-terminate",
+    default=False,
+    type=bool,
+    is_flag=True,
+    help="Do not terminate cluster after test.")
+def main(
+        test_name: str,
+        test_collection_file: Optional[str] = None,
+        smoke_test: bool = False,
+        ray_wheels: Optional[str] = None,
+        cluster_id: Optional[str] = None,
+        no_terminate: bool = False,
+):
+    handler = logging.StreamHandler(stream=sys.stdout)
+    formatter = logging.Formatter(fmt="[%(levelname)s %(asctime)s] "
+                                  "%(filename)s: %(lineno)d  "
+                                  "%(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
     test_collection_file = test_collection_file or os.path.join(
         os.path.dirname(__file__), "..", "..", "release_tests.yaml")
@@ -60,8 +85,15 @@ def main(test_name: str,
         raise ReleaseTestCLIError(
             "You have to set the ANYSCALE_PROJECT environment variable!")
 
+    results = {}
+
     run_release_test(
-        test, anyscale_project=anyscale_project, ray_wheels_url=ray_wheels_url)
+        test,
+        anyscale_project=anyscale_project,
+        results=results,
+        ray_wheels_url=ray_wheels_url,
+        cluster_id=cluster_id,
+        no_terminate=no_terminate)
 
 
 if __name__ == "__main__":

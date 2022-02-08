@@ -25,7 +25,7 @@ class FullClusterManager(MinimalClusterManager):
                     project_id=self.project_id,
                     cluster_environment_build_id=self.cluster_env_build_id,
                     cluster_compute_id=self.cluster_compute_id,
-                    idle_timeout_minutes=30))
+                    idle_timeout_minutes=self.autosuspend_minutes))
             self.cluster_id = result.result.id
         except Exception as e:
             raise ClusterCreationError(f"Error creating cluster: {e}") from e
@@ -74,11 +74,11 @@ class FullClusterManager(MinimalClusterManager):
             completed = result.result.completed
 
         result = self.sdk.get_cluster(self.cluster_id)
-        if result.result.state != "Active":
+        if result.result.state != "Running":
             raise ClusterStartupFailed(
                 f"Cluster did not come up - most likely the nodes are currently "
                 f"not available. Please check the cluster startup logs: "
-                f"{cluster_url}")
+                f"{cluster_url} (cluster state: {result.result.state})")
 
     def terminate_cluster(self, wait: bool = False):
         if self.cluster_id:
