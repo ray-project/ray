@@ -427,6 +427,7 @@ class RolloutWorker(ParallelIteratorWorker):
             worker_index=worker_index,
             vector_index=0,
             num_workers=num_workers,
+            remote=remote_worker_envs,
         )
         self.env_context = env_context
         self.policy_config: PartialTrainerConfigDict = policy_config
@@ -478,7 +479,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # 3) Seed the env, if necessary.
         # 4) Vectorize the existing single env by creating more clones of
         #    this env and wrapping it with the RLlib BaseEnv class.
-        self.env = None
+        self.env = self.make_sub_env_fn = None
 
         # Create a (single) env for this worker.
         if not (
@@ -539,34 +540,17 @@ class RolloutWorker(ParallelIteratorWorker):
             # dependency on each other right now, so we would settle on
             # duplicating the random seed setting logic for now.
             _update_env_seed_if_necessary(self.env, seed, worker_index, 0)
-
-        def make_sub_env(vector_index):
-            # Used to created additional environments during environment
-            # vectorization.
-
-            # Create the env context (config dict + meta-data) for
-            # this particular sub-env within the vectorized one.
-            env_ctx = env_context.copy_with_overrides(
-                worker_index=worker_index,
-                vector_index=vector_index,
-                remote=remote_worker_envs,
+            # Call custom callback function `on_sub_environment_created`.
+            self.callbacks.on_sub_environment_created(
+                worker=self,
+                sub_environment=self.env,
+                env_context=self.env_context,
             )
-            # Create the sub-env.
-            env = env_creator(env_ctx)
-            # Validate first.
-            _validate_env(env, env_context=env_ctx)
-            # Custom validation function given by user.
-            if validate_env is not None:
-                validate_env(env, env_ctx)
-            # Use our wrapper, defined above.
-            env = wrap(env)
 
-            # Make sure a deterministic random seed is set on
-            # all the sub-environments if specified.
-            _update_env_seed_if_necessary(env, seed, worker_index, vector_index)
-            return env
+            self.make_sub_env_fn = self._get_make_sub_env_fn(
+                env_creator, env_context, validate_env, wrap, seed
+            )
 
-        self.make_sub_env_fn = make_sub_env
         self.spaces = spaces
 
         self.policy_dict = _determine_spaces_for_multi_agent_dict(
@@ -687,6 +671,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 num_envs=num_envs,
                 remote_envs=remote_worker_envs,
                 remote_env_batch_wait_ms=remote_env_batch_wait_ms,
+                worker=self,
             )
 
         # `truncate_episodes`: Allow a batch to contain more than one episode
@@ -1717,6 +1702,53 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.worker_index == 0:
             logger.info(f"Built policy map: {self.policy_map}")
             logger.info(f"Built preprocessor map: {self.preprocessors}")
+
+    def _get_make_sub_env_fn(
+        self, env_creator, env_context, validate_env, env_wrapper, seed
+    ):
+        def _make_sub_env_local(vector_index):
+            # Used to created additional environments during environment
+            # vectorization.
+
+            # Create the env context (config dict + meta-data) for
+            # this particular sub-env within the vectorized one.
+            env_ctx = env_context.copy_with_overrides(vector_index=vector_index)
+            # Create the sub-env.
+            env = env_creator(env_ctx)
+            # Validate first.
+            _validate_env(env, env_context=env_ctx)
+            # Custom validation function given by user.
+            if validate_env is not None:
+                validate_env(env, env_ctx)
+            # Use our wrapper, defined above.
+            env = env_wrapper(env)
+
+            # Make sure a deterministic random seed is set on
+            # all the sub-environments if specified.
+            _update_env_seed_if_necessary(
+                env, seed, env_context.worker_index, vector_index
+            )
+            return env
+
+        if not env_context.remote:
+
+            def _make_sub_env_remote(vector_index):
+                sub_env = _make_sub_env_local(vector_index)
+                self.callbacks.on_sub_environment_created(
+                    worker=self,
+                    sub_environment=sub_env,
+                    env_context=env_context.copy_with_overrides(
+                        worker_index=env_context.worker_index,
+                        vector_index=vector_index,
+                        remote=False,
+                    ),
+                )
+                return sub_env
+
+            return _make_sub_env_remote
+
+        else:
+            return _make_sub_env_local
 
     @Deprecated(
         new="Trainer.get_policy().export_model([export_dir], [onnx]?)", error=False

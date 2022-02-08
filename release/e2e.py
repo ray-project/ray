@@ -188,8 +188,8 @@ Release test yaml example
 import argparse
 import enum
 import random
-import string
 import shlex
+import string
 
 import boto3
 import collections
@@ -402,7 +402,7 @@ class CommandRunnerHack:
         full_cmd = " ".join(f"{k}={v}" for k, v in env_vars.items()) + " " + cmd_to_run
         logger.info(f"Executing {cmd_to_run} with {env_vars} via ray job submit")
         proc = subprocess.Popen(
-            " ".join(["ray", "job", "submit", shlex.quote(full_cmd)]),
+            f"ray job submit -- bash -c {shlex.quote(full_cmd)}",
             shell=True,
             stdout=sys.stdout,
             stderr=sys.stderr,
@@ -479,7 +479,15 @@ class S3SyncSessionController(SessionController):
         )
         global_command_runner.wait_command(cid)
 
-    def push(self, session_name, source, target):
+    def push(
+        self,
+        session_name: str,
+        source: Optional[str],
+        target: Optional[str],
+        config: Optional[str],
+        all_nodes: bool,
+        no_warning: bool = False,
+    ):
         if source is None and target is None:
             self._push_local_dir(session_name)
             return
@@ -725,11 +733,6 @@ def report_result(
     artifacts: Dict[Any, Any],
     category: str,
     team: str,
-    commit_url: str,
-    session_url: str,
-    runtime: float,
-    stable: bool,
-    return_code: int,
 ):
     #   session_url: str, commit_url: str,
     #   runtime: float, stable: bool, frequency: str, return_code: int):
@@ -1158,6 +1161,7 @@ def create_and_wait_for_session(
     session_url = anyscale_session_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"], session_id=session_id
     )
+    logger.info(f"URL: {session_url}")
     logger.info(f"Link to session: {_format_link(session_url)}")
 
     result = sdk.start_session(session_id, start_session_options={})
@@ -1220,6 +1224,7 @@ def run_session_command(
     session_url = anyscale_session_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"], session_id=session_id
     )
+    logger.info(f"URL: {session_url}")
     logger.info(f"Link to session: {_format_link(session_url)}")
     result_queue.put(State(state_str, time.time(), None))
     result = sdk.create_session_command(
@@ -1501,7 +1506,11 @@ def run_test_config(
         cli_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"],
         host=GLOBAL_CONFIG["ANYSCALE_HOST"],
     )
-    session_controller = S3SyncSessionController(sdk, result_queue)
+    on_k8s = test_config["cluster"].get("compute_on_k8s")
+    if on_k8s:
+        session_controller = S3SyncSessionController(sdk, result_queue)
+    else:
+        session_controller = SessionController()
 
     cloud_id = test_config["cluster"].get("cloud_id", None)
     cloud_name = test_config["cluster"].get("cloud_name", None)
@@ -1631,11 +1640,10 @@ def run_test_config(
             )
 
         # Add these metadata here to avoid changing SQL schema.
-        is_stable = test_config.get("stable", True)
         results["_runtime"] = runtime
         results["_session_url"] = session_url
         results["_commit_url"] = commit_url
-        results["_stable"] = is_stable
+        results["_stable"] = test_config.get("stable", True)
         result_queue.put(
             State(
                 "END",
@@ -1645,10 +1653,6 @@ def run_test_config(
                     "last_logs": logs,
                     "results": results,
                     "artifacts": saved_artifacts,
-                    "runtime": runtime,
-                    "session_url": session_url,
-                    "commit_url": commit_url,
-                    "stable": is_stable,
                 },
             )
         )
@@ -1785,6 +1789,8 @@ def run_test_config(
                     session_name=session_name,
                     source=None,
                     target=None,
+                    config=None,
+                    all_nodes=False,
                 )
 
                 logger.info("Syncing test state to session...")
@@ -1792,6 +1798,8 @@ def run_test_config(
                     session_name=session_name,
                     source=test_state_file,
                     target=state_json,
+                    config=None,
+                    all_nodes=False,
                 )
 
                 session_url = anyscale_session_url(
@@ -1966,12 +1974,11 @@ def run_test_config(
                     exit_code = ExitCode.UNKNOWN
 
                 # Add these metadata here to avoid changing SQL schema.
-                is_stable = test_config.get("stable", True)
                 results = {}
                 results["_runtime"] = runtime
                 results["_session_url"] = session_url
                 results["_commit_url"] = commit_url
-                results["_stable"] = is_stable
+                results["_stable"] = test_config.get("stable", True)
                 result_queue.put(
                     State(
                         "END",
@@ -1981,10 +1988,6 @@ def run_test_config(
                             "last_logs": logs,
                             "results": results,
                             "exit_code": exit_code.value,
-                            "runtime": runtime,
-                            "session_url": session_url,
-                            "commit_url": commit_url,
-                            "stable": is_stable,
                         },
                     )
                 )
@@ -2375,11 +2378,6 @@ def run_test(
             artifacts=result.get("artifacts", {}),
             category=category,
             team=team,
-            commit_url=result.get("commit_url", ""),
-            session_url=result.get("session_url", ""),
-            runtime=result.get("runtime", -1),
-            stable=result.get("stable", True),
-            exit_code=result.get("exit_code", ExitCode.UNKNOWN),
         )
 
         if not has_errored(result):

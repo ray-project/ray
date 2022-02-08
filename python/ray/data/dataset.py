@@ -290,6 +290,53 @@ class Dataset(Generic[T]):
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
         return Dataset(blocks, self._epoch, stats_builder.build(blocks))
 
+    def add_column(
+        self,
+        col: str,
+        fn: Callable[["pandas.DataFrame"], "pandas.Series"],
+        *,
+        compute: Optional[str] = None,
+        **ray_remote_args,
+    ) -> "Dataset[T]":
+        """Add the given column to the dataset.
+
+        This is only supported for datasets convertible to pandas format.
+        A function generating the new column values given the batch in pandas
+        format must be specified.
+
+        This is a convenience wrapper over ``.map_batches()``.
+
+        Examples:
+            >>> ds = ray.data.range_arrow(100)
+            >>> # Add a new column equal to value * 2.
+            >>> ds = ds.add_column("new_col", lambda df: df["value"] * 2)
+            >>> # Overwrite the existing "value" with zeros.
+            >>> ds = ds.add_column("value", lambda df: 0)
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            col: Name of the column to add. If the name already exists, the
+                column will be overwritten.
+            fn: Map function generating the column values given a batch of
+                records in pandas format.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or "actors" to use an autoscaling Ray actor pool.
+            ray_remote_args: Additional resource requirements to request from
+                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+        """
+
+        def process_batch(batch):
+            batch[col] = fn(batch)
+            return batch
+
+        if not callable(fn):
+            raise ValueError("`fn` must be callable, got {}".format(fn))
+
+        return self.map_batches(
+            process_batch, batch_format="pandas", compute=compute, **ray_remote_args
+        )
+
     def flat_map(
         self,
         fn: Union[CallableClass, Callable[[T], Iterable[U]]],
