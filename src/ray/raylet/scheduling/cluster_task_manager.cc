@@ -764,39 +764,10 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
   scheduler_resource_reporter_.FillPendingActorInfo(reply);
 }
 
-namespace {
-
-int64_t TotalBacklogSize(
-    const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
-        &backlog_tracker,
-    SchedulingClass scheduling_class) {
-  auto backlog_it = backlog_tracker.find(scheduling_class);
-  if (backlog_it == backlog_tracker.end()) {
-    return 0;
-  }
-
-  int64_t sum = 0;
-  for (const auto &worker_id_and_backlog_size : backlog_it->second) {
-    sum += worker_id_and_backlog_size.second;
-  }
-
-  return sum;
-}
-
-void FillResourceUsageHelper(
-    rpc::ResourcesData &data,
-    const std::shared_ptr<SchedulingResources> &last_reported_resources) {
-  scheduler_resource_reporter_.FillResourceUsage(data, last_reported_resources);
-}  // namespace
-
 void ClusterTaskManager::FillResourceUsage(
     rpc::ResourcesData &data,
     const std::shared_ptr<SchedulingResources> &last_reported_resources) {
-  if (max_resource_shapes_per_load_report_ == 0) {
-    return;
-  }
-  FillResourceUsageHelper(data, last_reported_resources, tasks_to_schedule_,
-                          tasks_to_dispatch_, infeasible_tasks_, backlog_tracker_);
+  scheduler_resource_reporter_.FillResourceUsage(data, last_reported_resources);
 }
 
 bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
