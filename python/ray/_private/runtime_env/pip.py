@@ -58,7 +58,7 @@ class PipProcessor:
         logger: Optional[logging.Logger] = default_logger,
     ):
         try:
-            import virtualenv  # noqa: F401 ensure virtualenv exits.
+            import virtualenv  # noqa: F401 ensure virtualenv exists.
         except ImportError:
             raise RuntimeError(
                 f"Please install virtualenv "
