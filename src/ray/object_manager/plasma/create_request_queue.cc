@@ -182,7 +182,7 @@ Status CreateRequestQueue::ProcessRequests() {
 	  }
 	}
 	*/
-    if (spilling_required) {
+    if (!RayConfig::instance().enable_BlockTasks() && spilling_required) {
       spill_objects_callback_();
     }
     auto now = get_time_();
@@ -199,6 +199,12 @@ Status CreateRequestQueue::ProcessRequests() {
         oom_start_time_ns_ = now;
       }
 
+	  /*
+	  if(!spilling_required){
+        RAY_LOG(DEBUG) << "[JAE_DEBUG] JAE_HERE spilling_required is not called";
+		//spill_objects_callback_();
+	  }
+	  */
       if(RayConfig::instance().enable_BlockTasks()){
         RAY_LOG(DEBUG) << "[JAE_DEBUG] calling object_creation_blocked_callback priority "
 	    << lowest_pri;
@@ -209,7 +215,7 @@ Status CreateRequestQueue::ProcessRequests() {
 	    << queue_it->first.first.score;
 	    on_object_creation_blocked_callback_(queue_it->first.first, false, true);
 	  }
-      if (!should_spill_) {
+      if (RayConfig::instance().enable_BlockTasks() && !should_spill_) {
         RAY_LOG(INFO) << "Object creation of priority " << queue_it->first.first << " blocked";
         return Status::TransientObjectStoreFull("Waiting for higher priority tasks to finish");
       }

@@ -49,7 +49,7 @@ class IObjectStore {
   /// \return
   ///   - nullptr if such object doesn't exist.
   ///   - otherwise, pointer to the object.
-  virtual ray::Priority &GetLowestPriObject() = 0;
+  virtual ray::Priority GetLowestPriObject() = 0;
 
   /// Get object by id.
   ///
@@ -86,7 +86,7 @@ class ObjectStore : public IObjectStore {
                                   plasma::flatbuf::ObjectSource source,
                                   bool fallback_allocate) override;
 
-  ray::Priority &GetLowestPriObject() override;
+  ray::Priority GetLowestPriObject() override;
 
   const LocalObject *GetObject(const ObjectID &object_id) const override;
 

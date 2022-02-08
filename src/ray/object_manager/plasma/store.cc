@@ -184,7 +184,7 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(
   if (lowest_priority != nullptr) {
     //LocalObject *lowest_pri_obj = object_lifecycle_mgr_.GetLowestPriObject();
     //lowest_priority = lowest_pri_obj->GetPriority();
-	ray::Priority &p = object_lifecycle_mgr_.GetLowestPriObject();
+	ray::Priority p = object_lifecycle_mgr_.GetLowestPriObject();
 	int size = p.GetSize();
 	int i;
 	for(i=0; i<size; i++){
@@ -294,6 +294,7 @@ void PlasmaStore::ReleaseObject(const ObjectID &object_id,
   auto entry = object_lifecycle_mgr_.GetObject(object_id);
   RAY_CHECK(entry != nullptr);
   // Remove the client from the object's array of clients.
+  RAY_LOG(DEBUG) << "[JAE_DEBUG] [ReleaseObject] Object " << object_id;
   RAY_CHECK(RemoveFromClientObjectIds(object_id, client) == 1);
 }
 

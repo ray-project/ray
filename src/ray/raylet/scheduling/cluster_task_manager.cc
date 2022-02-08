@@ -77,7 +77,8 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // there are not enough available resources blocks other
       // tasks from being scheduled.
       Priority task_priority = work_it->first.first;
-      RAY_LOG(DEBUG) << "[JAE_DEBUG] schedulePendingTasks task " << task_priority
+      RAY_LOG(DEBUG) << "[JAE_DEBUG] schedulePendingTasks task " << 
+		  work_it->second->task.GetTaskSpecification().TaskId() << "priority:" << task_priority
                      << " block requested is " << block_requested_priority_;
       if (task_priority >= block_requested_priority_) {
         RAY_LOG(DEBUG) << "[JAE_DEBUG] schedulePendingTasks blocked task "
@@ -541,7 +542,8 @@ bool ClusterTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &s
     ReleaseTaskArgs(spec.TaskId());
     RAY_LOG(DEBUG) << "Cannot dispatch task " << spec.TaskId()
                    << " with arguments of size " << task_arg_bytes
-                   << " current pinned bytes is " << pinned_task_arguments_bytes_;
+                   << " current pinned bytes is " << pinned_task_arguments_bytes_
+                   << " max_pinned_task_arguments_bytes is " << max_pinned_task_arguments_bytes_;
     return false;
   }
 

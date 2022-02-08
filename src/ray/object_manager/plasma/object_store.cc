@@ -51,15 +51,17 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
   return entry;
 }
 
-ray::Priority &ObjectStore::GetLowestPriObject() {
+ray::Priority ObjectStore::GetLowestPriObject() {
   auto it = object_table_.begin();
-  ray::Priority &lowest_priority = it->second->GetPriority();
+  //TODO(Jae) segfault here not objects
+  ray::Priority lowest_priority = it->second->GetPriority();
   it++;
-  RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "] Look for lowest pri" << object_table_.size();
+  RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "] Look for lowest pri size:" << object_table_.size();
+  RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "] pri:" << lowest_priority;
   for (; it != object_table_.end(); it++){
-	ray::Priority &p = it->second->GetPriority();
+	ray::Priority p = it->second->GetPriority();
 	RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "] pri:" << p;
-    if(lowest_priority< p){
+    if(lowest_priority < p){
       lowest_priority = p;
 	}
   }
@@ -87,6 +89,7 @@ const LocalObject *ObjectStore::SealObject(const ObjectID &object_id) {
 
 bool ObjectStore::DeleteObject(const ObjectID &object_id) {
   auto entry = GetMutableObject(object_id);
+  RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "] object is freed:" << object_id;
   if (entry == nullptr) {
     return false;
   }
