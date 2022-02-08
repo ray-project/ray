@@ -37,10 +37,10 @@ RaySyncer::RaySyncer(std::string node_id, instrumented_io_context &io_context)
       100);
 }
 
-void RaySyncer::ConnectTo(std::shared_ptr<grpc::Channel> channel) {
+void RaySyncer::ConnectTo(std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub) {
   // We don't allow connect to new leader.
   RAY_CHECK(leader_ == nullptr);
-  leader_stub_ = ray::rpc::syncer::RaySyncer::NewStub(channel);
+  leader_stub_ = std::move(stub);
   auto client_context = std::make_unique<grpc::ClientContext>().release();
   client_context->AddMetadata("node_id", GetNodeId());
   leader_ = std::make_unique<SyncClientReactor>(*this, this->io_context_, client_context)

@@ -102,7 +102,7 @@ int main(int argc, char *argv[]) {
   if (leader_port != ".") {
     channel = grpc::CreateChannel("localhost:" + leader_port,
                                   grpc::InsecureChannelCredentials());
-    syncer.ConnectTo(channel);
+    syncer.ConnectTo(ray::rpc::syncer::RaySyncer::NewStub(channel));
   }
   boost::asio::io_context::work work(io_context);
   io_context.run();

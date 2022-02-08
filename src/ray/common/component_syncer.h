@@ -43,7 +43,7 @@ class RaySyncer {
 
   // Follower will send its message to leader
   // Leader will broadcast what it received to followers
-  void ConnectTo(std::shared_ptr<grpc::Channel> channel);
+  void ConnectTo(std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
 
   SyncServerReactor *ConnectFrom(grpc::CallbackServerContext *context);
   void DisconnectFrom(std::string node_id);

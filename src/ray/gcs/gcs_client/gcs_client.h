@@ -184,6 +184,16 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   virtual rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
 
+  std::shared_ptr<grpc::Channel> NewChannel() {
+    grpc::ChannelArguments argument;
+    argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
+    argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
+    argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
+
+    return ray::rpc::BuildChannel(argument, current_gcs_server_address_.first, current_gcs_server_address_.second);
+  }
+
+
  protected:
   GcsClientOptions options_;
 

@@ -18,9 +18,11 @@
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/common/component_syncer.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/common/ray_object.h"
+#include "ray/common/component_syncer.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/scheduling_resources.h"
@@ -756,6 +758,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Whether or not if the node draining process has already received.
   bool is_node_drained_ = false;
+
+  std::unique_ptr<syncing::RaySyncer> syncer_;
 };
 
 }  // namespace raylet
