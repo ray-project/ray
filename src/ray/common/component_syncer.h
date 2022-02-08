@@ -116,7 +116,9 @@ class NodeSyncContext : public T {
       std::conditional_t<kIsServer, grpc::CallbackServerContext, grpc::ClientContext>;
 
   NodeSyncContext(RaySyncer &syncer, instrumented_io_context &io_context, C *rpc_context)
-      : rpc_context_(rpc_context), io_context_(io_context), instance_(syncer) {}
+      : rpc_context_(rpc_context), io_context_(io_context), instance_(syncer) {
+    write_opts_.set_buffer_hint();
+  }
 
   void Init() {
     if constexpr (kIsServer) {
@@ -195,7 +197,7 @@ class NodeSyncContext : public T {
         out_message_->mutable_sync_messages()->UnsafeArenaAddAllocated((*iter).get());
       }
       consumed_messages_ = out_buffer_.size();
-      StartWrite(out_message_);
+      StartWrite(out_message_, write_opts_);
     }
   }
 
@@ -232,6 +234,7 @@ class NodeSyncContext : public T {
 
   absl::flat_hash_map<std::string, std::array<uint64_t, kComponentArraySize>>
       node_versions_;
+  grpc::WriteOptions write_opts_;
 };
 
 struct SyncServerReactor : public NodeSyncContext<ServerBidiReactor> {

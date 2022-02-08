@@ -144,6 +144,8 @@ RAY_CONFIG(int64_t, grpc_server_retry_timeout_milliseconds, 1000)
 // of creation retries will be MAX(actor_creation_min_retries, max_restarts).
 RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
 
+RAY_CONFIG(bool, syncer_reporting, true);
+
 /// Warn if more than this many tasks are queued for submission to an actor.
 /// It likely indicates a bug in the user code.
 RAY_CONFIG(int64_t, actor_excess_queueing_warn_threshold, 5000)
