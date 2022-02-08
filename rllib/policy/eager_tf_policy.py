@@ -168,7 +168,7 @@ def traced_eager_policy(eager_policy_cls):
                 self._traced_compute_actions_helper = True
 
             # Now that the helper method is traced, call super's
-            # apply_gradients (which will call the traced helper).
+            # `compute_actions_from_input_dict()` (which will call the traced helper).
             return super(TracedEagerPolicy, self).compute_actions_from_input_dict(
                 input_dict=input_dict,
                 explore=explore,
@@ -214,7 +214,7 @@ def traced_eager_policy(eager_policy_cls):
                 self._traced_compute_gradients_helper = True
 
             # Now that the helper method is traced, call super's
-            # apply_gradients (which will call the traced helper).
+            # `compute_gradients()` (which will call the traced helper).
             return super(TracedEagerPolicy, self).compute_gradients(samples)
 
         @check_too_many_retraces
@@ -234,7 +234,7 @@ def traced_eager_policy(eager_policy_cls):
                 self._traced_apply_gradients_helper = True
 
             # Now that the helper method is traced, call super's
-            # apply_gradients (which will call the traced helper).
+            # `apply_gradients()` (which will call the traced helper).
             return super(TracedEagerPolicy, self).apply_gradients(grads)
 
     TracedEagerPolicy.__name__ = eager_policy_cls.__name__ + "_traced"
@@ -918,6 +918,7 @@ def build_eager_tf_policy(
             stats = self._stats(self, samples, grads)
             return grads_and_vars, grads, stats
 
+        @with_lock
         def _apply_gradients_helper(self, grads_and_vars):
             # Increase the tracing counter to make sure we don't re-trace too
             # often. If eager_tracing=True, this counter should only get
