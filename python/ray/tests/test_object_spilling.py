@@ -1,7 +1,6 @@
 import copy
 import json
 import random
-import platform
 import sys
 import shutil
 import zlib
@@ -177,7 +176,6 @@ def test_spilling_not_done_for_pinned_object(object_spilling_config, shutdown_on
     assert_no_thrashing(address["address"])
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_remote_object(ray_start_cluster, multi_node_object_spilling_config):
     cluster = ray_start_cluster
     object_spilling_config, _ = multi_node_object_spilling_config
