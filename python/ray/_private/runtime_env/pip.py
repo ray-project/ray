@@ -6,13 +6,14 @@ import logging
 import hashlib
 import shutil
 
+from filelock import FileLock
 from typing import Optional, List, Dict, Tuple
 
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.utils import RuntimeEnv
-from ray._private.utils import try_to_create_directory
+from ray._private.utils import get_directory_size_bytes, try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
 
@@ -21,16 +22,6 @@ def _get_pip_hash(pip_list: List[str]) -> str:
     serialized_pip_spec = json.dumps(pip_list, sort_keys=True)
     hash = hashlib.sha1(serialized_pip_spec.encode("utf-8")).hexdigest()
     return hash
-
-
-def _get_path_from_hash(pip_resources_dir: str, hash: str) -> str:
-    """Generate a path from the hash of a pip spec.
-
-    Example output:
-        /tmp/ray/session_2021-11-03_16-33-59_356303_41018/runtime_resources
-            /pip/ray-9a7972c3a75f55e976e620484f58410c920db091
-    """
-    return os.path.join(pip_resources_dir, hash)
 
 
 def get_uri(runtime_env: Dict) -> Optional[str]:
@@ -52,7 +43,7 @@ def get_uri(runtime_env: Dict) -> Optional[str]:
 class PipProcessor:
     def __init__(
         self,
-        pip_resources_dir: str,
+        target_dir: str,
         runtime_env: RuntimeEnv,
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
@@ -66,7 +57,7 @@ class PipProcessor:
                 f"to enable pip runtime env."
             )
         logger.debug("Setting up pip for runtime_env: %s", runtime_env)
-        self._pip_resources_dir = pip_resources_dir
+        self._target_dir = target_dir
         self._runtime_env = runtime_env
         self._context = context
         self._logger = logger
@@ -220,9 +211,9 @@ class PipProcessor:
             )
 
     def run(self):
+        path = self._target_dir
         logger = self._logger
         pip_packages = self._runtime_env.pip_packages()
-        path = _get_path_from_hash(self._pip_resources_dir, _get_pip_hash(pip_packages))
         # We create an empty directory for exec cmd so that the cmd will
         # run more stable. e.g. if cwd has ray, then checking ray will
         # look up ray in cwd instead of site packages.
@@ -248,10 +239,25 @@ class PipManager:
     def __init__(self, resources_dir: str):
         self._pip_resources_dir = os.path.join(resources_dir, "pip")
         try_to_create_directory(self._pip_resources_dir)
+        # Concurrent pip installs are unsafe.  This lock prevents concurrent
+        # installs (and deletions).
+        self._installs_and_deletions_file_lock = os.path.join(
+            self._pip_resources_dir, "ray-pip-installs-and-deletions.lock"
+        )
+
+    def _get_path_from_hash(self, hash: str) -> str:
+        """Generate a path from the hash of a pip spec.
+
+        Example output:
+            /tmp/ray/session_2021-11-03_16-33-59_356303_41018/runtime_resources
+                /pip/ray-9a7972c3a75f55e976e620484f58410c920db091
+        """
+        return os.path.join(self._pip_resources_dir, hash)
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
-    ) -> bool:
+    ) -> int:
+        """Delete URI and return the number of bytes deleted."""
         logger.info("Got request to delete URI %s", uri)
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.PIP:
@@ -260,25 +266,32 @@ class PipManager:
                 f"pip. Received protocol {protocol}, URI {uri}"
             )
 
-        pip_env_path = _get_path_from_hash(self._pip_resources_dir, hash)
+        pip_env_path = self._get_path_from_hash(hash)
+        local_dir_size = get_directory_size_bytes(pip_env_path)
         try:
-            shutil.rmtree(pip_env_path)
-            successful = True
-        except OSError:
-            successful = False
-            logger.warning("Error when deleting pip env %s.", pip_env_path)
-        return successful
+            with FileLock(self._installs_and_deletions_file_lock):
+                shutil.rmtree(pip_env_path)
+        except OSError as e:
+            logger.warning(f"Error when deleting pip env {pip_env_path}: {str(e)}")
+            return 0
 
-    def setup(
+        return local_dir_size
+
+    def create(
         self,
+        uri: str,
         runtime_env: RuntimeEnv,
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
-    ):
+    ) -> int:
         if not runtime_env.has_pip():
-            return
+            return 0
 
-        pip_processor = PipProcessor(
-            self._pip_resources_dir, runtime_env, context, logger
-        )
-        pip_processor.run()
+        protocol, hash = parse_uri(uri)
+        target_dir = self._get_path_from_hash(hash)
+
+        with FileLock(self._installs_and_deletions_file_lock):
+            pip_processor = PipProcessor(target_dir, runtime_env, context, logger)
+            pip_processor.run()
+
+        return get_directory_size_bytes(target_dir)
