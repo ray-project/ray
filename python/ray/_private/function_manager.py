@@ -408,6 +408,7 @@ class FunctionActorManager:
                     "registered. You may have to restart "
                     "Ray."
                 )
+                print(warning_message)
                 if not warning_sent:
                     ray._private.utils.push_error_to_driver(
                         self._worker,
