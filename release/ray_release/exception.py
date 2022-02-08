@@ -1,3 +1,31 @@
+class ReleaseTestPackageError(RuntimeError):
+    pass
+
+
+class ReleaseTestConfigError(ReleaseTestPackageError):
+    pass
+
+
+class ReleaseTestCLIError(ReleaseTestPackageError):
+    pass
+
+
+class RayWheelsError(RuntimeError):
+    pass
+
+
+class RayWheelsUnspecifiedError(RayWheelsError):
+    pass
+
+
+class RayWheelsNotFoundError(RayWheelsError):
+    pass
+
+
+class RayWheelsTimeoutError(RayWheelsError):
+    pass
+
+
 class ClusterManagerError(RuntimeError):
     pass
 

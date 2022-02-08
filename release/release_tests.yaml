@@ -1,0 +1,19 @@
+- name: xgboost_train_small
+
+  group: XGBoost
+  workdir: xgboost_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: tpl_cpu_small.yaml
+    autosuspend_mins: 10
+
+  run:
+    type: command
+    timeout: 600
+    script: python workloads/train_small.py
+
+  alert: long_running_test

@@ -1,12 +1,18 @@
 import abc
 from typing import Dict, Any
 
-from ray_release.cluster_manager.session_manager import ClusterManager
+from ray_release.cluster_manager.cluster_manager import ClusterManager
 
 
 class CommandRunner(abc.ABC):
     def __init__(self, session_manager: ClusterManager):
         self.session_manager = session_manager
+
+    def prepare_local_env(self):
+        """Prepare local environment, e.g. install dependencies."""
+
+    def prepare_remote_env(self):
+        """Prepare remote environment, e.g. upload files."""
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         """Wait for cluster nodes to be up.

@@ -1,3 +1,4 @@
+import collections
 import hashlib
 import json
 import os
@@ -11,11 +12,24 @@ from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 ANYSCALE_HOST = os.environ.get("ANYSCALE_HOST", "https://console.anyscale.com")
 
 
+def deep_update(d, u):
+    for k, v in u.items():
+        if isinstance(v, collections.abc.Mapping):
+            d[k] = deep_update(d.get(k, {}), v)
+        else:
+            d[k] = v
+    return d
+
+
 def dict_hash(dt: Dict[Any, Any]) -> str:
     json_str = json.dumps(dt, sort_keys=True, ensure_ascii=True)
     sha = hashlib.sha256()
     sha.update(json_str.encode())
     return sha.hexdigest()
+
+
+def url_exists(url: str):
+    return requests.head(url).status_code == 200
 
 
 def format_link(link: str):
@@ -50,16 +64,6 @@ def anyscale_app_config_build_url(build_id: str):
     return f"{ANYSCALE_HOST}" \
            f"/o/anyscale-internal/configurations/app-config-details" \
            f"/{build_id}"
-
-
-def wheel_url(ray_version: str, git_branch: str, git_commit: str):
-    return f"https://s3-us-west-2.amazonaws.com/ray-wheels/" \
-           f"{git_branch}/{git_commit}/" \
-           f"ray-{ray_version}-cp37-cp37m-manylinux2014_x86_64.whl"
-
-
-def url_exists(url: str):
-    return requests.head(url).status_code == 200
 
 
 _anyscale_sdk = None
