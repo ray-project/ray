@@ -99,7 +99,7 @@ class GrpcServer {
   /// \param[in] service A `GrpcService` to register to this server.
   void RegisterService(GrpcService &service);
 
-  void RegisterCallbackGenericService(grpc::CallbackGenericService &callback_service);
+  void RegisterService(grpc::CallbackGenericService &callback_service);
 
  protected:
   /// This function runs in a background thread. It keeps polling events from the

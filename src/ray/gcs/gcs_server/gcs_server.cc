@@ -202,6 +202,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 void GcsServer::InitSyncing() {
   syncer_ = std::make_unique<ray::syncing::RaySyncer>("GCS", main_service_);
   syncer_service_ = std::make_unique<ray::syncing::RaySyncerService>(*syncer_);
+  rpc_server_.RegisterService(*syncer_service_);
 }
 
 void GcsServer::Stop() {
