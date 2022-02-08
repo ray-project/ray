@@ -24,6 +24,9 @@ def test_parse_cluster_info(
     metadata: Optional[Dict[str, str]],
     headers: Optional[Dict[str, str]],
 ):
+    """
+    Test ray.dashboard.modules.job.sdk.parse_cluster_info for different format of addresses.
+    """
     mock_get_job_submission_client_cluster_info = Mock(return_value="Ray ClusterInfo")
     mock_other_module = Mock()
     mock_other_module.get_job_submission_client_cluster_info = Mock(
