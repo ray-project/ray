@@ -98,8 +98,7 @@ class GrpcServer {
   ///
   /// \param[in] service A `GrpcService` to register to this server.
   void RegisterService(GrpcService &service);
-
-  void RegisterService(grpc::CallbackGenericService &callback_service);
+  void RegisterService(grpc::Service &service);
 
  protected:
   /// This function runs in a background thread. It keeps polling events from the
@@ -119,7 +118,6 @@ class GrpcServer {
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
   std::vector<std::reference_wrapper<grpc::Service>> services_;
 
-  std::vector<std::reference_wrapper<grpc::CallbackGenericService>> callback_services_;
   /// The `ServerCallFactory` objects.
   std::vector<std::unique_ptr<ServerCallFactory>> server_call_factories_;
   /// The number of completion queues the server is polling from.

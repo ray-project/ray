@@ -83,10 +83,6 @@ void GrpcServer::Run() {
     builder.RegisterService(&entry.get());
   }
 
-  for (auto &entry : callback_services_) {
-    builder.RegisterCallbackGenericService(&entry.get());
-  }
-
   // Get hold of the completion queue used for the asynchronous communication
   // with the gRPC runtime.
   for (int i = 0; i < num_threads_; i++) {
@@ -130,9 +126,8 @@ void GrpcServer::Run() {
   is_closed_ = false;
 }
 
-void GrpcServer::RegisterCallbackGenericService(
-    grpc::CallbackGenericService &callback_service) {
-  callback_services_.emplace_back(callback_service);
+void GrpcServer::RegisterService(grpc::Service &service) {
+  services_.emplace_back(service);
 }
 
 void GrpcServer::RegisterService(GrpcService &service) {
