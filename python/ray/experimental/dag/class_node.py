@@ -99,9 +99,9 @@ class ClassMethodNode(ray_dag.DAGNode):
         method_options: Dict[str, Any],
         kwargs_to_resolve: Dict[str, Any],
     ):
-        self._bound_args = [] if method_args is None else method_args
-        self._bound_kwargs = {} if method_kwargs is None else method_kwargs
-        self._bound_options = {} if method_options is None else method_options
+        self._bound_args = method_args or []
+        self._bound_kwargs = method_kwargs or {}
+        self._bound_options = method_options or {}
         # Parse kwargs_to_resolve and assign to variables
         self._method_name: str = kwargs_to_resolve.get("method_name")
         self._parent_class_node: ClassNode = kwargs_to_resolve.get("parent_class_node")
@@ -136,8 +136,6 @@ class ClassMethodNode(ray_dag.DAGNode):
     def _execute_impl(self, *args, **kwargs):
         """Executor of ClassMethodNode by ray.remote()"""
         method_body = getattr(self._parent_class_node, self._method_name)
-        # import ipdb
-        # ipdb.set_trace()
         if (
             len(self._bound_args) == 1
             and self._bound_args[0] == ray_dag.DAG_ENTRY_POINT

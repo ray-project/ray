@@ -124,7 +124,9 @@ def test_class_method_entrypoint(shared_ray_instance):
     dag = model.forward._bind(feature)
 
     print(dag)
+    # 2 * 0.5 * 4
     assert ray.get(dag.execute(2)) == 4
+    # 6 * 0.5 * 4
     assert ray.get(dag.execute(6)) == 12
 
 
@@ -153,7 +155,9 @@ def test_multi_class_method_entrypoint(shared_ray_instance):
 
     dag = combine._bind(m1_output, m2_output)
     print(dag)
+    # 1*2 + 1*3
     assert ray.get(dag.execute(1)) == 5
+    # 2*2 + 2*3
     assert ray.get(dag.execute(2)) == 10
 
 
@@ -185,7 +189,9 @@ def test_func_class_mixed_entrypoint(shared_ray_instance):
 
     dag = combine._bind(m1_output, m2_output)
     print(dag)
+    # 2*3 + 2*2
     assert ray.get(dag.execute(2)) == 10
+    # 3*3 + 3*2
     assert ray.get(dag.execute(3)) == 15
 
 
