@@ -50,6 +50,10 @@ class _PathHelper:
         virtualenv_path = cls.get_virtualenv_path(target_dir)
         return os.path.join(virtualenv_path, "bin/python")
 
+    @staticmethod
+    def get_requirements_file(target_dir: str) -> str:
+        return os.path.join(target_dir, "requirements.txt")
+
 
 class PipProcessor:
     def __init__(
@@ -189,13 +193,19 @@ class PipProcessor:
         virtualenv_path = _PathHelper.get_virtualenv_path(path)
         python = _PathHelper.get_virtualenv_python(path)
         # TODO(fyrestone): Support -i, --no-deps, --no-cache-dir, ...
+        pip_requirements_file = _PathHelper.get_requirements_file(path)
+        with open(pip_requirements_file, "w") as file:
+            for line in pip_packages:
+                file.write(line + "\n")
         pip_install_cmd = [
             python,
             "-m",
             "pip",
             "install",
             "--disable-pip-version-check",
-        ] + pip_packages
+            "-r",
+            pip_requirements_file,
+        ]
         logger.info("Installing python requirements to %s", virtualenv_path)
         exit_code, output = exec_cmd_stream_to_logger(
             pip_install_cmd, logger, cwd=cwd, env={}
@@ -245,6 +255,13 @@ class PipManager:
                 /pip/ray-9a7972c3a75f55e976e620484f58410c920db091
         """
         return os.path.join(self._pip_resources_dir, hash)
+
+    def get_uri(self, runtime_env: RuntimeEnv) -> Optional[str]:
+        """Return the pip URI from the RuntimeEnv if it exists, else None."""
+        pip_uri = runtime_env.pip_uri()
+        if pip_uri != "":
+            return pip_uri
+        return None
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger

@@ -266,7 +266,7 @@ class RuntimeEnvAgent(
                     err_msg = f"Failed to create runtime env {serialized_env}."
                     self._logger.exception(err_msg)
                     error_message = "".join(
-                        traceback.format_exception(type(ex), ex, ex.__traceback__)
+                        traceback.format_exception(type(e), e, e.__traceback__)
                     )
                     await asyncio.sleep(
                         runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
