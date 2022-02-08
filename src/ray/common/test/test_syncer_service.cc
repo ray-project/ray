@@ -34,7 +34,7 @@ class LocalNode : public Reporter {
   }
 
   std::optional<RaySyncMessage> Snapshot(uint64_t current_version) const override {
-    if(current_version > version_) {
+    if (current_version > version_) {
       return std::nullopt;
     }
     ray::rpc::syncer::RaySyncMessage msg;

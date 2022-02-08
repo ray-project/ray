@@ -2,17 +2,15 @@
 
 #include <type_traits>
 
-#include "ray/util/container_util.h"
 #include "ray/common/asio/periodical_runner.h"
+#include "ray/util/container_util.h"
 
 namespace ray {
 namespace syncing {
 
 RaySyncer::~RaySyncer() {
-  if(leader_) {
-    io_context_.dispatch([leader = leader_]{
-      leader->StartWritesDone();
-    }, "~RaySyncer");
+  if (leader_) {
+    io_context_.dispatch([leader = leader_] { leader->StartWritesDone(); }, "~RaySyncer");
   }
 }
 
@@ -20,17 +18,17 @@ RaySyncer::RaySyncer(std::string node_id, instrumented_io_context &io_context)
     : node_id_(std::move(node_id)),
       reporters_({}),
       receivers_({}),
-      io_context_(io_context), timer_(io_context) {
-
+      io_context_(io_context),
+      timer_(io_context) {
   timer_.RunFnPeriodically(
       [this]() {
-        const auto& local_view = cluster_view_[GetNodeId()];
-        for(size_t i = 0; i < kComponentArraySize; ++i) {
+        const auto &local_view = cluster_view_[GetNodeId()];
+        for (size_t i = 0; i < kComponentArraySize; ++i) {
           auto reporter = reporters_[i];
-          if(reporter != nullptr) {
+          if (reporter != nullptr) {
             auto version = local_view[i] ? local_view[i]->version() : 0;
             auto update = reporter->Snapshot(version);
-            if(update) {
+            if (update) {
               Update(*update);
             }
           }
@@ -45,9 +43,8 @@ void RaySyncer::ConnectTo(std::shared_ptr<grpc::Channel> channel) {
   leader_stub_ = ray::rpc::syncer::RaySyncer::NewStub(channel);
   auto client_context = std::make_unique<grpc::ClientContext>().release();
   client_context->AddMetadata("node_id", GetNodeId());
-  leader_ = std::make_unique<SyncClientReactor>(
-      *this, this->io_context_,
-      client_context).release();
+  leader_ = std::make_unique<SyncClientReactor>(*this, this->io_context_, client_context)
+                .release();
   leader_stub_->async()->StartSync(client_context, leader_);
   leader_->Init();
 }
@@ -59,8 +56,7 @@ void RaySyncer::DisconnectFrom(std::string node_id) {
 
 SyncServerReactor *RaySyncer::ConnectFrom(grpc::CallbackServerContext *context) {
   context->AddInitialMetadata("node_id", GetNodeId());
-  auto reactor =
-      std::make_unique<SyncServerReactor>(*this, this->io_context_, context);
+  auto reactor = std::make_unique<SyncServerReactor>(*this, this->io_context_, context);
   reactor->Init();
   RAY_LOG(INFO) << "Adding node: " << reactor->GetNodeId();
   auto [iter, added] = followers_.emplace(reactor->GetNodeId(), std::move(reactor));
@@ -75,7 +71,7 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {
   }
 
   // Parents
-  if(leader_) {
+  if (leader_) {
     leader_->Send(message);
   }
 
@@ -87,10 +83,9 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {
   }
 }
 
-
-grpc::ServerBidiReactor<RaySyncMessages, RaySyncMessages>*
-RaySyncerService::StartSync(grpc::CallbackServerContext *context) {
-    return syncer_.ConnectFrom(context);
+grpc::ServerBidiReactor<RaySyncMessages, RaySyncMessages> *RaySyncerService::StartSync(
+    grpc::CallbackServerContext *context) {
+  return syncer_.ConnectFrom(context);
 }
 
 }  // namespace syncing

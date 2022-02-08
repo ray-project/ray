@@ -1,19 +1,19 @@
 #pragma once
 #include <grpcpp/server.h>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/container/flat_hash_map.h"
 #include "src/ray/protobuf/syncer.grpc.pb.h"
 
 namespace ray {
 namespace syncing {
 
 using ServerBidiReactor = grpc::ServerBidiReactor<ray::rpc::syncer::RaySyncMessages,
-                                              ray::rpc::syncer::RaySyncMessages>;
+                                                  ray::rpc::syncer::RaySyncMessages>;
 using ClientBidiReactor = grpc::ClientBidiReactor<ray::rpc::syncer::RaySyncMessages,
-                                              ray::rpc::syncer::RaySyncMessages>;
+                                                  ray::rpc::syncer::RaySyncMessages>;
 
 using RayComponentId = ray::rpc::syncer::RayComponentId;
 using RaySyncMessage = ray::rpc::syncer::RaySyncMessage;
@@ -80,7 +80,7 @@ class RaySyncer {
   void BroadcastMessage(std::shared_ptr<RaySyncMessage> message);
   const std::string node_id_;
   std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> leader_stub_;
-  SyncClientReactor* leader_ = nullptr;
+  SyncClientReactor *leader_ = nullptr;
 
   absl::flat_hash_map<std::string, Array<std::shared_ptr<RaySyncMessage>>> cluster_view_;
 
@@ -94,7 +94,6 @@ class RaySyncer {
   ray::PeriodicalRunner timer_;
 };
 
-
 class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
  public:
   RaySyncerService(RaySyncer &syncer) : syncer_(syncer) {}
@@ -106,7 +105,6 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
   RaySyncer &syncer_;
 };
 
-
 template <typename T>
 class NodeSyncContext : public T {
  public:
@@ -114,12 +112,11 @@ class NodeSyncContext : public T {
   using T::StartWrite;
 
   constexpr static bool kIsServer = std::is_same_v<T, ServerBidiReactor>;
-  using C = std::conditional_t<kIsServer, grpc::CallbackServerContext,
-                               grpc::ClientContext>;
+  using C =
+      std::conditional_t<kIsServer, grpc::CallbackServerContext, grpc::ClientContext>;
 
   NodeSyncContext(RaySyncer &syncer, instrumented_io_context &io_context, C *rpc_context)
-      : rpc_context_(rpc_context), io_context_(io_context), instance_(syncer) {
-  }
+      : rpc_context_(rpc_context), io_context_(io_context), instance_(syncer) {}
 
   void Init() {
     if constexpr (kIsServer) {
@@ -248,9 +245,7 @@ struct SyncServerReactor : public NodeSyncContext<ServerBidiReactor> {
     }
   }
 
-  void OnDone() override {
-    instance_.DisconnectFrom(node_id_);
-  }
+  void OnDone() override { instance_.DisconnectFrom(node_id_); }
 };
 
 struct SyncClientReactor : public NodeSyncContext<ClientBidiReactor> {
@@ -276,7 +271,7 @@ struct SyncClientReactor : public NodeSyncContext<ClientBidiReactor> {
   }
 
   void OnWritesDoneDone(bool ok) override {
-    if(!ok) {
+    if (!ok) {
       RAY_LOG(ERROR) << "Failed to send WritesDone to server";
     }
   }
