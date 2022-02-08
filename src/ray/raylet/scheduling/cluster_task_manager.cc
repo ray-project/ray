@@ -764,10 +764,22 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
   scheduler_resource_reporter_.FillPendingActorInfo(reply);
 }
 
-void ClusterTaskManager::FillResourceUsage(
+namespace {
+void FillResourceUsageHelper(
     rpc::ResourcesData &data,
     const std::shared_ptr<SchedulingResources> &last_reported_resources) {
   scheduler_resource_reporter_.FillResourceUsage(data, last_reported_resources);
+}
+}  // namespace
+
+void ClusterTaskManager::FillResourceUsage(
+    rpc::ResourcesData &data,
+    const std::shared_ptr<SchedulingResources> &last_reported_resources) {
+  if (max_resource_shapes_per_load_report_ == 0) {
+    return;
+  }
+  FillResourceUsageHelper(data, last_reported_resources, tasks_to_schedule_, tasks_to_dispatch_,
+                    infeasible_tasks_, backlog_tracker_);
 }
 
 bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
