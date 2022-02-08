@@ -917,7 +917,8 @@ class Trainer(Trainable):
             if self.config["_disable_execution_plan_api"]:
                 # Ensure remote workers are initially in sync with the
                 # local worker.
-                self.workers.sync_weights()
+                pass
+                #self.workers.sync_weights()
             # LocalIterator-creating "execution plan".
             # Only call this once here to create `self.train_exec_impl`,
             # which is a ray.util.iter.LocalIterator that will be `next`'d
