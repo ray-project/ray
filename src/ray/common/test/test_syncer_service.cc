@@ -17,7 +17,7 @@ using namespace ray::syncing;
 class LocalNode : public Reporter {
  public:
   LocalNode(const std::string &node_id, instrumented_io_context &io_context)
-      : io_context_(io_context), node_id_(node_id), timer_(io_context) {
+      : node_id_(node_id), timer_(io_context) {
     timer_.RunFnPeriodically(
         [this]() {
           auto v = static_cast<double>(std::rand()) / RAND_MAX;
@@ -33,7 +33,7 @@ class LocalNode : public Reporter {
         1000);
   }
 
-  ray::rpc::syncer::RaySyncMessage Snapshot() const override {
+  std::optional<RaySyncMessage> Snapshot(uint64_t current_version) const override {
     ray::rpc::syncer::RaySyncMessage msg;
     msg.set_message_type(ray::rpc::syncer::RaySyncMessageType::SNAPSHOT);
     msg.set_component_id(ray::rpc::syncer::RayComponentId::RESOURCE_MANAGER);
@@ -47,7 +47,6 @@ class LocalNode : public Reporter {
  private:
   int version_ = 0;
   int state_ = 0;
-  instrumented_io_context &io_context_;
   const std::string node_id_;
   ray::PeriodicalRunner timer_;
 };
@@ -55,7 +54,7 @@ class LocalNode : public Reporter {
 class RemoteNodes : public Receiver {
  public:
   RemoteNodes() {}
-  void Update(ray::rpc::syncer::RaySyncMessage &msg) override {
+  void Update(const ray::rpc::syncer::RaySyncMessage &msg) override {
     int version = msg.version();
     int state = *reinterpret_cast<const int *>(msg.sync_message().data());
     auto iter = infos_.find(msg.node_id());
@@ -98,7 +97,7 @@ int main(int argc, char *argv[]) {
   if (leader_port != ".") {
     channel = grpc::CreateChannel("localhost:" + leader_port,
                                   grpc::InsecureChannelCredentials());
-    syncer.Follow(channel);
+    syncer.ConnectTo(channel);
   }
   boost::asio::io_context::work work(io_context);
   io_context.run();

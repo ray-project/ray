@@ -17,18 +17,24 @@ using RaySyncMessage = ray::rpc::syncer::RaySyncMessage;
 using RaySyncMessages = ray::rpc::syncer::RaySyncMessages;
 using RaySyncMessageType = ray::rpc::syncer::RaySyncMessageType;
 
+static constexpr size_t kComponentArraySize =
+    static_cast<size_t>(ray::rpc::syncer::RayComponentId_ARRAYSIZE);
+
 struct Reporter {
   virtual std::optional<RaySyncMessage> Snapshot(uint64_t current_version) const = 0;
+  virtual ~Reporter() {}
 };
 
 struct Receiver {
   virtual void Update(const RaySyncMessage &message) = 0;
+  virtual ~Receiver() {}
 };
+
+template <typename T>
+class NodeSyncContext;
 
 class RaySyncer {
  public:
-  static constexpr size_t kComponentArraySize =
-      static_cast<size_t>(ray::rpc::syncer::RayComponentId_ARRAYSIZE);
 
   RaySyncer(std::string node_id, instrumented_io_context &io_context);
 
@@ -49,12 +55,12 @@ class RaySyncer {
       // We've already got the newer messages. Skip this.
       return;
     }
-    current_message = std::make_shared<RaySyncer::RaySyncMessage>(std::move(message));
-    SendMessage(message);
+    current_message = std::make_shared<RaySyncMessage>(std::move(message));
+    BroadcastMessage(current_message);
   }
 
   void Update(RaySyncMessages messages) {
-    for (RaySyncer::RaySyncMessage &message : *messages.mutable_sync_messages()) {
+    for (RaySyncMessage &message : *messages.mutable_sync_messages()) {
       Update(std::move(message));
     }
   }
@@ -67,17 +73,7 @@ class RaySyncer {
   template <typename T>
   using Array = std::array<T, kComponentArraySize>;
 
-  void SendMessage(std::shared_ptr<RaySyncMessage> message) {
-    for (auto &follower : followers_) {
-      follower->Update(message);
-    }
-    if (message->node_id() != GetNodeId()) {
-      if (receivers_[message->component_id()]) {
-        receivers_[message->component_id()]->Update(*message);
-      }
-    }
-  }
-
+  void BroadcastMessage(std::shared_ptr<RaySyncMessage> message);
   const std::string node_id_;
   std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> leader_stub_;
   std::unique_ptr<ClientReactor> leader_;
@@ -97,8 +93,7 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
  public:
   RaySyncerService(RaySyncer &syncer) : syncer_(syncer) {}
 
-  grpc::ServerBidiReactor<ray::rpc::syncer::RaySyncMessages,
-                          ray::rpc::syncer::RaySyncMessages>
+  grpc::ServerBidiReactor<RaySyncMessages, RaySyncMessages>
       *StartSync(grpc::CallbackServerContext *context) override {
     return syncer_.ConnectFrom(context);
   }

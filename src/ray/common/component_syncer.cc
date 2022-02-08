@@ -1,5 +1,7 @@
 #include "ray/common/component_syncer.h"
 
+#include <type_traits>
+
 #include "ray/util/container_util.h"
 
 namespace ray {
@@ -17,7 +19,9 @@ class NodeSyncContext : public T {
                                grpc::ClientContext>;
 
   NodeSyncContext(RaySyncer &syncer, instrumented_io_context &io_context, C *rpc_context)
-      : rpc_context_(rpc_context), io_context_(io_context), instance_(syncer) {}
+      : rpc_context_(rpc_context), io_context_(io_context), instance_(syncer) {
+        Init();
+  }
 
   void Init() {
     if constexpr (kIsServerReactor) {
@@ -26,9 +30,9 @@ class NodeSyncContext : public T {
       auto iter = metadata.find("node_id");
       RAY_CHECK(iter != metadata.end());
       node_id_ = std::string(iter->second.begin(), iter->second.end());
-      StartSendInitialMetadata();
+      T::StartSendInitialMetadata();
     } else {
-      StartCall();
+      T::StartCall();
     }
   }
 
@@ -36,7 +40,7 @@ class NodeSyncContext : public T {
 
   void Update(std::shared_ptr<RaySyncMessage> message) {
     // This thread has to be called from io_context_.
-    auto &node_versions = GetNodeComponentVersions(node_id);
+    auto &node_versions = GetNodeComponentVersions(message->node_id());
 
     if (node_versions[message->component_id()] < message->version()) {
       out_buffer_.push_back(message);
@@ -52,15 +56,15 @@ class NodeSyncContext : public T {
     if (ok) {
       io_context_.dispatch(
           [this] {
-            for (auto &message : in_message.sync_messages()) {
-              auto &node_versions = GetNodeComponentVersions(message.node_id());
+            for (auto &message : in_message_.sync_messages()) {
+              auto &node_versions = this->GetNodeComponentVersions(message.node_id());
               if (node_versions[message.component_id()] < message.version()) {
                 node_versions[message.component_id()] = message.version();
               }
             }
-            instance_.Update(std::move(in_message));
-            in_message.Clear();
-            StartRead(&in_message);
+            instance_.Update(std::move(in_message_));
+            in_message_.Clear();
+            StartRead(&in_message_);
           },
           "ReadDone");
     } else {
@@ -70,22 +74,22 @@ class NodeSyncContext : public T {
 
   void OnWriteDone(bool ok) override {
     if (ok) {
-      io_context_.dispatch([this] { SendNextMessage(); }, "RaySyncWrite");
+      io_context_.dispatch([this] { this->SendNextMessage(); }, "RaySyncWrite");
     } else {
       HandleFailure();
     }
   }
 
-  template <std::enable_if<kIsServerReactor>>
-  void OnSendInitialMetadataDone(bool ok) override {
+  template<bool S=kIsServerReactor, typename = std::enable_if_t<S>>
+  void T::OnSendInitialMetadataDone(bool ok) override {
     if (ok) {
-      StartRead(&in_message);
+      StartRead(&in_message_);
     } else {
       HandleFailure();
     }
   }
 
-  template <std::enable_if<!kIsServerReactor>>
+  template<bool S=kIsServerReactor, typename = std::enable_if_t<!S>>
   void OnReadInitialMetadataDone(bool ok) override {
     if (ok) {
       const auto &metadata = rpc_context_->GetServerInitialMetadata();
@@ -93,18 +97,17 @@ class NodeSyncContext : public T {
       RAY_CHECK(iter != metadata.end());
       RAY_LOG(INFO) << "Start to follow " << iter->second;
       node_id_ = std::string(iter->second.begin(), iter->second.end());
-      StartRead(&in_message);
+      StartRead(&in_message_);
     } else {
       HandleFailure();
     }
   }
-
-  template <std::enable_if<kIsServerReactor>>
+  template<bool S=kIsServerReactor, typename=std::enable_if_t<!S>>
   void OnDone() override {
     // TODO
   }
 
-  template <std::enable_if<!kIsServerReactor>>
+  template<bool S=kIsServerReactor, typename=std::enable_if_t<S>>
   void OnDone(const grpc::Status &status) override {
     // TODO
   }
@@ -125,27 +128,26 @@ class NodeSyncContext : public T {
           continue;
         }
         inserted.insert((*iter)->node_id());
-        out_message->mutable_sync_messages()->UnsafeArenaAddAllocated((*iter).get());
+        out_message_->mutable_sync_messages()->UnsafeArenaAddAllocated((*iter).get());
       }
       consumed_messages_ = out_buffer_.size();
-      StartWrite(out_message);
+      StartWrite(out_message_);
     }
   }
 
   std::array<uint64_t, kComponentArraySize> &GetNodeComponentVersions(
       const std::string &node_id) {
-    auto iter = node_versions_.find(message->node_id());
+    auto iter = node_versions_.find(node_id);
     if (iter == node_versions_.end()) {
-      iter = node_versions_.emplace(message->node_id(),
-                                    std::array<uint64_t, kComponentArraySize>({}));
+      iter = node_versions_.emplace(node_id,
+                                    std::array<uint64_t, kComponentArraySize>({})).first;
     }
     return iter->second;
   }
 
   void HandleFailure() {
     if constexpr (kIsServerReactor) {
-      using T::Finish;
-      Finish(grpc::Status::OK);
+      T::Finish(grpc::Status::OK);
     } else {
       // TODO
     }
@@ -171,7 +173,6 @@ RaySyncer::RaySyncer(std::string node_id, instrumented_io_context &io_context)
       reporters_({}),
       receivers_({}),
       io_context_(io_context) {
-  AddNode(node_id_);
 }
 
 void RaySyncer::ConnectTo(std::shared_ptr<grpc::Channel> channel) {
@@ -179,36 +180,30 @@ void RaySyncer::ConnectTo(std::shared_ptr<grpc::Channel> channel) {
   RAY_CHECK(leader_ == nullptr);
   leader_stub_ = ray::rpc::syncer::RaySyncer::NewStub(channel);
   auto client_context = std::make_unique<grpc::ClientContext>().release();
-  client_context_->AddMetadata("node_id", GetNodeId());
+  client_context->AddMetadata("node_id", GetNodeId());
   leader_ = std::make_unique<NodeSyncContext<ClientReactor>>(*this, this->io_context_,
                                                              client_context);
-  leader_stub_->async()->StartSync(client_context.get(), client_context_);
-  leader_->Init();
-}
-
-std::vector<std::shared_ptr<RaySyncer::RaySyncMessage>> RaySyncer::SyncMessages(
-    const std::string &node_id) const {
-  std::vector<std::shared_ptr<RaySyncMessage>> messages;
-  for (auto &node_message : cluster_messages_) {
-    if (node_message.first == node_id) {
-      continue;
-    }
-    for (auto &component_message : node_message.second) {
-      if (component_message.first.first != node_id) {
-        messages.emplace_back(component_message.second);
-      }
-    }
-  }
-  return messages;
+  leader_stub_->async()->StartSync(client_context, leader_.get());
 }
 
 ServerReactor *RaySyncer::ConnectFrom(grpc::CallbackServerContext *context) {
   context->AddInitialMetadata("node_id", GetNodeId());
   auto reactor =
       std::make_unique<NodeSyncContext<ServerReactor>>(*this, this->io_context_, context);
-  reactor->Init();
-  followers_.emplace(node_id, std::move(reactor));
-  return followers_[node_id].get();
+  auto [iter, added] = followers_.emplace(reactor->GetNodeId(), std::move(reactor));
+  RAY_CHECK(added);
+  return iter->second.get();
+}
+
+void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {
+    for (auto &follower : followers_) {
+      dynamic_cast<NodeSyncContext<ClientReactor>*>(follower.second.get())->Update(message);
+    }
+    if (message->node_id() != GetNodeId()) {
+      if (receivers_[message->component_id()]) {
+        receivers_[message->component_id()]->Update(*message);
+      }
+    }
 }
 
 }  // namespace syncing
