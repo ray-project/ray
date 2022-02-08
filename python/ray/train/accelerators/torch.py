@@ -18,7 +18,15 @@ logger = logging.getLogger(__name__)
 
 
 class TorchAccelerator(Accelerator):
-    """An object that implements methods to accelerate PyTorch training."""
+    """An object that implements methods to accelerate PyTorch training.
+
+    Arguments:
+        amp (bool): If true, perform training with automatic mixed precision.
+            Otherwise, use full precision.
+    """
+
+    def __init__(self, amp=False):
+        pass
 
     def prepare_model(
         self,
@@ -144,6 +152,27 @@ class TorchAccelerator(Accelerator):
             device = torch.device("cpu")
 
         return device
+
+    def prepare_optimizer(
+        self, optimizer: torch.optim.Optimizer
+    ) -> torch.optim.Optimizer:
+        """Wraps optimizer to support automatic mixed precision.
+
+        Args:
+            optimizer (torch.optim.Optimizer): The DataLoader to prepare.
+
+        Returns:
+            A wrapped optimizer.
+        """
+        return optimizer
+
+    def backward(self, tensor: torch.Tensor) -> None:
+        """Computes the gradient of the specified tensor w.r.t. graph leaves.
+
+        Args:
+            tensor (torch.Tensor): Tensor of which the derivative will be computed.
+        """
+        pass
 
 
 class _WrappedDataLoader(DataLoader):

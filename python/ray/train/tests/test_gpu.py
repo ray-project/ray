@@ -1,9 +1,11 @@
 import os
 import pytest
+from timeit import default_timer as timer
 
 import torch
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
+import torchvision
 
 import ray
 import ray.train as train
@@ -71,6 +73,51 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus):
     trainer.start()
     trainer.run(train_fn)
     trainer.shutdown()
+
+
+def test_torch_amp(ray_start_4_cpus_2_gpus):
+    def train_func(config):
+        train.torch.accelerate(amp=config["amp"])
+
+        model = torchvision.models.resnet101()
+        model = train.torch.prepare_model(model)
+
+        dataset = torchvision.datasets.CIFAR10(
+            root="~/data",
+            download=True,
+            transform=torchvision.transforms.ToTensor(),
+        )
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=64)
+        dataloader = train.torch.prepare_data_loader(dataloader)
+
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+        optimizer = train.torch.prepare_optimizer(optimizer)
+
+        model.train()
+        for epoch in range(1):
+            for images, targets in dataloader:
+                optimizer.zero_grad()
+
+                outputs = model(images)
+                loss = torch.nn.functional.cross_entropy(outputs, targets)
+
+                train.torch.backward(loss)
+
+    trainer = Trainer("torch", num_workers=2, use_gpu=True)
+    trainer.start()
+
+    start_time = timer()
+    trainer.run(train_func, config={"amp": True})
+    latency_with_amp = timer() - start_time
+
+    start_time = timer()
+    trainer.run(train_func, config={"amp": False})
+    latency_without_amp = timer() - start_time
+
+    trainer.shutdown()
+
+    # Training should be at least twice as fast with AMP.
+    assert latency_with_amp < 0.5 * latency_without_amp
 
 
 def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):

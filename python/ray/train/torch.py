@@ -242,7 +242,32 @@ def get_device() -> torch.device:
     return get_session().accelerator.get_device()
 
 
-@PublicAPI(stability="beta")
-def accelerate() -> None:
-    """Enables training optimizations."""
-    get_session().accelerator = TorchAccelerator()
+def accelerate(amp: bool = False) -> None:
+    """Enables training optimizations.
+
+    Arguments:
+        amp (bool): If true, perform training with automatic mixed precision.
+            Otherwise, use full precision.
+    """
+    get_session().accelerator = TorchAccelerator(amp=amp)
+
+
+def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer:
+    """Wraps optimizer to support automatic mixed precision.
+
+    Args:
+        optimizer (torch.optim.Optimizer): The DataLoader to prepare.
+
+    Returns:
+        A wrapped optimizer.
+    """
+    return get_session().accelerator.prepare_optimizer(optimizer)
+
+
+def backward(tensor: torch.Tensor) -> None:
+    """Computes the gradient of the specified tensor w.r.t. graph leaves.
+
+    Args:
+        tensor (torch.Tensor): Tensor of which the derivative will be computed.
+    """
+    get_session().accelerator.backward(tensor)
