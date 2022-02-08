@@ -95,7 +95,7 @@ void GcsResourceManager::HandleUpdateResources(
       if (redis_broadcast_enabled_) {
         RAY_CHECK_OK(
             gcs_publisher_->PublishNodeResource(node_id, node_resource_change, nullptr));
-      } else if(!RayConfig::instance().syncer_reporting()) {
+      } else if (!RayConfig::instance().syncer_reporting()) {
         absl::MutexLock guard(&resource_buffer_mutex_);
         resources_buffer_proto_.add_batch()->mutable_change()->Swap(
             &node_resource_change);
@@ -150,7 +150,7 @@ void GcsResourceManager::HandleDeleteResources(
       if (redis_broadcast_enabled_) {
         RAY_CHECK_OK(
             gcs_publisher_->PublishNodeResource(node_id, node_resource_change, nullptr));
-      } else if(!RayConfig::instance().syncer_reporting()) {
+      } else if (!RayConfig::instance().syncer_reporting()) {
         absl::MutexLock guard(&resource_buffer_mutex_);
         resources_buffer_proto_.add_batch()->mutable_change()->Swap(
             &node_resource_change);

@@ -214,7 +214,7 @@ void GcsServer::Stop() {
     // won't handle heartbeat calls anymore, some nodes will be marked as dead during this
     // time, causing many nodes die after GCS's failure.
     gcs_heartbeat_manager_->Stop();
-    if(!RayConfig::instance().syncer_reporting()) {
+    if (!RayConfig::instance().syncer_reporting()) {
       gcs_resource_report_poller_->Stop();
     }
 
@@ -411,7 +411,7 @@ void GcsServer::StoreGcsServerAddressInRedis() {
 }
 
 void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
-  if(!RayConfig::instance().syncer_reporting()) {
+  if (!RayConfig::instance().syncer_reporting()) {
     gcs_resource_report_poller_.reset(new GcsResourceReportPoller(
         raylet_client_pool_, [this](const rpc::ResourcesData &report) {
           gcs_resource_manager_->UpdateFromResourceReport(report);
@@ -423,7 +423,8 @@ void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitResourceReportBroadcasting(const GcsInitData &gcs_init_data) {
-  if (config_.grpc_based_resource_broadcast && !RayConfig::instance().syncer_reporting()) {
+  if (config_.grpc_based_resource_broadcast &&
+      !RayConfig::instance().syncer_reporting()) {
     grpc_based_resource_broadcaster_.reset(new GrpcBasedResourceBroadcaster(
         raylet_client_pool_,
         [this](rpc::ResourceUsageBroadcastData &buffer) {
@@ -521,7 +522,7 @@ void GcsServer::InstallEventListeners() {
     gcs_placement_group_manager_->OnNodeAdd(NodeID::FromBinary(node->node_id()));
     gcs_actor_manager_->SchedulePendingActors();
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
-    if(!RayConfig::instance().syncer_reporting()) {
+    if (!RayConfig::instance().syncer_reporting()) {
       gcs_resource_report_poller_->HandleNodeAdded(*node);
     }
     if (config_.grpc_based_resource_broadcast) {
@@ -538,7 +539,7 @@ void GcsServer::InstallEventListeners() {
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
-        if(!RayConfig::instance().syncer_reporting()) {
+        if (!RayConfig::instance().syncer_reporting()) {
           gcs_resource_report_poller_->HandleNodeRemoved(*node);
         }
         if (config_.grpc_based_resource_broadcast) {
