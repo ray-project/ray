@@ -202,7 +202,7 @@ bool ClusterTaskManager::CancelTask(
     }
   }
 
-  return false;
+  return local_scheduler_->CancelTask(task_id, failure_type, scheduling_failure_message);
 }
 
 void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const {
