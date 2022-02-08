@@ -97,6 +97,9 @@ class ClientObjectRef(raylet.ObjectRef):
         else:
             raise TypeError("Unexpected type for id {}".format(id))
 
+    # NOTE: synchronization primitives like threading.Lock should not be used
+    # transitively by a destructor. Otherwise deadlocks can happen. See
+    # https://stackoverflow.com/questions/18774401/self-deadlock-due-to-garbage-collector-in-single-threaded-code
     def __del__(self):
         if self._worker is not None and self._worker.is_connected():
             try:
@@ -106,8 +109,7 @@ class ClientObjectRef(raylet.ObjectRef):
                 logger.info(
                     "Exception in ObjectRef is ignored in destructor. "
                     "To receive this exception in application code, call "
-                    "a method on the actor reference before its destructor "
-                    "is run."
+                    "a method on the reference before its destructor runs."
                 )
 
     def binary(self):
@@ -202,6 +204,9 @@ class ClientActorRef(raylet.ActorID):
         else:
             raise TypeError("Unexpected type for id {}".format(id))
 
+    # NOTE: synchronization primitives like threading.Lock should not be used
+    # transitively by a destructor. Otherwise deadlocks can happen. See
+    # https://stackoverflow.com/questions/18774401/self-deadlock-due-to-garbage-collector-in-single-threaded-code
     def __del__(self):
         if self._worker is not None and self._worker.is_connected():
             try:
@@ -211,8 +216,7 @@ class ClientActorRef(raylet.ActorID):
                 logger.info(
                     "Exception from actor creation is ignored in destructor. "
                     "To receive this exception in application code, call "
-                    "a method on the actor reference before its destructor "
-                    "is run."
+                    "a method on the reference before its destructor runs."
                 )
 
     def binary(self):

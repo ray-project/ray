@@ -67,6 +67,7 @@ class DataClient:
 
     # Must hold self.lock when calling this function.
     def _next_id(self) -> int:
+        assert self.lock.locked()
         self._req_id += 1
         if self._req_id > INT32_MAX:
             self._req_id = 1
@@ -85,16 +86,15 @@ class DataClient:
 
     # A helper that takes in (request, callback) from queue, sets up tracking
     # of the requests and yields the requests as a stream.
-    #
     def _requests(self):
         while True:
             request = self.request_queue.get()
             if request is None:
                 # Stop when client signals shutdown.
                 return
-            (req, callback) = request
+            req, callback = request
             assert req is not None
-            # req.req_id is >= 1 when reconnecting.
+            # req.req_id >= 1 when reconnecting, and is 0 for special types.
             if req.req_id < 1 and req.WhichOneof("type") not in [
                 "acknowledge",
                 "connection_cleanup",
@@ -208,6 +208,16 @@ class DataClient:
                 "disconnected."
             )
         for callback in callbacks:
+            if callback:
+                callback(err)
+        while True:
+            try:
+                _, callback = self.request_queue.get_nowait()
+            except queue.Empty:
+                break
+            except Exception:
+                logger.warning(f"Bad input data.", exc_info=True)
+                continue
             if callback:
                 callback(err)
         # Since self._in_shutdown is set to True, no new item
@@ -328,6 +338,7 @@ class DataClient:
         self,
         req: ray_client_pb2.DataRequest,
         callback: Optional[ResponseCallable] = None,
+        check_shutdown: bool = True,
     ) -> None:
         def nop(ignored):
             return
@@ -335,6 +346,11 @@ class DataClient:
         if callback is None:
             callback = nop
         self.request_queue.put((req, callback))
+
+        # TODO: pass exception to the callback as well?
+        if check_shutdown:
+            with self.lock:
+                self._check_shutdown()
 
     # The purpose of this function is to disconnect the Ray client when a
     # connection issue is encountered. It avoids running in the data streaming
@@ -429,13 +445,14 @@ class DataClient:
         resp = self._blocking_send(datareq)
         return resp.put
 
-    def ReleaseObject(
-        self, request: ray_client_pb2.ReleaseRequest, context=None
-    ) -> None:
+    def ReleaseObject(self, request: ray_client_pb2.ReleaseRequest) -> None:
         datareq = ray_client_pb2.DataRequest(
             release=request,
         )
-        self._async_send(datareq)
+        # ReleaseObject() is called inside ClientObjectRef destructor, so it
+        # cannot acquire a lock. Avoiding checking shutdown which acquires a
+        # lock.
+        self._async_send(datareq, check_shutdown=False)
 
     def Schedule(self, request: ray_client_pb2.ClientTask, callback: ResponseCallable):
         datareq = ray_client_pb2.DataRequest(task=request)
