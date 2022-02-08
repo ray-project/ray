@@ -1,4 +1,4 @@
-// Copyright 2019-2020 The Ray Authors.
+// Copyright 2021 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,24 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/task/task_execution_spec.h"
-
-#include <sstream>
-
+#include "ray/common/runtime_env_common.h"
 namespace ray {
 
-size_t TaskExecutionSpecification::NumForwards() const {
-  return message_->num_forwards();
-}
-
-void TaskExecutionSpecification::IncrementNumForwards() {
-  message_->set_num_forwards(message_->num_forwards() + 1);
-}
-
-std::string TaskExecutionSpecification::DebugString() const {
-  std::ostringstream stream;
-  stream << "num_forwards=" << message_->num_forwards();
-  return stream.str();
+bool IsRuntimeEnvEmpty(const std::string &serialized_runtime_env) {
+  return serialized_runtime_env == "{}" || serialized_runtime_env == "";
 }
 
 }  // namespace ray
