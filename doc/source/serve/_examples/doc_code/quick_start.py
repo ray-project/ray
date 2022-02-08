@@ -25,7 +25,7 @@ class BoostingModel:
 
     async def __call__(self, request):
         payload = (await request.json())["vector"]
-        print(f"Received flask request with data {payload}")
+        print(f"Received http request with data {payload}")
 
         prediction = self.model.predict([payload])[0]
         human_name = self.label_list[prediction]
