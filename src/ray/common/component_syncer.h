@@ -39,10 +39,14 @@ struct SyncServerReactor;
 class RaySyncer {
  public:
   RaySyncer(std::string node_id, instrumented_io_context &io_context);
+  ~RaySyncer();
 
   // Follower will send its message to leader
   // Leader will broadcast what it received to followers
   void ConnectTo(std::shared_ptr<grpc::Channel> channel);
+
+  SyncServerReactor *ConnectFrom(grpc::CallbackServerContext *context);
+  void DisconnectFrom(std::string node_id);
 
   // Register a component
   void Register(RayComponentId component_id, const Reporter *reporter,
@@ -69,8 +73,6 @@ class RaySyncer {
 
   const std::string &GetNodeId() const { return node_id_; }
 
-  SyncServerReactor *ConnectFrom(grpc::CallbackServerContext *context);
-
  private:
   template <typename T>
   using Array = std::array<T, kComponentArraySize>;
@@ -78,7 +80,7 @@ class RaySyncer {
   void BroadcastMessage(std::shared_ptr<RaySyncMessage> message);
   const std::string node_id_;
   std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> leader_stub_;
-  std::unique_ptr<SyncClientReactor> leader_;
+  SyncClientReactor* leader_ = nullptr;
 
   absl::flat_hash_map<std::string, Array<std::shared_ptr<RaySyncMessage>>> cluster_view_;
 
@@ -117,7 +119,6 @@ class NodeSyncContext : public T {
 
   NodeSyncContext(RaySyncer &syncer, instrumented_io_context &io_context, C *rpc_context)
       : rpc_context_(rpc_context), io_context_(io_context), instance_(syncer) {
-    Init();
   }
 
   void Init() {
@@ -135,8 +136,7 @@ class NodeSyncContext : public T {
 
   const std::string &GetNodeId() const { return node_id_; }
 
-  void Update(std::shared_ptr<RaySyncMessage> message) {
-    // This thread has to be called from io_context_.
+  void Send(std::shared_ptr<RaySyncMessage> message) {
     auto &node_versions = GetNodeComponentVersions(message->node_id());
 
     if (node_versions[message->component_id()] < message->version()) {
@@ -180,6 +180,8 @@ class NodeSyncContext : public T {
  protected:
   void SendNextMessage() {
     out_buffer_.erase(out_buffer_.begin(), out_buffer_.begin() + consumed_messages_);
+    consumed_messages_ = 0;
+
     arena_.Reset();
     if (out_buffer_.empty()) {
       out_message_ = nullptr;
@@ -212,10 +214,11 @@ class NodeSyncContext : public T {
   }
 
   void HandleFailure() {
+    RAY_LOG(ERROR) << "Sync with " << GetNodeId() << " failed";
     if constexpr (kIsServer) {
       T::Finish(grpc::Status::OK);
     } else {
-      // TODO
+      T::StartWritesDone();
     }
   }
 
@@ -226,8 +229,8 @@ class NodeSyncContext : public T {
 
   google::protobuf::Arena arena_;
   ray::rpc::syncer::RaySyncMessages in_message_;
-  ray::rpc::syncer::RaySyncMessages *out_message_;
-  size_t consumed_messages_;
+  ray::rpc::syncer::RaySyncMessages *out_message_ = nullptr;
+  size_t consumed_messages_ = 0;
   std::vector<std::shared_ptr<RaySyncMessage>> out_buffer_;
 
   absl::flat_hash_map<std::string, std::array<uint64_t, kComponentArraySize>>
@@ -241,11 +244,13 @@ struct SyncServerReactor : public NodeSyncContext<ServerBidiReactor> {
     if (ok) {
       StartRead(&in_message_);
     } else {
-      HandleFailure();
+      Finish(grpc::Status::OK);
     }
   }
-  void OnDone() override { }
 
+  void OnDone() override {
+    instance_.DisconnectFrom(node_id_);
+  }
 };
 
 struct SyncClientReactor : public NodeSyncContext<ClientBidiReactor> {
@@ -262,7 +267,19 @@ struct SyncClientReactor : public NodeSyncContext<ClientBidiReactor> {
       HandleFailure();
     }
   }
-  void OnDone(const grpc::Status &status) override {  }
+
+  void OnDone(const grpc::Status &status) override {
+    RAY_LOG(INFO) << "NodeId: " << GetNodeId()
+                  << " disconnects from sync server with status "
+                  << status.error_message();
+    delete this;
+  }
+
+  void OnWritesDoneDone(bool ok) override {
+    if(!ok) {
+      RAY_LOG(ERROR) << "Failed to send WritesDone to server";
+    }
+  }
 };
 
 }  // namespace syncing

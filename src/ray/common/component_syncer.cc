@@ -8,6 +8,13 @@
 namespace ray {
 namespace syncing {
 
+RaySyncer::~RaySyncer() {
+  if(leader_) {
+    io_context_.dispatch([leader = leader_]{
+      leader->StartWritesDone();
+    }, "~RaySyncer");
+  }
+}
 
 RaySyncer::RaySyncer(std::string node_id, instrumented_io_context &io_context)
     : node_id_(std::move(node_id)),
@@ -38,25 +45,41 @@ void RaySyncer::ConnectTo(std::shared_ptr<grpc::Channel> channel) {
   leader_stub_ = ray::rpc::syncer::RaySyncer::NewStub(channel);
   auto client_context = std::make_unique<grpc::ClientContext>().release();
   client_context->AddMetadata("node_id", GetNodeId());
-  leader_ = std::make_unique<SyncClientReactor>(*this, this->io_context_,
-                                                             client_context);
-  leader_stub_->async()->StartSync(client_context, leader_.get());
+  leader_ = std::make_unique<SyncClientReactor>(
+      *this, this->io_context_,
+      client_context).release();
+  leader_stub_->async()->StartSync(client_context, leader_);
+  leader_->Init();
+}
+
+void RaySyncer::DisconnectFrom(std::string node_id) {
+  RAY_LOG(INFO) << "NodeId: " << node_id << " exits";
+  RAY_CHECK(followers_.erase(node_id) > 0);
 }
 
 SyncServerReactor *RaySyncer::ConnectFrom(grpc::CallbackServerContext *context) {
   context->AddInitialMetadata("node_id", GetNodeId());
   auto reactor =
       std::make_unique<SyncServerReactor>(*this, this->io_context_, context);
+  reactor->Init();
+  RAY_LOG(INFO) << "Adding node: " << reactor->GetNodeId();
   auto [iter, added] = followers_.emplace(reactor->GetNodeId(), std::move(reactor));
   RAY_CHECK(added);
   return iter->second.get();
 }
 
 void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {
+  // Children
   for (auto &follower : followers_) {
-    dynamic_cast<SyncClientReactor *>(follower.second.get())
-        ->Update(message);
+    follower.second->Send(message);
   }
+
+  // Parents
+  if(leader_) {
+    leader_->Send(message);
+  }
+
+  // The current node
   if (message->node_id() != GetNodeId()) {
     if (receivers_[message->component_id()]) {
       receivers_[message->component_id()]->Update(*message);
