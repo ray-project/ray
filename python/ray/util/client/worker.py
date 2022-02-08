@@ -310,7 +310,9 @@ class Worker:
                 continue
         raise ConnectionError("Client is shutting down.")
 
-    def _call_get_object(self, req: ray_client_pb2.GetRequest, *args, **kwargs) -> Any:
+    def _get_object_iterator(
+        self, req: ray_client_pb2.GetRequest, *args, **kwargs
+    ) -> Any:
         """
         Calls the stub for GetObject on the underlying server stub. If a
         recoverable error occurs while streaming the response, attempts
@@ -441,7 +443,7 @@ class Worker:
         req = ray_client_pb2.GetRequest(ids=[r.id for r in ref], timeout=timeout)
         data = bytearray()
         try:
-            resp = self._call_get_object(req, metadata=self.metadata)
+            resp = self._get_object_iterator(req, metadata=self.metadata)
             for chunk in resp:
                 if not chunk.valid:
                     try:

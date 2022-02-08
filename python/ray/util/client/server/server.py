@@ -5,6 +5,7 @@ import grpc
 import base64
 from collections import defaultdict
 import functools
+import math
 import queue
 import pickle
 
@@ -384,11 +385,9 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                     try:
                         serialized = dumps_from_server(result, client_id, self)
                         total_size = len(serialized)
-                        # Floor divide to get number of full chunks
-                        total_chunks = total_size // OBJECT_TRANSFER_CHUNK_SIZE
-                        if total_size % OBJECT_TRANSFER_CHUNK_SIZE != 0:
-                            # +1 if there are any partial chunks
-                            total_chunks += 1
+                        total_chunks = math.ceil(
+                            total_size / OBJECT_TRANSFER_CHUNK_SIZE
+                        )
                         for chunk_id in range(request.start_chunk_id, total_chunks):
                             start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
                             end = min(
@@ -457,11 +456,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             return
         serialized = dumps_from_server(items, client_id, self)
         total_size = len(serialized)
-        # Floor divide to get number of full chunks
-        total_chunks = total_size // OBJECT_TRANSFER_CHUNK_SIZE
-        if total_size % OBJECT_TRANSFER_CHUNK_SIZE != 0:
-            # +1 if there are any partial chunks
-            total_chunks += 1
+        total_chunks = math.ceil(total_size / OBJECT_TRANSFER_CHUNK_SIZE)
         for chunk_id in range(request.start_chunk_id, total_chunks):
             start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
             end = min(total_size, (chunk_id + 1) * OBJECT_TRANSFER_CHUNK_SIZE)
