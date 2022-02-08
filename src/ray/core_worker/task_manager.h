@@ -99,6 +99,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Add a task that is pending execution.
   ///
+  /// The local ref count for all return refs (excluding actor creation tasks)
+  /// will be initialized to 1 so that the ref is considered in scope before
+  /// returning to the language frontend. The caller is responsible for
+  /// decrementing the ref count once the frontend ref has gone out of scope.
+  ///
   /// \param[in] caller_address The rpc address of the calling task.
   /// \param[in] spec The spec of the pending task.
   /// \param[in] max_retries Number of times this task may be retried

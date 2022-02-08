@@ -169,6 +169,7 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                       const rpc::Address &owner_address,
                                       const std::string &call_site,
                                       const int64_t object_size, bool is_reconstructable,
+                                      bool add_local_ref,
                                       const absl::optional<NodeID> &pinned_at_raylet_id) {
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
@@ -197,20 +198,10 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   auto back_it = reconstructable_owned_objects_.end();
   back_it--;
   RAY_CHECK(reconstructable_owned_objects_index_.emplace(object_id, back_it).second);
-}
 
-void ReferenceCounter::RemoveOwnedObject(const ObjectID &object_id) {
-  absl::MutexLock lock(&mutex_);
-  auto it = object_id_refs_.find(object_id);
-  RAY_CHECK(it != object_id_refs_.end())
-      << "Tried to remove reference for nonexistent owned object " << object_id
-      << ", object must be added with ReferenceCounter::AddOwnedObject() before it "
-      << "can be removed";
-  RAY_CHECK(it->second.RefCount() == 0)
-      << "Tried to remove reference for owned object " << object_id << " that has "
-      << it->second.RefCount() << " references, must have 0 references to be removed";
-  RAY_LOG(DEBUG) << "Removing owned object " << object_id;
-  DeleteReferenceInternal(it, nullptr);
+  if (add_local_ref) {
+    it->second.local_ref_count++;
+  }
 }
 
 void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t object_size) {

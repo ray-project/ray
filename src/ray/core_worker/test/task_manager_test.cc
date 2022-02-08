@@ -124,7 +124,6 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   ASSERT_EQ(num_retries_, 0);
 
   std::vector<ObjectID> removed;
-  reference_counter_->AddLocalReference(return_id, "");
   reference_counter_->RemoveLocalReference(return_id, &removed);
   ASSERT_EQ(removed[0], return_id);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
@@ -160,7 +159,6 @@ TEST_F(TaskManagerTest, TestTaskFailure) {
   ASSERT_EQ(num_retries_, 0);
 
   std::vector<ObjectID> removed;
-  reference_counter_->AddLocalReference(return_id, "");
   reference_counter_->RemoveLocalReference(return_id, &removed);
   ASSERT_EQ(removed[0], return_id);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
@@ -221,7 +219,6 @@ TEST_F(TaskManagerTest, TestFailPendingTask) {
   ASSERT_EQ(stored_error, rpc::ErrorType::LOCAL_RAYLET_DIED);
 
   std::vector<ObjectID> removed;
-  reference_counter_->AddLocalReference(return_id, "");
   reference_counter_->RemoveLocalReference(return_id, &removed);
   ASSERT_EQ(removed[0], return_id);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
@@ -268,7 +265,6 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
   ASSERT_EQ(stored_error, error);
 
   std::vector<ObjectID> removed;
-  reference_counter_->AddLocalReference(return_id, "");
   reference_counter_->RemoveLocalReference(return_id, &removed);
   ASSERT_EQ(removed[0], return_id);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
@@ -326,7 +322,6 @@ TEST_F(TaskManagerTest, TestLineageEvicted) {
 
   // Once the return ID goes out of scope, the task spec and its dependencies
   // are released.
-  reference_counter_->AddLocalReference(return_id, "");
   reference_counter_->RemoveLocalReference(return_id, nullptr);
   ASSERT_FALSE(manager_.IsTaskSubmissible(spec.TaskId()));
   ASSERT_FALSE(reference_counter_->HasReference(return_id));
@@ -345,7 +340,6 @@ TEST_F(TaskManagerLineageTest, TestLineagePinned) {
   int num_retries = 3;
   manager_.AddPendingTask(caller_address, spec, "", num_retries);
   auto return_id = spec.ReturnId(0);
-  reference_counter_->AddLocalReference(return_id, "");
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
 
@@ -384,7 +378,6 @@ TEST_F(TaskManagerLineageTest, TestDirectObjectNoLineage) {
   int num_retries = 3;
   manager_.AddPendingTask(caller_address, spec, "", num_retries);
   auto return_id = spec.ReturnId(0);
-  reference_counter_->AddLocalReference(return_id, "");
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
 
@@ -418,7 +411,6 @@ TEST_F(TaskManagerLineageTest, TestLineagePinnedOutOfOrder) {
   int num_retries = 3;
   manager_.AddPendingTask(caller_address, spec, "", num_retries);
   auto return_id = spec.ReturnId(0);
-  reference_counter_->AddLocalReference(return_id, "");
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
 
@@ -452,13 +444,11 @@ TEST_F(TaskManagerLineageTest, TestRecursiveLineagePinned) {
   rpc::Address caller_address;
 
   ObjectID dep = ObjectID::FromRandom();
-  reference_counter_->AddLocalReference(dep, "");
   for (int i = 0; i < 3; i++) {
     auto spec = CreateTaskHelper(1, {dep});
     int num_retries = 3;
     manager_.AddPendingTask(caller_address, spec, "", num_retries);
     auto return_id = spec.ReturnId(0);
-    reference_counter_->AddLocalReference(return_id, "");
 
     // The task completes.
     rpc::PushTaskReply reply;
@@ -499,7 +489,7 @@ TEST_F(TaskManagerLineageTest, TestRecursiveDirectObjectNoLineage) {
     int num_retries = 3;
     manager_.AddPendingTask(caller_address, spec, "", num_retries);
     auto return_id = spec.ReturnId(0);
-    reference_counter_->AddLocalReference(return_id, "");
+    reference_counter_->RemoveLocalReference(dep, nullptr);
 
     // The task completes.
     rpc::PushTaskReply reply;
@@ -512,15 +502,13 @@ TEST_F(TaskManagerLineageTest, TestRecursiveDirectObjectNoLineage) {
 
     // No tasks should be pinned because they returned direct objects.
     ASSERT_EQ(manager_.NumSubmissibleTasks(), 0);
-    // Only the dependency and the newest return ID should be in scope because
-    // all objects in the lineage were direct.
-    ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 2);
+    // Only the newest return ID should be in scope because all objects in the
+    // lineage were direct.
+    ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
 
-    reference_counter_->RemoveLocalReference(dep, nullptr);
     dep = return_id;
   }
 
-  // The task's return ID goes out of scope before the task finishes.
   reference_counter_->RemoveLocalReference(dep, nullptr);
   ASSERT_EQ(manager_.NumSubmissibleTasks(), 0);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
@@ -552,7 +540,6 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
   // The task completes.
-  reference_counter_->AddLocalReference(return_id, "");
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
   return_object->set_object_id(return_id.Binary());
@@ -604,8 +591,6 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
 
   // The task completes. Both return objects are stored in plasma.
   {
-    reference_counter_->AddLocalReference(return_id1, "");
-    reference_counter_->AddLocalReference(return_id2, "");
     rpc::PushTaskReply reply;
     auto return_object1 = reply.add_return_objects();
     return_object1->set_object_id(return_id1.Binary());
