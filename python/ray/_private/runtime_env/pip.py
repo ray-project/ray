@@ -40,12 +40,22 @@ def get_uri(runtime_env: Dict) -> Optional[str]:
     return uri
 
 
+class _PathHelper:
+    @staticmethod
+    def get_virtualenv_path(target_dir: str) -> str:
+        return os.path.join(target_dir, "virtualenv")
+
+    @classmethod
+    def get_virtualenv_python(cls, target_dir: str) -> str:
+        virtualenv_path = cls.get_virtualenv_path(target_dir)
+        return os.path.join(virtualenv_path, "bin/python")
+
+
 class PipProcessor:
     def __init__(
         self,
         target_dir: str,
         runtime_env: RuntimeEnv,
-        context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):
         try:
@@ -59,7 +69,6 @@ class PipProcessor:
         logger.debug("Setting up pip for runtime_env: %s", runtime_env)
         self._target_dir = target_dir
         self._runtime_env = runtime_env
-        self._context = context
         self._logger = logger
 
     @staticmethod
@@ -71,14 +80,6 @@ class PipProcessor:
         return hasattr(sys, "real_prefix") or (
             hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
         )
-
-    @staticmethod
-    def _get_current_python() -> str:
-        return sys.executable
-
-    @staticmethod
-    def _get_virtualenv_python(virtualenv_path: str) -> str:
-        return os.path.join(virtualenv_path, "bin/python")
 
     @staticmethod
     @contextlib.contextmanager
@@ -121,14 +122,8 @@ class PipProcessor:
             )
 
     @classmethod
-    def _create_or_get_virtualenv(
-        cls, path: str, cwd: str, logger: logging.Logger
-    ) -> str:
-        """Create or get a virtualenv from path.
-
-        Returns:
-            A valid virtualenv path.
-        """
+    def _create_or_get_virtualenv(cls, path: str, cwd: str, logger: logging.Logger):
+        """Create or get a virtualenv from path."""
         if cls._is_in_virtualenv():
             # TODO(fyrestone): Handle create virtualenv from virtualenv.
             #
@@ -143,7 +138,7 @@ class PipProcessor:
             # So, we decide to raise an exception until creating virtualenv
             # from virtualenv is fully supported.
             raise RuntimeError("Can't create virtualenv from virtualenv.")
-        python = cls._get_current_python()
+        python = sys.executable
         virtualenv_path = os.path.join(path, "virtualenv")
         virtualenv_app_data_path = os.path.join(path, "virtualenv_app_data")
         # virtualenv options:
@@ -182,17 +177,17 @@ class PipProcessor:
             raise RuntimeError(
                 f"Failed to create virtualenv {virtualenv_path}:\n{output}"
             )
-        return virtualenv_path
 
     @classmethod
     def _install_pip_packages(
         cls,
-        virtualenv_path: str,
+        path: str,
         pip_packages: List[str],
         cwd: str,
         logger: logging.Logger,
     ):
-        python = cls._get_virtualenv_python(virtualenv_path)
+        virtualenv_path = _PathHelper.get_virtualenv_path(path)
+        python = _PathHelper.get_virtualenv_python(path)
         # TODO(fyrestone): Support -i, --no-deps, --no-cache-dir, ...
         pip_install_cmd = [
             python,
@@ -220,14 +215,11 @@ class PipProcessor:
         exec_cwd = os.path.join(path, "exec_cwd")
         os.makedirs(exec_cwd, exist_ok=True)
         try:
-            virtualenv_path = self._create_or_get_virtualenv(path, exec_cwd, logger)
-            python = self._get_virtualenv_python(virtualenv_path)
+            self._create_or_get_virtualenv(path, exec_cwd, logger)
+            python = _PathHelper.get_virtualenv_python(path)
             with self._check_ray(python, exec_cwd, logger):
-                self._install_pip_packages(
-                    virtualenv_path, pip_packages, exec_cwd, logger
-                )
+                self._install_pip_packages(path, pip_packages, exec_cwd, logger)
             # TODO(fyrestone): pip check.
-            self._context.py_executable = python
         except Exception:
             logger.info("Delete incomplete virtualenv: %s", path)
             shutil.rmtree(path, ignore_errors=True)
@@ -291,7 +283,29 @@ class PipManager:
         target_dir = self._get_path_from_hash(hash)
 
         with FileLock(self._installs_and_deletions_file_lock):
-            pip_processor = PipProcessor(target_dir, runtime_env, context, logger)
+            pip_processor = PipProcessor(target_dir, runtime_env, logger)
             pip_processor.run()
 
         return get_directory_size_bytes(target_dir)
+
+    def modify_context(
+        self,
+        uri: str,
+        runtime_env: RuntimeEnv,
+        context: RuntimeEnvContext,
+        logger: Optional[logging.Logger] = default_logger,
+    ):
+        if not runtime_env.has_pip():
+            return
+        # Update py_executable.
+        protocol, hash = parse_uri(uri)
+        target_dir = self._get_path_from_hash(hash)
+        virtualenv_python = _PathHelper.get_virtualenv_python(target_dir)
+
+        if not os.path.exists(virtualenv_python):
+            raise ValueError(
+                f"Local directory {target_dir} for URI {uri} does "
+                "not exist on the cluster. Something may have gone wrong while "
+                "installing the runtime_env `pip` packages."
+            )
+        context.py_executable = virtualenv_python
