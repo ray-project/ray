@@ -15,10 +15,10 @@ static extern void c_worker_InitConfig(
 static extern void c_worker_Initialize();
 [DllImport("libcore_worker_library_c")]
 static extern void c_worker_Shutdown();
-// [DllImport("libcore_worker_library_c")]
-// static extern void c_worker_RegisterExecutionCallback(
-//
-// );
+[DllImport("libcore_worker_library_c")]
+static extern void c_worker_RegisterExecutionCallback(
+  
+);
 //
 // // C# callbacks: https://stackoverflow.com/questions/10841081/c-sharp-c-interop-callback
 // [UnmanagedFunctionPointer(CallingConvention.Cdecl)]

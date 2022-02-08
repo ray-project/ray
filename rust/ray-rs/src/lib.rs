@@ -4,13 +4,13 @@
 pub use paste::paste;
 #[macro_use]
 pub use lazy_static::lazy_static;
+use core::pin::Pin;
 pub use ctor::ctor;
 pub use rmp_serde;
 pub use uniffi::ffi::RustBuffer;
-use core::pin::Pin;
 
-pub use ray_rs_sys::*;
 pub use ray_rs_sys::ray;
+pub use ray_rs_sys::*;
 
 pub mod remote_functions;
 pub use remote_functions::*;
@@ -18,10 +18,14 @@ pub use remote_functions::*;
 pub use std::ffi::CString;
 
 use std::{
+    clone::Clone,
     collections::{HashMap, HashSet},
-    sync::{Mutex, Arc}, clone::Clone, os::raw::c_char,
-    ops::{Deref, Drop}, marker::PhantomData,
-    mem::drop, convert::TryInto,
+    convert::TryInto,
+    marker::PhantomData,
+    mem::drop,
+    ops::{Deref, Drop},
+    os::raw::c_char,
+    sync::{Arc, Mutex},
 };
 
 use libloading::{Library, Symbol};
@@ -56,6 +60,7 @@ lazy_static::lazy_static! {
 // Prints each argument on a separate line
 //
 // TODO: implement non-raw version
+// TODO: rename load_libraries_*
 pub fn load_code_paths_from_raw_c_cmdline(argc: i32, argv: *mut *mut c_char) {
     let slice = unsafe { std::slice::from_raw_parts(argv, argc as usize) };
 
@@ -82,14 +87,10 @@ struct ObjectRefInner<T> {
 impl<T> ObjectRef<T> {
     fn new(id: ObjectID) -> Self {
         util::add_local_ref(&id);
-        Self(
-            Arc::new(
-                ObjectRefInner::<T> {
-                    id: id,
-                    _phantom_data: PhantomData,
-                }
-            )
-        )
+        Self(Arc::new(ObjectRefInner::<T> {
+            id: id,
+            _phantom_data: PhantomData,
+        }))
     }
 
     fn as_raw(&self) -> &ObjectID {
@@ -127,7 +128,7 @@ pub fn load_libraries_from_paths(paths: &Vec<&str>) {
             Some(lib) => {
                 load_function_ptrs_from_library(&lib);
                 libs.push(lib)
-            },
+            }
             None => panic!("Shared-object library not found at path: {}", path),
         }
     }
@@ -137,13 +138,11 @@ fn load_function_ptrs_from_library(lib: &Library) {
     let mut fn_map = GLOBAL_FUNCTION_MAP.lock().unwrap();
     for fn_name in GLOBAL_FUNCTION_NAMES_SET.lock().unwrap().iter() {
         let fn_str = fn_name.to_str().unwrap();
-        let ret = unsafe {
-                lib.get::<InvokerFunction>(fn_str.as_bytes()).ok()
-        };
+        let ret = unsafe { lib.get::<InvokerFunction>(fn_str.as_bytes()).ok() };
         if let Some(symbol) = ret {
             ray_info!("Loaded function {} as {:?}", fn_str, symbol);
             let static_symbol = unsafe {
-                std::mem::transmute::<Symbol<_, >, Symbol<'static, InvokerFunction>>(symbol)
+                std::mem::transmute::<Symbol<_>, Symbol<'static, InvokerFunction>>(symbol)
             };
             fn_map.insert(fn_name.clone(), static_symbol);
         }
@@ -162,12 +161,7 @@ pub extern "C" fn rust_worker_execute(
     // TODO (jon-chuang): One should replace RustBuffer with RaySlice...
     // TODO (jon-chuang): Try to move unsafe into ray_rs_sys
     // Replace all size_t with u64?
-    let args_slice = unsafe {
-        std::slice::from_raw_parts(
-            args,
-            args_len as usize,
-        )
-    };
+    let args_slice = unsafe { std::slice::from_raw_parts(args, args_len as usize) };
 
     let mut arg_ptrs = Vec::<u64>::new();
     let mut arg_sizes = Vec::<u64>::new();
@@ -184,11 +178,9 @@ pub extern "C" fn rust_worker_execute(
     let args_buffer = RustBuffer::from_vec(rmp_serde::to_vec(&(&arg_ptrs, &arg_sizes)).unwrap());
     // Since the string data was passed from the outer invocation context,
     // it will be destructed by that context with a lifetime that outlives this function body.
-    let fn_name = std::mem::ManuallyDrop::new(
-        unsafe {
-            CString::from_raw(*(ray_function_info.data as *mut *mut std::os::raw::c_char))
-        }
-    );
+    let fn_name = std::mem::ManuallyDrop::new(unsafe {
+        CString::from_raw(*(ray_function_info.data as *mut *mut std::os::raw::c_char))
+    });
     let fn_str = fn_name.to_str().unwrap();
     // Check if we get a cache hit
     let libs = LIBRARIES.lock().unwrap();
@@ -200,13 +192,11 @@ pub extern "C" fn rust_worker_execute(
     // by mapping library name to function crate name...
     if let None = ret_ref {
         for lib in libs.iter() {
-            let ret = unsafe {
-                    lib.get::<InvokerFunction>(fn_str.as_bytes()).ok()
-            };
+            let ret = unsafe { lib.get::<InvokerFunction>(fn_str.as_bytes()).ok() };
             if let Some(symbol) = ret {
                 ray_info!("Loaded function {} as {:?}", fn_str, symbol);
                 let static_symbol = unsafe {
-                    std::mem::transmute::<Symbol<_, >, Symbol<'static, InvokerFunction>>(symbol)
+                    std::mem::transmute::<Symbol<_>, Symbol<'static, InvokerFunction>>(symbol)
                 };
                 fn_map.insert(fn_name.deref().clone(), static_symbol);
                 ret_ref = fn_map.get(fn_name.deref());

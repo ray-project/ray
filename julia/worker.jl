@@ -53,9 +53,15 @@ struct DataValue
 end
 
 using Base.Libc.Libdl
+using MsgPack
+
+io = IOBuffer(maxsize=4)
+pack(io, "hello")
+print(io)
+print(unpack(seekstart(io)))
 
 c_worker_lib = dlopen(
-    "/home/jonch/Desktop/Programming/systems/ray/python/ray/rust/lib/libcore_worker_library_c.so",
+    "libcore_worker_library_c",
 )
 
 # TODO: hide these behind a module, and only export select methods
@@ -103,6 +109,7 @@ function julia_worker_execute!(
     args_len::UInt64,
     return_values::RaySlice,
 )::Cvoid
+    
     print("Hello world")
     return Cvoid
 end
@@ -112,6 +119,8 @@ const julia_worker_execute_c = @cfunction(
     Cvoid,
     (Ptr{Ptr{Cvoid}}, Cint, RaySlice, Ptr{Ptr{DataValue}}, UInt64, RaySlice)
 )
+
+
 
 register_callback(julia_worker_execute_c)
 init_config()
