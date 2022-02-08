@@ -1,13 +1,12 @@
 from typing import Callable, Optional
 
-from ray.util.annotations import PublicAPI
-
 HEALTHCHECK_DECORATOR_ATTRIBUTE = "__ray_serve_healthcheck_method"
 
 
-@PublicAPI(stability="alpha")
 def healthcheck(func: Callable) -> Callable:
     """Decorator to define an application-level health check for a deployment.
+
+    EXPERIMENTAL
 
     This should be used on a method of a Deployment class. The method should
     run to completion and return `None` if the replica is healthy, and raise
