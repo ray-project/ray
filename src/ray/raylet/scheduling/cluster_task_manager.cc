@@ -796,6 +796,24 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
 }
 
 namespace {
+
+int64_t TotalBacklogSize(
+    const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
+        &backlog_tracker,
+    SchedulingClass scheduling_class) {
+  auto backlog_it = backlog_tracker.find(scheduling_class);
+  if (backlog_it == backlog_tracker.end()) {
+    return 0;
+  }
+
+  int64_t sum = 0;
+  for (const auto &worker_id_and_backlog_size : backlog_it->second) {
+    sum += worker_id_and_backlog_size.second;
+  }
+
+  return sum;
+}
+
 void FillResourceUsageHelper(
     rpc::ResourcesData &data,
     const std::shared_ptr<SchedulingResources> &last_reported_resources,
@@ -805,10 +823,10 @@ void FillResourceUsageHelper(
         SchedulingClass, std::deque<std::shared_ptr<internal::Work>>> &task_to_dispatch,
     const absl::flat_hash_map<
         SchedulingClass, std::deque<std::shared_ptr<internal::Work>>> &infeasible_tasks,
-    const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>> &
-      backlog_tracker) {
-
-  auto max_resource_shapes_per_load_report = RayConfig::instance().max_resource_shapes_per_load_report() ;
+    const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
+        &backlog_tracker) {
+  auto max_resource_shapes_per_load_report =
+      RayConfig::instance().max_resource_shapes_per_load_report();
   auto resource_loads = data.mutable_resource_load();
   auto resource_load_by_shape =
       data.mutable_resource_load_by_shape()->mutable_resource_demands();
@@ -848,7 +866,7 @@ void FillResourceUsageHelper(
     // ClusterResourceScheduler::GetBestSchedulableNode for more details.
     int num_ready = by_shape_entry->num_ready_requests_queued();
     by_shape_entry->set_num_ready_requests_queued(num_ready + count);
-    by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
+    by_shape_entry->set_backlog_size(TotalBacklogSize(backlog_tracker, scheduling_class));
   }
 
   for (const auto &pair : task_to_dispatch) {
@@ -879,7 +897,7 @@ void FillResourceUsageHelper(
     }
     int num_ready = by_shape_entry->num_ready_requests_queued();
     by_shape_entry->set_num_ready_requests_queued(num_ready + count);
-    by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
+    by_shape_entry->set_backlog_size(TotalBacklogSize(backlog_tracker, scheduling_class));
   }
 
   for (const auto &pair : infeasible_tasks) {
@@ -913,7 +931,7 @@ void FillResourceUsageHelper(
     // ClusterResourceScheduler::GetBestSchedulableNode for more details.
     int num_infeasible = by_shape_entry->num_infeasible_requests_queued();
     by_shape_entry->set_num_infeasible_requests_queued(num_infeasible + count);
-    by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
+    by_shape_entry->set_backlog_size(TotalBacklogSize(backlog_tracker, scheduling_class));
   }
 
   if (skipped_requests > 0) {
@@ -943,8 +961,8 @@ void ClusterTaskManager::FillResourceUsage(
   if (max_resource_shapes_per_load_report_ == 0) {
     return;
   }
-  FillResourceUsageHelper(data, last_reported_resources, tasks_to_schedule_, tasks_to_dispatch_,
-                    infeasible_tasks_, backlog_tracker_);
+  FillResourceUsageHelper(data, last_reported_resources, tasks_to_schedule_,
+                          tasks_to_dispatch_, infeasible_tasks_, backlog_tracker_);
 }
 
 bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
@@ -1368,20 +1386,6 @@ void ClusterTaskManager::SetWorkerBacklog(SchedulingClass scheduling_class,
   } else {
     backlog_tracker_[scheduling_class][worker_id] = backlog_size;
   }
-}
-
-int64_t ClusterTaskManager::TotalBacklogSize(SchedulingClass scheduling_class) {
-  auto backlog_it = backlog_tracker_.find(scheduling_class);
-  if (backlog_it == backlog_tracker_.end()) {
-    return 0;
-  }
-
-  int64_t sum = 0;
-  for (const auto &worker_id_and_backlog_size : backlog_it->second) {
-    sum += worker_id_and_backlog_size.second;
-  }
-
-  return sum;
 }
 
 void ClusterTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) {
