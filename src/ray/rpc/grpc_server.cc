@@ -130,7 +130,8 @@ void GrpcServer::Run() {
   is_closed_ = false;
 }
 
-void GrpcServer::RegisterCallbackGenericService(grpc::CallbackGenericService &callback_service) {
+void GrpcServer::RegisterCallbackGenericService(
+    grpc::CallbackGenericService &callback_service) {
   callback_services_.emplace_back(callback_service);
 }
 
