@@ -13,7 +13,6 @@ from numbers import Number
 from typing import Any, Callable, Optional
 
 from ray.util.ml_utils.checkpoint import (
-    LocalStorageCheckpoint,
     Checkpoint,
     MultiLocationCheckpoint,
 )
@@ -480,12 +479,11 @@ class FunctionRunner(Trainable):
                 "type (str, dict). Got {}.".format(type(checkpoint))
             )
 
-        checkpoint_path = TrainableUtil.process_checkpoint(
-            checkpoint, parent_dir, state
+        local_checkpoint = TrainableUtil.process_checkpoint(
+            checkpoint, parent_dir, state, return_data_checkpoint=False
         )
 
         cloud_checkpoint = self._maybe_save_to_cloud(parent_dir)
-        local_checkpoint = LocalStorageCheckpoint(path=checkpoint_path)
 
         if cloud_checkpoint:
             return MultiLocationCheckpoint(local_checkpoint, cloud_checkpoint)

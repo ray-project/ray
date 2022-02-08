@@ -25,7 +25,7 @@ class TrainableUtil:
         parent_dir: str,
         metadata: Dict,
         return_data_checkpoint: bool = False,
-    ) -> LocalStorageCheckpoint:
+    ) -> Union[LocalStorageCheckpoint, DataCheckpoint]:
         """Creates checkpoint file structure and writes metadata
         under `parent_dir`.
 

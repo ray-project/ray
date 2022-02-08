@@ -12,7 +12,6 @@ from typing import Any, Dict, Optional, Union, Callable
 import uuid
 
 import ray
-import ray.cloudpickle as pickle
 from ray.tune.cloud import TrialCheckpoint
 from ray.tune.logger import Logger
 from ray.tune.resources import Resources
@@ -48,10 +47,10 @@ from ray.util.annotations import PublicAPI
 from ray.util.ml_utils.checkpoint import (
     LocalStorageCheckpoint,
     CloudStorageCheckpoint,
-    Checkpoint,
     MultiLocationCheckpoint,
-    ObjectStoreCheckpoint,
     DataCheckpoint,
+    FSStorageCheckpoint,
+    RemoteNodeStorageCheckpoint,
 )
 
 logger = logging.getLogger(__name__)
@@ -411,7 +410,9 @@ class Trainable:
             "ray_version": ray.__version__,
         }
 
-    def save(self, checkpoint_dir: str = None) -> Checkpoint:
+    def save(
+        self, checkpoint_dir: str = None
+    ) -> Union[FSStorageCheckpoint, MultiLocationCheckpoint]:
         """Saves the current model state to a checkpoint.
 
         Subclasses should override ``save_checkpoint()`` instead to save state.
@@ -424,7 +425,7 @@ class Trainable:
             checkpoint_dir (str): Optional dir to place the checkpoint.
 
         Returns:
-            Checkpoint: A FSStorageCheckpoint, ObjectStoreCheckpoint, or
+            Checkpoint: A FSStorageCheckpoint, or
                 MultiLocationCheckpoint (including a CloudCheckpoint).
 
         """
@@ -438,7 +439,10 @@ class Trainable:
         trainable_state = self.get_state()
 
         local_checkpoint = TrainableUtil.process_checkpoint(
-            checkpoint_path_or_obj, parent_dir=checkpoint_dir, metadata=trainable_state
+            checkpoint_path_or_obj,
+            parent_dir=checkpoint_dir,
+            metadata=trainable_state,
+            return_data_checkpoint=False,
         )
 
         # Maybe sync to cloud
@@ -452,19 +456,26 @@ class Trainable:
     def _maybe_save_to_cloud(self, checkpoint_dir) -> Optional[CloudStorageCheckpoint]:
         # Derived classes like the FunctionRunner might call this
         if self.uses_cloud_checkpointing:
+            # Todo: in the future this may become
+            # checkpoint.to_cloud()
             cloud_location = self._storage_path(checkpoint_dir)
             self.storage_client.sync_up(checkpoint_dir, cloud_location)
             self.storage_client.wait()
-            return CloudStorageCheckpoint(location=cloud_location)
+            return CloudStorageCheckpoint(
+                location=cloud_location,
+                metadata={
+                    "relative_path": os.path.relpath(checkpoint_dir, self.logdir)
+                },
+            )
         return None
 
-    def save_to_object(self):
+    def save_to_object(self) -> DataCheckpoint:
         """Saves the current model state to a Python object.
 
         It also saves to disk but does not return the checkpoint path.
 
         Returns:
-            Object holding checkpoint data.
+            DataCheckpoint holding checkpoint data.
         """
         tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
 
@@ -482,7 +493,96 @@ class Trainable:
         shutil.rmtree(tmpdir)
         return data_checkpoint
 
-    def restore(self, checkpoint_path):
+    def _restore_from_multi_location_checkpoint(
+        self, multi_checkpoint: MultiLocationCheckpoint
+    ):
+        assert isinstance(multi_checkpoint, MultiLocationCheckpoint)
+
+        # First, check if the checkpoint is locally available:
+        local_checkpoint = multi_checkpoint.search_checkpoint(LocalStorageCheckpoint)
+        if local_checkpoint:
+            return self._restore_from_local_chekcpoint(local_checkpoint)
+
+        # Else, check if there is a cloud checkpoint we can fetch
+        cloud_checkpoint = multi_checkpoint.search_checkpoint(CloudStorageCheckpoint)
+        remote_checkpoint = multi_checkpoint.search_checkpoint(
+            RemoteNodeStorageCheckpoint
+        )
+
+        if not cloud_checkpoint and not remote_checkpoint:
+            raise RuntimeError(
+                f"No checkpoint in MultiLocationCheckpoint can "
+                f"be used to restore trainable: Got types "
+                f"{[type(l) for l in multi_checkpoint.locations]}"
+            )
+
+        if not cloud_checkpoint and self.uses_cloud_checkpointing:
+            # Try to construct our own cloud checkpoint
+            cloud_location = self._storage_path(remote_checkpoint.path)
+            # Todo: Align with TrainableUtil.find_rel_checkpoint_dir
+            cloud_checkpoint = CloudStorageCheckpoint(
+                cloud_location,
+                metadata={
+                    "relative_path": os.path.relpath(
+                        remote_checkpoint.path, self.logdir
+                    )
+                },
+            )
+
+        if cloud_checkpoint:
+            return self._restore_from_cloud_checkpoint(cloud_checkpoint)
+        else:
+            return self._restore_from_remote_node_checkpoint(remote_checkpoint)
+
+    def _restore_from_cloud_checkpoint(self, cloud_checkpoint: CloudStorageCheckpoint):
+        assert isinstance(cloud_checkpoint, CloudStorageCheckpoint)
+
+        # If we have a cloud checkpoint, fetch from cloud
+        rel_path = cloud_checkpoint.metadata.get("relative_path")
+        if not rel_path:
+            pass  # Todo
+            # rel_path = TrainableUtil.make_checkpoint_dir()
+            # rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
+            #     self.logdir, local_checkpoint.path
+            # )
+
+        checkpoint_path = os.path.join(self.logdir, rel_path)
+
+        self.storage_client.sync_down(
+            cloud_checkpoint.location,
+        )
+        self.storage_client.wait()
+        # Todo: In the future, this may become
+        # local_checkpoint = cloud_checkpoint.to_local()
+
+        local_checkpoint = LocalStorageCheckpoint(
+            path=checkpoint_path, metadata=cloud_checkpoint.metadata
+        )
+        return self._restore_from_local_checkpoint(local_checkpoint)
+
+    def _restore_from_remote_node_checkpoint(
+        self, remote_checkpoint: RemoteNodeStorageCheckpoint
+    ):
+        assert isinstance(remote_checkpoint, RemoteNodeStorageCheckpoint)
+
+        # Otherwise, fetch data from remote node
+        local_checkpoint = remote_checkpoint.to_local_storage()
+        return self._restore_from_local_checkpoint(local_checkpoint)
+
+    def _restore_from_local_checkpoint(self, local_checkpoint: LocalStorageCheckpoint):
+        assert isinstance(local_checkpoint, LocalStorageCheckpoint)
+
+        self._restore_metadata(local_checkpoint.metadata)
+
+        logger.info(
+            f"Restored on {self.get_current_ip()} from fs checkpoint: "
+            f"{local_checkpoint}"
+        )
+
+    def restore(
+        self,
+        checkpoint: Union[FSStorageCheckpoint, DataCheckpoint, MultiLocationCheckpoint],
+    ):
         """Restores training state from a given model checkpoint.
 
         These checkpoints are returned from calls to save().
@@ -504,42 +604,28 @@ class Trainable:
         `self.remote_checkpoint_dir` in this case, is something like,
         `REMOTE_CHECKPOINT_BUCKET/exp/MyTrainable_abc`
         """
-        if self.uses_cloud_checkpointing:
-            rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
-                self.logdir, checkpoint_path
-            )
-            self.storage_client.sync_down(
-                os.path.join(self.remote_checkpoint_dir, rel_checkpoint_dir),
-                os.path.join(self.logdir, rel_checkpoint_dir),
-            )
-            self.storage_client.wait()
+        if isinstance(checkpoint, MultiLocationCheckpoint):
+            return self._restore_from_multi_location_checkpoint(checkpoint)
+        elif isinstance(checkpoint, RemoteNodeStorageCheckpoint):
+            return self._restore_from_remote_node_checkpoint(checkpoint)
+        elif isinstance(checkpoint, LocalStorageCheckpoint):
+            return self._restore_from_local_checkpoint(checkpoint)
+        else:
+            # Todo
+            pass
 
-        # Ensure TrialCheckpoints are converted
-        if isinstance(checkpoint_path, TrialCheckpoint):
-            checkpoint_path = checkpoint_path.local_path
-
-        with open(checkpoint_path + ".tune_metadata", "rb") as f:
-            metadata = pickle.load(f)
+    def _restore_metadata(self, metadata: Dict[str, Any]):
         self._experiment_id = metadata["experiment_id"]
         self._iteration = metadata["iteration"]
         self._timesteps_total = metadata["timesteps_total"]
         self._time_total = metadata["time_total"]
         self._episodes_total = metadata["episodes_total"]
-        saved_as_dict = metadata["saved_as_dict"]
-        if saved_as_dict:
-            with open(checkpoint_path, "rb") as loaded_state:
-                checkpoint_dict = pickle.load(loaded_state)
-            checkpoint_dict.update(tune_checkpoint_path=checkpoint_path)
-            self.load_checkpoint(checkpoint_dict)
-        else:
-            self.load_checkpoint(checkpoint_path)
+
         self._time_since_restore = 0.0
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = True
-        logger.info(
-            "Restored on %s from checkpoint: %s", self.get_current_ip(), checkpoint_path
-        )
+
         state = {
             "_iteration": self._iteration,
             "_timesteps_total": self._timesteps_total,
@@ -548,15 +634,27 @@ class Trainable:
         }
         logger.info("Current state after restoring: %s", state)
 
-    def restore_from_object(self, obj):
+    def restore_from_object(self, checkpoint: DataCheckpoint):
         """Restores training state from a checkpoint object.
 
         These checkpoints are returned from calls to save_to_object().
         """
-        tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
-        checkpoint_path = TrainableUtil.create_from_pickle(obj, tmpdir)
-        self.restore(checkpoint_path)
-        shutil.rmtree(tmpdir)
+        if not checkpoint.is_fs_checkpoint:
+            self.load_checkpoint(checkpoint.data)
+        else:
+            tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
+            local_checkpoint = checkpoint.to_local_storage(tmpdir)
+            restore_path = os.path.join(
+                local_checkpoint.path, local_checkpoint.metadata.get("suffix", "")
+            )
+            self.load_checkpoint(restore_path)
+            shutil.rmtree(tmpdir)
+
+        logger.info(
+            f"Restored on {self.get_current_ip()} from data checkpoint: "
+            f"{checkpoint}"
+        )
+        self._restore_metadata(checkpoint.metadata)
 
     def delete_checkpoint(self, checkpoint_path):
         """Deletes local copy of checkpoint.
