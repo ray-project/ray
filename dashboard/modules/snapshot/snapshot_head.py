@@ -68,14 +68,22 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/snapshot")
     async def snapshot(self, req):
-        job_data, actor_data, serve_data, session_name = await asyncio.gather(
+        (
+            job_data,
+            job_submission_data,
+            actor_data,
+            serve_data,
+            session_name,
+        ) = await asyncio.gather(
             self.get_job_info(),
+            self.get_job_submission_info(),
             self.get_actor_info(),
             self.get_serve_info(),
             self.get_session_name(),
         )
         snapshot = {
             "jobs": job_data,
+            "job_submission": job_submission_data,
             "actors": actor_data,
             "deployments": serve_data,
             "session_name": session_name,
@@ -93,6 +101,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         return self._job_status_client.get_status(job_submission_id)
 
     async def get_job_info(self):
+        """Legacy Jobs info.  Here a Job is a Ray Driver (a ray.init() connection)."""
         request = gcs_service_pb2.GetAllJobInfoRequest()
         reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=5)
 
@@ -119,6 +128,26 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             jobs[job_id] = entry
 
         return jobs
+
+    async def get_job_submission_info(self):
+        """Info for Jobs.  Here a Job can have 0, 1, or several Ray drivers."""
+
+        jobs = {}
+
+        runtime_env = {}  # TODO
+        start_time = None  # TODO
+        end_time = None  # TODO
+
+        for job_id, status in self._job_status_client.get_all_jobs().items():
+            entry = {
+                "job_id": job_id,
+                "status": None if status is None else status.status,
+                "status_message": None if status is None else status.message,
+                "runtime_env": runtime_env,
+                "start_time": start_time,
+                "end_time": end_time,
+            }
+            return {}
 
     async def get_actor_info(self):
         # TODO (Alex): GCS still needs to return actors from dead jobs.
