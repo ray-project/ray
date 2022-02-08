@@ -184,17 +184,17 @@ class DataClient:
         if response.req_id in self.asyncio_waiting_data:
             can_remove = True
             try:
-                # NOTE: calling self.asyncio_waiting_data.pop() results
-                # in the destructor of ClientObjectRef running, which
-                # calls ReleaseObject(). So self.asyncio_waiting_data
-                # is accessed without holding self.lock. Holding the
-                # lock shouldn't be necessary either.
                 callback = self.asyncio_waiting_data.get(response.req_id)
                 if isinstance(callback, ChunkCollector):
                     can_remove = callback(response)
                 elif callback:
                     callback(response)
                 if can_remove:
+                    # NOTE: calling del self.asyncio_waiting_data results
+                    # in the destructor of ClientObjectRef running, which
+                    # calls ReleaseObject(). So self.asyncio_waiting_data
+                    # is accessed without holding self.lock. Holding the
+                    # lock shouldn't be necessary either.
                     del self.asyncio_waiting_data[response.req_id]
             except Exception:
                 logger.exception("Callback error:")
@@ -215,6 +215,7 @@ class DataClient:
         Returns True if the error can be recovered from, False otherwise.
         """
         if not self.client_worker._can_reconnect(e):
+
             logger.error("Unrecoverable error in data channel.")
             logger.debug(e)
             return False
