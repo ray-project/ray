@@ -165,7 +165,8 @@ def ray_start_10_cpus(request):
 
 @contextmanager
 def _ray_start_cluster(**kwargs):
-    if cluster_not_supported:
+    cluster_not_supported_ = kwargs.get("skip_cluster", cluster_not_supported)
+    if cluster_not_supported_:
         pytest.skip("Cluster not supported")
     init_kwargs = get_default_fixture_ray_kwargs()
     num_nodes = 0
@@ -201,6 +202,7 @@ def _ray_start_cluster(**kwargs):
 @pytest.fixture
 def ray_start_cluster(request):
     param = getattr(request, "param", {})
+    param["skip_cluster"] = False
     with _ray_start_cluster(**param) as res:
         yield res
 
