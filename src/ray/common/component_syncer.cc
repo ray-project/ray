@@ -3,6 +3,7 @@
 #include <type_traits>
 
 #include "ray/util/container_util.h"
+#include "ray/common/asio/periodical_runner.h"
 
 namespace ray {
 namespace syncing {
@@ -12,7 +13,24 @@ RaySyncer::RaySyncer(std::string node_id, instrumented_io_context &io_context)
     : node_id_(std::move(node_id)),
       reporters_({}),
       receivers_({}),
-      io_context_(io_context) {}
+      io_context_(io_context), timer_(io_context) {
+
+  timer_.RunFnPeriodically(
+      [this]() {
+        const auto& local_view = cluster_view_[GetNodeId()];
+        for(size_t i = 0; i < kComponentArraySize; ++i) {
+          auto reporter = reporters_[i];
+          if(reporter != nullptr) {
+            auto version = local_view[i] ? local_view[i]->version() : 0;
+            auto update = reporter->Snapshot(version);
+            if(update) {
+              Update(*update);
+            }
+          }
+        }
+      },
+      100);
+}
 
 void RaySyncer::ConnectTo(std::shared_ptr<grpc::Channel> channel) {
   // We don't allow connect to new leader.

@@ -2,6 +2,7 @@
 #include <grpcpp/server.h>
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "src/ray/protobuf/syncer.grpc.pb.h"
@@ -51,7 +52,7 @@ class RaySyncer {
   }
 
   void Update(RaySyncMessage message) {
-    auto &current_message = cluster_view_[message.component_id()][message.node_id()];
+    auto &current_message = cluster_view_[message.node_id()][message.component_id()];
     if (current_message && current_message->version() >= message.version()) {
       // We've already got the newer messages. Skip this.
       return;
@@ -79,7 +80,7 @@ class RaySyncer {
   std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> leader_stub_;
   std::unique_ptr<SyncClientReactor> leader_;
 
-  Array<absl::flat_hash_map<std::string, std::shared_ptr<RaySyncMessage>>> cluster_view_;
+  absl::flat_hash_map<std::string, Array<std::shared_ptr<RaySyncMessage>>> cluster_view_;
 
   // Manage connections
   absl::flat_hash_map<std::string, std::unique_ptr<SyncServerReactor>> followers_;
@@ -88,6 +89,7 @@ class RaySyncer {
   std::array<const Reporter *, kComponentArraySize> reporters_;
   std::array<Receiver *, kComponentArraySize> receivers_;
   instrumented_io_context &io_context_;
+  ray::PeriodicalRunner timer_;
 };
 
 

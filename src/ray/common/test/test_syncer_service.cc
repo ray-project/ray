@@ -34,6 +34,9 @@ class LocalNode : public Reporter {
   }
 
   std::optional<RaySyncMessage> Snapshot(uint64_t current_version) const override {
+    if(current_version > version_) {
+      return std::nullopt;
+    }
     ray::rpc::syncer::RaySyncMessage msg;
     msg.set_message_type(ray::rpc::syncer::RaySyncMessageType::SNAPSHOT);
     msg.set_component_id(ray::rpc::syncer::RayComponentId::RESOURCE_MANAGER);
@@ -45,7 +48,7 @@ class LocalNode : public Reporter {
   }
 
  private:
-  int version_ = 0;
+  uint64_t version_ = 1;
   int state_ = 0;
   const std::string node_id_;
   ray::PeriodicalRunner timer_;
