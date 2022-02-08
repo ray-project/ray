@@ -122,7 +122,7 @@ class A3CTrainer(Trainer):
                 remote_requests_in_flight=self.remote_requests_in_flight,
                 actors=self.workers.remote_workers(),
                 ray_wait_timeout_s=0.0,
-                max_remote_requests_in_flight_per_actor=2,
+                max_remote_requests_in_flight_per_actor=1,
                 remote_fn=sample_and_compute_grads,
             )
 
@@ -135,6 +135,7 @@ class A3CTrainer(Trainer):
         for worker, result in async_results.items():
             # Apply gradients to local worker.
             with self._timers[APPLY_GRADS_TIMER]:
+                print("Calling local-worker's `apply_gradients()` ...")
                 local_worker.apply_gradients(result["grads"])
             self._timers[APPLY_GRADS_TIMER].push_units_processed(result["agent_steps"])
 
