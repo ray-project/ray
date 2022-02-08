@@ -253,9 +253,10 @@ class Dataset(Generic[T]):
                 # bug where we include the entire base view on serialization.
                 view = block.slice(start, end, copy=batch_size is not None)
                 if batch_format == "native":
-                    # Always promote Arrow blocks to pandas for consistency.
-                    if isinstance(view, pa.Table) or isinstance(view, bytes):
-                        view = BlockAccessor.for_block(view).to_pandas()
+                    if context.enable_pandas_block:
+                        # Always promote Arrow blocks to pandas for consistency.
+                        if isinstance(view, pa.Table) or isinstance(view, bytes):
+                            view = BlockAccessor.for_block(view).to_pandas()
                 elif batch_format == "pandas":
                     view = BlockAccessor.for_block(view).to_pandas()
                 elif batch_format == "pyarrow":
@@ -1896,12 +1897,14 @@ class Dataset(Generic[T]):
         time_start = time.perf_counter()
 
         def format_batch(batch: Block, format: str) -> BatchType:
+            context = DatasetContext.get_current()
             if batch_format == "native":
-                # Always promote Arrow blocks to pandas for consistency, since
-                # we lazily convert pandas->Arrow internally for efficiency.
-                if isinstance(batch, pa.Table) or isinstance(batch, bytes):
-                    batch = BlockAccessor.for_block(batch)
-                    batch = batch.to_pandas()
+                if context.enable_pandas_block:
+                    # Always promote Arrow blocks to pandas for consistency, since
+                    # we lazily convert pandas->Arrow internally for efficiency.
+                    if isinstance(batch, pa.Table) or isinstance(batch, bytes):
+                        batch = BlockAccessor.for_block(batch)
+                        batch = batch.to_pandas()
                 return batch
             elif batch_format == "pandas":
                 batch = BlockAccessor.for_block(batch)
