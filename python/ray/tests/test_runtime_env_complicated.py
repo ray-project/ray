@@ -935,25 +935,6 @@ def test_runtime_env_override(call_ray_start):
         ray.shutdown()
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
-def test_runtime_env_logging_to_driver(ray_start_regular_shared, log_pubsub):
-    @ray.remote(runtime_env={"pip": [f"requests=={REQUEST_VERSIONS[0]}"]})
-    def func():
-        pass
-
-    ray.get(func.remote())
-
-    # Check the stderr from the worker.
-    def matcher(log_batch):
-        return log_batch["pid"] == "runtime_env"
-
-    match = get_log_batch(log_pubsub, 1, timeout=5, matcher=matcher)
-    assert len(match) > 0
-
-
 if __name__ == "__main__":
     import sys
 
