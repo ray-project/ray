@@ -6,7 +6,6 @@ import ray
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T
 from ray.data.impl.progress_bar import ProgressBar, set_progress_bars
-from ray.types import ObjectRef
 
 if TYPE_CHECKING:
     from ray.data.dataset_pipeline import DatasetPipeline
@@ -23,13 +22,16 @@ def pipeline_stage(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
 class PipelineExecutor:
     def __init__(self, pipeline: "DatasetPipeline[T]"):
         self._pipeline: "DatasetPipeline[T]" = pipeline
-        self._stages: List[concurrent.futures.Futre[Dataset[
-            Any]]] = [None] * (len(self._pipeline._stages) + 1)
+        self._stages: List[concurrent.futures.Future[Dataset[Any]]] = [None] * (
+            len(self._pipeline._stages) + 1
+        )
         self._iter = iter(self._pipeline._base_iterable)
         self._pool = concurrent.futures.ThreadPoolExecutor(
-            max_workers=len(self._stages))
+            max_workers=len(self._stages)
+        )
         self._stages[0] = self._pool.submit(
-            lambda: pipeline_stage(next(self._iter)))
+            lambda n: pipeline_stage(n), next(self._iter)
+        )
 
         if self._pipeline._length and self._pipeline._length != float("inf"):
             length = self._pipeline._length
@@ -78,15 +80,18 @@ class PipelineExecutor:
                 if is_last:
                     output = result
                 else:
-                    fn = self._pipeline._stages[i]
                     self._stages[i + 1] = self._pool.submit(
-                        lambda: pipeline_stage(lambda: fn(result)))
+                        lambda r, fn: pipeline_stage(lambda: fn(r)),
+                        result,
+                        self._pipeline._stages[i],
+                    )
 
             # Pull a new element for the initial slot if possible.
             if self._stages[0] is None:
                 try:
                     self._stages[0] = self._pool.submit(
-                        lambda: pipeline_stage(next(self._iter)))
+                        lambda n: pipeline_stage(n), next(self._iter)
+                    )
                 except StopIteration:
                     pass
 
