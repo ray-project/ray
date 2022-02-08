@@ -120,11 +120,13 @@ class PipProcessor:
         actual_version, actual_path = _get_ray_version_and_path()
         if actual_version != version or actual_path != path:
             raise RuntimeError(
-                "Change ray version is not allowed: \n"
+                "Changing the ray version is not allowed: \n"
                 f"  current version: {actual_version}, "
                 f"current path: {actual_path}\n"
                 f"  expect version: {version}, "
-                f"expect path: {path}"
+                f"expect path: {path}\n"
+                "Please ensure the dependencies in the runtime_env pip field "
+                "do not install a different version of Ray."
             )
 
     @classmethod
