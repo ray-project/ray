@@ -22,7 +22,6 @@ from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
-    get_log_batch,
     chdir,
 )
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
