@@ -6,8 +6,7 @@ import numpy as np
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.dreamer.dreamer_torch_policy import DreamerTorchPolicy
 from ray.rllib.agents.trainer import Trainer
-from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    _get_shared_metrics
+from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.agents.dreamer.dreamer_model import DreamerModel
@@ -129,7 +128,7 @@ class EpisodicBuffer(object):
                 continue
             available = episode.count - self.length
             index = int(random.randint(0, available))
-            episodes_buffer.append(episode[index:index + self.length])
+            episodes_buffer.append(episode[index : index + self.length])
 
         return SampleBatch.concat_samples(episodes_buffer)
 
@@ -139,8 +138,9 @@ def total_sampled_timesteps(worker):
 
 
 class DreamerIteration:
-    def __init__(self, worker, episode_buffer, dreamer_train_iters, batch_size,
-                 act_repeat):
+    def __init__(
+        self, worker, episode_buffer, dreamer_train_iters, batch_size, act_repeat
+    ):
         self.worker = worker
         self.episode_buffer = episode_buffer
         self.dreamer_train_iters = dreamer_train_iters
@@ -218,8 +218,9 @@ class DREAMERTrainer(Trainer):
     @staticmethod
     @override(Trainer)
     def execution_plan(workers, config, **kwargs):
-        assert len(kwargs) == 0, (
-            "Dreamer execution_plan does NOT take any additional parameters")
+        assert (
+            len(kwargs) == 0
+        ), "Dreamer execution_plan does NOT take any additional parameters"
 
         # Special replay buffer for Dreamer agent.
         episode_buffer = EpisodicBuffer(length=config["batch_length"])
@@ -227,8 +228,7 @@ class DREAMERTrainer(Trainer):
         local_worker = workers.local_worker()
 
         # Prefill episode buffer with initial exploration (uniform sampling)
-        while total_sampled_timesteps(
-                local_worker) < config["prefill_timesteps"]:
+        while total_sampled_timesteps(local_worker) < config["prefill_timesteps"]:
             samples = local_worker.sample()
             episode_buffer.add(samples)
 
@@ -238,6 +238,12 @@ class DREAMERTrainer(Trainer):
 
         rollouts = ParallelRollouts(workers)
         rollouts = rollouts.for_each(
-            DreamerIteration(local_worker, episode_buffer, dreamer_train_iters,
-                             batch_size, act_repeat))
+            DreamerIteration(
+                local_worker,
+                episode_buffer,
+                dreamer_train_iters,
+                batch_size,
+                act_repeat,
+            )
+        )
         return rollouts

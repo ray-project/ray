@@ -35,9 +35,21 @@
     - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=learning_tests_continuous,-fake_gpus,-torch_only,-multi_gpu
+      --test_tag_filters=learning_tests_continuous,-fake_gpus,-torch_only,-multi_gpu,-gpu,-learning_tests_continuous_tf2_eager_off_policy
       --test_arg=--framework=tf2
       rllib/...
+
+- label: ":brain: RLlib: Learning cont. actions TF2-eager-tracing Off Policy (from rllib/tuned_examples/*.yaml)"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=learning_tests_continuous_tf2_eager_off_policy,-fake_gpus,-torch_only,-multi_gpu,-gpu
+      --test_arg=--framework=tf2
+      rllib/...
+
 - label: ":brain: RLlib: Learning discr. actions TF1-static-graph (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:

@@ -19,8 +19,12 @@ from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.tf_utils import get_placeholder
-from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, \
-    TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import (
+    LocalOptimizer,
+    ModelGradients,
+    TensorType,
+    TrainerConfigDict,
+)
 
 tf1, tf, tfv = try_import_tf()
 
@@ -41,36 +45,44 @@ class DynamicTFPolicy(TFPolicy):
 
     @DeveloperAPI
     def __init__(
-            self,
-            obs_space: gym.spaces.Space,
-            action_space: gym.spaces.Space,
-            config: TrainerConfigDict,
-            loss_fn: Callable[[
-                Policy, ModelV2, Type[TFActionDistribution], SampleBatch
-            ], TensorType],
-            *,
-            stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
-                str, TensorType]]] = None,
-            grad_stats_fn: Optional[Callable[[
-                Policy, SampleBatch, ModelGradients
-            ], Dict[str, TensorType]]] = None,
-            before_loss_init: Optional[Callable[[
-                Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
-            ], None]] = None,
-            make_model: Optional[Callable[[
-                Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
-            ], ModelV2]] = None,
-            action_sampler_fn: Optional[Callable[[
-                TensorType, List[TensorType]
-            ], Tuple[TensorType, TensorType]]] = None,
-            action_distribution_fn: Optional[Callable[[
-                Policy, ModelV2, TensorType, TensorType, TensorType
-            ], Tuple[TensorType, type, List[TensorType]]]] = None,
-            existing_inputs: Optional[Dict[str, "tf1.placeholder"]] = None,
-            existing_model: Optional[ModelV2] = None,
-            get_batch_divisibility_req: Optional[Callable[[Policy],
-                                                          int]] = None,
-            obs_include_prev_action_reward=DEPRECATED_VALUE):
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        config: TrainerConfigDict,
+        loss_fn: Callable[
+            [Policy, ModelV2, Type[TFActionDistribution], SampleBatch], TensorType
+        ],
+        *,
+        stats_fn: Optional[
+            Callable[[Policy, SampleBatch], Dict[str, TensorType]]
+        ] = None,
+        grad_stats_fn: Optional[
+            Callable[[Policy, SampleBatch, ModelGradients], Dict[str, TensorType]]
+        ] = None,
+        before_loss_init: Optional[
+            Callable[
+                [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], None
+            ]
+        ] = None,
+        make_model: Optional[
+            Callable[
+                [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], ModelV2
+            ]
+        ] = None,
+        action_sampler_fn: Optional[
+            Callable[[TensorType, List[TensorType]], Tuple[TensorType, TensorType]]
+        ] = None,
+        action_distribution_fn: Optional[
+            Callable[
+                [Policy, ModelV2, TensorType, TensorType, TensorType],
+                Tuple[TensorType, type, List[TensorType]],
+            ]
+        ] = None,
+        existing_inputs: Optional[Dict[str, "tf1.placeholder"]] = None,
+        existing_model: Optional[ModelV2] = None,
+        get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None,
+        obs_include_prev_action_reward=DEPRECATED_VALUE,
+    ):
         """Initializes a DynamicTFPolicy instance.
 
         Initialization of this class occurs in two phases and defines the
@@ -150,8 +162,7 @@ class DynamicTFPolicy(TFPolicy):
                 assume a value of 1.
         """
         if obs_include_prev_action_reward != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="obs_include_prev_action_reward", error=False)
+            deprecation_warning(old="obs_include_prev_action_reward", error=False)
         self.observation_space = obs_space
         self.action_space = action_space
         self.config = config
@@ -167,10 +178,12 @@ class DynamicTFPolicy(TFPolicy):
             if not make_model:
                 raise ValueError(
                     "`make_model` is required if `action_sampler_fn` OR "
-                    "`action_distribution_fn` is given")
+                    "`action_distribution_fn` is given"
+                )
         else:
             dist_class, logit_dim = ModelCatalog.get_action_dist(
-                action_space, self.config["model"])
+                action_space, self.config["model"]
+            )
 
         # Setup self.model.
         if existing_model:
@@ -187,15 +200,15 @@ class DynamicTFPolicy(TFPolicy):
                 action_space=action_space,
                 num_outputs=logit_dim,
                 model_config=self.config["model"],
-                framework="tf")
+                framework="tf",
+            )
         # Auto-update model's inference view requirements, if recurrent.
         self._update_model_view_requirements_from_init_state()
 
         # Input placeholders already given -> Use these.
         if existing_inputs:
             self._state_inputs = [
-                v for k, v in existing_inputs.items()
-                if k.startswith("state_in_")
+                v for k, v in existing_inputs.items() if k.startswith("state_in_")
             ]
             # Placeholder for RNN time-chunk valid lengths.
             if self._state_inputs:
@@ -207,13 +220,15 @@ class DynamicTFPolicy(TFPolicy):
                     space=vr.space,
                     time_axis=not isinstance(vr.shift, int),
                     name=k,
-                ) for k, vr in self.model.view_requirements.items()
+                )
+                for k, vr in self.model.view_requirements.items()
                 if k.startswith("state_in_")
             ]
             # Placeholder for RNN time-chunk valid lengths.
             if self._state_inputs:
                 self._seq_lens = tf1.placeholder(
-                    dtype=tf.int32, shape=[None], name="seq_lens")
+                    dtype=tf.int32, shape=[None], name="seq_lens"
+                )
 
         # Use default settings.
         # Add NEXT_OBS, STATE_IN_0.., and others.
@@ -228,33 +243,37 @@ class DynamicTFPolicy(TFPolicy):
         if self._is_tower:
             timestep = existing_inputs["timestep"]
             explore = False
-            self._input_dict, self._dummy_batch = \
-                self._get_input_dict_and_dummy_batch(
-                    self.view_requirements, existing_inputs)
+            self._input_dict, self._dummy_batch = self._get_input_dict_and_dummy_batch(
+                self.view_requirements, existing_inputs
+            )
         else:
             if not self.config.get("_disable_action_flattening"):
                 action_ph = ModelCatalog.get_action_placeholder(action_space)
                 prev_action_ph = {}
                 if SampleBatch.PREV_ACTIONS not in self.view_requirements:
                     prev_action_ph = {
-                        SampleBatch.PREV_ACTIONS: ModelCatalog.
-                        get_action_placeholder(action_space, "prev_action")
+                        SampleBatch.PREV_ACTIONS: ModelCatalog.get_action_placeholder(
+                            action_space, "prev_action"
+                        )
                     }
-                self._input_dict, self._dummy_batch = \
-                    self._get_input_dict_and_dummy_batch(
-                        self.view_requirements,
-                        dict({SampleBatch.ACTIONS: action_ph},
-                             **prev_action_ph))
+                (
+                    self._input_dict,
+                    self._dummy_batch,
+                ) = self._get_input_dict_and_dummy_batch(
+                    self.view_requirements,
+                    dict({SampleBatch.ACTIONS: action_ph}, **prev_action_ph),
+                )
             else:
-                self._input_dict, self._dummy_batch = \
-                    self._get_input_dict_and_dummy_batch(
-                        self.view_requirements, {})
+                (
+                    self._input_dict,
+                    self._dummy_batch,
+                ) = self._get_input_dict_and_dummy_batch(self.view_requirements, {})
             # Placeholder for (sampling steps) timestep (int).
             timestep = tf1.placeholder_with_default(
-                tf.zeros((), dtype=tf.int64), (), name="timestep")
+                tf.zeros((), dtype=tf.int64), (), name="timestep"
+            )
             # Placeholder for `is_exploring` flag.
-            explore = tf1.placeholder_with_default(
-                True, (), name="is_exploring")
+            explore = tf1.placeholder_with_default(True, (), name="is_exploring")
 
         # Placeholder for `is_training` flag.
         self._input_dict.set_training(self._get_is_training_placeholder())
@@ -278,12 +297,11 @@ class DynamicTFPolicy(TFPolicy):
                     obs_batch=self._input_dict[SampleBatch.CUR_OBS],
                     state_batches=self._state_inputs,
                     seq_lens=self._seq_lens,
-                    prev_action_batch=self._input_dict.get(
-                        SampleBatch.PREV_ACTIONS),
-                    prev_reward_batch=self._input_dict.get(
-                        SampleBatch.PREV_REWARDS),
+                    prev_action_batch=self._input_dict.get(SampleBatch.PREV_ACTIONS),
+                    prev_reward_batch=self._input_dict.get(SampleBatch.PREV_REWARDS),
                     explore=explore,
-                    is_training=self._input_dict.is_training)
+                    is_training=self._input_dict.is_training,
+                )
             # Distribution generation is customized, e.g., DQN, DDPG.
             else:
                 if action_distribution_fn:
@@ -292,33 +310,42 @@ class DynamicTFPolicy(TFPolicy):
                     # state_batches and seq_lens.
                     in_dict = self._input_dict
                     try:
-                        dist_inputs, dist_class, self._state_out = \
-                            action_distribution_fn(
-                                self,
-                                self.model,
-                                input_dict=in_dict,
-                                state_batches=self._state_inputs,
-                                seq_lens=self._seq_lens,
-                                explore=explore,
-                                timestep=timestep,
-                                is_training=in_dict.is_training)
+                        (
+                            dist_inputs,
+                            dist_class,
+                            self._state_out,
+                        ) = action_distribution_fn(
+                            self,
+                            self.model,
+                            input_dict=in_dict,
+                            state_batches=self._state_inputs,
+                            seq_lens=self._seq_lens,
+                            explore=explore,
+                            timestep=timestep,
+                            is_training=in_dict.is_training,
+                        )
                     # Trying the old way (to stay backward compatible).
                     # TODO: Remove in future.
                     except TypeError as e:
-                        if "positional argument" in e.args[0] or \
-                                "unexpected keyword argument" in e.args[0]:
-                            dist_inputs, dist_class, self._state_out = \
-                                action_distribution_fn(
-                                    self, self.model,
-                                    obs_batch=in_dict[SampleBatch.CUR_OBS],
-                                    state_batches=self._state_inputs,
-                                    seq_lens=self._seq_lens,
-                                    prev_action_batch=in_dict.get(
-                                        SampleBatch.PREV_ACTIONS),
-                                    prev_reward_batch=in_dict.get(
-                                        SampleBatch.PREV_REWARDS),
-                                    explore=explore,
-                                    is_training=in_dict.is_training)
+                        if (
+                            "positional argument" in e.args[0]
+                            or "unexpected keyword argument" in e.args[0]
+                        ):
+                            (
+                                dist_inputs,
+                                dist_class,
+                                self._state_out,
+                            ) = action_distribution_fn(
+                                self,
+                                self.model,
+                                obs_batch=in_dict[SampleBatch.CUR_OBS],
+                                state_batches=self._state_inputs,
+                                seq_lens=self._seq_lens,
+                                prev_action_batch=in_dict.get(SampleBatch.PREV_ACTIONS),
+                                prev_reward_batch=in_dict.get(SampleBatch.PREV_REWARDS),
+                                explore=explore,
+                                is_training=in_dict.is_training,
+                            )
                         else:
                             raise e
 
@@ -326,44 +353,52 @@ class DynamicTFPolicy(TFPolicy):
                 # Pass through model. E.g., PG, PPO.
                 else:
                     if isinstance(self.model, tf.keras.Model):
-                        dist_inputs, self._state_out, \
-                            extra_action_fetches = \
-                            self.model(self._input_dict)
+                        dist_inputs, self._state_out, extra_action_fetches = self.model(
+                            self._input_dict
+                        )
                     else:
-                        dist_inputs, self._state_out = self.model(
-                            self._input_dict)
+                        dist_inputs, self._state_out = self.model(self._input_dict)
 
                 action_dist = dist_class(dist_inputs, self.model)
 
                 # Using exploration to get final action (e.g. via sampling).
-                sampled_action, sampled_action_logp = \
-                    self.exploration.get_exploration_action(
-                        action_distribution=action_dist,
-                        timestep=timestep,
-                        explore=explore)
+                (
+                    sampled_action,
+                    sampled_action_logp,
+                ) = self.exploration.get_exploration_action(
+                    action_distribution=action_dist, timestep=timestep, explore=explore
+                )
 
         if dist_inputs is not None:
             extra_action_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
 
         if sampled_action_logp is not None:
             extra_action_fetches[SampleBatch.ACTION_LOGP] = sampled_action_logp
-            extra_action_fetches[SampleBatch.ACTION_PROB] = \
-                tf.exp(tf.cast(sampled_action_logp, tf.float32))
+            extra_action_fetches[SampleBatch.ACTION_PROB] = tf.exp(
+                tf.cast(sampled_action_logp, tf.float32)
+            )
 
         # Phase 1 init.
         sess = tf1.get_default_session() or tf1.Session(
-            config=tf1.ConfigProto(**self.config["tf_session_args"]))
+            config=tf1.ConfigProto(**self.config["tf_session_args"])
+        )
 
-        batch_divisibility_req = get_batch_divisibility_req(self) if \
-            callable(get_batch_divisibility_req) else \
-            (get_batch_divisibility_req or 1)
+        batch_divisibility_req = (
+            get_batch_divisibility_req(self)
+            if callable(get_batch_divisibility_req)
+            else (get_batch_divisibility_req or 1)
+        )
 
-        prev_action_input = self._input_dict[SampleBatch.PREV_ACTIONS] if \
-            SampleBatch.PREV_ACTIONS in self._input_dict.accessed_keys \
+        prev_action_input = (
+            self._input_dict[SampleBatch.PREV_ACTIONS]
+            if SampleBatch.PREV_ACTIONS in self._input_dict.accessed_keys
             else None
-        prev_reward_input = self._input_dict[SampleBatch.PREV_REWARDS] if \
-            SampleBatch.PREV_REWARDS in self._input_dict.accessed_keys \
+        )
+        prev_reward_input = (
+            self._input_dict[SampleBatch.PREV_REWARDS]
+            if SampleBatch.PREV_REWARDS in self._input_dict.accessed_keys
             else None
+        )
 
         super().__init__(
             observation_space=obs_space,
@@ -387,7 +422,8 @@ class DynamicTFPolicy(TFPolicy):
             max_seq_len=config["model"]["max_seq_len"],
             batch_divisibility_req=batch_divisibility_req,
             explore=explore,
-            timestep=timestep)
+            timestep=timestep,
+        )
 
         # Phase 2 init.
         if before_loss_init is not None:
@@ -399,8 +435,7 @@ class DynamicTFPolicy(TFPolicy):
 
         # Loss initialization and model/postprocessing test calls.
         if not self._is_tower:
-            self._initialize_loss_from_dummy_batch(
-                auto_remove_unneeded_view_reqs=True)
+            self._initialize_loss_from_dummy_batch(auto_remove_unneeded_view_reqs=True)
 
             # Create MultiGPUTowerStacks, if we have at least one actual
             # GPU or >1 CPUs (fake GPUs).
@@ -411,8 +446,8 @@ class DynamicTFPolicy(TFPolicy):
                 # created.
                 with tf1.variable_scope("", reuse=tf1.AUTO_REUSE):
                     self.multi_gpu_tower_stacks = [
-                        TFMultiGPUTowerStack(policy=self) for i in range(
-                            self.config.get("num_multi_gpu_tower_stacks", 1))
+                        TFMultiGPUTowerStack(policy=self)
+                        for i in range(self.config.get("num_multi_gpu_tower_stacks", 1))
                     ]
 
             # Initialize again after loss and tower init.
@@ -420,33 +455,42 @@ class DynamicTFPolicy(TFPolicy):
 
     @override(TFPolicy)
     @DeveloperAPI
-    def copy(self,
-             existing_inputs: List[Tuple[str, "tf1.placeholder"]]) -> TFPolicy:
+    def copy(self, existing_inputs: List[Tuple[str, "tf1.placeholder"]]) -> TFPolicy:
         """Creates a copy of self using existing input placeholders."""
 
         # Note that there might be RNN state inputs at the end of the list
         if len(self._loss_input_dict) != len(existing_inputs):
-            raise ValueError("Tensor list mismatch", self._loss_input_dict,
-                             self._state_inputs, existing_inputs)
+            raise ValueError(
+                "Tensor list mismatch",
+                self._loss_input_dict,
+                self._state_inputs,
+                existing_inputs,
+            )
         for i, (k, v) in enumerate(self._loss_input_dict_no_rnn.items()):
             if v.shape.as_list() != existing_inputs[i].shape.as_list():
-                raise ValueError("Tensor shape mismatch", i, k, v.shape,
-                                 existing_inputs[i].shape)
+                raise ValueError(
+                    "Tensor shape mismatch", i, k, v.shape, existing_inputs[i].shape
+                )
         # By convention, the loss inputs are followed by state inputs and then
         # the seq len tensor.
         rnn_inputs = []
         for i in range(len(self._state_inputs)):
             rnn_inputs.append(
-                ("state_in_{}".format(i),
-                 existing_inputs[len(self._loss_input_dict_no_rnn) + i]))
+                (
+                    "state_in_{}".format(i),
+                    existing_inputs[len(self._loss_input_dict_no_rnn) + i],
+                )
+            )
         if rnn_inputs:
             rnn_inputs.append((SampleBatch.SEQ_LENS, existing_inputs[-1]))
         input_dict = OrderedDict(
-            [("is_exploring", self._is_exploring), ("timestep",
-                                                    self._timestep)] +
-            [(k, existing_inputs[i])
-             for i, k in enumerate(self._loss_input_dict_no_rnn.keys())] +
-            rnn_inputs)
+            [("is_exploring", self._is_exploring), ("timestep", self._timestep)]
+            + [
+                (k, existing_inputs[i])
+                for i, k in enumerate(self._loss_input_dict_no_rnn.keys())
+            ]
+            + rnn_inputs
+        )
 
         instance = self.__class__(
             self.observation_space,
@@ -459,7 +503,8 @@ class DynamicTFPolicy(TFPolicy):
                 # `policy.target_model` now.
                 ("target_q_model", getattr(self, "target_q_model", None)),
                 ("target_model", getattr(self, "target_model", None)),
-            ])
+            ],
+        )
 
         instance._loss_input_dict = input_dict
         losses = instance._do_loss_init(SampleBatch(input_dict))
@@ -471,7 +516,8 @@ class DynamicTFPolicy(TFPolicy):
         TFPolicy._initialize_loss(instance, losses, loss_inputs)
         if instance._grad_stats_fn:
             instance._stats_fetches.update(
-                instance._grad_stats_fn(instance, input_dict, instance._grads))
+                instance._grad_stats_fn(instance, input_dict, instance._grads)
+            )
         return instance
 
     @override(Policy)
@@ -485,9 +531,9 @@ class DynamicTFPolicy(TFPolicy):
     @override(Policy)
     @DeveloperAPI
     def load_batch_into_buffer(
-            self,
-            batch: SampleBatch,
-            buffer_index: int = 0,
+        self,
+        batch: SampleBatch,
+        buffer_index: int = 0,
     ) -> int:
         # Set the is_training flag of the batch.
         batch.set_training(True)
@@ -521,8 +567,11 @@ class DynamicTFPolicy(TFPolicy):
         # `self._loaded_single_cpu_batch`.
         if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
             assert buffer_index == 0
-            return len(self._loaded_single_cpu_batch) if \
-                self._loaded_single_cpu_batch is not None else 0
+            return (
+                len(self._loaded_single_cpu_batch)
+                if self._loaded_single_cpu_batch is not None
+                else 0
+            )
 
         return self.multi_gpu_tower_stacks[buffer_index].num_tuples_loaded
 
@@ -536,23 +585,26 @@ class DynamicTFPolicy(TFPolicy):
             if self._loaded_single_cpu_batch is None:
                 raise ValueError(
                     "Must call Policy.load_batch_into_buffer() before "
-                    "Policy.learn_on_loaded_batch()!")
+                    "Policy.learn_on_loaded_batch()!"
+                )
             # Get the correct slice of the already loaded batch to use,
             # based on offset and batch size.
-            batch_size = self.config.get("sgd_minibatch_size",
-                                         self.config["train_batch_size"])
+            batch_size = self.config.get(
+                "sgd_minibatch_size", self.config["train_batch_size"]
+            )
             if batch_size >= len(self._loaded_single_cpu_batch):
                 sliced_batch = self._loaded_single_cpu_batch
             else:
                 sliced_batch = self._loaded_single_cpu_batch.slice(
-                    start=offset, end=offset + batch_size)
+                    start=offset, end=offset + batch_size
+                )
             return self.learn_on_batch(sliced_batch)
 
         return self.multi_gpu_tower_stacks[buffer_index].optimize(
-            self.get_session(), offset)
+            self.get_session(), offset
+        )
 
-    def _get_input_dict_and_dummy_batch(self, view_requirements,
-                                        existing_inputs):
+    def _get_input_dict_and_dummy_batch(self, view_requirements, existing_inputs):
         """Creates input_dict and dummy_batch for loss initialization.
 
         Used for managing the Policy's input placeholders and for loss
@@ -590,13 +642,16 @@ class DynamicTFPolicy(TFPolicy):
                     # Create a +time-axis placeholder if the shift is not an
                     # int (range or list of ints).
                     # Do not flatten actions if action flattening disabled.
-                    if self.config.get("_disable_action_flattening") and \
-                            view_col in [SampleBatch.ACTIONS,
-                                         SampleBatch.PREV_ACTIONS]:
+                    if self.config.get("_disable_action_flattening") and view_col in [
+                        SampleBatch.ACTIONS,
+                        SampleBatch.PREV_ACTIONS,
+                    ]:
                         flatten = False
                     # Do not flatten observations if no preprocessor API used.
-                    elif view_col in [SampleBatch.OBS, SampleBatch.NEXT_OBS] \
-                            and self.config["_disable_preprocessor_api"]:
+                    elif (
+                        view_col in [SampleBatch.OBS, SampleBatch.NEXT_OBS]
+                        and self.config["_disable_preprocessor_api"]
+                    ):
                         flatten = False
                     # Flatten everything else.
                     else:
@@ -607,15 +662,14 @@ class DynamicTFPolicy(TFPolicy):
                         time_axis=time_axis,
                         flatten=flatten,
                     )
-        dummy_batch = self._get_dummy_batch_from_view_requirements(
-            batch_size=32)
+        dummy_batch = self._get_dummy_batch_from_view_requirements(batch_size=32)
 
         return SampleBatch(input_dict, seq_lens=self._seq_lens), dummy_batch
 
     @override(Policy)
     def _initialize_loss_from_dummy_batch(
-            self, auto_remove_unneeded_view_reqs: bool = True,
-            stats_fn=None) -> None:
+        self, auto_remove_unneeded_view_reqs: bool = True, stats_fn=None
+    ) -> None:
 
         # Create the optimizer/exploration optimizer here. Some initialization
         # steps (e.g. exploration postprocessing) may need this.
@@ -630,48 +684,48 @@ class DynamicTFPolicy(TFPolicy):
         # Fields that have not been accessed are not needed for action
         # computations -> Tag them as `used_for_compute_actions=False`.
         for key, view_req in self.view_requirements.items():
-            if not key.startswith("state_in_") and \
-                    key not in self._input_dict.accessed_keys:
+            if (
+                not key.startswith("state_in_")
+                and key not in self._input_dict.accessed_keys
+            ):
                 view_req.used_for_compute_actions = False
         for key, value in self._extra_action_fetches.items():
             self._dummy_batch[key] = get_dummy_batch_for_space(
                 gym.spaces.Box(
-                    -1.0,
-                    1.0,
-                    shape=value.shape.as_list()[1:],
-                    dtype=value.dtype.name),
+                    -1.0, 1.0, shape=value.shape.as_list()[1:], dtype=value.dtype.name
+                ),
                 batch_size=len(self._dummy_batch),
             )
             self._input_dict[key] = get_placeholder(value=value, name=key)
             if key not in self.view_requirements:
-                logger.info("Adding extra-action-fetch `{}` to "
-                            "view-reqs.".format(key))
+                logger.info(
+                    "Adding extra-action-fetch `{}` to " "view-reqs.".format(key)
+                )
                 self.view_requirements[key] = ViewRequirement(
                     space=gym.spaces.Box(
-                        -1.0,
-                        1.0,
-                        shape=value.shape[1:],
-                        dtype=value.dtype.name),
+                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype.name
+                    ),
                     used_for_compute_actions=False,
                 )
         dummy_batch = self._dummy_batch
 
         logger.info("Testing `postprocess_trajectory` w/ dummy batch.")
-        self.exploration.postprocess_trajectory(self, dummy_batch,
-                                                self.get_session())
+        self.exploration.postprocess_trajectory(self, dummy_batch, self.get_session())
         _ = self.postprocess_trajectory(dummy_batch)
         # Add new columns automatically to (loss) input_dict.
         for key in dummy_batch.added_keys:
             if key not in self._input_dict:
                 self._input_dict[key] = get_placeholder(
-                    value=dummy_batch[key], name=key)
+                    value=dummy_batch[key], name=key
+                )
             if key not in self.view_requirements:
                 self.view_requirements[key] = ViewRequirement(
                     space=gym.spaces.Box(
                         -1.0,
                         1.0,
                         shape=dummy_batch[key].shape[1:],
-                        dtype=dummy_batch[key].dtype),
+                        dtype=dummy_batch[key].dtype,
+                    ),
                     used_for_compute_actions=False,
                 )
 
@@ -682,28 +736,38 @@ class DynamicTFPolicy(TFPolicy):
 
         if self._state_inputs:
             train_batch[SampleBatch.SEQ_LENS] = self._seq_lens
-            self._loss_input_dict.update({
-                SampleBatch.SEQ_LENS: train_batch[SampleBatch.SEQ_LENS]
-            })
+            self._loss_input_dict.update(
+                {SampleBatch.SEQ_LENS: train_batch[SampleBatch.SEQ_LENS]}
+            )
 
         self._loss_input_dict.update({k: v for k, v in train_batch.items()})
 
         if log_once("loss_init"):
             logger.debug(
                 "Initializing loss function with dummy input:\n\n{}\n".format(
-                    summarize(train_batch)))
+                    summarize(train_batch)
+                )
+            )
 
         losses = self._do_loss_init(train_batch)
 
-        all_accessed_keys = \
-            train_batch.accessed_keys | dummy_batch.accessed_keys | \
-            dummy_batch.added_keys | set(
-                self.model.view_requirements.keys())
+        all_accessed_keys = (
+            train_batch.accessed_keys
+            | dummy_batch.accessed_keys
+            | dummy_batch.added_keys
+            | set(self.model.view_requirements.keys())
+        )
 
-        TFPolicy._initialize_loss(self, losses, [
-            (k, v) for k, v in train_batch.items() if k in all_accessed_keys
-        ] + ([(SampleBatch.SEQ_LENS, train_batch[SampleBatch.SEQ_LENS])]
-             if SampleBatch.SEQ_LENS in train_batch else []))
+        TFPolicy._initialize_loss(
+            self,
+            losses,
+            [(k, v) for k, v in train_batch.items() if k in all_accessed_keys]
+            + (
+                [(SampleBatch.SEQ_LENS, train_batch[SampleBatch.SEQ_LENS])]
+                if SampleBatch.SEQ_LENS in train_batch
+                else []
+            ),
+        )
 
         if "is_training" in self._loss_input_dict:
             del self._loss_input_dict["is_training"]
@@ -712,22 +776,29 @@ class DynamicTFPolicy(TFPolicy):
         # TODO: (sven) rename to simply stats_fn to match eager and torch.
         if self._grad_stats_fn:
             self._stats_fetches.update(
-                self._grad_stats_fn(self, train_batch, self._grads))
+                self._grad_stats_fn(self, train_batch, self._grads)
+            )
 
         # Add new columns automatically to view-reqs.
         if auto_remove_unneeded_view_reqs:
             # Add those needed for postprocessing and training.
-            all_accessed_keys = train_batch.accessed_keys | \
-                                dummy_batch.accessed_keys
+            all_accessed_keys = train_batch.accessed_keys | dummy_batch.accessed_keys
             # Tag those only needed for post-processing (with some exceptions).
             for key in dummy_batch.accessed_keys:
-                if key not in train_batch.accessed_keys and \
-                        key not in self.model.view_requirements and \
-                        key not in [
-                            SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
-                            SampleBatch.UNROLL_ID, SampleBatch.DONES,
-                            SampleBatch.REWARDS, SampleBatch.INFOS,
-                            SampleBatch.OBS_EMBEDS]:
+                if (
+                    key not in train_batch.accessed_keys
+                    and key not in self.model.view_requirements
+                    and key
+                    not in [
+                        SampleBatch.EPS_ID,
+                        SampleBatch.AGENT_INDEX,
+                        SampleBatch.UNROLL_ID,
+                        SampleBatch.DONES,
+                        SampleBatch.REWARDS,
+                        SampleBatch.INFOS,
+                        SampleBatch.OBS_EMBEDS,
+                    ]
+                ):
                     if key in self.view_requirements:
                         self.view_requirements[key].used_for_training = False
                     if key in self._loss_input_dict:
@@ -736,11 +807,19 @@ class DynamicTFPolicy(TFPolicy):
             # by Sampler to properly execute sample collection).
             # Also always leave DONES, REWARDS, and INFOS, no matter what.
             for key in list(self.view_requirements.keys()):
-                if key not in all_accessed_keys and key not in [
-                    SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
-                    SampleBatch.UNROLL_ID, SampleBatch.DONES,
-                    SampleBatch.REWARDS, SampleBatch.INFOS] and \
-                        key not in self.model.view_requirements:
+                if (
+                    key not in all_accessed_keys
+                    and key
+                    not in [
+                        SampleBatch.EPS_ID,
+                        SampleBatch.AGENT_INDEX,
+                        SampleBatch.UNROLL_ID,
+                        SampleBatch.DONES,
+                        SampleBatch.REWARDS,
+                        SampleBatch.INFOS,
+                    ]
+                    and key not in self.model.view_requirements
+                ):
                     # If user deleted this key manually in postprocessing
                     # fn, warn about it and do not remove from
                     # view-requirements.
@@ -750,7 +829,8 @@ class DynamicTFPolicy(TFPolicy):
                             "postprocessing function! RLlib will "
                             "automatically remove non-used items from the "
                             "data stream. Remove the `del` from your "
-                            "postprocessing function.".format(key))
+                            "postprocessing function.".format(key)
+                        )
                     # If we are not writing output to disk, safe to erase
                     # this key to save space in the sample batch.
                     elif self.config["output"] is None:
@@ -762,12 +842,14 @@ class DynamicTFPolicy(TFPolicy):
             # dependencies by view_cols.
             for key in list(self.view_requirements.keys()):
                 vr = self.view_requirements[key]
-                if (vr.data_col is not None
-                        and vr.data_col not in self.view_requirements):
-                    used_for_training = \
-                        vr.data_col in train_batch.accessed_keys
+                if (
+                    vr.data_col is not None
+                    and vr.data_col not in self.view_requirements
+                ):
+                    used_for_training = vr.data_col in train_batch.accessed_keys
                     self.view_requirements[vr.data_col] = ViewRequirement(
-                        space=vr.space, used_for_training=used_for_training)
+                        space=vr.space, used_for_training=used_for_training
+                    )
 
         self._loss_input_dict_no_rnn = {
             k: v
@@ -807,17 +889,17 @@ class TFMultiGPUTowerStack:
     """
 
     def __init__(
-            self,
-            # Deprecated.
-            optimizer=None,
-            devices=None,
-            input_placeholders=None,
-            rnn_inputs=None,
-            max_per_device_batch_size=None,
-            build_graph=None,
-            grad_norm_clipping=None,
-            # Use only `policy` argument from here on.
-            policy: TFPolicy = None,
+        self,
+        # Deprecated.
+        optimizer=None,
+        devices=None,
+        input_placeholders=None,
+        rnn_inputs=None,
+        max_per_device_batch_size=None,
+        build_graph=None,
+        grad_norm_clipping=None,
+        # Use only `policy` argument from here on.
+        policy: TFPolicy = None,
     ):
         """Initializes a TFMultiGPUTowerStack instance.
 
@@ -841,17 +923,16 @@ class TFMultiGPUTowerStack:
             self.policy: TFPolicy = policy
             self.optimizers: List[LocalOptimizer] = self.policy._optimizers
             self.devices = self.policy.devices
-            self.max_per_device_batch_size = \
-                (max_per_device_batch_size or
-                 policy.config.get("sgd_minibatch_size", policy.config.get(
-                     "train_batch_size", 999999))) // len(self.devices)
-            input_placeholders = list(
-                self.policy._loss_input_dict_no_rnn.values())
+            self.max_per_device_batch_size = (
+                max_per_device_batch_size
+                or policy.config.get(
+                    "sgd_minibatch_size", policy.config.get("train_batch_size", 999999)
+                )
+            ) // len(self.devices)
+            input_placeholders = list(self.policy._loss_input_dict_no_rnn.values())
             rnn_inputs = []
             if self.policy._state_inputs:
-                rnn_inputs = self.policy._state_inputs + [
-                    self.policy._seq_lens
-                ]
+                rnn_inputs = self.policy._state_inputs + [self.policy._seq_lens]
             grad_norm_clipping = self.policy.config.get("grad_clip")
             self.policy_copy = self.policy.copy
 
@@ -859,14 +940,16 @@ class TFMultiGPUTowerStack:
         self.loss_inputs = input_placeholders + rnn_inputs
 
         shared_ops = tf1.get_collection(
-            tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
+            tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name
+        )
 
         # Then setup the per-device loss graphs that use the shared weights
         self._batch_index = tf1.placeholder(tf.int32, name="batch_index")
 
         # Dynamic batch size, which may be shrunk if there isn't enough data
         self._per_device_batch_size = tf1.placeholder(
-            tf.int32, name="per_device_batch_size")
+            tf.int32, name="per_device_batch_size"
+        )
         self._loaded_per_device_batch_size = max_per_device_batch_size
 
         # When loading RNN input, we dynamically determine the max seq len
@@ -876,14 +959,18 @@ class TFMultiGPUTowerStack:
         # Split on the CPU in case the data doesn't fit in GPU memory.
         with tf.device("/cpu:0"):
             data_splits = zip(
-                *[tf.split(ph, len(self.devices)) for ph in self.loss_inputs])
+                *[tf.split(ph, len(self.devices)) for ph in self.loss_inputs]
+            )
 
         self._towers = []
         for tower_i, (device, device_placeholders) in enumerate(
-                zip(self.devices, data_splits)):
+            zip(self.devices, data_splits)
+        ):
             self._towers.append(
-                self._setup_device(tower_i, device, device_placeholders,
-                                   len(input_placeholders)))
+                self._setup_device(
+                    tower_i, device, device_placeholders, len(input_placeholders)
+                )
+            )
 
         if self.policy.config["_tf_policy_handles_more_than_one_loss"]:
             avgs = []
@@ -893,8 +980,7 @@ class TFMultiGPUTowerStack:
                     clipped = []
                     for grad, _ in avg:
                         clipped.append(grad)
-                    clipped, _ = tf.clip_by_global_norm(
-                        clipped, grad_norm_clipping)
+                    clipped, _ = tf.clip_by_global_norm(clipped, grad_norm_clipping)
                     for i, (grad, var) in enumerate(avg):
                         avg[i] = (clipped[i], var)
                 avgs.append(avg)
@@ -904,26 +990,26 @@ class TFMultiGPUTowerStack:
             #  will use all the ops found which won't work for DQN / DDPG, but
             #  those aren't supported with multi-gpu right now anyways.
             self._update_ops = tf1.get_collection(
-                tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
+                tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name
+            )
             for op in shared_ops:
                 self._update_ops.remove(op)  # only care about tower update ops
             if self._update_ops:
-                logger.debug("Update ops to run on apply gradient: {}".format(
-                    self._update_ops))
+                logger.debug(
+                    "Update ops to run on apply gradient: {}".format(self._update_ops)
+                )
 
             with tf1.control_dependencies(self._update_ops):
-                self._train_op = tf.group([
-                    o.apply_gradients(a)
-                    for o, a in zip(self.optimizers, avgs)
-                ])
+                self._train_op = tf.group(
+                    [o.apply_gradients(a) for o, a in zip(self.optimizers, avgs)]
+                )
         else:
             avg = average_gradients([t.grads for t in self._towers])
             if grad_norm_clipping:
                 clipped = []
                 for grad, _ in avg:
                     clipped.append(grad)
-                clipped, _ = tf.clip_by_global_norm(clipped,
-                                                    grad_norm_clipping)
+                clipped, _ = tf.clip_by_global_norm(clipped, grad_norm_clipping)
                 for i, (grad, var) in enumerate(avg):
                     avg[i] = (clipped[i], var)
 
@@ -932,12 +1018,14 @@ class TFMultiGPUTowerStack:
             #  will use all the ops found which won't work for DQN / DDPG, but
             #  those aren't supported with multi-gpu right now anyways.
             self._update_ops = tf1.get_collection(
-                tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
+                tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name
+            )
             for op in shared_ops:
                 self._update_ops.remove(op)  # only care about tower update ops
             if self._update_ops:
-                logger.debug("Update ops to run on apply gradient: {}".format(
-                    self._update_ops))
+                logger.debug(
+                    "Update ops to run on apply gradient: {}".format(self._update_ops)
+                )
 
             with tf1.control_dependencies(self._update_ops):
                 self._train_op = self.optimizers[0].apply_gradients(avg)
@@ -964,15 +1052,22 @@ class TFMultiGPUTowerStack:
         if log_once("load_data"):
             logger.info(
                 "Training on concatenated sample batches:\n\n{}\n".format(
-                    summarize({
-                        "placeholders": self.loss_inputs,
-                        "inputs": inputs,
-                        "state_inputs": state_inputs
-                    })))
+                    summarize(
+                        {
+                            "placeholders": self.loss_inputs,
+                            "inputs": inputs,
+                            "state_inputs": state_inputs,
+                        }
+                    )
+                )
+            )
 
         feed_dict = {}
-        assert len(self.loss_inputs) == len(inputs + state_inputs), \
-            (self.loss_inputs, inputs, state_inputs)
+        assert len(self.loss_inputs) == len(inputs + state_inputs), (
+            self.loss_inputs,
+            inputs,
+            state_inputs,
+        )
 
         # Let's suppose we have the following input data, and 2 devices:
         # 1 2 3 4 5 6 7                              <- state inputs shape
@@ -991,48 +1086,63 @@ class TFMultiGPUTowerStack:
             self._loaded_max_seq_len = 1
 
         sequences_per_minibatch = (
-            self.max_per_device_batch_size // self._loaded_max_seq_len * len(
-                self.devices))
+            self.max_per_device_batch_size
+            // self._loaded_max_seq_len
+            * len(self.devices)
+        )
         if sequences_per_minibatch < 1:
             logger.warning(
-                ("Target minibatch size is {}, however the rollout sequence "
-                 "length is {}, hence the minibatch size will be raised to "
-                 "{}.").format(self.max_per_device_batch_size,
-                               self._loaded_max_seq_len,
-                               self._loaded_max_seq_len * len(self.devices)))
+                (
+                    "Target minibatch size is {}, however the rollout sequence "
+                    "length is {}, hence the minibatch size will be raised to "
+                    "{}."
+                ).format(
+                    self.max_per_device_batch_size,
+                    self._loaded_max_seq_len,
+                    self._loaded_max_seq_len * len(self.devices),
+                )
+            )
             sequences_per_minibatch = 1
 
         if len(smallest_array) < sequences_per_minibatch:
             # Dynamically shrink the batch size if insufficient data
             sequences_per_minibatch = make_divisible_by(
-                len(smallest_array), len(self.devices))
+                len(smallest_array), len(self.devices)
+            )
 
         if log_once("data_slicing"):
             logger.info(
-                ("Divided {} rollout sequences, each of length {}, among "
-                 "{} devices.").format(
-                     len(smallest_array), self._loaded_max_seq_len,
-                     len(self.devices)))
+                (
+                    "Divided {} rollout sequences, each of length {}, among "
+                    "{} devices."
+                ).format(
+                    len(smallest_array), self._loaded_max_seq_len, len(self.devices)
+                )
+            )
 
         if sequences_per_minibatch < len(self.devices):
             raise ValueError(
                 "Must load at least 1 tuple sequence per device. Try "
                 "increasing `sgd_minibatch_size` or reducing `max_seq_len` "
-                "to ensure that at least one sequence fits per device.")
-        self._loaded_per_device_batch_size = (sequences_per_minibatch // len(
-            self.devices) * self._loaded_max_seq_len)
+                "to ensure that at least one sequence fits per device."
+            )
+        self._loaded_per_device_batch_size = (
+            sequences_per_minibatch // len(self.devices) * self._loaded_max_seq_len
+        )
 
         if len(state_inputs) > 0:
             # First truncate the RNN state arrays to the sequences_per_minib.
             state_inputs = [
-                make_divisible_by(arr, sequences_per_minibatch)
-                for arr in state_inputs
+                make_divisible_by(arr, sequences_per_minibatch) for arr in state_inputs
             ]
             # Then truncate the data inputs to match
-            inputs = [arr[:len(state_inputs[0]) * seq_len] for arr in inputs]
-            assert len(state_inputs[0]) * seq_len == len(inputs[0]), \
-                (len(state_inputs[0]), sequences_per_minibatch, seq_len,
-                 len(inputs[0]))
+            inputs = [arr[: len(state_inputs[0]) * seq_len] for arr in inputs]
+            assert len(state_inputs[0]) * seq_len == len(inputs[0]), (
+                len(state_inputs[0]),
+                sequences_per_minibatch,
+                seq_len,
+                len(inputs[0]),
+            )
             for ph, arr in zip(self.loss_inputs, inputs + state_inputs):
                 feed_dict[ph] = arr
             truncated_len = len(inputs[0])
@@ -1090,8 +1200,7 @@ class TFMultiGPUTowerStack:
     def get_device_losses(self):
         return [t.loss_graph for t in self._towers]
 
-    def _setup_device(self, tower_i, device, device_input_placeholders,
-                      num_data_in):
+    def _setup_device(self, tower_i, device, device_input_placeholders, num_data_in):
         assert num_data_in <= len(device_input_placeholders)
         with tf.device(device):
             with tf1.name_scope(TOWER_SCOPE_NAME + f"_{tower_i}"):
@@ -1099,10 +1208,8 @@ class TFMultiGPUTowerStack:
                 device_input_slices = []
                 for i, ph in enumerate(device_input_placeholders):
                     current_batch = tf1.Variable(
-                        ph,
-                        trainable=False,
-                        validate_shape=False,
-                        collections=[])
+                        ph, trainable=False, validate_shape=False, collections=[]
+                    )
                     device_input_batches.append(current_batch)
                     if i < num_data_in:
                         scale = self._max_seq_len
@@ -1112,19 +1219,24 @@ class TFMultiGPUTowerStack:
                         granularity = 1
                     current_slice = tf.slice(
                         current_batch,
-                        ([self._batch_index // scale * granularity] +
-                         [0] * len(ph.shape[1:])),
-                        ([self._per_device_batch_size // scale * granularity] +
-                         [-1] * len(ph.shape[1:])))
+                        (
+                            [self._batch_index // scale * granularity]
+                            + [0] * len(ph.shape[1:])
+                        ),
+                        (
+                            [self._per_device_batch_size // scale * granularity]
+                            + [-1] * len(ph.shape[1:])
+                        ),
+                    )
                     current_slice.set_shape(ph.shape)
                     device_input_slices.append(current_slice)
                 graph_obj = self.policy_copy(device_input_slices)
-                device_grads = graph_obj.gradients(self.optimizers,
-                                                   graph_obj._losses)
+                device_grads = graph_obj.gradients(self.optimizers, graph_obj._losses)
             return Tower(
-                tf.group(
-                    *[batch.initializer for batch in device_input_batches]),
-                device_grads, graph_obj)
+                tf.group(*[batch.initializer for batch in device_input_batches]),
+                device_grads,
+                graph_obj,
+            )
 
 
 # Each tower is a copy of the loss graph pinned to a specific device.
@@ -1134,7 +1246,7 @@ Tower = namedtuple("Tower", ["init_op", "grads", "loss_graph"])
 def make_divisible_by(a, n):
     if type(a) is int:
         return a - a % n
-    return a[0:a.shape[0] - a.shape[0] % n]
+    return a[0 : a.shape[0] - a.shape[0] % n]
 
 
 def average_gradients(tower_grads):

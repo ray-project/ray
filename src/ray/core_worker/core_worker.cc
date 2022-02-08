@@ -19,6 +19,7 @@
 #include "boost/fiber/all.hpp"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
@@ -131,7 +132,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   job_config_->ParseFromString(serialized_job_config);
   auto job_serialized_runtime_env =
       job_config_->runtime_env_info().serialized_runtime_env();
-  if (!job_serialized_runtime_env.empty()) {
+  if (!IsRuntimeEnvEmpty(job_serialized_runtime_env)) {
     job_runtime_env_.reset(new rpc::RuntimeEnv());
     RAY_CHECK(google::protobuf::util::JsonStringToMessage(
                   job_config_->runtime_env_info().serialized_runtime_env(),
@@ -370,7 +371,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       std::move(lease_policy), memory_store_, task_manager_, local_raylet_id,
       GetWorkerType(), RayConfig::instance().worker_lease_timeout_milliseconds(),
       actor_creator_, worker_context_.GetCurrentJobID(),
-      RayConfig::instance().max_tasks_in_flight_per_worker(),
       boost::asio::steady_timer(io_service_),
       RayConfig::instance().max_pending_lease_requests_per_scheduling_category());
   auto report_locality_data_callback =
@@ -1466,13 +1466,13 @@ std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(
     std::vector<std::string> *runtime_env_uris) {
   std::shared_ptr<rpc::RuntimeEnv> parent = nullptr;
   if (options_.worker_type == WorkerType::DRIVER) {
-    if (serialized_runtime_env == "" || serialized_runtime_env == "{}") {
+    if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
       *runtime_env_uris = GetUrisFromRuntimeEnv(job_runtime_env_.get());
       return job_config_->runtime_env_info().serialized_runtime_env();
     }
     parent = job_runtime_env_;
   } else {
-    if (serialized_runtime_env == "" || serialized_runtime_env == "{}") {
+    if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
       *runtime_env_uris =
           GetUrisFromRuntimeEnv(worker_context_.GetCurrentRuntimeEnv().get());
       return worker_context_.GetCurrentSerializedRuntimeEnv();

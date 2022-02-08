@@ -299,4 +299,6 @@ class LocalResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
 };
 
+int GetPredefinedResourceIndex(const std::string &resource_name);
+
 }  // end namespace ray

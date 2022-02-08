@@ -11,7 +11,8 @@ from ray.rllib.utils.deprecation import Deprecated
 @Deprecated(
     old="ray.rllib.examples.env.multi_agent.make_multiagent",
     new="ray.rllib.env.multi_agent_env.make_multi_agent",
-    error=False)
+    error=False,
+)
 def make_multiagent(env_name_or_creator):
     return make_multi_agent(env_name_or_creator)
 
@@ -86,8 +87,12 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
     def step(self, action_dict):
         assert len(self.dones) != len(self.agents)
         for i, action in action_dict.items():
-            (self.last_obs[i], self.last_rew[i], self.last_done[i],
-             self.last_info[i]) = self.agents[i].step(action)
+            (
+                self.last_obs[i],
+                self.last_rew[i],
+                self.last_done[i],
+                self.last_info[i],
+            ) = self.agents[i].step(action)
         obs = {self.i: self.last_obs[self.i]}
         rew = {self.i: self.last_rew[self.i]}
         done = {self.i: self.last_done[self.i]}
@@ -199,8 +204,12 @@ class RoundRobinMultiAgent(MultiAgentEnv):
     def step(self, action_dict):
         assert len(self.dones) != len(self.agents)
         for i, action in action_dict.items():
-            (self.last_obs[i], self.last_rew[i], self.last_done[i],
-             self.last_info[i]) = self.agents[i].step(action)
+            (
+                self.last_obs[i],
+                self.last_rew[i],
+                self.last_done[i],
+                self.last_info[i],
+            ) = self.agents[i].step(action)
         obs = {self.i: self.last_obs[self.i]}
         rew = {self.i: self.last_rew[self.i]}
         done = {self.i: self.last_done[self.i]}
@@ -216,5 +225,4 @@ class RoundRobinMultiAgent(MultiAgentEnv):
 MultiAgentCartPole = make_multi_agent("CartPole-v0")
 MultiAgentMountainCar = make_multi_agent("MountainCarContinuous-v0")
 MultiAgentPendulum = make_multi_agent("Pendulum-v1")
-MultiAgentStatelessCartPole = make_multi_agent(
-    lambda config: StatelessCartPole(config))
+MultiAgentStatelessCartPole = make_multi_agent(lambda config: StatelessCartPole(config))

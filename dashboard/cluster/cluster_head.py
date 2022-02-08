@@ -5,9 +5,11 @@ import os
 import aiohttp.web
 
 import ray.new_dashboard.utils as dashboard_utils
-from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
-                                          DEBUG_AUTOSCALING_STATUS_LEGACY,
-                                          DEBUG_AUTOSCALING_ERROR)
+from ray.autoscaler._private.util import (
+    DEBUG_AUTOSCALING_STATUS,
+    DEBUG_AUTOSCALING_STATUS_LEGACY,
+    DEBUG_AUTOSCALING_ERROR,
+)
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
@@ -32,12 +34,12 @@ class ClusterHead(dashboard_utils.DashboardHeadModule):
                 )
             except FileNotFoundError:
                 return dashboard_utils.rest_response(
-                    success=False,
-                    message="Invalid config, could not load YAML.")
+                    success=False, message="Invalid config, could not load YAML."
+                )
 
             payload = {
                 "min_workers": cfg.get("min_workers", "unspecified"),
-                "max_workers": cfg.get("max_workers", "unspecified")
+                "max_workers": cfg.get("max_workers", "unspecified"),
             }
 
             try:
@@ -73,17 +75,21 @@ class ClusterHead(dashboard_utils.DashboardHeadModule):
 
         aioredis_client = self._dashboard_head.aioredis_client
         legacy_status = await aioredis_client.hget(
-            DEBUG_AUTOSCALING_STATUS_LEGACY, "value")
+            DEBUG_AUTOSCALING_STATUS_LEGACY, "value"
+        )
         formatted_status_string = await aioredis_client.hget(
-            DEBUG_AUTOSCALING_STATUS, "value")
-        formatted_status = json.loads(formatted_status_string.decode()
-                                      ) if formatted_status_string else {}
+            DEBUG_AUTOSCALING_STATUS, "value"
+        )
+        formatted_status = (
+            json.loads(formatted_status_string.decode())
+            if formatted_status_string
+            else {}
+        )
         error = await aioredis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
         return dashboard_utils.rest_response(
             success=True,
             message="Got cluster status.",
-            autoscaling_status=legacy_status.decode()
-            if legacy_status else None,
+            autoscaling_status=legacy_status.decode() if legacy_status else None,
             autoscaling_error=error.decode() if error else None,
             cluster_status=formatted_status if formatted_status else None,
         )

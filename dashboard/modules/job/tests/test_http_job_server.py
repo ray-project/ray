@@ -2,18 +2,26 @@ import logging
 from pathlib import Path
 import sys
 import tempfile
+from typing import Optional
 
 import pytest
+from unittest.mock import patch
 
 import ray
-from ray.dashboard.tests.conftest import *  # noqa
-from ray.tests.conftest import _ray_start
-from ray._private.test_utils import (format_web_url, wait_for_condition,
-                                     wait_until_server_available)
 from ray.dashboard.modules.job.common import CURRENT_VERSION, JobStatus
-from ray.dashboard.modules.job.sdk import (ClusterInfo, JobSubmissionClient,
-                                           parse_cluster_info)
-from unittest.mock import patch
+from ray.dashboard.modules.job.sdk import (
+    ClusterInfo,
+    JobSubmissionClient,
+    parse_cluster_info,
+)
+from ray.dashboard.tests.conftest import *  # noqa
+from ray.ray_constants import DEFAULT_DASHBOARD_PORT
+from ray.tests.conftest import _ray_start
+from ray._private.test_utils import (
+    format_web_url,
+    wait_for_condition,
+    wait_until_server_available,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +58,8 @@ def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
 
 
 @pytest.fixture(
-    scope="module",
-    params=["no_working_dir", "local_working_dir", "s3_working_dir"])
+    scope="module", params=["no_working_dir", "local_working_dir", "s3_working_dir"]
+)
 def working_dir_option(request):
     if request.param == "no_working_dir":
         yield {
@@ -81,9 +89,7 @@ def working_dir_option(request):
                 f.write("from test_module.test import run_test\n")
 
             yield {
-                "runtime_env": {
-                    "working_dir": tmp_dir
-                },
+                "runtime_env": {"working_dir": tmp_dir},
                 "entrypoint": "python test.py",
                 "expected_logs": "Hello from test_module!\n",
             }
@@ -104,7 +110,8 @@ def test_submit_job(job_sdk_client, working_dir_option):
 
     job_id = client.submit_job(
         entrypoint=working_dir_option["entrypoint"],
-        runtime_env=working_dir_option["runtime_env"])
+        runtime_env=working_dir_option["runtime_env"],
+    )
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 
@@ -133,7 +140,8 @@ def test_http_bad_request(job_sdk_client):
 def test_invalid_runtime_env(job_sdk_client):
     client = job_sdk_client
     job_id = client.submit_job(
-        entrypoint="echo hello", runtime_env={"working_dir": "s3://not_a_zip"})
+        entrypoint="echo hello", runtime_env={"working_dir": "s3://not_a_zip"}
+    )
 
     wait_for_condition(_check_job_failed, client=client, job_id=job_id)
     status = client.get_job_status(job_id)
@@ -143,12 +151,12 @@ def test_invalid_runtime_env(job_sdk_client):
 def test_runtime_env_setup_failure(job_sdk_client):
     client = job_sdk_client
     job_id = client.submit_job(
-        entrypoint="echo hello",
-        runtime_env={"working_dir": "s3://does_not_exist.zip"})
+        entrypoint="echo hello", runtime_env={"working_dir": "s3://does_not_exist.zip"}
+    )
 
     wait_for_condition(_check_job_failed, client=client, job_id=job_id)
     status = client.get_job_status(job_id)
-    assert "The runtime_env failed to be set up" in status.message
+    assert "Failed to setup runtime environment" in status.message
 
 
 def test_submit_job_with_exception_in_driver(job_sdk_client):
@@ -168,8 +176,8 @@ raise RuntimeError('Intentionally failed.')
             file.write(driver_script)
 
         job_id = client.submit_job(
-            entrypoint="python test_script.py",
-            runtime_env={"working_dir": tmp_dir})
+            entrypoint="python test_script.py", runtime_env={"working_dir": tmp_dir}
+        )
 
         wait_for_condition(_check_job_failed, client=client, job_id=job_id)
         logs = client.get_job_logs(job_id)
@@ -196,8 +204,8 @@ raise RuntimeError('Intentionally failed.')
             file.write(driver_script)
 
         job_id = client.submit_job(
-            entrypoint="python test_script.py",
-            runtime_env={"working_dir": tmp_dir})
+            entrypoint="python test_script.py", runtime_env={"working_dir": tmp_dir}
+        )
         assert client.stop_job(job_id) is True
         wait_for_condition(_check_job_stopped, client=client, job_id=job_id)
 
@@ -206,28 +214,31 @@ def test_job_metadata(job_sdk_client):
     client = job_sdk_client
 
     print_metadata_cmd = (
-        "python -c\""
+        'python -c"'
         "import ray;"
         "ray.init();"
         "job_config=ray.worker.global_worker.core_worker.get_job_config();"
         "print(dict(sorted(job_config.metadata.items())))"
-        "\"")
+        '"'
+    )
 
     job_id = client.submit_job(
-        entrypoint=print_metadata_cmd,
-        metadata={
-            "key1": "val1",
-            "key2": "val2"
-        })
+        entrypoint=print_metadata_cmd, metadata={"key1": "val1", "key2": "val2"}
+    )
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 
-    assert str({
-        "job_name": job_id,
-        "job_submission_id": job_id,
-        "key1": "val1",
-        "key2": "val2"
-    }) in client.get_job_logs(job_id)
+    assert (
+        str(
+            {
+                "job_name": job_id,
+                "job_submission_id": job_id,
+                "key1": "val1",
+                "key2": "val2",
+            }
+        )
+        in client.get_job_logs(job_id)
+    )
 
 
 def test_pass_job_id(job_sdk_client):
@@ -261,19 +272,19 @@ def test_submit_optional_args(job_sdk_client):
         json_data={"entrypoint": "ls"},
     )
 
-    wait_for_condition(
-        _check_job_succeeded, client=client, job_id=r.json()["job_id"])
+    wait_for_condition(_check_job_succeeded, client=client, job_id=r.json()["job_id"])
 
 
 def test_missing_resources(job_sdk_client):
     """Check that 404s are raised for resources that don't exist."""
     client = job_sdk_client
 
-    conditions = [("GET",
-                   "/api/jobs/fake_job_id"), ("GET",
-                                              "/api/jobs/fake_job_id/logs"),
-                  ("POST", "/api/jobs/fake_job_id/stop"),
-                  ("GET", "/api/packages/fake_package_uri")]
+    conditions = [
+        ("GET", "/api/jobs/fake_job_id"),
+        ("GET", "/api/jobs/fake_job_id/logs"),
+        ("POST", "/api/jobs/fake_job_id/stop"),
+        ("GET", "/api/packages/fake_package_uri"),
+    ]
 
     for method, route in conditions:
         assert client._do_request(method, route).status_code == 404
@@ -287,7 +298,7 @@ def test_version_endpoint(job_sdk_client):
     assert r.json() == {
         "version": CURRENT_VERSION,
         "ray_version": ray.__version__,
-        "ray_commit": ray.__commit__
+        "ray_commit": ray.__commit__,
     }
 
 
@@ -306,26 +317,33 @@ def test_request_headers(job_sdk_client):
             cookies=None,
             data=None,
             json={"entrypoint": "ls"},
-            headers={
-                "Connection": "keep-alive",
-                "Authorization": "TOK:<MY_TOKEN>"
-            })
+            headers={"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"},
+        )
 
 
-@pytest.mark.parametrize("address", [
-    "http://127.0.0.1", "https://127.0.0.1", "ray://127.0.0.1",
-    "fake_module://127.0.0.1"
-])
-def test_parse_cluster_info(address: str):
-    if address.startswith("ray"):
+@pytest.mark.parametrize("scheme", ["http", "https", "ray", "fake_module"])
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "fake.dns.name"])
+@pytest.mark.parametrize("port", [None, 8265, 10000])
+def test_parse_cluster_info(scheme: str, host: str, port: Optional[int]):
+    address = f"{scheme}://{host}"
+    if port is not None:
+        address += f":{port}"
+
+    final_port = port if port is not None else DEFAULT_DASHBOARD_PORT
+    if scheme in {"http", "ray"}:
         assert parse_cluster_info(address, False) == ClusterInfo(
-            address="http" + address[address.index("://"):],
+            address=f"http://{host}:{final_port}",
             cookies=None,
             metadata=None,
-            headers=None)
-    elif address.startswith("http") or address.startswith("https"):
+            headers=None,
+        )
+    elif scheme == "https":
         assert parse_cluster_info(address, False) == ClusterInfo(
-            address=address, cookies=None, metadata=None, headers=None)
+            address=f"https://{host}:{final_port}",
+            cookies=None,
+            metadata=None,
+            headers=None,
+        )
     else:
         with pytest.raises(RuntimeError):
             parse_cluster_info(address, False)
@@ -347,8 +365,8 @@ for i in range(100):
             f.write(driver_script)
 
         job_id = client.submit_job(
-            entrypoint="python test_script.py",
-            runtime_env={"working_dir": tmp_dir})
+            entrypoint="python test_script.py", runtime_env={"working_dir": tmp_dir}
+        )
 
         i = 0
         async for lines in client.tail_job_logs(job_id):
