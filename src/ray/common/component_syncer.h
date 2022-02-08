@@ -35,7 +35,6 @@ class NodeSyncContext;
 
 class RaySyncer {
  public:
-
   RaySyncer(std::string node_id, instrumented_io_context &io_context);
 
   // Follower will send its message to leader
@@ -93,8 +92,8 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
  public:
   RaySyncerService(RaySyncer &syncer) : syncer_(syncer) {}
 
-  grpc::ServerBidiReactor<RaySyncMessages, RaySyncMessages>
-      *StartSync(grpc::CallbackServerContext *context) override {
+  grpc::ServerBidiReactor<RaySyncMessages, RaySyncMessages> *StartSync(
+      grpc::CallbackServerContext *context) override {
     return syncer_.ConnectFrom(context);
   }
 

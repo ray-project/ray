@@ -21,7 +21,7 @@ class NodeSyncContext : public T {
 
   NodeSyncContext(RaySyncer &syncer, instrumented_io_context &io_context, C *rpc_context)
       : rpc_context_(rpc_context), io_context_(io_context), instance_(syncer) {
-        Init();
+    Init();
   }
 
   void Init() {
@@ -104,13 +104,9 @@ class NodeSyncContext : public T {
     }
   }
 
-  void OnDone() {
-    RAY_CHECK(kIsServerReactor);
-  }
+  void OnDone() { RAY_CHECK(kIsServerReactor); }
 
-  void OnDone(const grpc::Status &status) {
-    RAY_CHECK(!kIsServerReactor);
-  }
+  void OnDone(const grpc::Status &status) { RAY_CHECK(!kIsServerReactor); }
 
  private:
   void SendNextMessage() {
@@ -139,8 +135,9 @@ class NodeSyncContext : public T {
       const std::string &node_id) {
     auto iter = node_versions_.find(node_id);
     if (iter == node_versions_.end()) {
-      iter = node_versions_.emplace(node_id,
-                                    std::array<uint64_t, kComponentArraySize>({})).first;
+      iter =
+          node_versions_.emplace(node_id, std::array<uint64_t, kComponentArraySize>({}))
+              .first;
     }
     return iter->second;
   }
@@ -172,8 +169,7 @@ RaySyncer::RaySyncer(std::string node_id, instrumented_io_context &io_context)
     : node_id_(std::move(node_id)),
       reporters_({}),
       receivers_({}),
-      io_context_(io_context) {
-}
+      io_context_(io_context) {}
 
 void RaySyncer::ConnectTo(std::shared_ptr<grpc::Channel> channel) {
   // We don't allow connect to new leader.
@@ -196,14 +192,15 @@ ServerReactor *RaySyncer::ConnectFrom(grpc::CallbackServerContext *context) {
 }
 
 void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {
-    for (auto &follower : followers_) {
-      dynamic_cast<NodeSyncContext<ClientReactor>*>(follower.second.get())->Update(message);
+  for (auto &follower : followers_) {
+    dynamic_cast<NodeSyncContext<ClientReactor> *>(follower.second.get())
+        ->Update(message);
+  }
+  if (message->node_id() != GetNodeId()) {
+    if (receivers_[message->component_id()]) {
+      receivers_[message->component_id()]->Update(*message);
     }
-    if (message->node_id() != GetNodeId()) {
-      if (receivers_[message->component_id()]) {
-        receivers_[message->component_id()]->Update(*message);
-      }
-    }
+  }
 }
 
 }  // namespace syncing
