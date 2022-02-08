@@ -56,7 +56,7 @@ class TestUniformResourceAllocation(unittest.TestCase):
         trial4 = MockTrial("mock", config=dict(num=4), stub=True)
         trial4.placement_group_factory = base_pgf
 
-        self.trial_runner.trials = set([trial1, trial2, trial3, trial4])
+        self.trial_runner.trials = {trial1, trial2, trial3, trial4}
 
         scheduler.on_trial_add(self.trial_runner, trial1)
         scheduler.on_trial_add(self.trial_runner, trial2)
