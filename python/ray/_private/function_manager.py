@@ -324,6 +324,7 @@ class FunctionActorManager:
             A FunctionExecutionInfo object.
         """
         function_id = function_descriptor.function_id
+        logger.info(f"jjyao get_execution_info {job_id} {function_id} {function_descriptor.function_name}")
         # If the function has already been loaded,
         # There's no need to load again
         if function_id in self._function_execution_info:
