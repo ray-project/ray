@@ -156,7 +156,6 @@ def test_default_config_cluster(ray_start_cluster):
     ray.get([task.remote() for _ in range(2)])
 
 
-
 def test_spilling_not_done_for_pinned_object(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
@@ -260,7 +259,6 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
         sample = ray.get(ref, timeout=0)
         assert np.array_equal(sample, solution)
     assert_no_thrashing(address["address"])
-
 
 
 def test_unstable_spill_objects_automatically(unstable_spilling_config, shutdown_only):
@@ -489,7 +487,6 @@ def test_partial_retval_allocation(ray_start_cluster):
     for obj in ret:
         obj = ray.get(obj)
         print(obj.size)
-
 
 
 def test_pull_spilled_object(
