@@ -170,10 +170,6 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     The returned parsed value will be a list of pip packages. If a Ray library
     (e.g. "ray[serve]") is specified, it will be deleted and replaced by its
     dependencies (e.g. "uvicorn", "requests").
-
-    If the base Ray package (e.g. "ray>1.4" or "ray") is specified in the
-    input, it will be removed, unless the environment variable
-    RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP is set to 1.
     """
     assert pip is not None
 

@@ -28,15 +28,6 @@ if not os.environ.get("CI"):
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
 
 
-def test_rewrite_pip_list_ray_libraries():
-    input = ["--extra-index-url my.url", "ray==1.4", "requests", "ray[serve]"]
-    output = _rewrite_pip_list_ray_libraries(input)
-    assert "ray" not in output
-    assert "ray==1.4" not in output
-    assert "ray[serve]" not in output
-    assert output[:2] == ["--extra-index-url my.url", "requests"]
-
-
 def test_get_conda_dict_with_ray_inserted_m1_wheel(monkeypatch):
     # Disable dev mode to prevent Ray dependencies being automatically inserted
     # into the conda dict.
@@ -94,6 +85,7 @@ def test_requirements_files(start_cluster, field):
             "pip-install-test==0.5",
         ]
         if field == "conda":
+            conda_dict = {"dependencies": ["pip", {"pip": pip_list}]}
             relative_filepath = "environment.yml"
             conda_file = Path(relative_filepath)
             conda_file.write_text(yaml.dump(conda_dict))
