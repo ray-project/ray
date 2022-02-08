@@ -68,19 +68,23 @@ class ImportThread:
             while True:
                 # Exit if we received a signal that we should stop.
                 if self.threads_stopped.is_set():
+                    logger.info(f"jjyao stop importing")
                     return
 
                 if self.worker.gcs_pubsub_enabled:
                     key = self.subscriber.poll()
                     if key is None:
                         # subscriber has closed.
+                        logger.info(f"jjyao subscriber has closed")
                         break
                 else:
                     msg = self.subscriber.get_message()
                     if msg is None:
                         self.threads_stopped.wait(timeout=0.01)
+                        logger.info(f"jjyao msg is None")
                         continue
                     if msg["type"] == "subscribe":
+                        logger.info(f"jjyao msg is subscribe")
                         continue
 
                 self._do_importing()
@@ -104,6 +108,7 @@ class ImportThread:
                 self._process_key(key)
                 self.num_imported += 1
             else:
+                logger.info(f"jjyao Import doesn't exist {self.num_imported + 1}")
                 break
 
     def _get_import_info_for_collision_detection(self, key):
