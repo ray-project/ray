@@ -60,3 +60,22 @@ To run tests for examples shipping with docstrings in Python files, run the foll
 ```shell
 make doctest
 ```
+
+## Adding examples as MyST Markdown Notebooks
+
+You can now add [executable notebooks](https://myst-nb.readthedocs.io/en/latest/use/markdown.html) to this project,
+which will get built into the documentation.
+An [example can be found here](./source/serve/tutorials/rllib.md).
+By default, building the docs with `make html` will not run those notebooks.
+If you set the `RUN_NOTEBOOKS` environment variable to `"cache"`, each notebook cell will be run when you build the documentation, and outputs will be cached into `_build/.jupyter_cache`.
+
+```bash
+RUN_NOTEBOOKS="cache" make html
+```
+
+To force re-running the notebooks, use `RUN_NOTEBOOKS="force"`.
+
+Using caching, this means the first time you build the documentation, it might take a while to run the notebooks.
+After that, notebook execution is only triggered when you change the notebook source file.
+
+The benefits of working with notebooks for examples are that you don't separate the code from the documentation, but can still easily smoke-test the code.
