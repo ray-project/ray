@@ -795,12 +795,20 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
   }
 }
 
-void ClusterTaskManager::FillResourceUsage(
+namespace {
+void FillResourceUsageHelper(
     rpc::ResourcesData &data,
-    const std::shared_ptr<SchedulingResources> &last_reported_resources) {
-  if (max_resource_shapes_per_load_report_ == 0) {
-    return;
-  }
+    const std::shared_ptr<SchedulingResources> &last_reported_resources,
+    const absl::flat_hash_map<
+        SchedulingClass, std::deque<std::shared_ptr<internal::Work>>> &task_to_schedule,
+    const absl::flat_hash_map<
+        SchedulingClass, std::deque<std::shared_ptr<internal::Work>>> &task_to_dispatch,
+    const absl::flat_hash_map<
+        SchedulingClass, std::deque<std::shared_ptr<internal::Work>>> &infeasible_tasks,
+    const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>> &
+      backlog_tracker) {
+
+  auto max_resource_shapes_per_load_report = RayConfig::instance().max_resource_shapes_per_load_report() ;
   auto resource_loads = data.mutable_resource_load();
   auto resource_load_by_shape =
       data.mutable_resource_load_by_shape()->mutable_resource_demands();
@@ -808,10 +816,10 @@ void ClusterTaskManager::FillResourceUsage(
   int num_reported = 0;
   int64_t skipped_requests = 0;
 
-  for (const auto &pair : tasks_to_schedule_) {
+  for (const auto &pair : task_to_schedule) {
     const auto &scheduling_class = pair.first;
-    if (num_reported++ >= max_resource_shapes_per_load_report_ &&
-        max_resource_shapes_per_load_report_ >= 0) {
+    if (num_reported++ >= max_resource_shapes_per_load_report &&
+        max_resource_shapes_per_load_report >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
       // the same resources.
       skipped_requests++;
@@ -843,10 +851,10 @@ void ClusterTaskManager::FillResourceUsage(
     by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
   }
 
-  for (const auto &pair : tasks_to_dispatch_) {
+  for (const auto &pair : task_to_dispatch) {
     const auto &scheduling_class = pair.first;
-    if (num_reported++ >= max_resource_shapes_per_load_report_ &&
-        max_resource_shapes_per_load_report_ >= 0) {
+    if (num_reported++ >= max_resource_shapes_per_load_report &&
+        max_resource_shapes_per_load_report >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
       // the same resources.
       skipped_requests++;
@@ -874,10 +882,10 @@ void ClusterTaskManager::FillResourceUsage(
     by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
   }
 
-  for (const auto &pair : infeasible_tasks_) {
+  for (const auto &pair : infeasible_tasks) {
     const auto &scheduling_class = pair.first;
-    if (num_reported++ >= max_resource_shapes_per_load_report_ &&
-        max_resource_shapes_per_load_report_ >= 0) {
+    if (num_reported++ >= max_resource_shapes_per_load_report &&
+        max_resource_shapes_per_load_report >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
       // the same resources.
       skipped_requests++;
@@ -909,7 +917,7 @@ void ClusterTaskManager::FillResourceUsage(
   }
 
   if (skipped_requests > 0) {
-    RAY_LOG(INFO) << "More than " << max_resource_shapes_per_load_report_
+    RAY_LOG(INFO) << "More than " << max_resource_shapes_per_load_report
                   << " scheduling classes. Some resource loads may not be reported to "
                      "the autoscaler.";
   }
@@ -926,6 +934,17 @@ void ClusterTaskManager::FillResourceUsage(
   } else {
     data.set_resource_load_changed(true);
   }
+}
+}  // namespace
+
+void ClusterTaskManager::FillResourceUsage(
+    rpc::ResourcesData &data,
+    const std::shared_ptr<SchedulingResources> &last_reported_resources) {
+  if (max_resource_shapes_per_load_report_ == 0) {
+    return;
+  }
+  FillResourceUsageHelper(data, last_reported_resources, tasks_to_schedule_, tasks_to_dispatch_,
+                    infeasible_tasks_, backlog_tracker_);
 }
 
 bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
