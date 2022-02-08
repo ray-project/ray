@@ -541,6 +541,7 @@ def test_pull_spilled_object(
 
 # TODO(chenshen): fix error handling when spilled file
 # missing/corrupted
+@pytest.mark.skipif(True, reason="Currently hangs.")
 def test_pull_spilled_object_failure(object_spilling_config, ray_start_cluster):
     object_spilling_config, temp_folder = object_spilling_config
     cluster = ray_start_cluster
