@@ -853,10 +853,10 @@ class OrderedResponseCache:
                 # Request is for an id that has already been cleared from
                 # cache/acknowledged.
                 raise RuntimeError(
-                    "Attempting to accesss a cache entry that has already "
+                    "Attempting to access a cache entry that has already "
                     "cleaned up. The client has already acknowledged "
-                    f"receiving this response. ({req_id}, "
-                    f"{self.last_received})"
+                    f"receiving this response. (this_req_id={req_id}, "
+                    f"acknowledged={self.last_received})"
                 )
             if req_id in self.cache:
                 cached_resp = self.cache[req_id]

@@ -85,21 +85,26 @@ class DataClient:
 
     # A helper that takes in (request, callback) from queue, sets up tracking
     # of the requests and yields the requests as a stream.
+    #
     def _requests(self):
         while True:
             request = self.request_queue.get()
             if request is None:
-                # Stop the generator / iterator.
+                # Stop when client signals shutdown.
                 return
             (req, callback) = request
             assert req is not None
-            req_id = self._next_id()
-            req.req_id = req_id
-            with self.lock:
-                # Need to store both req and callback.
-                self.outstanding_requests[req_id] = request
-                if callback is not None:
-                    self.asyncio_waiting_data[req_id] = callback
+            # req.req_id is >= 1 when reconnecting.
+            if req.req_id < 1 and req.WhichOneof("type") not in [
+                "acknowledge",
+                "connection_cleanup",
+            ]:
+                with self.lock:
+                    req_id = self._next_id()
+                    req.req_id = req_id
+                    self.outstanding_requests[req_id] = (req, callback)
+                    if callback is not None:
+                        self.asyncio_waiting_data[req_id] = callback
             yield req
 
     def _data_main(self) -> None:
@@ -140,6 +145,17 @@ class DataClient:
             # This is not being waited for.
             logger.debug(f"Got unawaited response {response}")
             return
+        with self.lock:
+            # Update outstanding requests
+            if response.req_id in self.outstanding_requests:
+                req, callback = self.outstanding_requests.pop(response.req_id)
+                # Acknowledge response
+                self._acknowledge(response.req_id)
+            else:
+                logger.warning(
+                    f"Receiving response without outstanding request: {response}"
+                )
+                return
         if response.req_id in self.asyncio_waiting_data:
             try:
                 # NOTE: calling self.asyncio_waiting_data.pop() results
@@ -152,17 +168,9 @@ class DataClient:
                     callback(response)
             except Exception:
                 logger.exception("Callback error:")
-            with self.lock:
-                # Update outstanding requests
-                if response.req_id in self.outstanding_requests:
-                    del self.outstanding_requests[response.req_id]
-                    # Acknowledge response
-                    self._acknowledge(response.req_id)
         else:
             with self.lock:
-                self.ready_data[
-                    id(self.outstanding_requests[response.req_id][0])
-                ] = response
+                self.ready_data[id(req)] = response
                 self.cv.notify_all()
 
     def _can_reconnect(self, e: grpc.RpcError) -> bool:
@@ -259,10 +267,22 @@ class DataClient:
 
         # Recreate the request queue, and resend outstanding requests
         with self.lock:
-            self.request_queue = queue.Queue()
-            for request in self.outstanding_requests.values():
+            new_queue = queue.Queue()
+            # Fill the new request queue first with outstanding requests, which
+            # have lower req_id. Must use the order of req_id.
+            for req_id, request in sorted(self.outstanding_requests.items()):
                 # Re-queue outstanding requests (and callbacks).
-                self.request_queue.put(request)
+                new_queue.put(request)
+            self.request_queue, prev_queue = new_queue, self.request_queue
+            # Transfer remaining requests from the previous request queue.
+            # NOTE: prev_queue has concurrent consumers.
+            while True:
+                try:
+                    req, callback = prev_queue.get_nowait()
+                except queue.Empty:
+                    return
+                if req.req_id not in self.outstanding_requests:
+                    self.request_queue.put((req, callback))
 
     def close(self) -> None:
         thread = None
@@ -301,8 +321,6 @@ class DataClient:
 
             resp = self.ready_data[id(req)]
             del self.ready_data[id(req)]
-            del self.outstanding_requests[resp.req_id]
-            self._acknowledge(resp.req_id)
 
         return resp
 
@@ -311,9 +329,17 @@ class DataClient:
         req: ray_client_pb2.DataRequest,
         callback: Optional[ResponseCallable] = None,
     ) -> None:
+        def nop(ignored):
+            return
+
+        if callback is None:
+            callback = nop
         self.request_queue.put((req, callback))
 
-    # Must hold self.lock when calling this function.
+    # The purpose of this function is to disconnect the Ray client when a
+    # connection issue is encountered. It avoids running in the data streaming
+    # thread (self.data_thread) which may result in deadlock, but it
+    # opportunistically runs when a blocking request is attempted.
     def _check_shutdown(self):
         assert self.lock.locked()
         if not self._in_shutdown:
