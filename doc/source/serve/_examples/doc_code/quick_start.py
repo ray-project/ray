@@ -24,7 +24,7 @@ class BoostingModel:
         self.label_list = iris_dataset["target_names"].tolist()
 
     async def __call__(self, request):
-        payload = await request.json()["vector"]
+        payload = (await request.json())["vector"]
         print(f"Received flask request with data {payload}")
 
         prediction = self.model.predict([payload])[0]
