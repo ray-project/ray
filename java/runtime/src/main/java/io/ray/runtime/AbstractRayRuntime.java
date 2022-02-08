@@ -76,7 +76,10 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       LOGGER.debug("Putting Object in Task {}.", workerContext.getCurrentTaskId());
     }
     ObjectId objectId = objectStore.put(obj);
-    return new ObjectRefImpl<T>(objectId, (Class<T>) (obj == null ? Object.class : obj.getClass()));
+    return new ObjectRefImpl<T>(
+        objectId,
+        (Class<T>) (obj == null ? Object.class : obj.getClass()),
+        /*skipAddingLocalRef=*/ true);
   }
 
   @Override
@@ -88,7 +91,10 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
           ownerActor.getId());
     }
     ObjectId objectId = objectStore.put(obj, ownerActor.getId());
-    return new ObjectRefImpl<T>(objectId, (Class<T>) (obj == null ? Object.class : obj.getClass()));
+    return new ObjectRefImpl<T>(
+        objectId,
+        (Class<T>) (obj == null ? Object.class : obj.getClass()),
+        /*skipAddingLocalRef=*/ true);
   }
 
   @Override
@@ -295,7 +301,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     if (returnIds.isEmpty()) {
       return null;
     } else {
-      return new ObjectRefImpl(returnIds.get(0), returnType.get());
+      return new ObjectRefImpl(returnIds.get(0), returnType.get(), /*skipAddingLocalRef=*/ true);
     }
   }
 
@@ -317,7 +323,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     if (returnIds.isEmpty()) {
       return null;
     } else {
-      return new ObjectRefImpl(returnIds.get(0), returnType.get());
+      return new ObjectRefImpl(returnIds.get(0), returnType.get(), /*skipAddingLocalRef=*/ true);
     }
   }
 
