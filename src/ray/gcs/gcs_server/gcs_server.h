@@ -16,6 +16,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/runtime_env_manager.h"
+#include "ray/common/component_syncer.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
@@ -94,6 +95,9 @@ class GcsServer {
 
   /// Initialize gcs node manager.
   void InitGcsNodeManager(const GcsInitData &gcs_init_data);
+
+  /// Init syncing
+  void InitSyncing();
 
   /// Initialize gcs heartbeat manager.
   void InitGcsHeartbeatManager(const GcsInitData &gcs_init_data);
@@ -240,6 +244,9 @@ class GcsServer {
   /// The gcs table storage.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
+  /// Syncing related components.
+  std::unique_ptr<ray::syncing::RaySyncer> syncer_;
+  std::unique_ptr<ray::syncing::RaySyncerService> syncer_service_;
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
