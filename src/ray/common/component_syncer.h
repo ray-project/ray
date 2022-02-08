@@ -7,7 +7,6 @@
 namespace ray {
 namespace syncing {
 
-
 using ServerReactor = grpc::ServerBidiReactor<ray::rpc::syncer::RaySyncMessages,
                                               ray::rpc::syncer::RaySyncMessages>;
 using ClientReactor = grpc::ClientBidiReactor<ray::rpc::syncer::RaySyncMessages,
@@ -19,14 +18,12 @@ using RaySyncMessages = ray::rpc::syncer::RaySyncMessages;
 using RaySyncMessageType = ray::rpc::syncer::RaySyncMessageType;
 
 struct Reporter {
-  virtual std::optional<RaySyncMessage> Snapshot(
-      uint64_t current_version) const = 0;
+  virtual std::optional<RaySyncMessage> Snapshot(uint64_t current_version) const = 0;
 };
 
 struct Receiver {
-  virtual void Update(const RaySyncMessage& message) = 0;
+  virtual void Update(const RaySyncMessage &message) = 0;
 };
-
 
 class RaySyncer {
  public:
@@ -47,8 +44,8 @@ class RaySyncer {
   }
 
   void Update(RaySyncMessage message) {
-    auto& current_message = cluster_view_[message.component_id()][message.node_id()];
-    if(current_message && current_message->version() >= message.version()) {
+    auto &current_message = cluster_view_[message.component_id()][message.node_id()];
+    if (current_message && current_message->version() >= message.version()) {
       // We've already got the newer messages. Skip this.
       return;
     }
@@ -67,15 +64,15 @@ class RaySyncer {
   ServerReactor *ConnectFrom(grpc::CallbackServerContext *context);
 
  private:
-  template<typename T>
+  template <typename T>
   using Array = std::array<T, kComponentArraySize>;
 
   void SendMessage(std::shared_ptr<RaySyncMessage> message) {
-    for(auto& follower : followers_) {
+    for (auto &follower : followers_) {
       follower->Update(message);
     }
-    if(message->node_id() != GetNodeId()) {
-      if(receivers_[message->component_id()]) {
+    if (message->node_id() != GetNodeId()) {
+      if (receivers_[message->component_id()]) {
         receivers_[message->component_id()]->Update(*message);
       }
     }
