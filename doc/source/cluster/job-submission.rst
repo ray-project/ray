@@ -81,18 +81,18 @@ We provide three APIs for Job submission: SDK, CLI and HTTP. Both the SDK and CL
 - **Entrypoint**: Shell command to run the job.
     - Typically :code:`python your_script.py`, can also be any shell script such as :code:`echo hello`.
 - **Runtime Environment**:
-    - :code:`working_dir` as local directory: It will be automatically zipped and uploaded to the target Ray cluster, then unpacked to where your submitted application runs.
-    - :code:`working_dir` as remote URIs, such as S3, Git or others: It will be downloaded and unpacked to where your submitted application runs. For details, see :ref:`Runtime Environments<runtime-environments>`.
+    - :code:`working_dir` as a local directory: It will be automatically zipped and uploaded to the target Ray cluster, then unpacked to where your submitted application runs.  This option has a size limit of 100 MB and is recommended for quick iteration and experimentation.
+    - :code:`working_dir` as a remote URI hosted on S3, GitHub or others: It will be downloaded and unpacked to where your submitted application runs.  This option has no size limit and is recommended for production use.  For details, see :ref:`remote-uris`.
 
 .. warning::
 
-    We currently don't support passing in :code:`requirements.txt` in :code:`pip` yet in job submission so user still need to pass in a list of packages. It will be supported in later releases.
+    We currently don't support passing in :code:`requirements.txt` in :code:`pip` yet in job submission so you still need to pass in a list of packages. It will be supported in later releases.
 
 
 Job CLI API
 -----------
 
-The easiest way to get started is to use Job submission CLI.
+The easiest way to get started is to use the Job submission CLI.
 
 If we have :code:`RAY_ADDRESS` environment variable set with a local Ray cluster, or just manually set it first:
 
