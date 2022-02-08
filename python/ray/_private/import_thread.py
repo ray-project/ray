@@ -100,6 +100,7 @@ class ImportThread:
                 export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE
             )
             if key is not None:
+                logger.info(f"jjyao Importing {key} {self.num_imported + 1} {self.worker.current_job_id}")
                 self._process_key(key)
                 self.num_imported += 1
             else:

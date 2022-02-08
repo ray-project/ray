@@ -174,6 +174,7 @@ class FunctionActorManager:
                     )
                     > 0
                 ):
+                    logger.info(f"jjyao Export {self._num_exported} {self._worker.current_job_id}")
                     break
         # Notify all subscribers that there is a new function exported. Note
         # that the notification doesn't include any actual data.
@@ -230,6 +231,7 @@ class FunctionActorManager:
                 "max_calls": remote_function._max_calls,
             }
         )
+        print(f"jjyao Export {remote_function._function_name} {remote_function._function_descriptor.function_id} {self._worker.current_job_id} {key}")
         self._worker.gcs_client.internal_kv_put(
             key, val, True, KV_NAMESPACE_FUNCTION_TABLE
         )
@@ -262,6 +264,7 @@ class FunctionActorManager:
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
         max_calls = int(max_calls)
+        logger.info(f"jjyao fetch_and_register_remote_function {function_id} {job_id} {function_name} {key}")
 
         # This function is called by ImportThread. This operation needs to be
         # atomic. Otherwise, there is race condition. Another thread may use
@@ -408,8 +411,8 @@ class FunctionActorManager:
                     "registered. You may have to restart "
                     "Ray."
                 )
-                print(warning_message)
                 if not warning_sent:
+                    print(warning_message)
                     ray._private.utils.push_error_to_driver(
                         self._worker,
                         ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
