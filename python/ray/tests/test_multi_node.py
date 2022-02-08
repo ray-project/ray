@@ -7,17 +7,24 @@ import time
 import ray
 from ray import ray_constants
 from ray._private.test_utils import (
-    RayTestTimeoutException, run_string_as_driver,
-    run_string_as_driver_nonblocking, init_error_pubsub, get_error_message,
-    object_memory_usage, wait_for_condition)
+    RayTestTimeoutException,
+    run_string_as_driver,
+    run_string_as_driver_nonblocking,
+    init_error_pubsub,
+    get_error_message,
+    object_memory_usage,
+    wait_for_condition,
+)
 
 
 @pytest.mark.parametrize(
-    "call_ray_start", [
+    "call_ray_start",
+    [
         "ray start --head --num-cpus=1 --min-worker-port=0 "
         "--max-worker-port=0 --port 0",
     ],
-    indirect=True)
+    indirect=True,
+)
 def test_cleanup_on_driver_exit(call_ray_start):
     # This test will create a driver that creates a bunch of objects and then
     # exits. The entries in the object table should be cleaned up.
@@ -53,7 +60,9 @@ print("success")
 # still get cleaned up eventually, even if they get started after the driver
 # exits.
 [f.remote() for _ in range(10)]
-""".format(address)
+""".format(
+        address
+    )
 
     out = run_string_as_driver(driver_script)
     assert "success" in out
@@ -144,7 +153,9 @@ assert len(errors) == 1
 assert "{}" in errors[0].error_message
 
 print("success")
-""".format(address, error_string2, error_string2)
+""".format(
+        address, error_string2, error_string2
+    )
 
     out = run_string_as_driver(driver_script)
     # Make sure the other driver succeeded.
@@ -179,7 +190,9 @@ for _ in range(10000):
     result = ray.get([f.remote(), g.remote(0, 0)])
     assert result == [3, 4]
 print("success")
-""".format(address)
+""".format(
+        address
+    )
 
     out = run_string_as_driver(driver_script)
 
@@ -216,7 +229,9 @@ class Foo:
         pass
 Foo.remote()
 print("success")
-""".format(address)
+""".format(
+        address
+    )
 
     # Define a driver that creates some tasks and exits.
     driver_script2 = """
@@ -227,7 +242,9 @@ def f():
     return 1
 f.remote()
 print("success")
-""".format(address)
+""".format(
+        address
+    )
 
     # Create some drivers and let them exit and make sure everything is
     # still alive.
@@ -261,7 +278,9 @@ class Counter:
         return self.count
 counter = Counter.options(name="Counter").remote()
 time.sleep(100)
-""".format(address)
+""".format(
+        address
+    )
 
     # Define a driver that submits to the named actor and exits.
     driver_script2 = """
@@ -276,7 +295,9 @@ while True:
         time.sleep(1)
 assert ray.get(counter.increment.remote()) == {}
 print("success")
-""".format(address, "{}")
+""".format(
+        address, "{}"
+    )
 
     process_handle = run_string_as_driver_nonblocking(driver_script1)
 
@@ -316,7 +337,9 @@ ray.init(num_cpus=2)
 a = Actor.remote()
 ray.get([a.log.remote(), f.remote()])
 ray.get([a.log.remote(), f.remote()])
-""".format(log_message)
+""".format(
+        log_message
+    )
 
     for _ in range(2):
         out = run_string_as_driver(driver_script)
@@ -324,11 +347,13 @@ ray.get([a.log.remote(), f.remote()])
 
 
 @pytest.mark.parametrize(
-    "call_ray_start", [
-        "ray start --head --num-cpus=1 --num-gpus=1 " +
-        "--min-worker-port=0 --max-worker-port=0 --port 0"
+    "call_ray_start",
+    [
+        "ray start --head --num-cpus=1 --num-gpus=1 "
+        + "--min-worker-port=0 --max-worker-port=0 --port 0"
     ],
-    indirect=True)
+    indirect=True,
+)
 def test_drivers_release_resources(call_ray_start):
     address = call_ray_start
 
@@ -362,23 +387,26 @@ foos = [Foo.remote() for _ in range(100)]
 [f.remote(10 ** 6) for _ in range(100)]
 
 print("success")
-""".format(address)
+""".format(
+        address
+    )
 
-    driver_script2 = (driver_script1 +
-                      "import sys\nsys.stdout.flush()\ntime.sleep(10 ** 6)\n")
+    driver_script2 = (
+        driver_script1 + "import sys\nsys.stdout.flush()\ntime.sleep(10 ** 6)\n"
+    )
 
     def wait_for_success_output(process_handle, timeout=10):
         # Wait until the process prints "success" and then return.
         start_time = time.time()
         while time.time() - start_time < timeout:
             output_line = ray._private.utils.decode(
-                process_handle.stdout.readline()).strip()
+                process_handle.stdout.readline()
+            ).strip()
             print(output_line)
             if output_line == "success":
                 return
             time.sleep(1)
-        raise RayTestTimeoutException(
-            "Timed out waiting for process to print success.")
+        raise RayTestTimeoutException("Timed out waiting for process to print success.")
 
     # Make sure we can run this driver repeatedly, which means that resources
     # are getting released in between.
@@ -395,6 +423,7 @@ print("success")
 
 if __name__ == "__main__":
     import pytest
+
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"

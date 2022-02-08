@@ -7,14 +7,12 @@ import ray
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
-from ray._private.test_utils import (wait_for_condition,
-                                     run_string_as_driver_nonblocking)
+from ray._private.test_utils import wait_for_condition, run_string_as_driver_nonblocking
 
 
 def get_all_ray_worker_processes():
     processes = [
-        p.info["cmdline"]
-        for p in psutil.process_iter(attrs=["pid", "name", "cmdline"])
+        p.info["cmdline"] for p in psutil.process_iter(attrs=["pid", "name", "cmdline"])
     ]
 
     result = []
@@ -32,6 +30,7 @@ def test_ray_shutdown(shutdown_only):
     @ray.remote
     def f():
         import time
+
         time.sleep(10)
 
     num_cpus = int(ray.available_resources()["CPU"])
@@ -78,7 +77,8 @@ def test_node_killed(ray_start_cluster):
     cluster = ray_start_cluster
     # head node.
     cluster.add_node(
-        num_cpus=0, _system_config={"gcs_rpc_server_reconnect_timeout_s": 1})
+        num_cpus=0, _system_config={"gcs_rpc_server_reconnect_timeout_s": 1}
+    )
     ray.init(address="auto")
 
     num_worker_nodes = 2
@@ -90,6 +90,7 @@ def test_node_killed(ray_start_cluster):
     @ray.remote
     def f():
         import time
+
         time.sleep(100)
 
     num_cpus = int(ray.available_resources()["CPU"])
@@ -108,7 +109,8 @@ def test_head_node_down(ray_start_cluster):
     cluster = ray_start_cluster
     # head node.
     head = cluster.add_node(
-        num_cpus=2, _system_config={"gcs_rpc_server_reconnect_timeout_s": 1})
+        num_cpus=2, _system_config={"gcs_rpc_server_reconnect_timeout_s": 1}
+    )
 
     # worker nodes.
     num_worker_nodes = 2
@@ -129,7 +131,9 @@ num_cpus = int(ray.available_resources()["CPU"])
 tasks = [f.remote() for _ in range(num_cpus)]
 import time
 time.sleep(100)
-""".format(cluster.address)
+""".format(
+        cluster.address
+    )
 
     p = run_string_as_driver_nonblocking(driver)
     # Make sure the driver is running.

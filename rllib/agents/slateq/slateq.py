@@ -23,7 +23,7 @@ from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.train_ops import TrainOneStep
+from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
@@ -54,7 +54,7 @@ DEFAULT_CONFIG = with_common_config({
     # in a dueling architecture.
     "hiddens": [256, 64, 16],
 
-    # set batchmode
+    # Set batch_mode.
     "batch_mode": "complete_episodes",
 
     # === Deep Learning Framework Settings ===
@@ -64,7 +64,11 @@ DEFAULT_CONFIG = with_common_config({
     # === Exploration Settings ===
     "exploration_config": {
         # The Exploration class to use.
-        "type": "EpsilonGreedy",
+        # Must be SlateEpsilonGreedy to deal with the fact that e.g.:
+        # action_space=MultiDiscrete([5, 5]) <- slate-size=2, num-docs=5
+        # but action distribution is Categorical(5*4 / 2)
+        # -> all possible unique slates.
+        "type": "SlateEpsilonGreedy",
         # Config for the Exploration class' constructor:
         "initial_epsilon": 1.0,
         "final_epsilon": 0.02,
@@ -78,6 +82,10 @@ DEFAULT_CONFIG = with_common_config({
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of iterations.
     "timesteps_per_iteration": 1000,
+    # Update the target network every `target_network_update_freq` steps.
+    "target_network_update_freq": 1,
+    # Update the target by \tau * policy + (1-\tau) * target_policy.
+    "tau": 5e-3,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
@@ -85,7 +93,7 @@ DEFAULT_CONFIG = with_common_config({
     "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
         "type": "MultiAgentReplayBuffer",
-        "capacity": 50000,
+        "capacity": 100000,
     },
     # The number of contiguous environment steps to replay at once. This may
     # be set to greater than 1 to support recurrent models.
@@ -100,9 +108,9 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Optimization ===
     # Learning rate for adam optimizer for the user choice model
-    "lr_choice_model": 1e-2,
+    "lr_choice_model": 1e-3,
     # Learning rate for adam optimizer for the q model
-    "lr_q_model": 1e-2,
+    "lr_q_model": 1e-3,
     # Adam epsilon hyper parameter
     "adam_epsilon": 1e-8,
     # If not None, clip gradients during optimization at this value
@@ -124,15 +132,16 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 0,
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
-    # Prevent iterations from going lower than this time span
-    "min_iter_time_s": 1,
+    # Prevent reporting frequency from going lower than this time span.
+    "min_time_s_per_reporting": 1,
 
     # === SlateQ specific options ===
     # Learning method used by the slateq policy. Choose from: RANDOM,
     # MYOP (myopic), SARSA, QL (Q-Learning),
     "slateq_strategy": "QL",
-    # user/doc embedding size for the recsim environment
-    "recsim_embedding_size": 20,
+    # Only relevant for `slateq_strategy="QL"`:
+    # Use double_q correction to avoid overestimation of target Q-values.
+    "double_q": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -143,8 +152,7 @@ def calculate_round_robin_weights(config: TrainerConfigDict) -> List[float]:
     if not config["training_intensity"]:
         return [1, 1]
     # e.g., 32 / 4 -> native ratio of 8.0
-    native_ratio = (
-        config["train_batch_size"] / config["rollout_fragment_length"])
+    native_ratio = config["train_batch_size"] / config["rollout_fragment_length"]
     # Training intensity is specified in terms of
     # (steps_replayed / steps_sampled), so adjust for the native ratio.
     weights = [1, config["training_intensity"] / native_ratio]
@@ -169,17 +177,18 @@ class SlateQTrainer(Trainer):
             raise ValueError("SlateQ only runs on PyTorch")
 
         if config["slateq_strategy"] not in ALL_SLATEQ_STRATEGIES:
-            raise ValueError("Unknown slateq_strategy: "
-                             f"{config['slateq_strategy']}.")
+            raise ValueError(
+                "Unknown slateq_strategy: " f"{config['slateq_strategy']}."
+            )
 
         if config["slateq_strategy"] == "SARSA":
             if config["batch_mode"] != "complete_episodes":
-                raise ValueError("For SARSA strategy, batch_mode must be "
-                                 "'complete_episodes'")
+                raise ValueError(
+                    "For SARSA strategy, batch_mode must be " "'complete_episodes'"
+                )
 
     @override(Trainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> \
-            Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["slateq_strategy"] == "RANDOM":
             return RandomPolicy
         else:
@@ -187,10 +196,12 @@ class SlateQTrainer(Trainer):
 
     @staticmethod
     @override(Trainer)
-    def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
-                       **kwargs) -> LocalIterator[dict]:
-        assert "local_replay_buffer" in kwargs, (
-            "SlateQ execution plan requires a local replay buffer.")
+    def execution_plan(
+        workers: WorkerSet, config: TrainerConfigDict, **kwargs
+    ) -> LocalIterator[dict]:
+        assert (
+            "local_replay_buffer" in kwargs
+        ), "SlateQ execution plan requires a local replay buffer."
 
         rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -198,13 +209,19 @@ class SlateQTrainer(Trainer):
         # (1) Generate rollouts and store them in our local replay buffer.
         # Calling next() on store_op drives this.
         store_op = rollouts.for_each(
-            StoreToReplayBuffer(local_buffer=kwargs["local_replay_buffer"]))
+            StoreToReplayBuffer(local_buffer=kwargs["local_replay_buffer"])
+        )
 
         # (2) Read and train on experiences from the replay buffer. Every batch
         # returned from the LocalReplay() iterator is passed to TrainOneStep to
         # take a SGD step.
-        replay_op = Replay(local_buffer=kwargs["local_replay_buffer"]) \
+        replay_op = (
+            Replay(local_buffer=kwargs["local_replay_buffer"])
             .for_each(TrainOneStep(workers))
+            .for_each(
+                UpdateTargetNetwork(workers, config["target_network_update_freq"])
+            )
+        )
 
         if config["slateq_strategy"] != "RANDOM":
             # Alternate deterministically between (1) and (2). Only return the
@@ -214,7 +231,8 @@ class SlateQTrainer(Trainer):
                 [store_op, replay_op],
                 mode="round_robin",
                 output_indexes=[1],
-                round_robin_weights=calculate_round_robin_weights(config))
+                round_robin_weights=calculate_round_robin_weights(config),
+            )
         else:
             # No training is needed for the RANDOM strategy.
             train_op = rollouts

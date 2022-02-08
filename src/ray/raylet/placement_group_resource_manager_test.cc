@@ -55,11 +55,15 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
   }
 
   void CheckAvailableResoueceEmpty(const std::string &resource) {
-    ASSERT_TRUE(cluster_resource_scheduler_->IsAvailableResourceEmpty(resource));
+    ASSERT_TRUE(
+        cluster_resource_scheduler_->GetLocalResourceManager().IsAvailableResourceEmpty(
+            resource));
   }
 
   void CheckRemainingResourceCorrect(NodeResources &node_resources) {
-    auto local_node_resource = cluster_resource_scheduler_->GetLocalNodeResources();
+    auto local_node_resource =
+        cluster_resource_scheduler_->GetClusterResourceManager().GetNodeResources(
+            "local");
     ASSERT_TRUE(local_node_resource == node_resources);
   }
 
@@ -129,10 +133,12 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
       "remaining", remaining_resources, *gcs_client_);
   std::shared_ptr<TaskResourceInstances> resource_instances =
       std::make_shared<TaskResourceInstances>();
-  ASSERT_TRUE(remaining_resource_scheduler->AllocateLocalTaskResources(
-      unit_resource, resource_instances));
+  ASSERT_TRUE(
+      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
+          unit_resource, resource_instances));
   auto remaining_resource_instance =
-      remaining_resource_scheduler->GetLocalNodeResources();
+      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
+          "remaining");
   CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
@@ -159,7 +165,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleResource) {
   auto remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
       "remaining", unit_resource, *gcs_client_);
   auto remaining_resource_instance =
-      remaining_resource_scheduler->GetLocalNodeResources();
+      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
+          "remaining");
   CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
@@ -200,10 +207,12 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
       "remaining", remaining_resources, *gcs_client_);
   std::shared_ptr<TaskResourceInstances> resource_instances =
       std::make_shared<TaskResourceInstances>();
-  ASSERT_TRUE(remaining_resource_scheduler->AllocateLocalTaskResources(
-      init_unit_resource, resource_instances));
+  ASSERT_TRUE(
+      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
+          init_unit_resource, resource_instances));
   auto remaining_resource_instance =
-      remaining_resource_scheduler->GetLocalNodeResources();
+      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
+          "remaining");
 
   CheckRemainingResourceCorrect(remaining_resource_instance);
   /// 5. return second bundle.
@@ -220,12 +229,15 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
                          {"bundle_group_" + group_id.Hex(), 2000}};
   remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
       "remaining", remaining_resources, *gcs_client_);
-  ASSERT_TRUE(remaining_resource_scheduler->AllocateLocalTaskResources(
-      {{"CPU_group_" + group_id.Hex(), 1.0},
-       {"CPU", 1.0},
-       {"bundle_group_" + group_id.Hex(), 1000}},
-      resource_instances));
-  remaining_resource_instance = remaining_resource_scheduler->GetLocalNodeResources();
+  ASSERT_TRUE(
+      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
+          {{"CPU_group_" + group_id.Hex(), 1.0},
+           {"CPU", 1.0},
+           {"bundle_group_" + group_id.Hex(), 1000}},
+          resource_instances));
+  remaining_resource_instance =
+      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
+          "remaining");
   CheckRemainingResourceCorrect(remaining_resource_instance);
   /// 7. return first bundle.
   new_placement_group_resource_manager_->ReturnBundle(first_bundle_spec);
@@ -233,7 +245,9 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
   remaining_resources = {{"CPU", 2.0}};
   remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
       "remaining", remaining_resources, *gcs_client_);
-  remaining_resource_instance = remaining_resource_scheduler->GetLocalNodeResources();
+  remaining_resource_instance =
+      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
+          "remaining");
   ASSERT_TRUE(update_called_);
   ASSERT_TRUE(delete_called_);
   CheckRemainingResourceCorrect(remaining_resource_instance);
@@ -259,10 +273,12 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithMultiPrepare)
       "remaining", remaining_resources, *gcs_client_);
   std::shared_ptr<TaskResourceInstances> resource_instances =
       std::make_shared<TaskResourceInstances>();
-  ASSERT_TRUE(remaining_resource_scheduler->AllocateLocalTaskResources(
-      unit_resource, resource_instances));
+  ASSERT_TRUE(
+      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
+          unit_resource, resource_instances));
   auto remaining_resource_instance =
-      remaining_resource_scheduler->GetLocalNodeResources();
+      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
+          "remaining");
   CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
@@ -294,10 +310,12 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
       "remaining", remaining_resources, *gcs_client_);
   std::shared_ptr<TaskResourceInstances> resource_instances =
       std::make_shared<TaskResourceInstances>();
-  ASSERT_TRUE(remaining_resource_scheduler->AllocateLocalTaskResources(
-      unit_resource, resource_instances));
+  ASSERT_TRUE(
+      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
+          unit_resource, resource_instances));
   auto remaining_resource_instance =
-      remaining_resource_scheduler->GetLocalNodeResources();
+      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
+          "remaining");
   CheckRemainingResourceCorrect(remaining_resource_instance);
   new_placement_group_resource_manager_->ReturnBundle(bundle_spec);
   // 5. prepare bundle -> commit bundle -> commit bundle.
@@ -319,7 +337,9 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
   // 8. check remaining resources is correct.
   remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
       "remaining", available_resource, *gcs_client_);
-  remaining_resource_instance = remaining_resource_scheduler->GetLocalNodeResources();
+  remaining_resource_instance =
+      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
+          "remaining");
   CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
@@ -342,7 +362,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestPreparedResourceBatched) {
   auto remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
       "remaining", remaining_resources, *gcs_client_);
   auto remaining_resource_instance =
-      remaining_resource_scheduler->GetLocalNodeResources();
+      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
+          "remaining");
   CheckRemainingResourceCorrect(remaining_resource_instance);
   // 5. re-init the local available resource with 4 CPUs.
   available_resource = {std::make_pair("CPU", 4.0)};
@@ -370,9 +391,12 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestPreparedResourceBatched) {
       std::make_shared<TaskResourceInstances>();
   absl::flat_hash_map<std::string, double> allocating_resource;
   allocating_resource.insert({"CPU", 4.0});
-  ASSERT_TRUE(remaining_resource_scheduler->AllocateLocalTaskResources(
-      allocating_resource, resource_instances));
-  remaining_resource_instance = remaining_resource_scheduler->GetLocalNodeResources();
+  ASSERT_TRUE(
+      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
+          allocating_resource, resource_instances));
+  remaining_resource_instance =
+      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
+          "remaining");
   RAY_LOG(INFO) << "The current local resource view: "
                 << cluster_resource_scheduler_->DebugString();
   CheckRemainingResourceCorrect(remaining_resource_instance);
@@ -413,10 +437,12 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestCommiteResourceBatched) {
       std::make_shared<TaskResourceInstances>();
   absl::flat_hash_map<std::string, double> allocating_resource;
   allocating_resource.insert({"CPU", 4.0});
-  ASSERT_TRUE(remaining_resource_scheduler->AllocateLocalTaskResources(
-      allocating_resource, resource_instances));
+  ASSERT_TRUE(
+      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
+          allocating_resource, resource_instances));
   auto remaining_resource_instance =
-      remaining_resource_scheduler->GetLocalNodeResources();
+      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
+          "remaining");
   RAY_LOG(INFO) << "The current local resource view: "
                 << cluster_resource_scheduler_->DebugString();
   CheckRemainingResourceCorrect(remaining_resource_instance);

@@ -10,11 +10,14 @@ from ray.util.sgd.tf.tf_trainer import TFTrainer
 
 def model_creator(config):
     import tensorflow as tf
-    model = tf.keras.models.Sequential([
-        tf.keras.Input(shape=(1, )),
-        tf.keras.layers.Dense(128, activation="relu"),
-        tf.keras.layers.Dense(1)
-    ])
+
+    model = tf.keras.models.Sequential(
+        [
+            tf.keras.Input(shape=(1,)),
+            tf.keras.layers.Dense(128, activation="relu"),
+            tf.keras.layers.Dense(1),
+        ]
+    )
     optimizer = tf.keras.optimizers.Adam(lr=1e-4)
     model.compile(optimizer=optimizer, loss="mse", metrics=["accuracy"])
     return model
@@ -51,8 +54,9 @@ def main():
             "batch_size": 32,
             "fit_config": {
                 "steps_per_epoch": 100,
-            }
-        })
+            },
+        },
+    )
 
     for _ in range(10):
         trainer.train()

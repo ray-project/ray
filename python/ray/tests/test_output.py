@@ -8,11 +8,12 @@ import os
 
 import ray
 
-from ray._private.test_utils import (run_string_as_driver_nonblocking,
-                                     run_string_as_driver)
+from ray._private.test_utils import (
+    run_string_as_driver_nonblocking,
+    run_string_as_driver,
+)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_autoscaler_infeasible():
     script = """
 import ray
@@ -37,7 +38,6 @@ time.sleep(15)
     assert "Error: No available node types can fulfill" in out_str
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_autoscaler_warn_deadlock():
     script = """
 import ray
@@ -63,7 +63,6 @@ time.sleep(25)
     assert "Warning: The following resource request cannot" in out_str
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_autoscaler_no_spam():
     script = """
 import ray
@@ -89,7 +88,6 @@ ray.get([f.remote() for _ in range(15)])
     assert "Tip:" not in err_str
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fail_importing_actor(ray_start_regular, error_pubsub):
     script = """
 import os
@@ -103,12 +101,15 @@ def temporary_helper_function():
    return 1
 '''
 
-f = tempfile.NamedTemporaryFile(suffix=".py")
-f.write(temporary_python_file.encode("ascii"))
+f = tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=True)
+f_name = f.name
+f.close()
+f = open(f_name, "w+")
+f.write(temporary_python_file)
 f.flush()
-directory = os.path.dirname(f.name)
+directory = os.path.dirname(f_name)
 # Get the module name and strip ".py" from the end.
-module_name = os.path.basename(f.name)[:-3]
+module_name = os.path.basename(f_name)[:-3]
 sys.path.append(directory)
 module = __import__(module_name)
 
@@ -130,7 +131,6 @@ a = Foo.remote()
     assert "RuntimeError: The actor with name Foo failed to import" in err_str
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fail_importing_task(ray_start_regular, error_pubsub):
     script = """
 import os
@@ -144,12 +144,15 @@ def temporary_helper_function():
    return 1
 '''
 
-f = tempfile.NamedTemporaryFile(suffix=".py")
-f.write(temporary_python_file.encode("ascii"))
+f = tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=True)
+f_name = f.name
+f.close()
+f = open(f_name, "w+")
+f.write(temporary_python_file)
 f.flush()
-directory = os.path.dirname(f.name)
+directory = os.path.dirname(f_name)
 # Get the module name and strip ".py" from the end.
-module_name = os.path.basename(f.name)[:-3]
+module_name = os.path.basename(f_name)[:-3]
 sys.path.append(directory)
 module = __import__(module_name)
 
@@ -196,7 +199,6 @@ ray.get(foo.remote("abc", "def"))
     assert err_str_sec_last.endswith("def")
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_core_worker_error_message():
     script = """
 import ray
@@ -215,7 +217,6 @@ ray._private.utils.push_error_to_driver(
     assert "Hello there" in err_str, err_str
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_disable_driver_logs_breakpoint():
     script = """
 import time
@@ -256,7 +257,6 @@ ray.util.rpdb._driver_set_trace()  # This should disable worker logs.
     # TODO(ekl) nice to test resuming logs too, but it's quite complicated
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("file", ["stdout", "stderr"])
 def test_multi_stdout_err(file):
     if file == "stdout":
@@ -293,12 +293,12 @@ ray.get(baz.remote())
     else:
         out_str = proc.stderr.read().decode("ascii")
 
+    out_str = "".join(out_str.splitlines())
     assert "(foo pid=" in out_str, out_str
     assert "(bar pid=" in out_str, out_str
     assert "(baz pid=" in out_str, out_str
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("file", ["stdout", "stderr"])
 def test_actor_stdout(file):
     if file == "stdout":
@@ -338,22 +338,22 @@ ray.get(b.f.remote())
         out_str = proc.stdout.read().decode("ascii")
     else:
         out_str = proc.stderr.read().decode("ascii")
-    print(out_str)
 
+    out_str = "".join(out_str.splitlines())
     assert "hi" in out_str, out_str
     assert "(Actor1 pid=" in out_str, out_str
     assert "bye" in out_str, out_str
     assert re.search("Actor2 pid=.*init", out_str), out_str
     assert not re.search("ActorX pid=.*init", out_str), out_str
     assert re.search("ActorX pid=.*bye", out_str), out_str
-    assert not re.search("Actor2 pid=.*bye", out_str), out_str
+    assert re.search("Actor2 pid=.*bye", out_str), out_str
 
 
 def test_output():
     # Use subprocess to execute the __main__ below.
     outputs = subprocess.check_output(
-        [sys.executable, __file__, "_ray_instance"],
-        stderr=subprocess.STDOUT).decode()
+        [sys.executable, __file__, "_ray_instance"], stderr=subprocess.STDOUT
+    ).decode()
     lines = outputs.split("\n")
     for line in lines:
         print(line)
@@ -369,7 +369,8 @@ def test_output():
 # TODO: fix this test to support minimal installation
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test currently fails with minimal install.")
+    reason="This test currently fails with minimal install.",
+)
 def test_output_on_driver_shutdown(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=16)
@@ -439,7 +440,8 @@ run_experiments(
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test currently fails with minimal install.")
+    reason="This test currently fails with minimal install.",
+)
 @pytest.mark.parametrize("execution_number", range(3))
 def test_empty_line_thread_safety_bug(execution_number, ray_start_cluster):
     """Make sure when new threads are used within __init__,
@@ -504,7 +506,7 @@ if __name__ == "__main__":
         # about low shm memory in Linux environment.
         # The test failures currently complain it only has 2 GB memory,
         # so let's set it much lower than that.
-        MB = 1000**2
+        MB = 1000 ** 2
         ray.init(num_cpus=1, object_store_memory=(100 * MB))
         ray.shutdown()
     else:

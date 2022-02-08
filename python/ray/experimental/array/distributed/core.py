@@ -9,9 +9,7 @@ class DistArray:
     def __init__(self, shape, object_refs=None):
         self.shape = shape
         self.ndim = len(shape)
-        self.num_blocks = [
-            int(np.ceil(1.0 * a / BLOCK_SIZE)) for a in self.shape
-        ]
+        self.num_blocks = [int(np.ceil(1.0 * a / BLOCK_SIZE)) for a in self.shape]
         if object_refs is not None:
             self.object_refs = object_refs
         else:
@@ -20,23 +18,27 @@ class DistArray:
             raise Exception(
                 "The fields `num_blocks` and `object_refs` are "
                 "inconsistent, `num_blocks` is {} and `object_refs` "
-                "has shape {}".format(self.num_blocks,
-                                      list(self.object_refs.shape)))
+                "has shape {}".format(self.num_blocks, list(self.object_refs.shape))
+            )
 
     @staticmethod
     def compute_block_lower(index, shape):
         if len(index) != len(shape):
-            raise Exception("The fields `index` and `shape` must have the "
-                            "same length, but `index` is {} and `shape` is "
-                            "{}.".format(index, shape))
+            raise Exception(
+                "The fields `index` and `shape` must have the "
+                "same length, but `index` is {} and `shape` is "
+                "{}.".format(index, shape)
+            )
         return [elem * BLOCK_SIZE for elem in index]
 
     @staticmethod
     def compute_block_upper(index, shape):
         if len(index) != len(shape):
-            raise Exception("The fields `index` and `shape` must have the "
-                            "same length, but `index` is {} and `shape` is "
-                            "{}.".format(index, shape))
+            raise Exception(
+                "The fields `index` and `shape` must have the "
+                "same length, but `index` is {} and `shape` is "
+                "{}.".format(index, shape)
+            )
         upper = []
         for i in range(len(shape)):
             upper.append(min((index[i] + 1) * BLOCK_SIZE, shape[i]))
@@ -54,7 +56,7 @@ class DistArray:
 
     def assemble(self):
         """Assemble an array from a distributed array of object refs."""
-        first_block = ray.get(self.object_refs[(0, ) * self.ndim])
+        first_block = ray.get(self.object_refs[(0,) * self.ndim])
         dtype = first_block.dtype
         result = np.zeros(self.shape, dtype=dtype)
         for index in np.ndindex(*self.num_blocks):
@@ -93,7 +95,8 @@ def zeros(shape, dtype_name="float"):
     result = DistArray(shape)
     for index in np.ndindex(*result.num_blocks):
         result.object_refs[index] = ra.zeros.remote(
-            DistArray.compute_block_shape(index, shape), dtype_name=dtype_name)
+            DistArray.compute_block_shape(index, shape), dtype_name=dtype_name
+        )
     return result
 
 
@@ -102,7 +105,8 @@ def ones(shape, dtype_name="float"):
     result = DistArray(shape)
     for index in np.ndindex(*result.num_blocks):
         result.object_refs[index] = ra.ones.remote(
-            DistArray.compute_block_shape(index, shape), dtype_name=dtype_name)
+            DistArray.compute_block_shape(index, shape), dtype_name=dtype_name
+        )
     return result
 
 
@@ -125,18 +129,21 @@ def eye(dim1, dim2=-1, dtype_name="float"):
         block_shape = DistArray.compute_block_shape([i, j], shape)
         if i == j:
             result.object_refs[i, j] = ra.eye.remote(
-                block_shape[0], block_shape[1], dtype_name=dtype_name)
+                block_shape[0], block_shape[1], dtype_name=dtype_name
+            )
         else:
             result.object_refs[i, j] = ra.zeros.remote(
-                block_shape, dtype_name=dtype_name)
+                block_shape, dtype_name=dtype_name
+            )
     return result
 
 
 @ray.remote
 def triu(a):
     if a.ndim != 2:
-        raise Exception("Input must have 2 dimensions, but a.ndim is "
-                        "{}.".format(a.ndim))
+        raise Exception(
+            "Input must have 2 dimensions, but a.ndim is " "{}.".format(a.ndim)
+        )
     result = DistArray(a.shape)
     for (i, j) in np.ndindex(*result.num_blocks):
         if i < j:
@@ -144,16 +151,16 @@ def triu(a):
         elif i == j:
             result.object_refs[i, j] = ra.triu.remote(a.object_refs[i, j])
         else:
-            result.object_refs[i, j] = ra.zeros_like.remote(
-                a.object_refs[i, j])
+            result.object_refs[i, j] = ra.zeros_like.remote(a.object_refs[i, j])
     return result
 
 
 @ray.remote
 def tril(a):
     if a.ndim != 2:
-        raise Exception("Input must have 2 dimensions, but a.ndim is "
-                        "{}.".format(a.ndim))
+        raise Exception(
+            "Input must have 2 dimensions, but a.ndim is " "{}.".format(a.ndim)
+        )
     result = DistArray(a.shape)
     for (i, j) in np.ndindex(*result.num_blocks):
         if i > j:
@@ -161,8 +168,7 @@ def tril(a):
         elif i == j:
             result.object_refs[i, j] = ra.tril.remote(a.object_refs[i, j])
         else:
-            result.object_refs[i, j] = ra.zeros_like.remote(
-                a.object_refs[i, j])
+            result.object_refs[i, j] = ra.zeros_like.remote(a.object_refs[i, j])
     return result
 
 
@@ -170,8 +176,10 @@ def tril(a):
 def blockwise_dot(*matrices):
     n = len(matrices)
     if n % 2 != 0:
-        raise Exception("blockwise_dot expects an even number of arguments, "
-                        "but len(matrices) is {}.".format(n))
+        raise Exception(
+            "blockwise_dot expects an even number of arguments, "
+            "but len(matrices) is {}.".format(n)
+        )
     shape = (matrices[0].shape[0], matrices[n // 2].shape[1])
     result = np.zeros(shape)
     for i in range(n // 2):
@@ -182,15 +190,20 @@ def blockwise_dot(*matrices):
 @ray.remote
 def dot(a, b):
     if a.ndim != 2:
-        raise Exception("dot expects its arguments to be 2-dimensional, but "
-                        "a.ndim = {}.".format(a.ndim))
+        raise Exception(
+            "dot expects its arguments to be 2-dimensional, but "
+            "a.ndim = {}.".format(a.ndim)
+        )
     if b.ndim != 2:
-        raise Exception("dot expects its arguments to be 2-dimensional, but "
-                        "b.ndim = {}.".format(b.ndim))
+        raise Exception(
+            "dot expects its arguments to be 2-dimensional, but "
+            "b.ndim = {}.".format(b.ndim)
+        )
     if a.shape[1] != b.shape[0]:
-        raise Exception("dot expects a.shape[1] to equal b.shape[0], but "
-                        "a.shape = {} and b.shape = {}.".format(
-                            a.shape, b.shape))
+        raise Exception(
+            "dot expects a.shape[1] to equal b.shape[0], but "
+            "a.shape = {} and b.shape = {}.".format(a.shape, b.shape)
+        )
     shape = [a.shape[0], b.shape[1]]
     result = DistArray(shape)
     for (i, j) in np.ndindex(*result.num_blocks):
@@ -213,43 +226,54 @@ def subblocks(a, *ranges):
     """
     ranges = list(ranges)
     if len(ranges) != a.ndim:
-        raise Exception("sub_blocks expects to receive a number of ranges "
-                        "equal to a.ndim, but it received {} ranges and "
-                        "a.ndim = {}.".format(len(ranges), a.ndim))
+        raise Exception(
+            "sub_blocks expects to receive a number of ranges "
+            "equal to a.ndim, but it received {} ranges and "
+            "a.ndim = {}.".format(len(ranges), a.ndim)
+        )
     for i in range(len(ranges)):
         # We allow the user to pass in an empty list to indicate the full
         # range.
         if ranges[i] == []:
             ranges[i] = range(a.num_blocks[i])
         if not np.alltrue(ranges[i] == np.sort(ranges[i])):
-            raise Exception("Ranges passed to sub_blocks must be sorted, but "
-                            "the {}th range is {}.".format(i, ranges[i]))
+            raise Exception(
+                "Ranges passed to sub_blocks must be sorted, but "
+                "the {}th range is {}.".format(i, ranges[i])
+            )
         if ranges[i][0] < 0:
-            raise Exception("Values in the ranges passed to sub_blocks must "
-                            "be at least 0, but the {}th range is {}.".format(
-                                i, ranges[i]))
+            raise Exception(
+                "Values in the ranges passed to sub_blocks must "
+                "be at least 0, but the {}th range is {}.".format(i, ranges[i])
+            )
         if ranges[i][-1] >= a.num_blocks[i]:
-            raise Exception("Values in the ranges passed to sub_blocks must "
-                            "be less than the relevant number of blocks, but "
-                            "the {}th range is {}, and a.num_blocks = {}."
-                            .format(i, ranges[i], a.num_blocks))
+            raise Exception(
+                "Values in the ranges passed to sub_blocks must "
+                "be less than the relevant number of blocks, but "
+                "the {}th range is {}, and a.num_blocks = {}.".format(
+                    i, ranges[i], a.num_blocks
+                )
+            )
     last_index = [r[-1] for r in ranges]
     last_block_shape = DistArray.compute_block_shape(last_index, a.shape)
-    shape = [(len(ranges[i]) - 1) * BLOCK_SIZE + last_block_shape[i]
-             for i in range(a.ndim)]
+    shape = [
+        (len(ranges[i]) - 1) * BLOCK_SIZE + last_block_shape[i] for i in range(a.ndim)
+    ]
     result = DistArray(shape)
     for index in np.ndindex(*result.num_blocks):
-        result.object_refs[index] = a.object_refs[tuple(
-            ranges[i][index[i]] for i in range(a.ndim))]
+        result.object_refs[index] = a.object_refs[
+            tuple(ranges[i][index[i]] for i in range(a.ndim))
+        ]
     return result
 
 
 @ray.remote
 def transpose(a):
     if a.ndim != 2:
-        raise Exception("transpose expects its argument to be 2-dimensional, "
-                        "but a.ndim = {}, a.shape = {}.".format(
-                            a.ndim, a.shape))
+        raise Exception(
+            "transpose expects its argument to be 2-dimensional, "
+            "but a.ndim = {}, a.shape = {}.".format(a.ndim, a.shape)
+        )
     result = DistArray([a.shape[1], a.shape[0]])
     for i in range(result.num_blocks[0]):
         for j in range(result.num_blocks[1]):
@@ -261,13 +285,15 @@ def transpose(a):
 @ray.remote
 def add(x1, x2):
     if x1.shape != x2.shape:
-        raise Exception("add expects arguments `x1` and `x2` to have the same "
-                        "shape, but x1.shape = {}, and x2.shape = {}.".format(
-                            x1.shape, x2.shape))
+        raise Exception(
+            "add expects arguments `x1` and `x2` to have the same "
+            "shape, but x1.shape = {}, and x2.shape = {}.".format(x1.shape, x2.shape)
+        )
     result = DistArray(x1.shape)
     for index in np.ndindex(*result.num_blocks):
-        result.object_refs[index] = ra.add.remote(x1.object_refs[index],
-                                                  x2.object_refs[index])
+        result.object_refs[index] = ra.add.remote(
+            x1.object_refs[index], x2.object_refs[index]
+        )
     return result
 
 
@@ -275,11 +301,15 @@ def add(x1, x2):
 @ray.remote
 def subtract(x1, x2):
     if x1.shape != x2.shape:
-        raise Exception("subtract expects arguments `x1` and `x2` to have the "
-                        "same shape, but x1.shape = {}, and x2.shape = {}."
-                        .format(x1.shape, x2.shape))
+        raise Exception(
+            "subtract expects arguments `x1` and `x2` to have the "
+            "same shape, but x1.shape = {}, and x2.shape = {}.".format(
+                x1.shape, x2.shape
+            )
+        )
     result = DistArray(x1.shape)
     for index in np.ndindex(*result.num_blocks):
-        result.object_refs[index] = ra.subtract.remote(x1.object_refs[index],
-                                                       x2.object_refs[index])
+        result.object_refs[index] = ra.subtract.remote(
+            x1.object_refs[index], x2.object_refs[index]
+        )
     return result

@@ -7,7 +7,7 @@ py_test(
     size = "medium",
     srcs = test_srcs,
     env = {
-        "IS_SMOKE_TEST": "1",
+        "RAY_UNIT_TEST": "1",
     },
     main = "serve_failure.py",
     tags = [

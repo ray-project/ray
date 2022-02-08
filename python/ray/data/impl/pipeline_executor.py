@@ -5,8 +5,7 @@ import concurrent.futures
 import ray
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T
-from ray.data.impl.progress_bar import ProgressBar, \
-    set_progress_bars
+from ray.data.impl.progress_bar import ProgressBar, set_progress_bars
 from ray.types import ObjectRef
 
 if TYPE_CHECKING:
@@ -98,9 +97,13 @@ class PipelineExecutor:
 
 @ray.remote(num_cpus=0, placement_group=None)
 class PipelineSplitExecutorCoordinator:
-    def __init__(self, pipeline: "DatasetPipeline[T]", n: int,
-                 splitter: Callable[[Dataset], "DatasetPipeline[T]"],
-                 context: DatasetContext):
+    def __init__(
+        self,
+        pipeline: "DatasetPipeline[T]",
+        n: int,
+        splitter: Callable[[Dataset], "DatasetPipeline[T]"],
+        context: DatasetContext,
+    ):
         DatasetContext._set_current(context)
         self.executor = PipelineExecutor(pipeline)
         self.n = n

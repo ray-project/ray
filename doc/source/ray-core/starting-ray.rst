@@ -29,109 +29,114 @@ Calling ``ray.init()`` (without any ``address`` args) starts a Ray runtime on yo
 
   In recent versions of Ray (>=1.5), ``ray.init()`` will automatically be called on the first use of a Ray remote API.
 
-.. tabs::
-  .. code-tab:: python
-
-    import ray
-    # Other Ray APIs will not work until `ray.init()` is called.
-    ray.init()
-
-  .. code-tab:: java
-
-    import io.ray.api.Ray;
-
-    public class MyRayApp {
-
-      public static void main(String[] args) {
-        // Other Ray APIs will not work until `Ray.init()` is called.
-        Ray.init();
-        ...
-      }
-    }
-
-  .. code-tab:: c++
-
-    #include <ray/api.h>
-    // Other Ray APIs will not work until `ray::Init()` is called.
-    ray::Init()
-
-When the process calling ``ray.init()`` terminates, the Ray runtime will also terminate. To explicitly stop or restart Ray, use the shutdown API.
-
-.. tabs::
-  .. code-tab:: python
-
-    import ray
-    ray.init()
-    ... # ray program
-    ray.shutdown()
-
-  .. code-tab:: java
-
-    import io.ray.api.Ray;
-
-    public class MyRayApp {
-
-      public static void main(String[] args) {
-        Ray.init();
-        ... // ray program
-        Ray.shutdown();
-      }
-    }
-
-  .. code-tab:: c++
-
-    #include <ray/api.h>
-    ray::Init()
-    ... // ray program
-    ray::Shutdown()
-
-.. tabs::
-  .. group-tab:: Python
-
-    To check if Ray is initialized, you can call ``ray.is_initialized()``:
+.. tabbed:: Python
 
     .. code-block:: python
 
-      import ray
-      ray.init()
-      assert ray.is_initialized() == True
+        import ray
+        # Other Ray APIs will not work until `ray.init()` is called.
+        ray.init()
 
-      ray.shutdown()
-      assert ray.is_initialized() == False
-
-  .. group-tab:: Java
-
-    To check if Ray is initialized, you can call ``Ray.isInitialized()``:
+.. tabbed:: Java
 
     .. code-block:: java
 
-      import io.ray.api.Ray;
+        import io.ray.api.Ray;
 
-      public class MyRayApp {
+        public class MyRayApp {
 
-        public static void main(String[] args) {
-          Ray.init();
-          Assert.assertTrue(Ray.isInitialized());
-          Ray.shutdown();
-          Assert.assertFalse(Ray.isInitialized());
+          public static void main(String[] args) {
+            // Other Ray APIs will not work until `Ray.init()` is called.
+            Ray.init();
+            ...
+          }
         }
-      }
 
-  .. group-tab:: C++
-
-    To check if Ray is initialized, you can call ``ray::IsInitialized()``:
+.. tabbed:: C++
 
     .. code-block:: c++
 
-      #include <ray/api.h>
+        #include <ray/api.h>
+        // Other Ray APIs will not work until `ray::Init()` is called.
+        ray::Init()
 
-      int main(int argc, char **argv) {
-        ray::Init();
-        assert(ray::IsInitialized());
+When the process calling ``ray.init()`` terminates, the Ray runtime will also terminate. To explicitly stop or restart Ray, use the shutdown API.
 
-        ray::Shutdown();
-        assert(!ray::IsInitialized());
-      }
+.. tabbed:: Python
+
+    .. code-block:: python
+
+        import ray
+        ray.init()
+        ... # ray program
+        ray.shutdown()
+
+.. tabbed:: Java
+
+    .. code-block:: java
+
+        import io.ray.api.Ray;
+
+        public class MyRayApp {
+
+          public static void main(String[] args) {
+            Ray.init();
+            ... // ray program
+            Ray.shutdown();
+          }
+        }
+
+.. tabbed:: C++
+
+    .. code-block:: c++
+
+        #include <ray/api.h>
+        ray::Init()
+        ... // ray program
+        ray::Shutdown()
+
+To check if Ray is initialized, use the ``is_initialized`` API.
+
+.. tabbed:: Python
+
+    .. code-block:: python
+
+        import ray
+        ray.init()
+        assert ray.is_initialized() == True
+
+        ray.shutdown()
+        assert ray.is_initialized() == False
+
+.. tabbed:: Java
+
+    .. code-block:: java
+
+        import io.ray.api.Ray;
+
+        public class MyRayApp {
+
+        public static void main(String[] args) {
+                Ray.init();
+                Assert.assertTrue(Ray.isInitialized());
+                Ray.shutdown();
+                Assert.assertFalse(Ray.isInitialized());
+            }
+        }
+
+.. tabbed:: C++
+
+    .. code-block:: c++
+
+        #include <ray/api.h>
+
+        int main(int argc, char **argv) {
+            ray::Init();
+            assert(ray::IsInitialized());
+
+            ray::Shutdown();
+            assert(!ray::IsInitialized());
+        }
 
 See the `Configuration <configure.html>`__ documentation for the various ways to configure Ray.
 
@@ -158,14 +163,15 @@ Use ``ray start`` from the CLI to start a 1 node ray runtime on a machine. This 
 
 You can connect to this Ray runtime by starting a driver process on the same node as where you ran ``ray start``:
 
-.. tabs::
-  .. code-tab:: python
+.. tabbed:: Python
+
+  .. code-block:: python
 
     # This must
     import ray
     ray.init(address='auto')
 
-  .. group-tab:: java
+.. tabbed:: java
 
     .. code-block:: java
 
@@ -185,7 +191,7 @@ You can connect to this Ray runtime by starting a driver process on the same nod
         -Dray.address=<address> \
         <classname> <args>
 
-  .. group-tab:: C++
+.. tabbed:: C++
 
     .. code-block:: c++
 
@@ -230,13 +236,13 @@ Local mode
 
 By default, Ray will parallelize its workload and run tasks on multiple processes and multiple nodes. However, if you need to debug your Ray program, it may be easier to do everything on a single process. You can force all Ray functions to occur on a single process by enabling local mode as the following:
 
-.. tabs::
+.. tabbed:: Python
 
-  .. code-tab:: python
+  .. code-block:: python
 
     ray.init(local_mode=True)
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
     .. code-block:: bash
 
@@ -246,7 +252,7 @@ By default, Ray will parallelize its workload and run tasks on multiple processe
 
     .. note:: If you just want to run your Java code in local mode, you can run it without Ray or even Python installed.
 
-  .. group-tab:: C++
+.. tabbed:: C++
 
     .. code-block:: c++
 

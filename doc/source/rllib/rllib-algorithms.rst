@@ -520,7 +520,7 @@ Dreamer
 
 Dreamer is an image-only model-based RL method that learns by imagining trajectories in the future and is evaluated on the DeepMind Control Suite `environments <https://github.com/ray-project/ray/blob/master/rllib/examples/env/dm_control_suite.py>`__. RLlib's Dreamer is adapted from the `official Google research repo <https://github.com/google-research/dreamer>`__.
 
-To visualize learning, RLLib Dreamer's imagined trajectories are logged as gifs in Tensorboard. Examples of such can be seen `here <https://github.com/ray-project/rl-experiments>`__.
+To visualize learning, RLLib Dreamer's imagined trajectories are logged as gifs in TensorBoard. Examples of such can be seen `here <https://github.com/ray-project/rl-experiments>`__.
 
 Tuned examples: `Deepmind Control Environments <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamer/dreamer-deepmind-control.yaml>`__
 
@@ -671,8 +671,8 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
    :end-before: __sphinx_doc_end__
 
 
-Contextual Bandits (contrib/bandits)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Contextual Bandits
+~~~~~~~~~~~~~~~~~~
 
 The Multi-armed bandit (MAB) problem provides a simplified RL setting that
 involves learning to act under one situation only, i.e. the state is fixed.
@@ -692,34 +692,36 @@ named after the exploration strategies that they employ:
 
 .. _linucb:
 
-Linear Upper Confidence Bound (contrib/LinUCB)
-----------------------------------------------
+Linear Upper Confidence Bound (BanditLinUCBTrainer)
+---------------------------------------------------
 |pytorch|
 `[paper] <http://rob.schapire.net/papers/www10.pdf>`__ `[implementation]
-<https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/agents/lin_ucb.py>`__
+<https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/bandit.py>`__
 LinUCB assumes a linear dependency between the expected reward of an action and
 its context. It estimates the Q value of each action using ridge regression.
 It constructs a confidence region around the weights of the linear
 regression model and uses this confidence ellipsoid to estimate the
 uncertainty of action values.
 
-Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/examples/simple_context_bandit.py>`__, `ParametricItemRecoEnv <https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/examples/tune_LinUCB_train_recommendation.py>`__.
+Tuned examples:
+`SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/test_bandits.py>`__,
+`ParametricItemRecoEnv <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/tune_LinUCB_train_recommendation.py>`__.
 
 **LinUCB-specific configs** (see also `common configs <rllib-training
 .html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/contrib/bandits/agents/lin_ucb.py
+.. literalinclude:: ../../../rllib/agents/bandit/bandit.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
 .. _lints:
 
-Linear Thompson Sampling (contrib/LinTS)
-----------------------------------------
+Linear Thompson Sampling (BanditLinTSTrainer)
+---------------------------------------------
 |pytorch|
 `[paper] <http://proceedings.mlr.press/v28/agrawal13.pdf>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/agents/lin_ts.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/bandit.py>`__
 Like LinUCB, LinTS also assumes a linear dependency between the expected
 reward of an action and its context and uses online ridge regression to
 estimate the Q values of actions given the context. It assumes a Gaussian
@@ -727,12 +729,13 @@ prior on the weights and a Gaussian likelihood function. For deciding which
 action to take, the agent samples weights for each arm, using
 the posterior distributions, and plays the arm that produces the highest reward.
 
-Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/examples/simple_context_bandit.py>`__, `WheelBandit <https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/examples/tune_LinTS_train_wheel_env.py>`__.
+Tuned examples:
+`SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/test_bandits.py>`__,
+`WheelBandit <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/tune_LinTS_train_wheel_env.py>`__.
 
-**LinTS-specific configs** (see also `common configs <rllib-training
-.html#common-parameters>`__):
+**LinTS-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/contrib/bandits/agents/lin_ts.py
+.. literalinclude:: ../../../rllib/agents/bandit/bandit.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
