@@ -4,7 +4,8 @@ from typing import Optional
 import click
 
 from ray_release.config import (read_and_validate_release_test_collection,
-                                find_test, as_smoke_test)
+                                find_test, as_smoke_test,
+                                DEFAULT_WHEEL_WAIT_TIMEOUT)
 from ray_release.exception import ReleaseTestCLIError
 from ray_release.glue import run_release_test
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
@@ -51,9 +52,16 @@ def main(test_name: str,
     if smoke_test:
         test = as_smoke_test(test)
 
-    ray_wheels_url = find_and_wait_for_ray_wheels_url(ray_wheels)
+    ray_wheels_url = find_and_wait_for_ray_wheels_url(
+        ray_wheels, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT)
 
-    run_release_test(test, ray_wheels_url=ray_wheels_url)
+    anyscale_project = os.environ.get("ANYSCALE_PROJECT", None)
+    if not anyscale_project:
+        raise ReleaseTestCLIError(
+            "You have to set the ANYSCALE_PROJECT environment variable!")
+
+    run_release_test(
+        test, anyscale_project=anyscale_project, ray_wheels_url=ray_wheels_url)
 
 
 if __name__ == "__main__":

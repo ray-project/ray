@@ -48,19 +48,19 @@ def anyscale_project_url(project_id: str):
            f"/?tab=session-list"
 
 
-def anyscale_session_url(project_id: str, session_id: str):
+def anyscale_cluster_url(project_id: str, session_id: str):
     return f"{ANYSCALE_HOST}" \
            f"/o/anyscale-internal/projects/{project_id}" \
            f"/clusters/{session_id}"
 
 
-def anyscale_compute_tpl_url(compute_tpl_id: str):
+def anyscale_cluster_compute_url(compute_tpl_id: str):
     return f"{ANYSCALE_HOST}" \
            f"/o/anyscale-internal/configurations/cluster-computes" \
            f"/{compute_tpl_id}"
 
 
-def anyscale_app_config_build_url(build_id: str):
+def anyscale_cluster_env_build_url(build_id: str):
     return f"{ANYSCALE_HOST}" \
            f"/o/anyscale-internal/configurations/app-config-details" \
            f"/{build_id}"

@@ -3,7 +3,7 @@ import time
 from ray_release.exception import AppConfigBuildFailure
 from ray_release.logger import logger
 from ray_release.cluster_manager.cluster_manager import ClusterManager
-from ray_release.util import format_link, anyscale_app_config_build_url
+from ray_release.util import format_link, anyscale_cluster_env_build_url
 
 REPORT_S = 30.
 
@@ -84,7 +84,7 @@ class MinimalClusterManager(ClusterManager):
             if build.status == "succeeded":
                 logger.info(
                     f"Link to cluster env build: "
-                    f"{format_link(anyscale_app_config_build_url(build_id))}")
+                    f"{format_link(anyscale_cluster_env_build_url(build_id))}")
                 self.cluster_env_build_id = build_id
                 return
 
@@ -101,7 +101,7 @@ class MinimalClusterManager(ClusterManager):
         timeout_at = time.monotonic() + timeout
         logger.info(f"Waiting for build {build_id} to finish...")
         logger.info(f"Track progress here: "
-                    f"{format_link(anyscale_app_config_build_url(build_id))}")
+                    f"{format_link(anyscale_cluster_env_build_url(build_id))}")
         while not completed:
             now = time.time()
             if now > next_report:
@@ -116,7 +116,7 @@ class MinimalClusterManager(ClusterManager):
             if build.status == "failed":
                 raise AppConfigBuildFailure(
                     f"Cluster env build failed. Please see "
-                    f"{anyscale_app_config_build_url(build_id)} for details")
+                    f"{anyscale_cluster_env_build_url(build_id)} for details")
 
             if build.status == "succeeded":
                 logger.info("Build succeeded.")
@@ -128,7 +128,7 @@ class MinimalClusterManager(ClusterManager):
             if completed:
                 raise AppConfigBuildFailure(
                     f"Unknown build status: {build.status}. Please see "
-                    f"{anyscale_app_config_build_url(build_id)} for details")
+                    f"{anyscale_cluster_env_build_url(build_id)} for details")
 
             if time.monotonic() > timeout_at:
                 raise AppConfigBuildFailure(

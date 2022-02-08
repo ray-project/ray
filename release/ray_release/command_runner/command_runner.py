@@ -14,7 +14,7 @@ class CommandRunner(abc.ABC):
     def prepare_remote_env(self):
         """Prepare remote environment, e.g. upload files."""
 
-    def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
+    def wait_for_nodes(self, num_nodes: int, timeout: float = 900.):
         """Wait for cluster nodes to be up.
 
         Args:
@@ -30,7 +30,7 @@ class CommandRunner(abc.ABC):
         """
         raise NotImplementedError
 
-    def run_command(self, command: str):
+    def run_command(self, command: str, timeout: float = 3600.):
         """Run command."""
         raise NotImplementedError
 

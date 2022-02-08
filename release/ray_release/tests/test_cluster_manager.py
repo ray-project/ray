@@ -557,25 +557,25 @@ class LiveSessionManagerTest(unittest.TestCase):
         self.cluster_env = TEST_CLUSTER_ENV
         self.cluster_compute = TEST_CLUSTER_COMPUTE
 
-        self.session_manager = FullClusterManager(
+        self.cluster_manager = FullClusterManager(
             project_id=UNIT_TEST_PROJECT_ID,
             sdk=self.sdk,
             test_name=f"unit_test__{self.__class__.__name__}__endToEnd")
 
     def tearDown(self) -> None:
-        self.session_manager.terminate_cluster()
-        self.session_manager.delete_configs()
+        self.cluster_manager.terminate_cluster()
+        self.cluster_manager.delete_configs()
 
     def testSessionEndToEnd(self):
-        self.session_manager.set_cluster_env(self.cluster_env)
-        self.session_manager.set_cluster_compute(self.cluster_compute)
-        self.session_manager.build_configs(timeout=1200)
+        self.cluster_manager.set_cluster_env(self.cluster_env)
+        self.cluster_manager.set_cluster_compute(self.cluster_compute)
+        self.cluster_manager.build_configs(timeout=1200)
 
         # Reset, so that we fetch them again and test that code path
-        self.session_manager.cluster_compute_id = None
-        self.session_manager.cluster_env_id = None
-        self.session_manager.cluster_env_build_id = None
-        self.session_manager.build_configs(timeout=1200)
+        self.cluster_manager.cluster_compute_id = None
+        self.cluster_manager.cluster_env_id = None
+        self.cluster_manager.cluster_env_build_id = None
+        self.cluster_manager.build_configs(timeout=1200)
 
         # Start cluster
-        self.session_manager.start_cluster(timeout=1200)
+        self.cluster_manager.start_cluster(timeout=1200)

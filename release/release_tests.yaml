@@ -7,13 +7,16 @@
   team: ml
 
   cluster:
-    app_config: app_config.yaml
-    compute_template: tpl_cpu_small.yaml
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_small.yaml
     autosuspend_mins: 10
 
   run:
     type: command
     timeout: 600
     script: python workloads/train_small.py
+
+    build_timeout: 300
+
 
   alert: long_running_test

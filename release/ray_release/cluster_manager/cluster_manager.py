@@ -1,18 +1,21 @@
 import abc
 import time
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
-from ray_release.util import dict_hash
+from ray_release.util import dict_hash, get_anyscale_sdk, anyscale_cluster_url
 
 
 class ClusterManager(abc.ABC):
-    def __init__(self, sdk: AnyscaleSDK, project_id: str, test_name: str):
-        self.sdk = sdk
+    def __init__(self,
+                 test_name: str,
+                 project_id: str,
+                 sdk: Optional[AnyscaleSDK] = None):
+        self.sdk = sdk or get_anyscale_sdk()
 
-        self.project_id = project_id
         self.test_name = test_name
+        self.project_id = project_id
 
         self.cluster_name = f"{test_name}_{int(time.time())}"
         self.cluster_id = None
@@ -51,3 +54,8 @@ class ClusterManager(abc.ABC):
 
     def get_cluster_address(self) -> str:
         raise NotImplementedError
+
+    def get_cluster_url(self) -> Optional[str]:
+        if not self.project_id or not self.cluster_id:
+            return None
+        return anyscale_cluster_url(self.project_id, self.cluster_id)

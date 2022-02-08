@@ -4,7 +4,7 @@ from ray_release.exception import (ClusterCreationError, ClusterStartupError,
                                    ClusterStartupTimeout, ClusterStartupFailed)
 from ray_release.logger import logger
 from ray_release.cluster_manager.minimal import MinimalClusterManager
-from ray_release.util import (format_link, anyscale_session_url)
+from ray_release.util import (format_link, anyscale_cluster_url)
 
 REPORT_S = 30.
 
@@ -33,7 +33,7 @@ class FullClusterManager(MinimalClusterManager):
         # Trigger session start
         logger.info(
             f"Starting cluster {self.cluster_name} ({self.cluster_id})")
-        cluster_url = anyscale_session_url(
+        cluster_url = anyscale_cluster_url(
             project_id=self.project_id, session_id=self.cluster_id)
         logger.info(f"Link to cluster: {format_link(cluster_url)}")
 

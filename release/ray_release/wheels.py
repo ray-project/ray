@@ -7,6 +7,7 @@ import time
 import urllib.request
 from typing import Optional, List
 
+from ray_release.config import set_test_env_var
 from ray_release.exception import RayWheelsUnspecifiedError, \
     RayWheelsNotFoundError, RayWheelsTimeoutError
 from ray_release.logger import logger
@@ -126,7 +127,13 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
         repo_url = os.environ.get("BUILDKITE_REPO", DEFAULT_REPO)
         ray_version = get_ray_version(repo_url, commit)
 
+        set_test_env_var("RAY_COMMIT", commit)
+
         return get_ray_wheels_url(repo_url, branch, commit, ray_version)
+
+    # If this is a URL, return
+    if ray_wheels.startswith("https://") or ray_wheels.startswith("http://"):
+        return ray_wheels
 
     # Else, this is either a commit hash, a branch name, or a combination
     # with a repo, e.g. ray-project:master or ray-project:<commit>
@@ -161,6 +168,8 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
             wheels_url = get_ray_wheels_url(repo_url, branch, commit,
                                             ray_version)
             if url_exists(wheels_url):
+                set_test_env_var("RAY_COMMIT", commit)
+
                 return wheels_url
 
         raise RayWheelsNotFoundError(
@@ -174,4 +183,7 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
     ray_version = get_ray_version(repo_url, commit)
     branch = os.environ.get("BUILDKITE_BRANCH", DEFAULT_BRANCH)
     wheels_url = get_ray_wheels_url(repo_url, branch, commit, ray_version)
+
+    set_test_env_var("RAY_COMMIT", commit)
+
     return wheels_url
