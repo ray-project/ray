@@ -247,6 +247,20 @@ def test_runtime_env_no_spurious_resource_deadlock_msg(
     assert len(errors) == 0
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="pip not supported on Windows.")
+def test_failed_job_env_no_hang():
+    """Test that after a failed job-level env, tasks can still be run."""
+    ray.init(runtime_env={"pip": ["ray-doesnotexist-123"]})
+
+    @ray.remote
+    def f():
+        import pip_install_test
+
+        return True
+
+    assert ray.get(f.options(runtime_env={"pip": ["pip-install-test==0.5"]}).remote())
+
+
 @pytest.fixture
 def set_agent_failure_env_var():
     os.environ["_RAY_AGENT_FAILING"] = "1"
