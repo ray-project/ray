@@ -288,9 +288,9 @@ def check_compute_single_action(
     # Some Trainers may not abide to the standard API.
     pid = DEFAULT_POLICY_ID
     try:
-        # Multi-agent: Pick any policy (or DEFAULT_POLICY if it's the only
+        # Multi-agent: Pick any learnable policy (or DEFAULT_POLICY if it's the only
         # one).
-        pid = next(iter(trainer.workers.local_worker().policy_map))
+        pid = next(iter(trainer.workers.local_worker().get_policies_to_train()))
         pol = trainer.get_policy(pid)
     except AttributeError:
         pol = trainer.policy
@@ -405,7 +405,7 @@ def check_compute_single_action(
                 isinstance(action_space, Box)
                 and not unsquash
                 and what.config.get("normalize_actions")
-                and np.any(np.abs(action) > 3.0)
+                and np.any(np.abs(action) > 15.0)
             ):
                 raise ValueError(
                     f"Returned action ({action}) of trainer/policy {what} "
@@ -419,11 +419,7 @@ def check_compute_single_action(
         if what is trainer:
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
-            worker_set = getattr(trainer, "workers")
-            # TODO: ES and ARS use `self._workers` instead of `self.workers` to
-            #  store their rollout worker set. Change to `self.workers`.
-            if worker_set is None:
-                worker_set = getattr(trainer, "_workers", None)
+            worker_set = getattr(trainer, "workers", None)
             assert worker_set
             if isinstance(worker_set, list):
                 obs_space = trainer.get_policy(pid).observation_space
