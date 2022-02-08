@@ -766,7 +766,7 @@ class Trainer(Trainable):
 
         # The env creator callable, taking an EnvContext (config dict)
         # as arg and returning an RLlib supported Env type (e.g. a gym.Env).
-        self.env_creator: EnvCreator = None
+        self.env_creator: Optional[EnvCreator] = None
 
         # Placeholder for a local replay buffer instance.
         self.local_replay_buffer = None
@@ -2465,15 +2465,7 @@ class Trainer(Trainable):
                 "complete_episodes]! Got {}".format(config["batch_mode"])
             )
 
-        # Check multi-agent batch count mode.
-        if config["multiagent"].get("count_steps_by", "env_steps") not in [
-            "env_steps",
-            "agent_steps",
-        ]:
-            raise ValueError(
-                "`count_steps_by` must be one of [env_steps|agent_steps]! "
-                "Got {}".format(config["multiagent"]["count_steps_by"])
-            )
+        # Store multi-agent batch count mode.
         self._by_agent_steps = (
             self.config["multiagent"].get("count_steps_by") == "agent_steps"
         )

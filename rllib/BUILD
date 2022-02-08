@@ -100,6 +100,17 @@ py_test(
     args = ["--yaml-dir=tuned_examples/a3c"]
 )
 
+# AlphaStar
+py_test(
+    name = "learning_tests_cartpole_alpha_star",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/alpha_star/multi-agent-cartpole-alpha-star.yaml"],
+    args = ["--yaml-dir=tuned_examples/alpha_star", "--num-cpus=20"]
+)
+
 # APEX-DQN
 py_test(
     name = "learning_tests_cartpole_apex",
@@ -600,6 +611,14 @@ py_test(
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
     srcs = ["agents/a3c/tests/test_a3c.py"]
+)
+
+# AlphaStar
+py_test(
+    name = "test_alpha_star",
+    tags = ["team:ml", "trainers_dir"],
+    size = "large",
+    srcs = ["agents/alpha_star/tests/test_alpha_star.py"]
 )
 
 # APEXTrainer (DQN)
