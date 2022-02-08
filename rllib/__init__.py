@@ -55,7 +55,7 @@ def _register_all():
 
 
 _setup_logger()
-_register_all()
+#_register_all()
 
 __all__ = [
     "Policy",
