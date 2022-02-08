@@ -103,7 +103,10 @@ parser.add_argument(
     "--iteration-num", type=int, help="How many iterations to run", required=False
 )
 parser.add_argument(
-    "--smoke-test", action="store_true", help="Whether or not the test is smoke test.", default=False,
+    "--smoke-test",
+    action="store_true",
+    help="Whether or not the test is smoke test.",
+    default=False,
 )
 args = parser.parse_args()
 
