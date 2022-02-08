@@ -5,6 +5,7 @@ import ray
 
 TEST_NAMESPACE = "ray_dag_test_namespace"
 
+
 @pytest.fixture(scope="session")
 def shared_ray_instance():
     # Remove ray address for test ray cluster in case we have

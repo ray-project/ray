@@ -98,15 +98,95 @@ def test_invalid_entrypoint_as_class_constructor(shared_ray_instance):
     with pytest.raises(
         ValueError, match="DAG_ENTRY_POINT cannot be used as ClassNode args"
     ):
-        dag = Actor._bind(ray_dag.DAG_ENTRY_POINT)
+        Actor._bind(ray_dag.DAG_ENTRY_POINT)
 
 
 def test_class_method_entrypoint(shared_ray_instance):
-    pass
+    @ray.remote
+    class Model:
+        def __init__(self, weight: int):
+            self.weight = weight
+
+        def forward(self, input: "RayHandleLike"):
+            return self.weight * input
+
+    @ray.remote
+    class FeatureProcessor:
+        def __init__(self, scale):
+            self.scale = scale
+
+        def process(self, input: int):
+            return input * self.scale
+
+    preprocess = FeatureProcessor._bind(0.5)
+    feature = preprocess.process._bind(ray_dag.DAG_ENTRY_POINT)
+    model = Model._bind(4)
+    dag = model.forward._bind(feature)
+
+    print(dag)
+    assert ray.get(dag.execute(2)) == 4
+    assert ray.get(dag.execute(6)) == 12
 
 
 def test_multi_class_method_entrypoint(shared_ray_instance):
-    pass
+    """
+    Test a multiple class methods can all be used as entrypoints in a dag.
+    """
+
+    @ray.remote
+    class Model:
+        def __init__(self, weight: int):
+            self.weight = weight
+
+        def forward(self, input: int):
+            return self.weight * input
+
+    @ray.remote
+    def combine(m1: "RayHandleLike", m2: "RayHandleLike"):
+        return m1 + m2
+
+    m1 = Model._bind(2)
+    m2 = Model._bind(3)
+
+    m1_output = m1.forward._bind(ray_dag.DAG_ENTRY_POINT)
+    m2_output = m2.forward._bind(ray_dag.DAG_ENTRY_POINT)
+
+    dag = combine._bind(m1_output, m2_output)
+    print(dag)
+    assert ray.get(dag.execute(1)) == 5
+    assert ray.get(dag.execute(2)) == 10
+
+
+def test_func_class_mixed_entrypoint(shared_ray_instance):
+    """
+    Test both class method and function are used as entrypoint in the
+    same dag.
+    """
+
+    @ray.remote
+    class Model:
+        def __init__(self, weight: int):
+            self.weight = weight
+
+        def forward(self, input: int):
+            return self.weight * input
+
+    @ray.remote
+    def model_func(input: int):
+        return input * 2
+
+    @ray.remote
+    def combine(m1: "RayHandleLike", m2: "RayHandleLike"):
+        return m1 + m2
+
+    m1 = Model._bind(3)
+    m1_output = m1.forward._bind(ray_dag.DAG_ENTRY_POINT)
+    m2_output = model_func._bind(ray_dag.DAG_ENTRY_POINT)
+
+    dag = combine._bind(m1_output, m2_output)
+    print(dag)
+    assert ray.get(dag.execute(2)) == 10
+    assert ray.get(dag.execute(3)) == 15
 
 
 if __name__ == "__main__":

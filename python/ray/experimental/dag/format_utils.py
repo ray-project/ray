@@ -45,6 +45,8 @@ def get_kwargs_lines(bound_kwargs):
     """Pretty prints bounded kwargs of a DAGNode, and recursively handle
     DAGNode in list / dict containers.
     """
+    if not bound_kwargs:
+        return "{}"
     indent = get_indentation()
     kwargs_lines = []
     for key, val in bound_kwargs.items():
@@ -85,6 +87,8 @@ def get_kwargs_lines(bound_kwargs):
 
 def get_options_lines(bound_options):
     """Pretty prints .options() in DAGNode. Only prints non-empty values."""
+    if not bound_options:
+        return "{}"
     indent = get_indentation()
     options_lines = []
     for key, val in bound_options.items():
@@ -99,6 +103,8 @@ def get_options_lines(bound_options):
 
 
 def get_kwargs_to_resolve_lines(kwargs_to_resolve):
+    if not kwargs_to_resolve:
+        return "{}"
     indent = get_indentation()
     kwargs_to_resolve_lines = []
     for key, val in kwargs_to_resolve.items():
