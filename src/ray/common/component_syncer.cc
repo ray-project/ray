@@ -14,6 +14,7 @@ class NodeSyncContext : public T {
  public:
   using T::StartRead;
   using T::StartWrite;
+
   constexpr static bool kIsServerReactor = std::is_same_v<T, ServerReactor>;
   using C = std::conditional_t<kIsServerReactor, grpc::CallbackServerContext,
                                grpc::ClientContext>;
@@ -80,8 +81,8 @@ class NodeSyncContext : public T {
     }
   }
 
-  template<bool S=kIsServerReactor, typename = std::enable_if_t<S>>
-  void T::OnSendInitialMetadataDone(bool ok) override {
+  void OnSendInitialMetadataDone(bool ok) {
+    RAY_CHECK(kIsServerReactor);
     if (ok) {
       StartRead(&in_message_);
     } else {
@@ -89,8 +90,8 @@ class NodeSyncContext : public T {
     }
   }
 
-  template<bool S=kIsServerReactor, typename = std::enable_if_t<!S>>
-  void OnReadInitialMetadataDone(bool ok) override {
+  void OnReadInitialMetadataDone(bool ok) {
+    RAY_CHECK(!kIsServerReactor);
     if (ok) {
       const auto &metadata = rpc_context_->GetServerInitialMetadata();
       auto iter = metadata.find("node_id");
@@ -102,14 +103,13 @@ class NodeSyncContext : public T {
       HandleFailure();
     }
   }
-  template<bool S=kIsServerReactor, typename=std::enable_if_t<!S>>
-  void OnDone() override {
-    // TODO
+
+  void OnDone() {
+    RAY_CHECK(kIsServerReactor);
   }
 
-  template<bool S=kIsServerReactor, typename=std::enable_if_t<S>>
-  void OnDone(const grpc::Status &status) override {
-    // TODO
+  void OnDone(const grpc::Status &status) {
+    RAY_CHECK(!kIsServerReactor);
   }
 
  private:
