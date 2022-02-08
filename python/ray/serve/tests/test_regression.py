@@ -188,20 +188,21 @@ def test_out_of_order_chaining(serve_instance):
         first_func_h = first_func.get_handle()
         second_func_h = second_func.get_handle()
         first_res_h = first_func_h.remote(_id=_id)
-        second_func_h.remote(_id=first_res_h)
+        ref = second_func_h.remote(_id=first_res_h)
+        await ref
 
     @serve.deployment
     async def first_func(_id):
         if _id == 0:
             await asyncio.sleep(1000)
         print(f"First output: {_id}")
-        collector.append.remote(f"first-{_id}")
+        ray.get(collector.append.remote(f"first-{_id}"))
         return _id
 
     @serve.deployment
     async def second_func(_id):
         print(f"Second output: {_id}")
-        collector.append.remote(f"second-{_id}")
+        ray.get(collector.append.remote(f"second-{_id}"))
         return _id
 
     serve.start(detached=True)
