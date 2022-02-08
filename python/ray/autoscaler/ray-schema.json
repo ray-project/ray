@@ -181,6 +181,33 @@
                         }
                     }
                 },
+                "cloud_formation": {
+                    "type": "array",
+                    "description": "AWS cloud formation stacks to deploy before applying Ray cluster config. Stacks are deployed in the order given.",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["stack_name"],
+                        "properties": {
+                            "stack_name": {
+                                "type": "string",
+                                "description": "AWS cloud formation stack name"
+                            },
+                            "template_file": {
+                                "type": "string",
+                                "description": "AWS cloud formation template file path"
+                            },
+                            "create_stack_args": {
+                                "type": "object",
+                                "description": "Additional create stack arguments. See https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/cloudformation.html#CloudFormation.Client.create_stack."
+                            },
+                            "update_stack_args": {
+                                "type": "object",
+                                "description": "Additional update stack arguments. See https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/cloudformation.html#CloudFormation.Client.update_stack."
+                            }
+                        }
+                    }
+                },
                 "cloudwatch": {
                     "agent": {
                         "CLOUDWATCH_AGENT_INSTALLED_AMI_TAG": {

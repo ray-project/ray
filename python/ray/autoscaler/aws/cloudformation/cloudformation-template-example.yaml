@@ -1,0 +1,31 @@
+Resources:
+  RayExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: RayAutoscalerV1
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2FullAccess # Ray Default
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess # Ray Default
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+  RayInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      InstanceProfileName: RayAutoscalerV1
+      Path: '/'
+      Roles:
+        - !Ref RayExecutionRole
+  RayClusterLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: RayAutoscalerLaunchTemplate
+      LaunchTemplateData:
+        IamInstanceProfile:
+          Arn: !GetAtt RayInstanceProfile.Arn

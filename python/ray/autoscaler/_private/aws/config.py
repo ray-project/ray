@@ -224,6 +224,9 @@ def bootstrap_aws(config):
     # Used internally to store head IAM role.
     config["head_node"] = {}
 
+    # Deploy any prerequisite CloudFormation stack
+    _deploy_cloud_formation_stacks(config)
+
     # If a LaunchTemplate is provided, extract the necessary fields for the
     # config stages below.
     config = _configure_from_launch_template(config)
@@ -254,6 +257,64 @@ def bootstrap_aws(config):
     _check_ami(config)
 
     return config
+
+
+def _deploy_cloud_formation_stacks(config):
+    stack_configs = config["provider"].get("cloud_formation")
+    if stack_configs and len(stack_configs):
+        for stack_config in stack_configs:
+            stack_name = stack_config.get("stack_name")
+            if stack_name:
+                cloud_formation = _client("cloudformation", config)
+                _deploy_stack(cloud_formation, stack_name, stack_config)
+
+
+def _deploy_stack(cloud_formation, stack_name, stack_config):
+    template_file = stack_config.get("template_file")
+    if template_file:
+        template_body = _read_template_body(cloud_formation, template_file)
+
+    stacks = cloud_formation.list_stacks()["StackSummaries"]
+    update_stack = next(
+        (
+            stack
+            for stack in stacks
+            if stack["StackName"] == stack_name
+            and stack["StackStatus"] != "DELETE_COMPLETE"
+        ),
+        None,
+    )
+
+    params = {"StackName": stack_name, "TemplateBody": template_body}
+    if update_stack:
+        deploy_stack = cloud_formation.update_stack
+        waiter = cloud_formation.get_waiter("stack_update_complete")
+        params.update(stack_config.get("update_stack_args"))
+    else:
+        deploy_stack = cloud_formation.create_stack
+        waiter = cloud_formation.get_waiter("stack_create_complete")
+        params.update(stack_config.get("create_stack_args"))
+    try:
+        logger.info("Deploying cloud formation stack: {}".format(stack_name))
+        deploy_stack(**params)
+        logger.info("Waiting for deploy to complete...")
+        waiter.wait(StackName=stack_name)
+        logger.info("Cloud formation stack deploy complete")
+    except botocore.exceptions.ClientError as exc:
+        # error type of "ValidationError" and HTTP status code of 400 are not
+        # unique to this error, so we have to check the error mesage
+        message = exc.response["Error"]["Message"]
+        if message == "No updates are to be performed.":
+            logger.info("Cloud formation stack already up-to-date")
+        else:
+            raise
+
+
+def _read_template_body(cloud_formation, template):
+    with open(template) as file:
+        template_body = file.read()
+    cloud_formation.validate_template(TemplateBody=template_body)
+    return template_body
 
 
 def _configure_iam_role(config):

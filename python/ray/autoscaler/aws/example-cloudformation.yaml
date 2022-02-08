@@ -1,0 +1,52 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: cloudformation
+
+# The maximum number of workers nodes to launch in addition to the head node.
+max_workers: 2
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+    cloud_formation:
+      # AWS CloudFormation stacks to deploy before applying Ray cluster config. Stacks are deployed in the order given.
+      # CloudFormation stack name
+      - stack_name: RayClusterExample
+        # Path to your local CloudFormation template file
+        template_file: "cloudformation/cloudformation-template-example.yaml"
+        # Additional create stack arguments. See https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/cloudformation.html#CloudFormation.Client.create_stack.
+        create_stack_args:
+          Capabilities:
+            - CAPABILITY_NAMED_IAM
+          OnFailure: DELETE
+        # Additional update stack arguments. See https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/cloudformation.html#CloudFormation.Client.update_stack.
+        update_stack_args:
+          Capabilities:
+            - CAPABILITY_NAMED_IAM
+
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu
+
+available_node_types:
+  ray.head.default:
+      node_config:
+        InstanceType: c5a.large
+        LaunchTemplate:
+          LaunchTemplateName: RayAutoscalerLaunchTemplate
+          Version: "$Latest"
+        ImageId: latest_dlami
+      resources: {}
+  ray.worker.default:
+      node_config:
+        InstanceType: c5a.large
+        ImageId: latest_dlami
+        LaunchTemplate:
+          LaunchTemplateName: RayAutoscalerLaunchTemplate
+          Version: "$Latest"
+      resources: {}
+      min_workers: 0
+      max_workers: 2
+head_node_type: ray.head.default
