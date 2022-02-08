@@ -56,6 +56,7 @@ void SchedulerResourceReporter::FillResourceUsage(
   if (max_resource_shapes_per_load_report_ == 0) {
     return;
   }
+
   auto resource_loads = data.mutable_resource_load();
   auto resource_load_by_shape =
       data.mutable_resource_load_by_shape()->mutable_resource_demands();
@@ -97,7 +98,6 @@ void SchedulerResourceReporter::FillResourceUsage(
     by_shape_entry->set_num_ready_requests_queued(num_ready + count);
     by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
   }
-
   for (const auto &pair : tasks_to_dispatch_) {
     const auto &scheduling_class = pair.first;
     if (num_reported++ >= max_resource_shapes_per_load_report_ &&
@@ -128,7 +128,6 @@ void SchedulerResourceReporter::FillResourceUsage(
     by_shape_entry->set_num_ready_requests_queued(num_ready + count);
     by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
   }
-
   for (const auto &pair : infeasible_tasks_) {
     const auto &scheduling_class = pair.first;
     if (num_reported++ >= max_resource_shapes_per_load_report_ &&

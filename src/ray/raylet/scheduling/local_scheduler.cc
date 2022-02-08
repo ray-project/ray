@@ -40,6 +40,7 @@ LocalScheduler::LocalScheduler(
       cluster_resource_scheduler_(cluster_resource_scheduler),
       task_dependency_manager_(task_dependency_manager),
       is_owner_alive_(is_owner_alive),
+      get_node_info_(get_node_info),
       max_resource_shapes_per_load_report_(
           RayConfig::instance().max_resource_shapes_per_load_report()),
       worker_pool_(worker_pool),
