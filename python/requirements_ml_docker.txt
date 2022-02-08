@@ -5,6 +5,8 @@ tblib
 
 # If you make changes to anything below this line, please also change `requirements_dl.txt`!
 
+horovod
+
 # TODO(amogkam): Remove after https://github.com/tensorflow/tensorflow/issues/52922 is fixed.
 keras==2.6.0
 # In TF >v2, GPU support is included in the base package.
