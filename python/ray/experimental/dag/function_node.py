@@ -16,6 +16,19 @@ class FunctionNode(ray_dag.DAGNode):
         func_options,
         kwargs_to_resolve=None,
     ):
+        # TODO: (jiaodong) revisit constraints on dag INPUT before moving out
+        # of experimental folder
+        if ray_dag.INPUT in func_args and len(func_args) > 1:
+            raise ValueError(
+                "dag.INPUT cannot be used in conjunction with other args. "
+                "Please bind with dag.INPUT as only input."
+            )
+        if ray_dag.INPUT in func_kwargs.values():
+            raise ValueError(
+                "dag.INPUT cannot be used as a kwarg value. "
+                "Please bind with dag.INPUT as only input."
+            )
+
         self._body = func_body
         ray_dag.DAGNode.__init__(
             self,
@@ -42,10 +55,7 @@ class FunctionNode(ray_dag.DAGNode):
 
     def _execute_impl(self, *args, **kwargs):
         """Executor of FunctionNode by ray.remote()"""
-        if (
-            len(self._bound_args) == 1
-            and self._bound_args[0] == ray_dag.DAG_ENTRY_POINT
-        ):
+        if len(self._bound_args) == 1 and self._bound_args[0] == ray_dag.INPUT:
             # DAG entrypoint, execute with user input rather than bound args.
             return (
                 ray.remote(self._body)

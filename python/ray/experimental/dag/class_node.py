@@ -15,9 +15,9 @@ class ClassNode(ray_dag.DAGNode):
         cls_options,
         kwargs_to_resolve=None,
     ):
-        if len(cls_args) == 1 and cls_args[0] == ray_dag.DAG_ENTRY_POINT:
+        if ray_dag.INPUT in cls_args or ray_dag.INPUT in cls_kwargs.values():
             raise ValueError(
-                "DAG_ENTRY_POINT cannot be used as ClassNode args. "
+                "dag.INPUT cannot be used as ClassNode args. "
                 "Please bind to function or class method only."
             )
         self._body = cls
@@ -99,6 +99,19 @@ class ClassMethodNode(ray_dag.DAGNode):
         method_options: Dict[str, Any],
         kwargs_to_resolve: Dict[str, Any],
     ):
+        # TODO: (jiaodong) revisit constraints on dag INPUT before moving out
+        # of experimental folder
+        if ray_dag.INPUT in method_args and len(method_args) > 1:
+            raise ValueError(
+                "dag.INPUT cannot be used in conjunction with other args. "
+                "Please bind with dag.INPUT as only input."
+            )
+        if ray_dag.INPUT in method_kwargs.values():
+            raise ValueError(
+                "dag.INPUT cannot be used as a kwarg value. "
+                "Please bind with dag.INPUT as only input."
+            )
+
         self._bound_args = method_args or []
         self._bound_kwargs = method_kwargs or {}
         self._bound_options = method_options or {}
@@ -136,10 +149,7 @@ class ClassMethodNode(ray_dag.DAGNode):
     def _execute_impl(self, *args, **kwargs):
         """Executor of ClassMethodNode by ray.remote()"""
         method_body = getattr(self._parent_class_node, self._method_name)
-        if (
-            len(self._bound_args) == 1
-            and self._bound_args[0] == ray_dag.DAG_ENTRY_POINT
-        ):
+        if len(self._bound_args) == 1 and self._bound_args[0] == ray_dag.INPUT:
             # DAG entrypoint, execute with user input rather than bound args.
             return method_body.options(**self._bound_options).remote(*args, **kwargs)
         else:

@@ -11,9 +11,9 @@
 # In this pipeline, each user input is broadcasted to both A.forward and
 # B.forward as first stop of the DAG, and authored like
 
-# a = A.forward.bind(ray.dag.DAG_ENTRY_POINT)
-# b = B.forward.bind(ray.dag.DAG_ENTRY_POINT)
+# a = A.forward.bind(ray.dag.INPUT)
+# b = B.forward.bind(ray.dag.INPUT)
 # dag = ensemble.bind(a, b)
 
 # dag.execute(user_input) --> broadcast to a and b
-DAG_ENTRY_POINT = "__dag_entry_point"
+INPUT = "__INPUT"

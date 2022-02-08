@@ -1,5 +1,5 @@
 """
-Tests to ensure ray DAG can correctly mark its entrypoint(s) to take user
+Tests to ensure ray DAG can correctly mark its input(s) to take user
 request, for all DAGNode types.
 """
 
@@ -23,7 +23,7 @@ def test_simple_func(shared_ray_instance):
         return f"{a} -> b"
 
     # input -> a - > b -> ouput
-    a_node = a._bind(ray_dag.DAG_ENTRY_POINT)
+    a_node = a._bind(ray_dag.INPUT)
     dag = b._bind(a_node)
 
     assert ray.get(dag.execute("input")) == "input -> a -> b"
@@ -47,7 +47,7 @@ def test_func_dag(shared_ray_instance):
     def d(x, y):
         return x + y
 
-    a_ref = a._bind(ray_dag.DAG_ENTRY_POINT)
+    a_ref = a._bind(ray_dag.INPUT)
     b_ref = b._bind(a_ref)
     c_ref = c._bind(a_ref)
     d_ref = d._bind(b_ref, c_ref)
@@ -62,7 +62,7 @@ def test_func_dag(shared_ray_instance):
     assert ray.get(dag.execute(3)) == 40
 
 
-def test_multi_entrypoint_func_dag(shared_ray_instance):
+def test_multi_input_func_dag(shared_ray_instance):
     @ray.remote
     def a(user_input):
         return user_input * 2
@@ -75,8 +75,8 @@ def test_multi_entrypoint_func_dag(shared_ray_instance):
     def c(x, y):
         return x + y
 
-    a_ref = a._bind(ray_dag.DAG_ENTRY_POINT)
-    b_ref = b._bind(ray_dag.DAG_ENTRY_POINT)
+    a_ref = a._bind(ray_dag.INPUT)
+    b_ref = b._bind(ray_dag.INPUT)
     dag = c._bind(a_ref, b_ref)
     print(dag)
 
@@ -86,7 +86,7 @@ def test_multi_entrypoint_func_dag(shared_ray_instance):
     assert ray.get(dag.execute(3)) == 10
 
 
-def test_invalid_entrypoint_as_class_constructor(shared_ray_instance):
+def test_invalid_input_as_class_constructor(shared_ray_instance):
     @ray.remote
     class Actor:
         def __init__(self, val):
@@ -96,12 +96,63 @@ def test_invalid_entrypoint_as_class_constructor(shared_ray_instance):
             return self.val
 
     with pytest.raises(
-        ValueError, match="DAG_ENTRY_POINT cannot be used as ClassNode args"
+        ValueError, match="INPUT cannot be used as ClassNode args"
     ):
-        Actor._bind(ray_dag.DAG_ENTRY_POINT)
+        Actor._bind(ray_dag.INPUT)
 
 
-def test_class_method_entrypoint(shared_ray_instance):
+def test_invalid_input_conjunction_with_others(shared_ray_instance):
+    @ray.remote
+    def f(x, y):
+        return x + y
+
+    with pytest.raises(
+        ValueError,
+        match="dag.INPUT cannot be used in conjunction with other args",
+    ):
+        f._bind(ray_dag.INPUT, 1)
+
+    with pytest.raises(
+        ValueError, match="dag.INPUT cannot be used as a kwarg value"
+    ):
+        f._bind(1, kwarg=ray_dag.INPUT)
+
+    @ray.remote
+    class Actor:
+        def __init__(self, val):
+            self.val = val
+
+        def get(self, input1, input2):
+            return self.val + input1 + input2
+
+    actor = Actor._bind(1)
+    with pytest.raises(
+        ValueError,
+        match="dag.INPUT cannot be used in conjunction with other args.",
+    ):
+        actor.get._bind(ray_dag.INPUT, 2)
+    with pytest.raises(
+        ValueError, match="dag.INPUT cannot be used as a kwarg value"
+    ):
+        actor.get._bind(2, input2=ray_dag.INPUT)
+
+
+def test_invalid_input_as_class_constructor(shared_ray_instance):
+    @ray.remote
+    class Actor:
+        def __init__(self, val):
+            self.val = val
+
+        def get(self):
+            return self.val
+
+    with pytest.raises(
+        ValueError, match="INPUT cannot be used as ClassNode args"
+    ):
+        Actor._bind(ray_dag.INPUT)
+
+
+def test_class_method_input(shared_ray_instance):
     @ray.remote
     class Model:
         def __init__(self, weight: int):
@@ -119,7 +170,7 @@ def test_class_method_entrypoint(shared_ray_instance):
             return input * self.scale
 
     preprocess = FeatureProcessor._bind(0.5)
-    feature = preprocess.process._bind(ray_dag.DAG_ENTRY_POINT)
+    feature = preprocess.process._bind(ray_dag.INPUT)
     model = Model._bind(4)
     dag = model.forward._bind(feature)
 
@@ -130,9 +181,9 @@ def test_class_method_entrypoint(shared_ray_instance):
     assert ray.get(dag.execute(6)) == 12
 
 
-def test_multi_class_method_entrypoint(shared_ray_instance):
+def test_multi_class_method_input(shared_ray_instance):
     """
-    Test a multiple class methods can all be used as entrypoints in a dag.
+    Test a multiple class methods can all be used as inputs in a dag.
     """
 
     @ray.remote
@@ -150,8 +201,8 @@ def test_multi_class_method_entrypoint(shared_ray_instance):
     m1 = Model._bind(2)
     m2 = Model._bind(3)
 
-    m1_output = m1.forward._bind(ray_dag.DAG_ENTRY_POINT)
-    m2_output = m2.forward._bind(ray_dag.DAG_ENTRY_POINT)
+    m1_output = m1.forward._bind(ray_dag.INPUT)
+    m2_output = m2.forward._bind(ray_dag.INPUT)
 
     dag = combine._bind(m1_output, m2_output)
     print(dag)
@@ -161,9 +212,9 @@ def test_multi_class_method_entrypoint(shared_ray_instance):
     assert ray.get(dag.execute(2)) == 10
 
 
-def test_func_class_mixed_entrypoint(shared_ray_instance):
+def test_func_class_mixed_input(shared_ray_instance):
     """
-    Test both class method and function are used as entrypoint in the
+    Test both class method and function are used as input in the
     same dag.
     """
 
@@ -184,8 +235,8 @@ def test_func_class_mixed_entrypoint(shared_ray_instance):
         return m1 + m2
 
     m1 = Model._bind(3)
-    m1_output = m1.forward._bind(ray_dag.DAG_ENTRY_POINT)
-    m2_output = model_func._bind(ray_dag.DAG_ENTRY_POINT)
+    m1_output = m1.forward._bind(ray_dag.INPUT)
+    m2_output = model_func._bind(ray_dag.INPUT)
 
     dag = combine._bind(m1_output, m2_output)
     print(dag)
