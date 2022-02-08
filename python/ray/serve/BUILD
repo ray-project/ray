@@ -98,7 +98,7 @@ py_test(
 
 py_test(
     name = "test_constructor_failure",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -140,7 +140,7 @@ py_test(
 
 py_test(
     name = "test_failure",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -274,7 +274,7 @@ py_test(
 # Runs test_api and test_failure with injected failures in the controller.
 py_test(
    name = "test_controller_crashes",
-   size = "medium",
+   size = "large",
    srcs = glob(["tests/test_controller_crashes.py",
                "tests/test_api.py",
                "tests/test_failure.py",
@@ -285,7 +285,7 @@ py_test(
 
 py_test(
     name = "test_controller_recovery",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
