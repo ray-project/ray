@@ -19,7 +19,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
-#include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
@@ -318,9 +317,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param actor The actor whose creation task is infeasible.
   /// \param failure_type Scheduling failure type.
+  /// \param scheduling_failure_message The scheduling failure error message.
   void OnActorSchedulingFailed(
       std::shared_ptr<GcsActor> actor,
-      const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type);
+      const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+      const std::string &scheduling_failure_message);
 
   /// Handle actor creation task success. This should be called when the actor
   /// creation task has been scheduled successfully.

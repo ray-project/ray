@@ -188,8 +188,8 @@ Release test yaml example
 import argparse
 import enum
 import random
-import string
 import shlex
+import string
 
 import boto3
 import collections
@@ -402,7 +402,7 @@ class CommandRunnerHack:
         full_cmd = " ".join(f"{k}={v}" for k, v in env_vars.items()) + " " + cmd_to_run
         logger.info(f"Executing {cmd_to_run} with {env_vars} via ray job submit")
         proc = subprocess.Popen(
-            " ".join(["ray", "job", "submit", shlex.quote(full_cmd)]),
+            f"ray job submit -- bash -c {shlex.quote(full_cmd)}",
             shell=True,
             stdout=sys.stdout,
             stderr=sys.stderr,
@@ -479,7 +479,15 @@ class S3SyncSessionController(SessionController):
         )
         global_command_runner.wait_command(cid)
 
-    def push(self, session_name, source, target):
+    def push(
+        self,
+        session_name: str,
+        source: Optional[str],
+        target: Optional[str],
+        config: Optional[str],
+        all_nodes: bool,
+        no_warning: bool = False,
+    ):
         if source is None and target is None:
             self._push_local_dir(session_name)
             return
@@ -1153,6 +1161,7 @@ def create_and_wait_for_session(
     session_url = anyscale_session_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"], session_id=session_id
     )
+    logger.info(f"URL: {session_url}")
     logger.info(f"Link to session: {_format_link(session_url)}")
 
     result = sdk.start_session(session_id, start_session_options={})
@@ -1215,6 +1224,7 @@ def run_session_command(
     session_url = anyscale_session_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"], session_id=session_id
     )
+    logger.info(f"URL: {session_url}")
     logger.info(f"Link to session: {_format_link(session_url)}")
     result_queue.put(State(state_str, time.time(), None))
     result = sdk.create_session_command(
@@ -1496,7 +1506,11 @@ def run_test_config(
         cli_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"],
         host=GLOBAL_CONFIG["ANYSCALE_HOST"],
     )
-    session_controller = S3SyncSessionController(sdk, result_queue)
+    on_k8s = test_config["cluster"].get("compute_on_k8s")
+    if on_k8s:
+        session_controller = S3SyncSessionController(sdk, result_queue)
+    else:
+        session_controller = SessionController()
 
     cloud_id = test_config["cluster"].get("cloud_id", None)
     cloud_name = test_config["cluster"].get("cloud_name", None)
@@ -1775,6 +1789,8 @@ def run_test_config(
                     session_name=session_name,
                     source=None,
                     target=None,
+                    config=None,
+                    all_nodes=False,
                 )
 
                 logger.info("Syncing test state to session...")
@@ -1782,6 +1798,8 @@ def run_test_config(
                     session_name=session_name,
                     source=test_state_file,
                     target=state_json,
+                    config=None,
+                    all_nodes=False,
                 )
 
                 session_url = anyscale_session_url(
@@ -2207,22 +2225,23 @@ def run_test_config(
 
         out_dir = os.path.expanduser(GLOBAL_CONFIG["RELEASE_RESULTS_DIR"])
 
-        logger.info(f"Moving results dir {temp_dir} to persistent location {out_dir}")
+        logger.info(
+            f"Moving results dir {temp_dir} to persistent location " f"{out_dir}"
+        )
 
         try:
-            # out_dir is cleared in run_e2e.sh, but it may exist when running
-            # e2e.py directly.
-            if os.path.exists(out_dir):
-                shutil.rmtree(out_dir)
-                logger.info(f"Destination {out_dir} is cleared")
+            shutil.rmtree(out_dir)
         except Exception:
-            logger.info(
-                f"Ran into error when clearing the destination: {out_dir}",
-                exc_info=True,
+            logger.exception(
+                f"Ran into error when clearing the destination dir: {out_dir}"
             )
 
         try:
-            shutil.cptree(temp_dir, out_dir)
+            # Use distutils.dir_util.copy_tree() instead of shutil.cptree(),
+            # which allows existing output directory.
+            from distutils.dir_util import copy_tree
+
+            copy_tree(temp_dir, out_dir)
         except Exception:
             logger.exception(
                 "Ran into error when copying results dir to persistent "
