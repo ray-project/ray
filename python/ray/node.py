@@ -342,12 +342,15 @@ class Node:
         Raises:
             Exception: An exception is raised if there is a version mismatch.
         """
-        version_info = self.get_gcs_client().internal_kv_get(
-            b"VERSION_INFO", namespace=ray_constants.KV_NAMESPACE_CLUSTER
+        cluster_metadata = ray_usage_lib.get_cluster_metadata(
+            self.get_gcs_client(), num_retries=NUM_REDIS_GET_RETRIES
         )
-        if version_info is None:
+        if cluster_metadata is None:
             return
-        true_version_info = tuple(json.loads(ray._private.utils.decode(version_info)))
+        true_version_info = (
+            cluster_metadata["ray_version"],
+            cluster_metadata["python_version"],
+        )
         version_info = ray._private.utils.compute_version_info()
         if version_info != true_version_info:
             node_ip_address = ray._private.services.get_node_ip_address()

@@ -40,7 +40,8 @@ Data is reported
 Note that it is also possible to configure the interval using the environment variable,
 `RAY_USAGE_REPORT_INTERVAL_S`.
 
-To see collected/reported data, see `ray._private.usage.schema.py`.
+To see collected/reported data, see `usage_stats.json` inside a temp
+folder (e.g., /tmp/ray/session_[id]/*).
 """
 import os
 import uuid
