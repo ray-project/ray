@@ -23,6 +23,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/common/component_syncer.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
@@ -37,7 +38,7 @@ namespace ray {
 /// it also supports creating a new resource or delete an existing resource.
 /// Whenever the resouce changes, it notifies the subscriber of the change.
 /// This class is not thread safe.
-class LocalResourceManager {
+class LocalResourceManager : public syncing::Reporter {
  public:
   LocalResourceManager(
       int64_t local_node_id, StringIdMap &resource_name_to_id,
@@ -47,6 +48,22 @@ class LocalResourceManager {
       std::function<void(const NodeResources &)> resource_change_subscriber);
 
   int64_t GetNodeId() const { return local_node_id_; }
+
+  std::optional<syncing::RaySyncMessage> Snapshot(uint64_t current_version) const {
+    if(version_ <= current_version) {
+      return std::nullopt;
+    }
+    syncing::RaySyncMessage msg;
+    rpc::ResourcesData resource_data;
+    FillResourceUsage(resource_data);
+    msg.set_version(version_);
+    msg.set_component_id(syncing::RayComponentId::RESOURCE_MANAGER);
+    msg.set_message_type(syncing::RaySyncMessageType::SNAPSHOT);
+    std::string serialized_msg;
+    RAY_CHECK(resource_data.SerializeToString(&serialized_msg));
+    msg.set_sync_message(std::move(serialized_msg));
+    return std::make_optional(std::move(msg));
+  }
 
   /// Add a local resource that is available.
   ///
@@ -288,6 +305,7 @@ class LocalResourceManager {
 
   // Specify custom resources that consists of unit-size instances.
   std::unordered_set<int64_t> custom_unit_instance_resources_{};
+  uint64_t version_ = 0;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);

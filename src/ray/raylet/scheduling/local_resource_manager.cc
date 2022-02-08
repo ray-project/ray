@@ -593,6 +593,7 @@ ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourc
 }
 
 void LocalResourceManager::OnResourceChanged() {
+  ++version_;
   if (resource_change_subscriber_ == nullptr) {
     return;
   }

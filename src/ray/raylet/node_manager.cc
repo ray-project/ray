@@ -403,6 +403,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   syncer_ = std::make_unique<syncing::RaySyncer>(self_node_id_.Binary(), io_service);
   auto channel = gcs_client_->NewChannel();
   syncer_->ConnectTo(ray::rpc::syncer::RaySyncer::NewStub(channel));
+  syncer_->Register(syncing::RayComponentId::RESOURCE_MANAGER, &cluster_resource_scheduler_->GetLocalResourceManager(), nullptr);
 }
 
 ray::Status NodeManager::RegisterGcs() {
