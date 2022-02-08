@@ -115,7 +115,7 @@ To serve multiple different MLflow models in the same program, use the ``name`` 
   Namely, load the model from the registry in ``__init__``, and forward the request to the model in ``__call__``.
 
 For a complete hands-on and seamless integration with MLflow, try this self-contained example on your laptop.
-But first install `mlflow`.
+But first install ``mlflow``.
 
 .. code-block:: bash
 
@@ -193,9 +193,9 @@ But first install `mlflow`.
             with open(local_path, "r") as f:
                 self.label_list = json.load(f)
 
-        async def __call__(self, startlette_request):
-            payload = await startlette_request.json()
-            print(f"Worker: received starlet request with data: {payload}")
+        async def __call__(self, starlette_request):
+            payload = await starlette_request.json()
+            print(f"Worker: received Starlette request with data: {payload}")
 
             # Get the input vector from the payload
             input_vector = [
