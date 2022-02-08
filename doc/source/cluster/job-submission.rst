@@ -94,11 +94,14 @@ Job CLI API
 
 The easiest way to get started is to use Job submission CLI.
 
-If we have :code:`RAY_ADDRESS` environment variable set with a local Ray cluster, or just manually set it first:
+First, start a local Ray cluster (e.g. with ``ray start --head``) and open a terminal (on the head node, which is your local machine).  
+Next, set the :code:`RAY_ADDRESS` environment variable:
 
 .. code-block:: bash
 
     export RAY_ADDRESS="http://127.0.0.1:8265"
+
+Now you may run the following CLI commands:
 
 .. code-block::
 
@@ -132,6 +135,21 @@ If we have :code:`RAY_ADDRESS` environment variable set with a local Ray cluster
     5
     2.26.0
 
+Using the CLI on a remote cluster
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The example above was for a local Ray cluster.  When connecting to a `remote` cluster, you will need to set up port forwarding from ``127.0.0.1:8265`` on your local machine to ``127.0.0.1:8265`` on the head node in order for your local CLI commands to go through.
+
+If you started your remote cluster with the :ref:`Ray Cluster Launcher <ref-cluster-quick-start>`, then the port forwarding can be set up automatically using the ``ray dashboard`` command (see :ref:`monitor-cluster` for details).
+
+To use this, run the following command on your local machine, where ``cluster.yaml`` is the configuration file you used to launch your cluster:
+
+.. code-block:: bash
+
+    ray dashboard cluster.yaml
+
+Once this is running, check that you can view the Ray Dashboard in your local browser at ``http://127.0.0.1:8265``.  
+Once you have verified this and you have set the environment variable ``RAY_ADDRESS`` to ``"http://127.0.0.1:8265"``, you will be able to use the Jobs CLI on your local machine as in the example above to interact with your remote Ray cluster.
 
 
 Ray Job SDK
