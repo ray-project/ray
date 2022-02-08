@@ -95,9 +95,9 @@ When the process calling ``ray.init()`` terminates, the Ray runtime will also te
         ... // ray program
         ray::Shutdown()
 
-.. tabbed:: Python
+To check if Ray is initialized, use the ``is_initialized`` API.
 
-    To check if Ray is initialized, you can call ``ray.is_initialized()``:
+.. tabbed:: Python
 
     .. code-block:: python
 
@@ -109,8 +109,6 @@ When the process calling ``ray.init()`` terminates, the Ray runtime will also te
         assert ray.is_initialized() == False
 
 .. tabbed:: Java
-
-    To check if Ray is initialized, you can call ``Ray.isInitialized()``:
 
     .. code-block:: java
 
@@ -127,8 +125,6 @@ When the process calling ``ray.init()`` terminates, the Ray runtime will also te
         }
 
 .. tabbed:: C++
-
-    To check if Ray is initialized, you can call ``ray::IsInitialized()``:
 
     .. code-block:: c++
 
@@ -168,6 +164,7 @@ Use ``ray start`` from the CLI to start a 1 node ray runtime on a machine. This 
 You can connect to this Ray runtime by starting a driver process on the same node as where you ran ``ray start``:
 
 .. tabbed:: Python
+
   .. code-block:: python
 
     # This must
