@@ -1733,9 +1733,10 @@ class Trainer(Trainable):
 
         input_dict = {SampleBatch.OBS: obs_batch}
 
-        # For true/false evaluations of inputs that can be either np.ndarray,
-        # list, check has to be for true check or assuming only array
-        # it has to be prev_action.all()
+        # prev_action and prev_reward can be None, np.ndarray, or tensor-like structure.
+        # Explicitly check for None here to avoid the error message "The truth value of
+        # an array with more than one element is ambiguous.", when np arrays are passed
+        # as arguments.
         if prev_action is not None:
             input_dict[SampleBatch.PREV_ACTIONS] = prev_action
         if prev_reward is not None:
