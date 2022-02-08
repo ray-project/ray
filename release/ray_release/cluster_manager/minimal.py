@@ -2,13 +2,13 @@ import time
 
 from ray_release.exception import AppConfigBuildFailure
 from ray_release.logger import logger
-from ray_release.session_manager.session_manager import SessionManager
+from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.util import format_link, anyscale_app_config_build_url
 
 REPORT_S = 30.
 
 
-class MinimalSessionManager(SessionManager):
+class MinimalClusterManager(ClusterManager):
     """Minimal manager.
 
     Builds app config and compute template but does not start or stop session.

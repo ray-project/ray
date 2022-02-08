@@ -7,7 +7,7 @@ from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 from ray_release.util import dict_hash
 
 
-class SessionManager(abc.ABC):
+class ClusterManager(abc.ABC):
     def __init__(self, sdk: AnyscaleSDK, project_id: str, test_name: str):
         self.sdk = sdk
 

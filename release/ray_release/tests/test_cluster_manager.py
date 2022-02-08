@@ -9,8 +9,8 @@ from freezegun import freeze_time
 
 from ray_release.exception import AppConfigBuildFailure, ClusterCreationError, \
     ClusterStartupError, ClusterStartupTimeout, ClusterStartupFailed
-from ray_release.session_manager.full import FullSessionManager
-from ray_release.session_manager.minimal import MinimalSessionManager
+from ray_release.cluster_manager.full import FullClusterManager
+from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.tests.utils import (UNIT_TEST_PROJECT_ID, UNIT_TEST_CLOUD_ID,
                                      APIDict, UnitTestError, fail_always,
                                      fail_once, MockSDK)
@@ -69,7 +69,7 @@ class _DelayedResponse:
 
 
 class MinimalSessionManagerTest(unittest.TestCase):
-    cls = MinimalSessionManager
+    cls = MinimalClusterManager
 
     def setUp(self) -> None:
         self.sdk = MockSDK()
@@ -451,7 +451,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
 
 
 class FullSessionManagerTest(MinimalSessionManagerTest):
-    cls = FullSessionManager
+    cls = FullClusterManager
 
     def testSessionStartCreationError(self):
         self.session_manager.cluster_env_id = "correct"
@@ -557,7 +557,7 @@ class LiveSessionManagerTest(unittest.TestCase):
         self.cluster_env = TEST_CLUSTER_ENV
         self.cluster_compute = TEST_CLUSTER_COMPUTE
 
-        self.session_manager = FullSessionManager(
+        self.session_manager = FullClusterManager(
             project_id=UNIT_TEST_PROJECT_ID,
             sdk=self.sdk,
             test_name=f"unit_test__{self.__class__.__name__}__endToEnd")

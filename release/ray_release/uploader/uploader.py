@@ -2,13 +2,13 @@ import abc
 import os
 from typing import Optional
 
-from ray_release.session_manager.session_manager import SessionManager
+from ray_release.cluster_manager.session_manager import ClusterManager
 
 RAY_REMOTE_HOME = "/home/ray"
 
 
 class Uploader(abc.ABC):
-    def __init__(self, session_manager: SessionManager):
+    def __init__(self, session_manager: ClusterManager):
         self.session_manager = session_manager
 
     @staticmethod

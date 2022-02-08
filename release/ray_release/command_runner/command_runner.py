@@ -1,11 +1,11 @@
 import abc
 from typing import Dict, Any
 
-from ray_release.session_manager.session_manager import SessionManager
+from ray_release.cluster_manager.session_manager import ClusterManager
 
 
 class CommandRunner(abc.ABC):
-    def __init__(self, session_manager: SessionManager):
+    def __init__(self, session_manager: ClusterManager):
         self.session_manager = session_manager
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):

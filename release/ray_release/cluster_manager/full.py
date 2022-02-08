@@ -3,13 +3,13 @@ import time
 from ray_release.exception import (ClusterCreationError, ClusterStartupError,
                                    ClusterStartupTimeout, ClusterStartupFailed)
 from ray_release.logger import logger
-from ray_release.session_manager.minimal import MinimalSessionManager
+from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.util import (format_link, anyscale_session_url)
 
 REPORT_S = 30.
 
 
-class FullSessionManager(MinimalSessionManager):
+class FullClusterManager(MinimalClusterManager):
     """Full manager.
 
     Builds app config and compute template and starts/terminated session
