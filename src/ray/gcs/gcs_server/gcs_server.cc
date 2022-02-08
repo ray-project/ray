@@ -121,7 +121,7 @@ void GcsServer::Start() {
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs resource manager.
   InitGcsResourceManager(gcs_init_data);
-
+  InitSyncing();
   // Init gcs resource scheduler.
   InitGcsResourceScheduler();
 
@@ -200,9 +200,13 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitSyncing() {
-  syncer_ = std::make_unique<ray::syncing::RaySyncer>("GCS", main_service_);
-  syncer_service_ = std::make_unique<ray::syncing::RaySyncerService>(*syncer_);
-  rpc_server_.RegisterService(*syncer_service_);
+  if(RayConfig::instance().syncer_reporting()) {
+    RAY_LOG(INFO) << "Enable syncer module";
+    syncer_ = std::make_unique<ray::syncing::RaySyncer>("GCS", main_service_);
+    syncer_service_ = std::make_unique<ray::syncing::RaySyncerService>(*syncer_);
+    rpc_server_.RegisterService(*syncer_service_);
+    syncer_->Register(syncing::RayComponentId::RESOURCE_MANAGER, nullptr, gcs_resource_manager_.get());
+  }
 }
 
 void GcsServer::Stop() {

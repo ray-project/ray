@@ -117,7 +117,7 @@ class NodeSyncContext : public T {
 
   NodeSyncContext(RaySyncer &syncer, instrumented_io_context &io_context, C *rpc_context)
       : rpc_context_(rpc_context), io_context_(io_context), instance_(syncer) {
-    write_opts_.set_buffer_hint();
+    // write_opts_.set_corked();
   }
 
   void Init() {
@@ -178,11 +178,16 @@ class NodeSyncContext : public T {
 
  protected:
   void SendNextMessage() {
-    out_buffer_.erase(out_buffer_.begin(), out_buffer_.begin() + consumed_messages_);
-    consumed_messages_ = 0;
+    if(out_message_ != nullptr) {
+      out_buffer_.erase(out_buffer_.begin(), out_buffer_.begin() + consumed_messages_);
+      consumed_messages_ = 0;
+      arena_.Reset();
+    }
 
-    arena_.Reset();
     if (out_buffer_.empty()) {
+      if(out_message_ != nullptr) {
+        StartWrite(nullptr);
+      }
       out_message_ = nullptr;
     } else {
       out_message_ =

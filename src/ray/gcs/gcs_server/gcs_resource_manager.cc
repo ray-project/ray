@@ -185,31 +185,32 @@ void GcsResourceManager::HandleGetAllAvailableResources(
 
 void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data) {
   NodeID node_id = NodeID::FromBinary(data.node_id());
-  auto resources_data = std::make_shared<rpc::ResourcesData>();
-  resources_data->CopyFrom(data);
 
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    UpdateNodeNormalTaskResources(node_id, *resources_data);
+    UpdateNodeNormalTaskResources(node_id, data);
   } else {
     if (node_resource_usages_.count(node_id) == 0 ||
-        resources_data->resources_available_changed()) {
+        data.resources_available_changed()) {
       const auto &resource_changed =
-          MapFromProtobuf(resources_data->resources_available());
+          MapFromProtobuf(data.resources_available());
       SetAvailableResources(node_id, ResourceSet(resource_changed));
     }
   }
 
   UpdateNodeResourceUsage(node_id, data);
-
-  if (resources_data->should_global_gc() || resources_data->resources_total_size() > 0 ||
-      resources_data->resources_available_changed() ||
-      resources_data->resource_load_changed()) {
-    absl::MutexLock guard(&resource_buffer_mutex_);
-    resources_buffer_[node_id] = *resources_data;
-    // Clear the fields that will not be used by raylet.
-    resources_buffer_[node_id].clear_resource_load();
-    resources_buffer_[node_id].clear_resource_load_by_shape();
-    resources_buffer_[node_id].clear_resources_normal_task();
+  if (!RayConfig::instance().syncer_reporting()) {
+    auto resources_data = std::make_shared<rpc::ResourcesData>();
+    resources_data->CopyFrom(data);
+    if (resources_data->should_global_gc() || resources_data->resources_total_size() > 0 ||
+        resources_data->resources_available_changed() ||
+        resources_data->resource_load_changed()) {
+      absl::MutexLock guard(&resource_buffer_mutex_);
+      resources_buffer_[node_id] = *resources_data;
+      // Clear the fields that will not be used by raylet.
+      resources_buffer_[node_id].clear_resource_load();
+      resources_buffer_[node_id].clear_resource_load_by_shape();
+      resources_buffer_[node_id].clear_resources_normal_task();
+    }
   }
 }
 

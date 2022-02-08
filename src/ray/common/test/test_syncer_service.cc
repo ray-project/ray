@@ -94,6 +94,8 @@ int main(int argc, char *argv[]) {
     auto server_address = "0.0.0.0:" + server_port;
     service = std::make_unique<RaySyncerService>(syncer);
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+    builder.AddChannelArgument(GRPC_ARG_MAX_CONCURRENT_STREAMS, 2000);
+    builder.AddChannelArgument(GRPC_ARG_HTTP2_WRITE_BUFFER_SIZE, 256 * 1024);
     builder.RegisterService(service.get());
     server = builder.BuildAndStart();
   }

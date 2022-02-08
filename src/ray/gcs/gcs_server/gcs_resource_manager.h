@@ -17,6 +17,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
+#include "ray/common/component_syncer.h"
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
@@ -34,7 +35,7 @@ namespace gcs {
 /// It is responsible for handing node resource related rpc requests and it is used for
 /// actor and placement group scheduling. It obtains the available resources of nodes
 /// through heartbeat reporting. Non-thread safe.
-class GcsResourceManager : public rpc::NodeResourceInfoHandler {
+class GcsResourceManager : public rpc::NodeResourceInfoHandler, public syncing::Receiver {
  public:
   /// Create a GcsResourceManager.
   ///
@@ -83,6 +84,12 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   ///
   /// \return The resources of all nodes in the cluster.
   const absl::flat_hash_map<NodeID, SchedulingResources> &GetClusterResources() const;
+
+  void Update(const syncing::RaySyncMessage &message) override {
+    rpc::ResourcesData data;
+    data.ParseFromString(message.sync_message());
+    UpdateFromResourceReport(data);
+  }
 
   /// Handle a node registration.
   ///
