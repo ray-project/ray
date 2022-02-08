@@ -189,10 +189,8 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, data);
   } else {
-    if (node_resource_usages_.count(node_id) == 0 ||
-        data.resources_available_changed()) {
-      const auto &resource_changed =
-          MapFromProtobuf(data.resources_available());
+    if (node_resource_usages_.count(node_id) == 0 || data.resources_available_changed()) {
+      const auto &resource_changed = MapFromProtobuf(data.resources_available());
       SetAvailableResources(node_id, ResourceSet(resource_changed));
     }
   }
@@ -201,7 +199,8 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   if (!RayConfig::instance().syncer_reporting()) {
     auto resources_data = std::make_shared<rpc::ResourcesData>();
     resources_data->CopyFrom(data);
-    if (resources_data->should_global_gc() || resources_data->resources_total_size() > 0 ||
+    if (resources_data->should_global_gc() ||
+        resources_data->resources_total_size() > 0 ||
         resources_data->resources_available_changed() ||
         resources_data->resource_load_changed()) {
       absl::MutexLock guard(&resource_buffer_mutex_);

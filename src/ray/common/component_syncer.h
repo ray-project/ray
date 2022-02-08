@@ -178,14 +178,14 @@ class NodeSyncContext : public T {
 
  protected:
   void SendNextMessage() {
-    if(out_message_ != nullptr) {
+    if (out_message_ != nullptr) {
       out_buffer_.erase(out_buffer_.begin(), out_buffer_.begin() + consumed_messages_);
       consumed_messages_ = 0;
       arena_.Reset();
     }
 
     if (out_buffer_.empty()) {
-      if(out_message_ != nullptr) {
+      if (out_message_ != nullptr) {
         StartWrite(nullptr);
       }
       out_message_ = nullptr;
