@@ -40,25 +40,31 @@ def get_uri(runtime_env: Dict) -> Optional[str]:
         if isinstance(pip, list):
             uri = "pip://" + _get_pip_hash(pip_list=pip)
         else:
-            raise TypeError("pip field received by RuntimeEnvAgent must be "
-                            f"list, not {type(pip).__name__}.")
+            raise TypeError(
+                "pip field received by RuntimeEnvAgent must be "
+                f"list, not {type(pip).__name__}."
+            )
     else:
         uri = None
     return uri
 
 
 class PipProcessor:
-    def __init__(self,
-                 pip_resources_dir: str,
-                 runtime_env: RuntimeEnv,
-                 context: RuntimeEnvContext,
-                 logger: Optional[logging.Logger] = default_logger):
+    def __init__(
+        self,
+        pip_resources_dir: str,
+        runtime_env: RuntimeEnv,
+        context: RuntimeEnvContext,
+        logger: Optional[logging.Logger] = default_logger,
+    ):
         try:
             import virtualenv  # noqa: F401 ensure virtualenv exits.
         except ImportError:
-            raise RuntimeError(f"Please install virtualenv "
-                               f"`{sys.executable} -m pip install virtualenv`"
-                               f"to enable pip runtime env.")
+            raise RuntimeError(
+                f"Please install virtualenv "
+                f"`{sys.executable} -m pip install virtualenv`"
+                f"to enable pip runtime env."
+            )
         logger.debug("Setting up pip for runtime_env: %s", runtime_env)
         self._pip_resources_dir = pip_resources_dir
         self._runtime_env = runtime_env
@@ -71,9 +77,9 @@ class PipProcessor:
         # virtualenv > 16.7.9 & venv set the base_prefix.
         # So, we check both of them here.
         # https://github.com/pypa/virtualenv/issues/1622#issuecomment-586186094
-        return (hasattr(sys, "real_prefix")
-                or (hasattr(sys, "base_prefix")
-                    and sys.base_prefix != sys.prefix))
+        return hasattr(sys, "real_prefix") or (
+            hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
+        )
 
     @staticmethod
     def _get_current_python() -> str:
@@ -96,11 +102,13 @@ class PipProcessor:
 
         def _get_ray_version_and_path() -> Tuple[str, str]:
             check_ray_cmd = [
-                python, "-c",
-                "import ray; print(ray.__version__, ray.__path__[0])"
+                python,
+                "-c",
+                "import ray; print(ray.__version__, ray.__path__[0])",
             ]
             exit_code, output = exec_cmd_stream_to_logger(
-                check_ray_cmd, logger, cwd=cwd, env={})
+                check_ray_cmd, logger, cwd=cwd, env={}
+            )
             if exit_code != 0:
                 raise RuntimeError("Get ray version and path failed.")
             # print after import ray may have [0m endings, so we strip them by *_
@@ -111,15 +119,18 @@ class PipProcessor:
         yield
         actual_version, actual_path = _get_ray_version_and_path()
         if actual_version != version or actual_path != path:
-            raise RuntimeError("Change ray version is not allowed: \n"
-                               f"  current version: {actual_version}, "
-                               f"current path: {actual_path}\n"
-                               f"  expect version: {version}, "
-                               f"expect path: {path}")
+            raise RuntimeError(
+                "Change ray version is not allowed: \n"
+                f"  current version: {actual_version}, "
+                f"current path: {actual_path}\n"
+                f"  expect version: {version}, "
+                f"expect path: {path}"
+            )
 
     @classmethod
-    def _create_or_get_virtualenv(cls, path: str, cwd: str,
-                                  logger: logging.Logger) -> str:
+    def _create_or_get_virtualenv(
+        cls, path: str, cwd: str, logger: logging.Logger
+    ) -> str:
         """Create or get a virtualenv from path.
 
         Returns:
@@ -159,22 +170,35 @@ class PipProcessor:
         # --no-download
         #   Never download the latest pip/setuptools/wheel from PyPI.
         create_venv_cmd = [
-            python, "-m", "virtualenv", "--app-data", virtualenv_app_data_path,
-            "--reset-app-data", "--no-periodic-update",
-            "--system-site-packages", "--no-download", virtualenv_path
+            python,
+            "-m",
+            "virtualenv",
+            "--app-data",
+            virtualenv_app_data_path,
+            "--reset-app-data",
+            "--no-periodic-update",
+            "--system-site-packages",
+            "--no-download",
+            virtualenv_path,
         ]
         logger.info("Creating virtualenv at %s", virtualenv_path)
         exit_code, output = exec_cmd_stream_to_logger(
-            create_venv_cmd, logger, cwd=cwd, env={})
+            create_venv_cmd, logger, cwd=cwd, env={}
+        )
         if exit_code != 0:
             raise RuntimeError(
-                f"Failed to create virtualenv {virtualenv_path}:\n{output}")
+                f"Failed to create virtualenv {virtualenv_path}:\n{output}"
+            )
         return virtualenv_path
 
     @classmethod
-    def _install_pip_packages(cls, virtualenv_path: str,
-                              pip_packages: List[str], cwd: str,
-                              logger: logging.Logger):
+    def _install_pip_packages(
+        cls,
+        virtualenv_path: str,
+        pip_packages: List[str],
+        cwd: str,
+        logger: logging.Logger,
+    ):
         python = cls._get_virtualenv_python(virtualenv_path)
         # TODO(fyrestone): Support -i, --no-deps, --no-cache-dir, ...
         pip_install_cmd = [
@@ -186,7 +210,8 @@ class PipProcessor:
         ] + pip_packages
         logger.info("Installing python requirements to %s", virtualenv_path)
         exit_code, output = exec_cmd_stream_to_logger(
-            pip_install_cmd, logger, cwd=cwd, env={})
+            pip_install_cmd, logger, cwd=cwd, env={}
+        )
         if exit_code != 0:
             raise RuntimeError(
                 f"Failed to install python requirements to {virtualenv_path}:\n{output}"
@@ -195,20 +220,19 @@ class PipProcessor:
     def run(self):
         logger = self._logger
         pip_packages = self._runtime_env.pip_packages()
-        path = _get_path_from_hash(self._pip_resources_dir,
-                                   _get_pip_hash(pip_packages))
+        path = _get_path_from_hash(self._pip_resources_dir, _get_pip_hash(pip_packages))
         # We create an empty directory for exec cmd so that the cmd will
         # run more stable. e.g. if cwd has ray, then checking ray will
         # look up ray in cwd instead of site packages.
         exec_cwd = os.path.join(path, "exec_cwd")
         os.makedirs(exec_cwd, exist_ok=True)
         try:
-            virtualenv_path = self._create_or_get_virtualenv(
-                path, exec_cwd, logger)
+            virtualenv_path = self._create_or_get_virtualenv(path, exec_cwd, logger)
             python = self._get_virtualenv_python(virtualenv_path)
             with self._check_ray(python, exec_cwd, logger):
-                self._install_pip_packages(virtualenv_path, pip_packages,
-                                           exec_cwd, logger)
+                self._install_pip_packages(
+                    virtualenv_path, pip_packages, exec_cwd, logger
+                )
             # TODO(fyrestone): pip check.
             self._context.py_executable = python
         except Exception:
@@ -223,14 +247,16 @@ class PipManager:
         self._pip_resources_dir = os.path.join(resources_dir, "pip")
         try_to_create_directory(self._pip_resources_dir)
 
-    def delete_uri(self,
-                   uri: str,
-                   logger: Optional[logging.Logger] = default_logger) -> bool:
+    def delete_uri(
+        self, uri: str, logger: Optional[logging.Logger] = default_logger
+    ) -> bool:
         logger.info("Got request to delete URI %s", uri)
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.PIP:
-            raise ValueError("PipManager can only delete URIs with protocol "
-                             f"pip. Received protocol {protocol}, URI {uri}")
+            raise ValueError(
+                "PipManager can only delete URIs with protocol "
+                f"pip. Received protocol {protocol}, URI {uri}"
+            )
 
         pip_env_path = _get_path_from_hash(self._pip_resources_dir, hash)
         try:
@@ -241,13 +267,16 @@ class PipManager:
             logger.warning("Error when deleting pip env %s.", pip_env_path)
         return successful
 
-    def setup(self,
-              runtime_env: RuntimeEnv,
-              context: RuntimeEnvContext,
-              logger: Optional[logging.Logger] = default_logger):
+    def setup(
+        self,
+        runtime_env: RuntimeEnv,
+        context: RuntimeEnvContext,
+        logger: Optional[logging.Logger] = default_logger,
+    ):
         if not runtime_env.has_pip():
             return
 
-        pip_processor = PipProcessor(self._pip_resources_dir, runtime_env,
-                                     context, logger)
+        pip_processor = PipProcessor(
+            self._pip_resources_dir, runtime_env, context, logger
+        )
         pip_processor.run()
