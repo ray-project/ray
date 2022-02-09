@@ -557,3 +557,37 @@ Here is a list of different use cases and corresponding URLs:
 Once you have specified the URL in your ``runtime_env`` dictionary, you can pass the dictionary
 into a ``ray.init()`` or ``.options()`` call. Congratulations! You have now hosted a ``runtime_env`` dependency
 remotely on GitHub!
+
+
+Debugging
+---------
+If runtime_env cannot be set up (e.g., network issues, download failures, etc.), Ray will fail to schedule tasks/actors 
+that require the runtime_env. If you call ``ray.get``, it will raise ``RuntimeEnvSetupError`` with 
+the error message in detail.
+
+.. code-block:: python
+
+    @ray.remote
+    def f():
+        pass
+
+    @ray.remote
+    class A:
+        def f(self):
+            pass
+
+    start = time.time()
+    bad_env = {"conda": {"dependencies": ["this_doesnt_exist"]}}
+
+    # [Tasks] will raise `RuntimeEnvSetupError`.
+    ray.get(f.options(runtime_env=bad_env).remote())
+
+    # [Actors] will raise `RuntimeEnvSetupError`.
+    a = A.options(runtime_env=bad_env).remote()
+    ray.get(a.f.remote())
+
+You can also enable runtime_env debugging logs by setting an environment variable ``RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED=1``. 
+It will print the full runtime_env setup log messages to the driver.
+The same information can be found from the log file ``runtime_env*.log`` from the log directory. 
+
+Look :ref:`Logging Directory Structure <logging-directory-structure>` for more details.
