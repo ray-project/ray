@@ -81,12 +81,12 @@ We provide three APIs for Job submission: SDK, CLI and HTTP. Both the SDK and CL
 - **Entrypoint**: Shell command to run the job.
     - Typically :code:`python your_script.py`, can also be any shell script such as :code:`echo hello`.
 - **Runtime Environment**:
-    - :code:`working_dir` as local directory: It will be automatically zipped and uploaded to the target Ray cluster, then unpacked to where your submitted application runs.
-    - :code:`working_dir` as remote URIs, such as S3, Git or others: It will be downloaded and unpacked to where your submitted application runs. For details, see :ref:`Runtime Environments<runtime-environments>`.
+    - :code:`working_dir` as a local directory: It will be automatically zipped and uploaded to the target Ray cluster, then unpacked to where your submitted application runs.  This option has a size limit of 100 MB and is recommended for quick iteration and experimentation.
+    - :code:`working_dir` as a remote URI hosted on S3, GitHub or others: It will be downloaded and unpacked to where your submitted application runs.  This option has no size limit and is recommended for production use.  For details, see :ref:`remote-uris`.
 
 .. warning::
 
-    We currently don't support passing in :code:`requirements.txt` in :code:`pip` yet in job submission so user still need to pass in a list of packages. It will be supported in later releases.
+    We currently don't support passing in :code:`requirements.txt` in :code:`pip` yet in job submission so you still need to pass in a list of packages. It will be supported in later releases.
 
 
 Job CLI API
@@ -171,7 +171,7 @@ We can import and initialize the Job submission client by providing a valid Ray 
 
 .. code-block:: python
 
-    from ray.dashboard.modules.job.sdk import JobSubmissionClient
+    from ray.job_submission import JobSubmissionClient
 
     client = JobSubmissionClient("http://127.0.0.1:8265")
 
@@ -197,7 +197,7 @@ Now we can have a simple polling loop that checks the job status until it reache
 
 .. code-block:: python
 
-    from ray.dashboard.modules.job.common import JobStatus, JobStatusInfo
+    from ray.job_submission import JobStatus
 
     def wait_until_finish(job_id):
         start = time.time()

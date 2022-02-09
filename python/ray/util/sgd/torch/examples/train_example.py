@@ -5,7 +5,7 @@ but we put comments right after code blocks to prevent large white spaces
 in the documentation.
 """
 
-# yapf: disable
+# fmt: off
 # __torch_train_example__
 import argparse
 import numpy as np

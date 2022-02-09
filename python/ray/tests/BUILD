@@ -144,6 +144,7 @@ py_test_module_list(
     "test_unhandled_error.py",
     "test_top_level_api.py",
     "test_list_actors.py",
+    "test_usage_stats.py",
   ],
   size = "small",
   extra_srcs = SRCS,
