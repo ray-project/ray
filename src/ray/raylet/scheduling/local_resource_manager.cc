@@ -494,7 +494,7 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
   }
 
   auto &capacity = local_resources_.predefined_resources[OBJECT_STORE_MEM];
-  RAY_CHECK_EQ(capacity.total.size(), 1);
+  RAY_CHECK_EQ(capacity.total.size(), 1u);
 
   const double used = get_used_object_store_memory_();
   const double total = capacity.total[0].Double();
