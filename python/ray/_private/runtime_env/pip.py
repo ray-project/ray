@@ -77,7 +77,7 @@ class PipProcessor:
 
     @staticmethod
     def _is_in_virtualenv() -> bool:
-        # virtualenv <= 16.7.9 sets the real-prefix,
+        # virtualenv <= 16.7.9 sets the real_prefix,
         # virtualenv > 16.7.9 & venv set the base_prefix.
         # So, we check both of them here.
         # https://github.com/pypa/virtualenv/issues/1622#issuecomment-586186094
