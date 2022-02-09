@@ -7,7 +7,7 @@ but we put comments right after code blocks to prevent large white spaces
 in the documentation.
 """
 
-# yapf: disable
+# fmt: off
 # __tf_model_start__
 
 
@@ -28,9 +28,9 @@ def create_keras_model():
         metrics=[keras.metrics.categorical_accuracy])
     return model
 # __tf_model_end__
-# yapf: enable
+# fmt: on
 
-# yapf: disable
+# fmt: off
 # __ray_start__
 import ray
 import numpy as np
@@ -65,17 +65,17 @@ class Network(object):
         # Note that for simplicity this does not handle the optimizer state.
         self.model.set_weights(weights)
 # __ray_end__
-# yapf: enable
+# fmt: on
 
-# yapf: disable
+# fmt: off
 # __actor_start__
 NetworkActor = Network.remote()
 result_object_ref = NetworkActor.train.remote()
 ray.get(result_object_ref)
 # __actor_end__
-# yapf: enable
+# fmt: on
 
-# yapf: disable
+# fmt: off
 # __weight_average_start__
 NetworkActor2 = Network.remote()
 NetworkActor2.train.remote()
