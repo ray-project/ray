@@ -483,7 +483,7 @@ def sigmoid(x: np.ndarray, derivative: bool = False) -> np.ndarray:
 
 
 def softmax(
-    x: np.ndarray, axis: int = -1, epsilon: Optional[float] = None
+    x: Union[np.ndarray, list], axis: int = -1, epsilon: Optional[float] = None
 ) -> np.ndarray:
     """Returns the softmax values for x.
 
