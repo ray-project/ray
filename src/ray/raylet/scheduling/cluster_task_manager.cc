@@ -256,6 +256,10 @@ bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
       }
     }
   }
+
+  local_scheduler_->AnyPendingTasksForResourceAcquisition(
+      exemplar, any_pending, num_pending_actor_creation, num_pending_tasks);
+
   // If there's any pending task, at this point, there's no progress being made.
   return *any_pending;
 }

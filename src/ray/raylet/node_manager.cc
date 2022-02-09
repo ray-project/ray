@@ -607,7 +607,6 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     FillNormalTaskResourceUsage(resources_data);
   }
-
   // If plasma store is under high pressure, we should try to schedule a global gc.
   bool plasma_high_pressure =
       object_manager_.GetUsedMemoryPercentage() > high_plasma_storage_usage_;
