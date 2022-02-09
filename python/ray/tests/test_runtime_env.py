@@ -260,6 +260,10 @@ def test_failed_job_env_no_hang():
 
     assert ray.get(f.options(runtime_env={"pip": ["pip-install-test==0.5"]}).remote())
 
+    # Task with no runtime env should inherit the bad job env.
+    with pytest.raises(RuntimeEnvSetupError):
+        ray.get(f.remote())
+
 
 @pytest.fixture
 def set_agent_failure_env_var():
