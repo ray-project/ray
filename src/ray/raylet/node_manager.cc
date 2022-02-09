@@ -314,7 +314,14 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   cluster_resource_scheduler_ =
       std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
           self_node_id_.Binary(), local_resources.GetTotalResources().GetResourceMap(),
-          *gcs_client_, [this]() { return object_manager_.GetUsedMemory(); },
+          *gcs_client_,
+          [this]() {
+            if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
+              return local_object_manager_.GetPinnedBytes();
+            } else {
+              return object_manager_.GetUsedMemory();
+            }
+          },
           [this]() { return object_manager_.PullManagerHasPullsQueued(); }));
 
   auto get_node_info_func = [this](const NodeID &node_id) {
@@ -760,7 +767,8 @@ void NodeManager::WarnResourceDeadlock() {
         << exemplar.GetTaskSpecification().GetRequiredPlacementResources().ToString()
         << "\n"
         << "Available resources on this node: "
-        << cluster_resource_scheduler_->GetLocalResourceViewString()
+        << cluster_resource_scheduler_->GetClusterResourceManager()
+               .GetNodeResourceViewString(self_node_id_.Binary())
         << " In total there are " << pending_tasks << " pending tasks and "
         << pending_actor_creations << " pending actors on this node.";
 
@@ -835,7 +843,8 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   // not be necessary.
 
   // Remove the node from the resource map.
-  if (!cluster_resource_scheduler_->RemoveNode(node_id.Binary())) {
+  if (!cluster_resource_scheduler_->GetClusterResourceManager().RemoveNode(
+          node_id.Binary())) {
     RAY_LOG(DEBUG) << "Received NodeRemoved callback for an unknown node: " << node_id
                    << ".";
     return;
@@ -920,8 +929,8 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
   for (const auto &resource_pair : createUpdatedResources.GetResourceMap()) {
     const std::string &resource_label = resource_pair.first;
     const double &new_resource_capacity = resource_pair.second;
-    cluster_resource_scheduler_->UpdateResourceCapacity(node_id.Binary(), resource_label,
-                                                        new_resource_capacity);
+    cluster_resource_scheduler_->GetClusterResourceManager().UpdateResourceCapacity(
+        node_id.Binary(), resource_label, new_resource_capacity);
   }
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
   cluster_task_manager_->ScheduleAndDispatchTasks();
@@ -948,14 +957,16 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
 
   // Update local_available_resources_ and SchedulingResources
   for (const auto &resource_label : resource_names) {
-    cluster_resource_scheduler_->DeleteResource(node_id.Binary(), resource_label);
+    cluster_resource_scheduler_->GetClusterResourceManager().DeleteResource(
+        node_id.Binary(), resource_label);
   }
   return;
 }
 
 void NodeManager::UpdateResourceUsage(const NodeID &node_id,
                                       const rpc::ResourcesData &resource_data) {
-  if (!cluster_resource_scheduler_->UpdateNode(node_id.Binary(), resource_data)) {
+  if (!cluster_resource_scheduler_->GetClusterResourceManager().UpdateNode(
+          node_id.Binary(), resource_data)) {
     RAY_LOG(INFO)
         << "[UpdateResourceUsage]: received resource usage from unknown node id "
         << node_id;
@@ -1591,7 +1602,8 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                      << " actor_id = " << actor_id
                      << ", normal_task_resources = " << normal_task_resources.ToString()
                      << ", local_resoruce_view = "
-                     << cluster_resource_scheduler_->GetLocalResourceViewString();
+                     << cluster_resource_scheduler_->GetClusterResourceManager()
+                            .GetNodeResourceViewString(self_node_id_.Binary());
       auto resources_data = reply->mutable_resources_data();
       resources_data->set_node_id(self_node_id_.Binary());
       resources_data->set_resources_normal_task_changed(true);
@@ -1604,8 +1616,9 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     send_reply_callback(status, success, failure);
   };
 
-  cluster_task_manager_->QueueAndScheduleTask(task, request.grant_or_reject(), reply,
-                                              send_reply_callback_wrapper);
+  cluster_task_manager_->QueueAndScheduleTask(task, request.grant_or_reject(),
+                                              request.is_selected_based_on_locality(),
+                                              reply, send_reply_callback_wrapper);
 }
 
 void NodeManager::HandlePrepareBundleResources(
@@ -1686,15 +1699,20 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
 
   if (worker) {
     if (request.disconnect_worker()) {
+      // The worker should be destroyed.
       DisconnectClient(worker->Connection());
     } else {
-      // Handle the edge case where the worker was returned before we got the
-      // unblock RPC by unblocking it immediately (unblock is idempotent).
       if (worker->IsBlocked()) {
+        // Handle the edge case where the worker was returned before we got the
+        // unblock RPC by unblocking it immediately (unblock is idempotent).
         HandleDirectCallTaskUnblocked(worker);
       }
       cluster_task_manager_->ReleaseWorkerResources(worker);
-      HandleWorkerAvailable(worker);
+      // If the worker is exiting, don't add it to our pool. The worker will cleanup
+      // and terminate itself.
+      if (!request.worker_exiting()) {
+        HandleWorkerAvailable(worker);
+      }
     }
   } else {
     status = Status::Invalid("Returned worker does not exist any more");

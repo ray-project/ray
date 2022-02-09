@@ -2,6 +2,7 @@
 import json
 import os
 import time
+import argparse
 
 import ray
 from ray.cluster_utils import Cluster
@@ -77,6 +78,9 @@ for _ in range(5):
         actor = Actor._remote(args=[], kwargs={{}}, resources={{str(i): 1}})
         assert ray.get(actor.method.remote()) == 1
 
+# Tests datasets doesn't leak workers.
+ray.data.range(100).map(lambda x: x).take()
+
 print("success")
 """.format(
     cluster.address, num_nodes
@@ -96,7 +100,25 @@ running_ids = [
 ]
 start_time = time.time()
 previous_time = start_time
+
+parser = argparse.ArgumentParser(prog="Many Drivers long running tests")
+parser.add_argument(
+    "--iteration-num", type=int, help="How many iterations to run", required=False
+)
+parser.add_argument(
+    "--smoke-test",
+    action="store_true",
+    help="Whether or not the test is smoke test.",
+    default=False,
+)
+args = parser.parse_args()
+
+iteration_num = args.iteration_num
+if args.smoke_test:
+    iteration_num = 400
 while True:
+    if iteration_num is not None and iteration_num < iteration:
+        break
     # Wait for a driver to finish and start a new driver.
     [ready_id], running_ids = ray.wait(running_ids, num_returns=1)
     ray.get(ready_id)

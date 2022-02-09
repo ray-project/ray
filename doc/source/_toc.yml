@@ -8,7 +8,7 @@ parts:
       - file: ray-overview/learn-more
       - file: ray-overview/ray-libraries
 
-  - caption: Ray ML | Machine Learning
+  - caption: Ray ML
     chapters:
       - file: data/dataset
         title: Ray Data
@@ -30,27 +30,33 @@ parts:
       - file: tune/index
         title: Ray Tune
         sections:
+          - file: tune/getting-started
           - file: tune/key-concepts
-          - file: tune/user-guide
           - file: tune/tutorials/overview
             sections:
-              - file: tune/tutorials/tune-tutorial.rst
-              - file: tune/tutorials/tune-advanced-tutorial.rst
-              - file: tune/tutorials/tune-distributed.rst
-              - file: tune/tutorials/tune-lifecycle.rst
-              - file: tune/tutorials/tune-mlflow.rst
-              - file: tune/tutorials/tune-pytorch-cifar.rst
-              - file: tune/tutorials/tune-pytorch-lightning.rst
-              - file: tune/tutorials/tune-serve-integration-mnist.rst
-              - file: tune/tutorials/tune-sklearn.rst
-              - file: tune/tutorials/tune-xgboost.rst
-              - file: tune/tutorials/tune-wandb.rst
+              - file: tune/tutorials/tune-sklearn
+              - file: tune/tutorials/tune-pytorch-cifar
+              - file: tune/tutorials/tune-pytorch-lightning
+              - file: tune/tutorials/tune-serve-integration-mnist
+              - file: tune/tutorials/tune-xgboost
+              - file: tune/tutorials/tune-wandb
+              - file: tune/tutorials/tune-mlflow
+              - file: tune/tutorials/tune-comet
+              - file: tune/tutorials/tune-stopping
+              - file: tune/tutorials/tune-metrics
+              - file: tune/tutorials/tune-output
+              - file: tune/tutorials/tune-resources
+              - file: tune/tutorials/tune-checkpoints
+              - file: tune/tutorials/tune-lifecycle
+              - file: tune/tutorials/tune-advanced-tutorial
+              - file: tune/tutorials/tune-distributed
           - file: tune/examples/index
-          - file: tune/contrib
+          - file: tune/faq
+          - file: tune/api_docs/overview.rst
       - file: serve/index
         title: Ray Serve
         sections:
-          - file: serve/end_to_end_tutorial.rst
+          - file: serve/end_to_end_tutorial
           - file: serve/core-apis
           - file: serve/http-servehandle
           - file: serve/deployment
@@ -87,7 +93,7 @@ parts:
       - file: ray-more-libs/index
         title: More Ray ML Libraries
 
-  - caption: Ray Core | Distributed Applications
+  - caption: Ray Core
     chapters:
       - file: ray-core/walkthrough
         title: Getting Started
@@ -96,7 +102,7 @@ parts:
       - file: ray-core/examples/overview
         title: "Tutorials and Examples"
 
-  - caption: Ray Clusters | Deployments
+  - caption: Ray Clusters
     chapters:
       - file: cluster/quickstart
       - file: cluster/user-guide
@@ -106,7 +112,6 @@ parts:
   - caption: References
     chapters:
       - file: ray-references/api
-      - file: ray-references/faq
 
   - caption: Developer Guides
     chapters:

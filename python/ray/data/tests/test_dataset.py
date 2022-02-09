@@ -43,6 +43,13 @@ def maybe_pipeline(ds, enabled):
         return ds
 
 
+class SlowCSVDatasource(CSVDatasource):
+    def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
+        for block in CSVDatasource._read_stream(self, f, path, **reader_args):
+            time.sleep(3)
+            yield block
+
+
 # Tests that we don't block on exponential rampup when doing bulk reads.
 # https://github.com/ray-project/ray/issues/20625
 @pytest.mark.parametrize("block_split", [False, True])
@@ -50,17 +57,11 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
     ray.init(num_cpus=8)
     ctx = ray.data.context.DatasetContext.get_current()
 
-    class SlowCSVDatasource(CSVDatasource):
-        def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
-            for block in CSVDatasource._read_stream(self, f, path, **reader_args):
-                time.sleep(3)
-                yield block
-
     try:
         original = ctx.block_splitting_enabled
 
         ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
-        ctx.block_splitting_enabled = True
+        ctx.block_splitting_enabled = block_split
         ds = ray.data.read_datasource(
             SlowCSVDatasource(), parallelism=8, paths=str(tmp_path)
         )
@@ -79,9 +80,12 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_basic_actors(shutdown_only, pipelined):
     ray.init(num_cpus=2)
-    ds = ray.data.range(5)
+    n = 5
+    ds = ray.data.range(n)
     ds = maybe_pipeline(ds, pipelined)
-    assert sorted(ds.map(lambda x: x + 1, compute="actors").take()) == [1, 2, 3, 4, 5]
+    assert sorted(ds.map(lambda x: x + 1, compute="actors").take()) == list(
+        range(1, n + 1)
+    )
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -323,7 +327,7 @@ def test_batch_tensors(ray_start_regular_shared):
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))
     df = next(ds.iter_batches(batch_format="pandas"))
-    assert df.to_dict().keys() == {0, 1}
+    assert df.to_dict().keys() == {"value"}
 
 
 def test_arrow_block_slice_copy():
@@ -1174,44 +1178,60 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared):
     assert large._block_num_rows() == [500] * 20
 
 
-def test_from_pandas(ray_start_regular_shared):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([df1, df2])
-    values = [(r["one"], r["two"]) for r in ds.take(6)]
-    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
-    assert values == rows
+@pytest.mark.parametrize("enable_pandas_block", [False, True])
+def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
+    ctx = ray.data.context.DatasetContext.get_current()
+    old_enable_pandas_block = ctx.enable_pandas_block
+    ctx.enable_pandas_block = enable_pandas_block
+    try:
+        df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+        df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+        ds = ray.data.from_pandas([df1, df2])
+        assert ds._dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        values = [(r["one"], r["two"]) for r in ds.take(6)]
+        rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+        assert values == rows
 
-    # test from single pandas dataframe
-    ds = ray.data.from_pandas(df1)
-    values = [(r["one"], r["two"]) for r in ds.take(3)]
-    rows = [(r.one, r.two) for _, r in df1.iterrows()]
-    assert values == rows
+        # test from single pandas dataframe
+        ds = ray.data.from_pandas(df1)
+        assert ds._dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        values = [(r["one"], r["two"]) for r in ds.take(3)]
+        rows = [(r.one, r.two) for _, r in df1.iterrows()]
+        assert values == rows
+    finally:
+        ctx.enable_pandas_block = old_enable_pandas_block
 
 
-def test_from_pandas_refs(ray_start_regular_shared):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
-    values = [(r["one"], r["two"]) for r in ds.take(6)]
-    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
-    assert values == rows
+@pytest.mark.parametrize("enable_pandas_block", [False, True])
+def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
+    ctx = ray.data.context.DatasetContext.get_current()
+    old_enable_pandas_block = ctx.enable_pandas_block
+    ctx.enable_pandas_block = enable_pandas_block
+    try:
+        df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+        df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+        ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
+        assert ds._dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        values = [(r["one"], r["two"]) for r in ds.take(6)]
+        rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+        assert values == rows
 
-    # test from single pandas dataframe ref
-    ds = ray.data.from_pandas_refs(ray.put(df1))
-    values = [(r["one"], r["two"]) for r in ds.take(3)]
-    rows = [(r.one, r.two) for _, r in df1.iterrows()]
-    assert values == rows
+        # test from single pandas dataframe ref
+        ds = ray.data.from_pandas_refs(ray.put(df1))
+        assert ds._dataset_format() == "pandas" if enable_pandas_block else "arrow"
+        values = [(r["one"], r["two"]) for r in ds.take(3)]
+        rows = [(r.one, r.two) for _, r in df1.iterrows()]
+        assert values == rows
+    finally:
+        ctx.enable_pandas_block = old_enable_pandas_block
 
 
 def test_from_numpy(ray_start_regular_shared):
     arr1 = np.expand_dims(np.arange(0, 4), axis=1)
     arr2 = np.expand_dims(np.arange(4, 8), axis=1)
     ds = ray.data.from_numpy([ray.put(arr1), ray.put(arr2)])
-    values = np.array(ds.take(8))
-    np.testing.assert_array_equal(
-        values, np.expand_dims(np.concatenate((arr1, arr2)), axis=1)
-    )
+    values = np.stack([x["value"] for x in ds.take(8)])
+    np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
 
 
 def test_from_arrow(ray_start_regular_shared):
@@ -1306,7 +1326,7 @@ def test_to_arrow_refs(ray_start_regular_shared):
     assert df.equals(dfds)
 
     # Conversion.
-    df = pd.DataFrame({0: list(range(n))})
+    df = pd.DataFrame({"value": list(range(n))})
     ds = ray.data.range(n)
     dfds = pd.concat(
         [t.to_pandas() for t in ray.get(ds.to_arrow_refs())], ignore_index=True
@@ -1717,8 +1737,8 @@ def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([df1, df2])
 
-    def _block_udf(block: pa.Table):
-        df = block.to_pandas()
+    def _block_udf(block):
+        df = BlockAccessor.for_block(block).to_pandas().copy()
         df["one"] += 1
         return pa.Table.from_pandas(df)
 
@@ -1921,7 +1941,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # blocks format.
     for batch, df in zip(ds.iter_batches(batch_format="native"), dfs):
-        assert batch.to_pandas().equals(df)
+        assert BlockAccessor.for_block(batch).to_pandas().equals(df)
 
     # Batch size.
     batch_size = 2
@@ -1941,6 +1961,15 @@ def test_iter_batches_basic(ray_start_regular_shared):
     assert len(batches) == math.ceil(
         (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size
     )
+    assert pd.concat(batches, ignore_index=True).equals(
+        pd.concat(dfs, ignore_index=True)
+    )
+
+    # Batch size larger than dataset.
+    batch_size = 15
+    batches = list(ds.iter_batches(batch_size=batch_size, batch_format="pandas"))
+    assert all(len(batch) == ds.count() for batch in batches)
+    assert len(batches) == 1
     assert pd.concat(batches, ignore_index=True).equals(
         pd.concat(dfs, ignore_index=True)
     )
@@ -2073,6 +2102,20 @@ def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
         assert ds._blocks._num_computed() == expected
 
 
+def test_add_column(ray_start_regular_shared):
+    ds = ray.data.range(5).add_column("foo", lambda x: 1)
+    assert ds.take(1) == [{"value": 0, "foo": 1}]
+
+    ds = ray.data.range_arrow(5).add_column("foo", lambda x: x["value"] + 1)
+    assert ds.take(1) == [{"value": 0, "foo": 1}]
+
+    ds = ray.data.range_arrow(5).add_column("value", lambda x: x["value"] + 1)
+    assert ds.take(2) == [{"value": 1}, {"value": 2}]
+
+    with pytest.raises(ValueError):
+        ds = ray.data.range(5).add_column("value", 0)
+
+
 def test_map_batch(ray_start_regular_shared, tmp_path):
     # Test input validation
     ds = ray.data.range(5)
@@ -2084,9 +2127,9 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     table = pa.Table.from_pandas(df)
     pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
     ds = ray.data.read_parquet(str(tmp_path))
-    ds_list = ds.map_batches(
-        lambda df: df + 1, batch_size=1, batch_format="pandas"
-    ).take()
+    ds2 = ds.map_batches(lambda df: df + 1, batch_size=1, batch_format="pandas")
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [2, 3, 4]
     values = [s["two"] for s in ds_list]
@@ -2094,7 +2137,9 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
 
     # Test Pyarrow
     ds = ray.data.read_parquet(str(tmp_path))
-    ds_list = ds.map_batches(lambda pa: pa, batch_size=1, batch_format="pyarrow").take()
+    ds2 = ds.map_batches(lambda pa: pa, batch_size=1, batch_format="pyarrow")
+    assert ds2._dataset_format() == "arrow"
+    ds_list = ds2.take()
     values = [s["one"] for s in ds_list]
     assert values == [1, 2, 3]
     values = [s["two"] for s in ds_list]
@@ -2103,28 +2148,30 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     # Test batch
     size = 300
     ds = ray.data.range(size)
-    ds_list = ds.map_batches(
-        lambda df: df + 1, batch_size=17, batch_format="pandas"
-    ).take(limit=size)
+    ds2 = ds.map_batches(lambda df: df + 1, batch_size=17, batch_format="pandas")
+    assert ds2._dataset_format() == "pandas"
+    ds_list = ds2.take(limit=size)
     for i in range(size):
-        # The pandas column is "0", and it originally has rows from 0~299.
+        # The pandas column is "value", and it originally has rows from 0~299.
         # After the map batch, it should have 1~300.
         row = ds_list[i]
-        assert row["0"] == i + 1
+        assert row["value"] == i + 1
     assert ds.count() == 300
 
     # Test the lambda returns different types than the batch_format
     # pandas => list block
     ds = ray.data.read_parquet(str(tmp_path))
-    ds_list = ds.map_batches(lambda df: [1], batch_size=1).take()
+    ds2 = ds.map_batches(lambda df: [1], batch_size=1)
+    assert ds2._dataset_format() == "simple"
+    ds_list = ds2.take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
 
     # pyarrow => list block
     ds = ray.data.read_parquet(str(tmp_path))
-    ds_list = ds.map_batches(
-        lambda df: [1], batch_size=1, batch_format="pyarrow"
-    ).take()
+    ds2 = ds.map_batches(lambda df: [1], batch_size=1, batch_format="pyarrow")
+    assert ds2._dataset_format() == "simple"
+    ds_list = ds2.take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
 
@@ -2217,7 +2264,7 @@ def test_split(ray_start_regular_shared):
     assert [1] * 10 + [0] == [
         dataset._blocks.initial_num_blocks() for dataset in datasets
     ]
-    assert 190 == sum([dataset.sum() for dataset in datasets])
+    assert 190 == sum([dataset.sum() or 0 for dataset in datasets])
 
 
 def test_split_hints(ray_start_regular_shared):
@@ -3224,12 +3271,65 @@ def test_groupby_arrow_sum(ray_start_regular_shared, num_parts):
         {"A": 1, "sum(B)": 1617},
         {"A": 2, "sum(B)": 1650},
     ]
+
+    # Test built-in sum aggregation with nans
+    nan_grouped_ds = (
+        ray.data.from_items(
+            [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
+        )
+        .repartition(num_parts)
+        .groupby("A")
+    )
+    nan_agg_ds = nan_grouped_ds.sum("B")
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "sum(B)": 1683},
+        {"A": 1, "sum(B)": 1617},
+        {"A": 2, "sum(B)": 1650},
+    ]
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.sum("B", ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "sum(B)": None},
+        {"A": 1, "sum(B)": 1617},
+        {"A": 2, "sum(B)": 1650},
+    ]
+    # Test all nans
+    nan_agg_ds = (
+        ray.data.from_items([{"A": (x % 3), "B": None} for x in xs])
+        .repartition(num_parts)
+        .groupby("A")
+        .sum("B")
+    )
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "sum(B)": None},
+        {"A": 1, "sum(B)": None},
+        {"A": 2, "sum(B)": None},
+    ]
+
     # Test built-in global sum aggregation
     assert (
         ray.data.from_items([{"A": x} for x in xs]).repartition(num_parts).sum("A")
         == 4950
     )
-    assert ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).sum("value") == 0
+
+    # Test empty dataset
+    assert (
+        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).sum("value") is None
+    )
+
+    # Test built-in global sum aggregation with nans
+    nan_ds = ray.data.from_items([{"A": x} for x in xs] + [{"A": None}]).repartition(
+        num_parts
+    )
+    assert nan_ds.sum("A") == 4950
+    # Test ignore_nulls=False
+    assert nan_ds.sum("A", ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
+    assert nan_ds.sum("A") is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3252,12 +3352,64 @@ def test_groupby_arrow_min(ray_start_regular_shared, num_parts):
         {"A": 1, "min(B)": 1},
         {"A": 2, "min(B)": 2},
     ]
+
+    # Test built-in min aggregation with nans
+    nan_grouped_ds = (
+        ray.data.from_items(
+            [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
+        )
+        .repartition(num_parts)
+        .groupby("A")
+    )
+    nan_agg_ds = nan_grouped_ds.min("B")
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "min(B)": 0},
+        {"A": 1, "min(B)": 1},
+        {"A": 2, "min(B)": 2},
+    ]
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.min("B", ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "min(B)": None},
+        {"A": 1, "min(B)": 1},
+        {"A": 2, "min(B)": 2},
+    ]
+    # Test all nans
+    nan_agg_ds = (
+        ray.data.from_items([{"A": (x % 3), "B": None} for x in xs])
+        .repartition(num_parts)
+        .groupby("A")
+        .min("B")
+    )
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "min(B)": None},
+        {"A": 1, "min(B)": None},
+        {"A": 2, "min(B)": None},
+    ]
+
     # Test built-in global min aggregation
     assert (
         ray.data.from_items([{"A": x} for x in xs]).repartition(num_parts).min("A") == 0
     )
-    with pytest.raises(ValueError):
-        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).min("value")
+
+    # Test empty dataset
+    assert (
+        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).min("value") is None
+    )
+
+    # Test built-in global min aggregation with nans
+    nan_ds = ray.data.from_items([{"A": x} for x in xs] + [{"A": None}]).repartition(
+        num_parts
+    )
+    assert nan_ds.min("A") == 0
+    # Test ignore_nulls=False
+    assert nan_ds.min("A", ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
+    assert nan_ds.min("A") is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3280,13 +3432,65 @@ def test_groupby_arrow_max(ray_start_regular_shared, num_parts):
         {"A": 1, "max(B)": 97},
         {"A": 2, "max(B)": 98},
     ]
+
+    # Test built-in max aggregation with nans
+    nan_grouped_ds = (
+        ray.data.from_items(
+            [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
+        )
+        .repartition(num_parts)
+        .groupby("A")
+    )
+    nan_agg_ds = nan_grouped_ds.max("B")
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "max(B)": 99},
+        {"A": 1, "max(B)": 97},
+        {"A": 2, "max(B)": 98},
+    ]
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.max("B", ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "max(B)": None},
+        {"A": 1, "max(B)": 97},
+        {"A": 2, "max(B)": 98},
+    ]
+    # Test all nans
+    nan_agg_ds = (
+        ray.data.from_items([{"A": (x % 3), "B": None} for x in xs])
+        .repartition(num_parts)
+        .groupby("A")
+        .max("B")
+    )
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "max(B)": None},
+        {"A": 1, "max(B)": None},
+        {"A": 2, "max(B)": None},
+    ]
+
     # Test built-in global max aggregation
     assert (
         ray.data.from_items([{"A": x} for x in xs]).repartition(num_parts).max("A")
         == 99
     )
-    with pytest.raises(ValueError):
-        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).max("value")
+
+    # Test empty dataset
+    assert (
+        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).max("value") is None
+    )
+
+    # Test built-in global max aggregation with nans
+    nan_ds = ray.data.from_items([{"A": x} for x in xs] + [{"A": None}]).repartition(
+        num_parts
+    )
+    assert nan_ds.max("A") == 99
+    # Test ignore_nulls=False
+    assert nan_ds.max("A", ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
+    assert nan_ds.max("A") is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3309,13 +3513,65 @@ def test_groupby_arrow_mean(ray_start_regular_shared, num_parts):
         {"A": 1, "mean(B)": 49.0},
         {"A": 2, "mean(B)": 50.0},
     ]
+
+    # Test built-in mean aggregation with nans
+    nan_grouped_ds = (
+        ray.data.from_items(
+            [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
+        )
+        .repartition(num_parts)
+        .groupby("A")
+    )
+    nan_agg_ds = nan_grouped_ds.mean("B")
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "mean(B)": 49.5},
+        {"A": 1, "mean(B)": 49.0},
+        {"A": 2, "mean(B)": 50.0},
+    ]
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.mean("B", ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "mean(B)": None},
+        {"A": 1, "mean(B)": 49.0},
+        {"A": 2, "mean(B)": 50.0},
+    ]
+    # Test all nans
+    nan_agg_ds = (
+        ray.data.from_items([{"A": (x % 3), "B": None} for x in xs])
+        .repartition(num_parts)
+        .groupby("A")
+        .mean("B")
+    )
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "mean(B)": None},
+        {"A": 1, "mean(B)": None},
+        {"A": 2, "mean(B)": None},
+    ]
+
     # Test built-in global mean aggregation
     assert (
         ray.data.from_items([{"A": x} for x in xs]).repartition(num_parts).mean("A")
         == 49.5
     )
-    with pytest.raises(ValueError):
-        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).mean("value")
+
+    # Test empty dataset
+    assert (
+        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).mean("value") is None
+    )
+
+    # Test built-in global mean aggregation with nans
+    nan_ds = ray.data.from_items([{"A": x} for x in xs] + [{"A": None}]).repartition(
+        num_parts
+    )
+    assert nan_ds.mean("A") == 49.5
+    # Test ignore_nulls=False
+    assert nan_ds.mean("A", ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
+    assert nan_ds.mean("A") is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3340,6 +3596,35 @@ def test_groupby_arrow_std(ray_start_regular_shared, num_parts):
     result = agg_ds.to_pandas()["std(B)"].to_numpy()
     expected = df.groupby("A")["B"].std(ddof=0).to_numpy()
     np.testing.assert_array_almost_equal(result, expected)
+
+    # Test built-in std aggregation with nans
+    nan_df = pd.DataFrame({"A": [x % 3 for x in xs] + [0], "B": xs + [None]})
+    nan_grouped_ds = ray.data.from_pandas(nan_df).repartition(num_parts).groupby("A")
+    nan_agg_ds = nan_grouped_ds.std("B")
+    assert nan_agg_ds.count() == 3
+    result = nan_agg_ds.to_pandas()["std(B)"].to_numpy()
+    expected = nan_df.groupby("A")["B"].std().to_numpy()
+    np.testing.assert_array_almost_equal(result, expected)
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.std("B", ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    result = nan_agg_ds.to_pandas()["std(B)"].to_numpy()
+    expected = nan_df.groupby("A")["B"].std()
+    expected[0] = None
+    np.testing.assert_array_almost_equal(result, expected)
+    # Test all nans
+    nan_df = pd.DataFrame({"A": [x % 3 for x in xs], "B": [None] * len(xs)})
+    nan_agg_ds = (
+        ray.data.from_pandas(nan_df)
+        .repartition(num_parts)
+        .groupby("A")
+        .std("B", ignore_nulls=False)
+    )
+    assert nan_agg_ds.count() == 3
+    result = nan_agg_ds.to_pandas()["std(B)"].to_numpy()
+    expected = pd.Series([None] * 3)
+    np.testing.assert_array_equal(result, expected)
+
     # Test built-in global std aggregation
     df = pd.DataFrame({"A": xs})
     assert math.isclose(
@@ -3350,10 +3635,21 @@ def test_groupby_arrow_std(ray_start_regular_shared, num_parts):
         ray.data.from_pandas(df).repartition(num_parts).std("A", ddof=0),
         df["A"].std(ddof=0),
     )
-    with pytest.raises(ValueError):
-        ray.data.from_pandas(pd.DataFrame({"A": []})).std("A")
+
+    # Test empty dataset
+    assert ray.data.from_pandas(pd.DataFrame({"A": []})).std("A") is None
     # Test edge cases
     assert ray.data.from_pandas(pd.DataFrame({"A": [3]})).std("A") == 0
+
+    # Test built-in global std aggregation with nans
+    nan_df = pd.DataFrame({"A": xs + [None]})
+    nan_ds = ray.data.from_pandas(nan_df).repartition(num_parts)
+    assert math.isclose(nan_ds.std("A"), df["A"].std())
+    # Test ignore_nulls=False
+    assert nan_ds.std("A", ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
+    assert nan_ds.std("A") is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3374,6 +3670,7 @@ def test_groupby_arrow_multicolumn(ray_start_regular_shared, num_parts):
         {"A": 1, "mean(B)": 49.0, "mean(C)": 98.0},
         {"A": 2, "mean(B)": 50.0, "mean(C)": 100.0},
     ]
+
     # Test that unspecified agg column ==> agg on all columns except for
     # groupby keys.
     agg_ds = ray.data.from_pandas(df).repartition(num_parts).groupby("A").mean()
@@ -3383,6 +3680,7 @@ def test_groupby_arrow_multicolumn(ray_start_regular_shared, num_parts):
         {"A": 1, "mean(B)": 49.0, "mean(C)": 98.0},
         {"A": 2, "mean(B)": 50.0, "mean(C)": 100.0},
     ]
+
     # Test built-in global mean aggregation
     df = pd.DataFrame({"A": xs, "B": [2 * x for x in xs]})
     result_row = ray.data.from_pandas(df).repartition(num_parts).mean(["A", "B"])
@@ -3464,6 +3762,7 @@ def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
             np.testing.assert_array_equal(result, expected)
     # Test built-in global std aggregation
     df = pd.DataFrame({"A": xs})
+
     result_row = (
         ray.data.from_pandas(df)
         .repartition(num_parts)
@@ -3502,6 +3801,7 @@ def test_groupby_simple(ray_start_regular_shared):
     ]
     random.shuffle(xs)
     ds = ray.data.from_items(xs, parallelism=parallelism)
+
     # Mean aggregation
     agg_ds = ds.groupby(lambda r: r[0]).aggregate(
         AggregateFn(
@@ -3578,9 +3878,50 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     )
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 1683), (1, 1617), (2, 1650)]
+
+    # Test built-in sum aggregation with nans
+    nan_grouped_ds = (
+        ray.data.from_items(xs + [None])
+        .repartition(num_parts)
+        .groupby(lambda x: int(x or 0) % 3)
+    )
+    nan_agg_ds = nan_grouped_ds.sum()
+    assert nan_agg_ds.count() == 3
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [
+        (0, 1683),
+        (1, 1617),
+        (2, 1650),
+    ]
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.sum(ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [
+        (0, None),
+        (1, 1617),
+        (2, 1650),
+    ]
+    # Test all nans
+    nan_agg_ds = (
+        ray.data.from_items([None] * len(xs))
+        .repartition(num_parts)
+        .groupby(lambda x: 0)
+        .sum()
+    )
+    assert nan_agg_ds.count() == 1
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(1) == [(0, None)]
+
     # Test built-in global sum aggregation
     assert ray.data.from_items(xs).repartition(num_parts).sum() == 4950
-    assert ray.data.range(10).filter(lambda r: r > 10).sum() == 0
+    assert ray.data.range(10).filter(lambda r: r > 10).sum() is None
+
+    # Test built-in global sum aggregation with nans
+    nan_ds = ray.data.from_items(xs + [None]).repartition(num_parts)
+    assert nan_ds.sum() == 4950
+    # Test ignore_nulls=False
+    assert nan_ds.sum(ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([None] * len(xs)).repartition(num_parts)
+    assert nan_ds.sum() is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3596,10 +3937,42 @@ def test_groupby_simple_min(ray_start_regular_shared, num_parts):
     )
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 0), (1, 1), (2, 2)]
+
+    # Test built-in min aggregation with nans
+    nan_grouped_ds = (
+        ray.data.from_items(xs + [None])
+        .repartition(num_parts)
+        .groupby(lambda x: int(x or 0) % 3)
+    )
+    nan_agg_ds = nan_grouped_ds.min()
+    assert nan_agg_ds.count() == 3
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 0), (1, 1), (2, 2)]
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.min(ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, None), (1, 1), (2, 2)]
+    # Test all nans
+    nan_agg_ds = (
+        ray.data.from_items([None] * len(xs))
+        .repartition(num_parts)
+        .groupby(lambda x: 0)
+        .min()
+    )
+    assert nan_agg_ds.count() == 1
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(1) == [(0, None)]
+
     # Test built-in global min aggregation
     assert ray.data.from_items(xs).repartition(num_parts).min() == 0
-    with pytest.raises(ValueError):
-        ray.data.range(10).filter(lambda r: r > 10).min()
+    assert ray.data.range(10).filter(lambda r: r > 10).min() is None
+
+    # Test built-in global min aggregation with nans
+    nan_ds = ray.data.from_items(xs + [None]).repartition(num_parts)
+    assert nan_ds.min() == 0
+    # Test ignore_nulls=False
+    assert nan_ds.min(ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([None] * len(xs)).repartition(num_parts)
+    assert nan_ds.min() is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3615,10 +3988,42 @@ def test_groupby_simple_max(ray_start_regular_shared, num_parts):
     )
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 99), (1, 97), (2, 98)]
+
+    # Test built-in max aggregation with nans
+    nan_grouped_ds = (
+        ray.data.from_items(xs + [None])
+        .repartition(num_parts)
+        .groupby(lambda x: int(x or 0) % 3)
+    )
+    nan_agg_ds = nan_grouped_ds.max()
+    assert nan_agg_ds.count() == 3
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 99), (1, 97), (2, 98)]
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.max(ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, None), (1, 97), (2, 98)]
+    # Test all nans
+    nan_agg_ds = (
+        ray.data.from_items([None] * len(xs))
+        .repartition(num_parts)
+        .groupby(lambda x: 0)
+        .max()
+    )
+    assert nan_agg_ds.count() == 1
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(1) == [(0, None)]
+
     # Test built-in global max aggregation
     assert ray.data.from_items(xs).repartition(num_parts).max() == 99
-    with pytest.raises(ValueError):
-        ray.data.range(10).filter(lambda r: r > 10).max()
+    assert ray.data.range(10).filter(lambda r: r > 10).max() is None
+
+    # Test built-in global max aggregation with nans
+    nan_ds = ray.data.from_items(xs + [None]).repartition(num_parts)
+    assert nan_ds.max() == 99
+    # Test ignore_nulls=False
+    assert nan_ds.max(ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([None] * len(xs)).repartition(num_parts)
+    assert nan_ds.max() is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3634,10 +4039,51 @@ def test_groupby_simple_mean(ray_start_regular_shared, num_parts):
     )
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 49.5), (1, 49.0), (2, 50.0)]
+
+    # Test built-in mean aggregation with nans
+    nan_grouped_ds = (
+        ray.data.from_items(xs + [None])
+        .repartition(num_parts)
+        .groupby(lambda x: int(x or 0) % 3)
+    )
+    nan_agg_ds = nan_grouped_ds.mean()
+    assert nan_agg_ds.count() == 3
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [
+        (0, 49.5),
+        (1, 49.0),
+        (2, 50.0),
+    ]
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.mean(ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [
+        (0, None),
+        (1, 49.0),
+        (2, 50.0),
+    ]
+    # Test all nans
+    nan_agg_ds = (
+        ray.data.from_items([None] * len(xs))
+        .repartition(num_parts)
+        .groupby(lambda x: 0)
+        .mean()
+    )
+    assert nan_agg_ds.count() == 1
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(1) == [(0, None)]
+
     # Test built-in global mean aggregation
     assert ray.data.from_items(xs).repartition(num_parts).mean() == 49.5
-    with pytest.raises(ValueError):
-        ray.data.range(10).filter(lambda r: r > 10).mean()
+    # Test empty dataset
+    assert ray.data.range(10).filter(lambda r: r > 10).mean() is None
+
+    # Test built-in global mean aggregation with nans
+    nan_ds = ray.data.from_items(xs + [None]).repartition(num_parts)
+    assert nan_ds.mean() == 49.5
+    # Test ignore_nulls=False
+    assert nan_ds.mean(ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([None] * len(xs)).repartition(num_parts)
+    assert nan_ds.mean() is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3674,6 +4120,48 @@ def test_groupby_simple_std(ray_start_regular_shared, num_parts):
     result_df = pd.DataFrame({"A": list(groups), "B": list(stds)})
     result_df = result_df.set_index("A")
     pd.testing.assert_series_equal(result_df["B"], expected)
+
+    # Test built-in std aggregation with nans
+    nan_grouped_ds = (
+        ray.data.from_items(xs + [None])
+        .repartition(num_parts)
+        .groupby(lambda x: int(x or 0) % 3)
+    )
+    nan_agg_ds = nan_grouped_ds.std()
+    assert nan_agg_ds.count() == 3
+    nan_df = pd.DataFrame({"A": [x % 3 for x in xs] + [0], "B": xs + [None]})
+    expected = nan_df.groupby("A")["B"].std()
+    result = nan_agg_ds.sort(key=lambda r: r[0]).take(3)
+    groups, stds = zip(*result)
+    result_df = pd.DataFrame({"A": list(groups), "B": list(stds)})
+    result_df = result_df.set_index("A")
+    pd.testing.assert_series_equal(result_df["B"], expected)
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.std(ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    expected = nan_df.groupby("A")["B"].std()
+    expected[0] = None
+    result = nan_agg_ds.sort(key=lambda r: r[0]).take(3)
+    groups, stds = zip(*result)
+    result_df = pd.DataFrame({"A": list(groups), "B": list(stds)})
+    result_df = result_df.set_index("A")
+    pd.testing.assert_series_equal(result_df["B"], expected)
+    # Test all nans
+    nan_agg_ds = (
+        ray.data.from_items([None] * len(xs))
+        .repartition(num_parts)
+        .groupby(lambda x: 0)
+        .std(ignore_nulls=False)
+    )
+    assert nan_agg_ds.count() == 1
+    expected = pd.Series([None], name="B")
+    expected.index.rename("A", inplace=True)
+    result = nan_agg_ds.sort(key=lambda r: r[0]).take(1)
+    groups, stds = zip(*result)
+    result_df = pd.DataFrame({"A": list(groups), "B": list(stds)})
+    result_df = result_df.set_index("A")
+    pd.testing.assert_series_equal(result_df["B"], expected)
+
     # Test built-in global std aggregation
     assert math.isclose(
         ray.data.from_items(xs).repartition(num_parts).std(), pd.Series(xs).std()
@@ -3683,10 +4171,20 @@ def test_groupby_simple_std(ray_start_regular_shared, num_parts):
         ray.data.from_items(xs).repartition(num_parts).std(ddof=0),
         pd.Series(xs).std(ddof=0),
     )
-    with pytest.raises(ValueError):
-        ray.data.from_items([]).std()
+
+    # Test empty dataset
+    assert ray.data.from_items([]).std() is None
     # Test edge cases
     assert ray.data.from_items([3]).std() == 0
+
+    # Test built-in global std aggregation with nans
+    nan_ds = ray.data.from_items(xs + [None]).repartition(num_parts)
+    assert math.isclose(nan_ds.std(), pd.Series(xs).std())
+    # Test ignore_nulls=False
+    assert nan_ds.std(ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([None] * len(xs)).repartition(num_parts)
+    assert nan_ds.std() is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3713,10 +4211,12 @@ def test_groupby_simple_multilambda(ray_start_regular_shared, num_parts):
     assert ray.data.from_items([[x, 2 * x] for x in xs]).repartition(num_parts).mean(
         [lambda x: x[0], lambda x: x[1]]
     ) == (49.5, 99.0)
-    with pytest.raises(ValueError):
-        ray.data.from_items([[x, 2 * x] for x in range(10)]).filter(
-            lambda r: r[0] > 10
-        ).mean([lambda x: x[0], lambda x: x[1]])
+    assert (
+        ray.data.from_items([[x, 2 * x] for x in range(10)])
+        .filter(lambda r: r[0] > 10)
+        .mean([lambda x: x[0], lambda x: x[1]])
+        is None
+    )
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3806,6 +4306,18 @@ def test_sort_simple(ray_start_regular_shared):
     assert s1 == ds
     ds = ray.data.range(10).filter(lambda r: r > 10).sort()
     assert ds.count() == 0
+
+
+def test_column_name_type_check(ray_start_regular_shared):
+    df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
+    ds = ray.data.from_pandas(df)
+    expected_str = (
+        "Dataset(num_blocks=1, num_rows=10, " "schema={1: float64, a: float64})"
+    )
+    assert str(ds) == expected_str, str(ds)
+    df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
+    with pytest.raises(ValueError):
+        ray.data.from_pandas(df)
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -3935,6 +4447,47 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
     assert set(locations) == {node1_id, node2_id}
 
 
+def test_parquet_read_spread_no_cpus(ray_start_cluster, tmp_path):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"foo": 100}, _system_config={"max_direct_call_object_size": 0}
+    )
+    cluster.add_node(resources={"bar:1": 100})
+    cluster.add_node(resources={"bar:2": 100}, num_cpus=0)
+
+    ray.init(cluster.address)
+
+    @ray.remote(num_cpus=0)
+    def get_node_id():
+        return ray.get_runtime_context().node_id.hex()
+
+    node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
+    node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
+
+    data_path = str(tmp_path)
+    df1 = pd.DataFrame({"one": list(range(100)), "two": list(range(100, 200))})
+    path1 = os.path.join(data_path, "test1.parquet")
+    df1.to_parquet(path1)
+    df2 = pd.DataFrame({"one": list(range(300, 400)), "two": list(range(400, 500))})
+    path2 = os.path.join(data_path, "test2.parquet")
+    df2.to_parquet(path2)
+
+    ds = ray.data.read_parquet(
+        data_path, ray_remote_args={"num_cpus": 0}, _spread_resource_prefix="bar:"
+    )
+
+    # Force reads.
+    blocks = ds.get_internal_block_refs()
+    assert len(blocks) == 2
+
+    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(blocks)
+    locations = []
+    for block in blocks:
+        locations.extend(location_data[block]["node_ids"])
+    assert set(locations) == {node1_id, node2_id}
+
+
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
 def test_sort_arrow(ray_start_regular, num_items, parallelism):
     a = list(reversed(range(num_items)))
@@ -3997,35 +4550,37 @@ def test_sort_arrow_with_empty_blocks(ray_start_regular):
     assert ds.sort("value").count() == 0
 
 
+@ray.remote
+class Counter:
+    def __init__(self):
+        self.value = 0
+
+    def increment(self):
+        self.value += 1
+        return self.value
+
+
+class FlakyCSVDatasource(CSVDatasource):
+    def __init__(self):
+        self.counter = Counter.remote()
+
+    def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
+        count = self.counter.increment.remote()
+        if ray.get(count) == 1:
+            raise ValueError("oops")
+        else:
+            for block in CSVDatasource._read_stream(self, f, path, **reader_args):
+                yield block
+
+    def _write_block(self, f: "pa.NativeFile", block: BlockAccessor, **writer_args):
+        count = self.counter.increment.remote()
+        if ray.get(count) == 1:
+            raise ValueError("oops")
+        else:
+            CSVDatasource._write_block(self, f, block, **writer_args)
+
+
 def test_dataset_retry_exceptions(ray_start_regular, local_path):
-    @ray.remote
-    class Counter:
-        def __init__(self):
-            self.value = 0
-
-        def increment(self):
-            self.value += 1
-            return self.value
-
-    class FlakyCSVDatasource(CSVDatasource):
-        def __init__(self):
-            self.counter = Counter.remote()
-
-        def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
-            count = self.counter.increment.remote()
-            if ray.get(count) == 1:
-                raise ValueError("oops")
-            else:
-                for block in CSVDatasource._read_stream(self, f, path, **reader_args):
-                    yield block
-
-        def _write_block(self, f: "pa.NativeFile", block: BlockAccessor, **writer_args):
-            count = self.counter.increment.remote()
-            if ray.get(count) == 1:
-                raise ValueError("oops")
-            else:
-                CSVDatasource._write_block(self, f, block, **writer_args)
-
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(local_path, "test1.csv")
     df1.to_csv(path1, index=False, storage_options={})

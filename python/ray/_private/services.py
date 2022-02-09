@@ -1313,6 +1313,7 @@ def start_dashboard(
     gcs_address,
     temp_dir,
     logdir,
+    session_dir,
     port=None,
     redis_password=None,
     fate_share=None,
@@ -1331,6 +1332,8 @@ def start_dashboard(
         gcs_address (str): The gcs address the dashboard should connect to
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
+        session_dir (str): The session directory under temp_dir.
+            It is used as a identifier of individual cluster.
         logdir (str): The log directory used to generate dashboard log.
         port (str): The port to bind the dashboard web server to.
             Defaults to 8265.
@@ -1376,12 +1379,7 @@ def start_dashboard(
                     raise e
 
         # Make sure the process can start.
-        if not ray._private.utils.check_dashboard_dependencies_installed():
-            if require_dashboard:
-                logger.exception("dashboard dependency error")
-                raise ImportError(DASHBOARD_DEPENDENCY_ERROR_MESSAGE)
-            else:
-                return None, None
+        minimal = not ray._private.utils.check_dashboard_dependencies_installed()
 
         # Start the dashboard process.
         dashboard_dir = "dashboard"
@@ -1397,6 +1395,7 @@ def start_dashboard(
             f"--redis-address={redis_address}",
             f"--temp-dir={temp_dir}",
             f"--log-dir={logdir}",
+            f"--session-dir={session_dir}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
             f"--gcs-address={gcs_address}",
@@ -1418,6 +1417,9 @@ def start_dashboard(
             # Inherit stdout/stderr streams.
             stdout_file = None
             stderr_file = None
+        if minimal:
+            command.append("--minimal")
+
         if redis_password is not None:
             command.append(f"--redis-password={redis_password}")
         process_info = start_ray_process(
@@ -1484,14 +1486,19 @@ def start_dashboard(
             else:
                 raise Exception(err_msg)
 
-        logger.info(
-            "View the Ray dashboard at %s%shttp://%s%s%s",
-            colorama.Style.BRIGHT,
-            colorama.Fore.GREEN,
-            dashboard_url,
-            colorama.Fore.RESET,
-            colorama.Style.NORMAL,
-        )
+        if not minimal:
+            logger.info(
+                "View the Ray dashboard at %s%shttp://%s%s%s",
+                colorama.Style.BRIGHT,
+                colorama.Fore.GREEN,
+                dashboard_url,
+                colorama.Fore.RESET,
+                colorama.Style.NORMAL,
+            )
+        else:
+            # If it is the minimal installation, the web url (dashboard url)
+            # shouldn't be configured because it doesn't start a server.
+            dashboard_url = ""
 
         return dashboard_url, process_info
     except Exception as e:
@@ -1499,6 +1506,7 @@ def start_dashboard(
             raise e from e
         else:
             logger.error(f"Failed to start the dashboard: {e}")
+            logger.exception(e)
             return None, None
 
 
