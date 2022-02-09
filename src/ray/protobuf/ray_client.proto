@@ -101,6 +101,9 @@ message PutRequest {
   //
   // Empty if no late binding is possible, as in a normal put().
   bytes client_ref_id = 2;
+  int32 chunk_id = 3;
+  int32 total_chunks = 4;
+  int64 total_size = 5;
 }
 
 message PutResponse {
@@ -289,8 +292,7 @@ service RayletDriver {
   }
   rpc GetObject(GetRequest) returns (GetResponse) {
   }
-  rpc PutObject(PutRequest) returns (PutResponse) {
-  }
+  rpc PutObject(stream PutRequest) returns (PutResponse) {}
   rpc WaitObject(WaitRequest) returns (WaitResponse) {
   }
   rpc Schedule(ClientTask) returns (ClientTaskTicket) {
