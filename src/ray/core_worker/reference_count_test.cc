@@ -2600,16 +2600,6 @@ TEST_F(ReferenceCountTest, TestFree) {
   ASSERT_FALSE(rc->IsPlasmaObjectFreed(id));
 }
 
-TEST_F(ReferenceCountTest, TestRemoveOwnedObject) {
-  ObjectID id = ObjectID::FromRandom();
-
-  // Test remove owned object.
-  rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, false, /*add_local_ref=*/false);
-  ASSERT_TRUE(rc->HasReference(id));
-  rc->RemoveOwnedObject(id);
-  ASSERT_FALSE(rc->HasReference(id));
-}
-
 TEST_F(ReferenceCountTest, TestGetObjectStatusReplyDelayed) {
   // https://github.com/ray-project/ray/issues/18557.
   // Check that we track an ObjectRef nested inside another borrowed ObjectRef.

@@ -116,7 +116,7 @@ logger = logging.getLogger(__name__)
 # times in a row since that would indicate a persistent cluster issue.
 MAX_WORKER_FAILURE_RETRIES = 3
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 COMMON_CONFIG: TrainerConfigDict = {
     # === Settings for Rollout Worker processes ===
@@ -649,7 +649,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     "collect_metrics_timeout": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 @DeveloperAPI
@@ -1732,9 +1732,14 @@ class Trainer(Trainable):
             state = [np.stack(s) for s in state]
 
         input_dict = {SampleBatch.OBS: obs_batch}
-        if prev_action:
+
+        # prev_action and prev_reward can be None, np.ndarray, or tensor-like structure.
+        # Explicitly check for None here to avoid the error message "The truth value of
+        # an array with more than one element is ambiguous.", when np arrays are passed
+        # as arguments.
+        if prev_action is not None:
             input_dict[SampleBatch.PREV_ACTIONS] = prev_action
-        if prev_reward:
+        if prev_reward is not None:
             input_dict[SampleBatch.PREV_REWARDS] = prev_reward
         if info:
             input_dict[SampleBatch.INFOS] = info

@@ -26,7 +26,7 @@ tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
 logger = logging.getLogger(__name__)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 CQL_DEFAULT_CONFIG = merge_dicts(
     SAC_CONFIG, {
@@ -55,7 +55,7 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         },
     })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class CQLTrainer(SACTrainer):
