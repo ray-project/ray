@@ -66,9 +66,9 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
-from ray.data.impl.plan import ExecutionPlan, OneToOneOp, AllToAllOp
+from ray.data.impl.plan import ExecutionPlan, OneToOneStage, AllToAllStage
 from ray.data.impl.stats import DatasetStats
-from ray.data.impl.compute import get_compute, cache_wrapper, CallableClass
+from ray.data.impl.compute import cache_wrapper, CallableClass
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
@@ -107,27 +107,20 @@ class Dataset(Generic[T]):
 
     def __init__(
         self,
-        spec: Union[BlockList, ExecutionPlan],
+        plan: ExecutionPlan,
         epoch: int,
         lazy: bool,
-        stats: DatasetStats,  # TODO: remove this once everything uses plan.
     ):
         """Construct a Dataset (internal API).
 
         The constructor is not part of the Dataset API. Use the ``ray.data.*``
         read methods to construct a dataset.
         """
-        if isinstance(spec, BlockList):
-            self._plan = ExecutionPlan(spec, stats)  # TODO remove this.
-        elif isinstance(spec, ExecutionPlan):
-            self._plan = spec
-        else:
-            raise TypeError("Invalid plan type: {} ({})".format(spec, type(spec)))
+        assert isinstance(plan, ExecutionPlan)
+        self._plan = plan
         self._uuid = uuid4().hex
         self._epoch = epoch
         self._lazy = lazy
-        self._stats = stats
-        self._stats.dataset_uuid = self._uuid
 
         if not lazy:
             self._plan.execute()
@@ -190,10 +183,10 @@ class Dataset(Generic[T]):
             if output_buffer.has_next():
                 yield output_buffer.next()
 
-        plan = self._plan.with_op(
-            OneToOneOp("map", transform, compute, ray_remote_args)
+        plan = self._plan.with_stage(
+            OneToOneStage("map", transform, compute, ray_remote_args)
         )
-        return Dataset(plan, self._epoch, self._lazy, DatasetStats.TODO())
+        return Dataset(plan, self._epoch, self._lazy)
 
     def map_batches(
         self,
@@ -250,7 +243,6 @@ class Dataset(Generic[T]):
 
         fn = cache_wrapper(fn)
         context = DatasetContext.get_current()
-        stats_builder = self._stats.child_builder("map_batches")
 
         def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
@@ -301,9 +293,10 @@ class Dataset(Generic[T]):
             if output_buffer.has_next():
                 yield output_buffer.next()
 
-        compute = get_compute(compute)
-        blocks = compute.apply(transform, ray_remote_args, self._blocks)
-        return Dataset(blocks, self._epoch, stats_builder.build(blocks))
+        plan = self._plan.with_stage(
+            OneToOneStage("map_batches", transform, compute, ray_remote_args)
+        )
+        return Dataset(plan, self._epoch, self._lazy)
 
     def add_column(
         self,
@@ -380,7 +373,6 @@ class Dataset(Generic[T]):
 
         fn = cache_wrapper(fn)
         context = DatasetContext.get_current()
-        stats_builder = self._stats.child_builder("map")
 
         def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
@@ -395,9 +387,10 @@ class Dataset(Generic[T]):
             if output_buffer.has_next():
                 yield output_buffer.next()
 
-        compute = get_compute(compute)
-        blocks = compute.apply(transform, ray_remote_args, self._blocks)
-        return Dataset(blocks, self._epoch, stats_builder.build(blocks))
+        plan = self._plan.with_stage(
+            OneToOneStage("flat_map", transform, compute, ray_remote_args)
+        )
+        return Dataset(plan, self._epoch, self._lazy)
 
     def filter(
         self,
@@ -427,7 +420,6 @@ class Dataset(Generic[T]):
 
         fn = cache_wrapper(fn)
         context = DatasetContext.get_current()
-        stats_builder = self._stats.child_builder("filter")
 
         def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
@@ -438,9 +430,10 @@ class Dataset(Generic[T]):
                     builder.add(row)
             return [builder.build()]
 
-        compute = get_compute(compute)
-        blocks = compute.apply(transform, ray_remote_args, self._blocks)
-        return Dataset(blocks, self._epoch, stats_builder.build(blocks))
+        plan = self._plan.with_stage(
+            OneToOneStage("filter", transform, compute, ray_remote_args)
+        )
+        return Dataset(plan, self._epoch, self._lazy)
 
     def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset[T]":
         """Repartition the dataset into exactly this number of blocks.
@@ -467,68 +460,75 @@ class Dataset(Generic[T]):
             The repartitioned dataset.
         """
 
-        stats = self._stats.child_builder("repartition")
         if shuffle:
-            new_blocks, stage_info = simple_shuffle(self._blocks, num_blocks)
-            return Dataset(new_blocks, self._epoch, stats.build_multistage(stage_info))
 
-        # Compute the (n-1) indices needed for an equal split of the data.
-        stage_info = {}
-        count = self.count()
-        indices = []
-        cur_idx = 0
-        for _ in range(num_blocks - 1):
-            cur_idx += count / num_blocks
-            indices.append(int(cur_idx))
-        assert len(indices) < num_blocks, (indices, num_blocks)
-        if indices:
-            splits = self.split_at_indices(indices)
-            # TODO this saves memory: self._blocks.clear()
-        else:
-            splits = [self]
-        # TODO(ekl) include stats for the split tasks. We may also want to
-        # consider combining the split and coalesce tasks as an optimization.
+            def do_shuffle(blocks):
+                return simple_shuffle(self._blocks, num_blocks)
 
-        # Coalesce each split into a single block.
-        reduce_task = cached_remote_fn(_shuffle_reduce).options(num_returns=2)
-        reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
-        reduce_out = [
-            reduce_task.remote(*s.get_internal_block_refs())
-            for s in splits
-            if s.num_blocks() > 0
-        ]
-        del splits  # Early-release memory.
-        new_blocks, new_metadata = zip(*reduce_out)
-        new_blocks, new_metadata = list(new_blocks), list(new_metadata)
-        new_metadata = reduce_bar.fetch_until_complete(new_metadata)
-        reduce_bar.close()
-
-        # Handle empty blocks.
-        if len(new_blocks) < num_blocks:
-            from ray.data.impl.arrow_block import ArrowBlockBuilder
-            from ray.data.impl.pandas_block import PandasBlockBuilder
-            from ray.data.impl.simple_block import SimpleBlockBuilder
-
-            num_empties = num_blocks - len(new_blocks)
-            dataset_format = self._dataset_format()
-            if dataset_format == "arrow":
-                builder = ArrowBlockBuilder()
-            elif dataset_format == "pandas":
-                builder = PandasBlockBuilder()
-            else:
-                builder = SimpleBlockBuilder()
-            empty_block = builder.build()
-            empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
-                input_files=None, exec_stats=None
-            )  # No stats for empty block.
-            empty_blocks, empty_metadata = zip(
-                *[(ray.put(empty_block), empty_meta) for _ in range(num_empties)]
+            plan = self._plan.with_stage(
+                AllToAllStage("repartition", num_blocks, do_shuffle)
             )
-            new_blocks += empty_blocks
-            new_metadata += empty_metadata
+            return Dataset(plan, self._epoch, self._lazy)
 
-        blocks = BlockList(new_blocks, new_metadata)
-        return Dataset(blocks, self._epoch, stats.build(blocks))
+        def do_fast():
+            # Compute the (n-1) indices needed for an equal split of the data.
+            count = self.count()
+            indices = []
+            cur_idx = 0
+            for _ in range(num_blocks - 1):
+                cur_idx += count / num_blocks
+                indices.append(int(cur_idx))
+            assert len(indices) < num_blocks, (indices, num_blocks)
+            if indices:
+                splits = self.split_at_indices(indices)
+                # TODO this saves memory: self._blocks.clear()
+            else:
+                splits = [self]
+            # TODO(ekl) include stats for the split tasks. We may also want to
+            # consider combining the split and coalesce tasks as an optimization.
+
+            # Coalesce each split into a single block.
+            reduce_task = cached_remote_fn(_shuffle_reduce).options(num_returns=2)
+            reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
+            reduce_out = [
+                reduce_task.remote(*s.get_internal_block_refs())
+                for s in splits
+                if s.num_blocks() > 0
+            ]
+            del splits  # Early-release memory.
+            new_blocks, new_metadata = zip(*reduce_out)
+            new_blocks, new_metadata = list(new_blocks), list(new_metadata)
+            new_metadata = reduce_bar.fetch_until_complete(new_metadata)
+            reduce_bar.close()
+
+            # Handle empty blocks.
+            if len(new_blocks) < num_blocks:
+                from ray.data.impl.arrow_block import ArrowBlockBuilder
+                from ray.data.impl.pandas_block import PandasBlockBuilder
+                from ray.data.impl.simple_block import SimpleBlockBuilder
+
+                num_empties = num_blocks - len(new_blocks)
+                dataset_format = self._dataset_format()
+                if dataset_format == "arrow":
+                    builder = ArrowBlockBuilder()
+                elif dataset_format == "pandas":
+                    builder = PandasBlockBuilder()
+                else:
+                    builder = SimpleBlockBuilder()
+                empty_block = builder.build()
+                empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
+                    input_files=None, exec_stats=None
+                )  # No stats for empty block.
+                empty_blocks, empty_metadata = zip(
+                    *[(ray.put(empty_block), empty_meta) for _ in range(num_empties)]
+                )
+                new_blocks += empty_blocks
+                new_metadata += empty_metadata
+
+            return BlockList(new_blocks, new_metadata)
+
+        plan = self._plan.with_stage(AllToAllStage("repartition", num_blocks, do_fast))
+        return Dataset(plan, self._epoch, self._lazy)
 
     def random_shuffle(
         self,
@@ -574,8 +574,10 @@ class Dataset(Generic[T]):
             )
             return new_blocks, stage_info
 
-        plan = self._plan.with_op(AllToAllOp("random_shuffle", num_blocks, do_shuffle))
-        return Dataset(plan, self._epoch, self._lazy, DatasetStats.TODO())
+        plan = self._plan.with_stage(
+            AllToAllStage("random_shuffle", num_blocks, do_shuffle)
+        )
+        return Dataset(plan, self._epoch, self._lazy)
 
     def split(
         self, n: int, *, equal: bool = False, locality_hints: List[Any] = None
@@ -1900,6 +1902,9 @@ class Dataset(Generic[T]):
 
         import pyarrow as pa
 
+        blocks = self._plan.execute()
+        stats = self._plan.stats()
+
         time_start = time.perf_counter()
 
         def format_batch(batch: Block, format: str) -> BatchType:
@@ -1925,21 +1930,19 @@ class Dataset(Generic[T]):
         batcher = Batcher(batch_size=batch_size)
 
         def batch_block(block: ObjectRef[Block]):
-            with self._stats.iter_get_s.timer():
+            with stats.iter_get_s.timer():
                 block = ray.get(block)
             batcher.add(block)
             while batcher.has_batch():
-                with self._stats.iter_format_batch_s.timer():
+                with stats.iter_format_batch_s.timer():
                     result = format_batch(batcher.next_batch(), batch_format)
-                with self._stats.iter_user_s.timer():
+                with stats.iter_user_s.timer():
                     yield result
 
         block_window = []  # Handle empty sliding window gracefully.
-        for block_window in _sliding_window(
-            self._plan.execute().iter_blocks(), prefetch_blocks + 1
-        ):
+        for block_window in _sliding_window(blocks.iter_blocks(), prefetch_blocks + 1):
             block_window = list(block_window)
-            with self._stats.iter_wait_s.timer():
+            with stats.iter_wait_s.timer():
                 ray.wait(block_window, num_returns=1, fetch_local=True)
             yield from batch_block(block_window[0])
 
@@ -1949,12 +1952,12 @@ class Dataset(Generic[T]):
 
         # Yield any remainder batches.
         if batcher.has_any() and not drop_last:
-            with self._stats.iter_format_batch_s.timer():
+            with stats.iter_format_batch_s.timer():
                 result = format_batch(batcher.next_batch(), batch_format)
-            with self._stats.iter_user_s.timer():
+            with stats.iter_user_s.timer():
                 yield result
 
-        self._stats.iter_total_s.add(time.perf_counter() - time_start)
+        stats.iter_total_s.add(time.perf_counter() - time_start)
 
     def to_torch(
         self,

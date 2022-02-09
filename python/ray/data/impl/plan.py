@@ -16,26 +16,27 @@ class ExecutionPlan:
         self._out_blocks = None
         self._in_stats = stats
         self._out_stats = None
-        self._ops = []
+        self._stages = []
+        stats.dataset_uuid = uuid.uuid4().hex
 
-    def with_op(self, op: "Op"):
+    def with_stage(self, stage: "Stage"):
         copy = ExecutionPlan(self._in_blocks, self._in_stats)
-        copy._ops = self._ops.copy()
-        copy._ops.append(op)
+        copy._stages = self._stages.copy()
+        copy._stages.append(stage)
         return copy
 
     def est_num_blocks(self) -> int:
         if self._out_blocks:
             return self._out_blocks.initial_num_blocks()
-        for op in self._ops[::-1]:
-            if op.num_blocks is not None:
-                return op.num_blocks
+        for stage in self._stages[::-1]:
+            if stage.num_blocks is not None:
+                return stage.num_blocks
         return self._in_blocks.initial_num_blocks()
 
     def schema(
         self, fetch_if_missing: bool = False
     ) -> Union[type, "pyarrow.lib.Schema"]:
-        if self._ops:
+        if self._stages:
             if fetch_if_missing:
                 self.execute()
             blocks = self._out_blocks
@@ -53,7 +54,7 @@ class ExecutionPlan:
         return blocks.ensure_schema_for_first_block()
 
     def meta_count(self) -> Optional[int]:
-        if self._ops:
+        if self._stages:
             blocks = self._out_blocks
         else:
             blocks = self._in_blocks
@@ -70,9 +71,9 @@ class ExecutionPlan:
         if self._out_blocks is None:
             blocks = self._in_blocks
             stats = self._in_stats
-            for op in self._ops:
-                stats_builder = stats.child_builder(op.name)
-                blocks, stage_info = op(blocks)
+            for stage in self._stages:
+                stats_builder = stats.child_builder(stage.name)
+                blocks, stage_info = stage(blocks)
                 if stage_info:
                     stats = stats_builder.build_multistage(stage_info)
                 else:
@@ -87,7 +88,7 @@ class ExecutionPlan:
         return self._out_stats
 
 
-class Op:
+class Stage:
     def __init__(self, name: str, num_blocks: Optional[int]):
         self.name = name
         self.num_blocks = num_blocks
@@ -96,7 +97,7 @@ class Op:
         raise NotImplementedError
 
 
-class OneToOneOp(Op):
+class OneToOneStage(Stage):
     def __init__(
         self,
         name: str,
@@ -115,7 +116,7 @@ class OneToOneOp(Op):
         return blocks, {}
 
 
-class AllToAllOp(Op):
+class AllToAllStage(Stage):
     def __init__(
         self,
         name: str,
