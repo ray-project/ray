@@ -184,7 +184,7 @@ def test_usage_report_e2e(set_env_var, shutdown_only, shutdown_serve):
 
     usage.deploy()
     # Since the interval is 1 second, there must have been
-    # around 5 requests sent within 10 seconds.
+    # more than 5 requests sent within 10 seconds.
     wait_for_condition(lambda: ray.get(reporter.get.remote()) > 5, timeout=10)
     _validate_schema(ray.get(reporter.get_payload.remote()))
 
