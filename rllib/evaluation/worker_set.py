@@ -45,9 +45,9 @@ T = TypeVar("T")
 
 @DeveloperAPI
 class WorkerSet:
-    """Set of RolloutWorkers with n @ray.remote workers and zero or one local worker.
+    """Set of RolloutWorkers with n @ray.remote workers and one local worker.
 
-    Where: n >= 0.
+    Where n may be 0.
     """
 
     def __init__(
