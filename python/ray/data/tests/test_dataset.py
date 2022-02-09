@@ -2264,7 +2264,7 @@ def test_split(ray_start_regular_shared):
     assert [1] * 10 + [0] == [
         dataset._blocks.initial_num_blocks() for dataset in datasets
     ]
-    assert 190 == sum([dataset.sum() for dataset in datasets])
+    assert 190 == sum([dataset.sum() or 0 for dataset in datasets])
 
 
 def test_split_hints(ray_start_regular_shared):
@@ -3271,12 +3271,65 @@ def test_groupby_arrow_sum(ray_start_regular_shared, num_parts):
         {"A": 1, "sum(B)": 1617},
         {"A": 2, "sum(B)": 1650},
     ]
+
+    # Test built-in sum aggregation with nans
+    nan_grouped_ds = (
+        ray.data.from_items(
+            [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
+        )
+        .repartition(num_parts)
+        .groupby("A")
+    )
+    nan_agg_ds = nan_grouped_ds.sum("B")
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "sum(B)": 1683},
+        {"A": 1, "sum(B)": 1617},
+        {"A": 2, "sum(B)": 1650},
+    ]
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.sum("B", ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "sum(B)": None},
+        {"A": 1, "sum(B)": 1617},
+        {"A": 2, "sum(B)": 1650},
+    ]
+    # Test all nans
+    nan_agg_ds = (
+        ray.data.from_items([{"A": (x % 3), "B": None} for x in xs])
+        .repartition(num_parts)
+        .groupby("A")
+        .sum("B")
+    )
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "sum(B)": None},
+        {"A": 1, "sum(B)": None},
+        {"A": 2, "sum(B)": None},
+    ]
+
     # Test built-in global sum aggregation
     assert (
         ray.data.from_items([{"A": x} for x in xs]).repartition(num_parts).sum("A")
         == 4950
     )
-    assert ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).sum("value") == 0
+
+    # Test empty dataset
+    assert (
+        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).sum("value") is None
+    )
+
+    # Test built-in global sum aggregation with nans
+    nan_ds = ray.data.from_items([{"A": x} for x in xs] + [{"A": None}]).repartition(
+        num_parts
+    )
+    assert nan_ds.sum("A") == 4950
+    # Test ignore_nulls=False
+    assert nan_ds.sum("A", ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
+    assert nan_ds.sum("A") is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3299,12 +3352,64 @@ def test_groupby_arrow_min(ray_start_regular_shared, num_parts):
         {"A": 1, "min(B)": 1},
         {"A": 2, "min(B)": 2},
     ]
+
+    # Test built-in min aggregation with nans
+    nan_grouped_ds = (
+        ray.data.from_items(
+            [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
+        )
+        .repartition(num_parts)
+        .groupby("A")
+    )
+    nan_agg_ds = nan_grouped_ds.min("B")
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "min(B)": 0},
+        {"A": 1, "min(B)": 1},
+        {"A": 2, "min(B)": 2},
+    ]
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.min("B", ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "min(B)": None},
+        {"A": 1, "min(B)": 1},
+        {"A": 2, "min(B)": 2},
+    ]
+    # Test all nans
+    nan_agg_ds = (
+        ray.data.from_items([{"A": (x % 3), "B": None} for x in xs])
+        .repartition(num_parts)
+        .groupby("A")
+        .min("B")
+    )
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "min(B)": None},
+        {"A": 1, "min(B)": None},
+        {"A": 2, "min(B)": None},
+    ]
+
     # Test built-in global min aggregation
     assert (
         ray.data.from_items([{"A": x} for x in xs]).repartition(num_parts).min("A") == 0
     )
-    with pytest.raises(ValueError):
-        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).min("value")
+
+    # Test empty dataset
+    assert (
+        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).min("value") is None
+    )
+
+    # Test built-in global min aggregation with nans
+    nan_ds = ray.data.from_items([{"A": x} for x in xs] + [{"A": None}]).repartition(
+        num_parts
+    )
+    assert nan_ds.min("A") == 0
+    # Test ignore_nulls=False
+    assert nan_ds.min("A", ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
+    assert nan_ds.min("A") is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3327,13 +3432,65 @@ def test_groupby_arrow_max(ray_start_regular_shared, num_parts):
         {"A": 1, "max(B)": 97},
         {"A": 2, "max(B)": 98},
     ]
+
+    # Test built-in max aggregation with nans
+    nan_grouped_ds = (
+        ray.data.from_items(
+            [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
+        )
+        .repartition(num_parts)
+        .groupby("A")
+    )
+    nan_agg_ds = nan_grouped_ds.max("B")
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "max(B)": 99},
+        {"A": 1, "max(B)": 97},
+        {"A": 2, "max(B)": 98},
+    ]
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.max("B", ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "max(B)": None},
+        {"A": 1, "max(B)": 97},
+        {"A": 2, "max(B)": 98},
+    ]
+    # Test all nans
+    nan_agg_ds = (
+        ray.data.from_items([{"A": (x % 3), "B": None} for x in xs])
+        .repartition(num_parts)
+        .groupby("A")
+        .max("B")
+    )
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "max(B)": None},
+        {"A": 1, "max(B)": None},
+        {"A": 2, "max(B)": None},
+    ]
+
     # Test built-in global max aggregation
     assert (
         ray.data.from_items([{"A": x} for x in xs]).repartition(num_parts).max("A")
         == 99
     )
-    with pytest.raises(ValueError):
-        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).max("value")
+
+    # Test empty dataset
+    assert (
+        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).max("value") is None
+    )
+
+    # Test built-in global max aggregation with nans
+    nan_ds = ray.data.from_items([{"A": x} for x in xs] + [{"A": None}]).repartition(
+        num_parts
+    )
+    assert nan_ds.max("A") == 99
+    # Test ignore_nulls=False
+    assert nan_ds.max("A", ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
+    assert nan_ds.max("A") is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3356,13 +3513,65 @@ def test_groupby_arrow_mean(ray_start_regular_shared, num_parts):
         {"A": 1, "mean(B)": 49.0},
         {"A": 2, "mean(B)": 50.0},
     ]
+
+    # Test built-in mean aggregation with nans
+    nan_grouped_ds = (
+        ray.data.from_items(
+            [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
+        )
+        .repartition(num_parts)
+        .groupby("A")
+    )
+    nan_agg_ds = nan_grouped_ds.mean("B")
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "mean(B)": 49.5},
+        {"A": 1, "mean(B)": 49.0},
+        {"A": 2, "mean(B)": 50.0},
+    ]
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.mean("B", ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "mean(B)": None},
+        {"A": 1, "mean(B)": 49.0},
+        {"A": 2, "mean(B)": 50.0},
+    ]
+    # Test all nans
+    nan_agg_ds = (
+        ray.data.from_items([{"A": (x % 3), "B": None} for x in xs])
+        .repartition(num_parts)
+        .groupby("A")
+        .mean("B")
+    )
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "mean(B)": None},
+        {"A": 1, "mean(B)": None},
+        {"A": 2, "mean(B)": None},
+    ]
+
     # Test built-in global mean aggregation
     assert (
         ray.data.from_items([{"A": x} for x in xs]).repartition(num_parts).mean("A")
         == 49.5
     )
-    with pytest.raises(ValueError):
-        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).mean("value")
+
+    # Test empty dataset
+    assert (
+        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).mean("value") is None
+    )
+
+    # Test built-in global mean aggregation with nans
+    nan_ds = ray.data.from_items([{"A": x} for x in xs] + [{"A": None}]).repartition(
+        num_parts
+    )
+    assert nan_ds.mean("A") == 49.5
+    # Test ignore_nulls=False
+    assert nan_ds.mean("A", ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
+    assert nan_ds.mean("A") is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3387,6 +3596,35 @@ def test_groupby_arrow_std(ray_start_regular_shared, num_parts):
     result = agg_ds.to_pandas()["std(B)"].to_numpy()
     expected = df.groupby("A")["B"].std(ddof=0).to_numpy()
     np.testing.assert_array_almost_equal(result, expected)
+
+    # Test built-in std aggregation with nans
+    nan_df = pd.DataFrame({"A": [x % 3 for x in xs] + [0], "B": xs + [None]})
+    nan_grouped_ds = ray.data.from_pandas(nan_df).repartition(num_parts).groupby("A")
+    nan_agg_ds = nan_grouped_ds.std("B")
+    assert nan_agg_ds.count() == 3
+    result = nan_agg_ds.to_pandas()["std(B)"].to_numpy()
+    expected = nan_df.groupby("A")["B"].std().to_numpy()
+    np.testing.assert_array_almost_equal(result, expected)
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.std("B", ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    result = nan_agg_ds.to_pandas()["std(B)"].to_numpy()
+    expected = nan_df.groupby("A")["B"].std()
+    expected[0] = None
+    np.testing.assert_array_almost_equal(result, expected)
+    # Test all nans
+    nan_df = pd.DataFrame({"A": [x % 3 for x in xs], "B": [None] * len(xs)})
+    nan_agg_ds = (
+        ray.data.from_pandas(nan_df)
+        .repartition(num_parts)
+        .groupby("A")
+        .std("B", ignore_nulls=False)
+    )
+    assert nan_agg_ds.count() == 3
+    result = nan_agg_ds.to_pandas()["std(B)"].to_numpy()
+    expected = pd.Series([None] * 3)
+    np.testing.assert_array_equal(result, expected)
+
     # Test built-in global std aggregation
     df = pd.DataFrame({"A": xs})
     assert math.isclose(
@@ -3397,10 +3635,21 @@ def test_groupby_arrow_std(ray_start_regular_shared, num_parts):
         ray.data.from_pandas(df).repartition(num_parts).std("A", ddof=0),
         df["A"].std(ddof=0),
     )
-    with pytest.raises(ValueError):
-        ray.data.from_pandas(pd.DataFrame({"A": []})).std("A")
+
+    # Test empty dataset
+    assert ray.data.from_pandas(pd.DataFrame({"A": []})).std("A") is None
     # Test edge cases
     assert ray.data.from_pandas(pd.DataFrame({"A": [3]})).std("A") == 0
+
+    # Test built-in global std aggregation with nans
+    nan_df = pd.DataFrame({"A": xs + [None]})
+    nan_ds = ray.data.from_pandas(nan_df).repartition(num_parts)
+    assert math.isclose(nan_ds.std("A"), df["A"].std())
+    # Test ignore_nulls=False
+    assert nan_ds.std("A", ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
+    assert nan_ds.std("A") is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3421,6 +3670,7 @@ def test_groupby_arrow_multicolumn(ray_start_regular_shared, num_parts):
         {"A": 1, "mean(B)": 49.0, "mean(C)": 98.0},
         {"A": 2, "mean(B)": 50.0, "mean(C)": 100.0},
     ]
+
     # Test that unspecified agg column ==> agg on all columns except for
     # groupby keys.
     agg_ds = ray.data.from_pandas(df).repartition(num_parts).groupby("A").mean()
@@ -3430,6 +3680,7 @@ def test_groupby_arrow_multicolumn(ray_start_regular_shared, num_parts):
         {"A": 1, "mean(B)": 49.0, "mean(C)": 98.0},
         {"A": 2, "mean(B)": 50.0, "mean(C)": 100.0},
     ]
+
     # Test built-in global mean aggregation
     df = pd.DataFrame({"A": xs, "B": [2 * x for x in xs]})
     result_row = ray.data.from_pandas(df).repartition(num_parts).mean(["A", "B"])
@@ -3511,6 +3762,7 @@ def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
             np.testing.assert_array_equal(result, expected)
     # Test built-in global std aggregation
     df = pd.DataFrame({"A": xs})
+
     result_row = (
         ray.data.from_pandas(df)
         .repartition(num_parts)
@@ -3549,6 +3801,7 @@ def test_groupby_simple(ray_start_regular_shared):
     ]
     random.shuffle(xs)
     ds = ray.data.from_items(xs, parallelism=parallelism)
+
     # Mean aggregation
     agg_ds = ds.groupby(lambda r: r[0]).aggregate(
         AggregateFn(
@@ -3625,9 +3878,50 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     )
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 1683), (1, 1617), (2, 1650)]
+
+    # Test built-in sum aggregation with nans
+    nan_grouped_ds = (
+        ray.data.from_items(xs + [None])
+        .repartition(num_parts)
+        .groupby(lambda x: int(x or 0) % 3)
+    )
+    nan_agg_ds = nan_grouped_ds.sum()
+    assert nan_agg_ds.count() == 3
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [
+        (0, 1683),
+        (1, 1617),
+        (2, 1650),
+    ]
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.sum(ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [
+        (0, None),
+        (1, 1617),
+        (2, 1650),
+    ]
+    # Test all nans
+    nan_agg_ds = (
+        ray.data.from_items([None] * len(xs))
+        .repartition(num_parts)
+        .groupby(lambda x: 0)
+        .sum()
+    )
+    assert nan_agg_ds.count() == 1
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(1) == [(0, None)]
+
     # Test built-in global sum aggregation
     assert ray.data.from_items(xs).repartition(num_parts).sum() == 4950
-    assert ray.data.range(10).filter(lambda r: r > 10).sum() == 0
+    assert ray.data.range(10).filter(lambda r: r > 10).sum() is None
+
+    # Test built-in global sum aggregation with nans
+    nan_ds = ray.data.from_items(xs + [None]).repartition(num_parts)
+    assert nan_ds.sum() == 4950
+    # Test ignore_nulls=False
+    assert nan_ds.sum(ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([None] * len(xs)).repartition(num_parts)
+    assert nan_ds.sum() is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3643,10 +3937,42 @@ def test_groupby_simple_min(ray_start_regular_shared, num_parts):
     )
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 0), (1, 1), (2, 2)]
+
+    # Test built-in min aggregation with nans
+    nan_grouped_ds = (
+        ray.data.from_items(xs + [None])
+        .repartition(num_parts)
+        .groupby(lambda x: int(x or 0) % 3)
+    )
+    nan_agg_ds = nan_grouped_ds.min()
+    assert nan_agg_ds.count() == 3
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 0), (1, 1), (2, 2)]
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.min(ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, None), (1, 1), (2, 2)]
+    # Test all nans
+    nan_agg_ds = (
+        ray.data.from_items([None] * len(xs))
+        .repartition(num_parts)
+        .groupby(lambda x: 0)
+        .min()
+    )
+    assert nan_agg_ds.count() == 1
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(1) == [(0, None)]
+
     # Test built-in global min aggregation
     assert ray.data.from_items(xs).repartition(num_parts).min() == 0
-    with pytest.raises(ValueError):
-        ray.data.range(10).filter(lambda r: r > 10).min()
+    assert ray.data.range(10).filter(lambda r: r > 10).min() is None
+
+    # Test built-in global min aggregation with nans
+    nan_ds = ray.data.from_items(xs + [None]).repartition(num_parts)
+    assert nan_ds.min() == 0
+    # Test ignore_nulls=False
+    assert nan_ds.min(ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([None] * len(xs)).repartition(num_parts)
+    assert nan_ds.min() is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3662,10 +3988,42 @@ def test_groupby_simple_max(ray_start_regular_shared, num_parts):
     )
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 99), (1, 97), (2, 98)]
+
+    # Test built-in max aggregation with nans
+    nan_grouped_ds = (
+        ray.data.from_items(xs + [None])
+        .repartition(num_parts)
+        .groupby(lambda x: int(x or 0) % 3)
+    )
+    nan_agg_ds = nan_grouped_ds.max()
+    assert nan_agg_ds.count() == 3
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 99), (1, 97), (2, 98)]
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.max(ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, None), (1, 97), (2, 98)]
+    # Test all nans
+    nan_agg_ds = (
+        ray.data.from_items([None] * len(xs))
+        .repartition(num_parts)
+        .groupby(lambda x: 0)
+        .max()
+    )
+    assert nan_agg_ds.count() == 1
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(1) == [(0, None)]
+
     # Test built-in global max aggregation
     assert ray.data.from_items(xs).repartition(num_parts).max() == 99
-    with pytest.raises(ValueError):
-        ray.data.range(10).filter(lambda r: r > 10).max()
+    assert ray.data.range(10).filter(lambda r: r > 10).max() is None
+
+    # Test built-in global max aggregation with nans
+    nan_ds = ray.data.from_items(xs + [None]).repartition(num_parts)
+    assert nan_ds.max() == 99
+    # Test ignore_nulls=False
+    assert nan_ds.max(ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([None] * len(xs)).repartition(num_parts)
+    assert nan_ds.max() is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3681,10 +4039,51 @@ def test_groupby_simple_mean(ray_start_regular_shared, num_parts):
     )
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 49.5), (1, 49.0), (2, 50.0)]
+
+    # Test built-in mean aggregation with nans
+    nan_grouped_ds = (
+        ray.data.from_items(xs + [None])
+        .repartition(num_parts)
+        .groupby(lambda x: int(x or 0) % 3)
+    )
+    nan_agg_ds = nan_grouped_ds.mean()
+    assert nan_agg_ds.count() == 3
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [
+        (0, 49.5),
+        (1, 49.0),
+        (2, 50.0),
+    ]
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.mean(ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(3) == [
+        (0, None),
+        (1, 49.0),
+        (2, 50.0),
+    ]
+    # Test all nans
+    nan_agg_ds = (
+        ray.data.from_items([None] * len(xs))
+        .repartition(num_parts)
+        .groupby(lambda x: 0)
+        .mean()
+    )
+    assert nan_agg_ds.count() == 1
+    assert nan_agg_ds.sort(key=lambda r: r[0]).take(1) == [(0, None)]
+
     # Test built-in global mean aggregation
     assert ray.data.from_items(xs).repartition(num_parts).mean() == 49.5
-    with pytest.raises(ValueError):
-        ray.data.range(10).filter(lambda r: r > 10).mean()
+    # Test empty dataset
+    assert ray.data.range(10).filter(lambda r: r > 10).mean() is None
+
+    # Test built-in global mean aggregation with nans
+    nan_ds = ray.data.from_items(xs + [None]).repartition(num_parts)
+    assert nan_ds.mean() == 49.5
+    # Test ignore_nulls=False
+    assert nan_ds.mean(ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([None] * len(xs)).repartition(num_parts)
+    assert nan_ds.mean() is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3721,6 +4120,48 @@ def test_groupby_simple_std(ray_start_regular_shared, num_parts):
     result_df = pd.DataFrame({"A": list(groups), "B": list(stds)})
     result_df = result_df.set_index("A")
     pd.testing.assert_series_equal(result_df["B"], expected)
+
+    # Test built-in std aggregation with nans
+    nan_grouped_ds = (
+        ray.data.from_items(xs + [None])
+        .repartition(num_parts)
+        .groupby(lambda x: int(x or 0) % 3)
+    )
+    nan_agg_ds = nan_grouped_ds.std()
+    assert nan_agg_ds.count() == 3
+    nan_df = pd.DataFrame({"A": [x % 3 for x in xs] + [0], "B": xs + [None]})
+    expected = nan_df.groupby("A")["B"].std()
+    result = nan_agg_ds.sort(key=lambda r: r[0]).take(3)
+    groups, stds = zip(*result)
+    result_df = pd.DataFrame({"A": list(groups), "B": list(stds)})
+    result_df = result_df.set_index("A")
+    pd.testing.assert_series_equal(result_df["B"], expected)
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.std(ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    expected = nan_df.groupby("A")["B"].std()
+    expected[0] = None
+    result = nan_agg_ds.sort(key=lambda r: r[0]).take(3)
+    groups, stds = zip(*result)
+    result_df = pd.DataFrame({"A": list(groups), "B": list(stds)})
+    result_df = result_df.set_index("A")
+    pd.testing.assert_series_equal(result_df["B"], expected)
+    # Test all nans
+    nan_agg_ds = (
+        ray.data.from_items([None] * len(xs))
+        .repartition(num_parts)
+        .groupby(lambda x: 0)
+        .std(ignore_nulls=False)
+    )
+    assert nan_agg_ds.count() == 1
+    expected = pd.Series([None], name="B")
+    expected.index.rename("A", inplace=True)
+    result = nan_agg_ds.sort(key=lambda r: r[0]).take(1)
+    groups, stds = zip(*result)
+    result_df = pd.DataFrame({"A": list(groups), "B": list(stds)})
+    result_df = result_df.set_index("A")
+    pd.testing.assert_series_equal(result_df["B"], expected)
+
     # Test built-in global std aggregation
     assert math.isclose(
         ray.data.from_items(xs).repartition(num_parts).std(), pd.Series(xs).std()
@@ -3730,10 +4171,20 @@ def test_groupby_simple_std(ray_start_regular_shared, num_parts):
         ray.data.from_items(xs).repartition(num_parts).std(ddof=0),
         pd.Series(xs).std(ddof=0),
     )
-    with pytest.raises(ValueError):
-        ray.data.from_items([]).std()
+
+    # Test empty dataset
+    assert ray.data.from_items([]).std() is None
     # Test edge cases
     assert ray.data.from_items([3]).std() == 0
+
+    # Test built-in global std aggregation with nans
+    nan_ds = ray.data.from_items(xs + [None]).repartition(num_parts)
+    assert math.isclose(nan_ds.std(), pd.Series(xs).std())
+    # Test ignore_nulls=False
+    assert nan_ds.std(ignore_nulls=False) is None
+    # Test all nans
+    nan_ds = ray.data.from_items([None] * len(xs)).repartition(num_parts)
+    assert nan_ds.std() is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3760,10 +4211,12 @@ def test_groupby_simple_multilambda(ray_start_regular_shared, num_parts):
     assert ray.data.from_items([[x, 2 * x] for x in xs]).repartition(num_parts).mean(
         [lambda x: x[0], lambda x: x[1]]
     ) == (49.5, 99.0)
-    with pytest.raises(ValueError):
-        ray.data.from_items([[x, 2 * x] for x in range(10)]).filter(
-            lambda r: r[0] > 10
-        ).mean([lambda x: x[0], lambda x: x[1]])
+    assert (
+        ray.data.from_items([[x, 2 * x] for x in range(10)])
+        .filter(lambda r: r[0] > 10)
+        .mean([lambda x: x[0], lambda x: x[1]])
+        is None
+    )
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
