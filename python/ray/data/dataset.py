@@ -463,7 +463,7 @@ class Dataset(Generic[T]):
         if shuffle:
 
             def do_shuffle(blocks):
-                return simple_shuffle(self._blocks, num_blocks)
+                return simple_shuffle(blocks, num_blocks)
 
             plan = self._plan.with_stage(
                 AllToAllStage("repartition", num_blocks, do_shuffle)
@@ -481,7 +481,6 @@ class Dataset(Generic[T]):
             assert len(indices) < num_blocks, (indices, num_blocks)
             if indices:
                 splits = self.split_at_indices(indices)
-                # TODO this saves memory: self._blocks.clear()
             else:
                 splits = [self]
             # TODO(ekl) include stats for the split tasks. We may also want to
@@ -535,7 +534,6 @@ class Dataset(Generic[T]):
         *,
         seed: Optional[int] = None,
         num_blocks: Optional[int] = None,
-        _move: Optional[bool] = False,
         _spread_resource_prefix: Optional[str] = None,
     ) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
@@ -617,6 +615,9 @@ class Dataset(Generic[T]):
                 f"The length of locality_hints {len(locality_hints)} "
                 "doesn't equal the number of splits {n}."
             )
+
+        blocks = self._plan.execute()
+        stats = self._plan.stats()
 
         def _partition_splits(
             splits: List[Dataset[T]], part_size: int, counts_cache: Dict[str, int]
@@ -768,7 +769,7 @@ class Dataset(Generic[T]):
             new_splits.extend(new_splits_small)
             return new_splits
 
-        block_refs, metadata = zip(*self._blocks.get_blocks_with_metadata())
+        block_refs, metadata = zip(*blocks.get_blocks_with_metadata())
         metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
 
         if locality_hints is None:
@@ -777,7 +778,7 @@ class Dataset(Generic[T]):
                     Dataset(
                         BlockList(list(blocks), [metadata_mapping[b] for b in blocks]),
                         self._epoch,
-                        self._stats,
+                        stats,
                     )
                     for blocks in np.array_split(block_refs, n)
                     if not equal or len(blocks) > 0
@@ -885,7 +886,7 @@ class Dataset(Generic[T]):
                         [metadata_mapping[b] for b in allocation_per_actor[actor]],
                     ),
                     self._epoch,
-                    self._stats,
+                    stats,
                 )
                 for actor in locality_hints
             ],
@@ -1355,19 +1356,22 @@ class Dataset(Generic[T]):
         Returns:
             A new, sorted dataset.
         """
-        # Handle empty dataset.
-        if self.num_blocks() == 0:
-            return self
-        if isinstance(key, list):
-            if not key:
-                raise ValueError("`key` must be a list of non-zero length")
-            for subkey in key:
-                _validate_key_fn(self, subkey)
-        else:
-            _validate_key_fn(self, key)
-        stats_builder = self._stats.child_builder("sort")
-        blocks, stage_info = sort_impl(self._blocks, key, descending)
-        return Dataset(blocks, self._epoch, stats_builder.build_multistage(stage_info))
+
+        def do_sort(blocks):
+            # Handle empty dataset.
+            if blocks.initial_num_blocks() == 0:
+                return blocks
+            if isinstance(key, list):
+                if not key:
+                    raise ValueError("`key` must be a list of non-zero length")
+                for subkey in key:
+                    _validate_key_fn(self, subkey)
+            else:
+                _validate_key_fn(self, key)
+            return sort_impl(blocks, key, descending)
+
+        plan = self._plan.with_stage(AllToAllStage("sort", None, do_sort))
+        return Dataset(plan, self._epoch, self._lazy)
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
@@ -1392,38 +1396,41 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
-        stats_builder = self._stats.child_builder("zip")
-        blocks1 = self.get_internal_block_refs()
-        blocks2 = other.get_internal_block_refs()
+        def do_zip_all(blocks):
+            blocks1 = blocks.get_blocks()
+            blocks2 = other.get_internal_block_refs()
 
-        if len(blocks1) != len(blocks2):
-            # TODO(ekl) consider supporting if num_rows are equal.
-            raise ValueError(
-                "Cannot zip dataset of different num blocks: {} vs {}".format(
-                    len(blocks1), len(blocks2)
+            if len(blocks1) != len(blocks2):
+                # TODO(ekl) consider supporting if num_rows are equal.
+                raise ValueError(
+                    "Cannot zip dataset of different num blocks: {} vs {}".format(
+                        len(blocks1), len(blocks2)
+                    )
                 )
-            )
 
-        def do_zip(block1: Block, block2: Block) -> (Block, BlockMetadata):
-            stats = BlockExecStats.builder()
-            b1 = BlockAccessor.for_block(block1)
-            result = b1.zip(block2)
-            br = BlockAccessor.for_block(result)
-            return result, br.get_metadata(input_files=[], exec_stats=stats.build())
+            def do_zip(block1: Block, block2: Block) -> (Block, BlockMetadata):
+                stats = BlockExecStats.builder()
+                b1 = BlockAccessor.for_block(block1)
+                result = b1.zip(block2)
+                br = BlockAccessor.for_block(result)
+                return result, br.get_metadata(input_files=[], exec_stats=stats.build())
 
-        do_zip_fn = cached_remote_fn(do_zip, num_returns=2)
+            do_zip_fn = cached_remote_fn(do_zip, num_returns=2)
 
-        blocks = []
-        metadata = []
-        for b1, b2 in zip(blocks1, blocks2):
-            res, meta = do_zip_fn.remote(b1, b2)
-            blocks.append(res)
-            metadata.append(meta)
+            blocks = []
+            metadata = []
+            for b1, b2 in zip(blocks1, blocks2):
+                res, meta = do_zip_fn.remote(b1, b2)
+                blocks.append(res)
+                metadata.append(meta)
 
-        # TODO(ekl) it might be nice to have a progress bar here.
-        metadata = ray.get(metadata)
-        blocks = BlockList(blocks, metadata)
-        return Dataset(blocks, self._epoch, stats_builder.build(blocks))
+            # TODO(ekl) it might be nice to have a progress bar here.
+            metadata = ray.get(metadata)
+            blocks = BlockList(blocks, metadata)
+            return blocks, {}
+
+        plan = self._plan.with_stage(AllToAllStage("zip", None, do_zip_all))
+        return Dataset(plan, self._epoch, self._lazy)
 
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.
@@ -1514,7 +1521,9 @@ class Dataset(Generic[T]):
         get_num_rows = cached_remote_fn(_get_num_rows)
 
         return sum(
-            ray.get([get_num_rows.remote(block) for block in self._blocks.get_blocks()])
+            ray.get(
+                [get_num_rows.remote(block) for block in self.get_internal_block_refs()]
+            )
         )
 
     def schema(
@@ -1550,7 +1559,7 @@ class Dataset(Generic[T]):
         Returns:
             The number of blocks of this dataset.
         """
-        return self._blocks.initial_num_blocks()
+        return self._plan.initial_num_blocks()
 
     def size_bytes(self) -> int:
         """Return the in-memory size of the dataset.
@@ -1561,7 +1570,7 @@ class Dataset(Generic[T]):
             The in-memory size of the dataset in bytes, or None if the
             in-memory size is not known.
         """
-        metadata = self._blocks.get_metadata()
+        metadata = self._plan.execute().get_metadata()
         if not metadata or metadata[0].size_bytes is None:
             return None
         return sum(m.size_bytes for m in metadata)
@@ -1575,7 +1584,7 @@ class Dataset(Generic[T]):
             The list of input files used to create the dataset, or an empty
             list if the input files is not known.
         """
-        metadata = self._blocks.get_metadata()
+        metadata = self._plan.execute().get_metadata()
         files = set()
         for m in metadata:
             for f in m.input_files:
@@ -1815,7 +1824,7 @@ class Dataset(Generic[T]):
         """
 
         ctx = DatasetContext.get_current()
-        blocks, metadata = zip(*self._blocks.get_blocks_with_metadata())
+        blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
 
         # TODO(ekl) remove this feature flag.
         if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
@@ -2262,7 +2271,7 @@ Dict[str, List[str]]]): The names of the columns
         # TODO(Clark): Give Dask a Pandas-esque schema via the Pyarrow schema,
         # once that's implemented.
         ddf = dd.from_delayed(
-            [block_to_df(block) for block in self._blocks.get_blocks()]
+            [block_to_df(block) for block in self.get_internal_block_refs()]
         )
         return ddf
 
@@ -2365,7 +2374,7 @@ Dict[str, List[str]]]): The names of the columns
         """
 
         block_to_df = cached_remote_fn(_block_to_df)
-        return [block_to_df.remote(block) for block in self._blocks.get_blocks()]
+        return [block_to_df.remote(block) for block in self.get_internal_block_refs()]
 
     def to_numpy_refs(
         self, *, column: Optional[str] = None
@@ -2389,7 +2398,7 @@ Dict[str, List[str]]]): The names of the columns
         block_to_ndarray = cached_remote_fn(_block_to_ndarray)
         return [
             block_to_ndarray.remote(block, column=column)
-            for block in self._blocks.get_blocks()
+            for block in self.get_internal_block_refs()
         ]
 
     def to_arrow_refs(self) -> List[ObjectRef["pyarrow.Table"]]:
@@ -2404,7 +2413,7 @@ Dict[str, List[str]]]): The names of the columns
         Returns:
             A list of remote Arrow tables created from this dataset.
         """
-        blocks: List[ObjectRef[Block]] = self._blocks.get_blocks()
+        blocks: List[ObjectRef[Block]] = self.get_internal_block_refs()
 
         if self._dataset_format() == "arrow":
             # Zero-copy path.
@@ -2455,7 +2464,7 @@ Dict[str, List[str]]]): The names of the columns
                     raise StopIteration
                 self._ds._set_epoch(self._i)
                 self._i += 1
-                return lambda: self._ds.force_reads()
+                return lambda: self._ds.fully_executed()
 
         class Iterable:
             def __init__(self, ds: "Dataset[T]"):
@@ -2520,7 +2529,8 @@ Dict[str, List[str]]]): The names of the columns
         """
         from ray.data.dataset_pipeline import DatasetPipeline
 
-        outer_stats = self._stats
+        blocks = self._plan.execute()
+        outer_stats = self._plan.stats()
 
         class Iterator:
             def __init__(self, splits, epoch):
@@ -2547,7 +2557,7 @@ Dict[str, List[str]]]): The names of the columns
             def __iter__(self):
                 return Iterator(self._splits, self._epoch)
 
-        it = Iterable(self._blocks, self._epoch)
+        it = Iterable(blocks, self._epoch)
         return DatasetPipeline(it, length=len(it._splits))
 
     @DeveloperAPI
@@ -2562,7 +2572,7 @@ Dict[str, List[str]]]): The names of the columns
         Returns:
             A list of references to this dataset's blocks.
         """
-        return self._blocks.get_blocks()
+        return self._plan.execute().get_blocks()
 
     @DeveloperAPI
     def lazy(self) -> "Dataset[T]":
@@ -2570,7 +2580,7 @@ Dict[str, List[str]]]): The names of the columns
         return self
 
     @DeveloperAPI
-    def force_reads(self) -> "Dataset[T]":
+    def fully_executed(self) -> "Dataset[T]":
         """Force full evaluation of the blocks of this dataset.
 
         This can be used to read all blocks into memory. By default, Datasets
@@ -2586,11 +2596,6 @@ Dict[str, List[str]]]): The names of the columns
         """Returns a string containing execution timing information."""
         return self._plan.stats().summary_string()
 
-    def _move_blocks(self):
-        blocks = self._blocks.copy()
-        self._blocks.clear()
-        return blocks
-
     def _split(
         self, index: int, return_right_half: bool
     ) -> ("Dataset[T]", "Dataset[T]"):
@@ -2602,7 +2607,7 @@ Dict[str, List[str]]]): The names of the columns
         left_metadata = []
         right_blocks = []
         right_metadata = []
-        it = self._blocks.get_blocks_with_metadata()
+        it = self._plan.execute().get_blocks_with_metadata()
         for b, m in it:
             if m.num_rows is None:
                 num_rows = ray.get(get_num_rows.remote(b))
@@ -2630,25 +2635,30 @@ Dict[str, List[str]]]): The names of the columns
             count += num_rows
 
         left = Dataset(
-            BlockList(left_blocks, left_metadata),
+            ExecutionPlan(
+                BlockList(left_blocks, left_metadata), self.stats().child_TODO("split")
+            ),
             self._epoch,
-            self._stats.child_TODO("split"),
+            self._lazy,
         )
         if return_right_half:
             right = Dataset(
-                BlockList(right_blocks, right_metadata),
+                ExecutionPlan(
+                    BlockList(right_blocks, right_metadata),
+                    self.stats().child_TODO("split"),
+                ),
                 self._epoch,
-                self._stats.child_TODO("split"),
+                self._lazy,
             )
         else:
             right = None
         return left, right
 
     def _divide(self, block_idx: int) -> ("Dataset[T]", "Dataset[T]"):
-        left, right = self._blocks.divide(block_idx)
-        return Dataset(left, self._epoch, self._stats), Dataset(
-            right, self._epoch, self._stats
-        )
+        left, right = self._plan.execute().divide(block_idx)
+        l_ds = Dataset(ExecutionPlan(left, self.stats()), self._epoch, self._lazy)
+        r_ds = Dataset(ExecutionPlan(right, self.stats()), self._epoch, self._lazy)
+        return l_ds, r_ds
 
     def _dataset_format(self) -> str:
         """Determine the format of the dataset. Possible values are: "arrow",
@@ -2751,7 +2761,7 @@ Dict[str, List[str]]]): The names of the columns
             schema_str = "{" + schema_str + "}"
         count = self._meta_count()
         return "Dataset(num_blocks={}, num_rows={}, schema={})".format(
-            self._plan.est_num_blocks(), count, schema_str
+            self._plan.initial_num_blocks(), count, schema_str
         )
 
     def __str__(self) -> str:
@@ -2759,11 +2769,13 @@ Dict[str, List[str]]]): The names of the columns
 
     def _block_num_rows(self) -> List[int]:
         get_num_rows = cached_remote_fn(_get_num_rows)
-        return ray.get([get_num_rows.remote(b) for b in self._blocks.get_blocks()])
+        return ray.get([get_num_rows.remote(b) for b in self.get_internal_block_refs()])
 
     def _block_size_bytes(self) -> List[int]:
         get_size_bytes = cached_remote_fn(_get_size_bytes)
-        return ray.get([get_size_bytes.remote(b) for b in self._blocks.get_blocks()])
+        return ray.get(
+            [get_size_bytes.remote(b) for b in self.get_internal_block_refs()]
+        )
 
     def _meta_count(self) -> Optional[int]:
         return self._plan.meta_count()

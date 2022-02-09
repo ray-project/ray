@@ -25,7 +25,7 @@ class ExecutionPlan:
         copy._stages.append(stage)
         return copy
 
-    def est_num_blocks(self) -> int:
+    def initial_num_blocks(self) -> int:
         if self._out_blocks:
             return self._out_blocks.initial_num_blocks()
         for stage in self._stages[::-1]:
@@ -82,6 +82,10 @@ class ExecutionPlan:
             self._out_blocks = blocks
             self._out_stats = stats
         return self._out_blocks
+
+    def clear(self) -> None:
+        self._out_blocks = None
+        self._out_stats = None
 
     def stats(self) -> DatasetStats:
         self.execute()
