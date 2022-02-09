@@ -1313,6 +1313,7 @@ def start_dashboard(
     gcs_address,
     temp_dir,
     logdir,
+    session_dir,
     port=None,
     redis_password=None,
     fate_share=None,
@@ -1331,6 +1332,8 @@ def start_dashboard(
         gcs_address (str): The gcs address the dashboard should connect to
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
+        session_dir (str): The session directory under temp_dir.
+            It is used as a identifier of individual cluster.
         logdir (str): The log directory used to generate dashboard log.
         port (str): The port to bind the dashboard web server to.
             Defaults to 8265.
@@ -1392,6 +1395,7 @@ def start_dashboard(
             f"--redis-address={redis_address}",
             f"--temp-dir={temp_dir}",
             f"--log-dir={logdir}",
+            f"--session-dir={session_dir}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
             f"--gcs-address={gcs_address}",
