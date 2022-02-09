@@ -1735,9 +1735,14 @@ class Trainer(Trainable):
             state = [np.stack(s) for s in state]
 
         input_dict = {SampleBatch.OBS: obs_batch}
-        if prev_action:
+
+        # prev_action and prev_reward can be None, np.ndarray, or tensor-like structure.
+        # Explicitly check for None here to avoid the error message "The truth value of
+        # an array with more than one element is ambiguous.", when np arrays are passed
+        # as arguments.
+        if prev_action is not None:
             input_dict[SampleBatch.PREV_ACTIONS] = prev_action
-        if prev_reward:
+        if prev_reward is not None:
             input_dict[SampleBatch.PREV_REWARDS] = prev_reward
         if info:
             input_dict[SampleBatch.INFOS] = info
