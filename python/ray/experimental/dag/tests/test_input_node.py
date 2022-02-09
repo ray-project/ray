@@ -134,7 +134,13 @@ def test_invalid_input_node_as_class_constructor(shared_ray_instance):
             return self.val
 
     with pytest.raises(
-        ValueError, match="ClassNode constructor because it is not available"
+        ValueError,
+        match=(
+            "InputNode handles user dynamic input the the DAG, and "
+            "cannot be used as args, kwargs, or other_args_to_resolve "
+            "in ClassNode constructor because it is not available at "
+            "class construction or binding time."
+        ),
     ):
         Actor._bind(InputNode())
 
