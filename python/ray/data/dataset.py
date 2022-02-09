@@ -110,7 +110,7 @@ class Dataset(Generic[T]):
         spec: Union[BlockList, ExecutionPlan],
         epoch: int,
         lazy: bool,
-        stats: DatasetStats,
+        stats: DatasetStats,  # TODO: remove this once everything uses plan.
     ):
         """Construct a Dataset (internal API).
 
@@ -194,10 +194,6 @@ class Dataset(Generic[T]):
             OneToOneOp("map", transform, compute, ray_remote_args)
         )
         return Dataset(plan, self._epoch, self._lazy, DatasetStats.TODO())
-
-    def lazy(self) -> "Dataset[T]":
-        self._lazy = True
-        return self
 
     def map_batches(
         self,
@@ -2573,6 +2569,11 @@ Dict[str, List[str]]]): The names of the columns
             A list of references to this dataset's blocks.
         """
         return self._blocks.get_blocks()
+
+    @DeveloperAPI
+    def lazy(self) -> "Dataset[T]":
+        self._lazy = True
+        return self
 
     @DeveloperAPI
     def force_reads(self) -> "Dataset[T]":
