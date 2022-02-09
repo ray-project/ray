@@ -118,7 +118,7 @@ class Dataset(Generic[T]):
         read methods to construct a dataset.
         """
         if isinstance(spec, BlockList):
-            self._plan = ExecutionPlan(spec, stats)
+            self._plan = ExecutionPlan(spec, stats)  # TODO remove this.
         elif isinstance(spec, ExecutionPlan):
             self._plan = spec
         else:
