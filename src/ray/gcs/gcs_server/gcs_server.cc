@@ -616,9 +616,10 @@ std::string GcsServer::GetDebugState() const {
          << gcs_publisher_->DebugString() << "\n\n"
          << runtime_env_manager_->DebugString() << "\n\n";
 
-  if (config_.grpc_based_resource_broadcast) {
+  if (grpc_based_resource_broadcaster_) {
     stream << grpc_based_resource_broadcaster_->DebugString();
   }
+
   return stream.str();
 }
 
