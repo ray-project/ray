@@ -118,7 +118,7 @@ class Dataset(Generic[T]):
         read methods to construct a dataset.
         """
         if isinstance(spec, BlockList):
-            self._plan = ExecutionPlan(spec)
+            self._plan = ExecutionPlan(spec, stats)
         elif isinstance(spec, ExecutionPlan):
             self._plan = spec
         else:
@@ -177,7 +177,6 @@ class Dataset(Generic[T]):
 
         fn = cache_wrapper(fn)
         context = DatasetContext.get_current()
-        # stats_builder = self._stats.child_builder("map")
 
         def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
@@ -191,8 +190,9 @@ class Dataset(Generic[T]):
             if output_buffer.has_next():
                 yield output_buffer.next()
 
-        plan = self._plan.with_op(OneToOneOp(transform, compute, ray_remote_args))
-
+        plan = self._plan.with_op(
+            OneToOneOp("map", transform, compute, ray_remote_args)
+        )
         return Dataset(plan, self._epoch, self._lazy, DatasetStats.TODO())
 
     def lazy(self) -> "Dataset[T]":
@@ -564,7 +564,6 @@ class Dataset(Generic[T]):
         Returns:
             The shuffled dataset.
         """
-        # stats = self._stats.child_builder("random_shuffle")
 
         def do_shuffle(blocks):
             num_blocks = blocks.executed_num_blocks()  # Blocking.
@@ -577,10 +576,9 @@ class Dataset(Generic[T]):
                 random_seed=seed,
                 _spread_resource_prefix=_spread_resource_prefix,
             )
-            return new_blocks
+            return new_blocks, stage_info
 
-        plan = self._plan.with_op(AllToAllOp(do_shuffle))
-
+        plan = self._plan.with_op(AllToAllOp("random_shuffle", do_shuffle))
         return Dataset(plan, self._epoch, self._lazy, DatasetStats.TODO())
 
     def split(
@@ -2591,7 +2589,7 @@ Dict[str, List[str]]]): The names of the columns
     @DeveloperAPI
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
-        return self._stats.summary_string()
+        return self._plan.stats().summary_string()
 
     def _move_blocks(self):
         blocks = self._blocks.copy()
