@@ -207,7 +207,7 @@ def kill_process_by_name(name, SIGKILL=False):
                 p.terminate()
 
 
-def run_string_as_driver(driver_script: str, env: Dict = None):
+def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ascii"):
     """Run a driver as a separate process.
 
     Args:
@@ -235,13 +235,13 @@ def run_string_as_driver(driver_script: str, env: Dict = None):
         env=env,
     )
     with proc:
-        output = proc.communicate(driver_script.encode("ascii"))[0]
+        output = proc.communicate(driver_script.encode(encoding=encode))[0]
         if proc.returncode:
-            print(ray._private.utils.decode(output))
+            print(ray._private.utils.decode(output, encode_type=encode))
             raise subprocess.CalledProcessError(
                 proc.returncode, proc.args, output, proc.stderr
             )
-        out = ray._private.utils.decode(output)
+        out = ray._private.utils.decode(output, encode_type=encode)
     return out
 
 

@@ -1163,7 +1163,6 @@ def shutdown(_exiting_interpreter: bool = False):
         # This is a duration to sleep before shutting down everything in order
         # to make sure that log messages finish printing.
         time.sleep(0.5)
-
     disconnect(_exiting_interpreter)
 
     # disconnect internal kv
