@@ -17,11 +17,11 @@ from ray._private.runtime_env.packaging import (
     get_uri_for_directory,
     parse_uri,
 )
-from ray.job_submission import JobStatusInfo
 from ray.dashboard.modules.job.common import (
     JobSubmitRequest,
     JobSubmitResponse,
     JobStopResponse,
+    JobStatusInfo,
     JobStatusResponse,
     JobLogsResponse,
     uri_to_http_components,
