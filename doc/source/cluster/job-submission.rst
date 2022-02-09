@@ -143,7 +143,7 @@ We can import and initialize the Job submission client by providing a valid Ray 
 
 .. code-block:: python
 
-    from ray.dashboard.modules.job.sdk import JobSubmissionClient
+    from ray.job_submission import JobSubmissionClient
 
     client = JobSubmissionClient("http://127.0.0.1:8265")
 
@@ -169,7 +169,7 @@ Now we can have a simple polling loop that checks the job status until it reache
 
 .. code-block:: python
 
-    from ray.dashboard.modules.job.common import JobStatus, JobStatusInfo
+    from ray.job_submission import JobStatus
 
     def wait_until_finish(job_id):
         start = time.time()
