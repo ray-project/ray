@@ -48,7 +48,7 @@ torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 MODEL_DEFAULTS: ModelConfigDict = {
     # Experimental flag.
@@ -188,7 +188,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "lstm_use_prev_action_reward": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 @PublicAPI

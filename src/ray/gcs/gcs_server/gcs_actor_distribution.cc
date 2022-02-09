@@ -38,11 +38,8 @@ GcsBasedActorScheduler::GcsBasedActorScheduler(
     const GcsNodeManager &gcs_node_manager,
     std::shared_ptr<GcsResourceManager> gcs_resource_manager,
     std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,
-    std::function<void(std::shared_ptr<GcsActor>,
-                       rpc::RequestWorkerLeaseReply::SchedulingFailureType)>
-        schedule_failure_handler,
-    std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
-        schedule_success_handler,
+    GcsActorSchedulerFailureCallback schedule_failure_handler,
+    GcsActorSchedulerSuccessCallback schedule_success_handler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
     rpc::ClientFactoryFn client_factory)
     : GcsActorScheduler(io_context, gcs_actor_table, gcs_node_manager,
@@ -194,7 +191,9 @@ void GcsBasedActorScheduler::HandleWorkerLeaseReply(
         node_to_actors_when_leasing_.erase(iter);
       }
       if (reply.canceled()) {
-        HandleRequestWorkerLeaseCanceled(actor, node_id, reply.failure_type());
+        // TODO(sang): Should properly update the failure message.
+        HandleRequestWorkerLeaseCanceled(actor, node_id, reply.failure_type(),
+                                         /*scheduling_failure_message*/ "");
       } else if (reply.rejected()) {
         RAY_LOG(INFO) << "Failed to lease worker from node " << node_id << " for actor "
                       << actor->GetActorID()

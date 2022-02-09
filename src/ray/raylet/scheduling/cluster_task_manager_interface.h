@@ -88,7 +88,8 @@ class ClusterTaskManagerInterface {
   virtual bool CancelTask(
       const TaskID &task_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED) = 0;
+          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+      const std::string &scheduling_failure_message = "") = 0;
 
   /// Set the worker backlog size for a particular scheduling class.
   ///
@@ -112,6 +113,7 @@ class ClusterTaskManagerInterface {
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
   virtual void QueueAndScheduleTask(const RayTask &task, bool grant_or_reject,
+                                    bool is_selected_based_on_locality,
                                     rpc::RequestWorkerLeaseReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) = 0;
 

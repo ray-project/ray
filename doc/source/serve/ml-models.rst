@@ -114,6 +114,155 @@ To serve multiple different MLflow models in the same program, use the ``name`` 
   The above approach will work for any model registry, not just MLflow.
   Namely, load the model from the registry in ``__init__``, and forward the request to the model in ``__call__``.
 
+For a complete hands-on and seamless integration with MLflow, try this self-contained example on your laptop.
+But first install ``mlflow``.
+
+.. code-block:: bash
+
+    pip install mlflow
+
+.. code-block:: python
+
+    # This brief example shows how to deploy models saved in a model registry such as
+    # MLflow to Ray Serve, using the simple Ray Serve deployment APIs. You can peruse
+    # the saved models' metrics and parameters in MLflow ui.
+    #
+    import json
+    import numpy as np
+    import pandas as pd
+    import requests
+    import os
+    import tempfile
+
+    from sklearn.datasets import load_iris
+    from sklearn.ensemble import GradientBoostingClassifier
+    from mlflow.tracking import MlflowClient
+
+    from ray import serve
+    import mlflow
+
+
+    def create_and_save_model():
+        # load Iris data
+        iris_data = load_iris()
+        data, target, target_names = (iris_data['data'],
+                                      iris_data['target'],
+                                      iris_data['target_names'])
+
+        # Instantiate a model
+        model = GradientBoostingClassifier()
+
+        # Training and validation split
+        np.random.shuffle(data), np.random.shuffle(target)
+        train_x, train_y = data[:100], target[:100]
+        val_x, val_y = data[100:], target[100:]
+
+        # Create labels list as file
+        LABEL_PATH = os.path.join(tempfile.gettempdir(), "iris_labels.json")
+        with open(LABEL_PATH, "w") as f:
+            json.dump(target_names.tolist(), f)
+
+        # Train the model and save our label list as an MLflow artifact
+        # mlflow.sklearn.autolog automatically logs all parameters and metrics during
+        # the training.
+        mlflow.sklearn.autolog()
+        with mlflow.start_run() as run:
+            model.fit(train_x, train_y)
+            # Log label list as a artifact
+            mlflow.log_artifact(LABEL_PATH, artifact_path="labels")
+        return run.info.run_id
+
+    #
+    # Create our Ray Serve deployment class
+    #
+
+
+    @serve.deployment(route_prefix="/regressor")
+    class BoostingModel:
+        def __init__(self, uri):
+            # Load the model and label artifact from the local
+            # Mlflow model registry as a PyFunc Model
+            self.model = mlflow.pyfunc.load_model(model_uri=uri)
+
+            # Download the artifact list of labels
+            local_dir = "/tmp/artifact_downloads"
+            if not os.path.exists(local_dir):
+                os.mkdir(local_dir)
+            client = MlflowClient()
+            local_path = f"{client.download_artifacts(run_id, 'labels', local_dir)}/iris_labels.json"
+            with open(local_path, "r") as f:
+                self.label_list = json.load(f)
+
+        async def __call__(self, starlette_request):
+            payload = await starlette_request.json()
+            print(f"Worker: received Starlette request with data: {payload}")
+
+            # Get the input vector from the payload
+            input_vector = [
+                payload["sepal length"],
+                payload["sepal width"],
+                payload["petal length"],
+                payload["petal width"],
+            ]
+
+            # Convert the input vector in a Pandas DataFrame for prediction since
+            # an MLflow PythonFunc model, model.predict(...), takes pandas DataFrame
+            prediction = self.model.predict(pd.DataFrame([input_vector]))[0]
+            human_name = self.label_list[prediction]
+            return {"result": human_name}
+
+
+    if __name__ == '__main__':
+
+        # Train and save the model artifacts in MLflow.
+        # Here our MLflow model registry is local file
+        # directory ./mlruns
+        run_id = create_and_save_model()
+
+        # Start the Ray Serve instance
+        serve.start()
+        # Construct model uri to load the model from our model registry
+        uri = f"runs:/{run_id}/model"
+        # Deploy our model.
+        BoostingModel.deploy(uri)
+
+        # Send in a request for labels types virginica, setosa, versicolor
+        sample_request_inputs = [{
+            "sepal length": 6.3,
+            "sepal width": 3.3,
+            "petal length": 6.0,
+            "petal width": 2.5},
+            {
+            "sepal length": 5.1,
+            "sepal width": 3.5,
+            "petal length": 1.4,
+            "petal width": 0.2},
+            {
+            "sepal length": 6.4,
+            "sepal width": 3.2,
+            "petal length": 4.5,
+            "petal width": 1.5},
+        ]
+        for input_request in sample_request_inputs:
+            response = requests.get("http://localhost:8000/regressor",
+                                json=input_request)
+            print(response.text)
+
+        print("Launch MLflow ui to see the model parameters, metrics, and artifacts: `mlflow ui` from current directory.")
+
+        #output
+        #{
+        #   "result": "versicolor"
+        #}
+        #{
+        #    "result": "virginica"
+        #}
+        #{
+        #    "result": "setosa"
+        #}
+        #
+        # Launch MLflow ui to see the model parameters, metrics, and artifacts: `mlflow ui` from current directory.
+
 For an even more hands-off and seamless integration with MLflow, check out the
 `Ray Serve MLflow deployment plugin <https://github.com/ray-project/mlflow-ray-serve>`__.  A full
 tutorial is available `here <https://github.com/mlflow/mlflow/tree/master/examples/ray_serve>`__.
