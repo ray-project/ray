@@ -176,23 +176,23 @@ class TestCheckMultiAgentEnv(unittest.TestCase):
         with pytest.raises(ValueError, match="The element returned by step"):
             check_env(env)
 
-        step = MagicMock(return_value=(sampled_obs, "Not a reward", True, {}))
+        step = MagicMock(return_value=(sampled_obs, {0: "Not a reward"}, {0: True}, {}))
         env.step = step
         with pytest.raises(
-            AssertionError, match="Your step function must " "return a reward "
+            AssertionError, match="Your step function must return rewards"
         ):
             check_env(env)
-        step = MagicMock(return_value=(sampled_obs, 5, "Not a bool", {}))
+        step = MagicMock(return_value=(sampled_obs, {0: 5}, {0: "Not a bool"}, {}))
         env.step = step
         with pytest.raises(
-            AssertionError, match="Your step function must " "return a done"
+            AssertionError, match="Your step function must return dones"
         ):
             check_env(env)
 
-        step = MagicMock(return_value=(sampled_obs, 5, False, "Not a Dict"))
+        step = MagicMock(return_value=(sampled_obs, {0: 5}, {0: False}, {0: "Not a Dict"}))
         env.step = step
         with pytest.raises(
-            AssertionError, match="Your step function must " "return a info"
+            AssertionError, match="Your step function must return infos"
         ):
             check_env(env)
 

@@ -217,10 +217,15 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         raise ValueError(error)
 
     next_obs, reward, done, info = env.step(sampled_action)
-    _check_if_element_multi_agent_dict(env, next_obs, "step(sampled_action)")
-    _check_reward(reward)
-    _check_done(done)
-    _check_info(info)
+    _check_if_element_multi_agent_dict(env, next_obs, "step, next_obs")
+    _check_if_element_multi_agent_dict(env, reward, "step, reward")
+    _check_if_element_multi_agent_dict(env, done, "step, done")
+    _check_if_element_multi_agent_dict(env, info, "step, info")
+    _check_reward(
+        {"dummy_env_id": reward}, base_env=True, agent_ids=env.get_agent_ids()
+    )
+    _check_done({"dummy_env_id": done}, base_env=True, agent_ids=env.get_agent_ids())
+    _check_info({"dummy_env_id": info}, base_env=True, agent_ids=env.get_agent_ids())
     if not env.observation_space_contains(next_obs):
         error = (
             _not_contained_error("env.step(sampled_action)", "observation")
@@ -298,49 +303,58 @@ def check_base_env(env: "BaseEnv") -> None:
         )
         raise ValueError(error)
 
-    _check_reward(reward, base_env=True)
-    _check_done(done, base_env=True)
-    _check_info(info, base_env=True)
+    _check_reward(reward, base_env=True, agent_ids=env.get_agent_ids())
+    _check_done(done, base_env=True, agent_ids=env.get_agent_ids())
+    _check_info(info, base_env=True, agent_ids=env.get_agent_ids())
 
 
-def _check_reward(reward, base_env=False):
+def _check_reward(reward, base_env=False, agent_ids=None):
     if base_env:
         for _, multi_agent_dict in reward.items():
-            for _, rew in multi_agent_dict.items():
+            for agent_id, rew in multi_agent_dict.items():
                 assert (
                     np.isreal(rew) and not isinstance(rew, bool) and np.isscalar(rew)
                 ), (
-                    "Your step function must return a rewards that are"
+                    "Your step function must return rewards that are"
                     f" integer or float. reward: {rew}"
                 )
+                assert (
+                    agent_id in agent_ids
+                ), f"Your reward dictionary must have agent ids that belong to the environment. Agent_ids recieved from env.get_agent_ids() are: {agent_ids}"
     else:
         assert (
             np.isreal(reward) and not isinstance(reward, bool) and np.isscalar(reward)
         ), "Your step function must return a reward that is integer or float."
 
 
-def _check_done(done, base_env=False):
+def _check_done(done, base_env=False, agent_ids=None):
     if base_env:
         for _, multi_agent_dict in done.items():
-            for _, done_ in multi_agent_dict.items():
+            for agent_id, done_ in multi_agent_dict.items():
                 assert isinstance(done_, bool), (
-                    "Your step function must return a done that is boolean. "
+                    "Your step function must return dones that are boolean. "
                     f"element: {done_}"
                 )
+                assert (
+                    agent_id in agent_ids
+                ), f"Your dones dictionary must have agent ids that belong to the environment. Agent_ids recieved from env.get_agent_ids() are: {agent_ids}"
     else:
         assert isinstance(done, bool), (
             "Your step function must return a done that is a " "boolean."
         )
 
 
-def _check_info(info, base_env=False):
+def _check_info(info, base_env=False, agent_ids=None):
     if base_env:
         for _, multi_agent_dict in info.items():
-            for _, inf in multi_agent_dict.items():
+            for agent_id, inf in multi_agent_dict.items():
                 assert isinstance(inf, dict), (
-                    "Your step function must return a info that is a dict. "
+                    "Your step function must return infos that are a dict. "
                     f"element: {inf}"
                 )
+                assert (
+                    agent_id in agent_ids
+                ), f"Your dones dictionary must have agent ids that belong to the environment. Agent_ids recieved from env.get_agent_ids() are: {agent_ids}"
     else:
         assert isinstance(
             info, dict
@@ -395,6 +409,7 @@ def _check_if_element_multi_agent_dict(env, element, function_string, base_env=F
         raise ValueError(error)
     agent_ids: Set = env.get_agent_ids()
     agent_ids.add("__all__")
+
     if not all(k in agent_ids for k in element):
         if base_env:
             error = (
