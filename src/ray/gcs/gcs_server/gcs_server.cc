@@ -531,9 +531,9 @@ void GcsServer::InstallEventListeners() {
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
     if (!RayConfig::instance().syncer_reporting()) {
       gcs_resource_report_poller_->HandleNodeAdded(*node);
-    }
-    if (config_.grpc_based_resource_broadcast) {
-      grpc_based_resource_broadcaster_->HandleNodeAdded(*node);
+      if (config_.grpc_based_resource_broadcast) {
+        grpc_based_resource_broadcaster_->HandleNodeAdded(*node);
+      }
     }
   });
   gcs_node_manager_->AddNodeRemovedListener(
