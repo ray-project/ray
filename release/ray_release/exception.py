@@ -46,6 +46,38 @@ class ClusterStartupFailed(ClusterManagerError):
     pass
 
 
+class CommandTimeout(RuntimeError):
+    pass
+
+
+class PrepareCommandTimouet(CommandTimeout):
+    pass
+
+
+class TestCommandTimeout(CommandTimeout):
+    pass
+
+
+class CommandError(RuntimeError):
+    pass
+
+
+class PrepareCommandError(CommandError):
+    pass
+
+
+class TestCommandError(CommandError):
+    pass
+
+
+class LogsError(CommandError):
+    pass
+
+
+class ResultsError(CommandError):
+    pass
+
+
 # ---
 
 

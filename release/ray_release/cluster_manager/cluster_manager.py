@@ -4,6 +4,7 @@ from typing import Dict, Any, Optional
 
 from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
+from ray_release.anyscale_util import get_project_name
 from ray_release.util import dict_hash, get_anyscale_sdk, anyscale_cluster_url
 
 
@@ -16,6 +17,7 @@ class ClusterManager(abc.ABC):
 
         self.test_name = test_name
         self.project_id = project_id
+        self.project_name = get_project_name(self.project_id, self.sdk)
 
         self.cluster_name = f"{test_name}_{int(time.time())}"
         self.cluster_id = None
@@ -33,13 +35,15 @@ class ClusterManager(abc.ABC):
 
     def set_cluster_env(self, cluster_env: Dict[str, Any]):
         self.cluster_env = cluster_env
-        self.cluster_env_name = (f"{self.project_id}__env__{self.test_name}__"
+        self.cluster_env_name = (f"{self.project_name}_{self.project_id[4:8]}"
+                                 f"__env__{self.test_name}__"
                                  f"{dict_hash(cluster_env)}")
 
     def set_cluster_compute(self, cluster_compute: Dict[str, Any]):
         self.cluster_compute = cluster_compute
         self.cluster_compute_name = (
-            f"{self.project_id}__compute__{self.test_name}__"
+            f"{self.project_name}_{self.project_id[4:8]}"
+            f"__compute__{self.test_name}__"
             f"{dict_hash(cluster_compute)}")
 
     def build_configs(self, timeout: float = 30.):

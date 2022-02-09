@@ -9,6 +9,8 @@ from typing import Callable, Dict, Any
 import requests
 from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
+from ray_release.logger import logger
+
 ANYSCALE_HOST = os.environ.get("ANYSCALE_HOST", "https://console.anyscale.com")
 
 
@@ -97,3 +99,20 @@ def run_with_timeout(fn: Callable[[], None],
 
     if thread.is_alive():
         error_fn()
+
+
+def exponential_backoff_retry(f, retry_exceptions, initial_retry_delay_s,
+                              max_retries):
+    retry_cnt = 0
+    retry_delay_s = initial_retry_delay_s
+    while True:
+        try:
+            return f()
+        except retry_exceptions as e:
+            retry_cnt += 1
+            if retry_cnt > max_retries:
+                raise
+            logger.info(f"Retry function call failed due to {e} "
+                        f"in {retry_delay_s} seconds...")
+            time.sleep(retry_delay_s)
+            retry_delay_s *= 2

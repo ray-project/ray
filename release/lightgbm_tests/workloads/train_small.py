@@ -28,7 +28,6 @@ if __name__ == "__main__":
         int(os.environ.get("RAY_RELEASE_MIN_WORKERS", 0)) + 1, 600)
 
     output = os.environ["TEST_OUTPUT_JSON"]
-    state = os.environ["TEST_STATE_JSON"]
     ray_params = RayParams(
         elastic_training=False,
         max_actor_restarts=2,
@@ -41,7 +40,6 @@ if __name__ == "__main__":
     @ray.remote(num_cpus=0)
     def train():
         os.environ["TEST_OUTPUT_JSON"] = output
-        os.environ["TEST_STATE_JSON"] = state
         train_ray(
             path="/data/classification.parquet",
             num_workers=4,

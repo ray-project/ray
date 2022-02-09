@@ -2,7 +2,7 @@ import tarfile
 import tempfile
 from typing import Optional
 
-from ray_release.uploader.uploader import Uploader
+from ray_release.file_manager.file_manager import FileManager
 
 
 def _pack(source_dir: str) -> bytes:
@@ -80,7 +80,7 @@ def fetch_dir_fom_head(local_dir: str, remote_dir: str):
     return fetch_dir_from_node(ip, remote_dir, local_dir)
 
 
-class RuntimeEnvUploader(Uploader):
+class RemoteTaskFileManager(FileManager):
     def upload(self, source_dir: str, target_dir: Optional[str] = None):
         target_dir = self.get_target_dir(source_dir, target_dir)
         send_dir_to_head(source_dir, target_dir)
