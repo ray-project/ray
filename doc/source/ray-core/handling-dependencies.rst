@@ -349,27 +349,21 @@ Inheritance
 
 The runtime environment is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor once set, unless it is overridden.
 
-If an actor or task specifies a new ``runtime_env``, it will override the parent’s ``runtime_env`` (i.e., the parent actor/task's ``runtime_env``, or the job's ``runtime_env`` if there is no parent actor or task) as follows:
+If an actor or task specifies a new ``runtime_env``, it will override the parent’s ``runtime_env`` (i.e., the parent actor/task's ``runtime_env``, or the job's ``runtime_env`` if there is no parent actor or task).
 
-* The ``runtime_env["env_vars"]`` field will be merged with the ``runtime_env["env_vars"]`` field of the parent.
-  This allows for environment variables set in the parent's runtime environment to be automatically propagated to the child, even if new environment variables are set in the child's runtime environment.
-* Every other field in the ``runtime_env`` will be *overridden* by the child, not merged.  For example, if ``runtime_env["py_modules"]`` is specified, it will replace the ``runtime_env["py_modules"]`` field of the parent.
-
-Example:
+To merge from the parent runtime env in some specific cases, you can use the API ray.get_current_runtime_env() to get the parent runtime env and modify it by yourself. Example:
 
 .. code-block:: python
 
   # Parent's `runtime_env`
-  {"pip": ["requests", "chess"],
-  "env_vars": {"A": "a", "B": "b"}}
+  {"pip": ["requests", "chess"]}
 
-  # Child's specified `runtime_env`
-  {"pip": ["torch", "ray[serve]"],
-  "env_vars": {"B": "new", "C", "c"}}
+  # Child updates `runtime_env`
+  Actor.options(runtime_env=ray.get_current_runtime_env().update({"env_vars": {"A": "a", "B": "b"}}))
 
   # Child's actual `runtime_env` (merged with parent's)
   {"pip": ["torch", "ray[serve]"],
-  "env_vars": {"A": "a", "B": "new", "C", "c"}}
+  "env_vars": {"A": "a", "B": "b"}}
 
 
 .. _remote-uris:
