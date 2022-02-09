@@ -8,14 +8,22 @@ from unittest.mock import patch, Mock
 import ray
 import ray.util.client.server.server as ray_client_server
 import ray.client_builder as client_builder
-from ray._private.test_utils import run_string_as_driver_nonblocking,\
-    wait_for_condition, run_string_as_driver
+from ray._private.test_utils import (
+    run_string_as_driver_nonblocking,
+    wait_for_condition,
+    run_string_as_driver,
+)
 
 
-@pytest.mark.parametrize("address", [
-    "localhost:1234", "localhost:1234/url?params",
-    "1.2.3.4/cluster-1?test_param=param1?"
-])
+@pytest.mark.parametrize(
+    "address",
+    [
+        "localhost:1234",
+        "localhost:1234/url?params",
+        "1.2.3.4/cluster-1?test_param=param1?",
+        "",
+    ],
+)
 def test_split_address(address):
     assert client_builder._split_address(address) == ("ray", address)
 
@@ -23,16 +31,17 @@ def test_split_address(address):
     assert client_builder._split_address(specified_module) == ("ray", address)
 
     specified_other_module = f"module://{address}"
-    assert client_builder._split_address(specified_other_module) == ("module",
-                                                                     address)
+    assert client_builder._split_address(specified_other_module) == ("module", address)
     non_url_compliant_module = f"module_test://{address}"
     assert client_builder._split_address(non_url_compliant_module) == (
-        "module_test", address)
+        "module_test",
+        address,
+    )
 
 
 @pytest.mark.parametrize(
-    "address",
-    ["localhost", "1.2.3.4:1200", "ray://1.2.3.4:1200", "local", None])
+    "address", ["localhost", "1.2.3.4:1200", "ray://1.2.3.4:1200", "local", None]
+)
 def test_client(address):
     builder = client_builder.client(address)
     assert isinstance(builder, client_builder.ClientBuilder)
@@ -140,8 +149,7 @@ while True:
     time.sleep(30)
 
 """
-    blocking_local_script = driver_template.format(
-        address="'local'", blocking=True)
+    blocking_local_script = driver_template.format(address="'local'", blocking=True)
     blocking_noaddr_script = driver_template.format(address="", blocking=True)
 
     # This should start a cluster.
@@ -157,7 +165,8 @@ while True:
 
     wait_for_condition(
         lambda: len(ray._private.services.find_bootstrap_address()) == 4,
-        retry_interval_ms=1000)
+        retry_interval_ms=1000,
+    )
 
     p1.kill()
     p2.kill()
@@ -171,17 +180,20 @@ while True:
     subprocess.check_output("ray start --head", shell=True)
     # The assertion in the driver should cause the script to fail if we start
     # a new cluster instead of connecting.
-    run_string_as_driver("""
+    run_string_as_driver(
+        """
 import ray
 ray.client().connect()
 assert len(ray._private.services.find_bootstrap_address()) == 1
-    """)
+    """
+    )
     # ray.client("local").connect() should always create a new cluster even if
     # there's one running.
     p1 = run_string_as_driver_nonblocking(blocking_local_script)
     wait_for_condition(
         lambda: len(ray._private.services.find_bootstrap_address()) == 2,
-        retry_interval_ms=1000)
+        retry_interval_ms=1000,
+    )
     p1.kill()
     subprocess.check_output("ray stop --force", shell=True)
 
@@ -216,16 +228,17 @@ def test_module_lacks_client_builder():
             ray.client("othermodule://")
         except AssertionError as e:
             exception = e
-        assert exception is not None, ("Module without ClientBuilder did not "
-                                       "raise AssertionError")
+        assert exception is not None, (
+            "Module without ClientBuilder did not " "raise AssertionError"
+        )
         assert "does not have ClientBuilder" in str(exception)
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
+@pytest.mark.skipif(sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
 def test_disconnect(call_ray_stop_only, set_enable_auto_connect):
     subprocess.check_output(
-        "ray start --head --ray-client-server-port=25555", shell=True)
+        "ray start --head --ray-client-server-port=25555", shell=True
+    )
     with ray.client("localhost:25555").namespace("n1").connect():
         # Connect via Ray Client
         namespace = ray.get_runtime_context().namespace
@@ -256,11 +269,11 @@ def test_disconnect(call_ray_stop_only, set_enable_auto_connect):
         ray.put(300)
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
+@pytest.mark.skipif(sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
 def test_address_resolution(call_ray_stop_only):
     subprocess.check_output(
-        "ray start --head --ray-client-server-port=50055", shell=True)
+        "ray start --head --ray-client-server-port=50055", shell=True
+    )
 
     with ray.client("localhost:50055").connect():
         assert ray.util.client.ray.is_connected()
@@ -288,8 +301,7 @@ def mock_connect(*args, **kwargs):
     raise ConnectionError
 
 
-def has_client_deprecation_warn(warning: Warning,
-                                expected_replacement: str) -> bool:
+def has_client_deprecation_warn(warning: Warning, expected_replacement: str) -> bool:
     """
     Returns true if expected_replacement is in the message of the passed
     warning, and that the warning mentions deprecation.
@@ -304,8 +316,8 @@ def has_client_deprecation_warn(warning: Warning,
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="pip not supported in Windows runtime envs.")
+    sys.platform == "win32", reason="pip not supported in Windows runtime envs."
+)
 def test_client_deprecation_warn():
     """
     Tests that calling ray.client directly raises a deprecation warning with
@@ -315,17 +327,17 @@ def test_client_deprecation_warn():
     # Test warning when local client mode is used
     with warnings.catch_warnings(record=True) as w:
         ray.client().connect()
-        assert any(
-            has_client_deprecation_warn(warning, "ray.init()")
-            for warning in w)
+        assert any(has_client_deprecation_warn(warning, "ray.init()") for warning in w)
         ray.shutdown()
 
     with warnings.catch_warnings(record=True) as w:
         ray.client().namespace("nmspc").env({"pip": ["requests"]}).connect()
-    expected = 'ray.init(namespace="nmspc", runtime_env=<your_runtime_env>)'  # noqa E501
+    expected = (
+        'ray.init(namespace="nmspc", runtime_env=<your_runtime_env>)'  # noqa E501
+    )
     assert any(
-        has_client_deprecation_warn(warning, expected)  # noqa E501
-        for warning in w)
+        has_client_deprecation_warn(warning, expected) for warning in w  # noqa E501
+    )
     ray.shutdown()
 
     server = ray_client_server.serve("localhost:50055")
@@ -335,8 +347,9 @@ def test_client_deprecation_warn():
         with ray.client("localhost:50055").connect():
             pass
     assert any(
-        has_client_deprecation_warn(
-            warning, 'ray.init("ray://localhost:50055")') for warning in w)
+        has_client_deprecation_warn(warning, 'ray.init("ray://localhost:50055")')
+        for warning in w
+    )
 
     # Test warning when just namespace specified
     with warnings.catch_warnings(record=True) as w:
@@ -344,18 +357,22 @@ def test_client_deprecation_warn():
             pass
     assert any(
         has_client_deprecation_warn(
-            warning, 'ray.init("ray://localhost:50055", namespace="nmspc")')
-        for warning in w)
+            warning, 'ray.init("ray://localhost:50055", namespace="nmspc")'
+        )
+        for warning in w
+    )
 
     # Test that passing namespace through env doesn't add namespace to the
     # replacement
-    with warnings.catch_warnings(record=True) as w, \
-            patch.dict(os.environ, {"RAY_NAMESPACE": "aksdj"}):
+    with warnings.catch_warnings(record=True) as w, patch.dict(
+        os.environ, {"RAY_NAMESPACE": "aksdj"}
+    ):
         with ray.client("localhost:50055").connect():
             pass
     assert any(
-        has_client_deprecation_warn(
-            warning, 'ray.init("ray://localhost:50055")') for warning in w)
+        has_client_deprecation_warn(warning, 'ray.init("ray://localhost:50055")')
+        for warning in w
+    )
 
     # Skip actually connecting on these, since updating the runtime env is
     # time consuming
@@ -363,37 +380,34 @@ def test_client_deprecation_warn():
         # Test warning when just runtime_env specified
         with warnings.catch_warnings(record=True) as w:
             try:
-                ray.client("localhost:50055") \
-                    .env({"pip": ["requests"]}).connect()
+                ray.client("localhost:50055").env({"pip": ["requests"]}).connect()
             except ConnectionError:
                 pass
         expected = 'ray.init("ray://localhost:50055", runtime_env=<your_runtime_env>)'  # noqa E501
-        assert any(
-            has_client_deprecation_warn(warning, expected) for warning in w)
+        assert any(has_client_deprecation_warn(warning, expected) for warning in w)
 
         # Test warning works if both runtime env and namespace specified
         with warnings.catch_warnings(record=True) as w:
             try:
-                ray.client("localhost:50055").namespace("nmspc") \
-                    .env({"pip": ["requests"]}).connect()
+                ray.client("localhost:50055").namespace("nmspc").env(
+                    {"pip": ["requests"]}
+                ).connect()
             except ConnectionError:
                 pass
         expected = 'ray.init("ray://localhost:50055", namespace="nmspc", runtime_env=<your_runtime_env>)'  # noqa E501
-        assert any(
-            has_client_deprecation_warn(warning, expected) for warning in w)
+        assert any(has_client_deprecation_warn(warning, expected) for warning in w)
 
         # We don't expect namespace to appear in the warning message, since
         # it was configured through an env var
-        with warnings.catch_warnings(record=True) as w, \
-                patch.dict(os.environ, {"RAY_NAMESPACE": "abcdef"}):
+        with warnings.catch_warnings(record=True) as w, patch.dict(
+            os.environ, {"RAY_NAMESPACE": "abcdef"}
+        ):
             try:
-                ray.client("localhost:50055") \
-                    .env({"pip": ["requests"]}).connect()
+                ray.client("localhost:50055").env({"pip": ["requests"]}).connect()
             except ConnectionError:
                 pass
         expected = 'ray.init("ray://localhost:50055", runtime_env=<your_runtime_env>)'  # noqa E501
-        assert any(
-            has_client_deprecation_warn(warning, expected) for warning in w)
+        assert any(has_client_deprecation_warn(warning, expected) for warning in w)
 
     # cleanup
     server.stop(0)

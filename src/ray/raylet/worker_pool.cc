@@ -172,6 +172,10 @@ void WorkerPool::SetAgentManager(std::shared_ptr<AgentManager> agent_manager) {
 void WorkerPool::PopWorkerCallbackAsync(const PopWorkerCallback &callback,
                                         std::shared_ptr<WorkerInterface> worker,
                                         PopWorkerStatus status) {
+  // This method shouldn't be invoked when runtime env creation has failed because
+  // when runtime env is failed to be created, they are all
+  // invoking the callback immediately.
+  RAY_CHECK(status != PopWorkerStatus::RuntimeEnvCreationFailed);
   // Call back this function asynchronously to make sure executed in different stack.
   io_service_->post([this, callback, worker,
                      status]() { PopWorkerCallbackInternal(callback, worker, status); },
@@ -182,7 +186,7 @@ void WorkerPool::PopWorkerCallbackInternal(const PopWorkerCallback &callback,
                                            std::shared_ptr<WorkerInterface> worker,
                                            PopWorkerStatus status) {
   RAY_CHECK(callback);
-  auto used = callback(worker, status);
+  auto used = callback(worker, status, /*runtime_env_setup_error_message*/ "");
   if (worker && !used) {
     // The invalid worker not used, restore it to worker pool.
     PushWorker(worker);
@@ -402,7 +406,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
       worker_command_args.push_back("--serialized-runtime-env-context=" +
                                     serialized_runtime_env_context);
     } else {
-      // The "shim process" setup worker is not needed, so do not run it.
       // Check that the arg really is the path to the setup worker before erasing it, to
       // prevent breaking tests that mock out the worker command args.
       if (worker_command_args.size() >= 2 &&
@@ -614,14 +617,15 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
                   << ". The runtime environment was " << runtime_env << ".";
     CreateRuntimeEnv(
         runtime_env, job_id,
-        [job_id](bool successful, const std::string &serialized_runtime_env_context) {
+        [job_id](bool successful, const std::string &serialized_runtime_env_context,
+                 const std::string &setup_error_message) {
           if (successful) {
             RAY_LOG(INFO) << "[Eagerly] Create runtime env successful for job " << job_id
                           << ". The result context was " << serialized_runtime_env_context
                           << ".";
           } else {
             RAY_LOG(ERROR) << "[Eagerly] Couldn't create a runtime environment for job "
-                           << job_id << ".";
+                           << job_id << ". Error message: " << setup_error_message;
           }
         });
   }
@@ -649,22 +653,18 @@ boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
 }
 
 Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
-                                  pid_t pid, pid_t worker_shim_pid,
-                                  StartupToken worker_startup_token,
+                                  pid_t pid, StartupToken worker_startup_token,
                                   std::function<void(Status, int)> send_reply_callback) {
   RAY_CHECK(worker);
   auto &state = GetStateForLanguage(worker->GetLanguage());
   auto it = state.starting_worker_processes.find(worker_startup_token);
   if (it == state.starting_worker_processes.end()) {
-    RAY_LOG(WARNING)
-        << "Received a register request from an unknown worker shim process: "
-        << worker_shim_pid << ", token: " << worker_startup_token;
+    RAY_LOG(WARNING) << "Received a register request from an unknown token: "
+                     << worker_startup_token;
     Status status = Status::Invalid("Unknown worker");
     send_reply_callback(status, /*port=*/0);
     return status;
   }
-  auto shim_process = Process::FromPid(worker_shim_pid);
-  worker->SetShimProcess(shim_process);
   auto process = Process::FromPid(pid);
   worker->SetProcess(process);
 
@@ -695,9 +695,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 
 void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  const auto &shim_process = worker->GetShimProcess();
   const StartupToken worker_startup_token = worker->GetStartupToken();
-  RAY_CHECK(shim_process.IsValid());
 
   auto it = state.starting_worker_processes.find(worker_startup_token);
   if (it != state.starting_worker_processes.end()) {
@@ -889,7 +887,11 @@ void WorkerPool::InvokePopWorkerCallbackForProcess(
     *task_id = it->second.task_id;
     const auto &callback = it->second.callback;
     RAY_CHECK(callback);
-    *worker_used = callback(worker, status);
+    // This method shouldn't be invoked when runtime env creation has failed because
+    // when runtime env is failed to be created, they are all
+    // invoking the callback immediately.
+    RAY_CHECK(status != PopWorkerStatus::RuntimeEnvCreationFailed);
+    *worker_used = callback(worker, status, /*runtime_env_setup_error_message*/ "");
     starting_workers_to_tasks.erase(it);
   }
 }
@@ -964,7 +966,6 @@ void WorkerPool::TryKillingIdleWorkers() {
       // This is possible because a Java worker process may hold multiple workers.
       continue;
     }
-    auto shim_process = idle_worker->GetShimProcess();
     auto worker_startup_token = idle_worker->GetStartupToken();
     auto &worker_state = GetStateForLanguage(idle_worker->GetLanguage());
 
@@ -1143,14 +1144,16 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         CreateRuntimeEnv(
             task_spec.SerializedRuntimeEnv(), task_spec.JobId(),
             [this, start_worker_process_fn, callback, &state, task_spec, dynamic_options](
-                bool successful, const std::string &serialized_runtime_env_context) {
+                bool successful, const std::string &serialized_runtime_env_context,
+                const std::string &setup_error_message) {
               if (successful) {
                 start_worker_process_fn(task_spec, state, dynamic_options, true,
                                         task_spec.SerializedRuntimeEnv(),
                                         serialized_runtime_env_context, callback);
               } else {
                 process_failed_runtime_env_setup_failed_++;
-                callback(nullptr, PopWorkerStatus::RuntimeEnvCreationFailed);
+                callback(nullptr, PopWorkerStatus::RuntimeEnvCreationFailed,
+                         /*runtime_env_setup_error_message*/ setup_error_message);
                 RAY_LOG(WARNING)
                     << "Create runtime env failed for task " << task_spec.TaskId()
                     << " and couldn't create the dedicated worker.";
@@ -1202,14 +1205,16 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         CreateRuntimeEnv(
             task_spec.SerializedRuntimeEnv(), task_spec.JobId(),
             [this, start_worker_process_fn, callback, &state, task_spec](
-                bool successful, const std::string &serialized_runtime_env_context) {
+                bool successful, const std::string &serialized_runtime_env_context,
+                const std::string &setup_error_message) {
               if (successful) {
                 start_worker_process_fn(task_spec, state, {}, false,
                                         task_spec.SerializedRuntimeEnv(),
                                         serialized_runtime_env_context, callback);
               } else {
                 process_failed_runtime_env_setup_failed_++;
-                callback(nullptr, PopWorkerStatus::RuntimeEnvCreationFailed);
+                callback(nullptr, PopWorkerStatus::RuntimeEnvCreationFailed,
+                         /*runtime_env_setup_error_message*/ setup_error_message);
                 RAY_LOG(WARNING)
                     << "Create runtime env failed for task " << task_spec.TaskId()
                     << " and couldn't create the worker.";
@@ -1501,20 +1506,21 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
 
 void WorkerPool::CreateRuntimeEnv(
     const std::string &serialized_runtime_env, const JobID &job_id,
-    const std::function<void(bool, const std::string &)> &callback,
+    const CreateRuntimeEnvCallback &callback,
     const std::string &serialized_allocated_resource_instances) {
   // create runtime env.
   agent_manager_->CreateRuntimeEnv(
       job_id, serialized_runtime_env, serialized_allocated_resource_instances,
-      [job_id, serialized_runtime_env, callback](
-          bool successful, const std::string &serialized_runtime_env_context) {
+      [job_id, serialized_runtime_env = std::move(serialized_runtime_env), callback](
+          bool successful, const std::string &serialized_runtime_env_context,
+          const std::string &setup_error_message) {
         if (successful) {
-          callback(true, serialized_runtime_env_context);
+          callback(true, serialized_runtime_env_context, "");
         } else {
           RAY_LOG(WARNING) << "Couldn't create a runtime environment for job " << job_id
                            << ". The runtime environment was " << serialized_runtime_env
                            << ".";
-          callback(false, "");
+          callback(false, "", setup_error_message);
         }
       });
 }

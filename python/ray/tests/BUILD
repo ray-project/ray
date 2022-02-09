@@ -81,6 +81,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
     "test_memory_scheduling.py",
     "test_metrics.py",
     "test_multi_node.py",
@@ -93,6 +94,7 @@ py_test_module_list(
     "test_placement_group.py",
     "test_placement_group_2.py",
     "test_placement_group_3.py",
+    "test_placement_group_4.py",
     "test_ray_init.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
@@ -116,6 +118,7 @@ py_test_module_list(
     "test_multi_tenancy.py",
     "test_scheduling.py",
     "test_scheduling_2.py",
+    "test_traceback.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -138,7 +141,6 @@ py_test_module_list(
     "test_numba.py",
     "test_queue.py",
     "test_ray_shutdown.py",
-    "test_traceback.py",
     "test_unhandled_error.py",
     "test_top_level_api.py",
     "test_list_actors.py",

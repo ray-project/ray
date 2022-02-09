@@ -19,9 +19,7 @@ tf1, tf, tfv = try_import_tf()
 class MovingMeanStd:
     """Track moving mean, std and count."""
 
-    def __init__(self,
-                 epsilon: float = 1e-4,
-                 shape: Optional[List[int]] = None):
+    def __init__(self, epsilon: float = 1e-4, shape: Optional[List[int]] = None):
         """Initialize object.
 
         Args:
@@ -49,8 +47,9 @@ class MovingMeanStd:
         self.update_params(batch_mean, batch_var, batch_count)
         return np.log(inputs / self.std + 1)
 
-    def update_params(self, batch_mean: float, batch_var: float,
-                      batch_count: float) -> None:
+    def update_params(
+        self, batch_mean: float, batch_var: float, batch_count: float
+    ) -> None:
         """Update moving mean, std and count.
 
         Args:
@@ -65,8 +64,7 @@ class MovingMeanStd:
         self.mean = self.mean + delta + batch_count / tot_count
         m_a = self.var * self.count
         m_b = batch_var * batch_count
-        M2 = m_a + m_b + np.power(delta,
-                                  2) * self.count * batch_count / tot_count
+        M2 = m_a + m_b + np.power(delta, 2) * self.count * batch_count / tot_count
         self.var = M2 / tot_count
         self.count = tot_count
 
@@ -80,8 +78,7 @@ class MovingMeanStd:
         return np.sqrt(self.var)
 
 
-def update_beta(beta_schedule: str, beta: float, rho: float,
-                step: int) -> float:
+def update_beta(beta_schedule: str, beta: float, rho: float, step: int) -> float:
     """Update beta based on schedule and training step.
 
     Args:
@@ -94,12 +91,13 @@ def update_beta(beta_schedule: str, beta: float, rho: float,
         Updated beta as per input schedule.
     """
     if beta_schedule == "linear_decay":
-        return beta * ((1.0 - rho)**step)
+        return beta * ((1.0 - rho) ** step)
     return beta
 
 
-def compute_states_entropy(obs_embeds: np.ndarray, embed_dim: int,
-                           k_nn: int) -> np.ndarray:
+def compute_states_entropy(
+    obs_embeds: np.ndarray, embed_dim: int, k_nn: int
+) -> np.ndarray:
     """Compute states entropy using K nearest neighbour method.
 
     Args:
@@ -112,8 +110,7 @@ def compute_states_entropy(obs_embeds: np.ndarray, embed_dim: int,
         Computed states entropy.
     """
     obs_embeds_ = np.reshape(obs_embeds, [-1, embed_dim])
-    dist = np.linalg.norm(
-        obs_embeds_[:, None, :] - obs_embeds_[None, :, :], axis=-1)
+    dist = np.linalg.norm(obs_embeds_[:, None, :] - obs_embeds_[None, :, :], axis=-1)
     return dist.argsort(axis=-1)[:, :k_nn][:, -1]
 
 
@@ -135,20 +132,22 @@ class RE3(Exploration):
     the entire replay buffer into consideration.
     """
 
-    def __init__(self,
-                 action_space: Space,
-                 *,
-                 framework: str,
-                 model: ModelV2,
-                 embeds_dim: int = 128,
-                 encoder_net_config: Optional[ModelConfigDict] = None,
-                 beta: float = 0.2,
-                 beta_schedule: str = "constant",
-                 rho: float = 0.1,
-                 k_nn: int = 50,
-                 random_timesteps: int = 10000,
-                 sub_exploration: Optional[FromConfigSpec] = None,
-                 **kwargs):
+    def __init__(
+        self,
+        action_space: Space,
+        *,
+        framework: str,
+        model: ModelV2,
+        embeds_dim: int = 128,
+        encoder_net_config: Optional[ModelConfigDict] = None,
+        beta: float = 0.2,
+        beta_schedule: str = "constant",
+        rho: float = 0.1,
+        k_nn: int = 50,
+        random_timesteps: int = 10000,
+        sub_exploration: Optional[FromConfigSpec] = None,
+        **kwargs
+    ):
         """Initialize RE3.
 
         Args:
@@ -182,8 +181,7 @@ class RE3(Exploration):
         # TODO(gjoliver): Add supports for Pytorch.
         if framework == "torch":
             raise ValueError("This RE3 implementation does not support Torch.")
-        super().__init__(
-            action_space, model=model, framework=framework, **kwargs)
+        super().__init__(action_space, model=model, framework=framework, **kwargs)
 
         self.beta = beta
         self.rho = rho
@@ -232,11 +230,11 @@ class RE3(Exploration):
         )
         if self.framework == "tf":
             self._obs_ph = get_placeholder(
-                space=self.model.obs_space, name="_encoder_obs")
+                space=self.model.obs_space, name="_encoder_obs"
+            )
             self._obs_embeds = tf.stop_gradient(
-                self._encoder_net({
-                    SampleBatch.OBS: self._obs_ph
-                })[0])
+                self._encoder_net({SampleBatch.OBS: self._obs_ph})[0]
+            )
 
         # This is only used to select the correct action
         self.exploration_submodule = from_config(
@@ -251,16 +249,17 @@ class RE3(Exploration):
         )
 
     @override(Exploration)
-    def get_exploration_action(self,
-                               *,
-                               action_distribution: ActionDistribution,
-                               timestep: Union[int, TensorType],
-                               explore: bool = True):
+    def get_exploration_action(
+        self,
+        *,
+        action_distribution: ActionDistribution,
+        timestep: Union[int, TensorType],
+        explore: bool = True
+    ):
         # Simply delegate to sub-Exploration module.
         return self.exploration_submodule.get_exploration_action(
-            action_distribution=action_distribution,
-            timestep=timestep,
-            explore=explore)
+            action_distribution=action_distribution, timestep=timestep, explore=explore
+        )
 
     @override(Exploration)
     def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
@@ -284,8 +283,7 @@ class RE3(Exploration):
             )
         else:
             obs_embeds = tf.stop_gradient(
-                self._encoder_net({
-                    SampleBatch.OBS: sample_batch[SampleBatch.OBS]
-                })[0])
+                self._encoder_net({SampleBatch.OBS: sample_batch[SampleBatch.OBS]})[0]
+            )
         sample_batch[SampleBatch.OBS_EMBEDS] = obs_embeds
         return sample_batch

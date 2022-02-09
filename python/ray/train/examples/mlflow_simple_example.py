@@ -17,8 +17,9 @@ result = trainer.run(
     train_func,
     callbacks=[
         MLflowLoggerCallback(experiment_name="train_experiment"),
-        TBXLoggerCallback()
-    ])
+        TBXLoggerCallback(),
+    ],
+)
 
 # Print the latest run directory and keep note of it.
 # For example: /home/ray_results/train_2021-09-01_12-00-00/run_001

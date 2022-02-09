@@ -52,42 +52,43 @@ parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--from-checkpoint",
     type=str,
     default=None,
     help="Full path to a checkpoint file for restoring a previously saved "
-    "Trainer state.")
+    "Trainer state.",
+)
 parser.add_argument(
     "--env",
     type=str,
     default="markov_soccer",
-    choices=["markov_soccer", "connect_four"])
+    choices=["markov_soccer", "connect_four"],
+)
 parser.add_argument(
-    "--stop-iters",
-    type=int,
-    default=1000,
-    help="Number of iterations to train.")
+    "--stop-iters", type=int, default=1000, help="Number of iterations to train."
+)
 parser.add_argument(
-    "--stop-timesteps",
-    type=int,
-    default=10000000,
-    help="Number of timesteps to train.")
+    "--stop-timesteps", type=int, default=10000000, help="Number of timesteps to train."
+)
 parser.add_argument(
     "--win-rate-threshold",
     type=float,
     default=0.85,
     help="Win-rate at which we setup another opponent by freezing the "
     "current main policy and playing against a uniform distribution "
-    "of previously frozen 'main's from here on.")
+    "of previously frozen 'main's from here on.",
+)
 parser.add_argument(
     "--num-episodes-human-play",
     type=int,
     default=10,
     help="How many episodes to play against the user on the command "
-    "line after training has finished.")
+    "line after training has finished.",
+)
 args = parser.parse_args()
 
 
@@ -99,12 +100,12 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
         self.main_exploiters = {"main_exploiter_0", "main_exploiter_1"}
         self.league_exploiters = {"league_exploiter_0", "league_exploiter_1"}
         # Set of currently trainable policies in the league.
-        self.trainable_policies = {
-            "main", "main_exploiter_1", "league_exploiter_1"
-        }
+        self.trainable_policies = {"main", "main_exploiter_1", "league_exploiter_1"}
         # Set of currently non-trainable (frozen) policies in the league.
         self.non_trainable_policies = {
-            "main_0", "league_exploiter_0", "main_exploiter_0"
+            "main_0",
+            "league_exploiter_0",
+            "main_exploiter_0",
         }
         # Store the win rates for league overview printouts.
         self.win_rates = {}
@@ -133,9 +134,9 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
                 continue
 
             print(
-                f"Iter={trainer.iteration} {policy_id}'s "
-                f"win-rate={win_rate} -> ",
-                end="")
+                f"Iter={trainer.iteration} {policy_id}'s " f"win-rate={win_rate} -> ",
+                end="",
+            )
 
             # If win rate is good -> Snapshot current policy and decide,
             # whether to freeze the copy or not.
@@ -150,22 +151,25 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
                     self.trainable_policies.add("league_exploiter_1")
                     self.trainable_policies.add("main_exploiter_1")
                 else:
-                    keep_training = False if is_main else np.random.choice(
-                        [True, False], p=[0.3, 0.7])
+                    keep_training = (
+                        False
+                        if is_main
+                        else np.random.choice([True, False], p=[0.3, 0.7])
+                    )
                     if policy_id in self.main_policies:
-                        new_pol_id = re.sub("_\\d+$",
-                                            f"_{len(self.main_policies) - 1}",
-                                            policy_id)
+                        new_pol_id = re.sub(
+                            "_\\d+$", f"_{len(self.main_policies) - 1}", policy_id
+                        )
                         self.main_policies.add(new_pol_id)
                     elif policy_id in self.main_exploiters:
-                        new_pol_id = re.sub("_\\d+$",
-                                            f"_{len(self.main_exploiters)}",
-                                            policy_id)
+                        new_pol_id = re.sub(
+                            "_\\d+$", f"_{len(self.main_exploiters)}", policy_id
+                        )
                         self.main_exploiters.add(new_pol_id)
                     else:
-                        new_pol_id = re.sub("_\\d+$",
-                                            f"_{len(self.league_exploiters)}",
-                                            policy_id)
+                        new_pol_id = re.sub(
+                            "_\\d+$", f"_{len(self.league_exploiters)}", policy_id
+                        )
                         self.league_exploiters.add(new_pol_id)
 
                     if keep_training:
@@ -184,27 +188,30 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
                     # 1) League exploiter vs any other.
                     if type_ == 1:
                         league_exploiter = "league_exploiter_" + str(
-                            np.random.choice(
-                                list(range(len(self.league_exploiters)))))
+                            np.random.choice(list(range(len(self.league_exploiters))))
+                        )
                         # This league exploiter is frozen: Play against a
                         # trainable policy.
                         if league_exploiter not in self.trainable_policies:
-                            opponent = np.random.choice(
-                                list(self.trainable_policies))
+                            opponent = np.random.choice(list(self.trainable_policies))
                         # League exploiter is trainable: Play against any other
                         # non-trainable policy.
                         else:
                             opponent = np.random.choice(
-                                list(self.non_trainable_policies))
+                                list(self.non_trainable_policies)
+                            )
                         print(f"{league_exploiter} vs {opponent}")
-                        return league_exploiter if \
-                            episode.episode_id % 2 == agent_id else opponent
+                        return (
+                            league_exploiter
+                            if episode.episode_id % 2 == agent_id
+                            else opponent
+                        )
 
                     # 2) Main exploiter vs main.
                     else:
                         main_exploiter = "main_exploiter_" + str(
-                            np.random.choice(
-                                list(range(len(self.main_exploiters)))))
+                            np.random.choice(list(range(len(self.main_exploiters))))
+                        )
                         # Main exploiter is frozen: Play against the main
                         # policy.
                         if main_exploiter not in self.trainable_policies:
@@ -212,11 +219,13 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
                         # Main exploiter is trainable: Play against any
                         # frozen main.
                         else:
-                            main = np.random.choice(
-                                list(self.main_policies - {"main"}))
+                            main = np.random.choice(list(self.main_policies - {"main"}))
                         # print(f"{main_exploiter} vs {main}")
-                        return main_exploiter if \
-                            episode.episode_id % 2 == agent_id else main
+                        return (
+                            main_exploiter
+                            if episode.episode_id % 2 == agent_id
+                            else main
+                        )
 
                 # Set the weights of the new polic(y/ies).
                 if initializing_exploiters:
@@ -227,9 +236,9 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
                     pol_map["main_exploiter_1"].set_state(main_state)
                     # We need to sync the just copied local weights to all the
                     # remote workers as well.
-                    trainer.workers.sync_weights(policies=[
-                        "main_0", "league_exploiter_1", "main_exploiter_1"
-                    ])
+                    trainer.workers.sync_weights(
+                        policies=["main_0", "league_exploiter_1", "main_exploiter_1"]
+                    )
 
                     def _set(worker):
                         worker.set_policy_mapping_fn(policy_mapping_fn)
@@ -273,13 +282,11 @@ if __name__ == "__main__":
         include_dashboard=False,
     )
 
-    register_env("open_spiel_env",
-                 lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
+    register_env("open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
 
     def policy_mapping_fn(agent_id, episode, worker, **kwargs):
         # At first, only have main play against the random main exploiter.
-        return "main" if episode.episode_id % 2 == agent_id \
-            else "main_exploiter_0"
+        return "main" if episode.episode_id % 2 == agent_id else "main_exploiter_0"
 
     config = {
         "env": "open_spiel_env",
@@ -326,7 +333,8 @@ if __name__ == "__main__":
             stop=stop,
             checkpoint_at_end=True,
             checkpoint_freq=10,
-            verbose=3)
+            verbose=3,
+        )
 
     # Restore trained trainer (set to non-explore behavior) and play against
     # human on command line.
@@ -354,10 +362,8 @@ if __name__ == "__main__":
                 if player_id == human_player:
                     action = ask_user_for_action(time_step)
                 else:
-                    obs = np.array(
-                        time_step.observations["info_state"][player_id])
-                    action = trainer.compute_single_action(
-                        obs, policy_id="main")
+                    obs = np.array(time_step.observations["info_state"][player_id])
+                    action = trainer.compute_single_action(obs, policy_id="main")
                     # In case computer chooses an invalid action, pick a
                     # random one.
                     legal = time_step.observations["legal_actions"][player_id]
