@@ -36,8 +36,6 @@ schema = {
 def _validate_schema(payload: dict):
     """Perform the lightweight json schema validation.
 
-    TODO(sang): Use protobuf for schema validation instead.
-
     Params:
         payload (dict): The payload to validate schema.
 

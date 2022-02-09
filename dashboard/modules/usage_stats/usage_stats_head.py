@@ -40,9 +40,6 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             )
 
     async def run(self, server):
-        logger.error(usage_constants.USAGE_REPORT_ENABLED)
-        logger.error(usage_constants.USAGE_REPORT_URL)
-        logger.error(usage_constants.USAGE_REPORT_INTERVAL_S)
         if not usage_constants.USAGE_REPORT_ENABLED:
             logger.info(
                 "Usage module won't be started because the usage report is disabled."

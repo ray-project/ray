@@ -8,7 +8,7 @@ CLUSTER_METADATA_KEY = b"CLUSTER_METADATA"
 # The usage collection server URL.
 # The environment variable is testing-purpose only.
 USAGE_REPORT_URL = os.getenv(
-    "RAY_USAGE_REPORT_URL", "https://ebezk70x0j.execute-api.us-west-2.amazonaws.com"
+    "RAY_USAGE_REPORT_URL", "https://usage-stats.ray.io/"
 )  # noqa
 
 # How often the data is supposed to be reported to the server.
