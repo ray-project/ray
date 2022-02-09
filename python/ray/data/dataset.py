@@ -66,6 +66,7 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
+from ray.data.impl.plan import ExecutionPlan, OneToOneOp, AllToAllOp
 from ray.data.impl.stats import DatasetStats
 from ray.data.impl.compute import get_compute, cache_wrapper, CallableClass
 from ray.data.impl.output_buffer import BlockOutputBuffer
@@ -104,18 +105,32 @@ class Dataset(Generic[T]):
     and simple repartition, but currently not aggregations and joins.
     """
 
-    def __init__(self, blocks: BlockList, epoch: int, stats: DatasetStats):
+    def __init__(
+        self,
+        spec: Union[BlockList, ExecutionPlan],
+        epoch: int,
+        lazy: bool,
+        stats: DatasetStats,
+    ):
         """Construct a Dataset (internal API).
 
         The constructor is not part of the Dataset API. Use the ``ray.data.*``
         read methods to construct a dataset.
         """
-        self._blocks: BlockList = blocks
+        if isinstance(spec, BlockList):
+            self._plan = ExecutionPlan(spec)
+        elif isinstance(spec, ExecutionPlan):
+            self._plan = spec
+        else:
+            raise TypeError("Invalid plan type: {} ({})".format(spec, type(spec)))
         self._uuid = uuid4().hex
         self._epoch = epoch
+        self._lazy = lazy
         self._stats = stats
         self._stats.dataset_uuid = self._uuid
-        assert isinstance(self._blocks, BlockList), self._blocks
+
+        if not lazy:
+            self._plan.execute()
 
     def map(
         self,
@@ -162,7 +177,7 @@ class Dataset(Generic[T]):
 
         fn = cache_wrapper(fn)
         context = DatasetContext.get_current()
-        stats_builder = self._stats.child_builder("map")
+        # stats_builder = self._stats.child_builder("map")
 
         def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
@@ -176,9 +191,13 @@ class Dataset(Generic[T]):
             if output_buffer.has_next():
                 yield output_buffer.next()
 
-        compute = get_compute(compute)
-        blocks = compute.apply(transform, ray_remote_args, self._blocks)
-        return Dataset(blocks, self._epoch, stats_builder.build(blocks))
+        plan = self._plan.with_op(OneToOneOp(transform, compute, ray_remote_args))
+
+        return Dataset(plan, self._epoch, self._lazy, DatasetStats.TODO())
+
+    def lazy(self) -> "Dataset[T]":
+        self._lazy = True
+        return self
 
     def map_batches(
         self,
@@ -545,21 +564,24 @@ class Dataset(Generic[T]):
         Returns:
             The shuffled dataset.
         """
-        # Handle empty dataset.
-        if self.num_blocks() == 0:
-            return self
-        stats = self._stats.child_builder("random_shuffle")
+        # stats = self._stats.child_builder("random_shuffle")
 
-        if num_blocks is None:
-            num_blocks = self._blocks.executed_num_blocks()  # Blocking.
-        new_blocks, stage_info = simple_shuffle(
-            self._move_blocks() if _move else self._blocks,
-            num_blocks,
-            random_shuffle=True,
-            random_seed=seed,
-            _spread_resource_prefix=_spread_resource_prefix,
-        )
-        return Dataset(new_blocks, self._epoch, stats.build_multistage(stage_info))
+        def do_shuffle(blocks):
+            num_blocks = blocks.executed_num_blocks()  # Blocking.
+            if num_blocks == 0:
+                return blocks
+            new_blocks, stage_info = simple_shuffle(
+                blocks,
+                num_blocks,
+                random_shuffle=True,
+                random_seed=seed,
+                _spread_resource_prefix=_spread_resource_prefix,
+            )
+            return new_blocks
+
+        plan = self._plan.with_op(AllToAllOp(do_shuffle))
+
+        return Dataset(plan, self._epoch, self._lazy, DatasetStats.TODO())
 
     def split(
         self, n: int, *, equal: bool = False, locality_hints: List[Any] = None
@@ -1929,7 +1951,7 @@ class Dataset(Generic[T]):
 
         block_window = []  # Handle empty sliding window gracefully.
         for block_window in _sliding_window(
-            self._blocks.iter_blocks(), prefetch_blocks + 1
+            self._plan.execute().iter_blocks(), prefetch_blocks + 1
         ):
             block_window = list(block_window)
             with self._stats.iter_wait_s.timer():

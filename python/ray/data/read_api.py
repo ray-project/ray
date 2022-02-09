@@ -281,6 +281,7 @@ def read_datasource(
     return Dataset(
         block_list,
         0,
+        False,
         DatasetStats(
             stages={"read": metadata},
             parent=None,
