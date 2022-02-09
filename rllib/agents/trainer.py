@@ -117,7 +117,7 @@ logger = logging.getLogger(__name__)
 # times in a row since that would indicate a persistent cluster issue.
 MAX_WORKER_FAILURE_RETRIES = 3
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 COMMON_CONFIG: TrainerConfigDict = {
     # === Settings for Rollout Worker processes ===
@@ -650,7 +650,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     "collect_metrics_timeout": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 @DeveloperAPI

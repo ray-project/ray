@@ -33,7 +33,7 @@ Result = namedtuple(
     ],
 )
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     "action_noise_std": 0.01,
@@ -58,7 +58,7 @@ DEFAULT_CONFIG = with_common_config({
     },
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 @ray.remote

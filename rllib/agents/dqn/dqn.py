@@ -38,7 +38,7 @@ from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = Trainer.merge_trainer_configs(
     SIMPLEQ_DEFAULT_CONFIG,
@@ -106,7 +106,7 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
     _allow_unknown_configs=True,
 )
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:

@@ -5,7 +5,7 @@ It ignores yapf because yapf doesn't allow comments right after code blocks,
 but we put comments right after code blocks to prevent large white spaces
 in the documentation.
 """
-# yapf: disable
+# fmt: off
 
 # __torch_operator_start__
 import torch

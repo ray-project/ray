@@ -8,7 +8,7 @@ in the documentation.
 """
 import ray
 
-# yapf: disable
+# fmt: off
 
 # __runtime_env_conda_def_start__
 runtime_env = {

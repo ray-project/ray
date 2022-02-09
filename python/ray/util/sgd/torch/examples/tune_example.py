@@ -1,4 +1,4 @@
-# yapf: disable
+# fmt: off
 """
 This file holds code for a Distributed Pytorch + Tune page in the docs.
 

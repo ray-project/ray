@@ -289,7 +289,7 @@ def test_add_min_workers_nodes():
     # Formatting is disabled to prevent Black from erroring while formatting
     # this file. See https://github.com/ray-project/ray/issues/21313 for more
     # information.
-    # yapf: disable
+    # fmt: off
     assert _add_min_workers_nodes([],
                                   {},
                                   types, None, None, None) == \
@@ -336,7 +336,7 @@ def test_add_min_workers_nodes():
                                   }, {
                                       "gpubla": 10
                                   })
-    # yapf: enable
+    # fmt: on
 
 
 def test_get_nodes_to_launch_with_min_workers():
