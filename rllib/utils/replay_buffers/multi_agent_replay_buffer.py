@@ -9,7 +9,7 @@ from ray.rllib.execution.buffers.replay_buffer import logger, _ALL_POLICIES
 from ray.rllib.policy.rnn_sequencing import \
     timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.utils.annotations import DeveloperAPI, override, ExperimentalAPI
+from ray.rllib.utils.annotations import override, ExperimentalAPI
 from ray.rllib.utils.replay_buffers.prioritized_replay_buffer import \
     PrioritizedReplayBuffer
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
@@ -18,7 +18,6 @@ from ray.rllib.utils.typing import PolicyID, SampleBatchType
 
 
 @ExperimentalAPI
-@DeveloperAPI
 class MultiAgentReplayBuffer(ReplayBuffer):
     """A replay buffer shard storing data for all policies (in multiagent setup).
 
@@ -140,7 +139,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         return _local_replay_buffer
 
     @ExperimentalAPI
-    @DeveloperAPI
     @override(ReplayBuffer)
     def add(self, batch: SampleBatchType) -> None:
         """Adds a batch to the appropriate policy's replay buffer.
@@ -193,7 +191,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                                                weight=weight)
 
     @ExperimentalAPI
-    @DeveloperAPI
     @override(ReplayBuffer)
     def sample(self, num_items: int, policy_id: Optional[PolicyID] = None) \
         -> Optional[SampleBatchType]:
@@ -244,7 +241,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 return MultiAgentBatch(samples, self.replay_batch_size)
 
     @ExperimentalAPI
-    @DeveloperAPI
     def update_priorities(self, prio_dict: Dict) -> None:
         """Updates the priorities of underlying replay buffers.
 
@@ -265,7 +261,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 )
 
     @ExperimentalAPI
-    @DeveloperAPI
     @override(ReplayBuffer)
     def stats(self, debug: bool = False) -> Dict:
         """Returns the stats of this buffer and all underlying buffers.
@@ -292,7 +287,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         return stat
 
     @ExperimentalAPI
-    @DeveloperAPI
     @override(ReplayBuffer)
     def get_state(self) -> Dict[str, Any]:
         """Returns all local state.
@@ -306,7 +300,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         return state
 
     @ExperimentalAPI
-    @DeveloperAPI
     @override(ReplayBuffer)
     def set_state(self, state: Dict[str, Any]) -> None:
         """Restores all local state to the provided `state`.

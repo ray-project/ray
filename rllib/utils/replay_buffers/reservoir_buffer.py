@@ -5,14 +5,13 @@ import random
 import ray  # noqa F401
 import psutil  # noqa E402
 
-from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, override
+from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
 
 
 @ExperimentalAPI
-@DeveloperAPI
 class ReservoirBuffer(ReplayBuffer):
     """This buffer implements reservoir sampling.
 
@@ -22,12 +21,20 @@ class ReservoirBuffer(ReplayBuffer):
     """
     def __init__(self, capacity: int = 10000, storage_unit: str =
             "timesteps"):
+        """Initializes a ReservoirBuffer instance.
+
+        Args:
+            capacity: Max number of timesteps to store in the FIFO
+                buffer. After reaching this number, older samples will be
+                dropped to make space for new ones.
+            storage_unit: Either 'sequences' or 'timesteps'. Specifies how
+                experiences are stored.
+        """
         ReplayBuffer.__init__(self, capacity, storage_unit)
         self._num_add_calls = 0
         self._num_evicted = 0
 
     @ExperimentalAPI
-    @DeveloperAPI
     @override(ReplayBuffer)
     def add(self, batch: SampleBatchType, **kwargs) -> None:
         """Adds a batch of experiences.
@@ -58,7 +65,6 @@ class ReservoirBuffer(ReplayBuffer):
                                      num_items=self.capacity / batch.count)
 
     @ExperimentalAPI
-    @DeveloperAPI
     @override(ReplayBuffer)
     def stats(self, debug: bool = False) -> dict:
         """Returns the stats of this buffer.
@@ -79,7 +85,6 @@ class ReservoirBuffer(ReplayBuffer):
         return parent
 
     @ExperimentalAPI
-    @DeveloperAPI
     @override(ReplayBuffer)
     def get_state(self) -> Dict[str, Any]:
         """Returns all local state.
@@ -92,7 +97,6 @@ class ReservoirBuffer(ReplayBuffer):
         return parent
 
     @ExperimentalAPI
-    @DeveloperAPI
     @override(ReplayBuffer)
     def set_state(self, state: Dict[str, Any]) -> None:
         """Restores all local state to the provided `state`.

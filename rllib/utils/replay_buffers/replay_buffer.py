@@ -9,7 +9,7 @@ import ray  # noqa F401
 import psutil  # noqa E402
 
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 
 @ExperimentalAPI
-@DeveloperAPI
 class ReplayBuffer:
     def __init__(self, capacity: int = 10000, storage_unit: str =
     "timesteps", **kwargs):
@@ -29,7 +28,7 @@ class ReplayBuffer:
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
             storage_unit: Either 'sequences' or 'timesteps'. Specifies how
-            experiences are stored.
+                experiences are stored.
             **kwargs: Forward compatibility kwargs.
         """
 
@@ -72,7 +71,6 @@ class ReplayBuffer:
         return len(self._storage)
 
     @ExperimentalAPI
-    @DeveloperAPI
     def add(self, batch: SampleBatchType, **kwargs) -> None:
         """Adds a batch of experiences.
 
@@ -107,7 +105,6 @@ class ReplayBuffer:
             self._hit_count[self._next_idx] = 0
 
     @ExperimentalAPI
-    @DeveloperAPI
     def sample(self, num_items: int, **kwargs) -> Optional[SampleBatchType]:
         """Samples a batch of size `num_items` from this buffer.
 
@@ -133,7 +130,6 @@ class ReplayBuffer:
         return sample
 
     @ExperimentalAPI
-    @DeveloperAPI
     def stats(self, debug: bool = False) -> dict:
         """Returns the stats of this buffer.
 
@@ -157,7 +153,6 @@ class ReplayBuffer:
         return data
 
     @ExperimentalAPI
-    @DeveloperAPI
     def get_state(self) -> Dict[str, Any]:
         """Returns all local state.
 
@@ -169,7 +164,6 @@ class ReplayBuffer:
         return state
 
     @ExperimentalAPI
-    @DeveloperAPI
     def set_state(self, state: Dict[str, Any]) -> None:
         """Restores all local state to the provided `state`.
 
@@ -200,7 +194,3 @@ class ReplayBuffer:
             name could not be determined.
         """
         return platform.node()
-
-# TODO: What about this? Ask Sven?:
-# Visible for testing.
-# _local_replay_buffer = None

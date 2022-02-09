@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, \
     MultiAgentBatch
-from ray.rllib.utils.annotations import DeveloperAPI, override, ExperimentalAPI
+from ray.rllib.utils.annotations import override, ExperimentalAPI
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import \
     MultiAgentReplayBuffer
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
@@ -12,7 +12,6 @@ from ray.rllib.execution.buffers.replay_buffer import _ALL_POLICIES
 
 
 @ExperimentalAPI
-@DeveloperAPI
 class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
     """This buffer adds replayed samples to a stream of new experiences.
 
@@ -73,7 +72,8 @@ class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
 
         Args:
             capacity: Number of batches to store in total.
-            storage_unit (str):
+            storage_unit (str): Either 'sequences' or 'timesteps'. Specifies
+                how experiences are stored.
             num_shards: The number of buffer shards that exist in total
                 (including this one).
             learning_starts: Number of timesteps after which a call to
@@ -139,7 +139,6 @@ class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
         self.last_added_batches = collections.defaultdict(list)
 
     @ExperimentalAPI
-    @DeveloperAPI
     @override(MultiAgentReplayBuffer)
     def add(self, batch: SampleBatchType) -> None:
         """Adds a batch to the appropriate policy's replay buffer.
@@ -171,7 +170,6 @@ class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
         self._num_added += batch.count
 
     @ExperimentalAPI
-    @DeveloperAPI
     @override(MultiAgentReplayBuffer)
     def sample(self, num_items: int,
                policy_id: PolicyID = DEFAULT_POLICY_ID
@@ -245,7 +243,6 @@ class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
                 return MultiAgentBatch(samples, self.replay_batch_size)
 
     @ExperimentalAPI
-    @DeveloperAPI
     @override(MultiAgentReplayBuffer)
     def get_state(self) -> Dict[str, Any]:
         """Returns all local state.
@@ -261,7 +258,6 @@ class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
         return parent
 
     @ExperimentalAPI
-    @DeveloperAPI
     @override(MultiAgentReplayBuffer)
     def set_state(self, state: Dict[str, Any]) -> None:
         """Restores all local state to the provided `state`.

@@ -9,17 +9,15 @@ import psutil  # noqa E402
 from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
 from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI, override, ExperimentalAPI
+from ray.rllib.utils.annotations import override, ExperimentalAPI
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 from ray.rllib.utils.typing import SampleBatchType
 
 
 @ExperimentalAPI
-@DeveloperAPI
 class PrioritizedReplayBuffer(ReplayBuffer):
     @ExperimentalAPI
-    @DeveloperAPI
     def __init__(
         self,
         capacity: int = 10000,
@@ -32,8 +30,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             capacity: Max number of timesteps to store in the FIFO
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
-            storage_unit: Either 'sequences' or 'timesteps'. Specified how
-            experiences are stored.
+            storage_unit: Either 'sequences' or 'timesteps'. Specifies how
+                experiences are stored.
             alpha: How much prioritization is used
                 (0.0=no prioritization, 1.0=full prioritization).
         """
@@ -52,7 +50,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self._prio_change_stats = WindowStat("reprio", 1000)
 
     @ExperimentalAPI
-    @DeveloperAPI
     @override(ReplayBuffer)
     def add(self, batch: SampleBatchType, weight: float) -> None:
         """Add a batch of experiences.
@@ -105,7 +102,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         return res
 
     @ExperimentalAPI
-    @DeveloperAPI
     @override(ReplayBuffer)
     def sample(self, num_items: int, beta: float) -> Optional[SampleBatchType]:
         """Sample `num_items` items from this buffer, including prio. weights.
@@ -163,7 +159,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         return batch
 
     @ExperimentalAPI
-    @DeveloperAPI
     def update_priorities(self, idxes: List[int],
                           priorities: List[float]) -> None:
         """Update priorities of sampled transitions.
@@ -195,7 +190,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             self._max_priority = max(self._max_priority, priority)
 
     @ExperimentalAPI
-    @DeveloperAPI
     @override(ReplayBuffer)
     def stats(self, debug: bool = False) -> Dict:
         """Returns the stats of this buffer.
@@ -213,7 +207,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         return parent
 
     @ExperimentalAPI
-    @DeveloperAPI
     @override(ReplayBuffer)
     def get_state(self) -> Dict[str, Any]:
         """Returns all local state.
@@ -234,7 +227,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         return state
 
     @ExperimentalAPI
-    @DeveloperAPI
     @override(ReplayBuffer)
     def set_state(self, state: Dict[str, Any]) -> None:
         """Restores all local state to the provided `state`.
