@@ -31,7 +31,9 @@ if not os.environ.get("CI"):
 def test_rewrite_pip_list_ray_libraries():
     input = ["--extra-index-url my.url", "ray==1.4", "requests", "ray[serve]"]
     output = _rewrite_pip_list_ray_libraries(input)
-    assert len(set(input) - set(input)) == 0
+    assert "ray" not in output
+    assert "ray[serve]" not in output
+    assert output[:3] == ["--extra-index-url my.url", "ray==1.4", "requests"]
 
 
 def test_get_conda_dict_with_ray_inserted_m1_wheel(monkeypatch):
