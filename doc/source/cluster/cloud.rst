@@ -46,6 +46,8 @@ Ray with cloud providers
         $ ray down ray/python/ray/autoscaler/aws/example-full.yaml
 
 
+    AWS Node Provider Maintainer: pdames, Zyiqin-Miranda, DmitriGekhtman, wuisawesome
+
     See :ref:`aws-cluster` for recipes on customizing AWS clusters.
 .. tabbed:: Azure
 
@@ -95,6 +97,9 @@ Ray with cloud providers
     2. Installs Ray and any other user-specified dependencies
     3. Sets up a systemd task (``/lib/systemd/system/ray.service``) to start Ray in head or worker mode
 
+
+    Azure Node Provider Maintainer: gramhagen, eisber, ijrsvt
+
 .. tabbed:: GCP
 
     First, install the Google API client (``pip install google-api-python-client``), set up your GCP credentials, and create a new GCP project.
@@ -115,6 +120,8 @@ Ray with cloud providers
 
         # Tear down the cluster.
         $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
+
+    GCP Node Provider Maintainer: wuisawesome, DmitriGekhtman, ijrsvt
 
 .. tabbed:: Staroid Kubernetes Engine (contributed)
 
