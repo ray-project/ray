@@ -1,5 +1,5 @@
 [package]
-name = "ray-rs-sys"
+name = "proto"
 version = "0.0.0"
 authors = ["Jonathan Chuang"]
 edition = "2018"
@@ -9,10 +9,4 @@ repository = "https://github.com/ray-project/ray"
 description = "Low-level bindings to the C-ABI Ray CoreWorker shared-library harness"
 
 [dependencies]
-c_vec = "2.0.0"
-libc = "0.2.112"
 protobuf = "2.25.2"
-proto = { path = "generated/proto"}
-
-[build-dependencies]
-bindgen = "0.53.1"

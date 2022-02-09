@@ -1,5 +1,5 @@
 [package]
-name = "simple"
+name = "actor"
 version = "0.0.0"
 authors = ["Jonathan Chuang"]
 license = "Apache-2.0"
@@ -9,6 +9,7 @@ publish = true
 [dependencies]
 # ray-rs = "0.0.0"
 ray-rs = { path="../../ray-rs" }
+serde = "1.0.132"
 
 [build-dependencies]
 rustc_version = "0.4.0"

@@ -1,5 +1,5 @@
 [package]
-name = "actor"
+name = "simple"
 version = "0.0.0"
 authors = ["Jonathan Chuang"]
 license = "Apache-2.0"

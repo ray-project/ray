@@ -13,8 +13,8 @@ use c_vec::CVec;
 use std::ffi::CString;
 use std::os::raw::*;
 
-#[cfg(not(feature = "bazel"))]
-mod proto;
+// #[cfg(not(feature = "bazel"))]
+// mod proto;
 
 const ID_ARRAY_LEN: usize = 28;
 const NUM_WORKERS: i32 = 1;
@@ -260,10 +260,10 @@ pub mod internal {
         unsafe {
             c_worker_CreateActor(
                 fn_name.as_ptr(),
-                // is_refs.as_mut_ptr(),
-                // data.as_ptr(),
-                // std::ptr::null_mut::<*mut c_char>(),
-                // data.len() as i32,
+                is_refs.as_ptr(),
+                data.as_ptr(),
+                std::ptr::null_mut::<*const c_char>(),
+                data.len() as i32,
                 actor_ids.as_mut_ptr(),
             );
         }

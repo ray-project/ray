@@ -1,8 +1,10 @@
-use ray_rs::{*,
-    get,// put,
-    rust_worker_execute, load_libraries_from_paths,
-};
 use actor::*;
+use ray_rs::{
+    get, // put,
+    load_libraries_from_paths,
+    rust_worker_execute,
+    *,
+};
 
 use std::sync::Mutex;
 
@@ -17,7 +19,10 @@ fn try_init() {
     // TODO: get rid of this ugly monkey patch code
     if guard.0 == 0 {
         let env_var = std::env::var("RAY_RUST_LIBRARY_PATHS").unwrap();
-        let mut args = vec![CString::new("").unwrap(), CString::new("--ray_code_search_path=").unwrap()];
+        let mut args = vec![
+            CString::new("").unwrap(),
+            CString::new("--ray_code_search_path=").unwrap(),
+        ];
 
         if env_var.starts_with("--ray_code_search_path=") {
             args[1] = CString::new(env_var.clone()).unwrap();
@@ -26,14 +31,14 @@ fn try_init() {
             println!("{:?}", paths);
             load_libraries_from_paths(&paths);
         }
-        let c_args = args.iter().map(|arg| arg.as_ptr()).collect::<Vec<*const std::os::raw::c_char>>();
+        let c_args = args
+            .iter()
+            .map(|arg| arg.as_ptr())
+            .collect::<Vec<*const std::os::raw::c_char>>();
         ray::init_inner(
             true,
             Some(rust_worker_execute),
-            Some((
-                c_args.len() as std::os::raw::c_int,
-                c_args.as_ptr()
-            )),
+            Some((c_args.len() as std::os::raw::c_int, c_args.as_ptr())),
         );
     }
     guard.0 += 1;
@@ -48,10 +53,44 @@ fn try_shutdown() {
     }
 }
 
-
 #[test]
 fn test_create_vec2() {
     try_init();
-    new.create_actor(4., 5.);
+    let handle = new.remote(4, 5);
+
+    let obj_ref = get_vec2.remote(&handle);
+    let obj = get(&obj_ref);
+
+    // rmp_serde::from_read_ref::<_, $argty>
+    println!("{:?}", obj);
+    // let obj = put(new.call(5., 4.));
+    let obj_ref_0 = add_assign.remote(&handle, new.call(5, 4));
+    let obj_0 = get(&obj_ref_0);
+    println!("{:?}", obj_0);
+
+    add_assign.remote(&handle, new.call(5, 4));
+    add_assign.remote(&handle, new.call(5, 4));
+
+    let obj_ref = get_vec2.remote(&handle);
+    let obj = get(&obj_ref);
+
+    // rmp_serde::from_read_ref::<_, $argty>
+    println!("{:?}", obj);
     try_shutdown();
 }
+
+// #[test]
+// fn test_append_string() {
+//     try_init();
+//     let handle = new_string.remote(String::from("Hello"));
+//
+//     let obj_ref = append.remote(&handle, String::from(" Liza's"));
+//     let obj = get(&obj_ref);
+//     println!("{:?}", obj);
+//
+//     let obj_ref = append.remote(&handle, String::from(" World"));
+//     let obj = get(&obj_ref);
+//     println!("{:?}", obj);
+//
+//     try_shutdown();
+// }

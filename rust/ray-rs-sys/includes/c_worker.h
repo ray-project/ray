@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern "C" { // Also declare: __declspec(dllexport)?
 #endif
 #ifndef RAY_NATIVE_PROLOGUE_H
 #define RAY_NATIVE_PROLOGUE_H
@@ -85,7 +85,9 @@ void c_worker_RemoveLocalRef(const char* id);
 // int c_worker_GetNextJobID(void *p);
 //
 // TODO: Why is result a list? Do we ever create more than one actor...?
-int c_worker_CreateActor(const char *create_fn_name, char **result);
+int c_worker_CreateActor(const char *create_fn_name, const bool *input_is_ref,
+                                    const DataValue* const input_values[], const char **input_refs,
+                                    int num_input_value, char **result);
 
 int c_worker_SubmitTask(int task_type, /*optional*/ const char *actor_id,
                         const char *method_name, const bool *input_is_ref,

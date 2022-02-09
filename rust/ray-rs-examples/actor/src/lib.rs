@@ -1,28 +1,41 @@
 #![allow(non_upper_case_globals)]
 use ray_rs::*;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Vec2 {
-    x: f64,
-    y: f64,
+    x: u64,
+    y: u64,
 }
 
-remote! {
-pub fn new(x: f64, y: f64) -> Vec2 {
+remote_create_actor! {
+pub fn new(x: u64, y: u64) -> Vec2 {
     Vec2 { x, y }
 }
 }
 
 remote_actor! {
-pub fn add_assign(vec: &mut Vec2, other: Vec2) -> () {
-    vec.x += other.x;
-    vec.y += other.y;
+pub fn add_assign(v: &mut Vec2, other: Vec2) -> () {
+    v.x += other.x;
+    v.y += other.y;
 }
 }
 
 remote_actor! {
-pub fn get(vec: Vec2) -> Vec2 {
-    vec.clone()
+pub fn get_vec2(v: &mut Vec2) -> Vec2 {
+    v.clone()
+}
+}
+
+remote_create_actor! {
+pub fn new_string(s: String) -> String {
+    s
+}
+}
+
+remote_actor! {
+pub fn append(s: &mut String, tail: String) -> String {
+    s.push_str(&tail);
+    s.to_string()
 }
 }

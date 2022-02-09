@@ -12,9 +12,10 @@ rust_library(
     deps = [
         "//rust/ray-rs-sys:ray_rs_sys",
     ] +
-    sets.to_list(sets.difference(
-        sets.make(crates_from("//rust/ray-rs:Cargo.toml")),
-        sets.make([crate("ray-rs-sys")]),
-    )),
+    crates_from("//rust/ray-rs:Cargo.toml"),
+    # sets.to_list(sets.difference(
+    #     sets.make(crates_from("//rust/ray-rs:Cargo.toml")),
+    #     sets.make([crate("ray-rs-sys")]),
+    # )),
     visibility = ["//visibility:public"],
 )

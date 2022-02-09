@@ -103,6 +103,7 @@ ray::Status ExecutionCallback(
   const std::vector<ray::ConcurrencyGroup> &defined_concurrency_groups,
   const std::string name_of_concurrency_group_to_execute
 ) {
+  RAY_LOG(INFO) << "HERE";
   // convert RayFunction
   auto function_descriptor = ray_function.GetFunctionDescriptor();
 
@@ -122,6 +123,8 @@ ray::Status ExecutionCallback(
     args_array_list.push_back(c_worker_AllocateDataValue(
         data->Data(), data->Size(), nullptr, 0));//meta->Data(), meta->Size()));
   }
+
+    RAY_LOG(INFO) << "HERE 1" << args_array_list.size();
 
   std::vector<const DataValue *> return_value_list;
   for (size_t i = 0; i < return_ids.size(); i++) {
@@ -143,6 +146,8 @@ ray::Status ExecutionCallback(
     args_array_list.data(), args_array_list.size(),
     execute_return_value_list
   );
+
+    RAY_LOG(INFO) << "HERE2";
   for (auto arg: args_array_list) {
     c_worker_DeallocateDataValue(arg);
   }
@@ -150,6 +155,8 @@ ray::Status ExecutionCallback(
   if (task_type == ray::rpc::ACTOR_CREATION_TASK) {
 
   } else {
+
+      RAY_LOG(INFO) << "HERE 3";
     results->clear();
     for (size_t i = 0; i < return_value_list.size(); i++) {
       auto &result_id = return_ids[i];
@@ -163,12 +170,13 @@ ray::Status ExecutionCallback(
               //
               // make sure that dealloc comes from same library as alloc
               (uint8_t *)return_value->data->p,
-              return_value->data->size, false);
+              return_value->data->size, true);
       std::shared_ptr<ray::Buffer> meta_buffer = nullptr;
           // std::make_shared<ray::LocalMemoryBuffer>(
           //     reinterpret_cast<uint8_t *>(return_value->meta->p),
           //     return_value->meta->size, false);
 
+            RAY_LOG(INFO) << "HERE4";
       std::vector<ray::ObjectID> contained_object_ids;
       auto contained_object_refs =
           ray::core::CoreWorkerProcess::GetCoreWorker().GetObjectRefs(
@@ -185,6 +193,7 @@ ray::Status ExecutionCallback(
           result_id, value));
     }
   }
+    RAY_LOG(INFO) << "HERE5";
   for (auto arg: return_value_list) {
     c_worker_DeallocateDataValue(arg);
   }
@@ -319,8 +328,28 @@ RAY_EXPORT void c_worker_Run() {
 //   return result_length;
 // }
 
+// Should this copy? I don't think it should own the data at this point...
+inline const std::shared_ptr<ray::Buffer> DataBufferToRayBuffer(const DataBuffer *db) {
+  // This is safe as long as the RayBuffer data is not modified...
+  return std::make_shared<ray::LocalMemoryBuffer>((uint8_t *)db->p,
+                                                  db->size, /*copy_data=*/false);
+}
+
+// This should only be created when it is known that the RayObject does not outlive
+// the calling context
+inline std::shared_ptr<ray::RayObject> DataValueToRayObjectOwned(const DataValue *in) {
+  std::vector<ObjectID> contained_object_ids;
+  auto contained_object_refs =
+      ray::core::CoreWorkerProcess::GetCoreWorker().GetObjectRefs(contained_object_ids);
+  std::shared_ptr<ray::Buffer> data = DataBufferToRayBuffer(in->data);
+  std::shared_ptr<ray::Buffer> meta = DataBufferToRayBuffer(in->meta);
+  return std::make_shared<ray::RayObject>(data, meta, contained_object_refs);
+}
+
 // TODO: maybe make this
-RAY_EXPORT int c_worker_CreateActor(const char *create_fn_name, char **result) {
+RAY_EXPORT int c_worker_CreateActor(const char *create_fn_name, const bool *input_is_ref,
+                                    const DataValue* const input_values[], const char **input_refs,
+                                    int num_input_value, char **result) {
   std::vector<std::string> function_descriptor_list = { create_fn_name };
   ray::FunctionDescriptor function_descriptor =
       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::RUST,
@@ -342,6 +371,22 @@ RAY_EXPORT int c_worker_CreateActor(const char *create_fn_name, char **result) {
         bundle_id.second);
     placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
   }
+
+  std::vector<std::unique_ptr<ray::TaskArg>> args;
+
+  for (int i = 0; i < num_input_value; i++) {
+    if (input_is_ref[i]) {
+      auto obj_id = ByteArrayToId<ray::ObjectID>(input_refs[i]);
+      auto owner_id = ray::core::CoreWorkerProcess::GetCoreWorker().GetOwnerAddress(obj_id);
+      args.push_back(std::unique_ptr<ray::TaskArg>(
+                     new ray::TaskArgByReference(obj_id, owner_id, /*call_site=*/"")));
+    } else {
+      // The
+      auto value = DataValueToRayObjectOwned(static_cast<const DataValue *>(input_values[i]));
+      args.push_back(std::unique_ptr<ray::TaskArg>(new ray::TaskArgByValue(value)));
+    }
+  }
+
   ray::core::ActorCreationOptions actor_creation_options{0,
                                                          0,
                                                          static_cast<int>(1), // ???
@@ -355,8 +400,7 @@ RAY_EXPORT int c_worker_CreateActor(const char *create_fn_name, char **result) {
                                                          scheduling_strategy};
   auto status = ray::core::CoreWorkerProcess::GetCoreWorker().CreateActor(
       ray_function,
-      // TODO: args should not be empty
-      {}, actor_creation_options,
+      args, actor_creation_options,
       /*extension_data*/ "", &actor_id);
   if (!status.ok()) {
     RAY_LOG(FATAL) << "Failed to create actor:" << status.message()
@@ -373,25 +417,6 @@ RAY_EXPORT int c_worker_CreateActor(const char *create_fn_name, char **result) {
   return result_length;
 }
 
-
-// Should this copy? I don't think it should own the data at this point...
-inline const std::shared_ptr<ray::Buffer> DataBufferToRayBuffer(const DataBuffer *db) {
-  // This is safe as long as the RayBuffer data is not modified...
-  return std::make_shared<ray::LocalMemoryBuffer>((uint8_t *)db->p,
-                                                  db->size, /*copy_data=*/false);
-}
-
-// This should only be created when it is known that the RayObject does not outlive
-// the calling context
-inline std::shared_ptr<ray::RayObject> DataValueToRayObjectOwned(const DataValue *in) {
-  std::vector<ObjectID> contained_object_ids;
-  auto contained_object_refs =
-      ray::core::CoreWorkerProcess::GetCoreWorker().GetObjectRefs(contained_object_ids);
-  std::shared_ptr<ray::Buffer> data = DataBufferToRayBuffer(in->data);
-  std::shared_ptr<ray::Buffer> meta = DataBufferToRayBuffer(in->meta);
-  return std::make_shared<ray::RayObject>(data, meta, contained_object_refs);
-}
-
 // TODO: make this more generic for char** method_names
 //
 // TODO: support user-specified `PlacementGroup`s as well
@@ -402,7 +427,7 @@ RAY_EXPORT int c_worker_SubmitTask(int task_type, /*optional*/ const char *actor
                                    const char *method_name, const bool *input_is_ref,
                                    const DataValue* const input_values[], const char **input_refs,
                                    int num_input_value,
-                                   int num_returns, char **object_ids) {
+                                   int num_returns, char **return_object_ids) {
   std::vector<std::string> function_descriptor_list = { method_name };
   ray::FunctionDescriptor function_descriptor =
       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::RUST,
@@ -416,7 +441,7 @@ RAY_EXPORT int c_worker_SubmitTask(int task_type, /*optional*/ const char *actor
 
   for (int i = 0; i < num_input_value; i++) {
     if (input_is_ref[i]) {
-      auto obj_id = ByteArrayToId<ray::ObjectID>(object_ids[i]);
+      auto obj_id = ByteArrayToId<ray::ObjectID>(input_refs[i]);
       auto owner_id = ray::core::CoreWorkerProcess::GetCoreWorker().GetOwnerAddress(obj_id);
       args.push_back(std::unique_ptr<ray::TaskArg>(
                      new ray::TaskArgByReference(obj_id, owner_id, /*call_site=*/"")));
@@ -469,7 +494,7 @@ RAY_EXPORT int c_worker_SubmitTask(int task_type, /*optional*/ const char *actor
     char *result = (char *)malloc(object_id_size);
     memcpy(result, (char *)return_refs[i].object_id().data(), object_id_size);
     RAY_LOG(DEBUG) << "return object id:" << result;
-    object_ids[i] = result;
+    return_object_ids[i] = result;
   }
   return 0;
 }

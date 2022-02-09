@@ -35,6 +35,6 @@ rust_test(
 
 rust_library(
     name = "proto",
-    srcs = glob(["generated/proto/*.rs"]),
+    srcs = glob(["generated/proto/src/*.rs"]),
     deps = [crate("protobuf")],
 )
