@@ -280,6 +280,7 @@ if setup_spec.type == SetupType.RAY:
         "aioredis < 2",
         "aiosignal",
         "frozenlist",
+        "requests",
     ]
 
 

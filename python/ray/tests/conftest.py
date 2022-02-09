@@ -578,3 +578,16 @@ def runtime_env_disable_URI_cache():
     ):
         print("URI caching disabled (conda and pip cache size set to 0).")
         yield
+
+
+@pytest.fixture
+def set_env_var(request):
+    param = getattr(request, "param", {})
+    keys = []
+
+    for k, v in param.items():
+        os.environ[k] = v
+        keys.append(k)
+    yield
+    for k in keys:
+        del os.environ[k]
