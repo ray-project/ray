@@ -20,6 +20,9 @@ class ExecutionPlan:
         return copy
 
     def execute(self) -> BlockList:
+        # TODO: add optimizations:
+        # 1. task fusion
+        # 2. "move" block references into op()
         if self._out_blocks is None:
             blocks = self._in_blocks
             for op in self._ops:
