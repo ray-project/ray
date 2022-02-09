@@ -50,6 +50,8 @@ PyTorch (or both as shown below):
     $ conda activate rllib
     $ pip install "ray[rllib]" tensorflow torch
 
+Note, for installation on computers running Apple Silicon (such as M1), please follow instructions `here <https://docs.ray.io/en/latest/installation.html#m1-mac-apple-silicon-support>`_
+
 To be able to run our Atari examples, you should also install:
 
 .. code-block:: bash
