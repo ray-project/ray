@@ -154,8 +154,6 @@ class A3CTrainer(Trainer):
                 weights = local_worker.get_weights(local_worker.get_policies_to_train())
                 worker.set_weights.remote(weights, global_vars)
 
-            # multi-agent: result[infos] = {"pol1": {"learner_stats": {}}, ..., "batch_count": ...}
-            # single-agent: result[infos]= {"learner_stats": {}, "batch_count": ...}
             learner_info_builder.add_learn_on_batch_results_multi_agent(result["infos"])
 
         # Update global vars of the local worker.

@@ -961,7 +961,9 @@ class RolloutWorker(ParallelIteratorWorker):
 
     @DeveloperAPI
     def compute_gradients(
-        self, samples: SampleBatchType
+        self,
+        samples: SampleBatchType,
+        single_agent: bool = None,
     ) -> Tuple[ModelGradients, dict]:
         """Returns a gradient computed w.r.t the specified samples.
 
@@ -988,6 +990,17 @@ class RolloutWorker(ParallelIteratorWorker):
         """
         if log_once("compute_gradients"):
             logger.info("Compute gradients on:\n\n{}\n".format(summarize(samples)))
+
+        # Backward compatiblity for A2C: Single-agent only (ComputeGradients execution
+        # op must not return multi-agent dict b/c of A2C's `.batch()` in the execution
+        # plan; this would "batch" over the "default_policy" keys instead of the data).
+        if single_agent is True:
+            # SampleBatch -> Calculate gradients for the default policy.
+            grad_out, info_out = self.policy_map[DEFAULT_POLICY_ID].compute_gradients(
+                samples
+            )
+            info_out["batch_count"] = samples.count
+            return grad_out, info_out
 
         # Treat everything as is multi-agent.
         samples = samples.as_multi_agent()
