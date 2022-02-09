@@ -30,12 +30,12 @@ class Actor:
 
 
 def test_serialize_warning():
-    node = DAGNode([], {}, {})
+    node = DAGNode([], {}, {}, {})
     with pytest.raises(ValueError):
         pickle.dumps(node)
 
 
-def test_basic_actor_dag():
+def test_basic_actor_dag(shared_ray_instance):
     @ray.remote
     def combine(x, y):
         return x + y
@@ -55,7 +55,7 @@ def test_basic_actor_dag():
     assert ray.get(dag.execute()) == 32
 
 
-def test_class_as_class_constructor_arg():
+def test_class_as_class_constructor_arg(shared_ray_instance):
     @ray.remote
     class OuterActor:
         def __init__(self, inner_actor):
@@ -74,7 +74,7 @@ def test_class_as_class_constructor_arg():
     assert ray.get(dag.execute()) == 12
 
 
-def test_class_as_function_constructor_arg():
+def test_class_as_function_constructor_arg(shared_ray_instance):
     @ray.remote
     def f(actor_handle):
         return ray.get(actor_handle.get.remote())
@@ -84,7 +84,7 @@ def test_class_as_function_constructor_arg():
     assert ray.get(dag.execute()) == 10
 
 
-def test_basic_actor_dag_constructor_options():
+def test_basic_actor_dag_constructor_options(shared_ray_instance):
     a1 = Actor._bind(10)
     dag = a1.get._bind()
     print(dag)
@@ -101,7 +101,7 @@ def test_basic_actor_dag_constructor_options():
     assert a1.get_options().get("max_pending_calls") == 10
 
 
-def test_actor_method_options():
+def test_actor_method_options(shared_ray_instance):
     a1 = Actor._bind(10)
     dag = a1.get.options(name="actor_method_options")._bind()
     print(dag)
@@ -109,14 +109,14 @@ def test_actor_method_options():
     assert dag.get_options().get("name") == "actor_method_options"
 
 
-def test_basic_actor_dag_constructor_invalid_options():
+def test_basic_actor_dag_constructor_invalid_options(shared_ray_instance):
     a1 = Actor.options(num_cpus=-1)._bind(10)
     invalid_dag = a1.get._bind()
     with pytest.raises(ValueError, match=".*Resource quantities may not be negative.*"):
         ray.get(invalid_dag.execute())
 
 
-def test_actor_options_complicated():
+def test_actor_options_complicated(shared_ray_instance):
     """Test a more complicated setup where we apply .options() in both
     constructor and method call with overlapping keys, and ensure end to end
     options correctness.
@@ -146,18 +146,44 @@ def test_actor_options_complicated():
     test_a2 = dag.get_args()[1]  # call graph for a2.get._bind()
     assert test_a2.get_options() == {}  # No .options() at outer call
     # refer to a2 constructor .options() call
-    assert test_a2.get_args()[0].get_options().get("name") == "a2_v0"
+    assert (
+        test_a2.get_other_args_to_resolve()["parent_class_node"]
+        .get_options()
+        .get("name")
+        == "a2_v0"
+    )
     # refer to actor method a2.inc.options() call
-    assert test_a2.get_args()[1].get_options().get("name") == "v3"
+    assert (
+        test_a2.get_other_args_to_resolve()["prev_class_method_call"]
+        .get_options()
+        .get("name")
+        == "v3"
+    )
     # refer to a1 constructor .options() call
-    assert test_a1.get_args()[0].get_options().get("name") == "a1_v1"
+    assert (
+        test_a1.get_other_args_to_resolve()["parent_class_node"]
+        .get_options()
+        .get("name")
+        == "a1_v1"
+    )
     # refer to latest actor method a1.inc.options() call
-    assert test_a1.get_args()[1].get_options().get("name") == "v2"
+    assert (
+        test_a1.get_other_args_to_resolve()["prev_class_method_call"]
+        .get_options()
+        .get("name")
+        == "v2"
+    )
     # refer to first bound actor method a1.inc.options() call
-    assert test_a1.get_args()[1].get_args()[1].get_options().get("name") == "v1"
+    assert (
+        test_a1.get_other_args_to_resolve()["prev_class_method_call"]
+        .get_other_args_to_resolve()["prev_class_method_call"]
+        .get_options()
+        .get("name")
+        == "v1"
+    )
 
 
-def test_pass_actor_handle():
+def test_pass_actor_handle(shared_ray_instance):
     @ray.remote
     class Actor:
         def ping(self):
@@ -174,7 +200,7 @@ def test_pass_actor_handle():
     assert ray.get(dag.execute()) == "hello"
 
 
-def test_dynamic_pipeline():
+def test_dynamic_pipeline(shared_ray_instance):
     @ray.remote
     class Model:
         def __init__(self, arg):
