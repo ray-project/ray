@@ -318,9 +318,11 @@ def _check_reward(reward, base_env=False, agent_ids=None):
                     "Your step function must return rewards that are"
                     f" integer or float. reward: {rew}"
                 )
-                assert (
-                    agent_id in agent_ids
-                ), f"Your reward dictionary must have agent ids that belong to the environment. Agent_ids recieved from env.get_agent_ids() are: {agent_ids}"
+                assert agent_id in agent_ids, (
+                    f"Your reward dictionary must have agent ids that belong to the "
+                    f"environment. Agent_ids recieved from env.get_agent_ids() are: "
+                    f"{agent_ids}"
+                )
     else:
         assert (
             np.isreal(reward) and not isinstance(reward, bool) and np.isscalar(reward)
@@ -335,9 +337,11 @@ def _check_done(done, base_env=False, agent_ids=None):
                     "Your step function must return dones that are boolean. "
                     f"element: {done_}"
                 )
-                assert (
-                    agent_id in agent_ids
-                ), f"Your dones dictionary must have agent ids that belong to the environment. Agent_ids recieved from env.get_agent_ids() are: {agent_ids}"
+                assert agent_id in agent_ids, (
+                    f"Your dones dictionary must have agent ids that belong to the "
+                    f"environment. Agent_ids recieved from env.get_agent_ids() are: "
+                    f"{agent_ids}"
+                )
     else:
         assert isinstance(done, bool), (
             "Your step function must return a done that is a " "boolean."
@@ -352,9 +356,11 @@ def _check_info(info, base_env=False, agent_ids=None):
                     "Your step function must return infos that are a dict. "
                     f"element: {inf}"
                 )
-                assert (
-                    agent_id in agent_ids
-                ), f"Your dones dictionary must have agent ids that belong to the environment. Agent_ids recieved from env.get_agent_ids() are: {agent_ids}"
+                assert agent_id in agent_ids, (
+                    f"Your dones dictionary must have agent ids that belong to the "
+                    f"environment. Agent_ids recieved from env.get_agent_ids() are: "
+                    f"{agent_ids}"
+                )
     else:
         assert isinstance(
             info, dict
