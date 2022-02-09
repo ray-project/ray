@@ -97,11 +97,19 @@ int main(int argc, char *argv[]) {
     builder.AddChannelArgument(GRPC_ARG_MAX_CONCURRENT_STREAMS, 2000);
     builder.AddChannelArgument(GRPC_ARG_HTTP2_WRITE_BUFFER_SIZE, 256 * 1024);
     builder.RegisterService(service.get());
+    builder.AddCompletionQueue();
     server = builder.BuildAndStart();
   }
   if (leader_port != ".") {
-    channel = grpc::CreateChannel("localhost:" + leader_port,
-                                  grpc::InsecureChannelCredentials());
+    grpc::ChannelArguments argument;
+    // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
+    // this configurable, or selectively set it for known local connections only.
+    argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
+    argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
+    argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
+
+    channel = grpc::CreateCustomChannel("localhost:" + leader_port,
+                                        grpc::InsecureChannelCredentials(), argument);
     syncer.ConnectTo(ray::rpc::syncer::RaySyncer::NewStub(channel));
   }
   boost::asio::io_context::work work(io_context);
