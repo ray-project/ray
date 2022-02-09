@@ -561,8 +561,8 @@ remotely on GitHub!
 
 Debugging
 ---------
-If runtime envs cannot be set up (e.g., network issues, download failures, etc.), Ray will fail to schedule tasks/actors 
-that require the runtime environment. If you call `ray.get`, it will raise `RuntimeEnvSetupError` with 
+If runtime_env cannot be set up (e.g., network issues, download failures, etc.), Ray will fail to schedule tasks/actors 
+that require the runtime_env. If you call ``ray.get``, it will raise ``RuntimeEnvSetupError`` with 
 the error message in detail.
 
 .. code-block:: python
@@ -582,9 +582,12 @@ the error message in detail.
     # [Tasks] will raise `RuntimeEnvSetupError`.
     ray.get(f.options(runtime_env=bad_env).remote())
 
-    # [Aactors] will raise `RuntimeEnvSetupError`.
+    # [Actors] will raise `RuntimeEnvSetupError`.
     a = A.options(runtime_env=bad_env).remote()
     ray.get(a.f.remote())
 
-You can also enable runtime env debugging logs by setting an environment variable `RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED=1`. 
-It will print the full runtime env setup log messages to the driver.
+You can also enable runtime_env debugging logs by setting an environment variable ``RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED=1``. 
+It will print the full runtime_env setup log messages to the driver.
+The same information can be found from the log file ``runtime_env*.log`` from the log directory. 
+
+Look :ref:`Logging Directory Structure <logging-directory-structure>` for more details.
