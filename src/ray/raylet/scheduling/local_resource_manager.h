@@ -144,7 +144,7 @@ class LocalResourceManager : public syncing::Reporter {
   ///
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
-  void FillResourceUsage(rpc::ResourcesData &resources_data);
+  void FillResourceUsage(rpc::ResourcesData &resources_data) const;
 
   /// Populate a UpdateResourcesRequest. This is inteneded to update the
   /// resource totals on a node when a custom resource is created or deleted
@@ -292,7 +292,7 @@ class LocalResourceManager : public syncing::Reporter {
   /// Resources of local node.
   NodeResourceInstances local_resources_;
   /// Cached resources, used to compare with newest one in light heartbeat mode.
-  std::unique_ptr<NodeResources> last_report_resources_;
+  mutable std::unique_ptr<NodeResources> last_report_resources_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
   /// Function to get whether the pull manager is at capacity.
