@@ -32,6 +32,9 @@ class Datasource(Generic[T]):
 
     See ``RangeDatasource`` and ``DummyOutputDatasource`` for examples
     of how to implement readable and writable datasources.
+
+    Datasource instances must be serializable, since ``prepare_read()`` and
+    ``do_write()`` are called in remote tasks.
     """
 
     def prepare_read(self, parallelism: int, **read_args) -> List["ReadTask[T]"]:

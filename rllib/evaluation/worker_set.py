@@ -5,7 +5,6 @@ from types import FunctionType
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import ray
-from ray import data
 from ray.actor import ActorHandle
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.base_env import BaseEnv
@@ -19,6 +18,7 @@ from ray.rllib.offline import (
     D4RLReader,
     DatasetReader,
     DatasetWriter,
+    get_dataset_and_shards,
 )
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils import merge_dicts
@@ -106,7 +106,7 @@ class WorkerSet:
             if trainer_config["input"] == "dataset":
                 # Create the set of dataset readers to be shared by all the
                 # rollout workers.
-                self._ds, self._ds_shards = self._get_dataset_and_shards(
+                self._ds, self._ds_shards = get_dataset_and_shards(
                     trainer_config, num_workers, local_worker
                 )
             else:
@@ -437,43 +437,6 @@ class WorkerSet:
         workers._local_worker = local_worker
         workers._remote_workers = remote_workers or []
         return workers
-
-    def _get_dataset_and_shards(
-        self, config: TrainerConfigDict, num_workers: int, local_worker: bool
-    ) -> (ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]):
-        assert config["input"] == "dataset"
-        assert (
-            "input_config" in config
-        ), "Must specify input_config dict if using Dataset input."
-
-        input_config = config["input_config"]
-        if not input_config.get("format", None) or not input_config.get("path", None):
-            raise ValueError(
-                "Must specify format and path via input_config key"
-                " when using Ray dataset input."
-            )
-
-        format = input_config["format"]
-        path = input_config["path"]
-        if format == "json":
-            dataset = data.read_json(path)
-        elif format == "parquet":
-            dataset = data.read_parquet(path)
-        else:
-            raise ValueError("Un-supported Ray dataset format: ", format)
-
-        # Local worker will be responsible for sampling.
-        if local_worker and num_workers == 0:
-            # Dataset is the only shard we need.
-            return dataset, [dataset]
-        # Remote workers are responsible for sampling:
-        else:
-            # Each remote worker gets 1 shard.
-            # The first None shard is for the local worker, which
-            # shouldn't be doing rollout work anyways.
-            return dataset, [None] + dataset.repartition(
-                num_blocks=num_workers, shuffle=False
-            ).split(num_workers)
 
     def _make_worker(
         self,

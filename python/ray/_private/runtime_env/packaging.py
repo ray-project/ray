@@ -422,6 +422,13 @@ def upload_package_if_needed(
     return True
 
 
+def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
+    """Return the local directory corresponding to this URI."""
+    pkg_file = Path(_get_local_path(base_directory, uri))
+    local_dir = pkg_file.with_suffix("")
+    return local_dir
+
+
 def download_and_unpack_package(
     pkg_uri: str,
     base_directory: str,
@@ -438,7 +445,7 @@ def download_and_unpack_package(
 
         logger.debug(f"Fetching package for URI: {pkg_uri}")
 
-        local_dir = pkg_file.with_suffix("")
+        local_dir = get_local_dir_from_uri(pkg_uri, base_directory)
         assert local_dir != pkg_file, "Invalid pkg_file!"
         if local_dir.exists():
             assert local_dir.is_dir(), f"{local_dir} is not a directory"
@@ -551,12 +558,17 @@ def remove_dir_from_filepaths(base_dir: str, rdir: str):
     # Move rdir to a temporary directory, so its contents can be moved to
     # base_dir without any name conflicts
     with TemporaryDirectory() as tmp_dir:
-        os.rename(os.path.join(base_dir, rdir), os.path.join(tmp_dir, rdir))
+
+        # shutil.move() is used instead of os.rename() in case rdir and tmp_dir
+        # are located on separate file systems
+        shutil.move(os.path.join(base_dir, rdir), os.path.join(tmp_dir, rdir))
 
         # Shift children out of rdir and into base_dir
         rdir_children = os.listdir(os.path.join(tmp_dir, rdir))
         for child in rdir_children:
-            os.rename(os.path.join(tmp_dir, rdir, child), os.path.join(base_dir, child))
+            shutil.move(
+                os.path.join(tmp_dir, rdir, child), os.path.join(base_dir, child)
+            )
 
 
 def unzip_package(
@@ -598,14 +610,14 @@ def unzip_package(
         Path(package_path).unlink()
 
 
-def delete_package(pkg_uri: str, base_directory: str) -> bool:
+def delete_package(pkg_uri: str, base_directory: str) -> Tuple[bool, int]:
     """Deletes a specific URI from the local filesystem.
 
     Args:
         pkg_uri (str): URI to delete.
 
     Returns:
-        True if the URI was successfully deleted, else False.
+        bool: True if the URI was successfully deleted, else False.
     """
 
     deleted = False

@@ -18,6 +18,7 @@ import traceback
 
 from typing import Optional, Dict
 from collections import defaultdict
+from filelock import FileLock
 
 import ray
 import ray.ray_constants as ray_constants
@@ -827,27 +828,28 @@ class Node:
         # Maps a Node.unique_id to a dict that maps port names to port numbers.
         ports_by_node: Dict[str, Dict[str, int]] = defaultdict(dict)
 
-        if not os.path.exists(file_path):
-            with open(file_path, "w") as f:
-                json.dump({}, f)
+        with FileLock(file_path + ".lock"):
+            if not os.path.exists(file_path):
+                with open(file_path, "w") as f:
+                    json.dump({}, f)
 
-        with open(file_path, "r") as f:
-            ports_by_node.update(json.load(f))
+            with open(file_path, "r") as f:
+                ports_by_node.update(json.load(f))
 
-        if (
-            self.unique_id in ports_by_node
-            and port_name in ports_by_node[self.unique_id]
-        ):
-            # The port has already been cached at this node, so use it.
-            port = int(ports_by_node[self.unique_id][port_name])
-        else:
-            # Pick a new port to use and cache it at this node.
-            port = default_port or self._get_unused_port(
-                set(ports_by_node[self.unique_id].values())
-            )
-            ports_by_node[self.unique_id][port_name] = port
-            with open(file_path, "w") as f:
-                json.dump(ports_by_node, f)
+            if (
+                self.unique_id in ports_by_node
+                and port_name in ports_by_node[self.unique_id]
+            ):
+                # The port has already been cached at this node, so use it.
+                port = int(ports_by_node[self.unique_id][port_name])
+            else:
+                # Pick a new port to use and cache it at this node.
+                port = default_port or self._get_unused_port(
+                    set(ports_by_node[self.unique_id].values())
+                )
+                ports_by_node[self.unique_id][port_name] = port
+                with open(file_path, "w") as f:
+                    json.dump(ports_by_node, f)
 
         return port
 
