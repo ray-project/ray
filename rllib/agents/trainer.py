@@ -912,6 +912,7 @@ class Trainer(Trainable):
                 trainer_config=self.config,
                 num_workers=self.config["num_workers"],
                 local_worker=True,
+                logdir=self.logdir,
             )
 
             # Function defining one single training iteration's behavior.
@@ -1013,6 +1014,7 @@ class Trainer(Trainable):
                 num_workers=self.config["evaluation_num_workers"],
                 # Don't even create a local worker if num_workers > 0.
                 local_worker=False,
+                logdir=self.logdir,
             )
 
     # TODO: Deprecated: In your sub-classes of Trainer, override `setup()`
