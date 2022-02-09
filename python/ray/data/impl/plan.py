@@ -3,8 +3,11 @@ from ray.data.impl.block_list import BlockList
 from ray.data.impl.compute import get_compute
 from ray.data.impl.stats import DatasetStats
 
-from typing import Callable, Tuple
+from typing import Callable, Tuple, Optional, Union, TYPE_CHECKING
 import uuid
+
+if TYPE_CHECKING:
+    import pyarrow
 
 
 class ExecutionPlan:
@@ -20,6 +23,45 @@ class ExecutionPlan:
         copy._ops = self._ops.copy()
         copy._ops.append(op)
         return copy
+
+    def est_num_blocks(self) -> int:
+        if self._out_blocks:
+            return self._out_blocks.initial_num_blocks()
+        for op in self._ops[::-1]:
+            if op.num_blocks is not None:
+                return op.num_blocks
+        return self._in_blocks.initial_num_blocks()
+
+    def schema(
+        self, fetch_if_missing: bool = False
+    ) -> Union[type, "pyarrow.lib.Schema"]:
+        if self._ops:
+            if fetch_if_missing:
+                self.execute()
+            blocks = self._out_blocks
+        else:
+            blocks = self._in_blocks
+        metadata = blocks.get_metadata() if blocks else []
+        # Some blocks could be empty, in which case we cannot get their schema.
+        # TODO(ekl) validate schema is the same across different blocks.
+        for m in metadata:
+            if m.schema is not None:
+                return m.schema
+        if not fetch_if_missing:
+            return None
+        # Need to synchronously fetch schema.
+        return blocks.ensure_schema_for_first_block()
+
+    def meta_count(self) -> Optional[int]:
+        if self._ops:
+            blocks = self._out_blocks
+        else:
+            blocks = self._in_blocks
+        metadata = blocks.get_metadata() if blocks else None
+        if metadata and metadata[0].num_rows is not None:
+            return sum(m.num_rows for m in metadata)
+        else:
+            return None
 
     def execute(self) -> BlockList:
         # TODO: add optimizations:
@@ -46,7 +88,12 @@ class ExecutionPlan:
 
 
 class Op:
-    pass
+    def __init__(self, name: str, num_blocks: Optional[int]):
+        self.name = name
+        self.num_blocks = num_blocks
+
+    def __call__(self, blocks: BlockList) -> Tuple[BlockList, dict]:
+        raise NotImplementedError
 
 
 class OneToOneOp(Op):
@@ -57,7 +104,7 @@ class OneToOneOp(Op):
         compute: str,
         ray_remote_args: dict,
     ):
-        self.name = name
+        super().__init__(name, None)
         self.block_fn = block_fn
         self.compute = compute
         self.ray_remote_args = ray_remote_args
@@ -69,8 +116,13 @@ class OneToOneOp(Op):
 
 
 class AllToAllOp(Op):
-    def __init__(self, name: str, fn: Callable[[BlockList], Tuple[BlockList, dict]]):
-        self.name = name
+    def __init__(
+        self,
+        name: str,
+        num_blocks: Optional[int],
+        fn: Callable[[BlockList], Tuple[BlockList, dict]],
+    ):
+        super().__init__(name, num_blocks)
         self.fn = fn
 
     def __call__(self, blocks: BlockList) -> Tuple[BlockList, dict]:

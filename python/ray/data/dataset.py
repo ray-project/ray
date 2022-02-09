@@ -574,7 +574,7 @@ class Dataset(Generic[T]):
             )
             return new_blocks, stage_info
 
-        plan = self._plan.with_op(AllToAllOp("random_shuffle", do_shuffle))
+        plan = self._plan.with_op(AllToAllOp("random_shuffle", num_blocks, do_shuffle))
         return Dataset(plan, self._epoch, self._lazy, DatasetStats.TODO())
 
     def split(
@@ -1534,16 +1534,7 @@ class Dataset(Generic[T]):
             The Python type or Arrow schema of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
-        metadata = self._blocks.get_metadata()
-        # Some blocks could be empty, in which case we cannot get their schema.
-        # TODO(ekl) validate schema is the same across different blocks.
-        for m in metadata:
-            if m.schema is not None:
-                return m.schema
-        if not fetch_if_missing:
-            return None
-        # Need to synchronously fetch schema.
-        return self._blocks.ensure_schema_for_first_block()
+        return self._plan.schema(fetch_if_missing=fetch_if_missing)
 
     def num_blocks(self) -> int:
         """Return the number of blocks of this dataset.
@@ -2757,7 +2748,7 @@ Dict[str, List[str]]]): The names of the columns
             schema_str = "{" + schema_str + "}"
         count = self._meta_count()
         return "Dataset(num_blocks={}, num_rows={}, schema={})".format(
-            self._blocks.initial_num_blocks(), count, schema_str
+            self._plan.est_num_blocks(), count, schema_str
         )
 
     def __str__(self) -> str:
@@ -2772,11 +2763,7 @@ Dict[str, List[str]]]): The names of the columns
         return ray.get([get_size_bytes.remote(b) for b in self._blocks.get_blocks()])
 
     def _meta_count(self) -> Optional[int]:
-        metadata = self._blocks.get_metadata()
-        if metadata and metadata[0].num_rows is not None:
-            return sum(m.num_rows for m in metadata)
-        else:
-            return None
+        return self._plan.meta_count()
 
     def _get_uuid(self) -> str:
         return self._uuid
