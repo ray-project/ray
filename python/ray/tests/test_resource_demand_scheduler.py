@@ -12,7 +12,12 @@ import copy
 
 import ray
 import ray.ray_constants
-from ray.autoscaler._private.util import prepare_config, format_info_string
+from ray.autoscaler._private.util import (
+    prepare_config,
+    format_info_string,
+    is_placement_group_resource,
+    LoadMetricsSummary,
+)
 from ray.tests.test_autoscaler import (
     SMALL_CLUSTER,
     MOCK_DEFAULT_CONFIG,
@@ -27,7 +32,7 @@ from ray.tests.test_autoscaler import (
 )
 from ray.autoscaler._private.providers import _NODE_PROVIDERS, _clear_provider_cache
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
-from ray.autoscaler._private.load_metrics import LoadMetrics, LoadMetricsSummary
+from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.resource_demand_scheduler import (
     _utilization_score,
@@ -1461,8 +1466,8 @@ class LoadMetricsTest(unittest.TestCase):
 
         assert summary.usage["CPU"] == (190, 194)
         assert summary.usage["GPU"] == (15, 16)
-        assert summary.usage["memory"] == (500 * 2 ** 20, 1000 * 2 ** 20)
-        assert summary.usage["object_store_memory"] == (1000 * 2 ** 20, 2000 * 2 ** 20)
+        assert summary.usage["memory"] == (500 * 2**20, 1000 * 2**20)
+        assert summary.usage["object_store_memory"] == (1000 * 2**20, 2000 * 2**20)
         assert (
             summary.usage["accelerator_type:V100"][1] == 2
         ), "Not comparing the usage value due to floating point error."
@@ -1491,10 +1496,10 @@ class LoadMetricsTest(unittest.TestCase):
         summary_dict = asdict(summary)
         assert summary_dict["usage"]["CPU"] == (190, 194)
         assert summary_dict["usage"]["GPU"] == (15, 16)
-        assert summary_dict["usage"]["memory"] == (500 * 2 ** 20, 1000 * 2 ** 20)
+        assert summary_dict["usage"]["memory"] == (500 * 2**20, 1000 * 2**20)
         assert summary_dict["usage"]["object_store_memory"] == (
-            1000 * 2 ** 20,
-            2000 * 2 ** 20,
+            1000 * 2**20,
+            2000 * 2**20,
         )
         assert (
             summary_dict["usage"]["accelerator_type:V100"][1] == 2
@@ -2787,8 +2792,8 @@ def test_info_string():
             "CPU": (530.0, 544.0),
             "GPU": (2, 2),
             "AcceleratorType:V100": (0, 2),
-            "memory": (2 * 2 ** 30, 2 ** 33),
-            "object_store_memory": (3.14 * 2 ** 30, 2 ** 34),
+            "memory": (2 * 2**30, 2**33),
+            "object_store_memory": (3.14 * 2**30, 2**34),
         },
         resource_demand=[({"CPU": 1}, 150)],
         pg_demand=[({"bundles": [({"CPU": 4}, 5)], "strategy": "PACK"}, 420)],
@@ -2848,8 +2853,8 @@ def test_info_string_failed_node_cap():
             "CPU": (530.0, 544.0),
             "GPU": (2, 2),
             "AcceleratorType:V100": (0, 2),
-            "memory": (2 * 2 ** 30, 2 ** 33),
-            "object_store_memory": (3.14 * 2 ** 30, 2 ** 34),
+            "memory": (2 * 2**30, 2**33),
+            "object_store_memory": (3.14 * 2**30, 2**34),
             "CPU_group_4a82a217aadd8326a3a49f02700ac5c2": (2.0, 2.0),
         },
         resource_demand=[
@@ -2926,6 +2931,73 @@ Demands:
     )
     print(actual)
     assert expected.strip() == actual
+
+
+def test_placement_group_match_string():
+    assert (
+        is_placement_group_resource("bundle_group_ffe7d420752c6e8658638d19ecf2b68c")
+        is True
+    )
+    assert (
+        is_placement_group_resource("CPU_group_0_625ace126f848864c46f50dced5e0ef7")
+        is True
+    )
+    assert (
+        is_placement_group_resource("CPU_group_625ace126f848864c46f50dced5e0ef7")
+        is True
+    )
+    assert is_placement_group_resource("CPU") is False
+    assert is_placement_group_resource("GPU") is False
+    assert is_placement_group_resource("custom_resource") is False
+    assert is_placement_group_resource("ip:192.168.1.1") is False
+
+    provider = MockProvider()
+    new_types = copy.deepcopy(TYPES_A)
+    scheduler = ResourceDemandScheduler(
+        provider, new_types, 3, head_node_type="p2.8xlarge"
+    )
+
+    provider.create_node(
+        {},
+        {
+            TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+        },
+        1,
+    )
+
+    nodes = provider.non_terminated_nodes({})
+    ips = provider.non_terminated_node_ips({})
+
+    utilizations = {ip: {"GPU": 8} for ip in ips}
+
+    with mock.patch(
+        "ray.autoscaler._private.resource_demand_scheduler.logger"
+    ) as logger_mock:
+        to_launch, rem = scheduler.get_nodes_to_launch(
+            nodes,
+            {},
+            [{"CPU_group_0_625ace126f848864c46f50dced5e0ef7": 8}],
+            utilizations,
+            [],
+            {},
+        )
+        logger_mock.warning.assert_not_called()
+
+    assert to_launch == {}
+    assert rem == [{"CPU_group_0_625ace126f848864c46f50dced5e0ef7": 8}]
+
+    with mock.patch(
+        "ray.autoscaler._private.resource_demand_scheduler.logger"
+    ) as logger_mock:
+        to_launch, rem = scheduler.get_nodes_to_launch(
+            nodes, {}, [{"non-existent-custom": 8}], utilizations, [], {}
+        )
+        logger_mock.warning.assert_called()
+
+    assert to_launch == {}
+    assert rem == [{"non-existent-custom": 8}]
 
 
 if __name__ == "__main__":

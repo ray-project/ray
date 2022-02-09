@@ -1,9 +1,11 @@
 import collections
 import copy
+from dataclasses import dataclass
 from datetime import datetime
 import logging
 import hashlib
 import json
+from numbers import Number, Real
 import os
 import re
 import threading
@@ -13,7 +15,6 @@ import ray
 import ray.ray_constants
 import ray._private.services as services
 from ray.autoscaler._private import constants
-from ray.autoscaler._private.load_metrics import LoadMetricsSummary
 from ray.autoscaler._private.local.config import prepare_local
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.docker import validate_docker_config
@@ -42,7 +43,52 @@ HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE = (
 
 ResourceBundle = Dict[str, Union[int, float]]
 
+# A Dict and the count of how many times it occurred.
+# Refer to freq_of_dicts() below.
+DictCount = Tuple[Dict, Number]
+
+# e.g., cpu_4_ondemand.
+NodeType = str
+
+# e.g., {"resources": ..., "max_workers": ...}.
+NodeTypeConfigDict = str
+
+# e.g., {"GPU": 1}.
+ResourceDict = Dict[str, Real]
+
+# e.g., "node-1".
+NodeID = str
+
+# e.g., "127.0.0.1".
+NodeIP = str
+
 logger = logging.getLogger(__name__)
+
+
+def is_placement_group_resource(resource_name: str) -> bool:
+    """
+    Check if a resource name is structured like a placement group.
+    """
+    return bool(
+        PLACEMENT_GROUP_RESOURCE_PATTERN.match(resource_name)
+        or PLACEMENT_GROUP_RESOURCE_BUNDLED_PATTERN.match(resource_name)
+    )
+
+
+@dataclass
+class LoadMetricsSummary:
+    # Map of resource name (e.g. "memory") to pair of (Used, Available) numbers
+    usage: Dict[str, Tuple[Number, Number]]
+    # Counts of demand bundles from task/actor demand.
+    # e.g. [({"CPU": 1}, 5), ({"GPU":1}, 2)]
+    resource_demand: List[DictCount]
+    # Counts of pending placement groups
+    pg_demand: List[DictCount]
+    # Counts of demand bundles requested by autoscaler.sdk.request_resources
+    request_demand: List[DictCount]
+    node_types: List[DictCount]
+    # Optionally included for backwards compatibility: IP of the head node.
+    head_ip: Optional[NodeIP] = None
 
 
 class ConcurrentCounter:
@@ -349,7 +395,7 @@ def hash_runtime_conf(
     def add_content_hashes(path, allow_non_existing_paths: bool = False):
         def add_hash_of_file(fpath):
             with open(fpath, "rb") as f:
-                for chunk in iter(lambda: f.read(2 ** 20), b""):
+                for chunk in iter(lambda: f.read(2**20), b""):
                     contents_hasher.update(chunk)
 
         path = os.path.expanduser(path)
@@ -492,7 +538,7 @@ def get_usage_report(lm_summary: LoadMetricsSummary) -> str:
             used = used - pg_total + pg_used
 
         if resource in ["memory", "object_store_memory"]:
-            to_GiB = 1 / 2 ** 30
+            to_GiB = 1 / 2**30
             line = f" {(used * to_GiB):.2f}/" f"{(total * to_GiB):.3f} GiB {resource}"
             if used_in_pg:
                 line = line + (
