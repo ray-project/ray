@@ -988,32 +988,30 @@ class RolloutWorker(ParallelIteratorWorker):
         """
         if log_once("compute_gradients"):
             logger.info("Compute gradients on:\n\n{}\n".format(summarize(samples)))
-        # MultiAgentBatch -> Calculate gradients for all policies.
-        if isinstance(samples, MultiAgentBatch):
-            grad_out, info_out = {}, {}
-            if self.policy_config.get("framework") == "tf":
-                for pid, batch in samples.policy_batches.items():
-                    if not self.is_policy_to_train(pid, samples):
-                        continue
-                    policy = self.policy_map[pid]
-                    builder = TFRunBuilder(policy.get_session(), "compute_gradients")
-                    grad_out[pid], info_out[pid] = policy._build_compute_gradients(
-                        builder, batch
-                    )
-                grad_out = {k: builder.get(v) for k, v in grad_out.items()}
-                info_out = {k: builder.get(v) for k, v in info_out.items()}
-            else:
-                for pid, batch in samples.policy_batches.items():
-                    if not self.is_policy_to_train(pid, samples):
-                        continue
-                    grad_out[pid], info_out[pid] = self.policy_map[
-                        pid
-                    ].compute_gradients(batch)
-        # SampleBatch -> Calculate gradients for the default policy.
+
+        # Treat everything as is multi-agent.
+        samples = samples.as_multi_agent()
+
+        # Calculate gradients for all policies.
+        grad_out, info_out = {}, {}
+        if self.policy_config.get("framework") == "tf":
+            for pid, batch in samples.policy_batches.items():
+                if not self.is_policy_to_train(pid, samples):
+                    continue
+                policy = self.policy_map[pid]
+                builder = TFRunBuilder(policy.get_session(), "compute_gradients")
+                grad_out[pid], info_out[pid] = policy._build_compute_gradients(
+                    builder, batch
+                )
+            grad_out = {k: builder.get(v) for k, v in grad_out.items()}
+            info_out = {k: builder.get(v) for k, v in info_out.items()}
         else:
-            grad_out, info_out = self.policy_map[DEFAULT_POLICY_ID].compute_gradients(
-                samples
-            )
+            for pid, batch in samples.policy_batches.items():
+                if not self.is_policy_to_train(pid, samples):
+                    continue
+                grad_out[pid], info_out[pid] = self.policy_map[pid].compute_gradients(
+                    batch
+                )
 
         info_out["batch_count"] = samples.count
         if log_once("grad_out"):
