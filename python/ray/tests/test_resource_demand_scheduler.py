@@ -1466,8 +1466,8 @@ class LoadMetricsTest(unittest.TestCase):
 
         assert summary.usage["CPU"] == (190, 194)
         assert summary.usage["GPU"] == (15, 16)
-        assert summary.usage["memory"] == (500 * 2**20, 1000 * 2**20)
-        assert summary.usage["object_store_memory"] == (1000 * 2**20, 2000 * 2**20)
+        assert summary.usage["memory"] == (500 * 2 ** 20, 1000 * 2 ** 20)
+        assert summary.usage["object_store_memory"] == (1000 * 2 ** 20, 2000 * 2 ** 20)
         assert (
             summary.usage["accelerator_type:V100"][1] == 2
         ), "Not comparing the usage value due to floating point error."
@@ -1496,10 +1496,10 @@ class LoadMetricsTest(unittest.TestCase):
         summary_dict = asdict(summary)
         assert summary_dict["usage"]["CPU"] == (190, 194)
         assert summary_dict["usage"]["GPU"] == (15, 16)
-        assert summary_dict["usage"]["memory"] == (500 * 2**20, 1000 * 2**20)
+        assert summary_dict["usage"]["memory"] == (500 * 2 ** 20, 1000 * 2 ** 20)
         assert summary_dict["usage"]["object_store_memory"] == (
-            1000 * 2**20,
-            2000 * 2**20,
+            1000 * 2 ** 20,
+            2000 * 2 ** 20,
         )
         assert (
             summary_dict["usage"]["accelerator_type:V100"][1] == 2
@@ -2792,8 +2792,8 @@ def test_info_string():
             "CPU": (530.0, 544.0),
             "GPU": (2, 2),
             "AcceleratorType:V100": (0, 2),
-            "memory": (2 * 2**30, 2**33),
-            "object_store_memory": (3.14 * 2**30, 2**34),
+            "memory": (2 * 2 ** 30, 2 ** 33),
+            "object_store_memory": (3.14 * 2 ** 30, 2 ** 34),
         },
         resource_demand=[({"CPU": 1}, 150)],
         pg_demand=[({"bundles": [({"CPU": 4}, 5)], "strategy": "PACK"}, 420)],
@@ -2853,8 +2853,8 @@ def test_info_string_failed_node_cap():
             "CPU": (530.0, 544.0),
             "GPU": (2, 2),
             "AcceleratorType:V100": (0, 2),
-            "memory": (2 * 2**30, 2**33),
-            "object_store_memory": (3.14 * 2**30, 2**34),
+            "memory": (2 * 2 ** 30, 2 ** 33),
+            "object_store_memory": (3.14 * 2 ** 30, 2 ** 34),
             "CPU_group_4a82a217aadd8326a3a49f02700ac5c2": (2.0, 2.0),
         },
         resource_demand=[
