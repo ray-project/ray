@@ -151,6 +151,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   uint64_t max_concurrency = 1;
   auto placement_options = std::make_pair(PlacementGroupID::Nil(), -1);
   std::vector<ConcurrencyGroup> concurrency_groups;
+  std::string serialized_runtime_env = "";
   int32_t max_pending_calls = -1;
 
   if (actorCreationOptions) {
@@ -223,9 +224,19 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
           return ray::ConcurrencyGroup{concurrency_group_name, max_concurrency,
                                        native_func_descriptors};
         });
+    auto java_serialized_runtime_env = (jstring)env->GetObjectField(actorCreationOptions,
+                                                  java_actor_creation_options_serialized_runtime_env);
+    RAY_LOG(INFO) << "=================1 java_serialized_runtime_env=" << java_serialized_runtime_env;
+    if (java_serialized_runtime_env) {
+      serialized_runtime_env = JavaStringToNativeString(env, java_serialized_runtime_env);
+      RAY_LOG(INFO) << "=================2 serialized_runtime_env=" << serialized_runtime_env;
+    }
+
     max_pending_calls = static_cast<int32_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_pending_calls));
   }
+
+  RAY_LOG(INFO) << "=================serialized_runtime_env=" << serialized_runtime_env;
 
   // TODO(suquark): support passing namespace for Java. Currently
   // there is no use case.
@@ -253,7 +264,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       ray_namespace,
       /*is_asyncio=*/false,
       /*scheduling_strategy=*/scheduling_strategy,
-      /*serialized_runtime_env=*/"{}",
+      serialized_runtime_env,
       concurrency_groups,
       /*execute_out_of_order*/ false,
       max_pending_calls};
