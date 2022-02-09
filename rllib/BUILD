@@ -2840,14 +2840,6 @@ py_test(
     srcs = ["examples/bandit/tune_lin_ucb_train_recommendation.py"],
 )
 
-py_test(
-    name = "examples/bandit/tune_lin_ucb_train_recsim_env",
-    main = "examples/bandit/tune_lin_ucb_train_recsim_env.py",
-    tags = ["team:ml", "examples", ],
-    size = "small",
-    srcs = ["examples/bandit/tune_lin_ucb_train_recsim_env.py"],
-)
-
 # --------------------------------------------------------------------
 # examples/documentation directory
 #
