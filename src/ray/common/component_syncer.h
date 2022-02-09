@@ -4,6 +4,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/id.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "src/ray/protobuf/syncer.grpc.pb.h"
 
@@ -126,7 +127,7 @@ class NodeSyncContext : public T {
       const auto &metadata = rpc_context_->client_metadata();
       auto iter = metadata.find("node_id");
       RAY_CHECK(iter != metadata.end());
-      node_id_ = std::string(iter->second.begin(), iter->second.end());
+      node_id_ =  NodeID::FromHex(std::string(iter->second.begin(), iter->second.end())).Binary();
       T::StartSendInitialMetadata();
     } else {
       T::StartCall();
@@ -264,7 +265,7 @@ struct SyncClientReactor : public NodeSyncContext<ClientBidiReactor> {
       auto iter = metadata.find("node_id");
       RAY_CHECK(iter != metadata.end());
       RAY_LOG(INFO) << "Start to follow " << iter->second;
-      node_id_ = std::string(iter->second.begin(), iter->second.end());
+      node_id_ = NodeID::FromHex(std::string(iter->second.begin(), iter->second.end())).Binary();
       StartRead(&in_message_);
     } else {
       HandleFailure();
