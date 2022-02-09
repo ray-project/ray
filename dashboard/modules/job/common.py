@@ -70,28 +70,11 @@ class JobStatusStorageClient:
     Handles formatting of status storage key given job id.
     """
 
-    JOB_STATUS_KEY_PREFIX = "_ray_internal_job_status"
-    JOB_STATUS_KEY = f"{JOB_STATUS_KEY_PREFIX}_{{job_id}}"
+    JOB_DATA_KEY_PREFIX = "_ray_internal_job_data"
+    JOB_DATA_KEY = f"{JOB_DATA_KEY_PREFIX}_{{job_id}}"
 
     def __init__(self):
         assert _internal_kv_initialized()
-
-    def put_data(self, job_id: str, data: JobData):
-        _internal_kv_put(
-            self.JOB_STATUS_KEY.format(job_id=job_id),
-            pickle.dumps(data),
-            namespace=ray_constants.KV_NAMESPACE_JOB,
-        )
-
-    def get_data(self, job_id: str) -> Optional[JobData]:
-        pickled_data = _internal_kv_get(
-            self.JOB_STATUS_KEY.format(job_id=job_id),
-            namespace=ray_constants.KV_NAMESPACE_JOB,
-        )
-        if pickled_data is None:
-            return None
-        else:
-            return pickle.loads(pickled_data)
 
     def put_status(self, job_id: str, status: Union[JobStatus, JobStatusInfo]):
         """Put or update job status without modifying other the data for this job."""
@@ -115,7 +98,7 @@ class JobStatusStorageClient:
 
     def get_status(self, job_id: str) -> Optional[JobStatusInfo]:
         pickled_data = _internal_kv_get(
-            self.JOB_STATUS_KEY.format(job_id=job_id),
+            self.JOB_DATA_KEY.format(job_id=job_id),
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
         if pickled_data is None:
@@ -124,8 +107,25 @@ class JobStatusStorageClient:
             job_data: JobData = pickle.loads(pickled_data)
             return job_data.status_info
 
+    def put_data(self, job_id: str, data: JobData):
+        _internal_kv_put(
+            self.JOB_DATA_KEY.format(job_id=job_id),
+            pickle.dumps(data),
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+        )
+
+    def get_data(self, job_id: str) -> Optional[JobData]:
+        pickled_data = _internal_kv_get(
+            self.JOB_DATA_KEY.format(job_id=job_id),
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+        )
+        if pickled_data is None:
+            return None
+        else:
+            return pickle.loads(pickled_data)
+
     def get_all_jobs(self) -> Dict[str, JobStatusInfo]:
-        raw_job_ids = _internal_kv_list(self.JOB_STATUS_KEY_PREFIX)
+        raw_job_ids = _internal_kv_list(self.JOB_DATA_KEY_PREFIX)
         job_ids = [job_id.decode() for job_id in raw_job_ids]
         return {job_id: self.get_status(job_id) for job_id in job_ids}
 
