@@ -487,7 +487,7 @@ NodeResources ToNodeResources(const NodeResourceInstances &instance) {
 
 }  // namespace
 
-void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data) const{
+void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data) const {
   NodeResources resources = ToNodeResources(local_resources_);
 
   // Initialize if last report resources is empty.

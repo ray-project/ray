@@ -190,9 +190,9 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
     argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
     argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
-    return ray::rpc::BuildChannel(argument, current_gcs_server_address_.first, current_gcs_server_address_.second);
+    return ray::rpc::BuildChannel(argument, current_gcs_server_address_.first,
+                                  current_gcs_server_address_.second);
   }
-
 
  protected:
   GcsClientOptions options_;

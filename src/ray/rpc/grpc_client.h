@@ -42,15 +42,11 @@ namespace rpc {
     INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client, method_timeout_ms); \
   }
 
-
-
-inline std::shared_ptr<grpc::Channel> BuildChannel(
-    const grpc::ChannelArguments &argument,
-    const std::string &address, int port) {
+inline std::shared_ptr<grpc::Channel> BuildChannel(const grpc::ChannelArguments &argument,
+                                                   const std::string &address, int port) {
   std::shared_ptr<grpc::Channel> channel;
   if (::RayConfig::instance().USE_TLS()) {
-    std::string server_cert_file =
-        std::string(::RayConfig::instance().TLS_SERVER_CERT());
+    std::string server_cert_file = std::string(::RayConfig::instance().TLS_SERVER_CERT());
     std::string server_key_file = std::string(::RayConfig::instance().TLS_SERVER_KEY());
     std::string root_cert_file = std::string(::RayConfig::instance().TLS_CA_CERT());
     std::string server_cert_chain = ReadCert(server_cert_file);

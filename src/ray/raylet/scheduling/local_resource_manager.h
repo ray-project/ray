@@ -22,8 +22,8 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/task/scheduling_resources.h"
 #include "ray/common/component_syncer.h"
+#include "ray/common/task/scheduling_resources.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
@@ -50,7 +50,7 @@ class LocalResourceManager : public syncing::Reporter {
   int64_t GetNodeId() const { return local_node_id_; }
 
   std::optional<syncing::RaySyncMessage> Snapshot(uint64_t current_version) const {
-    if(version_ <= current_version) {
+    if (version_ <= current_version) {
       return std::nullopt;
     }
     syncing::RaySyncMessage msg;
