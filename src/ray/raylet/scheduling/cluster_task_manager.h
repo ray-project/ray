@@ -23,6 +23,7 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/scheduling/internal.h"
+#include "ray/raylet/scheduling/scheduler_resource_reporter.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
@@ -276,8 +277,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Function to announce infeasible task to GCS.
   std::function<void(const RayTask &)> announce_infeasible_task_;
 
-  const int max_resource_shapes_per_load_report_;
-
   /// TODO(swang): Add index from TaskID -> Work to avoid having to iterate
   /// through queues to cancel tasks, etc.
   /// Queue of lease requests that are waiting for resources to become available.
@@ -346,6 +345,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Track the backlog of all workers belonging to this raylet.
   absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
       backlog_tracker_;
+
+  const SchedulerResourceReporter scheduler_resource_reporter_;
 
   /// TODO(Shanly): Remove `worker_pool_` and `leased_workers_` and make them as
   /// parameters of methods if necessary once we remove the legacy scheduler.
@@ -436,9 +437,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::function<void(void)> send_reply_callback);
 
   void Spillback(const NodeID &spillback_to, const std::shared_ptr<internal::Work> &work);
-
-  /// Sum up the backlog size across all workers for a given scheduling class.
-  int64_t TotalBacklogSize(SchedulingClass scheduling_class);
 
   // Helper function to pin a task's args immediately before dispatch. This
   // returns false if there are missing args (due to eviction) or if there is
