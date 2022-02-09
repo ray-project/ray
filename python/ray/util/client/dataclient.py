@@ -222,7 +222,7 @@ class DataClient:
         can_remove = True
         if response.req_id in self.asyncio_waiting_data:
             try:
-                callback = self.asyncio_waiting_data.get(response.req_id)
+                callback = self.asyncio_waiting_data[response.req_id]
                 if isinstance(callback, ChunkCollector):
                     can_remove = callback(response)
                 elif callback:
