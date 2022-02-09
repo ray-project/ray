@@ -121,6 +121,7 @@ Ray with cloud providers
         # Tear down the cluster.
         $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
 
+    GCP Node Provider Maintainer: wuisawesome, DmitriGekhtman, ijrsvt
 
 .. tabbed:: Aliyun
 
