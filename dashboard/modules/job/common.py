@@ -76,6 +76,23 @@ class JobStatusStorageClient:
     def __init__(self):
         assert _internal_kv_initialized()
 
+    def put_data(self, job_id: str, data: JobData):
+        _internal_kv_put(
+            self.JOB_DATA_KEY.format(job_id=job_id),
+            pickle.dumps(data),
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+        )
+
+    def get_data(self, job_id: str) -> Optional[JobData]:
+        pickled_data = _internal_kv_get(
+            self.JOB_DATA_KEY.format(job_id=job_id),
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+        )
+        if pickled_data is None:
+            return None
+        else:
+            return pickle.loads(pickled_data)
+
     def put_status(self, job_id: str, status: Union[JobStatus, JobStatusInfo]):
         """Put or update job status without modifying other the data for this job."""
 
@@ -97,32 +114,11 @@ class JobStatusStorageClient:
         self.put_data(job_id, new_data)
 
     def get_status(self, job_id: str) -> Optional[JobStatusInfo]:
-        pickled_data = _internal_kv_get(
-            self.JOB_DATA_KEY.format(job_id=job_id),
-            namespace=ray_constants.KV_NAMESPACE_JOB,
-        )
-        if pickled_data is None:
+        job_data = self.get_data(job_id)
+        if job_data is None:
             return None
         else:
-            job_data: JobData = pickle.loads(pickled_data)
             return job_data.status_info
-
-    def put_data(self, job_id: str, data: JobData):
-        _internal_kv_put(
-            self.JOB_DATA_KEY.format(job_id=job_id),
-            pickle.dumps(data),
-            namespace=ray_constants.KV_NAMESPACE_JOB,
-        )
-
-    def get_data(self, job_id: str) -> Optional[JobData]:
-        pickled_data = _internal_kv_get(
-            self.JOB_DATA_KEY.format(job_id=job_id),
-            namespace=ray_constants.KV_NAMESPACE_JOB,
-        )
-        if pickled_data is None:
-            return None
-        else:
-            return pickle.loads(pickled_data)
 
     def get_all_jobs(self) -> Dict[str, JobStatusInfo]:
         raw_job_ids = _internal_kv_list(self.JOB_DATA_KEY_PREFIX)
