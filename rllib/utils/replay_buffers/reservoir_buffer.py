@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 import random
 
 # Import ray before psutil will make sure we use psutil's bundled version
@@ -19,8 +19,8 @@ class ReservoirBuffer(ReplayBuffer):
     with a reservoir". See https://www.cs.umd.edu/~samir/498/vitter.pdf for
     the full paper.
     """
-    def __init__(self, capacity: int = 10000, storage_unit: str =
-            "timesteps"):
+
+    def __init__(self, capacity: int = 10000, storage_unit: str = "timesteps"):
         """Initializes a ReservoirBuffer instance.
 
         Args:
@@ -61,8 +61,7 @@ class ReservoirBuffer(ReplayBuffer):
                 self._storage[idx] = batch
 
                 assert batch.count > 0, batch
-                warn_replay_capacity(item=batch,
-                                     num_items=self.capacity / batch.count)
+                warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
 
     @ExperimentalAPI
     @override(ReplayBuffer)

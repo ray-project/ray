@@ -159,8 +159,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         return batch
 
     @ExperimentalAPI
-    def update_priorities(self, idxes: List[int],
-                          priorities: List[float]) -> None:
+    def update_priorities(self, idxes: List[int], priorities: List[float]) -> None:
         """Update priorities of sampled transitions.
 
         Sets priority of transition at index idxes[i] in buffer

@@ -6,12 +6,12 @@ import numpy as np
 import ray
 from ray.rllib import SampleBatch
 from ray.rllib.execution.buffers.replay_buffer import logger, _ALL_POLICIES
-from ray.rllib.policy.rnn_sequencing import \
-    timeslice_along_seq_lens_with_overlap
+from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override, ExperimentalAPI
-from ray.rllib.utils.replay_buffers.prioritized_replay_buffer import \
-    PrioritizedReplayBuffer
+from ray.rllib.utils.replay_buffers.prioritized_replay_buffer import (
+    PrioritizedReplayBuffer,
+)
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
@@ -95,8 +95,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             logger.info(
                 "Since replay_sequence_length={} and replay_batch_size={}, "
                 "we will replay {} sequences at a time.".format(
-                    replay_sequence_length, replay_batch_size,
-                    self.replay_batch_size
+                    replay_sequence_length, replay_batch_size, self.replay_batch_size
                 )
             )
 
@@ -167,8 +166,9 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         self._num_added += batch.count
 
     # Utility method that reduces code redundancy for child classes
-    def _add_to_policy_buffer(self, policy_id: PolicyID, batch:
-            SampleBatchType) -> None:
+    def _add_to_policy_buffer(
+        self, policy_id: PolicyID, batch: SampleBatchType
+    ) -> None:
         if self.replay_sequence_length == 1:
             timeslices = batch.timeslices(1)
         else:
@@ -182,18 +182,17 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             # If SampleBatch has prio-replay weights, average
             # over these to use as a weight for the entire
             # sequence.
-            if "weights" in time_slice and len(
-                time_slice["weights"]):
+            if "weights" in time_slice and len(time_slice["weights"]):
                 weight = np.mean(time_slice["weights"])
             else:
                 weight = None
-            self.replay_buffers[policy_id].add(time_slice,
-                                               weight=weight)
+            self.replay_buffers[policy_id].add(time_slice, weight=weight)
 
     @ExperimentalAPI
     @override(ReplayBuffer)
-    def sample(self, num_items: int, policy_id: Optional[PolicyID] = None) \
-        -> Optional[SampleBatchType]:
+    def sample(
+        self, num_items: int, policy_id: Optional[PolicyID] = None
+    ) -> Optional[SampleBatchType]:
         """Samples a batch of size `num_items` from a policy's buffer
 
         If this buffer was given a fake batch, return it, otherwise
@@ -211,8 +210,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         """
         if self._fake_batch:
             if not isinstance(self._fake_batch, MultiAgentBatch):
-                self._fake_batch = SampleBatch(
-                    self._fake_batch).as_multi_agent()
+                self._fake_batch = SampleBatch(self._fake_batch).as_multi_agent()
             return self._fake_batch
 
         if self._num_added < self.replay_starts:
@@ -235,8 +233,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 samples = {}
                 for policy_id, replay_buffer in self.replay_buffers.items():
                     samples[policy_id] = replay_buffer.sample(
-                        self.replay_batch_size,
-                        beta=self.prioritized_replay_beta
+                        self.replay_batch_size, beta=self.prioritized_replay_beta
                     )
                 return MultiAgentBatch(samples, self.replay_batch_size)
 
@@ -254,8 +251,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         """
         with self.update_priorities_timer:
             for policy_id, (batch_indexes, td_errors) in prio_dict.items():
-                new_priorities = np.abs(
-                    td_errors) + self.prioritized_replay_eps
+                new_priorities = np.abs(td_errors) + self.prioritized_replay_eps
                 self.replay_buffers[policy_id].update_priorities(
                     batch_indexes, new_priorities
                 )
@@ -281,8 +277,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         }
         for policy_id, replay_buffer in self.replay_buffers.items():
             stat.update(
-                {"policy_{}".format(policy_id): replay_buffer.stats(
-                    debug=debug)}
+                {"policy_{}".format(policy_id): replay_buffer.stats(debug=debug)}
             )
         return stat
 

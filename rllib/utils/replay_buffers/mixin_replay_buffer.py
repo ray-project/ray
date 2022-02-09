@@ -2,11 +2,15 @@ import collections
 import random
 from typing import Optional, Dict, Any
 
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, \
-    MultiAgentBatch
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    SampleBatch,
+    MultiAgentBatch,
+)
 from ray.rllib.utils.annotations import override, ExperimentalAPI
-from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import \
-    MultiAgentReplayBuffer
+from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
+    MultiAgentReplayBuffer,
+)
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
 from ray.rllib.execution.buffers.replay_buffer import _ALL_POLICIES
 
@@ -114,26 +118,26 @@ class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
         if not 0 < replay_ratio < 1:
             raise ValueError("Replay ratio must be within [0, 1]")
 
-        MultiAgentReplayBuffer.__init__(self,
-                                        capacity,
-                                        storage_unit,
-                                        num_shards,
-                                        learning_starts,
-                                        replay_batch_size,
-                                        prioritized_replay_alpha,
-                                        prioritized_replay_beta,
-                                        prioritized_replay_eps,
-                                        replay_mode,
-                                        replay_sequence_length,
-                                        replay_burn_in,
-                                        replay_zero_init_states,
-                                        )
+        MultiAgentReplayBuffer.__init__(
+            self,
+            capacity,
+            storage_unit,
+            num_shards,
+            learning_starts,
+            replay_batch_size,
+            prioritized_replay_alpha,
+            prioritized_replay_beta,
+            prioritized_replay_eps,
+            replay_mode,
+            replay_sequence_length,
+            replay_burn_in,
+            replay_zero_init_states,
+        )
 
         self.replay_ratio = replay_ratio
         self.replay_proportion = None
         if self.replay_ratio != 1.0:
-            self.replay_proportion = self.replay_ratio / (
-                1.0 - self.replay_ratio)
+            self.replay_proportion = self.replay_ratio / (1.0 - self.replay_ratio)
 
         # Last added batch(es).
         self.last_added_batches = collections.defaultdict(list)
@@ -171,9 +175,9 @@ class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
 
     @ExperimentalAPI
     @override(MultiAgentReplayBuffer)
-    def sample(self, num_items: int,
-               policy_id: PolicyID = DEFAULT_POLICY_ID
-               ) -> Optional[SampleBatchType]:
+    def sample(
+        self, num_items: int, policy_id: PolicyID = DEFAULT_POLICY_ID
+    ) -> Optional[SampleBatchType]:
         """Samples a batch of size `num_items` from a specified buffer.
 
         If this buffer was given a fake batch, return it, otherwise
@@ -192,8 +196,7 @@ class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
         """
         if self._fake_batch:
             if not isinstance(self._fake_batch, MultiAgentBatch):
-                self._fake_batch = SampleBatch(
-                    self._fake_batch).as_multi_agent()
+                self._fake_batch = SampleBatch(self._fake_batch).as_multi_agent()
             return self._fake_batch
 
         def mix_batches(_policy_id):
@@ -206,8 +209,7 @@ class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
                 return SampleBatch.concat_samples(output_batches)
             # Only replay desired
             elif self.replay_ratio == 1.0:
-                return _buffer.sample(num_items,
-                                      beta=self.prioritized_replay_beta)
+                return _buffer.sample(num_items, beta=self.prioritized_replay_beta)
 
             # Replay ratio = old / [old + new]
             # Replay proportion: old / new
@@ -219,9 +221,10 @@ class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
             return SampleBatch.concat_samples(output_batches)
 
         def check_buffer_is_ready(_policy_id):
-            if (len(self.replay_buffers[policy_id]) == 0) or \
-                (len(self.last_added_batches[_policy_id]) == 0 and
-                 self.replay_ratio < 1.0):
+            if (len(self.replay_buffers[policy_id]) == 0) or (
+                len(self.last_added_batches[_policy_id]) == 0
+                and self.replay_ratio < 1.0
+            ):
                 return False
             return True
 

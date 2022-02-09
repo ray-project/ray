@@ -19,8 +19,9 @@ logger = logging.getLogger(__name__)
 
 @ExperimentalAPI
 class ReplayBuffer:
-    def __init__(self, capacity: int = 10000, storage_unit: str =
-    "timesteps", **kwargs):
+    def __init__(
+        self, capacity: int = 10000, storage_unit: str = "timesteps", **kwargs
+    ):
         """Initializes a ReplayBuffer instance.
 
         Args:
@@ -37,9 +38,7 @@ class ReplayBuffer:
         elif storage_unit == "sequences":
             self._store_as_sequences = True
         else:
-            raise ValueError(
-                "storage_unit must be either 'sequences' or 'timestamps'"
-            )
+            raise ValueError("storage_unit must be either 'sequences' or 'timestamps'")
 
         # The actual storage (list of SampleBatches).
         self._storage = []
