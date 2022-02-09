@@ -433,6 +433,25 @@ def test_runtime_env_log_msg(
         assert "runtime_env" not in sources
 
 
+def test_get_current_runtime_env(shutdown_only):
+    job_runtime_env = {"env_vars": {"a": "b"}}
+    ray.init(runtime_env=job_runtime_env)
+    current_runtime_env = ray.runtime_env.get_current_runtime_env()
+    assert current_runtime_env == job_runtime_env
+
+    @ray.remote
+    def get_runtime_env():
+        return ray.runtime_env.get_current_runtime_env()
+
+    assert ray.get(get_runtime_env.remote()) == job_runtime_env
+
+    task_runtime_env = {"env_vars": {"a": "c"}}
+    assert (
+        ray.get(get_runtime_env.options(runtime_env=task_runtime_env).remote())
+        == task_runtime_env
+    )
+
+
 if __name__ == "__main__":
     import sys
 
