@@ -254,7 +254,7 @@ def test_failed_job_env_no_hang():
 
     @ray.remote
     def f():
-        import pip_install_test
+        import pip_install_test # noqa: F401
 
         return True
 
