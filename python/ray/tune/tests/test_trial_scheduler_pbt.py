@@ -173,7 +173,6 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
 
 class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def setUp(self):
-        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
         ray.init(num_cpus=2)
 
         def MockTrainingFuncSync(config, checkpoint_dir=None):
