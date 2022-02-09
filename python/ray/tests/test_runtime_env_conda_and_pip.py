@@ -11,9 +11,9 @@ from ray._private.test_utils import (
     generate_runtime_env_dict,
 )
 from ray._private.runtime_env.conda import _get_conda_dict_with_ray_inserted
-from ray._private.runtime_env.pip import PipProcessor
 from ray._private.runtime_env.validation import (
     ParsedRuntimeEnv,
+    _rewrite_pip_list_ray_libraries,
 )
 
 import yaml
@@ -28,26 +28,10 @@ if not os.environ.get("CI"):
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
-)
-def test_in_virtualenv(start_cluster):
-    assert PipProcessor._is_in_virtualenv() is False
-    cluster, address = start_cluster
-    runtime_env = {"pip": ["pip-install-test==0.5"]}
-
-    ray.init(address, runtime_env=runtime_env)
-
-    @ray.remote
-    def f():
-        import pip_install_test  # noqa: F401
-
-        return PipProcessor._is_in_virtualenv()
-
-    # Ensure that the runtime env has been installed
-    # and virtualenv is activated.
-    assert ray.get(f.remote())
+def test_rewrite_pip_list_ray_libraries():
+    input = ["--extra-index-url my.url", "ray==1.4", "requests", "ray[serve]"]
+    output = _rewrite_pip_list_ray_libraries(input)
+    assert len(set(input) - set(input)) == 0
 
 
 def test_get_conda_dict_with_ray_inserted_m1_wheel(monkeypatch):
