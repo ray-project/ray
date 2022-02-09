@@ -358,6 +358,22 @@ class ServeController:
 
         return goal_id, updating
 
+    def deploy_group(
+        self, deployment_args_list: List[Dict]
+    ) -> List[Tuple[Optional[GoalId], bool]]:
+        """
+        Takes in a list of dictionaries that contain keyword arguments for the
+        controller's deploy() function. Calls deploy on all the argument
+        dictionaries in the list. Effectively executes an atomic deploy on a
+        group of deployments.
+        """
+
+        update_goals: List[Tuple[Optional[GoalId], bool]] = []
+        for deployment_args in deployment_args_list:
+            update_goals.append(self.deploy(**deployment_args))
+
+        return update_goals
+
     def delete_deployment(self, name: str) -> Optional[GoalId]:
         self.endpoint_state.delete_endpoint(name)
         return self.deployment_state_manager.delete_deployment(name)

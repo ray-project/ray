@@ -21,6 +21,7 @@ from ray.util.tracing.tracing_helper import (
     _inject_tracing_into_function,
 )
 
+
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
 DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS = 1
@@ -226,28 +227,42 @@ class RemoteFunction:
             # runtime_env specified in the @ray.remote decorator.
             new_runtime_env = None
 
+        options = dict(
+            num_returns=num_returns,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            object_store_memory=object_store_memory,
+            accelerator_type=accelerator_type,
+            resources=resources,
+            max_retries=max_retries,
+            retry_exceptions=retry_exceptions,
+            placement_group=placement_group,
+            placement_group_bundle_index=placement_group_bundle_index,
+            placement_group_capture_child_tasks=(placement_group_capture_child_tasks),
+            runtime_env=new_runtime_env,
+            name=name,
+            scheduling_strategy=scheduling_strategy,
+        )
+
         class FuncWrapper:
             def remote(self, *args, **kwargs):
-                return func_cls._remote(
-                    args=args,
-                    kwargs=kwargs,
-                    num_returns=num_returns,
-                    num_cpus=num_cpus,
-                    num_gpus=num_gpus,
-                    memory=memory,
-                    object_store_memory=object_store_memory,
-                    accelerator_type=accelerator_type,
-                    resources=resources,
-                    max_retries=max_retries,
-                    retry_exceptions=retry_exceptions,
-                    placement_group=placement_group,
-                    placement_group_bundle_index=placement_group_bundle_index,
-                    placement_group_capture_child_tasks=(
-                        placement_group_capture_child_tasks
-                    ),
-                    runtime_env=new_runtime_env,
-                    name=name,
-                    scheduling_strategy=scheduling_strategy,
+                return func_cls._remote(args=args, kwargs=kwargs, **options)
+
+            def _bind(self, *args, **kwargs):
+                """
+                **Experimental**
+
+                For ray DAG building. Implementation and interface subject
+                to changes.
+                """
+                from ray.experimental.dag.function_node import FunctionNode
+
+                return FunctionNode(
+                    func_cls._function,
+                    args,
+                    kwargs,
+                    options,
                 )
 
         return FuncWrapper()
@@ -445,3 +460,15 @@ class RemoteFunction:
             invocation = self._decorator(invocation)
 
         return invocation(args, kwargs)
+
+    def _bind(self, *args, **kwargs):
+        """
+        **Experimental**
+
+        For ray DAG building. Implementation and interface subject to
+        changes.
+        """
+
+        from ray.experimental.dag.function_node import FunctionNode
+
+        return FunctionNode(self._function, args, kwargs, {})

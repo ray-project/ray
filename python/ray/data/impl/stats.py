@@ -69,7 +69,7 @@ class _DatasetStatsBuilder:
         return stats
 
 
-@ray.remote(num_cpus=0)
+@ray.remote(num_cpus=0, placement_group=None)
 class _StatsActor:
     """Actor holding stats for blocks created by LazyBlockList.
 

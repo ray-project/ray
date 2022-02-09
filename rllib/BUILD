@@ -215,6 +215,16 @@ py_test(
 )
 
 py_test(
+    name = "learning_tests_pendulum_ddpg_tf2",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests_continuous_tf2_eager_off_policy"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
+    args = ["--yaml-dir=tuned_examples/ddpg", "--override-mean-reward=-750.0"]
+)
+
+py_test(
     name = "learning_tests_pendulum_ddpg_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
@@ -513,6 +523,27 @@ py_test(
 )
 
 py_test(
+    name = "learning_tests_pendulum_sac_tf2",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests_continuous_tf2_eager_off_policy"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/sac/pendulum-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac", "--override-mean-reward=-900.0"]
+)
+
+py_test(
+    name = "learning_tests_transformed_actions_pendulum_sac_tf2",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests_continuous_tf2_eager_off_policy"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac" ,"--override-mean-reward=-850.0"]
+)
+
+
+py_test(
     name = "learning_tests_pendulum_sac_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
@@ -542,6 +573,13 @@ py_test(
 # --------------------------------------------------------------------
 
 # Generic (all Trainers)
+py_test(
+    name = "test_callbacks",
+    tags = ["team:ml", "trainers_dir"],
+    size = "medium",
+    srcs = ["agents/tests/test_callbacks.py"]
+)
+
 py_test(
     name = "test_trainer",
     tags = ["team:ml", "trainers_dir"],
@@ -594,30 +632,6 @@ py_test(
     tags = ["team:ml", "trainers_dir"],
     size = "small",
     srcs = ["agents/bandit/tests/test_bandits.py"],
-)
-
-py_test(
-    name = "agents/bandit/tests/lin_ts_train_wheel_env",
-    main = "agents/bandit/tests/LinTS_train_wheel_env.py",
-    tags = ["team:ml", "trainers_dir"],
-    size = "small",
-    srcs = ["agents/bandit/tests/LinTS_train_wheel_env.py"],
-)
-
-py_test(
-    name = "bandit/tune_lin_ts_train_wheel_env",
-    main = "agents/bandit/tests/tune_LinTS_train_wheel_env.py",
-    tags = ["team:ml", "trainers_dir"],
-    size = "small",
-    srcs = ["agents/bandit/tests/tune_LinTS_train_wheel_env.py"],
-)
-
-py_test(
-    name = "bandit/tune_lin_ucb_train_recommendation",
-    main = "agents/bandit/tests/tune_LinUCB_train_recommendation.py",
-    tags = ["team:ml", "trainers_dir"],
-    size = "small",
-    srcs = ["agents/bandit/tests/tune_LinUCB_train_recommendation.py"],
 )
 
 # CQLTrainer
@@ -780,6 +794,14 @@ py_test(
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
     srcs = ["agents/dqn/tests/test_simple_q.py"]
+)
+
+# SlateQTrainer
+py_test(
+    name = "test_slateq",
+    tags = ["team:ml", "trainers_dir"],
+    size = "small",
+    srcs = ["agents/slateq/tests/test_slateq.py"]
 )
 
 # TD3Trainer
@@ -1114,6 +1136,24 @@ sh_test(
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "env/tests/test_local_inference_cartpole_w_2_concurrent_episodes",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["local", "cartpole-dummy-2-episodes"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "env/tests/test_remote_inference_cartpole_w_2_concurrent_episodes",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["remote", "cartpole-dummy-2-episodes"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -2581,6 +2621,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/recommender_system_with_recsim_and_slateq",
+    main = "examples/recommender_system_with_recsim_and_slateq.py",
+    tags = ["team:ml", "examples", "examples_R"],
+    size = "large",
+    srcs = ["examples/recommender_system_with_recsim_and_slateq.py"],
+    args = ["--stop-iters=2", "--use-tune", "--num-cpus=5", "--random-test-episodes=10", "--env-num-candidates=100", "--env-slate-size=2"],
+)
+
+py_test(
     name = "examples/remote_envs_with_inference_done_on_main_node_tf",
     main = "examples/remote_envs_with_inference_done_on_main_node.py",
     tags = ["team:ml", "examples", "examples_R"],
@@ -2764,6 +2813,39 @@ py_test(
     size = "medium",
     srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=PG"]
+)
+
+
+py_test(
+    name = "examples/bandit/lin_ts_train_wheel_env",
+    main = "examples/bandit/lin_ts_train_wheel_env.py",
+    tags = ["team:ml", "examples"],
+    size = "small",
+    srcs = ["examples/bandit/lin_ts_train_wheel_env.py"],
+)
+
+py_test(
+    name = "examples/bandit/tune_lin_ts_train_wheel_env",
+    main = "examples/bandit/tune_lin_ts_train_wheel_env.py",
+    tags = ["team:ml", "examples"],
+    size = "small",
+    srcs = ["examples/bandit/tune_lin_ts_train_wheel_env.py"],
+)
+
+py_test(
+    name = "examples/bandit/tune_lin_ucb_train_recommendation",
+    main = "examples/bandit/tune_lin_ucb_train_recommendation.py",
+    tags = ["team:ml", "examples", ],
+    size = "small",
+    srcs = ["examples/bandit/tune_lin_ucb_train_recommendation.py"],
+)
+
+py_test(
+    name = "examples/bandit/tune_lin_ucb_train_recsim_env",
+    main = "examples/bandit/tune_lin_ucb_train_recsim_env.py",
+    tags = ["team:ml", "examples", ],
+    size = "small",
+    srcs = ["examples/bandit/tune_lin_ucb_train_recsim_env.py"],
 )
 
 # --------------------------------------------------------------------

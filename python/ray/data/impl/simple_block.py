@@ -76,7 +76,7 @@ class SimpleBlockAccessor(BlockAccessor):
     def to_pandas(self) -> "pandas.DataFrame":
         import pandas
 
-        return pandas.DataFrame(self._items)
+        return pandas.DataFrame({"value": self._items})
 
     def to_numpy(self, column: str = None) -> np.ndarray:
         if column:
