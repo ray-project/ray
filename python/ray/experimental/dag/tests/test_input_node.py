@@ -12,6 +12,21 @@ import ray
 RayHandleLike = TypeVar("RayHandleLike")
 
 
+def test_no_args_to_input_node(shared_ray_instance):
+    @ray.remote
+    def f(input):
+        return input
+
+    with pytest.raises(
+        ValueError, match="InputNode should not take any args or kwargs"
+    ):
+        f._bind(InputNode(0))
+    with pytest.raises(
+        ValueError, match="InputNode should not take any args or kwargs"
+    ):
+        f._bind(InputNode(key=1))
+
+
 def test_simple_func(shared_ray_instance):
     @ray.remote
     def a(input: str):

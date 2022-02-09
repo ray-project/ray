@@ -26,9 +26,11 @@ class InputNode(DAGNode):
     dag.execute(user_input) --> broadcast to a and b
     """
 
-    def __init__(self):
-        super().__init__([], {}, {}, {})
+    def __init__(self, *args, **kwargs):
         # TODO: (jiaodong) Support better structured user input data
+        if len(args) != 0 or len(kwargs) != 0:
+            raise ValueError("InputNode should not take any args or kwargs.")
+        super().__init__([], {}, {}, {})
 
     def _copy_impl(
         self,
