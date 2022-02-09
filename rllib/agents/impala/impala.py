@@ -25,7 +25,7 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # V-trace params (see vtrace_tf/torch.py).
@@ -127,7 +127,7 @@ DEFAULT_CONFIG = with_common_config({
     "num_data_loader_buffers": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 def make_learner_thread(local_worker, config):

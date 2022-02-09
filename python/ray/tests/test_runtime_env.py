@@ -137,7 +137,11 @@ def test_invalid_conda_env(shutdown_only):
 
     start = time.time()
     bad_env = {"conda": {"dependencies": ["this_doesnt_exist"]}}
-    with pytest.raises(RuntimeEnvSetupError):
+    with pytest.raises(
+        RuntimeEnvSetupError,
+        # The actual error message should be included in the exception.
+        match="ResolvePackageNotFound",
+    ):
         ray.get(f.options(runtime_env=bad_env).remote())
     first_time = time.time() - start
 
@@ -145,12 +149,14 @@ def test_invalid_conda_env(shutdown_only):
     ray.get(f.remote())
 
     a = A.options(runtime_env=bad_env).remote()
-    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+    with pytest.raises(
+        ray.exceptions.RuntimeEnvSetupError, match="ResolvePackageNotFound"
+    ):
         ray.get(a.f.remote())
 
     # The second time this runs it should be faster as the error is cached.
     start = time.time()
-    with pytest.raises(RuntimeEnvSetupError):
+    with pytest.raises(RuntimeEnvSetupError, match="ResolvePackageNotFound"):
         ray.get(f.options(runtime_env=bad_env).remote())
 
     assert (time.time() - start) < (first_time / 2.0)
