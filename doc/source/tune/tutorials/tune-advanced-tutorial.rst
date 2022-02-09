@@ -1,5 +1,5 @@
-Guide to Population Based Training (PBT)
-========================================
+A Guide to Population Based Training
+====================================
 
 Tune includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__ as
 a :ref:`scheduler <tune-scheduler-pbt>`.
