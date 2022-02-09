@@ -107,7 +107,23 @@ class SDKRunner(CommandRunner):
         if not scd_id:
             raise LogsError("Must specify scd_id to fetch command logs. Did "
                             "you already kick off a command?")
-        pass
+
+        # Todo: It would be nice to get an actual SDK API here
+        result, _, _ = self.sdk.api_client.call_api(
+            "/api/v2/session_commands/{session_command_id}/execution_logs",
+            "GET",
+            path_params={"session_command_id": scd_id},
+            query_params={
+                "start_line": -10,
+                "end_line": 0
+            },
+            header_params={},
+            response_type=object,
+            _host="https://console.anyscale.com",
+            _preload_content=True,
+            _return_http_data_only=False,
+        )
+        return result["result"]["lines"]
 
     def fetch_results(self) -> Dict[str, Any]:
         try:

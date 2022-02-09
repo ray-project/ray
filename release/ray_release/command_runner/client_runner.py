@@ -19,8 +19,7 @@ from ray_release.command_runner.command_runner import CommandRunner
 def install_matching_ray(ray_wheels: Optional[str]):
     if not ray_wheels:
         logger.warning(
-            "No Ray wheels found - can't install matching Ray wheels locally!"
-        )
+            "No Ray wheels found - can't install matching Ray wheels locally!")
         return
     assert "manylinux2014_x86_64" in ray_wheels, ray_wheels
     if sys.platform == "darwin":

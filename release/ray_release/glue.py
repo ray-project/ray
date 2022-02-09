@@ -16,6 +16,7 @@ from ray_release.exception import ReleaseTestConfigError
 from ray_release.file_manager.remote_task import RemoteTaskFileManager
 from ray_release.file_manager.session_controller import \
     SessionControllerFileManager
+from ray_release.logger import logger
 from ray_release.util import deep_update
 
 type_str_to_command_runner = {
@@ -128,9 +129,15 @@ def run_release_test(test: Test,
         deep_update(results, command_results)
     except Exception as e:
         exc = e
-    finally:
-        if not no_terminate:
-            cluster_manager.terminate_cluster(wait=False)
+
+    try:
+        last_logs = command_runner.get_last_logs()
+    except Exception as e:
+        logger.error(f"Error fetching logs: {e}")
+        last_logs = "No logs could be retrieved."
+
+    if not no_terminate:
+        cluster_manager.terminate_cluster(wait=False)
 
     time_taken = time.monotonic() - start_time
     results["_runtime"] = time_taken
@@ -141,5 +148,6 @@ def run_release_test(test: Test,
         raise exc
 
     print(results)
+    print(last_logs)
 
     return results
