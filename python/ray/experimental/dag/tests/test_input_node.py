@@ -4,7 +4,7 @@ request, for all DAGNode types.
 """
 
 import pytest
-import ray.experimental.dag as ray_dag
+from ray.experimental.dag.input_node import InputNode
 from typing import TypeVar
 
 import ray
@@ -23,7 +23,7 @@ def test_simple_func(shared_ray_instance):
         return f"{a} -> b"
 
     # input -> a - > b -> ouput
-    a_node = a._bind(ray_dag.INPUT)
+    a_node = a._bind(InputNode())
     dag = b._bind(a_node)
 
     assert ray.get(dag.execute("input")) == "input -> a -> b"
@@ -47,7 +47,7 @@ def test_func_dag(shared_ray_instance):
     def d(x, y):
         return x + y
 
-    a_ref = a._bind(ray_dag.INPUT)
+    a_ref = a._bind(InputNode())
     b_ref = b._bind(a_ref)
     c_ref = c._bind(a_ref)
     d_ref = d._bind(b_ref, c_ref)
@@ -75,8 +75,8 @@ def test_multi_input_func_dag(shared_ray_instance):
     def c(x, y):
         return x + y
 
-    a_ref = a._bind(ray_dag.INPUT)
-    b_ref = b._bind(ray_dag.INPUT)
+    a_ref = a._bind(InputNode())
+    b_ref = b._bind(InputNode())
     dag = c._bind(a_ref, b_ref)
     print(dag)
 
@@ -86,7 +86,30 @@ def test_multi_input_func_dag(shared_ray_instance):
     assert ray.get(dag.execute(3)) == 10
 
 
-def test_invalid_input_as_class_constructor(shared_ray_instance):
+def test_invalid_input_node_in_function_node(shared_ray_instance):
+    @ray.remote
+    def f(input):
+        return input
+
+    with pytest.raises(
+        ValueError, match="ensure InputNode is the only input to a FunctionNode"
+    ):
+        f._bind([[{"nested": InputNode()}]])
+    with pytest.raises(
+        ValueError, match="ensure InputNode is the only input to a FunctionNode"
+    ):
+        f._bind(InputNode(), 1, 2)
+    with pytest.raises(
+        ValueError, match="ensure InputNode is the only input to a FunctionNode"
+    ):
+        f._bind(1, 2, key=InputNode())
+    with pytest.raises(
+        ValueError, match="ensure InputNode is the only input to a FunctionNode"
+    ):
+        f._bind(InputNode(), key=123)
+
+
+def test_invalid_input_node_as_class_constructor(shared_ray_instance):
     @ray.remote
     class Actor:
         def __init__(self, val):
@@ -96,27 +119,12 @@ def test_invalid_input_as_class_constructor(shared_ray_instance):
             return self.val
 
     with pytest.raises(
-        ValueError, match="INPUT cannot be used as ClassNode args"
+        ValueError, match="ClassNode constructor because it is not available"
     ):
-        Actor._bind(ray_dag.INPUT)
+        dag = Actor._bind(InputNode())
 
 
-def test_invalid_input_conjunction_with_others(shared_ray_instance):
-    @ray.remote
-    def f(x, y):
-        return x + y
-
-    with pytest.raises(
-        ValueError,
-        match="dag.INPUT cannot be used in conjunction with other args",
-    ):
-        f._bind(ray_dag.INPUT, 1)
-
-    with pytest.raises(
-        ValueError, match="dag.INPUT cannot be used as a kwarg value"
-    ):
-        f._bind(1, kwarg=ray_dag.INPUT)
-
+def test_invalid_input_node_in_class_method_node(shared_ray_instance):
     @ray.remote
     class Actor:
         def __init__(self, val):
@@ -126,30 +134,27 @@ def test_invalid_input_conjunction_with_others(shared_ray_instance):
             return self.val + input1 + input2
 
     actor = Actor._bind(1)
+
     with pytest.raises(
         ValueError,
-        match="dag.INPUT cannot be used in conjunction with other args.",
+        match="ensure InputNode is the only input to a ClassMethodNode",
     ):
-        actor.get._bind(ray_dag.INPUT, 2)
+        actor.get._bind([[{"nested": InputNode()}]])
     with pytest.raises(
-        ValueError, match="dag.INPUT cannot be used as a kwarg value"
+        ValueError,
+        match="ensure InputNode is the only input to a ClassMethodNode",
     ):
-        actor.get._bind(2, input2=ray_dag.INPUT)
-
-
-def test_invalid_input_as_class_constructor(shared_ray_instance):
-    @ray.remote
-    class Actor:
-        def __init__(self, val):
-            self.val = val
-
-        def get(self):
-            return self.val
-
+        actor.get._bind(InputNode(), 1, 2)
     with pytest.raises(
-        ValueError, match="INPUT cannot be used as ClassNode args"
+        ValueError,
+        match="ensure InputNode is the only input to a ClassMethodNode",
     ):
-        Actor._bind(ray_dag.INPUT)
+        actor.get._bind(1, 2, key=InputNode())
+    with pytest.raises(
+        ValueError,
+        match="ensure InputNode is the only input to a ClassMethodNode",
+    ):
+        actor.get._bind(InputNode(), key=123)
 
 
 def test_class_method_input(shared_ray_instance):
@@ -170,7 +175,7 @@ def test_class_method_input(shared_ray_instance):
             return input * self.scale
 
     preprocess = FeatureProcessor._bind(0.5)
-    feature = preprocess.process._bind(ray_dag.INPUT)
+    feature = preprocess.process._bind(InputNode())
     model = Model._bind(4)
     dag = model.forward._bind(feature)
 
@@ -201,8 +206,8 @@ def test_multi_class_method_input(shared_ray_instance):
     m1 = Model._bind(2)
     m2 = Model._bind(3)
 
-    m1_output = m1.forward._bind(ray_dag.INPUT)
-    m2_output = m2.forward._bind(ray_dag.INPUT)
+    m1_output = m1.forward._bind(InputNode())
+    m2_output = m2.forward._bind(InputNode())
 
     dag = combine._bind(m1_output, m2_output)
     print(dag)
@@ -235,8 +240,8 @@ def test_func_class_mixed_input(shared_ray_instance):
         return m1 + m2
 
     m1 = Model._bind(3)
-    m1_output = m1.forward._bind(ray_dag.INPUT)
-    m2_output = model_func._bind(ray_dag.INPUT)
+    m1_output = m1.forward._bind(InputNode())
+    m2_output = model_func._bind(InputNode())
 
     dag = combine._bind(m1_output, m2_output)
     print(dag)

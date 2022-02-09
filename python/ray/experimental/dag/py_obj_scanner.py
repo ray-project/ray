@@ -35,10 +35,12 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler):
         # Register pickler override for DAGNode types.
         from ray.experimental.dag.function_node import FunctionNode
         from ray.experimental.dag.class_node import ClassNode, ClassMethodNode
+        from ray.experimental.dag.input_node import InputNode
 
         self.dispatch_table[FunctionNode] = self._reduce_dag_node
         self.dispatch_table[ClassNode] = self._reduce_dag_node
         self.dispatch_table[ClassMethodNode] = self._reduce_dag_node
+        self.dispatch_table[InputNode] = self._reduce_dag_node
         super().__init__(self._buf)
 
     def find_nodes(self, obj: Any) -> List["DAGNode"]:
@@ -53,6 +55,7 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler):
     def replace_nodes(self, table: Dict["DAGNode", T]) -> Any:
         """Replace previously found DAGNodes per the given table."""
         assert self._found is not None, "find_nodes must be called first"
+        # print(f">>>> Replace table: {table}")
         self._replace_table = table
         self._buf.seek(0)
         return pickle.load(self._buf)

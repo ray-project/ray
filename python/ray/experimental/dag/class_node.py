@@ -1,48 +1,53 @@
 import ray
-import ray.experimental.dag as ray_dag
+from ray.experimental.dag.dag_node import DAGNode
+from ray.experimental.dag.input_node import InputNode
 
 from typing import Any, Dict, List, Optional, Tuple
 
 
-class ClassNode(ray_dag.DAGNode):
+class ClassNode(DAGNode):
     """Represents an actor creation in a Ray task DAG."""
 
     def __init__(
         self,
-        cls: type,
+        cls,
         cls_args,
         cls_kwargs,
         cls_options,
-        kwargs_to_resolve=None,
+        other_args_to_resolve=None,
     ):
-        if ray_dag.INPUT in cls_args or ray_dag.INPUT in cls_kwargs.values():
-            raise ValueError(
-                "dag.INPUT cannot be used as ClassNode args. "
-                "Please bind to function or class method only."
-            )
         self._body = cls
         self._last_call: Optional["ClassMethodNode"] = None
-        ray_dag.DAGNode.__init__(
-            self,
+        super().__init__(
             cls_args,
             cls_kwargs,
             cls_options,
-            kwargs_to_resolve=kwargs_to_resolve,
+            other_args_to_resolve=other_args_to_resolve,
         )
+
+        children_dag_nodes = self._get_all_child_nodes()
+        for child in children_dag_nodes:
+            if isinstance(child, InputNode):
+                raise ValueError(
+                    "InputNode handles user dynamic input the the DAG, and "
+                    "cannot be used as args, kwargs, or other_args_to_resolve "
+                    "in ClassNode constructor because it is not available at "
+                    "class construction or binding time."
+                )
 
     def _copy_impl(
         self,
         new_args: List[Any],
         new_kwargs: Dict[str, Any],
         new_options: Dict[str, Any],
-        new_kwargs_to_resolve: Dict[str, Any],
+        new_other_args_to_resolve: Dict[str, Any],
     ):
         return ClassNode(
             self._body,
             new_args,
             new_kwargs,
             new_options,
-            kwargs_to_resolve=new_kwargs_to_resolve,
+            other_args_to_resolve=new_other_args_to_resolve,
         )
 
     def _execute_impl(self, *args, **kwargs):
@@ -72,14 +77,17 @@ class _UnboundClassMethodNode(object):
         self._options = {}
 
     def _bind(self, *args, **kwargs):
-        kwargs_to_resolve = {
-            "method_name": self._method_name,
+        other_args_to_resolve = {
             "parent_class_node": self._actor,
             "prev_class_method_call": self._actor._last_call,
         }
 
         node = ClassMethodNode(
-            args, kwargs, self._options, kwargs_to_resolve=kwargs_to_resolve
+            self._method_name,
+            args,
+            kwargs,
+            self._options,
+            other_args_to_resolve=other_args_to_resolve,
         )
         self._actor._last_call = node
         return node
@@ -89,72 +97,76 @@ class _UnboundClassMethodNode(object):
         return self
 
 
-class ClassMethodNode(ray_dag.DAGNode):
+class ClassMethodNode(DAGNode):
     """Represents an actor method invocation in a Ray function DAG."""
 
     def __init__(
         self,
+        method_name: str,
         method_args: Tuple[Any],
         method_kwargs: Dict[str, Any],
         method_options: Dict[str, Any],
-        kwargs_to_resolve: Dict[str, Any],
+        other_args_to_resolve: Dict[str, Any],
     ):
-        # TODO: (jiaodong) revisit constraints on dag INPUT before moving out
-        # of experimental folder
-        if ray_dag.INPUT in method_args and len(method_args) > 1:
-            raise ValueError(
-                "dag.INPUT cannot be used in conjunction with other args. "
-                "Please bind with dag.INPUT as only input."
-            )
-        if ray_dag.INPUT in method_kwargs.values():
-            raise ValueError(
-                "dag.INPUT cannot be used as a kwarg value. "
-                "Please bind with dag.INPUT as only input."
-            )
 
         self._bound_args = method_args or []
         self._bound_kwargs = method_kwargs or {}
         self._bound_options = method_options or {}
-        # Parse kwargs_to_resolve and assign to variables
-        self._method_name: str = kwargs_to_resolve.get("method_name")
-        self._parent_class_node: ClassNode = kwargs_to_resolve.get("parent_class_node")
-        self._prev_class_method_call: Optional[ClassMethodNode] = kwargs_to_resolve.get(
-            "prev_class_method_call", None
+        self._method_name: str = method_name
+        # Parse other_args_to_resolve and assign to variables
+        self._parent_class_node: ClassNode = other_args_to_resolve.get(
+            "parent_class_node"
         )
+        # Used to track lineage of ClassMethodCall to preserve deterministic
+        # submission and execution order.
+        self._prev_class_method_call: Optional[
+            ClassMethodNode
+        ] = other_args_to_resolve.get("prev_class_method_call", None)
         # The actor creation task dependency is encoded as the first argument,
         # and the ordering dependency as the second, which ensures they are
         # executed prior to this node.
-        ray_dag.DAGNode.__init__(
-            self,
+        super().__init__(
             method_args,
             method_kwargs,
             method_options,
-            kwargs_to_resolve=kwargs_to_resolve,
+            other_args_to_resolve=other_args_to_resolve,
         )
+        # TODO: (jiaodong) revisit constraints on dag INPUT before moving out
+        # of experimental folder
+        has_input_node = self._contain_input_node()
+        if has_input_node:
+            if (
+                len(self.get_args()) != 1
+                or not isinstance(self.get_args()[0], InputNode)
+                or self.get_kwargs() != {}
+            ):
+                raise ValueError(
+                    "InputNode marks the entrypoint of user request to the "
+                    "DAG, please ensure InputNode is the only input to a "
+                    "ClassMethodNode, and NOT used in conjunction with, or "
+                    "nested within other args or kwargs."
+                )
 
     def _copy_impl(
         self,
         new_args: List[Any],
         new_kwargs: Dict[str, Any],
         new_options: Dict[str, Any],
-        new_kwargs_to_resolve: Dict[str, Any],
+        new_other_args_to_resolve: Dict[str, Any],
     ):
         return ClassMethodNode(
+            self._method_name,
             new_args,
             new_kwargs,
             new_options,
-            kwargs_to_resolve=new_kwargs_to_resolve,
+            other_args_to_resolve=new_other_args_to_resolve,
         )
 
-    def _execute_impl(self, *args, **kwargs):
+    def _execute_impl(self, *args):
         """Executor of ClassMethodNode by ray.remote()"""
         method_body = getattr(self._parent_class_node, self._method_name)
-        if len(self._bound_args) == 1 and self._bound_args[0] == ray_dag.INPUT:
-            # DAG entrypoint, execute with user input rather than bound args.
-            return method_body.options(**self._bound_options).remote(*args, **kwargs)
-        else:
-            # Execute with bound args.
-            return method_body.options(**self._bound_options).remote(
-                *self._bound_args,
-                **self._bound_kwargs,
-            )
+        # Execute with bound args.
+        return method_body.options(**self._bound_options).remote(
+            *self._bound_args,
+            **self._bound_kwargs,
+        )

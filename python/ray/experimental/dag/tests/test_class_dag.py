@@ -30,7 +30,7 @@ class Actor:
 
 
 def test_serialize_warning():
-    node = DAGNode([], {}, {})
+    node = DAGNode([], {}, {}, {})
     with pytest.raises(ValueError):
         pickle.dumps(node)
 
@@ -147,32 +147,36 @@ def test_actor_options_complicated(shared_ray_instance):
     assert test_a2.get_options() == {}  # No .options() at outer call
     # refer to a2 constructor .options() call
     assert (
-        test_a2.get_kwargs_to_resolve()["parent_class_node"].get_options().get("name")
+        test_a2.get_other_args_to_resolve()["parent_class_node"]
+        .get_options()
+        .get("name")
         == "a2_v0"
     )
     # refer to actor method a2.inc.options() call
     assert (
-        test_a2.get_kwargs_to_resolve()["prev_class_method_call"]
+        test_a2.get_other_args_to_resolve()["prev_class_method_call"]
         .get_options()
         .get("name")
         == "v3"
     )
     # refer to a1 constructor .options() call
     assert (
-        test_a1.get_kwargs_to_resolve()["parent_class_node"].get_options().get("name")
+        test_a1.get_other_args_to_resolve()["parent_class_node"]
+        .get_options()
+        .get("name")
         == "a1_v1"
     )
     # refer to latest actor method a1.inc.options() call
     assert (
-        test_a1.get_kwargs_to_resolve()["prev_class_method_call"]
+        test_a1.get_other_args_to_resolve()["prev_class_method_call"]
         .get_options()
         .get("name")
         == "v2"
     )
     # refer to first bound actor method a1.inc.options() call
     assert (
-        test_a1.get_kwargs_to_resolve()["prev_class_method_call"]
-        .get_kwargs_to_resolve()["prev_class_method_call"]
+        test_a1.get_other_args_to_resolve()["prev_class_method_call"]
+        .get_other_args_to_resolve()["prev_class_method_call"]
         .get_options()
         .get("name")
         == "v1"

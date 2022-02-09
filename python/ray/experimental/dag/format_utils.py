@@ -102,17 +102,17 @@ def get_options_lines(bound_options):
     return options_line
 
 
-def get_kwargs_to_resolve_lines(kwargs_to_resolve):
-    if not kwargs_to_resolve:
+def get_other_args_to_resolve_lines(other_args_to_resolve):
+    if not other_args_to_resolve:
         return "{}"
     indent = get_indentation()
-    kwargs_to_resolve_lines = []
-    for key, val in kwargs_to_resolve.items():
+    other_args_to_resolve_lines = []
+    for key, val in other_args_to_resolve.items():
         if isinstance(val, ray_dag.DAGNode):
             node_repr_lines = str(val).split("\n")
             for index, node_repr_line in enumerate(node_repr_lines):
                 if index == 0:
-                    kwargs_to_resolve_lines.append(
+                    other_args_to_resolve_lines.append(
                         f"{indent}{key}:"
                         + f"{indent}"
                         + "\n"
@@ -120,12 +120,14 @@ def get_kwargs_to_resolve_lines(kwargs_to_resolve):
                         + node_repr_line
                     )
                 else:
-                    kwargs_to_resolve_lines.append(f"{indent}{indent}" + node_repr_line)
+                    other_args_to_resolve_lines.append(
+                        f"{indent}{indent}" + node_repr_line
+                    )
         else:
-            kwargs_to_resolve_lines.append(f"{indent}{key}: " + str(val))
+            other_args_to_resolve_lines.append(f"{indent}{key}: " + str(val))
 
-    kwargs_to_resolve_line = "{"
-    for line in kwargs_to_resolve_lines:
-        kwargs_to_resolve_line += f"\n{indent}{line}"
-    kwargs_to_resolve_line += f"\n{indent}}}"
-    return kwargs_to_resolve_line
+    other_args_to_resolve_line = "{"
+    for line in other_args_to_resolve_lines:
+        other_args_to_resolve_line += f"\n{indent}{line}"
+    other_args_to_resolve_line += f"\n{indent}}}"
+    return other_args_to_resolve_line
