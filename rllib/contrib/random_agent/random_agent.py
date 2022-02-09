@@ -5,7 +5,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 class RandomAgent(Trainer):
     """Trainer that produces random actions and never learns."""

@@ -43,7 +43,7 @@ from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 
 # Adds the following updates to the `PPOTrainer` config in
@@ -93,7 +93,7 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
 )
 
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class DDPPOTrainer(PPOTrainer):
