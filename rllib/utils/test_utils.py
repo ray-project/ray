@@ -405,7 +405,7 @@ def check_compute_single_action(
                 isinstance(action_space, Box)
                 and not unsquash
                 and what.config.get("normalize_actions")
-                and np.any(np.abs(action) > 15.0)
+                and np.any(np.abs(action) > 3.0)
             ):
                 raise ValueError(
                     f"Returned action ({action}) of trainer/policy {what} "
