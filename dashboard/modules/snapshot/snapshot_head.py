@@ -137,17 +137,23 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         runtime_env = {}  # TODO
         start_time = None  # TODO
         end_time = None  # TODO
+        metadata = None  # TODO
+        namespace = None  # TODO
 
         for job_id, status in self._job_status_client.get_all_jobs().items():
             entry = {
                 "job_id": job_id,
                 "status": None if status is None else status.status,
                 "status_message": None if status is None else status.message,
+                "namespace": namespace,
+                "metadata": metadata,
                 "runtime_env": runtime_env,
                 "start_time": start_time,
                 "end_time": end_time,
             }
-            return {}
+            jobs[job_id] = entry
+
+        return jobs
 
     async def get_actor_info(self):
         # TODO (Alex): GCS still needs to return actors from dead jobs.

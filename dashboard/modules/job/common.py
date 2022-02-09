@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any, Dict, Optional, Tuple, Union
 import pickle
@@ -57,6 +57,14 @@ class JobStatusInfo:
                 self.message = "Job failed."
 
 
+@dataclass
+class JobData:
+    status_info: JobStatusInfo
+    metadata: Optional[Dict[str, str]] = None
+    runtime_env: Optional[Dict[str, Any]] = None
+    namespace: Optional[str] = None
+
+
 class JobStatusStorageClient:
     """
     Handles formatting of status storage key given job id.
@@ -68,27 +76,53 @@ class JobStatusStorageClient:
     def __init__(self):
         assert _internal_kv_initialized()
 
-    def put_status(self, job_id: str, status: Union[JobStatus, JobStatusInfo]):
-        if isinstance(status, JobStatus):
-            status = JobStatusInfo(status=status)
-        elif not isinstance(status, JobStatusInfo):
-            assert False, "status must be JobStatus or JobStatusInfo."
-
+    def put_data(self, job_id: str, data: JobData):
         _internal_kv_put(
             self.JOB_STATUS_KEY.format(job_id=job_id),
-            pickle.dumps(status),
+            pickle.dumps(data),
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
 
-    def get_status(self, job_id: str) -> Optional[JobStatusInfo]:
-        pickled_status = _internal_kv_get(
+    def get_data(self, job_id: str) -> Optional[JobData]:
+        pickled_data = _internal_kv_get(
             self.JOB_STATUS_KEY.format(job_id=job_id),
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
-        if pickled_status is None:
+        if pickled_data is None:
             return None
         else:
-            return pickle.loads(pickled_status)
+            return pickle.loads(pickled_data)
+
+    def put_status(self, job_id: str, status: Union[JobStatus, JobStatusInfo]):
+        """Put or update job status without modifying other the data for this job."""
+
+        if isinstance(status, JobStatus):
+            status_info = JobStatusInfo(status=status)
+        elif isinstance(status, JobStatusInfo):
+            status_info = status
+        else:
+            assert False, "status must be JobStatus or JobStatusInfo."
+
+        old_data = self.get_data(job_id)
+
+        if old_data is not None:
+            # NOTE(architkulkarni): dataclass.replace calls __post_init__.
+            new_data = replace(old_data, status_info=status_info)
+        else:
+            new_data = JobData(status_info=status_info)
+
+        self.put_data(job_id, new_data)
+
+    def get_status(self, job_id: str) -> Optional[JobStatusInfo]:
+        pickled_data = _internal_kv_get(
+            self.JOB_STATUS_KEY.format(job_id=job_id),
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+        )
+        if pickled_data is None:
+            return None
+        else:
+            job_data: JobData = pickle.loads(pickled_data)
+            return job_data.status_info
 
     def get_all_jobs(self) -> Dict[str, JobStatusInfo]:
         raw_job_ids = _internal_kv_list(self.JOB_STATUS_KEY_PREFIX)
