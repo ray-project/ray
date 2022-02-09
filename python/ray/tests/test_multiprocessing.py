@@ -5,12 +5,11 @@ import tempfile
 import time
 import random
 from collections import defaultdict
-import queue
 import math
 
 import ray
 from ray._private.test_utils import SignalActor
-from ray.util.multiprocessing import Pool, TimeoutError
+from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue as Queue
 
 
 def teardown_function(function):
@@ -370,9 +369,8 @@ def test_starmap(pool):
     assert pool.starmap(lambda x, y: x + y, zip([1, 2], [3, 4])) == [4, 6]
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Hangs in windows")
 def test_callbacks(pool_4_processes, pool_4_processes_python_multiprocessing_lib):
-    callback_queue = queue.Queue()
+    callback_queue = Queue()
 
     def callback(result):
         callback_queue.put(result)
@@ -405,7 +403,7 @@ def test_callbacks(pool_4_processes, pool_4_processes_python_multiprocessing_lib
         for callback_type in test_callback_types:
             # Reinitialize queue to track number of callback calls made by
             # the current process_pool and callback_type in map_async
-            callback_queue = queue.Queue()
+            callback_queue = Queue()
 
             indices, error_indices = list(range(100)), []
             if callback_type == "error callback":
