@@ -121,7 +121,7 @@ def test_invalid_input_node_as_class_constructor(shared_ray_instance):
     with pytest.raises(
         ValueError, match="ClassNode constructor because it is not available"
     ):
-        dag = Actor._bind(InputNode())
+        Actor._bind(InputNode())
 
 
 def test_invalid_input_node_in_class_method_node(shared_ray_instance):

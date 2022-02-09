@@ -25,15 +25,13 @@ class ClassNode(DAGNode):
             other_args_to_resolve=other_args_to_resolve,
         )
 
-        children_dag_nodes = self._get_all_child_nodes()
-        for child in children_dag_nodes:
-            if isinstance(child, InputNode):
-                raise ValueError(
-                    "InputNode handles user dynamic input the the DAG, and "
-                    "cannot be used as args, kwargs, or other_args_to_resolve "
-                    "in ClassNode constructor because it is not available at "
-                    "class construction or binding time."
-                )
+        if self._contain_input_node():
+            raise ValueError(
+                "InputNode handles user dynamic input the the DAG, and "
+                "cannot be used as args, kwargs, or other_args_to_resolve "
+                "in ClassNode constructor because it is not available at "
+                "class construction or binding time."
+            )
 
     def _copy_impl(
         self,
@@ -50,18 +48,13 @@ class ClassNode(DAGNode):
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
-    def _execute_impl(self, *args, **kwargs):
+    def _execute_impl(self, *args):
         """Executor of ClassNode by ray.remote()"""
-        if self._bound_options:
-            return (
-                ray.remote(self._body)
-                .options(**self._bound_options)
-                .remote(*self._bound_args, **self._bound_kwargs)
-            )
-        else:
-            return ray.remote(self._body).remote(
-                *self._bound_args, **self._bound_kwargs
-            )
+        return (
+            ray.remote(self._body)
+            .options(**self._bound_options)
+            .remote(*self._bound_args, **self._bound_kwargs)
+        )
 
     def __getattr__(self, method_name: str):
         # Raise an error if the method is invalid.

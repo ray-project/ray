@@ -55,7 +55,6 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler):
     def replace_nodes(self, table: Dict["DAGNode", T]) -> Any:
         """Replace previously found DAGNodes per the given table."""
         assert self._found is not None, "find_nodes must be called first"
-        # print(f">>>> Replace table: {table}")
         self._replace_table = table
         self._buf.seek(0)
         return pickle.load(self._buf)
