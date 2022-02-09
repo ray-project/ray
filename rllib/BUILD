@@ -100,6 +100,17 @@ py_test(
     args = ["--yaml-dir=tuned_examples/a3c"]
 )
 
+# AlphaStar
+py_test(
+    name = "learning_tests_cartpole_alpha_star",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/alpha_star/multi-agent-cartpole-alpha-star.yaml"],
+    args = ["--yaml-dir=tuned_examples/alpha_star", "--num-cpus=20"]
+)
+
 # APEX-DQN
 py_test(
     name = "learning_tests_cartpole_apex",
@@ -600,6 +611,14 @@ py_test(
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
     srcs = ["agents/a3c/tests/test_a3c.py"]
+)
+
+# AlphaStar
+py_test(
+    name = "test_alpha_star",
+    tags = ["team:ml", "trainers_dir"],
+    size = "large",
+    srcs = ["agents/alpha_star/tests/test_alpha_star.py"]
 )
 
 # APEXTrainer (DQN)
@@ -1136,6 +1155,24 @@ sh_test(
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "env/tests/test_local_inference_cartpole_w_2_concurrent_episodes",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["local", "cartpole-dummy-2-episodes"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "env/tests/test_remote_inference_cartpole_w_2_concurrent_episodes",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["remote", "cartpole-dummy-2-episodes"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -2606,9 +2643,9 @@ py_test(
     name = "examples/recommender_system_with_recsim_and_slateq",
     main = "examples/recommender_system_with_recsim_and_slateq.py",
     tags = ["team:ml", "examples", "examples_R"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/recommender_system_with_recsim_and_slateq.py"],
-    args = ["--stop-iters=3", "--use-tune", "--num-cpus=5", "--random-test-episodes=10", "--env-num-candidates=100", "--env-slate-size=2"],
+    args = ["--stop-iters=2", "--use-tune", "--num-cpus=5", "--random-test-episodes=10", "--env-num-candidates=100", "--env-slate-size=2"],
 )
 
 py_test(

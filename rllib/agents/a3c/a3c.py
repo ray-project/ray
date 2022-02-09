@@ -14,7 +14,7 @@ from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # Should use a critic as a baseline (otherwise don't use value baseline;
@@ -46,7 +46,7 @@ DEFAULT_CONFIG = with_common_config({
     "sample_async": True,
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class A3CTrainer(Trainer):

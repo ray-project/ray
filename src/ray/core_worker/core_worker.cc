@@ -19,6 +19,7 @@
 #include "boost/fiber/all.hpp"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
@@ -131,7 +132,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   job_config_->ParseFromString(serialized_job_config);
   auto job_serialized_runtime_env =
       job_config_->runtime_env_info().serialized_runtime_env();
-  if (!job_serialized_runtime_env.empty()) {
+  if (!IsRuntimeEnvEmpty(job_serialized_runtime_env)) {
     job_runtime_env_.reset(new rpc::RuntimeEnv());
     RAY_CHECK(google::protobuf::util::JsonStringToMessage(
                   job_config_->runtime_env_info().serialized_runtime_env(),
@@ -826,12 +827,13 @@ Status CoreWorker::Put(const RayObject &object,
                        ObjectID *object_id) {
   *object_id = ObjectID::FromIndex(worker_context_.GetCurrentInternalTaskId(),
                                    worker_context_.GetNextPutIndex());
-  reference_counter_->AddOwnedObject(
-      *object_id, contained_object_ids, rpc_address_, CurrentCallSite(), object.GetSize(),
-      /*is_reconstructable=*/false, NodeID::FromBinary(rpc_address_.raylet_id()));
+  reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
+                                     CurrentCallSite(), object.GetSize(),
+                                     /*is_reconstructable=*/false, /*add_local_ref=*/true,
+                                     NodeID::FromBinary(rpc_address_.raylet_id()));
   auto status = Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
   if (!status.ok()) {
-    reference_counter_->RemoveOwnedObject(*object_id);
+    RemoveLocalReference(*object_id);
   }
   return status;
 }
@@ -875,13 +877,11 @@ Status CoreWorker::Put(const RayObject &object,
   return PutInLocalPlasmaStore(object, object_id, pin_object);
 }
 
-Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
-                               const size_t data_size,
-                               const std::vector<ObjectID> &contained_object_ids,
-                               ObjectID *object_id, std::shared_ptr<Buffer> *data,
-                               bool created_by_worker,
-                               const std::unique_ptr<rpc::Address> &owner_address,
-                               bool inline_small_object) {
+Status CoreWorker::CreateOwnedAndIncrementLocalRef(
+    const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+    const std::vector<ObjectID> &contained_object_ids, ObjectID *object_id,
+    std::shared_ptr<Buffer> *data, bool created_by_worker,
+    const std::unique_ptr<rpc::Address> &owner_address, bool inline_small_object) {
   auto status = WaitForActorRegistered(contained_object_ids);
   if (!status.ok()) {
     return status;
@@ -895,6 +895,7 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
     reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
                                        CurrentCallSite(), data_size + metadata->Size(),
                                        /*is_reconstructable=*/false,
+                                       /*add_local_ref=*/true,
                                        NodeID::FromBinary(rpc_address_.raylet_id()));
   } else {
     // Because in the remote worker's `HandleAssignObjectOwner`,
@@ -937,11 +938,7 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
                                               created_by_worker);
     }
     if (!status.ok()) {
-      if (owned_by_us) {
-        reference_counter_->RemoveOwnedObject(*object_id);
-      } else {
-        RemoveLocalReference(*object_id);
-      }
+      RemoveLocalReference(*object_id);
       return status;
     } else if (*data == nullptr) {
       // Object already exists in plasma. Store the in-memory value so that the
@@ -969,16 +966,13 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
 
 Status CoreWorker::SealOwned(const ObjectID &object_id, bool pin_object,
                              const std::unique_ptr<rpc::Address> &owner_address) {
-  bool owned_by_us = owner_address != nullptr
-                         ? WorkerID::FromBinary(owner_address->worker_id()) ==
-                               WorkerID::FromBinary(rpc_address_.worker_id())
-                         : true;
   auto status = SealExisting(object_id, pin_object, std::move(owner_address));
   if (status.ok()) return status;
-  if (owned_by_us) {
-    reference_counter_->RemoveOwnedObject(object_id);
-  } else {
-    RemoveLocalReference(object_id);
+  RemoveLocalReference(object_id);
+  if (reference_counter_->HasReference(object_id)) {
+    RAY_LOG(WARNING)
+        << "Object " << object_id
+        << " failed to be put but has a nonzero ref count. This object may leak.";
   }
   return status;
 }
@@ -1465,13 +1459,13 @@ std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(
     std::vector<std::string> *runtime_env_uris) {
   std::shared_ptr<rpc::RuntimeEnv> parent = nullptr;
   if (options_.worker_type == WorkerType::DRIVER) {
-    if (serialized_runtime_env == "" || serialized_runtime_env == "{}") {
+    if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
       *runtime_env_uris = GetUrisFromRuntimeEnv(job_runtime_env_.get());
       return job_config_->runtime_env_info().serialized_runtime_env();
     }
     parent = job_runtime_env_;
   } else {
-    if (serialized_runtime_env == "" || serialized_runtime_env == "{}") {
+    if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
       *runtime_env_uris =
           GetUrisFromRuntimeEnv(worker_context_.GetCurrentRuntimeEnv().get());
       return worker_context_.GetCurrentSerializedRuntimeEnv();
@@ -2294,7 +2288,8 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
       reference_counter_->AddOwnedObject(task_spec.ReturnId(i),
                                          /*inner_ids=*/{}, rpc_address_,
                                          CurrentCallSite(), -1,
-                                         /*is_reconstructable=*/false);
+                                         /*is_reconstructable=*/false,
+                                         /*add_local_ref=*/true);
     }
     rpc::ObjectReference ref;
     ref.set_object_id(task_spec.ReturnId(i).Binary());
@@ -3048,6 +3043,7 @@ void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &re
   reference_counter_->AddOwnedObject(
       object_id, contained_object_ids, rpc_address_, call_site, request.object_size(),
       /*is_reconstructable=*/false,
+      /*add_local_ref=*/false,
       /*pinned_at_raylet_id=*/NodeID::FromBinary(borrower_address.raylet_id()));
   reference_counter_->AddBorrowerAddress(object_id, borrower_address);
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));

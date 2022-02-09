@@ -1,4 +1,3 @@
-import os
 import requests
 import socket
 import subprocess
@@ -28,11 +27,6 @@ def get_valid_port():
 
 class TuneServerSuite(unittest.TestCase):
     def basicSetup(self):
-        # Wait up to five seconds for placement groups when starting a trial
-        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
-        # Block for results even when placement groups are pending
-        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
-        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
 
         ray.init(num_cpus=4, num_gpus=1)
         port = get_valid_port()

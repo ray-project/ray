@@ -80,7 +80,7 @@ class Exploration:
         """
         pass
 
-    # yapf: disable
+    # fmt: off
     # __sphinx_doc_begin_get_exploration_action__
 
     @DeveloperAPI
@@ -112,7 +112,7 @@ class Exploration:
         pass
 
     # __sphinx_doc_end_get_exploration_action__
-    # yapf: enable
+    # fmt: on
 
     @DeveloperAPI
     def on_episode_start(
