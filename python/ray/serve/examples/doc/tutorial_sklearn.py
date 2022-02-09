@@ -1,4 +1,4 @@
-# yapf: disable
+# fmt: off
 import ray
 # __doc_import_begin__
 from ray import serve
@@ -14,7 +14,7 @@ from sklearn.datasets import load_iris
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import mean_squared_error
 # __doc_import_end__
-# yapf: enable
+# fmt: on
 
 # __doc_train_model_begin__
 # Load data

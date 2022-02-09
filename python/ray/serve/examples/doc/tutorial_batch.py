@@ -1,4 +1,4 @@
-# yapf: disable
+# fmt: off
 # __doc_import_begin__
 from typing import List
 import time
@@ -10,7 +10,7 @@ from starlette.requests import Request
 import ray
 from ray import serve
 # __doc_import_end__
-# yapf: enable
+# fmt: on
 
 
 # __doc_define_servable_begin__

@@ -151,11 +151,11 @@ def build_trainer(
                 before_init(self)
 
             # Creating all workers (excluding evaluation workers).
-            self.workers = WorkerSet(
+            self.workers = self._make_workers(
                 env_creator=env_creator,
                 validate_env=validate_env,
                 policy_class=self._policy_class,
-                trainer_config=config,
+                config=config,
                 num_workers=self.config["num_workers"],
             )
 
