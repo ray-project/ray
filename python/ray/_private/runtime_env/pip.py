@@ -267,7 +267,7 @@ class PipManager:
         self, uri: str, logger: Optional[logging.Logger] = default_logger
     ) -> int:
         """Delete URI and return the number of bytes deleted."""
-        logger.info("Got request to delete URI %s", uri)
+        logger.info("Got request to delete pip URI %s", uri)
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.PIP:
             raise ValueError(
