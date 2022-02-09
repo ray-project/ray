@@ -216,7 +216,7 @@ class DataClient:
             except queue.Empty:
                 break
             except Exception:
-                logger.warning(f"Bad input data.", exc_info=True)
+                logger.exception("Bad input data")
                 continue
             if callback:
                 callback(err)
