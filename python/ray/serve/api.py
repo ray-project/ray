@@ -540,6 +540,7 @@ def start(
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
     _checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
+    _namespace: Optional[str] = None,
     **kwargs,
 ) -> Client:
     """Initialize a serve instance.
@@ -592,7 +593,11 @@ def start(
     if not ray.is_initialized():
         ray.init(namespace="serve")
 
-    controller_namespace = _get_controller_namespace(detached)
+    # Allow manually overriding the namespace.
+    if _namespace is not None:
+        controller_namespace = _namespace
+    else:
+        controller_namespace = _get_controller_namespace(detached)
 
     try:
         client = _get_global_client()

@@ -1,5 +1,9 @@
 import abc
+from abc import ABCMeta, abstractmethod
 import asyncio
+from base64 import b64decode
+from collections import namedtuple
+from collections.abc import MutableMapping, Mapping, Sequence
 import datetime
 import functools
 import importlib
@@ -7,10 +11,6 @@ import json
 import logging
 import pkgutil
 import socket
-from abc import ABCMeta, abstractmethod
-from base64 import b64decode
-from collections import namedtuple
-from collections.abc import MutableMapping, Mapping, Sequence
 
 import aioredis  # noqa: F401
 import aiosignal  # noqa: F401
