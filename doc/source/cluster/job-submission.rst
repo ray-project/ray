@@ -22,7 +22,7 @@ Concepts
 Example - Setup
 ---------------
 
-Let's start with a sample Ray script as an example for job submission. Once executed locally, this script will use Ray APIs to print counter value of a remote actor from 1 to 5, and print the version of 'requests' module it's using.
+Let's start with a sample Ray script as an example for job submission. Once executed locally, this script will use Ray APIs to print the counter value of a remote actor from 1 to 5, and print the version of the ``requests`` module it's using.
 
 We can put this file in a local directory of your choice, with filename "script.py", so your working directory will look like:
 
@@ -92,7 +92,10 @@ We provide three APIs for Job submission: SDK, CLI and HTTP. Both the SDK and CL
 Job CLI API
 -----------
 
-The easiest way to get started is to use Job submission CLI.
+The easiest way to get started with Ray job submission is to use the job submission CLI.
+
+Using the CLI on a local cluster
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 First, start a local Ray cluster (e.g. with ``ray start --head``) and open a terminal (on the head node, which is your local machine).  
 Next, set the :code:`RAY_ADDRESS` environment variable:
@@ -135,8 +138,8 @@ Now you may run the following CLI commands:
     5
     2.26.0
 
-Using the CLI on a remote cluster
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Using the CLI with the Ray Cluster Launcher
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The example above was for a local Ray cluster.  When connecting to a `remote` cluster, you need to be able to access the dashboard port of the cluster over HTTP.
 
@@ -151,6 +154,13 @@ To use this, run the following command on your local machine, where ``cluster.ya
 Once this is running, check that you can view the Ray Dashboard in your local browser at ``http://127.0.0.1:8265``.  
 Once you have verified this and you have set the environment variable ``RAY_ADDRESS`` to ``"http://127.0.0.1:8265"``, you will be able to use the Jobs CLI on your local machine as in the example above to interact with your remote Ray cluster.
 
+Using the CLI on Kubernetes
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The instructions above still apply, but you can achieve the dashboard port forwarding using ``kubectl port-forward``:
+https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/
+
+Alternatively, you can set up Ingress to the dashboard port of the cluster over HTTP: https://kubernetes.io/docs/concepts/services-networking/ingress/
 
 Ray Job SDK
 ------------
