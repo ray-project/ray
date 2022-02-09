@@ -105,3 +105,6 @@ class FullClusterManager(MinimalClusterManager):
             while result.result.state != "Terminated":
                 time.sleep(1)
                 result = self.sdk.get_cluster(self.cluster_id)
+
+    def get_cluster_address(self) -> str:
+        return f"anyscale://{self.cluster_name}"

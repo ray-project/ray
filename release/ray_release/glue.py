@@ -13,6 +13,7 @@ from ray_release.config import (Test, load_test_cluster_env,
                                 DEFAULT_BUILD_TIMEOUT, DEFAULT_SESSION_TIMEOUT,
                                 DEFAULT_COMMAND_TIMEOUT, RELEASE_PACKAGE_DIR)
 from ray_release.exception import ReleaseTestConfigError
+from ray_release.file_manager.remote_task import RemoteTaskFileManager
 from ray_release.file_manager.session_controller import \
     SessionControllerFileManager
 from ray_release.util import deep_update
@@ -32,6 +33,7 @@ command_runner_to_cluster_manager = {
 
 command_runner_to_file_manager = {
     SDKRunner: SessionControllerFileManager,
+    ClientRunner: RemoteTaskFileManager
 }
 
 uploader_str_to_uploader = {"client": None, "s3": None, "command_runner": None}
@@ -79,8 +81,11 @@ def run_release_test(test: Test,
             test, ray_wheels_url=ray_wheels_url)
         cluster_compute = load_test_cluster_compute(test)
 
+        cluster_manager.set_cluster_env(cluster_env)
+        cluster_manager.set_cluster_compute(cluster_compute)
+
         # Run driver_setup command, install local dependencies
-        command_runner.prepare_local_env()
+        command_runner.prepare_local_env(ray_wheels_url)
 
         # Start session
         if cluster_id:
@@ -90,8 +95,6 @@ def run_release_test(test: Test,
         else:
             build_timeout = test["run"].get("build_timeout",
                                             DEFAULT_BUILD_TIMEOUT)
-            cluster_manager.set_cluster_env(cluster_env)
-            cluster_manager.set_cluster_compute(cluster_compute)
             cluster_manager.build_configs(timeout=build_timeout)
 
             session_timeout = test["run"].get("session_timeout",

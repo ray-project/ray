@@ -81,6 +81,10 @@ def fetch_dir_fom_head(local_dir: str, remote_dir: str):
 
 
 class RemoteTaskFileManager(FileManager):
-    def upload(self, source_dir: str, target_dir: Optional[str] = None):
-        target_dir = self.get_target_dir(source_dir, target_dir)
-        send_dir_to_head(source_dir, target_dir)
+    def upload(self,
+               source: Optional[str] = None,
+               target: Optional[str] = None):
+        send_dir_to_head(source, target)
+
+    def download(self, source: str, target: str):
+        fetch_dir_fom_head(source, target)

@@ -26,7 +26,7 @@ class CommandRunner(abc.ABC):
 
         return full_env
 
-    def prepare_local_env(self):
+    def prepare_local_env(self, ray_wheels_url: Optional[str] = None):
         """Prepare local environment, e.g. install dependencies."""
         raise NotImplementedError
 
@@ -50,8 +50,14 @@ class CommandRunner(abc.ABC):
         """
         raise NotImplementedError
 
-    def run_command(self, command: str, timeout: float = 3600.):
+    def run_command(self,
+                    command: str,
+                    env: Optional[Dict] = None,
+                    timeout: float = 3600.) -> float:
         """Run command."""
+        raise NotImplementedError
+
+    def get_last_logs(self):
         raise NotImplementedError
 
     def fetch_results(self) -> Dict[str, Any]:

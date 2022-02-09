@@ -12,7 +12,8 @@
     autosuspend_mins: 10
 
   run:
-    type: sdk_command
+    # type: sdk_command
+    type: client
     timeout: 600
     script: python workloads/train_small.py
 

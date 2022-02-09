@@ -30,7 +30,7 @@ class SDKRunner(CommandRunner):
 
         self.last_command_scd_id = None
 
-    def prepare_local_env(self):
+    def prepare_local_env(self, ray_wheels_url: Optional[str] = None):
         pass
 
     def prepare_remote_env(self):
@@ -102,11 +102,12 @@ class SDKRunner(CommandRunner):
 
         return time_taken
 
-    def get_logs(self, scd_id: Optional[str] = None):
+    def get_last_logs(self, scd_id: Optional[str] = None):
         scd_id = scd_id or self.last_command_scd_id
         if not scd_id:
             raise LogsError("Must specify scd_id to fetch command logs. Did "
                             "you already kick off a command?")
+        pass
 
     def fetch_results(self) -> Dict[str, Any]:
         try:
@@ -119,4 +120,5 @@ class SDKRunner(CommandRunner):
             os.unlink(tmpfile)
             return data
         except Exception as e:
-            raise ResultsError(f"Could not fetch results from session: {e}")
+            raise ResultsError(
+                f"Could not fetch results from session: {e}") from e
