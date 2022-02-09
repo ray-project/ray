@@ -822,7 +822,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
 class Deployment:
     def __init__(
         self,
-        func_or_class: Callable,
+        func_or_class: Union[Callable, str],
         name: str,
         config: DeploymentConfig,
         version: Optional[str] = None,
@@ -845,7 +845,7 @@ class Deployment:
                 "The Deployment constructor should not be called "
                 "directly. Use `@serve.deployment` instead."
             )
-        if not callable(func_or_class):
+        if not callable(func_or_class) and not isinstance(func_or_class, str):
             raise TypeError("@serve.deployment must be called on a class or function.")
         if not isinstance(name, str):
             raise TypeError("name must be a string.")
@@ -918,7 +918,7 @@ class Deployment:
         return self._prev_version
 
     @property
-    def func_or_class(self) -> Callable:
+    def func_or_class(self) -> Union[Callable, str]:
         """Underlying class or function that this deployment wraps."""
         return self._func_or_class
 
