@@ -9,13 +9,13 @@ pub struct Vec2 {
 }
 
 remote_create_actor! {
-pub fn new(x: u64, y: u64) -> Vec2 {
+pub fn new_vec2(x: u64, y: u64) -> Vec2 {
     Vec2 { x, y }
 }
 }
 
 remote_actor! {
-pub fn add_assign(v: &mut Vec2, other: Vec2) -> () {
+pub fn add_assign_vec2(v: &mut Vec2, other: Vec2) -> () {
     v.x += other.x;
     v.y += other.y;
 }

@@ -56,7 +56,7 @@ fn try_shutdown() {
 #[test]
 fn test_create_vec2() {
     try_init();
-    let handle = new.remote(4, 5);
+    let handle = new_vec2.remote(4, 5);
 
     let obj_ref = get_vec2.remote(&handle);
     let obj = get(&obj_ref);
@@ -64,12 +64,12 @@ fn test_create_vec2() {
     // rmp_serde::from_read_ref::<_, $argty>
     println!("{:?}", obj);
     // let obj = put(new.call(5., 4.));
-    let obj_ref_0 = add_assign.remote(&handle, new.call(5, 4));
+    let obj_ref_0 = add_assign_vec2.remote(&handle, new_vec2.call(5, 4));
     let obj_0 = get(&obj_ref_0);
     println!("{:?}", obj_0);
 
-    add_assign.remote(&handle, new.call(5, 4));
-    add_assign.remote(&handle, new.call(5, 4));
+    add_assign_vec2.remote(&handle, new_vec2.call(5, 4));
+    add_assign_vec2.remote(&handle, new_vec2.call(5, 4));
 
     let obj_ref = get_vec2.remote(&handle);
     let obj = get(&obj_ref);
