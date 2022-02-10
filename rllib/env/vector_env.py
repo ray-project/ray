@@ -5,8 +5,15 @@ from typing import Callable, List, Optional, Tuple, Union, Set
 
 from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID
 from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
-from ray.rllib.utils.typing import (EnvActionType, EnvID, EnvInfoDict, EnvObsType,
-                                    EnvType, MultiEnvDict, AgentID, )
+from ray.rllib.utils.typing import (
+    EnvActionType,
+    EnvID,
+    EnvInfoDict,
+    EnvObsType,
+    EnvType,
+    MultiEnvDict,
+    AgentID,
+)
 
 logger = logging.getLogger(__name__)
 
