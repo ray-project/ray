@@ -116,8 +116,8 @@ class DeploymentConfig(BaseModel):
         DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S  # noqa: E501
     )
 
-    health_check_period_s: NonNegativeFloat = DEFAULT_HEALTH_CHECK_PERIOD_S
-    health_check_timeout_s: NonNegativeFloat = DEFAULT_HEALTH_CHECK_TIMEOUT_S
+    health_check_period_s: PositiveFloat = DEFAULT_HEALTH_CHECK_PERIOD_S
+    health_check_timeout_s: PositiveFloat = DEFAULT_HEALTH_CHECK_TIMEOUT_S
 
     autoscaling_config: Optional[AutoscalingConfig] = None
 

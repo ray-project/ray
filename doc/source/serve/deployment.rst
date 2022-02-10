@@ -220,7 +220,7 @@ By default, each actor making up a Serve deployment is health checked and restar
 
 .. note::
 
-   The @serve.healthcheck feature is experimental and may be subject to change before the interface is stabilized. If you have any feedback or run into any issues or unexpected behaviors, please file an issue on GitHub.
+   User-defined health checks are experimental and may be subject to change before the interface is stabilized. If you have any feedback or run into any issues or unexpected behaviors, please file an issue on GitHub.
 
 You can customize this behavior to perform an application-level health check or to adjust the frequency/timeout.
 To define a custom healthcheck, define a ``check_health`` method on your deployment class.
