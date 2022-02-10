@@ -52,8 +52,9 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     && $HOME/anaconda3/bin/conda clean -y --all \
     && $HOME/anaconda3/bin/pip install --no-cache-dir \
         flatbuffers \
-        cython==0.29.23 \
-        numpy==1.19.5 \
+        cython==0.29.26 \
+        # Necessary for Dataset to work properly.
+        numpy\>=1.20 \
         psutil \
         blist \ 
     # blist is needed for numpy (which is re-installed when ray is installed)

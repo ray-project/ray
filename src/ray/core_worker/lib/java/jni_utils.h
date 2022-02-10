@@ -104,11 +104,17 @@ extern jmethodID java_system_gc;
 /// RayException class
 extern jclass java_ray_exception_class;
 
+/// PendingCallsLimitExceededException class
+extern jclass java_ray_pending_calls_limit_exceeded_exception_class;
+
 /// RayIntentionalSystemExitException class
 extern jclass java_ray_intentional_system_exit_exception_class;
 
 /// RayActorCreationTaskException class
 extern jclass java_ray_actor_exception_class;
+
+/// RayTimeoutException class
+extern jclass java_ray_timeout_exception_class;
 
 /// toBytes method of RayException
 extern jmethodID java_ray_exception_to_bytes;
@@ -167,10 +173,10 @@ extern jfieldID java_call_options_concurrency_group_name;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
-/// global field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_global;
 /// name field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_name;
+/// lifetime field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_lifetime;
 /// maxRestarts field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_max_restarts;
 /// jvmOptions field of ActorCreationOptions class
@@ -183,7 +189,12 @@ extern jfieldID java_actor_creation_options_group;
 extern jfieldID java_actor_creation_options_bundle_index;
 /// concurrencyGroups field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_concurrency_groups;
-
+/// maxPendingCalls field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_max_pending_calls;
+/// ActorCreationOptions class
+extern jclass java_actor_lifetime_class;
+/// name field of ActorCreationOptions class
+extern jfieldID java_actor_lifetime_value;
 /// ConcurrencyGroupImpl class
 extern jclass java_concurrency_group_impl_class;
 /// getFunctionDescriptors method of ConcurrencyGroupImpl class
@@ -197,8 +208,6 @@ extern jfieldID java_concurrency_group_impl_max_concurrency;
 extern jclass java_placement_group_creation_options_class;
 /// PlacementStrategy class
 extern jclass java_placement_group_creation_options_strategy_class;
-/// global field of PlacementGroupCreationOptions class
-extern jfieldID java_placement_group_creation_options_global;
 /// name field of PlacementGroupCreationOptions class
 extern jfieldID java_placement_group_creation_options_name;
 /// bundles field of PlacementGroupCreationOptions class
@@ -255,12 +264,16 @@ extern jmethodID java_resource_value_init;
 extern JavaVM *jvm;
 
 /// Throws a Java RayException if the status is not OK.
-#define THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, ret)               \
-  {                                                                          \
-    if (!(status).ok()) {                                                    \
-      (env)->ThrowNew(java_ray_exception_class, (status).message().c_str()); \
-      return (ret);                                                          \
-    }                                                                        \
+#define THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, ret)                         \
+  {                                                                                    \
+    if (!(status).ok()) {                                                              \
+      if (status.IsTimedOut()) {                                                       \
+        (env)->ThrowNew(java_ray_timeout_exception_class, (status).message().c_str()); \
+      } else {                                                                         \
+        (env)->ThrowNew(java_ray_exception_class, (status).message().c_str());         \
+      }                                                                                \
+      return (ret);                                                                    \
+    }                                                                                  \
   }
 
 #define RAY_CHECK_JAVA_EXCEPTION(env)                                                 \
@@ -613,16 +626,6 @@ inline NativeT JavaProtobufObjectToNativeProtobufObject(JNIEnv *env, jobject jav
     env->DeleteLocalRef(bytes);
   }
   return native_obj;
-}
-
-// Return an actor or a placement group fullname with job id prepended if this is a global
-// actor or placement group.
-inline std::string GetFullName(bool global, std::string name) {
-  if (name.empty()) {
-    return "";
-  }
-  return global ? name
-                : CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" + name;
 }
 
 inline std::shared_ptr<LocalMemoryBuffer> SerializeActorCreationException(

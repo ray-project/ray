@@ -1,7 +1,3 @@
-"""
-PyTorch policy class used for PPO.
-"""
-import gym
 import logging
 from typing import Dict, List, Type, Union
 
@@ -10,185 +6,176 @@ from ray.rllib.agents.ppo.ppo_tf_policy import setup_config
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
-from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.policy_template import build_policy_class
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
-    LearningRateSchedule
+    LearningRateSchedule, TorchPolicy
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import apply_grad_clipping, \
     explained_variance, sequence_mask
-from ray.rllib.utils.typing import TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
 
-def ppo_surrogate_loss(
-        policy: Policy, model: ModelV2,
-        dist_class: Type[TorchDistributionWrapper],
-        train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
-    """Constructs the loss for Proximal Policy Objective.
+class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
+    """PyTorch policy class used with PPOTrainer."""
 
-    Args:
-        policy (Policy): The Policy to calculate the loss for.
-        model (ModelV2): The Model to calculate the loss for.
-        dist_class (Type[ActionDistribution]: The action distr. class.
-        train_batch (SampleBatch): The training data.
+    def __init__(self, observation_space, action_space, config):
+        config = dict(ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG, **config)
+        setup_config(self, observation_space, action_space, config)
 
-    Returns:
-        Union[TensorType, List[TensorType]]: A single loss tensor or a list
-            of loss tensors.
-    """
-    logits, state = model(train_batch)
-    curr_action_dist = dist_class(logits, model)
+        TorchPolicy.__init__(
+            self,
+            observation_space,
+            action_space,
+            config,
+            max_seq_len=config["model"]["max_seq_len"])
 
-    # RNN case: Mask away 0-padded chunks at end of time axis.
-    if state:
-        B = len(train_batch[SampleBatch.SEQ_LENS])
-        max_seq_len = logits.shape[0] // B
-        mask = sequence_mask(
-            train_batch[SampleBatch.SEQ_LENS],
-            max_seq_len,
-            time_major=model.is_time_major())
-        mask = torch.reshape(mask, [-1])
-        num_valid = torch.sum(mask)
+        EntropyCoeffSchedule.__init__(self, config["entropy_coeff"],
+                                      config["entropy_coeff_schedule"])
+        LearningRateSchedule.__init__(self, config["lr"],
+                                      config["lr_schedule"])
 
-        def reduce_mean_valid(t):
-            return torch.sum(t[mask]) / num_valid
-
-    # non-RNN case: No masking.
-    else:
-        mask = None
-        reduce_mean_valid = torch.mean
-
-    prev_action_dist = dist_class(train_batch[SampleBatch.ACTION_DIST_INPUTS],
-                                  model)
-
-    logp_ratio = torch.exp(
-        curr_action_dist.logp(train_batch[SampleBatch.ACTIONS]) -
-        train_batch[SampleBatch.ACTION_LOGP])
-    action_kl = prev_action_dist.kl(curr_action_dist)
-    mean_kl_loss = reduce_mean_valid(action_kl)
-
-    curr_entropy = curr_action_dist.entropy()
-    mean_entropy = reduce_mean_valid(curr_entropy)
-
-    surrogate_loss = torch.min(
-        train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
-        train_batch[Postprocessing.ADVANTAGES] * torch.clamp(
-            logp_ratio, 1 - policy.config["clip_param"],
-            1 + policy.config["clip_param"]))
-    mean_policy_loss = reduce_mean_valid(-surrogate_loss)
-
-    # Compute a value function loss.
-    if policy.config["use_critic"]:
-        prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
-        value_fn_out = model.value_function()
-        vf_loss1 = torch.pow(
-            value_fn_out - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
-        vf_clipped = prev_value_fn_out + torch.clamp(
-            value_fn_out - prev_value_fn_out, -policy.config["vf_clip_param"],
-            policy.config["vf_clip_param"])
-        vf_loss2 = torch.pow(
-            vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
-        vf_loss = torch.max(vf_loss1, vf_loss2)
-        mean_vf_loss = reduce_mean_valid(vf_loss)
-    # Ignore the value function.
-    else:
-        vf_loss = mean_vf_loss = 0.0
-
-    total_loss = reduce_mean_valid(-surrogate_loss +
-                                   policy.kl_coeff * action_kl +
-                                   policy.config["vf_loss_coeff"] * vf_loss -
-                                   policy.entropy_coeff * curr_entropy)
-
-    # Store values for stats function in model (tower), such that for
-    # multi-GPU, we do not override them during the parallel loss phase.
-    model.tower_stats["total_loss"] = total_loss
-    model.tower_stats["mean_policy_loss"] = mean_policy_loss
-    model.tower_stats["mean_vf_loss"] = mean_vf_loss
-    model.tower_stats["vf_explained_var"] = explained_variance(
-        train_batch[Postprocessing.VALUE_TARGETS], model.value_function())
-    model.tower_stats["mean_entropy"] = mean_entropy
-    model.tower_stats["mean_kl_loss"] = mean_kl_loss
-
-    return total_loss
-
-
-def kl_and_loss_stats(policy: Policy,
-                      train_batch: SampleBatch) -> Dict[str, TensorType]:
-    """Stats function for PPO. Returns a dict with important KL and loss stats.
-
-    Args:
-        policy (Policy): The Policy to generate stats for.
-        train_batch (SampleBatch): The SampleBatch (already) used for training.
-
-    Returns:
-        Dict[str, TensorType]: The stats dict.
-    """
-    return {
-        "cur_kl_coeff": policy.kl_coeff,
-        "cur_lr": policy.cur_lr,
-        "total_loss": torch.mean(
-            torch.stack(policy.get_tower_stats("total_loss"))),
-        "policy_loss": torch.mean(
-            torch.stack(policy.get_tower_stats("mean_policy_loss"))),
-        "vf_loss": torch.mean(
-            torch.stack(policy.get_tower_stats("mean_vf_loss"))),
-        "vf_explained_var": torch.mean(
-            torch.stack(policy.get_tower_stats("vf_explained_var"))),
-        "kl": torch.mean(torch.stack(policy.get_tower_stats("mean_kl_loss"))),
-        "entropy": torch.mean(
-            torch.stack(policy.get_tower_stats("mean_entropy"))),
-        "entropy_coeff": policy.entropy_coeff,
-    }
-
-
-def vf_preds_fetches(
-        policy: Policy, input_dict: Dict[str, TensorType],
-        state_batches: List[TensorType], model: ModelV2,
-        action_dist: TorchDistributionWrapper) -> Dict[str, TensorType]:
-    """Defines extra fetches per action computation.
-
-    Args:
-        policy (Policy): The Policy to perform the extra action fetch on.
-        input_dict (Dict[str, TensorType]): The input dict used for the action
-            computing forward pass.
-        state_batches (List[TensorType]): List of state tensors (empty for
-            non-RNNs).
-        model (ModelV2): The Model object of the Policy.
-        action_dist (TorchDistributionWrapper): The instantiated distribution
-            object, resulting from the model's outputs and the given
-            distribution class.
-
-    Returns:
-        Dict[str, TensorType]: Dict with extra tf fetches to perform per
-            action computation.
-    """
-    # Return value function outputs. VF estimates will hence be added to the
-    # SampleBatches produced by the sampler(s) to generate the train batches
-    # going into the loss function.
-    return {
-        SampleBatch.VF_PREDS: model.value_function(),
-    }
-
-
-class KLCoeffMixin:
-    """Assigns the `update_kl()` method to the PPOPolicy.
-
-    This is used in PPO's execution plan (see ppo.py) for updating the KL
-    coefficient after each learning step based on `config.kl_target` and
-    the measured KL value (from the train_batch).
-    """
-
-    def __init__(self, config):
         # The current KL value (as python float).
-        self.kl_coeff = config["kl_coeff"]
+        self.kl_coeff = self.config["kl_coeff"]
         # Constant target value.
-        self.kl_target = config["kl_target"]
+        self.kl_target = self.config["kl_target"]
+
+        # TODO: Don't require users to call this manually.
+        self._initialize_loss_from_dummy_batch()
+
+    @override(TorchPolicy)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        # Do all post-processing always with no_grad().
+        # Not using this here will introduce a memory leak
+        # in torch (issue #6962).
+        # TODO: no_grad still necessary?
+        with torch.no_grad():
+            return compute_gae_for_sample_batch(self, sample_batch,
+                                                other_agent_batches, episode)
+
+    # TODO: Add method to Policy base class (as the new way of defining loss
+    #  functions (instead of passing 'loss` to the super's constructor)).
+    @override(TorchPolicy)
+    def loss(self, model: ModelV2, dist_class: Type[ActionDistribution],
+             train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+        """Constructs the loss for Proximal Policy Objective.
+
+        Args:
+            model: The Model to calculate the loss for.
+            dist_class: The action distr. class.
+            train_batch: The training data.
+
+        Returns:
+            The PPO loss tensor given the input batch.
+        """
+
+        logits, state = model(train_batch)
+        curr_action_dist = dist_class(logits, model)
+
+        # RNN case: Mask away 0-padded chunks at end of time axis.
+        if state:
+            B = len(train_batch[SampleBatch.SEQ_LENS])
+            max_seq_len = logits.shape[0] // B
+            mask = sequence_mask(
+                train_batch[SampleBatch.SEQ_LENS],
+                max_seq_len,
+                time_major=model.is_time_major())
+            mask = torch.reshape(mask, [-1])
+            num_valid = torch.sum(mask)
+
+            def reduce_mean_valid(t):
+                return torch.sum(t[mask]) / num_valid
+
+        # non-RNN case: No masking.
+        else:
+            mask = None
+            reduce_mean_valid = torch.mean
+
+        prev_action_dist = dist_class(
+            train_batch[SampleBatch.ACTION_DIST_INPUTS], model)
+
+        logp_ratio = torch.exp(
+            curr_action_dist.logp(train_batch[SampleBatch.ACTIONS]) -
+            train_batch[SampleBatch.ACTION_LOGP])
+
+        # Only calculate kl loss if necessary (kl-coeff > 0.0).
+        if self.config["kl_coeff"] > 0.0:
+            action_kl = prev_action_dist.kl(curr_action_dist)
+            mean_kl_loss = reduce_mean_valid(action_kl)
+        else:
+            mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
+
+        curr_entropy = curr_action_dist.entropy()
+        mean_entropy = reduce_mean_valid(curr_entropy)
+
+        surrogate_loss = torch.min(
+            train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
+            train_batch[Postprocessing.ADVANTAGES] * torch.clamp(
+                logp_ratio, 1 - self.config["clip_param"],
+                1 + self.config["clip_param"]))
+        mean_policy_loss = reduce_mean_valid(-surrogate_loss)
+
+        # Compute a value function loss.
+        if self.config["use_critic"]:
+            prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
+            value_fn_out = model.value_function()
+            vf_loss1 = torch.pow(
+                value_fn_out - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
+            vf_clipped = prev_value_fn_out + torch.clamp(
+                value_fn_out - prev_value_fn_out,
+                -self.config["vf_clip_param"], self.config["vf_clip_param"])
+            vf_loss2 = torch.pow(
+                vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
+            vf_loss = torch.max(vf_loss1, vf_loss2)
+            mean_vf_loss = reduce_mean_valid(vf_loss)
+        # Ignore the value function.
+        else:
+            vf_loss = mean_vf_loss = 0.0
+
+        total_loss = reduce_mean_valid(-surrogate_loss +
+                                       self.config["vf_loss_coeff"] * vf_loss -
+                                       self.entropy_coeff * curr_entropy)
+
+        # Add mean_kl_loss (already processed through `reduce_mean_valid`),
+        # if necessary.
+        if self.config["kl_coeff"] > 0.0:
+            total_loss += self.kl_coeff * mean_kl_loss
+
+        # Store values for stats function in model (tower), such that for
+        # multi-GPU, we do not override them during the parallel loss phase.
+        model.tower_stats["total_loss"] = total_loss
+        model.tower_stats["mean_policy_loss"] = mean_policy_loss
+        model.tower_stats["mean_vf_loss"] = mean_vf_loss
+        model.tower_stats["vf_explained_var"] = explained_variance(
+            train_batch[Postprocessing.VALUE_TARGETS], model.value_function())
+        model.tower_stats["mean_entropy"] = mean_entropy
+        model.tower_stats["mean_kl_loss"] = mean_kl_loss
+
+        return total_loss
+
+    def _value(self, **input_dict):
+        # When doing GAE, we need the value function estimate on the
+        # observation.
+        if self.config["use_gae"]:
+            # Input dict is provided to us automatically via the Model's
+            # requirements. It's a single-timestep (last one in trajectory)
+            # input_dict.
+            input_dict = self._lazy_tensor_dict(input_dict)
+            model_out, _ = self.model(input_dict)
+            # [0] = remove the batch dim.
+            return self.model.value_function()[0].item()
+        # When not doing GAE, we do not require the value function's output.
+        else:
+            return 0.0
 
     def update_kl(self, sampled_kl):
         # Update the current KL value based on the recently measured value.
@@ -199,75 +186,56 @@ class KLCoeffMixin:
         # Return the current KL value.
         return self.kl_coeff
 
+    # TODO: Make this an event-style subscription (e.g.:
+    #  "after_actions_computed").
+    @override(TorchPolicy)
+    def extra_action_out(self, input_dict, state_batches, model, action_dist):
+        # Return value function outputs. VF estimates will hence be added to
+        # the SampleBatches produced by the sampler(s) to generate the train
+        # batches going into the loss function.
+        return {
+            SampleBatch.VF_PREDS: model.value_function(),
+        }
 
-class ValueNetworkMixin:
-    """Assigns the `_value()` method to the PPOPolicy.
+    # TODO: Make this an event-style subscription (e.g.:
+    #  "after_gradients_computed").
+    @override(TorchPolicy)
+    def extra_grad_process(self, local_optimizer, loss):
+        return apply_grad_clipping(self, local_optimizer, loss)
 
-    This way, Policy can call `_value()` to get the current VF estimate on a
-    single(!) observation (as done in `postprocess_trajectory_fn`).
-    Note: When doing this, an actual forward pass is being performed.
-    This is different from only calling `model.value_function()`, where
-    the result of the most recent forward pass is being used to return an
-    already calculated tensor.
-    """
+    # TODO: Make this an event-style subscription (e.g.:
+    #  "after_losses_computed").
+    @override(TorchPolicy)
+    def extra_grad_info(self,
+                        train_batch: SampleBatch) -> Dict[str, TensorType]:
+        return convert_to_numpy({
+            "cur_kl_coeff": self.kl_coeff,
+            "cur_lr": self.cur_lr,
+            "total_loss": torch.mean(
+                torch.stack(self.get_tower_stats("total_loss"))),
+            "policy_loss": torch.mean(
+                torch.stack(self.get_tower_stats("mean_policy_loss"))),
+            "vf_loss": torch.mean(
+                torch.stack(self.get_tower_stats("mean_vf_loss"))),
+            "vf_explained_var": torch.mean(
+                torch.stack(self.get_tower_stats("vf_explained_var"))),
+            "kl": torch.mean(
+                torch.stack(self.get_tower_stats("mean_kl_loss"))),
+            "entropy": torch.mean(
+                torch.stack(self.get_tower_stats("mean_entropy"))),
+            "entropy_coeff": self.entropy_coeff,
+        })
 
-    def __init__(self, obs_space, action_space, config):
-        # When doing GAE, we need the value function estimate on the
-        # observation.
-        if config["use_gae"]:
-            # Input dict is provided to us automatically via the Model's
-            # requirements. It's a single-timestep (last one in trajectory)
-            # input_dict.
-
-            def value(**input_dict):
-                input_dict = SampleBatch(input_dict)
-                input_dict = self._lazy_tensor_dict(input_dict)
-                model_out, _ = self.model(input_dict)
-                # [0] = remove the batch dim.
-                return self.model.value_function()[0].item()
-
-        # When not doing GAE, we do not require the value function's output.
-        else:
-
-            def value(*args, **kwargs):
-                return 0.0
-
-        self._value = value
-
-
-def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space,
-                 config: TrainerConfigDict) -> None:
-    """Call all mixin classes' constructors before PPOPolicy initialization.
-
-    Args:
-        policy (Policy): The Policy object.
-        obs_space (gym.spaces.Space): The Policy's observation space.
-        action_space (gym.spaces.Space): The Policy's action space.
-        config (TrainerConfigDict): The Policy's config.
-    """
-    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
-    KLCoeffMixin.__init__(policy, config)
-    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
-                                  config["entropy_coeff_schedule"])
-    LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
-
-
-# Build a child class of `TorchPolicy`, given the custom functions defined
-# above.
-PPOTorchPolicy = build_policy_class(
-    name="PPOTorchPolicy",
-    framework="torch",
-    get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
-    loss_fn=ppo_surrogate_loss,
-    stats_fn=kl_and_loss_stats,
-    extra_action_out_fn=vf_preds_fetches,
-    postprocess_fn=compute_gae_for_sample_batch,
-    extra_grad_process_fn=apply_grad_clipping,
-    before_init=setup_config,
-    before_loss_init=setup_mixins,
-    mixins=[
-        LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
-        ValueNetworkMixin
-    ],
-)
+    # TODO: Make lr-schedule and entropy-schedule Plugin-style functionalities
+    #  that can be added (via the config) to any Trainer/Policy.
+    @override(TorchPolicy)
+    def on_global_var_update(self, global_vars):
+        super().on_global_var_update(global_vars)
+        if self._lr_schedule:
+            self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
+            for opt in self._optimizers:
+                for p in opt.param_groups:
+                    p["lr"] = self.cur_lr
+        if self._entropy_coeff_schedule is not None:
+            self.entropy_coeff = self._entropy_coeff_schedule.value(
+                global_vars["timestep"])

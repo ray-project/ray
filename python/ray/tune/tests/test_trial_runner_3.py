@@ -24,6 +24,7 @@ from ray.tune.suggest.repeater import Repeater
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
 from ray.tune.suggest.search_generator import SearchGenerator
+from ray.tune.syncer import SyncConfig
 
 
 class TrialRunnerTest3(unittest.TestCase):
@@ -509,8 +510,8 @@ class TrialRunnerTest3(unittest.TestCase):
         runner2.step()  # Process save
         self.assertRaises(TuneError, runner2.step)
 
-    def testTrialNoSave(self):
-        """Check that non-checkpointing trials are not saved."""
+    def testTrialNoCheckpointSave(self):
+        """Check that non-checkpointing trials *are* saved."""
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
         ray.init(num_cpus=3)
@@ -556,7 +557,7 @@ class TrialRunnerTest3(unittest.TestCase):
             runner2.get_trial("checkpoint").status == Trial.TERMINATED)
         self.assertTrue(runner2.get_trial("pending").status == Trial.PENDING)
         self.assertTrue(
-            not runner2.get_trial("pending").has_reported_at_least_once)
+            runner2.get_trial("pending").has_reported_at_least_once)
         runner2.step()
 
     def testCheckpointWithFunction(self):
@@ -655,7 +656,9 @@ class TrialRunnerTest3(unittest.TestCase):
             checkpoint_at_end=True,
             stopping_criterion={"training_iteration": 4})
         runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+            local_checkpoint_dir=self.tmpdir,
+            checkpoint_period=0,
+            trial_executor=RayTrialExecutor(result_buffer_length=7))
         runner.add_trial(trial)
 
         runner.step()  # start trial
@@ -674,35 +677,6 @@ class TrialRunnerTest3(unittest.TestCase):
 
         runner.step()  # run iteration 4
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 4)
-        self.assertEqual(num_checkpoints(trial), 1)
-
-    def testCheckpointAtEndBuffered(self):
-        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "7"
-        os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "0.5"
-
-        def num_checkpoints(trial):
-            return sum(
-                item.startswith("checkpoint_")
-                for item in os.listdir(trial.logdir))
-
-        ray.init(num_cpus=2)
-
-        trial = Trial(
-            "__fake",
-            checkpoint_at_end=True,
-            stopping_criterion={"training_iteration": 4})
-        # Force result buffer length
-        runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            checkpoint_period=0,
-            trial_executor=RayTrialExecutor(result_buffer_length=7))
-        runner.add_trial(trial)
-
-        runner.step()  # start trial
-        self.assertEqual(num_checkpoints(trial), 0)
-
-        runner.step()  # run iterations 1-7
-        self.assertEqual(trial.last_result[TRAINING_ITERATION], 7)
         self.assertEqual(num_checkpoints(trial), 1)
 
     def testUserCheckpoint(self):
@@ -779,7 +753,7 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertTrue(trials[0].has_checkpoint())
         self.assertEqual(num_checkpoints(trials[0]), 2)
 
-    @patch("ray.tune.syncer.CLOUD_SYNC_PERIOD", 0)
+    @patch("ray.tune.syncer.SYNC_PERIOD", 0)
     def testCheckpointAutoPeriod(self):
         ray.init(num_cpus=3)
 
@@ -791,7 +765,7 @@ class TrialRunnerTest3(unittest.TestCase):
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
             checkpoint_period="auto",
-            sync_to_cloud=sync_up,
+            sync_config=SyncConfig(upload_dir="fake", syncer=sync_up),
             remote_checkpoint_dir="fake")
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 1}))
 
@@ -1061,6 +1035,41 @@ class SearchAlgorithmTest(unittest.TestCase):
         limiter.on_trial_complete("test_1", {"result": 3})
         limiter.on_trial_complete("test_2", {"result": 3})
         assert not limiter.searcher.returned_result
+
+    def testSetMaxConcurrency(self):
+        """Test whether ``set_max_concurrency`` is called by the
+        ``ConcurrencyLimiter`` and works correctly.
+        """
+
+        class TestSuggestion(Searcher):
+            def __init__(self, index):
+                self.index = index
+                self.returned_result = []
+                self._max_concurrent = 1
+                super().__init__(metric="result", mode="max")
+
+            def suggest(self, trial_id):
+                self.index += 1
+                return {"score": self.index}
+
+            def on_trial_complete(self, trial_id, result=None, **kwargs):
+                self.returned_result.append(result)
+
+            def set_max_concurrency(self, max_concurrent: int) -> bool:
+                self._max_concurrent = max_concurrent
+                return True
+
+        searcher = TestSuggestion(0)
+        limiter_max_concurrent = 2
+        limiter = ConcurrencyLimiter(
+            searcher, max_concurrent=limiter_max_concurrent, batch=True)
+        assert limiter.searcher._max_concurrent == limiter_max_concurrent
+        # Since set_max_concurrency returns True, ConcurrencyLimiter should not
+        # be limiting concurrency itself
+        assert not limiter._limit_concurrency
+        assert limiter.suggest("test_1")["score"] == 1
+        assert limiter.suggest("test_2")["score"] == 2
+        assert limiter.suggest("test_3")["score"] == 3
 
 
 class ResourcesTest(unittest.TestCase):

@@ -13,6 +13,7 @@ import uuid
 
 import ray
 import ray.cloudpickle as pickle
+from ray.tune.cloud import TrialCheckpoint
 from ray.tune.logger import Logger
 from ray.tune.resources import Resources
 from ray.tune.result import (
@@ -117,6 +118,7 @@ class Trainable:
         self._stderr_file = stderr_file
 
         start_time = time.time()
+        self._local_ip = self.get_current_ip()
         self.setup(copy.deepcopy(self.config))
         setup_time = time.time() - start_time
         if setup_time > SETUP_TIME_THRESHOLD:
@@ -124,7 +126,6 @@ class Trainable:
                         "trainable is slow to initialize, consider setting "
                         "reuse_actors=True to reduce actor creation "
                         "overheads.".format(setup_time))
-        self._local_ip = self.get_current_ip()
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
 
@@ -161,11 +162,8 @@ class Trainable:
 
             @classmethod
             def default_resource_request(cls, config):
-                return Resources(
-                    cpu=0,
-                    gpu=0,
-                    extra_cpu=config["workers"],
-                    extra_gpu=int(config["use_gpu"]) * config["workers"])
+                return PlacementGroupFactory([{"CPU": 1}, {"CPU": 1}]])
+
 
         Args:
             config[Dict[str, Any]]: The Trainable's config dict.
@@ -448,6 +446,10 @@ class Trainable:
                                           self.logdir)
             self.storage_client.wait()
 
+        # Ensure TrialCheckpoints are converted
+        if isinstance(checkpoint_path, TrialCheckpoint):
+            checkpoint_path = checkpoint_path.local_path
+
         with open(checkpoint_path + ".tune_metadata", "rb") as f:
             metadata = pickle.load(f)
         self._experiment_id = metadata["experiment_id"]
@@ -493,6 +495,10 @@ class Trainable:
         Args:
             checkpoint_path (str): Path to checkpoint.
         """
+        # Ensure TrialCheckpoints are converted
+        if isinstance(checkpoint_path, TrialCheckpoint):
+            checkpoint_path = checkpoint_path.local_path
+
         try:
             checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
         except FileNotFoundError:

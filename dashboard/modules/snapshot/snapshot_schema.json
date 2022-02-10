@@ -30,6 +30,9 @@
                     "status": {
                       "type": ["string", "null"]
                     },
+                    "status_message": {
+                      "type": ["string", "null"]
+                    },
                     "isDead": {
                       "type": "boolean"
                     },
@@ -132,7 +135,7 @@
                             "type": "string"
                           },
                           "version": {
-                            "type": "string"
+                            "type": ["string", "null"]
                           }
                         },
                         "required": [
@@ -178,7 +181,7 @@
                       "type": "integer"
                     },
                     "httpRoute": {
-                      "type": "string"
+                      "type": ["string", "null"]
                     },
                     "name": {
                       "type": "string"
@@ -193,7 +196,7 @@
                       "type": "string"
                     },
                     "version": {
-                      "type": "string"
+                      "type": ["string", "null"]
                     }
                   },
                   "required": [

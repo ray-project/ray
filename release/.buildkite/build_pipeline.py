@@ -1,6 +1,7 @@
 import copy
 import logging
 import os
+import re
 import sys
 
 import yaml
@@ -78,7 +79,9 @@ CORE_NIGHTLY_TESTS = {
         SmokeTest("stress_test_dead_actors"),
         "shuffle_data_loader",
         "dask_on_ray_1tb_sort",
-        "many_nodes_actor_test",
+        SmokeTest("threaded_actors_stress_test"),
+        "placement_group_performance_test",
+        "pg_long_running_performance_test",
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
         "single_node",
@@ -92,6 +95,65 @@ CORE_NIGHTLY_TESTS = {
         "shuffle_data_loader",
         "pipelined_training_50_gb",
         "pipelined_ingestion_1500_gb_15_windows",
+        "datasets_preprocess_ingest",
+        "datasets_ingest_400G",
+        SmokeTest("datasets_ingest_train_infer"),
+    ],
+    "~/ray/release/nightly_tests/chaos_test.yaml": [
+        "chaos_many_actors",
+        "chaos_many_tasks_no_object_store",
+        "chaos_pipelined_ingestion_1500_gb_15_windows",
+    ],
+    "~/ray/release/microbenchmark/microbenchmark.yaml": [
+        "microbenchmark",
+    ],
+}
+
+SERVE_NIGHTLY_TESTS = {
+    "~/ray/release/long_running_tests/long_running_tests.yaml": [
+        SmokeTest("serve"),
+        SmokeTest("serve_failure"),
+    ],
+    "~/ray/release/serve_tests/serve_tests.yaml": [
+        "single_deployment_1k_noop_replica",
+        "multi_deployment_1k_noop_replica",
+        "serve_micro_benchmark",
+        "serve_micro_benchmark_k8s",
+        "serve_cluster_fault_tolerance",
+    ],
+}
+
+CORE_DAILY_TESTS = {
+    "~/ray/release/nightly_tests/nightly_tests.yaml": [
+        "dask_on_ray_large_scale_test_no_spilling",
+        "dask_on_ray_large_scale_test_spilling",
+        "pg_autoscaling_regression_test",
+        "threaded_actors_stress_test",
+        "stress_test_many_tasks",
+        "stress_test_dead_actors",
+        "many_nodes_actor_test",
+    ],
+    "~/ray/release/nightly_tests/chaos_test.yaml": [
+        "chaos_dask_on_ray_large_scale_test_no_spilling",
+        "chaos_dask_on_ray_large_scale_test_spilling",
+    ],
+}
+
+CORE_SCALABILITY_TESTS_DAILY = {
+    "~/ray/benchmarks/benchmark_tests.yaml": [
+        "many_actors",
+        "many_tasks",
+        "many_pgs",
+        "many_nodes",
+    ],
+}
+
+CORE_REDIS_HA_TESTS_DAILY = {
+    "~/ray/benchmarks/benchmark_tests.yaml": [
+        "many_actors_redis_ha",
+        "many_tasks_redis_ha",
+        "many_pgs_redis_ha",
+        "many_nodes_redis_ha",
     ],
 }
 
@@ -103,11 +165,6 @@ NIGHTLY_TESTS = {
         "dask_xgboost_test",
         "modin_xgboost_test",
         "torch_tune_serve_test",
-    ],
-    "~/ray/release/nightly_tests/nightly_tests.yaml": [
-        "dask_on_ray_large_scale_test_no_spilling",
-        "dask_on_ray_large_scale_test_spilling",
-        "pg_autoscaling_regression_test",
     ],
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("actor_deaths"),
@@ -123,9 +180,6 @@ NIGHTLY_TESTS = {
         # SmokeTest("serve"),
         # SmokeTest("serve_failure"),
     ],
-    "~/ray/release/microbenchmark/microbenchmark.yaml": [
-        "microbenchmark",
-    ],
     "~/ray/release/sgd_tests/sgd_tests.yaml": [
         "sgd_gpu",
     ],
@@ -133,6 +187,8 @@ NIGHTLY_TESTS = {
         "aws_no_sync_down",
         "aws_ssh_sync",
         "aws_durable_upload",
+        "aws_durable_upload_rllib_str",
+        "aws_durable_upload_rllib_trainer",
         "gcp_k8s_durable_upload",
     ],
     "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
@@ -165,28 +221,12 @@ NIGHTLY_TESTS = {
         # We'll have these as per-PR tests soon.
         # "example_scripts_on_gpu_tests",
     ],
-    "~/ray/release/serve_tests/serve_tests.yaml": [
-        "single_deployment_1k_noop_replica",
-        "multi_deployment_1k_noop_replica",
-        "serve_micro_benchmark",
-        "serve_cluster_fault_tolerance",
-    ],
     "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
         "rte_many_tasks_actors", "wheel_urls", "rte_ray_client"
     ],
 }
 
 WEEKLY_TESTS = {
-    "~/ray/benchmarks/benchmark_tests.yaml": [
-        "many_actors",
-        "many_tasks",
-        "many_pgs",
-        "many_nodes",
-    ],
-    "~/ray/release/nightly_tests/nightly_tests.yaml": [
-        "stress_test_many_tasks",
-        "stress_test_dead_actors",
-    ],
     "~/ray/release/horovod_tests/horovod_tests.yaml": [
         "horovod_test",
     ],
@@ -219,13 +259,6 @@ WEEKLY_TESTS = {
     ],
 }
 
-MANUAL_TESTS = {
-    "~/ray/release/long_running_tests/long_running_tests.yaml": [
-        SmokeTest("serve"),
-        SmokeTest("serve_failure"),
-    ],
-}
-
 # This test suite holds "user" tests to test important user workflows
 # in a particular environment.
 # All workloads in this test suite should:
@@ -245,12 +278,15 @@ USER_TESTS = {
 
 SUITES = {
     "core-nightly": CORE_NIGHTLY_TESTS,
+    "serve-nightly": SERVE_NIGHTLY_TESTS,
+    "core-daily": CORE_DAILY_TESTS,
+    "core-scalability": CORE_SCALABILITY_TESTS_DAILY,
+    "core-redis-ha": CORE_REDIS_HA_TESTS_DAILY,
     "nightly": {
         **NIGHTLY_TESTS,
         **USER_TESTS
     },
     "weekly": WEEKLY_TESTS,
-    "manual": MANUAL_TESTS,
 }
 
 DEFAULT_STEP_TEMPLATE = {
@@ -267,7 +303,7 @@ DEFAULT_STEP_TEMPLATE = {
         "queue": "runner_queue_branch"
     },
     "plugins": [{
-        "docker#v3.8.0": {
+        "docker#v3.9.0": {
             "image": "rayproject/ray",
             "propagate-environment": True,
             "volumes": [
@@ -276,7 +312,6 @@ DEFAULT_STEP_TEMPLATE = {
             ],
         }
     }],
-    "commands": [],
     "artifact_paths": ["/tmp/ray_release_test_artifacts/**/*"],
 }
 
@@ -434,23 +469,34 @@ def create_test_step(
         test_file: str,
         test_name: ReleaseTest,
 ):
+    custom_commit_str = "custom_wheels_url"
+    if ray_wheels:
+        # Extract commit from url
+        p = re.compile(r"([a-f0-9]{40})")
+        m = p.search(ray_wheels)
+        if m is not None:
+            custom_commit_str = m.group(1)
+
     ray_wheels_str = f" ({ray_wheels}) " if ray_wheels else ""
 
     logging.info(f"Creating step for {test_file}/{test_name}{ray_wheels_str}")
-    cmd = str(f"RAY_REPO=\"{ray_repo}\" "
-              f"RAY_BRANCH=\"{ray_branch}\" "
-              f"RAY_VERSION=\"{ray_version}\" "
-              f"RAY_WHEELS=\"{ray_wheels}\" "
-              f"RELEASE_RESULTS_DIR=/tmp/artifacts "
-              f"python release/e2e.py "
-              f"--category {ray_branch} "
-              f"--test-config {test_file} "
-              f"--test-name {test_name} "
-              f"--keep-results-dir")
+
+    cmd = (f"./release/run_e2e.sh "
+           f"--ray-repo \"{ray_repo}\" "
+           f"--ray-branch \"{ray_branch}\" "
+           f"--ray-version \"{ray_version}\" "
+           f"--ray-wheels \"{ray_wheels}\" "
+           f"--ray-test-repo \"{ray_test_repo}\" "
+           f"--ray-test-branch \"{ray_test_branch}\" ")
+
+    args = (f"--category {ray_branch} "
+            f"--test-config {test_file} "
+            f"--test-name {test_name} "
+            f"--keep-results-dir")
 
     if test_name.smoke_test:
         logging.info("This test will run as a smoke test.")
-        cmd += " --smoke-test"
+        args += " --smoke-test"
 
     step_conf = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
@@ -463,18 +509,33 @@ def create_test_step(
                 "limit": test_name.retry
             }]
         }
+    else:
+        # Default retry logic
+        # Warning: Exit codes are currently not correctly propagated to
+        # buildkite! Thus, actual retry logic is currently implemented in
+        # the run_e2e.sh script!
+        step_conf["retry"] = {
+            "automatic": [
+                {
+                    "exit_status": 7,  # Prepare timeout
+                    "limit": 2
+                },
+                {
+                    "exit_status": 9,  # Session timeout
+                    "limit": 2
+                },
+                {
+                    "exit_status": 10,  # Prepare error
+                    "limit": 2
+                }
+            ],
+        }
 
-    step_conf["commands"] += [
-        "pip install -q -r release/requirements.txt",
-        "pip install -U boto3 botocore",
-        f"git clone -b {ray_test_branch} {ray_test_repo} ~/ray", cmd,
-        "sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts "
-        "|| true"
-    ]
+    step_conf["command"] = cmd + args
 
     step_conf["label"] = (
         f"{test_name} "
-        f"({'custom_wheels_url' if ray_wheels_str else ray_branch}) - "
+        f"({custom_commit_str if ray_wheels_str else ray_branch}) - "
         f"{ray_test_branch}/{ray_test_repo}")
     return step_conf
 

@@ -35,7 +35,7 @@ def main(smoke_test: bool = False):
         trial_length_s=trial_length_s,
         max_runtime=max_runtime,
         resources_per_trial={"cpu": 2},  # One per node
-        sync_config=tune.SyncConfig(sync_to_driver=True))
+        sync_config=tune.SyncConfig(syncer="auto"))
 
 
 if __name__ == "__main__":

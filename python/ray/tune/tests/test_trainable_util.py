@@ -36,10 +36,12 @@ class TrainableUtilTest(unittest.TestCase):
         ray.init(local_mode=True)
         ray.tune.run(tune_one, local_dir=self.checkpoint_dir, name=name)
 
-        a = ray.tune.Analysis(
-            os.path.join(self.checkpoint_dir, name), "score", "max")
+        a = ray.tune.ExperimentAnalysis(
+            os.path.join(self.checkpoint_dir, name),
+            default_metric="score",
+            default_mode="max")
         df = a.dataframe()
-        checkpoint_dir = a.get_best_checkpoint(df["logdir"].iloc[0])
+        checkpoint_dir = a.get_best_checkpoint(df["logdir"].iloc[0]).local_path
         assert checkpoint_dir.endswith("/checkpoint_000001/")
 
     def testFindCheckpointDir(self):
@@ -47,7 +49,7 @@ class TrainableUtilTest(unittest.TestCase):
                                        "0/my/nested/chkpt")
         os.makedirs(checkpoint_path)
         found_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-        self.assertEquals(self.checkpoint_dir, found_dir)
+        self.assertEqual(self.checkpoint_dir, found_dir)
 
         with self.assertRaises(FileNotFoundError):
             parent = os.path.dirname(found_dir)
@@ -69,7 +71,7 @@ class TrainableUtilTest(unittest.TestCase):
 
         for i in range(5):
             path = os.path.join(self.checkpoint_dir, str(i))
-            self.assertEquals(loaded["data"][str(i)], open(path, "rb").read())
+            self.assertEqual(loaded["data"][str(i)], open(path, "rb").read())
 
 
 class FlattenDictTest(unittest.TestCase):

@@ -24,7 +24,7 @@ from additional resources and can adapt to your environment. If you
 need to train on more data or have more hyperparameters to tune,
 Ray Tune can leverage your whole cluster for training. If you have
 many users doing inference on your served models, Ray Serve can
-automatically distribute the inference backends to multiple nodes.
+automatically distribute the inference to multiple nodes.
 
 This tutorial will show you an end-to-end example how to train a MNIST
 image classifier on incrementally arriving data and automatically
@@ -35,7 +35,7 @@ By the end of this tutorial you will be able to
 1. Do hyperparameter optimization on a simple MNIST classifier
 2. Continue to train this classifier from an existing model with
    newly arriving data
-3. Automatically create and serve data backends with Ray Serve
+3. Automatically create and serve data deployments with Ray Serve
 
 Roadmap and desired functionality
 ---------------------------------
@@ -402,13 +402,11 @@ def tune_from_existing(start_model,
 #######################################################################
 # Serving tuned models with Ray Serve
 # -----------------------------------
-# Let's now turn to the model serving part with Ray Serve. Serve
-# distinguishes between _backends_ and _endpoints_. Broadly speaking, a
-# backend handles incoming requests and replies with a result. For
-# instance, our MNIST backend takes an image as input and outputs the
-# digit it recognized from it. An endpoint on the other hand forwards
-# incoming HTTP requests to one or more different backends, according
-# to a routing policy.
+# Let's now turn to the model serving part with Ray Serve. Serve allows
+# you to deploy your models as multiple _deployments_. Broadly speaking,
+# a deployment handles incoming requests and replies with a result. For
+# instance, our MNIST deployment takes an image as input and outputs the
+# digit it recognized from it. This deployment can be exposed over HTTP.
 #
 # First, we will define our deployment. This loads our PyTorch
 # MNIST model from a checkpoint, takes an image as an input and

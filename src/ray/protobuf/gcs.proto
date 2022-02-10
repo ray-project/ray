@@ -18,6 +18,7 @@ option cc_enable_arenas = true;
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/runtime_env_common.proto";
 
 option java_package = "io.ray.runtime.generated";
 
@@ -81,19 +82,6 @@ message ObjectTableData {
   bytes manager = 1;
 }
 
-message TaskReconstructionData {
-  // The ID of task.
-  bytes task_id = 1;
-  // The number of times this task has been reconstructed so far.
-  uint64 num_reconstructions = 2;
-  // The node manager that is trying to reconstruct the task.
-  bytes node_manager_id = 3;
-}
-
-message TaskTableData {
-  Task task = 1;
-}
-
 message ActorTableData {
   // State of an actor.
   enum ActorState {
@@ -134,7 +122,7 @@ message ActorTableData {
   Address owner_address = 10;
   // Whether the actor is persistent.
   bool is_detached = 11;
-  // Name of the actor. Only populated if is_detached is true.
+  // Name of the actor.
   string name = 12;
   // Last timestamp that the actor state was updated.
   double timestamp = 13;
@@ -145,9 +133,6 @@ message ActorTableData {
   repeated ResourceMapEntry resource_mapping = 15;
   // The process id of this actor.
   uint32 pid = 16;
-  // The exception thrown in creation task. This field is set if this actor died because
-  // of exception thrown in creation task. Only applies when state=DEAD.
-  RayException creation_task_exception = 18;
   // The actor's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
   string ray_namespace = 19;
   // The unix ms timestamp the actor was started at.
@@ -161,6 +146,8 @@ message ActorTableData {
   // The actor's class name. This is necessary because the task spec's lifetime
   // is shorter than the ActorTableData.
   string class_name = 23;
+  // Contains metadata about why the actor is dead.
+  ActorDeathCause death_cause = 24;
 }
 
 message ErrorTableData {
@@ -262,20 +249,6 @@ message HeartbeatTableData {
   bytes node_id = 1;
 }
 
-// Data for a lease on task execution.
-message TaskLeaseData {
-  // The task ID.
-  bytes task_id = 1;
-  // Node manager ID.
-  bytes node_manager_id = 2;
-  // The time that the lease was last acquired at. NOTE(swang): This is the
-  // system clock time according to the node that added the entry and is not
-  // synchronized with other nodes.
-  uint64 acquired_at = 3;
-  // The period that the lease is active for.
-  uint64 timeout = 4;
-}
-
 message JobConfig {
   // The number of java workers per worker process.
   uint32 num_java_workers_per_process = 1;
@@ -286,7 +259,7 @@ message JobConfig {
   // in Python. In C++, libraries under these paths will be loaded by 'dlopen'.
   repeated string code_search_path = 3;
   // Runtime environment to run the code
-  RuntimeEnv runtime_env = 4;
+  RuntimeEnvInfo runtime_env_info = 4;
   // The job's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
   string ray_namespace = 5;
   // An opaque kv store for job related metadata.
@@ -342,34 +315,6 @@ message ResourceMap {
 
 message StoredConfig {
   string config = 1;
-}
-
-message ObjectLocationInfo {
-  bytes object_id = 1;
-  repeated ObjectTableData locations = 2;
-  // For objects that have been spilled to external storage, the URL from which
-  // they can be retrieved.
-  string spilled_url = 3;
-  // The node id that spills the object to the disk.
-  // It will be Nil if it uses a distributed external storage.
-  bytes spilled_node_id = 4;
-  // The size of the object in bytes.
-  uint64 size = 5;
-}
-
-// A notification message about one object's locations being changed.
-message ObjectLocationChange {
-  bool is_add = 1;
-  // The node manager ID that this object appeared on or was evicted by.
-  bytes node_id = 2;
-  // The object has been spilled to this URL. This should be set xor the above
-  // fields are set.
-  string spilled_url = 3;
-  // The node id that spills the object to the disk.
-  // It will be Nil if it uses a distributed external storage.
-  bytes spilled_node_id = 4;
-  // The size of the object in bytes.
-  uint64 size = 5;
 }
 
 // A notification message about one node's resources being changed.

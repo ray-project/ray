@@ -8,6 +8,7 @@ from ray.util.placement_group import placement_group, remove_placement_group
 from ray.autoscaler.sdk import request_resources
 from ray.autoscaler._private.monitor import Monitor
 from ray.cluster_utils import Cluster
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.test_utils import (generate_system_config_map,
                                      wait_for_condition, SignalActor)
 
@@ -24,6 +25,7 @@ def test_cluster():
     g.remove_node(node2)
     g.remove_node(node)
     assert not any(n.any_processes_alive() for n in [node, node2])
+    g.shutdown()
 
 
 def test_shutdown():
@@ -184,7 +186,10 @@ def test_heartbeats_single(ray_start_cluster_head):
     Test proper metrics.
     """
     cluster = ray_start_cluster_head
-    monitor = setup_monitor(cluster.address)
+    if use_gcs_for_bootstrap():
+        monitor = setup_monitor(cluster.gcs_address)
+    else:
+        monitor = setup_monitor(cluster.address)
     total_cpus = ray.state.cluster_resources()["CPU"]
     verify_load_metrics(monitor, ({"CPU": 0.0}, {"CPU": total_cpus}))
 

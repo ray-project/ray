@@ -8,6 +8,16 @@ from ray.util.annotations import DeveloperAPI
 _default_context: "Optional[DatasetContext]" = None
 _context_lock = threading.Lock()
 
+# The max target block size in bytes for reads and transformations.
+DEFAULT_TARGET_MAX_BLOCK_SIZE = 2048 * 1024 * 1024
+
+# Whether block splitting is on by default
+DEFAULT_BLOCK_SPLITTING_ENABLED = False
+
+# Whether pandas block format is enabled.
+# TODO (kfstorm): Remove this once stable.
+DEFAULT_ENABLE_PANDAS_BLOCK = True
+
 
 @DeveloperAPI
 class DatasetContext:
@@ -17,11 +27,18 @@ class DatasetContext:
     from the driver and remote workers via DatasetContext.get_current().
     """
 
-    def __init__(self, block_owner: ray.actor.ActorHandle,
-                 target_max_block_size: int):
+    def __init__(
+            self,
+            block_owner: ray.actor.ActorHandle,
+            block_splitting_enabled: bool,
+            target_max_block_size: int,
+            enable_pandas_block: bool,
+    ):
         """Private constructor (use get_current() instead)."""
         self.block_owner = block_owner
+        self.block_splitting_enabled = block_splitting_enabled
         self.target_max_block_size = target_max_block_size
+        self.enable_pandas_block = enable_pandas_block
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -35,7 +52,12 @@ class DatasetContext:
         with _context_lock:
 
             if _default_context is None:
-                _default_context = DatasetContext(None, 500 * 1024 * 1024)
+                _default_context = DatasetContext(
+                    block_owner=None,
+                    block_splitting_enabled=DEFAULT_BLOCK_SPLITTING_ENABLED,
+                    target_max_block_size=DEFAULT_TARGET_MAX_BLOCK_SIZE,
+                    enable_pandas_block=DEFAULT_ENABLE_PANDAS_BLOCK,
+                )
 
             if _default_context.block_owner is None:
                 owner = _DesignatedBlockOwner.options(

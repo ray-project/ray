@@ -63,7 +63,7 @@
   <properties>
     <java.version>1.8</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <projetct.version>2.0.0-SNAPSHOT</projetct.version>
+    <project.version>2.0.0-SNAPSHOT</project.version>
     <mockito.version>1.10.19</mockito.version>
     <fst.version>2.57</fst.version>
   </properties>

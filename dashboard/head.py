@@ -9,15 +9,21 @@ from concurrent.futures import Future
 from queue import Queue
 
 from distutils.version import LooseVersion
-from grpc.experimental import aio as aiogrpc
 import grpc
+try:
+    from grpc import aio as aiogrpc
+except ImportError:
+    from grpc.experimental import aio as aiogrpc
 
+import ray.experimental.internal_kv as internal_kv
 import ray._private.utils
-from ray._private.gcs_utils import GcsClient
+from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
 import ray._private.services
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray import ray_constants
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, \
+    GcsAioErrorSubscriber, GcsAioLogSubscriber
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.datacenter import DataOrganizer
@@ -43,8 +49,8 @@ GRPC_CHANNEL_OPTIONS = (
 async def get_gcs_address_with_retry(redis_client) -> str:
     while True:
         try:
-            gcs_address = await redis_client.get(
-                dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)
+            gcs_address = (await redis_client.get(
+                dashboard_consts.GCS_SERVER_ADDRESS)).decode()
             if not gcs_address:
                 raise Exception("GCS address not found.")
             logger.info("Connect to GCS at %s", gcs_address)
@@ -98,8 +104,8 @@ class GCSHealthCheckThread(threading.Thread):
 
 
 class DashboardHead:
-    def __init__(self, http_host, http_port, http_port_retries, redis_address,
-                 redis_password, log_dir):
+    def __init__(self, http_host, http_port, http_port_retries, gcs_address,
+                 redis_address, redis_password, log_dir):
         self.health_check_thread: GCSHealthCheckThread = None
         self._gcs_rpc_error_counter = 0
         # Public attributes are accessible for all head modules.
@@ -107,14 +113,26 @@ class DashboardHead:
         self.http_host = "127.0.0.1" if http_host == "localhost" else http_host
         self.http_port = http_port
         self.http_port_retries = http_port_retries
-        self.redis_address = dashboard_utils.address_tuple(redis_address)
-        self.redis_password = redis_password
+
+        if use_gcs_for_bootstrap():
+            assert gcs_address is not None
+            self.gcs_address = gcs_address
+        else:
+            self.redis_address = dashboard_utils.address_tuple(redis_address)
+            self.redis_password = redis_password
+
         self.log_dir = log_dir
         self.aioredis_client = None
         self.aiogrpc_gcs_channel = None
+        self.gcs_error_subscriber = None
+        self.gcs_log_subscriber = None
         self.http_session = None
         self.ip = ray.util.get_node_ip_address()
-        ip, port = redis_address.split(":")
+        if not use_gcs_for_bootstrap():
+            ip, port = redis_address.split(":")
+        else:
+            ip, port = gcs_address.split(":")
+
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
@@ -167,18 +185,25 @@ class DashboardHead:
         logger.info("Loaded %d modules.", len(modules))
         return modules
 
-    async def run(self):
+    async def get_gcs_address(self):
         # Create an aioredis client for all modules.
-        try:
-            self.aioredis_client = await dashboard_utils.get_aioredis_client(
-                self.redis_address, self.redis_password,
-                dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
-                dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
-        except (socket.gaierror, ConnectionError):
-            logger.error(
-                "Dashboard head exiting: "
-                "Failed to connect to redis at %s", self.redis_address)
-            sys.exit(-1)
+        if use_gcs_for_bootstrap():
+            return self.gcs_address
+        else:
+            try:
+                self.aioredis_client = \
+                    await dashboard_utils.get_aioredis_client(
+                        self.redis_address, self.redis_password,
+                        dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
+                        dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
+            except (socket.gaierror, ConnectionError):
+                logger.error(
+                    "Dashboard head exiting: "
+                    "Failed to connect to redis at %s", self.redis_address)
+                sys.exit(-1)
+            return await get_gcs_address_with_retry(self.aioredis_client)
+
+    async def run(self):
 
         # Create a http session for all modules.
         # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
@@ -188,11 +213,20 @@ class DashboardHead:
         else:
             self.http_session = aiohttp.ClientSession()
 
-        # Waiting for GCS is ready.
-        gcs_address = await get_gcs_address_with_retry(self.aioredis_client)
-        self.gcs_client = GcsClient(gcs_address)
+        gcs_address = await self.get_gcs_address()
+
+        # Dashboard will handle connection failure automatically
+        self.gcs_client = GcsClient(
+            address=gcs_address, nums_reconnect_retry=0)
+        internal_kv._initialize_internal_kv(self.gcs_client)
         self.aiogrpc_gcs_channel = ray._private.utils.init_grpc_channel(
             gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True)
+        if gcs_pubsub_enabled():
+            self.gcs_error_subscriber = GcsAioErrorSubscriber(
+                address=gcs_address)
+            self.gcs_log_subscriber = GcsAioLogSubscriber(address=gcs_address)
+            await self.gcs_error_subscriber.subscribe()
+            await self.gcs_log_subscriber.subscribe()
 
         self.health_check_thread = GCSHealthCheckThread(gcs_address)
         self.health_check_thread.start()
@@ -237,12 +271,16 @@ class DashboardHead:
             http_host).is_unspecified else http_host
         logger.info("Dashboard head http address: %s:%s", http_host, http_port)
 
-        # Write the dashboard head port to redis.
-        await self.aioredis_client.set(ray_constants.REDIS_KEY_DASHBOARD,
-                                       f"{http_host}:{http_port}")
-        await self.aioredis_client.set(
-            dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
-            f"{self.ip}:{self.grpc_port}")
+        # TODO: Use async version if performance is an issue
+        # Write the dashboard head port to gcs kv.
+        internal_kv._internal_kv_put(
+            ray_constants.DASHBOARD_ADDRESS,
+            f"{http_host}:{http_port}",
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+        internal_kv._internal_kv_put(
+            dashboard_consts.DASHBOARD_RPC_ADDRESS,
+            f"{self.ip}:{self.grpc_port}",
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
 
         # Dump registered http routes.
         dump_routes = [

@@ -56,7 +56,7 @@ available_node_types:
                 imagePublisher: microsoft-dsvm
                 imageOffer: ubuntu-1804
                 imageSku: 1804-gen2
-                imageVersion: 21.01.21
+                imageVersion: latest
 
     ray.worker.default:
         # The minimum number of nodes of this type to launch.
@@ -72,8 +72,8 @@ available_node_types:
                 imagePublisher: microsoft-dsvm
                 imageOffer: ubuntu-1804
                 imageSku: 1804-gen2
-                imageVersion: 21.01.21
-                # optionally set priority to use Spot instances
+                imageVersion: latest
+                # comment lines below to not use Spot instances
                 priority: Spot
                 # set a maximum price for spot instances if desired
                 # billingProfile:
@@ -121,9 +121,9 @@ setup_commands:
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
     - (which conda && echo 'eval "$(conda shell.bash hook)"' >> ~/.bashrc) || true
-    # - (conda activate py37_pytorch &> /dev/null && echo 'conda activate py37_pytorch' >> ~/.bashrc) || true
-    - (conda activate py37_tensorflow &> /dev/null && echo 'conda activate py37_tensorflow' >> ~/.bashrc) || true
-    - which ray || pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+    # - (conda activate py38_pytorch &> /dev/null && echo 'conda activate py38_pytorch' >> ~/.bashrc) || true
+    - (conda activate py38_tensorflow &> /dev/null && echo 'conda activate py38_tensorflow' >> ~/.bashrc) || true
+    - which ray || pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl"
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true
@@ -131,7 +131,7 @@ setup_commands:
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:
-    - pip install -U azure-cli-core==2.22.0 azure-mgmt-compute==14.0.0 azure-mgmt-msi==1.0.0 azure-mgmt-network==10.2.0 azure-mgmt-resource==13.0.0
+    - pip install -U azure-cli-core==2.29.1 azure-identity==1.7.0 azure-mgmt-compute==23.1.0 azure-mgmt-network==19.0.0 azure-mgmt-resource==20.0.0 msrestazure==0.6.4
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []

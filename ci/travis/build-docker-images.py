@@ -26,6 +26,7 @@ DOCKER_HUB_DESCRIPTION = {
                  "https://hub.docker.com/r/rayproject/ray"),
     "ray": "Official Docker Images for Ray, the distributed computing API.",
     "ray-ml": "Developer ready Docker Image for Ray.",
+    "ray-worker-container": "Internal Image for CI test",
 }
 
 PY_MATRIX = {
@@ -210,7 +211,8 @@ def _build_docker_image(image_name: str,
 
         labels = {
             "image-name": image_name,
-            "python-version": PY_MATRIX[py_version]
+            "python-version": PY_MATRIX[py_version],
+            "ray-commit": _get_commit_sha()
         }
         if image_type in CUDA_FULL:
             labels["cuda-version"] = CUDA_FULL[image_type]
@@ -401,7 +403,7 @@ def push_and_tag_images(py_versions: List[str],
     date_tag = datetime.datetime.now().strftime("%Y-%m-%d")
     sha_tag = _get_commit_sha()
     if _release_build():
-        release_name = re.search("[0-9]\.[0-9]\.[0-9].*",
+        release_name = re.search("[0-9]+\.[0-9]+\.[0-9].*",
                                  _get_branch()).group(0)
         date_tag = release_name
         sha_tag = release_name
@@ -554,7 +556,8 @@ MERGE = "MERGE"
 HUMAN = "HUMAN"
 PR = "PR"
 BUILDKITE = "BUILDKITE"
-BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE]
+LOCAL = "LOCAL"
+BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE, LOCAL]
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -625,6 +628,7 @@ if __name__ == "__main__":
 
     build_type = args.build_type
     is_buildkite = build_type == BUILDKITE
+    is_local = build_type == LOCAL
 
     if build_type == BUILDKITE:
         if os.environ.get("BUILDKITE_PULL_REQUEST", "") == "false":
@@ -635,12 +639,13 @@ if __name__ == "__main__":
     if build_type == HUMAN:
         # If manually triggered, request user for branch and SHA value to use.
         _configure_human_version()
-    if (build_type in {HUMAN, MERGE, BUILDKITE}
-            or _check_if_docker_files_modified()):
+    if (build_type in {HUMAN, MERGE, BUILDKITE, LOCAL}
+            or _check_if_docker_files_modified()
+            or args.only_build_worker_container):
         DOCKER_CLIENT = docker.from_env()
         is_merge = build_type == MERGE
         # Buildkite is authenticated in the background.
-        if is_merge and not is_buildkite:
+        if is_merge and not is_buildkite and not is_local:
             # We do this here because we want to be authenticated for
             # Docker pulls as well as pushes (to avoid rate-limits).
             username, password = _get_docker_creds()

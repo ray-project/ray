@@ -12,10 +12,6 @@ class RayParams:
     """A class used to store the parameters used by Ray.
 
     Attributes:
-        external_addresses (str): The address of external Redis server to
-            connect to, in format of "ip1:port1,ip2:port2,...".  If this
-            address is provided, then ray won't start Redis instances in the
-            head node but use external Redis server(s) instead.
         redis_address (str): The address of the Redis server to connect to. If
             this address is not provided, then this command will start Redis, a
             raylet, a plasma store, a plasma manager, and some workers.
@@ -58,10 +54,12 @@ class RayParams:
             object refs. The same value can be used across multiple runs of the
             same job in order to generate the object refs in a consistent
             manner. However, the same ID should not be used for different jobs.
-        redirect_worker_output: True if the stdout and stderr of worker
-            processes should be redirected to files.
         redirect_output (bool): True if stdout and stderr for non-worker
             processes should be redirected to files and false otherwise.
+        external_addresses (str): The address of external Redis server to
+            connect to, in format of "ip1:port1,ip2:port2,...".  If this
+            address is provided, then ray won't start Redis instances in the
+            head node but use external Redis server(s) instead.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
         redis_max_clients: If provided, attempt to configure Redis with this
@@ -97,6 +95,8 @@ class RayParams:
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        runtime_env_dir_name (str): If provided, specifies the directory that
+            will be created in the session dir to hold runtime_env files.
         include_log_monitor (bool): If True, then start a log monitor to
             monitor the log files for all processes on this node and push their
             contents to Redis.
@@ -120,8 +120,8 @@ class RayParams:
     """
 
     def __init__(self,
-                 external_addresses=None,
                  redis_address=None,
+                 gcs_address=None,
                  num_cpus=None,
                  num_gpus=None,
                  resources=None,
@@ -141,8 +141,8 @@ class RayParams:
                  ray_client_server_port=None,
                  object_ref_seed=None,
                  driver_mode=None,
-                 redirect_worker_output=None,
                  redirect_output=None,
+                 external_addresses=None,
                  num_redis_shards=None,
                  redis_max_clients=None,
                  redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
@@ -159,6 +159,7 @@ class RayParams:
                  plasma_store_socket_name=None,
                  raylet_socket_name=None,
                  temp_dir=None,
+                 runtime_env_dir_name=None,
                  include_log_monitor=None,
                  autoscaling_config=None,
                  start_initial_python_workers_for_first_job=False,
@@ -170,9 +171,8 @@ class RayParams:
                  tracing_startup_hook=None,
                  no_monitor=False,
                  env_vars=None):
-        self.object_ref_seed = object_ref_seed
-        self.external_addresses = external_addresses
         self.redis_address = redis_address
+        self.gcs_address = gcs_address
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
@@ -191,8 +191,8 @@ class RayParams:
         self.worker_port_list = worker_port_list
         self.ray_client_server_port = ray_client_server_port
         self.driver_mode = driver_mode
-        self.redirect_worker_output = redirect_worker_output
         self.redirect_output = redirect_output
+        self.external_addresses = external_addresses
         self.num_redis_shards = num_redis_shards
         self.redis_max_clients = redis_max_clients
         self.redis_password = redis_password
@@ -207,12 +207,15 @@ class RayParams:
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
+        self.runtime_env_dir_name = (
+            runtime_env_dir_name or ray_constants.DEFAULT_RUNTIME_ENV_DIR_NAME)
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
         self.metrics_agent_port = metrics_agent_port
         self.metrics_export_port = metrics_export_port
         self.tracing_startup_hook = tracing_startup_hook
         self.no_monitor = no_monitor
+        self.object_ref_seed = object_ref_seed
         self.start_initial_python_workers_for_first_job = (
             start_initial_python_workers_for_first_job)
         self.ray_debugger_external = ray_debugger_external
@@ -282,7 +285,9 @@ class RayParams:
             "gcs_server": wrap_port(self.gcs_server_port),
             "client_server": wrap_port(self.ray_client_server_port),
             "dashboard": wrap_port(self.dashboard_port),
-            "dashboard_agent": wrap_port(self.metrics_agent_port),
+            "dashboard_agent_grpc": wrap_port(self.metrics_agent_port),
+            "dashboard_agent_http": wrap_port(
+                self.dashboard_agent_listen_port),
             "metrics_export": wrap_port(self.metrics_export_port),
         }
         redis_shard_ports = self.redis_shard_ports
@@ -311,7 +316,8 @@ class RayParams:
                         f"Ray component {comp} is trying to use "
                         f"a port number {port} that is used by "
                         "other components.\n"
-                        f"Port information: {pre_selected_ports}\n"
+                        f"Port information: "
+                        f"{self._format_ports(pre_selected_ports)}\n"
                         "If you allocate ports, "
                         "please make sure the same port is not used by "
                         "multiple components.")
@@ -371,12 +377,6 @@ class RayParams:
                 "'GPU' should not be included in the resource dictionary. Use "
                 "num_gpus instead.")
 
-        if self.redirect_worker_output is not None:
-            raise DeprecationWarning(
-                "The redirect_worker_output argument is deprecated. To "
-                "control logging to the driver, use the 'log_to_driver' "
-                "argument to 'ray.init()'")
-
         if self.redirect_output is not None:
             raise DeprecationWarning(
                 "The redirect_output argument is deprecated.")
@@ -387,3 +387,26 @@ class RayParams:
         if numpy_major <= 1 and numpy_minor < 16:
             logger.warning("Using ray with numpy < 1.16.0 will result in slow "
                            "serialization. Upgrade numpy if using with ray.")
+
+    def _format_ports(self, pre_selected_ports):
+        """Format the pre selected ports information to be more
+        human readable.
+        """
+        ports = pre_selected_ports.copy()
+
+        for comp, port_list in ports.items():
+            if len(port_list) == 1:
+                ports[comp] = port_list[0]
+            elif len(port_list) == 0:
+                # Nothing is selected, meaning it will be randomly selected.
+                ports[comp] = "random"
+            elif comp == "worker_ports":
+                min_port = port_list[0]
+                max_port = port_list[len(port_list) - 1]
+                port_range_str = None
+                if len(port_list) < 50:
+                    port_range_str = str(port_list)
+                else:
+                    port_range_str = f"from {min_port} to {max_port}"
+                ports[comp] = (f"{len(port_list)} ports {port_range_str}")
+        return ports

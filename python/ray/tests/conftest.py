@@ -4,21 +4,23 @@ This file defines the common pytest fixtures used in current directory.
 import os
 from contextlib import contextmanager
 import pytest
+import tempfile
+import socket
 import subprocess
 import json
 import time
-import threading
-
-import grpc
+from pathlib import Path
 
 import ray
-from ray.cluster_utils import Cluster, AutoscalingCluster
-from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
-from ray._private.test_utils import init_error_pubsub, setup_tls, teardown_tls
+import ray.ray_constants as ray_constants
+from ray.cluster_utils import (Cluster, AutoscalingCluster,
+                               cluster_not_supported)
+from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance, \
+    wait_for_redis_to_start
+from ray._private.test_utils import (init_error_pubsub, init_log_pubsub,
+                                     setup_tls, teardown_tls,
+                                     get_and_run_node_killer)
 import ray.util.client.server.server as ray_client_server
-import ray._private.gcs_utils as gcs_utils
-from ray.core.generated import node_manager_pb2
-from ray.core.generated import node_manager_pb2_grpc
 
 
 @pytest.fixture
@@ -47,6 +49,37 @@ def get_default_fixture_ray_kwargs():
         "_system_config": system_config,
     }
     return ray_kwargs
+
+
+@pytest.fixture
+def external_redis(request, monkeypatch):
+    # Setup external Redis and env var for initialization.
+    param = getattr(request, "param", {})
+    external_redis_ports = param.get("external_redis_ports")
+    if external_redis_ports is None:
+        with socket.socket() as s:
+            s.bind(("", 0))
+            port = s.getsockname()[1]
+        external_redis_ports = [port]
+    else:
+        del param["external_redis_ports"]
+    processes = []
+    for port in external_redis_ports:
+        temp_dir = ray._private.utils.get_ray_temp_dir()
+        port, proc = _start_redis_instance(
+            REDIS_EXECUTABLE,
+            temp_dir,
+            port,
+            password=ray_constants.REDIS_DEFAULT_PASSWORD)
+        processes.append(proc)
+        wait_for_redis_to_start("127.0.0.1", port,
+                                ray_constants.REDIS_DEFAULT_PASSWORD)
+    address_str = ",".join(
+        map(lambda x: f"127.0.0.1:{x}", external_redis_ports))
+    monkeypatch.setenv("RAY_REDIS_ADDRESS", address_str)
+    yield None
+    for proc in processes:
+        proc.process.terminate()
 
 
 @contextmanager
@@ -81,6 +114,16 @@ def ray_start_no_cpu(request):
 # The following fixture will start ray with 1 cpu.
 @pytest.fixture
 def ray_start_regular(request):
+    param = getattr(request, "param", {})
+    with _ray_start(**param) as res:
+        yield res
+
+
+# We can compose external_redis and ray_start_regular instead of creating this
+# separate fixture, if there is a good way to ensure external_redis runs before
+# ray_start_regular.
+@pytest.fixture
+def ray_start_regular_with_external_redis(request, external_redis):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
         yield res
@@ -121,6 +164,8 @@ def ray_start_10_cpus(request):
 
 @contextmanager
 def _ray_start_cluster(**kwargs):
+    if cluster_not_supported:
+        pytest.skip("Cluster not supported")
     init_kwargs = get_default_fixture_ray_kwargs()
     num_nodes = 0
     do_init = False
@@ -168,6 +213,16 @@ def ray_start_cluster_init(request):
 
 @pytest.fixture
 def ray_start_cluster_head(request):
+    param = getattr(request, "param", {})
+    with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
+        yield res
+
+
+# We can compose external_redis and ray_start_cluster_head instead of creating
+# this separate fixture, if there is a good way to ensure external_redis runs
+# before ray_start_cluster_head.
+@pytest.fixture
+def ray_start_cluster_head_with_external_redis(request, external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
         yield res
@@ -224,7 +279,9 @@ def call_ray_start_with_external_redis(request):
     ports = getattr(request, "param", "6379")
     port_list = ports.split(",")
     for port in port_list:
-        _start_redis_instance(REDIS_EXECUTABLE, int(port), password="123")
+        temp_dir = ray._private.utils.get_ray_temp_dir()
+        _start_redis_instance(
+            REDIS_EXECUTABLE, temp_dir, int(port), password="123")
     address_str = ",".join(map(lambda x: "localhost:" + x, port_list))
     cmd = f"ray start --head --address={address_str} --redis-password=123"
     subprocess.call(cmd.split(" "))
@@ -270,6 +327,30 @@ def start_cluster(ray_start_cluster, request):
     yield cluster, address
 
 
+@pytest.fixture(scope="function")
+def tmp_working_dir():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+
+        hello_file = path / "hello"
+        with hello_file.open(mode="w") as f:
+            f.write("world")
+
+        module_path = path / "test_module"
+        module_path.mkdir(parents=True)
+
+        test_file = module_path / "test.py"
+        with test_file.open(mode="w") as f:
+            f.write("def one():\n")
+            f.write("    return 1\n")
+
+        init_file = module_path / "__init__.py"
+        with init_file.open(mode="w") as f:
+            f.write("from test_module.test import one\n")
+
+        yield tmp_dir
+
+
 @pytest.fixture
 def enable_pickle_debug():
     os.environ["RAY_PICKLE_VERBOSE_DEBUG"] = "1"
@@ -292,6 +373,8 @@ def two_node_cluster():
         "object_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
     }
+    if cluster_not_supported:
+        pytest.skip("Cluster not supported")
     cluster = ray.cluster_utils.Cluster(
         head_node_args={"_system_config": system_config})
     for _ in range(2):
@@ -313,10 +396,7 @@ def error_pubsub():
 
 @pytest.fixture()
 def log_pubsub():
-    p = ray.worker.global_worker.redis_client.pubsub(
-        ignore_subscribe_messages=True)
-    log_channel = gcs_utils.LOG_FILE_CHANNEL
-    p.psubscribe(log_channel)
+    p = init_log_pubsub()
     yield p
     p.close()
 
@@ -423,70 +503,48 @@ def slow_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)
 
 
-@pytest.fixture
-def ray_start_chaos_cluster(request):
-    """Returns the cluster and chaos thread.
-
-    Run chaos_thread.start() to start the chaos testing.
-    NOTE: `cluster` is not thread-safe. `cluster`
-    shouldn't be modified by other thread once
-    chaos_thread.start() is called.
-    """
-    os.environ["RAY_num_heartbeats_timeout"] = "5"
-    os.environ["RAY_raylet_heartbeat_period_milliseconds"] = "100"
+def _ray_start_chaos_cluster(request):
     param = getattr(request, "param", {})
-    kill_interval = param.get("kill_interval", 2)
+    kill_interval = param.pop("kill_interval", None)
+    config = param.pop("_system_config", {})
+    config.update({
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "task_retry_delay_ms": 100,
+    })
     # Config of workers that are re-started.
-    head_resources = param["head_resources"]
-    worker_node_types = param["worker_node_types"]
-    timeout = param["timeout"]
-
-    # Use the shutdown RPC instead of signals because we can't
-    # raise a signal in a non-main thread.
-    def kill_raylet(ip, port, graceful=False):
-        raylet_address = f"{ip}:{port}"
-        channel = grpc.insecure_channel(raylet_address)
-        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-        print(f"Sending a shutdown request to {ip}:{port}")
-        stub.ShutdownRaylet(
-            node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
-
-    cluster = AutoscalingCluster(head_resources, worker_node_types)
-    cluster.start()
+    head_resources = param.pop("head_resources")
+    worker_node_types = param.pop("worker_node_types")
+    cluster = AutoscalingCluster(
+        head_resources,
+        worker_node_types,
+        idle_timeout_minutes=10,  # Don't take down nodes.
+        **param)
+    cluster.start(_system_config=config)
     ray.init("auto")
     nodes = ray.nodes()
     assert len(nodes) == 1
-    head_node_port = nodes[0]["NodeManagerPort"]
-    killed_port = set()
 
-    def run_chaos_cluster():
-        start = time.time()
-        while True:
-            node_to_kill_ip = None
-            node_to_kill_port = None
-            for node in ray.nodes():
-                addr = node["NodeManagerAddress"]
-                port = node["NodeManagerPort"]
-                if (node["Alive"] and port != head_node_port
-                        and port not in killed_port):
-                    node_to_kill_ip = addr
-                    node_to_kill_port = port
-                    break
+    if kill_interval is not None:
+        node_killer = get_and_run_node_killer(kill_interval)
 
-            if node_to_kill_port is not None:
-                kill_raylet(node_to_kill_ip, node_to_kill_port, graceful=False)
-                killed_port.add(node_to_kill_port)
-            time.sleep(kill_interval)
-            print(len(ray.nodes()))
-            if time.time() - start > timeout:
-                break
-        assert len(killed_port) > 0, (
-            "None of nodes are killed by the conftest. It is a bug.")
+    yield cluster
 
-    chaos_thread = threading.Thread(target=run_chaos_cluster)
-    yield chaos_thread
-    chaos_thread.join()
+    if kill_interval is not None:
+        ray.get(node_killer.stop_run.remote())
+        killed = ray.get(node_killer.get_total_killed_nodes.remote())
+        assert len(killed) > 0
+        died = {node["NodeID"] for node in ray.nodes() if not node["Alive"]}
+        assert died.issubset(killed), (f"Raylets {died - killed} that "
+                                       "we did not kill crashed")
+
     ray.shutdown()
     cluster.shutdown()
-    del os.environ["RAY_num_heartbeats_timeout"]
-    del os.environ["RAY_raylet_heartbeat_period_milliseconds"]
+
+
+@pytest.fixture
+def ray_start_chaos_cluster(request):
+    """Returns the cluster and chaos thread.
+    """
+    for x in _ray_start_chaos_cluster(request):
+        yield x

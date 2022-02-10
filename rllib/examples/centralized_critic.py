@@ -20,11 +20,12 @@ import os
 
 import ray
 from ray import tune
+from ray.rllib.agents.maml.maml_torch_policy import KLCoeffMixin as \
+    TorchKLCoeffMixin
 from ray.rllib.agents.ppo.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy, KLCoeffMixin, \
     ppo_surrogate_loss as tf_loss
-from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy, \
-    KLCoeffMixin as TorchKLCoeffMixin, ppo_surrogate_loss as torch_loss
+from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.examples.env.two_step_game import TwoStepGame
@@ -36,6 +37,7 @@ from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
 from ray.rllib.policy.torch_policy import LearningRateSchedule as TorchLR, \
     EntropyCoeffSchedule as TorchEntropyCoeffSchedule
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
@@ -143,7 +145,8 @@ def centralized_critic_postprocessing(policy,
 # Copied from PPO but optimizing the central value function.
 def loss_with_central_critic(policy, model, dist_class, train_batch):
     CentralizedValueMixin.__init__(policy)
-    func = tf_loss if not policy.config["framework"] == "torch" else torch_loss
+    func = tf_loss if not policy.config["framework"] == "torch" \
+        else PPOTorchPolicy.loss
 
     vf_saved = model.value_function
     model.value_function = lambda: policy.model.central_value_function(
@@ -194,27 +197,33 @@ CCPPOTFPolicy = PPOTFPolicy.with_updates(
         CentralizedValueMixin
     ])
 
-CCPPOTorchPolicy = PPOTorchPolicy.with_updates(
-    name="CCPPOTorchPolicy",
-    postprocess_fn=centralized_critic_postprocessing,
-    loss_fn=loss_with_central_critic,
-    before_init=setup_torch_mixins,
-    mixins=[
-        TorchLR, TorchEntropyCoeffSchedule, TorchKLCoeffMixin,
-        CentralizedValueMixin
-    ])
+
+class CCPPOTorchPolicy(PPOTorchPolicy):
+    def __init__(self, observation_space, action_space, config):
+        super().__init__(observation_space, action_space, config)
+        self.compute_central_vf = self.model.central_value_function
+
+    @override(PPOTorchPolicy)
+    def loss(self, model, dist_class, train_batch):
+        return loss_with_central_critic(self, model, dist_class, train_batch)
+
+    @override(PPOTorchPolicy)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        return centralized_critic_postprocessing(self, sample_batch,
+                                                 other_agent_batches, episode)
 
 
-def get_policy_class(config):
-    if config["framework"] == "torch":
-        return CCPPOTorchPolicy
+class CCTrainer(PPOTrainer):
+    @override(PPOTrainer)
+    def get_default_policy_class(self, config):
+        if config["framework"] == "torch":
+            return CCPPOTorchPolicy
+        else:
+            return CCPPOTFPolicy
 
-
-CCTrainer = PPOTrainer.with_updates(
-    name="CCPPOTrainer",
-    default_policy=CCPPOTFPolicy,
-    get_policy_class=get_policy_class,
-)
 
 if __name__ == "__main__":
     ray.init()

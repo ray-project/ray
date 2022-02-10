@@ -63,25 +63,51 @@ To use Tune, you will need to wrap this function in a lightweight :ref:`trainabl
 
 See the documentation: :ref:`trainable-docs` and :ref:`examples <tune-general-examples>`.
 
+Hyperparameters
+---------------
+
+What are *hyperparameters?* And how are they different from *model parameters*?
+
+In supervised learning, we train a model with labeled data so the model can properly identify new data values.
+Everything about the model is defined by a set of parameters, such as the weights in a linear regression. These
+are *model parameters*; they are learned during training.
+
+.. image:: /images/hyper-model-parameters.png
+
+In contrast, the *hyperparameters* define structural details about the kind of model itself, like whether or not
+we are using a linear regression or classification, what architecture is best for a neural network, how many layers, what kind
+of filters, etc. They are defined before training, not learned.
+
+.. image:: /images/hyper-network-params.png
+
+Other quantities considered *hyperparameters* include learning rates, discount rates, etc. If we want our training
+process and resulting model to work well, we first need to determine the optimal or near-optimal set of *hyperparameters*.
+
+How do we determine the optimal *hyperparameters*? The most direct approach is to perform a loop where we pick
+a candidate set of values from some reasonably inclusive list of possible values, train a model, compare the results
+achieved with previous loop iterations, and pick the set that performed best. This process is called
+*Hyperparameter Tuning* or *Optimization* (HPO). And *hyperparameters* are specified over a configured and confined
+search space, collectively defined for each *hyperparameter* in a ``config`` dictionary.
+
 tune.run and Trials
 -------------------
 
-Use :ref:`tune.run <tune-run-ref>` to execute hyperparameter tuning. This function manages your experiment and provides many features such as :ref:`logging <tune-logging>`, :ref:`checkpointing <tune-checkpoint>`, and :ref:`early stopping <tune-stopping>`.
+Use :ref:`tune.run <tune-run-ref>` to execute hyperparameter tuning. This function manages your experiment and provides many features such as :ref:`logging <tune-logging>`, :ref:`checkpointing <tune-checkpoint-syncing>`, and :ref:`early stopping <tune-stopping>`.
 
 .. code-block:: python
 
-    # Pass in a Trainable class or function to tune.run.
-    tune.run(trainable)
+    # Pass in a Trainable class or function to tune.run, along with configs
+    tune.run(trainable, config={"a": 2, "b": 4})
 
-``tune.run`` will generate a couple hyperparameter configurations from its arguments, wrapping them into :ref:`Trial objects <trial-docstring>`.
+``tune.run`` will generate a couple of hyperparameter configurations from its arguments, wrapping them into :ref:`Trial objects <trial-docstring>`.
 
 Each trial has
 
 - a hyperparameter configuration (``trial.config``), id (``trial.trial_id``)
-- a resource specification (``resources_per_trial`` or ``trial.resources``)
+- a resource specification (``resources_per_trial`` or ``trial.placement_group_factory``)
 - And other configuration values.
 
-Each trial is also associated with one instance of a :ref:`Trainable <trainable-docs>`. You can access trial objects through the :ref:`Analysis object <tune-concepts-analysis>` provided after ``tune.run`` finishes.
+Each trial is also associated with one instance of a :ref:`Trainable <trainable-docs>`. You can access trial objects through the :ref:`ExperimentAnalysis object <tune-concepts-analysis>` provided after ``tune.run`` finishes.
 
 ``tune.run`` will execute until all trials stop or error:
 
@@ -104,7 +130,7 @@ You can also easily run 10 trials. Tune automatically :ref:`determines how many 
 
 .. code-block:: python
 
-    tune.run(trainable, num_samples=10)
+    tune.run(trainable, config={"a": 2, "b": 4}, num_samples=10)
 
 Finally, you can randomly sample or grid search hyperparameters via Tune's :ref:`search space API <tune-default-search-space>`:
 
@@ -119,7 +145,7 @@ See more documentation: :ref:`tune-run-ref`.
 Search spaces
 -------------
 
-To optimize your hyperparameters, you have to define a *search space*.
+To optimize your *hyperparameters*, you have to define a *search space*.
 A search space defines valid values for your hyperparameters and can specify
 how these values are sampled (e.g. from a uniform distribution or a normal
 distribution).
@@ -225,7 +251,7 @@ See the documentation: :ref:`schedulers-ref`.
 Analysis
 --------
 
-``tune.run`` returns an :ref:`Analysis <tune-analysis-docs>` object which has methods you can use for analyzing your training.
+``tune.run`` returns an :ref:`ExperimentAnalysis <tune-analysis-docs>` object which has methods you can use for analyzing your training.
 
 .. code-block:: python
 

@@ -7,9 +7,11 @@ import time
 
 import ray
 from ray import tune
+from ray.rllib.agents import DefaultCallbacks
+from ray.rllib.agents.ppo import PPOTrainer
 
 
-def train(config, checkpoint_dir=None):
+def fn_trainable(config, checkpoint_dir=None):
     if checkpoint_dir:
         with open(os.path.join(checkpoint_dir, "checkpoint.json"), "rt") as fp:
             state = json.load(fp)
@@ -30,6 +32,11 @@ def train(config, checkpoint_dir=None):
             internal_iter=state["internal_iter"])
 
 
+class RLLibCallback(DefaultCallbacks):
+    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
+        result["internal_iter"] = result["training_iteration"]
+
+
 class IndicatorCallback(tune.Callback):
     def __init__(self, indicator_file):
         self.indicator_file = indicator_file
@@ -39,51 +46,67 @@ class IndicatorCallback(tune.Callback):
             fp.write("1")
 
 
-def run_tune(
-        sync_to_driver: bool,
-        upload_dir: Optional[str] = None,
-        durable: bool = False,
-        experiment_name: str = "cloud_test",
-        indicator_file: str = "/tmp/tune_cloud_indicator",
-):
-    num_cpus_per_trial = int(os.environ.get("TUNE_NUM_CPUS_PER_TRIAL", "2"))
-
-    if durable:
-        trainable = tune.durable(train)
-    else:
-        trainable = train
-
-    tune.run(
-        trainable,
-        name=experiment_name,
-        resume="AUTO",
-        num_samples=4,
-        config={
-            "max_iterations": 30,
+def run_tune(no_syncer: bool,
+             upload_dir: Optional[str] = None,
+             experiment_name: str = "cloud_test",
+             indicator_file: str = "/tmp/tune_cloud_indicator",
+             trainable: str = "function",
+             num_cpus_per_trial: int = 2):
+    if trainable == "function":
+        train = fn_trainable
+        config = {
+            "max_iterations": 100,
             "sleep_time": 5,
             "checkpoint_freq": 2,
             "score_multiplied": tune.randint(0, 100),
-        },
+        }
+        kwargs = {"resources_per_trial": {"cpu": num_cpus_per_trial}}
+    elif trainable == "rllib_str" or trainable == "rllib_trainer":
+        if trainable == "rllib_str":
+            train = "PPO"
+        else:
+            train = PPOTrainer
+
+        config = {
+            "env": "CartPole-v1",
+            "num_workers": 1,
+            "num_envs_per_worker": 1,
+            "callbacks": RLLibCallback
+        }
+        kwargs = {
+            "stop": {
+                "training_iteration": 100
+            },
+            "checkpoint_freq": 2,
+            "checkpoint_at_end": True,
+        }
+    else:
+        raise RuntimeError(f"Unknown trainable: {trainable}")
+
+    tune.run(
+        train,
+        name=experiment_name,
+        resume="AUTO",
+        num_samples=4,
+        config=config,
         sync_config=tune.SyncConfig(
-            sync_to_driver=sync_to_driver,
+            syncer="auto" if not no_syncer else None,
             upload_dir=upload_dir,
             sync_on_checkpoint=True,
-            cloud_sync_period=0.5,
+            sync_period=0.5,
         ),
         keep_checkpoints_num=2,
-        resources_per_trial={"cpu": num_cpus_per_trial},
         callbacks=[IndicatorCallback(indicator_file=indicator_file)],
-        verbose=2)
+        verbose=2,
+        **kwargs)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--sync-to-driver", action="store_true", default=False)
+    parser.add_argument("--no-syncer", action="store_true", default=False)
 
     parser.add_argument("--upload-dir", required=False, default=None, type=str)
-
-    parser.add_argument("--durable", action="store_true", default=False)
 
     parser.add_argument(
         "--experiment-name", required=False, default=None, type=str)
@@ -96,12 +119,16 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    trainable = str(os.environ.get("TUNE_TRAINABLE", "function"))
+    num_cpus_per_trial = int(os.environ.get("TUNE_NUM_CPUS_PER_TRIAL", "2"))
+
     run_kwargs = dict(
-        sync_to_driver=args.sync_to_driver or False,
+        no_syncer=args.no_syncer or False,
         upload_dir=args.upload_dir or None,
-        durable=args.durable or False,
         experiment_name=args.experiment_name or "cloud_test",
         indicator_file=args.indicator_file,
+        trainable=trainable,
+        num_cpus_per_trial=num_cpus_per_trial,
     )
 
     if not ray.is_initialized:

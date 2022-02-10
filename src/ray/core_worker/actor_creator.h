@@ -28,7 +28,7 @@ class ActorCreatorInterface {
   ///
   /// \param task_spec The specification for the actor creation task.
   /// \return Status
-  virtual Status RegisterActor(const TaskSpecification &task_spec) = 0;
+  virtual Status RegisterActor(const TaskSpecification &task_spec) const = 0;
 
   /// Asynchronously request GCS to register the actor.
   /// \param task_spec The specification for the actor creation task.
@@ -67,14 +67,9 @@ class DefaultActorCreator : public ActorCreatorInterface {
   explicit DefaultActorCreator(std::shared_ptr<gcs::GcsClient> gcs_client)
       : gcs_client_(std::move(gcs_client)) {}
 
-  Status RegisterActor(const TaskSpecification &task_spec) override {
-    auto promise = std::make_shared<std::promise<void>>();
-    auto status = gcs_client_->Actors().AsyncRegisterActor(
-        task_spec, [promise](const Status &status) { promise->set_value(); });
-    if (status.ok() &&
-        promise->get_future().wait_for(std::chrono::seconds(
-            ::RayConfig::instance().gcs_server_request_timeout_seconds())) !=
-            std::future_status::ready) {
+  Status RegisterActor(const TaskSpecification &task_spec) const override {
+    const auto status = gcs_client_->Actors().SyncRegisterActor(task_spec);
+    if (status.IsTimedOut()) {
       std::ostringstream stream;
       stream << "There was timeout in registering an actor. It is probably "
                 "because GCS server is dead or there's a high load there.";

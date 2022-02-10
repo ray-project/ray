@@ -15,11 +15,7 @@
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 
 #include "ray/common/ray_config.h"
-#include "ray/stats/stats.h"
-
-DEFINE_stats(placement_group_resource_persist_latency_ms,
-             "Time to persist placement resources to Redis.", (),
-             ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::Histogram);
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace gcs {
@@ -89,7 +85,7 @@ void GcsResourceManager::HandleUpdateResources(
     auto on_done = [this, node_id, changed_resources, reply, send_reply_callback,
                     start](const Status &status) {
       auto end = absl::GetCurrentTimeNanos();
-      STATS_placement_group_resource_persist_latency_ms.Record(
+      ray::stats::STATS_gcs_new_resource_creation_latency_ms.Record(
           absl::Nanoseconds(end - start) / absl::Milliseconds(1));
       RAY_CHECK_OK(status);
       rpc::NodeResourceChange node_resource_change;
@@ -210,6 +206,10 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
       resources_data->resource_load_changed()) {
     absl::MutexLock guard(&resource_buffer_mutex_);
     resources_buffer_[node_id] = *resources_data;
+    // Clear the fields that will not be used by raylet.
+    resources_buffer_[node_id].clear_resource_load();
+    resources_buffer_[node_id].clear_resource_load_by_shape();
+    resources_buffer_[node_id].clear_resources_normal_task();
   }
 }
 
@@ -439,18 +439,19 @@ void GcsResourceManager::UpdatePlacementGroupLoad(
 
 std::string GcsResourceManager::DebugString() const {
   std::ostringstream stream;
-  stream << "GcsResourceManager: {GetResources request count: "
+  stream << "GcsResourceManager: "
+         << "\n- GetResources request count: "
          << counts_[CountType::GET_RESOURCES_REQUEST]
-         << ", GetAllAvailableResources request count"
+         << "\n- GetAllAvailableResources request count"
          << counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST]
-         << ", UpdateResources request count: "
+         << "\n- UpdateResources request count: "
          << counts_[CountType::UPDATE_RESOURCES_REQUEST]
-         << ", DeleteResources request count: "
+         << "\n- DeleteResources request count: "
          << counts_[CountType::DELETE_RESOURCES_REQUEST]
-         << ", ReportResourceUsage request count: "
+         << "\n- ReportResourceUsage request count: "
          << counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST]
-         << ", GetAllResourceUsage request count: "
-         << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST] << "}";
+         << "\n- GetAllResourceUsage request count: "
+         << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
   return stream.str();
 }
 

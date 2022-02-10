@@ -6,6 +6,7 @@ from unittest.mock import patch, Mock
 
 import pytest
 
+import ray
 from ray.actor import ActorHandle
 from ray.serve.common import (
     DeploymentConfig,
@@ -13,6 +14,7 @@ from ray.serve.common import (
     str,
     ReplicaConfig,
     ReplicaTag,
+    ReplicaName,
 )
 from ray.serve.deployment_state import (
     DeploymentState,
@@ -114,10 +116,13 @@ class MockReplicaActorWrapper:
             self.version = self.starting_version
         return ready, self.version
 
-    def resource_requirements(
-            self) -> Tuple[Dict[str, float], Dict[str, float]]:
+    def resource_requirements(self) -> Tuple[str, str]:
         assert self.started
-        return {"REQUIRED_RESOURCE": 1.0}, {"AVAILABLE_RESOURCE": 1.0}
+        return str({
+            "REQUIRED_RESOURCE": 1.0
+        }), str({
+            "AVAILABLE_RESOURCE": 1.0
+        })
 
     @property
     def actor_resources(self) -> Dict[str, float]:
@@ -153,12 +158,12 @@ def deployment_info(version: Optional[str] = None,
                     user_config: Optional[Any] = None,
                     **config_opts) -> Tuple[DeploymentInfo, DeploymentVersion]:
     info = DeploymentInfo(
-        actor_def=None,
         version=version,
         start_time_ms=0,
         deployment_config=DeploymentConfig(
             num_replicas=num_replicas, user_config=user_config, **config_opts),
-        replica_config=ReplicaConfig(lambda x: x))
+        replica_config=ReplicaConfig(lambda x: x),
+        deployer_job_id=ray.JobID.nil())
 
     if version is not None:
         code_version = version
@@ -1773,10 +1778,8 @@ def mock_deployment_state_manager(
     with patch(
             "ray.serve.deployment_state.ActorReplicaWrapper",
             new=MockReplicaActorWrapper), patch(
-                "ray.serve.deployment_state.CONTROLLER_STARTUP_GRACE_PERIOD_S",
-                0), patch(
-                    "time.time", new=timer.time), patch(
-                        "ray.serve.long_poll.LongPollHost") as mock_long_poll:
+                "time.time", new=timer.time), patch(
+                    "ray.serve.long_poll.LongPollHost") as mock_long_poll:
 
         kv_store = RayLocalKVStore("TEST_DB", "test_kv_store.db")
         goal_manager = AsyncGoalManager()
@@ -1882,7 +1885,7 @@ def test_resume_deployment_state_from_replica_tags(
     # Step 3: Create new deployment_state by resuming from passed in replicas
 
     deployment_state_manager._recover_from_checkpoint(
-        [mocked_replica.replica_tag])
+        [ReplicaName.prefix + mocked_replica.replica_tag])
 
     # Step 4: Ensure new deployment_state is correct
     # deployment state behind "test" is re-created in recovery flow

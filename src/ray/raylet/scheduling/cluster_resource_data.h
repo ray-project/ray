@@ -196,8 +196,6 @@ struct Node {
   Node(const NodeResources &resources)
       : last_reported_(resources), local_view_(resources) {}
 
-  void ResetLocalView() { local_view_ = last_reported_; }
-
   NodeResources *GetMutableLocalView() { return &local_view_; }
 
   const NodeResources &GetLocalView() const { return local_view_; }

@@ -14,36 +14,97 @@
 
 #include "ray/common/ray_object.h"
 
-namespace ray {
+#include "msgpack.hpp"
 
-std::shared_ptr<LocalMemoryBuffer> MakeBufferFromString(const uint8_t *data,
-                                                        size_t data_size) {
+namespace {
+
+std::shared_ptr<ray::LocalMemoryBuffer> MakeBufferFromString(const uint8_t *data,
+                                                             size_t data_size) {
   auto metadata = const_cast<uint8_t *>(data);
   auto meta_buffer =
-      std::make_shared<LocalMemoryBuffer>(metadata, data_size, /*copy_data=*/true);
+      std::make_shared<ray::LocalMemoryBuffer>(metadata, data_size, /*copy_data=*/true);
   return meta_buffer;
 }
 
-std::shared_ptr<LocalMemoryBuffer> MakeBufferFromString(const std::string &str) {
+std::shared_ptr<ray::LocalMemoryBuffer> MakeBufferFromString(const std::string &str) {
   return MakeBufferFromString(reinterpret_cast<const uint8_t *>(str.data()), str.size());
 }
 
-std::shared_ptr<LocalMemoryBuffer> MakeErrorMetadataBuffer(rpc::ErrorType error_type) {
+std::shared_ptr<ray::LocalMemoryBuffer> MakeErrorMetadataBuffer(
+    ray::rpc::ErrorType error_type) {
   std::string meta = std::to_string(static_cast<int>(error_type));
   return MakeBufferFromString(meta);
 }
 
-RayObject::RayObject(rpc::ErrorType error_type)
-    : RayObject(nullptr, MakeErrorMetadataBuffer(error_type), {}) {}
+/// Serialize the protobuf message to msg pack.
+///
+/// Ray uses Msgpack for cross-language object serialization.
+/// This method creates a msgpack serialized buffer that contains
+/// serialized protobuf message.
+///
+/// Language frontend can deseiralize this object to obtain
+/// data stored in a given protobuf. Check `serialization.py` to see
+/// how this works.
+///
+/// NOTE: The function guarantees that the returned buffer contains data.
+///
+/// \param protobuf_message The protobuf message to serialize.
+/// \return The buffer that contains serialized msgpack message.
+template <class ProtobufMessage>
+std::shared_ptr<ray::LocalMemoryBuffer> MakeSerializeErrorBuffer(
+    const ProtobufMessage &protobuf_message) {
+  // Structure of bytes stored in object store:
 
-RayObject::RayObject(rpc::ErrorType error_type, const std::string &append_data)
-    : RayObject(MakeBufferFromString(append_data), MakeErrorMetadataBuffer(error_type),
-                {}) {}
+  // First serialize RayException by the following steps:
+  // PB's RayException
+  // --(PB Serialization)-->
+  // --(msgpack Serialization)-->
+  // msgpack_serialized_exception(MSE)
 
-RayObject::RayObject(rpc::ErrorType error_type, const uint8_t *append_data,
-                     size_t append_data_size)
-    : RayObject(MakeBufferFromString(append_data, append_data_size),
-                MakeErrorMetadataBuffer(error_type), {}) {}
+  // Then add it's length to the head(for coross-language deserialization):
+  // [MSE's length(9 bytes)] [MSE]
+
+  std::string pb_serialized_exception;
+  protobuf_message.SerializeToString(&pb_serialized_exception);
+  msgpack::sbuffer msgpack_serialized_exception;
+  msgpack::packer<msgpack::sbuffer> packer(msgpack_serialized_exception);
+  packer.pack_bin(pb_serialized_exception.size());
+  packer.pack_bin_body(pb_serialized_exception.data(), pb_serialized_exception.size());
+  std::unique_ptr<ray::LocalMemoryBuffer> final_buffer =
+      std::make_unique<ray::LocalMemoryBuffer>(msgpack_serialized_exception.size() +
+                                               kMessagePackOffset);
+  // copy msgpack-serialized bytes
+  std::memcpy(final_buffer->Data() + kMessagePackOffset,
+              msgpack_serialized_exception.data(), msgpack_serialized_exception.size());
+  // copy offset
+  msgpack::sbuffer msgpack_int;
+  msgpack::pack(msgpack_int, msgpack_serialized_exception.size());
+  std::memcpy(final_buffer->Data(), msgpack_int.data(), msgpack_int.size());
+  RAY_CHECK(final_buffer->Data() != nullptr);
+  RAY_CHECK(final_buffer->Size() != 0);
+
+  return final_buffer;
+}
+
+}  // namespace
+
+namespace ray {
+
+RayObject::RayObject(rpc::ErrorType error_type, const rpc::RayErrorInfo *ray_error_info) {
+  if (ray_error_info == nullptr) {
+    Init(nullptr, MakeErrorMetadataBuffer(error_type), {});
+    return;
+  }
+
+  RAY_CHECK(ray_error_info->has_actor_init_failure());
+  // This is temporarily here because changing this requires changes in all language
+  // frontend.
+  // TODO(sang, lixin): Remove it.
+  const auto error_buffer =
+      MakeSerializeErrorBuffer<rpc::RayException>(ray_error_info->actor_init_failure());
+  Init(std::move(error_buffer), MakeErrorMetadataBuffer(error_type), {});
+  return;
+}
 
 bool RayObject::IsException(rpc::ErrorType *error_type) const {
   if (metadata_ == nullptr) {

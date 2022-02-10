@@ -6,6 +6,7 @@
   - remove the table of contents
   - remove the PyTorch Lightning Compatibility section
   - Be sure not to delete the API reference section in the bottom of this file.
+  - add `.. _ray-lightning-tuning:` before the "Hyperparameter Tuning with Ray Tune" section
   - Adjust some link targets (e.g. for "Ray Tune") to anonymous references
     by adding a second underscore (use `target <link>`__)
   - Search for `\ **` and delete this from the links (bold links are not supported)
@@ -74,9 +75,9 @@ You no longer have to set environment variables or configurations and run your t
 Multi-node Training from your Laptop
 ------------------------------------
 
-Ray provides capabilities to run multi-node and GPU training all from your laptop through `Ray Client <https://docs.ray.io/en/master/cluster/ray-client.html>`__
+Ray provides capabilities to run multi-node and GPU training all from your laptop through `Ray Client <ray-client>`__
 
-You can follow the instructions `here <https://docs.ray.io/en/master/cluster/ray-client.html>`__ to setup the cluster.
+You can follow the instructions `here <ray-client>`__ to setup the cluster.
 Then, add this line to the beginning of your script to connect to the cluster:
 
 .. code-block:: python
@@ -130,6 +131,8 @@ With sharded training, leverage the scalability of data parallel training while 
    trainer.fit(ptl_model)
 
 See the `Pytorch Lightning docs <https://pytorch-lightning.readthedocs.io/en/stable/advanced/multi_gpu.html#sharded-training>`__ for more information on sharded training.
+
+.. _ray-lightning-tuning:
 
 Hyperparameter Tuning with Ray Tune
 -----------------------------------
@@ -222,5 +225,5 @@ Tune Integration
 
 .. autoclass:: ray_lightning.tune.TuneReportCheckpointCallback
 
-.. autofunction:: ray_lightning.tune.get_tune_ddp_resources
+.. autofunction:: ray_lightning.tune.get_tune_resources
 

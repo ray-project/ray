@@ -1,16 +1,14 @@
-base_image: "anyscale/ray-ml:pinned-nightly-py37-gpu"
-
+base_image: "anyscale/ray-ml:nightly-py37-gpu"
+env_vars: {"RAY_lineage_pinning_enabled": "1", "RAY_record_ref_creation_sites": "1"}
 python:
-  pip_packages: []
+  pip_packages:
+    - pyarrow
   conda_packages: []
 
 post_build_cmds:
-  - pip uninstall -y numpy ray || true
-  - sudo rm -rf /home/ray/anaconda3/lib/python3.7/site-packages/numpy
-  - pip install numpy || true
+  - pip3 uninstall ray -y || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - pip install -U git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
   - pip install ray[default]
-  - pip install pyarrow
-  - pip install torch torchvision
   - HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_TENSORFLOW=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_PYTORCH=1 pip install -U git+https://github.com/horovod/horovod.git
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

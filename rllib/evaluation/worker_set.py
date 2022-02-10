@@ -34,15 +34,18 @@ class WorkerSet:
     Where n may be 0.
     """
 
-    def __init__(self,
-                 *,
-                 env_creator: Optional[Callable[[EnvContext], EnvType]] = None,
-                 validate_env: Optional[Callable[[EnvType], None]] = None,
-                 policy_class: Optional[Type[Policy]] = None,
-                 trainer_config: Optional[TrainerConfigDict] = None,
-                 num_workers: int = 0,
-                 logdir: Optional[str] = None,
-                 _setup: bool = True):
+    def __init__(
+            self,
+            *,
+            env_creator: Optional[Callable[[EnvContext], EnvType]] = None,
+            validate_env: Optional[Callable[[EnvType], None]] = None,
+            policy_class: Optional[Type[Policy]] = None,
+            trainer_config: Optional[TrainerConfigDict] = None,
+            num_workers: int = 0,
+            local_worker: bool = True,
+            logdir: Optional[str] = None,
+            _setup: bool = True,
+    ):
         """Initializes a WorkerSet instance.
 
         Args:
@@ -55,6 +58,9 @@ class WorkerSet:
             trainer_config: Optional dict that extends the common config of
                 the Trainer class.
             num_workers: Number of remote rollout workers to create.
+            local_worker: Whether to create a local (non @ray.remote) worker
+                in the returned set as well (default: True). If `num_workers`
+                is 0, always create a local worker.
             logdir: Optional logging directory for workers.
             _setup: Whether to setup workers. This is only for testing.
         """
@@ -69,18 +75,25 @@ class WorkerSet:
         self._logdir = logdir
 
         if _setup:
+            # Force a local worker if num_workers == 0 (no remote workers).
+            # Otherwise, this WorkerSet would be empty.
+            self._local_worker = None
+            if num_workers == 0:
+                local_worker = True
+
             self._local_config = merge_dicts(
                 trainer_config,
                 {"tf_session_args": trainer_config["local_tf_session_args"]})
 
-            # Create a number of remote workers.
+            # Create a number of @ray.remote workers.
             self._remote_workers = []
             self.add_workers(num_workers)
 
+            # Create a local worker, if needed.
             # If num_workers > 0 and we don't have an env on the local worker,
             # get the observation- and action spaces for each policy from
             # the first remote worker (which does have an env).
-            if self._remote_workers and \
+            if local_worker and self._remote_workers and \
                     not trainer_config.get("create_env_on_driver") and \
                     (not trainer_config.get("observation_space") or
                      not trainer_config.get("action_space")):
@@ -106,17 +119,17 @@ class WorkerSet:
             else:
                 spaces = None
 
-            # Always create a local worker.
-            self._local_worker = self._make_worker(
-                cls=RolloutWorker,
-                env_creator=env_creator,
-                validate_env=validate_env,
-                policy_cls=self._policy_class,
-                worker_index=0,
-                num_workers=num_workers,
-                config=self._local_config,
-                spaces=spaces,
-            )
+            if local_worker:
+                self._local_worker = self._make_worker(
+                    cls=RolloutWorker,
+                    env_creator=env_creator,
+                    validate_env=validate_env,
+                    policy_cls=self._policy_class,
+                    worker_index=0,
+                    num_workers=num_workers,
+                    config=self._local_config,
+                    spaces=spaces,
+                )
 
     def local_worker(self) -> RolloutWorker:
         """Returns the local rollout worker."""
@@ -126,17 +139,37 @@ class WorkerSet:
         """Returns a list of remote rollout workers."""
         return self._remote_workers
 
-    def sync_weights(self, policies: Optional[List[PolicyID]] = None) -> None:
+    def sync_weights(self,
+                     policies: Optional[List[PolicyID]] = None,
+                     from_worker: Optional[RolloutWorker] = None) -> None:
         """Syncs model weights from the local worker to all remote workers.
 
         Args:
-            policies: An optional list of policy IDs to sync for. If None,
-                sync all policies.
+            policies: Optional list of PolicyIDs to sync weights for.
+                If None (default), sync weights to/from all policies.
+            from_worker: Optional RolloutWorker instance to sync from.
+                If None (default), sync from this WorkerSet's local worker.
         """
-        if self.remote_workers():
-            weights = ray.put(self.local_worker().get_weights(policies))
-            for e in self.remote_workers():
-                e.set_weights.remote(weights)
+        if self.local_worker() is None and from_worker is None:
+            raise TypeError(
+                "No `local_worker` in WorkerSet, must provide `from_worker` "
+                "arg in `sync_weights()`!")
+
+        # Only sync if we have remote workers or `from_worker` is provided.
+        if self.remote_workers() or from_worker is not None:
+            weights = (from_worker
+                       or self.local_worker()).get_weights(policies)
+            # Put weights only once into object store and use same object
+            # ref to synch to all workers.
+            weights_ref = ray.put(weights)
+            # Sync to all remote workers in this WorkerSet.
+            for to_worker in self.remote_workers():
+                to_worker.set_weights.remote(weights_ref)
+
+            # If `from_worker` is provided, also sync to this WorkerSet's
+            # local worker.
+            if from_worker is not None and self.local_worker() is not None:
+                self.local_worker().set_weights(weights)
 
     def add_workers(self, num_workers: int) -> None:
         """Creates and adds a number of remote workers to this worker set.
@@ -197,7 +230,9 @@ class WorkerSet:
         Returns:
              The list of return values of all calls to `func([worker])`.
         """
-        local_result = [func(self.local_worker())]
+        local_result = []
+        if self.local_worker() is not None:
+            local_result = [func(self.local_worker())]
         remote_results = ray.get(
             [w.apply.remote(func) for w in self.remote_workers()])
         return local_result + remote_results
@@ -219,8 +254,10 @@ class WorkerSet:
                 The first entry in this list are the results of the local
                 worker, followed by all remote workers' results.
         """
+        local_result = []
         # Local worker: Index=0.
-        local_result = [func(self.local_worker(), 0)]
+        if self.local_worker() is not None:
+            local_result = [func(self.local_worker(), 0)]
         # Remote workers: Index > 0.
         remote_results = ray.get([
             w.apply.remote(func, i + 1)
@@ -247,7 +284,9 @@ class WorkerSet:
                 The local workers' results are first, followed by all remote
                 workers' results
         """
-        results = self.local_worker().foreach_policy(func)
+        results = []
+        if self.local_worker() is not None:
+            results = self.local_worker().foreach_policy(func)
         ray_gets = []
         for worker in self.remote_workers():
             ray_gets.append(
@@ -260,7 +299,10 @@ class WorkerSet:
     @DeveloperAPI
     def trainable_policies(self) -> List[PolicyID]:
         """Returns the list of trainable policy ids."""
-        return self.local_worker().policies_to_train
+        if self.local_worker() is not None:
+            return self.local_worker().policies_to_train
+        else:
+            raise NotImplementedError
 
     @DeveloperAPI
     def foreach_trainable_policy(
@@ -275,7 +317,9 @@ class WorkerSet:
             List[any]: The list of n return values of all
                 `func([trainable policy], [ID])`-calls.
         """
-        results = self.local_worker().foreach_trainable_policy(func)
+        results = []
+        if self.local_worker() is not None:
+            results = self.local_worker().foreach_trainable_policy(func)
         ray_gets = []
         for worker in self.remote_workers():
             ray_gets.append(
@@ -288,7 +332,7 @@ class WorkerSet:
 
     @DeveloperAPI
     def foreach_env(self, func: Callable[[EnvType], List[T]]) -> List[List[T]]:
-        """Calls `func` with all workers' sub environments as args.
+        """Calls `func` with all workers' sub-environments as args.
 
         An "underlying sub environment" is a single clone of an env within
         a vectorized environment.
@@ -303,7 +347,9 @@ class WorkerSet:
         Returns:
             The list (workers) of lists (sub environments) of results.
         """
-        local_results = [self.local_worker().foreach_env(func)]
+        local_results = []
+        if self.local_worker() is not None:
+            local_results = [self.local_worker().foreach_env(func)]
         ray_gets = []
         for worker in self.remote_workers():
             ray_gets.append(worker.foreach_env.remote(func))
@@ -313,7 +359,7 @@ class WorkerSet:
     def foreach_env_with_context(
             self,
             func: Callable[[BaseEnv, EnvContext], List[T]]) -> List[List[T]]:
-        """Call `func` with all workers' sub-environments and env_ctx as args.
+        """Calls `func` with all workers' sub-environments and env_ctx as args.
 
         An "underlying sub environment" is a single clone of an env within
         a vectorized environment.
@@ -329,7 +375,11 @@ class WorkerSet:
             The list (1 item per workers) of lists (1 item per sub-environment)
                 of results.
         """
-        local_results = [self.local_worker().foreach_env_with_context(func)]
+        local_results = []
+        if self.local_worker() is not None:
+            local_results = [
+                self.local_worker().foreach_env_with_context(func)
+            ]
         ray_gets = []
         for worker in self.remote_workers():
             ray_gets.append(worker.foreach_env_with_context.remote(func))
@@ -427,7 +477,7 @@ class WorkerSet:
         ma_policies = config["multiagent"]["policies"]
         if ma_policies:
             for pid, policy_spec in ma_policies.copy().items():
-                assert isinstance(policy_spec, (PolicySpec, list, tuple))
+                assert isinstance(policy_spec, PolicySpec)
                 # Class is None -> Use `policy_cls`.
                 if policy_spec.policy_class is None:
                     ma_policies[pid] = ma_policies[pid]._replace(

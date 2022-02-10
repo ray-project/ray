@@ -4,22 +4,24 @@ from pathlib import Path
 from threading import RLock
 from uuid import uuid4
 
-from azure.common.client_factory import get_client_from_cli_profile
-from msrestazure.azure_active_directory import MSIAuthentication
+from azure.identity import DefaultAzureCredential
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
-from knack.util import CLIError
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
-from ray.autoscaler._private._azure.config import bootstrap_azure
+from ray.autoscaler._private._azure.config import (bootstrap_azure,
+                                                   get_azure_sdk_function)
 
 VM_NAME_MAX_LEN = 64
 VM_NAME_UUID_LEN = 8
 
 logger = logging.getLogger(__name__)
+azure_logger = logging.getLogger(
+    "azure.core.pipeline.policies.http_logging_policy")
+azure_logger.setLevel(logging.WARNING)
 
 
 def synchronized(f):
@@ -47,29 +49,15 @@ class AzureNodeProvider(NodeProvider):
 
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
-        kwargs = {}
-        if "subscription_id" in provider_config:
-            kwargs["subscription_id"] = provider_config["subscription_id"]
-        try:
-            self.compute_client = get_client_from_cli_profile(
-                client_class=ComputeManagementClient, **kwargs)
-            self.network_client = get_client_from_cli_profile(
-                client_class=NetworkManagementClient, **kwargs)
-            self.resource_client = get_client_from_cli_profile(
-                client_class=ResourceManagementClient, **kwargs)
-        except CLIError as e:
-            if str(e) != "Please run 'az login' to setup account.":
-                raise
-            else:
-                logger.info("CLI profile authentication failed. Trying MSI")
-
-                credentials = MSIAuthentication()
-                self.compute_client = ComputeManagementClient(
-                    credentials=credentials, **kwargs)
-                self.network_client = NetworkManagementClient(
-                    credentials=credentials, **kwargs)
-                self.resource_client = ResourceManagementClient(
-                    credentials=credentials, **kwargs)
+        subscription_id = provider_config["subscription_id"]
+        credential = DefaultAzureCredential(
+            exclude_shared_token_cache_credential=True)
+        self.compute_client = ComputeManagementClient(credential,
+                                                      subscription_id)
+        self.network_client = NetworkManagementClient(credential,
+                                                      subscription_id)
+        self.resource_client = ResourceManagementClient(
+            credential, subscription_id)
 
         self.lock = RLock()
 
@@ -213,11 +201,10 @@ class AzureNodeProvider(NodeProvider):
         }
 
         # TODO: we could get the private/public ips back directly
-        if hasattr(self.resource_client.deployments, "create_or_update"):
-            create = self.resource_client.deployments.create_or_update
-        else:
-            create = self.resource_client.deployments.begin_create_or_update
-        create(
+        create_or_update = get_azure_sdk_function(
+            client=self.resource_client.deployments,
+            function_name="create_or_update")
+        create_or_update(
             resource_group_name=resource_group,
             deployment_name="ray-vm-{}".format(name_tag),
             parameters=parameters).wait()
@@ -227,17 +214,13 @@ class AzureNodeProvider(NodeProvider):
         """Sets the tag values (string dict) for the specified node."""
         node_tags = self._get_cached_node(node_id)["tags"]
         node_tags.update(tags)
-        if hasattr(self.compute_client.virtual_machines, "update"):
-            self.compute_client.virtual_machines.update(
-                resource_group_name=self.provider_config["resource_group"],
-                vm_name=node_id,
-                parameters={"tags": node_tags})
-        else:
-            # Newer versions of the client use begin_update, not update
-            self.compute_client.virtual_machines.begin_update(
-                resource_group_name=self.provider_config["resource_group"],
-                vm_name=node_id,
-                parameters={"tags": node_tags})
+        update = get_azure_sdk_function(
+            client=self.compute_client.virtual_machines,
+            function_name="update")
+        update(
+            resource_group_name=self.provider_config["resource_group"],
+            vm_name=node_id,
+            parameters={"tags": node_tags})
         self.cached_nodes[node_id]["tags"] = node_tags
 
     def terminate_node(self, node_id):
@@ -265,14 +248,19 @@ class AzureNodeProvider(NodeProvider):
 
         try:
             # delete machine, must wait for this to complete
-            self.compute_client.virtual_machines.delete(
-                resource_group_name=resource_group, vm_name=node_id).wait()
+            delete = get_azure_sdk_function(
+                client=self.compute_client.virtual_machines,
+                function_name="delete")
+            delete(resource_group_name=resource_group, vm_name=node_id).wait()
         except Exception as e:
             logger.warning("Failed to delete VM: {}".format(e))
 
         try:
             # delete nic
-            self.network_client.network_interfaces.delete(
+            delete = get_azure_sdk_function(
+                client=self.network_client.network_interfaces,
+                function_name="delete")
+            delete(
                 resource_group_name=resource_group,
                 network_interface_name=metadata["nic_name"])
         except Exception as e:
@@ -281,7 +269,10 @@ class AzureNodeProvider(NodeProvider):
         # delete ip address
         if "public_ip_name" in metadata:
             try:
-                self.network_client.public_ip_addresses.delete(
+                delete = get_azure_sdk_function(
+                    client=self.network_client.public_ip_addresses,
+                    function_name="delete")
+                delete(
                     resource_group_name=resource_group,
                     public_ip_address_name=metadata["public_ip_name"])
             except Exception as e:
@@ -290,8 +281,9 @@ class AzureNodeProvider(NodeProvider):
         # delete disks
         for disk in disks:
             try:
-                self.compute_client.disks.delete(
-                    resource_group_name=resource_group, disk_name=disk)
+                delete = get_azure_sdk_function(
+                    client=self.compute_client.disks, function_name="delete")
+                delete(resource_group_name=resource_group, disk_name=disk)
             except Exception as e:
                 logger.warning("Failed to delete disk: {}".format(e))
 

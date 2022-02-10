@@ -46,10 +46,6 @@ namespace rpc {
   RPC_SERVICE_HANDLER(ObjectInfoGcsService, HANDLER, \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define TASK_INFO_SERVICE_RPC_HANDLER(HANDLER)     \
-  RPC_SERVICE_HANDLER(TaskInfoGcsService, HANDLER, \
-                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
-
 #define STATS_SERVICE_RPC_HANDLER(HANDLER)      \
   RPC_SERVICE_HANDLER(StatsGcsService, HANDLER, \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
@@ -62,9 +58,8 @@ namespace rpc {
   RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService, HANDLER, \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER)     \
-  RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, \
-                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
+#define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, -1)
 
 // Unlimited max active RPCs, because of long poll.
 #define INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(HANDLER) \
@@ -351,59 +346,6 @@ class HeartbeatInfoGrpcService : public GrpcService {
   HeartbeatInfoGcsServiceHandler &service_handler_;
 };
 
-class TaskInfoGcsServiceHandler {
- public:
-  virtual ~TaskInfoGcsServiceHandler() = default;
-
-  virtual void HandleAddTask(const AddTaskRequest &request, AddTaskReply *reply,
-                             SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetTask(const GetTaskRequest &request, GetTaskReply *reply,
-                             SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleAddTaskLease(const AddTaskLeaseRequest &request,
-                                  AddTaskLeaseReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetTaskLease(const GetTaskLeaseRequest &request,
-                                  GetTaskLeaseReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleAttemptTaskReconstruction(
-      const AttemptTaskReconstructionRequest &request,
-      AttemptTaskReconstructionReply *reply, SendReplyCallback send_reply_callback) = 0;
-};
-
-/// The `GrpcService` for `TaskInfoGcsService`.
-class TaskInfoGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit TaskInfoGrpcService(instrumented_io_context &io_service,
-                               TaskInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
-    TASK_INFO_SERVICE_RPC_HANDLER(AddTask);
-    TASK_INFO_SERVICE_RPC_HANDLER(GetTask);
-    TASK_INFO_SERVICE_RPC_HANDLER(AddTaskLease);
-    TASK_INFO_SERVICE_RPC_HANDLER(GetTaskLease);
-    TASK_INFO_SERVICE_RPC_HANDLER(AttemptTaskReconstruction);
-  }
-
- private:
-  /// The grpc async service object.
-  TaskInfoGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  TaskInfoGcsServiceHandler &service_handler_;
-};
-
 class StatsGcsServiceHandler {
  public:
   virtual ~StatsGcsServiceHandler() = default;
@@ -606,6 +548,9 @@ class InternalPubSubGcsServiceHandler {
  public:
   virtual ~InternalPubSubGcsServiceHandler() = default;
 
+  virtual void HandleGcsPublish(const GcsPublishRequest &request, GcsPublishReply *reply,
+                                SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleGcsSubscriberPoll(const GcsSubscriberPollRequest &request,
                                        GcsSubscriberPollReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
@@ -626,6 +571,7 @@ class InternalPubSubGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsPublish);
     INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsSubscriberPoll);
     INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsSubscriberCommandBatch);
   }
@@ -640,7 +586,6 @@ using ActorInfoHandler = ActorInfoGcsServiceHandler;
 using NodeInfoHandler = NodeInfoGcsServiceHandler;
 using NodeResourceInfoHandler = NodeResourceInfoGcsServiceHandler;
 using HeartbeatInfoHandler = HeartbeatInfoGcsServiceHandler;
-using TaskInfoHandler = TaskInfoGcsServiceHandler;
 using StatsHandler = StatsGcsServiceHandler;
 using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
 using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;

@@ -8,7 +8,6 @@ import shutil
 from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlparse
 from zipfile import ZipFile
-
 from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_exists)
 from ray._private.thirdparty.pathspec import PathSpec
@@ -40,8 +39,19 @@ class Protocol(Enum):
         return self
 
     GCS = "gcs", "For packages dynamically uploaded and managed by the GCS."
-    S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
     CONDA = "conda", "For conda environments installed locally on each node."
+    PIP = "pip", "For pip environments installed locally on each node."
+    HTTPS = "https", ("Remote https path, "
+                      "assumes everything packed in one zip file.")
+    S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
+    GS = "gs", ("Remote google storage path, "
+                "assumes everything packed in one zip file.")
+
+    @classmethod
+    def remote_protocols(cls):
+        # Returns a lit of protocols that support remote storage
+        # These protocols should only be used with paths that end in ".zip"
+        return [cls.HTTPS, cls.S3, cls.GS]
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
@@ -123,19 +133,49 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
                 netloc='_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip'
             )
             -> ("gcs", "_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
-    For S3 URIs, the bucket and path will have '/' replaced with '_'.
+    For HTTPS URIs, the netloc will have '.' replaced with '_', and
+    the path will have '/' replaced with '_'. The package name will be the
+    adjusted path with 'https_' prepended.
+        urlparse(
+            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+        )
+            -> ParseResult(
+                scheme='https',
+                netloc='github.com',
+                path='/shrekris-anyscale/test_repo/archive/HEAD.zip'
+            )
+            -> ("https",
+            "github_com_shrekris-anyscale_test_repo_archive_HEAD.zip")
+    For S3 URIs, the bucket and path will have '/' replaced with '_'. The
+    package name will be the adjusted path with 's3_' prepended.
         urlparse("s3://bucket/dir/file.zip")
             -> ParseResult(
                 scheme='s3',
                 netloc='bucket',
                 path='/dir/file.zip'
             )
-            -> ("s3", "s3_bucket_dir_file.zip")
+            -> ("s3", "bucket_dir_file.zip")
+    For GS URIs, the path will have '/' replaced with '_'. The package name
+    will be the adjusted path with 'gs_' prepended.
+        urlparse("gs://public-runtime-env-test/test_module.zip")
+            -> ParseResult(
+                scheme='gs',
+                netloc='public-runtime-env-test',
+                path='/test_module.zip'
+            )
+            -> ("gs",
+            "gs_public-runtime-env-test_test_module.zip")
     """
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
-    if protocol == Protocol.S3:
-        return (protocol, f"s3_{uri.netloc}_" + "_".join(uri.path.split("/")))
+    if protocol == Protocol.S3 or protocol == Protocol.GS:
+        return (protocol,
+                f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
+    elif protocol == Protocol.HTTPS:
+        return (
+            protocol,
+            f"https_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}"
+        )
     else:
         return (protocol, uri.netloc)
 
@@ -246,6 +286,15 @@ def package_exists(pkg_uri: str) -> bool:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
+def get_uri_for_package(package: Path) -> str:
+    """Get a content-addressable URI from a package's contents.
+    """
+
+    hash_val = hashlib.md5(package.read_bytes()).hexdigest()
+    return "{protocol}://{pkg_name}.zip".format(
+        protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val)
+
+
 def get_uri_for_directory(directory: str,
                           excludes: Optional[List[str]] = None) -> str:
     """Get a content-addressable URI from a directory's contents.
@@ -291,8 +340,9 @@ def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes):
     protocol, pkg_name = parse_uri(pkg_uri)
     if protocol == Protocol.GCS:
         _store_package_in_gcs(pkg_uri, pkg_bytes)
-    elif protocol == Protocol.S3:
-        raise RuntimeError("push_package should not be called with s3 path.")
+    elif protocol in Protocol.remote_protocols():
+        raise RuntimeError(
+            "push_package should not be called with remote path.")
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -394,32 +444,150 @@ def download_and_unpack_package(
                     raise IOError(f"Failed to fetch URI {pkg_uri} from GCS.")
                 code = code or b""
                 pkg_file.write_bytes(code)
-            elif protocol == Protocol.S3:
-                # Download package from S3.
-                try:
-                    from smart_open import open
-                    import boto3
-                except ImportError:
-                    raise ImportError(
-                        "You must `pip install smart_open` and "
-                        "`pip install boto3` to fetch URIs in s3 "
-                        "bucket.")
+                unzip_package(
+                    package_path=pkg_file,
+                    target_dir=local_dir,
+                    remove_top_level_directory=False,
+                    unlink_zip=True,
+                    logger=logger)
+            elif protocol in Protocol.remote_protocols():
+                # Download package from remote URI
+                tp = None
 
-                tp = {"client": boto3.client("s3")}
+                if protocol == Protocol.S3:
+                    try:
+                        from smart_open import open
+                        import boto3
+                    except ImportError:
+                        raise ImportError(
+                            "You must `pip install smart_open` and "
+                            "`pip install boto3` to fetch URIs in s3 "
+                            "bucket.")
+                    tp = {"client": boto3.client("s3")}
+                elif protocol == Protocol.GS:
+                    try:
+                        from smart_open import open
+                        from google.cloud import storage  # noqa: F401
+                    except ImportError:
+                        raise ImportError(
+                            "You must `pip install smart_open` and "
+                            "`pip install google-cloud-storage` "
+                            "to fetch URIs in Google Cloud Storage bucket.")
+                else:
+                    try:
+                        from smart_open import open
+                    except ImportError:
+                        raise ImportError(
+                            "You must `pip install smart_open` "
+                            f"to fetch {protocol.value.upper()} URIs.")
+
                 with open(pkg_uri, "rb", transport_params=tp) as package_zip:
                     with open(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
+
+                unzip_package(
+                    package_path=pkg_file,
+                    target_dir=local_dir,
+                    remove_top_level_directory=True,
+                    unlink_zip=True,
+                    logger=logger)
             else:
                 raise NotImplementedError(
                     f"Protocol {protocol} is not supported")
 
-            os.mkdir(local_dir)
-            logger.debug(f"Unpacking {pkg_file} to {local_dir}")
-            with ZipFile(str(pkg_file), "r") as zip_ref:
-                zip_ref.extractall(local_dir)
-            pkg_file.unlink()
-
         return str(local_dir)
+
+
+def get_top_level_dir_from_compressed_package(package_path: str):
+    """
+    If compressed package at package_path contains a single top-level
+    directory, returns the name of the top-level directory. Otherwise,
+    returns None.
+    """
+
+    package_zip = ZipFile(package_path, "r")
+    top_level_directory = None
+
+    for file_name in package_zip.namelist():
+        if top_level_directory is None:
+            # Cache the top_level_directory name when checking
+            # the first file in the zipped package
+            if "/" in file_name:
+                top_level_directory = file_name.split("/")[0]
+            else:
+                return None
+        else:
+            # Confirm that all other files
+            # belong to the same top_level_directory
+            if "/" not in file_name or \
+                    file_name.split("/")[0] != top_level_directory:
+                return None
+
+    return top_level_directory
+
+
+def extract_file_and_remove_top_level_dir(base_dir: str, fname: str,
+                                          zip_ref: ZipFile):
+    """
+    Extracts fname file from zip_ref zip file, removes the top level directory
+    from fname's file path, and stores fname in the base_dir.
+    """
+
+    fname_without_top_level_dir = "/".join(fname.split("/")[1:])
+
+    # If this condition is false, it means there was no top-level directory,
+    # so we do nothing
+    if fname_without_top_level_dir:
+        zip_ref.extract(fname, base_dir)
+        os.rename(
+            os.path.join(base_dir, fname),
+            os.path.join(base_dir, fname_without_top_level_dir))
+
+
+def unzip_package(package_path: str,
+                  target_dir: str,
+                  remove_top_level_directory: bool,
+                  unlink_zip: bool,
+                  logger: Optional[logging.Logger] = default_logger):
+    """
+    Unzip the compressed package contained at package_path and store the
+    contents in target_dir. If remove_top_level_directory is True, the function
+    will automatically remove the top_level_directory and store the contents
+    directly in target_dir. If unlink_zip is True, the function will unlink the
+    zip file stored at package_path.
+    """
+    try:
+        os.mkdir(target_dir)
+    except FileExistsError:
+        logger.info(f"Directory at {target_dir} already exists")
+
+    logger.debug(f"Unpacking {package_path} to {target_dir}")
+
+    if remove_top_level_directory:
+        top_level_directory = get_top_level_dir_from_compressed_package(
+            package_path)
+        if top_level_directory is None:
+            raise ValueError("The package at package_path must contain "
+                             "a single top level directory. Make sure there "
+                             "are no hidden files at the same level as the "
+                             "top level directory.")
+        with ZipFile(str(package_path), "r") as zip_ref:
+            for fname in zip_ref.namelist():
+                extract_file_and_remove_top_level_dir(
+                    base_dir=target_dir, fname=fname, zip_ref=zip_ref)
+
+            # Remove now-empty top_level_directory and any empty subdirectories
+            # left over from extract_file_and_remove_top_level_dir operations
+            leftover_top_level_directory = os.path.join(
+                target_dir, top_level_directory)
+            if os.path.isdir(leftover_top_level_directory):
+                shutil.rmtree(leftover_top_level_directory)
+    else:
+        with ZipFile(str(package_path), "r") as zip_ref:
+            zip_ref.extractall(target_dir)
+
+    if unlink_zip:
+        Path(package_path).unlink()
 
 
 def delete_package(pkg_uri: str, base_directory: str) -> bool:

@@ -42,6 +42,15 @@ def ensure_ray_initialized():
 class WorkflowRef:
     """This class represents a dynamic reference of a workflow output.
 
+    A dynamic reference means the workflow
+
+    1. has not executed yet
+    2. has been running
+    3. has failed
+    4. has finished
+
+    So this class only contains the ID of the workflow step.
+
     See 'step_executor._resolve_dynamic_workflow_refs' for how we handle
     workflow refs."""
     # The ID of the step that produces the output of the workflow.
@@ -52,6 +61,42 @@ class WorkflowRef:
 
     def __hash__(self):
         return hash(self.step_id)
+
+
+class _RefBypass:
+    """Prevents an object ref from being hooked by a serializer."""
+
+    def __init__(self, ref):
+        self._ref = ref
+
+    def __reduce__(self):
+        from ray import cloudpickle
+        return cloudpickle.loads, (cloudpickle.dumps(self._ref), )
+
+
+@dataclass
+class WorkflowStaticRef:
+    """This class represents a static reference of a workflow output.
+
+    A static reference means the workflow has already been executed,
+    and we have both the workflow step ID and the object ref to it
+    living outputs.
+
+    This could be used when you want to return a running workflow
+    from a workflow step. For example, the remaining workflows
+    returned by 'workflow.wait' contains a static ref to these
+    pending workflows.
+    """
+    # The ID of the step that produces the output of the workflow.
+    step_id: StepID
+    # The ObjectRef of the output.
+    ref: ObjectRef
+
+    def __hash__(self):
+        return hash(self.step_id + self.ref.hex())
+
+    def __reduce__(self):
+        return WorkflowStaticRef, (self.step_id, _RefBypass(self.ref))
 
 
 @PublicAPI(stability="beta")
@@ -77,6 +122,7 @@ class StepType(str, Enum):
     FUNCTION = "FUNCTION"
     ACTOR_METHOD = "ACTOR_METHOD"
     READONLY_ACTOR_METHOD = "READONLY_ACTOR_METHOD"
+    WAIT = "WAIT"
 
 
 @dataclass
@@ -123,6 +169,8 @@ class WorkflowStepRuntimeOptions:
     catch_exceptions: bool
     # The num of retry for application exception.
     max_retries: int
+    # Run the workflow step inplace.
+    allow_inplace: bool
     # ray_remote options
     ray_options: Dict[str, Any]
 
@@ -132,6 +180,7 @@ class WorkflowStepRuntimeOptions:
              step_type,
              catch_exceptions=None,
              max_retries=None,
+             allow_inplace=False,
              ray_options=None):
         if max_retries is None:
             max_retries = 3
@@ -149,6 +198,7 @@ class WorkflowStepRuntimeOptions:
             step_type=step_type,
             catch_exceptions=catch_exceptions,
             max_retries=max_retries,
+            allow_inplace=allow_inplace,
             ray_options=ray_options)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -156,6 +206,7 @@ class WorkflowStepRuntimeOptions:
             "step_type": self.step_type,
             "max_retries": self.max_retries,
             "catch_exceptions": self.catch_exceptions,
+            "allow_inplace": self.allow_inplace,
             "ray_options": self.ray_options,
         }
 
@@ -165,6 +216,7 @@ class WorkflowStepRuntimeOptions:
             step_type=StepType[value["step_type"]],
             max_retries=value["max_retries"],
             catch_exceptions=value["catch_exceptions"],
+            allow_inplace=value["allow_inplace"],
             ray_options=value["ray_options"],
         )
 
@@ -189,7 +241,7 @@ class WorkflowData:
         # "name" in the metadata is different from the "name" field.
         # Maybe rename it to avoid confusion.
         metadata = {
-            "name": get_module(f) + "." + get_qualname(f),
+            "name": self.name or get_module(f) + "." + get_qualname(f),
             "workflows": [w.step_id for w in self.inputs.workflows],
             "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],
             "step_options": self.step_options.to_dict(),
@@ -238,6 +290,12 @@ T = TypeVar("T")
 
 
 class Workflow(Generic[T]):
+    """This class represents a workflow.
+
+    It would either be a workflow that is not executed, or it is a reference
+    to a running workflow when 'workflow.ref' is not None.
+    """
+
     def __init__(self,
                  workflow_data: WorkflowData,
                  prepare_inputs: Optional[Callable] = None):
@@ -251,6 +309,7 @@ class Workflow(Generic[T]):
         self._result: Optional[WorkflowExecutionResult] = None
         # step id will be generated during runtime
         self._step_id: StepID = None
+        self._ref: Optional[WorkflowStaticRef] = None
 
     @property
     def _workflow_id(self):
@@ -281,6 +340,8 @@ class Workflow(Generic[T]):
     def step_id(self) -> StepID:
         if self._step_id is not None:
             return self._step_id
+        if self._ref is not None:
+            return self._ref.step_id
 
         from ray.workflow.workflow_access import \
             get_or_create_management_actor
@@ -312,11 +373,39 @@ class Workflow(Generic[T]):
             del self._prepare_inputs
         return self._data
 
+    @property
+    def ref(self) -> Optional[WorkflowStaticRef]:
+        return self._ref
+
+    @classmethod
+    def from_ref(cls, workflow_ref: WorkflowStaticRef) -> "Workflow":
+        inputs = WorkflowInputs(args=None, workflows=[], workflow_refs=[])
+        data = WorkflowData(
+            func_body=None,
+            inputs=inputs,
+            name=None,
+            step_options=WorkflowStepRuntimeOptions.make(
+                step_type=StepType.FUNCTION),
+            user_metadata={})
+        wf = Workflow(data)
+        wf._ref = workflow_ref
+        return wf
+
     def __reduce__(self):
-        raise ValueError(
-            "Workflow[T] objects are not serializable. "
-            "This means they cannot be passed or returned from Ray "
-            "remote, or stored in Ray objects.")
+        """Serialization helper for workflow.
+
+        By default Workflow[T] objects are not serializable, except
+        it is a reference to a workflow (when workflow.ref is not 'None').
+        The reference can be passed around, but the workflow must
+        be processed locally so we can capture it in the DAG and
+        checkpoint its inputs properly.
+        """
+        if self._ref is None:
+            raise ValueError(
+                "Workflow[T] objects are not serializable. "
+                "This means they cannot be passed or returned from Ray "
+                "remote, or stored in Ray objects.")
+        return Workflow.from_ref, (self._ref, )
 
     @PublicAPI(stability="beta")
     def run(self,

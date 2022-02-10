@@ -3,8 +3,8 @@
 Installing Ray
 ==============
 
-Ray currently supports MacOS and Linux.
-Windows wheels are now available, but :ref:`Windows support <windows-support>` is experimental and under development.
+Ray currently supports Linux, MacOS and Windows.
+Ray on Windows is currently in beta.
 
 Official Releases
 -----------------
@@ -43,7 +43,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 
 ===================  ===================  ======================
-       Linux                MacOS         Windows (experimental)
+       Linux                MacOS         Windows (beta)
 ===================  ===================  ======================
 `Linux Python 3.9`_  `MacOS Python 3.9`_  `Windows Python 3.9`_
 `Linux Python 3.8`_  `MacOS Python 3.8`_  `Windows Python 3.8`_
@@ -54,6 +54,11 @@ You can install the nightly Ray wheels via the following links. These daily rele
 .. note::
 
   Python 3.9 support is currently experimental.
+
+.. note::
+
+  On Windows, support for multi-node Ray clusters is currently experimental and untested.
+  If you run into issues please file a report at https://github.com/ray-project/ray/issues.
 
 .. _`Linux Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
 .. _`Linux Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
@@ -154,14 +159,32 @@ The latest Ray Java snapshot can be found in `sonatype repository <https://oss.s
 
 .. _apple-silcon-supprt:
 
-Apple Silicon Support
----------------------
+M1 Mac (Apple Silicon) Support
+------------------------------
 
 Ray has experimental support for machines running Apple Silicon (such as M1 macs). To get started:
 
-1. Install `miniforge <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh>`_.
-2. Ensure that the ``grpcio`` package is installed via forge and **not pypi**: ``pip uninstall grpcio; conda install grpcio``.
-3. Install Ray as you normally would: ``pip install ray``.
+#. Install `miniforge <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh>`_.
+
+   * ``wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh``
+   
+   * ``bash Miniforge3-MacOSX-arm64.sh``
+   
+   * ``rm https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh # Cleanup.``
+   
+#. Ensure you're using the miniforge environment (you should see (base) in your terminal).
+   
+   * ``source ~/.bash_profile``
+   
+   * ``conda activate``
+   
+#. Ensure that the ``grpcio`` package is installed via forge and **not pypi**. Grpcio currently requires special compilation flags, which pypi will _not_ correctly build with. Miniforge provides a prebuilt version of grpcio for M1 macs. 
+   
+   * ``pip uninstall grpcio; conda install grpcio``.
+
+#. Install Ray as you normally would.
+
+   * ``pip install ray``
 
 .. note::
 
@@ -172,18 +195,8 @@ Ray has experimental support for machines running Apple Silicon (such as M1 macs
 Windows Support
 ---------------
 
-Windows support is currently limited and "alpha" quality.
-Bugs, process/resource leaks, or other incompatibilities may exist under various scenarios.
-Unusual, unattended, or production usage is **not** recommended.
-
-If you encounter any issues, please try the following:
-
-- Check the `Windows Known Issues <https://github.com/ray-project/ray/issues/9114>`_ page on GitHub to see the latest updates on Windows support.
-- In the case that your issue has been addressed, try installing the :ref:`latest nightly wheels <install-nightlies>`.
-
-If your issue has not yet been addressed, comment on the `Windows Known Issues <https://github.com/ray-project/ray/issues/9114>`_ page.
-
-.. _windows-dependencies:
+Windows support is currently in beta. Please submit any issues you encounter on
+`GitHub <https://github.com/ray-project/ray/issues/>`_.
 
 Installing Ray on Arch Linux
 ----------------------------

@@ -1,5 +1,6 @@
 from typing import Any, Callable, Dict, List
 import time
+from threading import RLock
 
 
 class EventSummarizer:
@@ -13,6 +14,10 @@ class EventSummarizer:
         # added here, until its TTL expires.
         self.throttled_messages: Dict[str, float] = {}
 
+        # Event summarizer is used by the main thread and
+        # by node launcher child threads.
+        self.lock = RLock()
+
     def add(self, template: str, *, quantity: Any,
             aggregate: Callable[[Any, Any], Any]) -> None:
         """Add a log message, which will be combined by template.
@@ -24,14 +29,15 @@ class EventSummarizer:
                 quantities. The result is inserted into the template to
                 produce the final log message.
         """
-        # Enforce proper sentence structure.
-        if not template.endswith("."):
-            template += "."
-        if template in self.events_by_key:
-            self.events_by_key[template] = aggregate(
-                self.events_by_key[template], quantity)
-        else:
-            self.events_by_key[template] = quantity
+        with self.lock:
+            # Enforce proper sentence structure.
+            if not template.endswith("."):
+                template += "."
+            if template in self.events_by_key:
+                self.events_by_key[template] = aggregate(
+                    self.events_by_key[template], quantity)
+            else:
+                self.events_by_key[template] = quantity
 
     def add_once_per_interval(self, message: str, key: str, interval_s: int):
         """Add a log message, which is throttled once per interval by a key.
@@ -41,24 +47,27 @@ class EventSummarizer:
             key (str): The key to use to deduplicate the message.
             interval_s (int): Throttling interval in seconds.
         """
-        if key not in self.throttled_messages:
-            self.throttled_messages[key] = time.time() + interval_s
-            self.messages_to_send.append(message)
+        with self.lock:
+            if key not in self.throttled_messages:
+                self.throttled_messages[key] = time.time() + interval_s
+                self.messages_to_send.append(message)
 
     def summary(self) -> List[str]:
         """Generate the aggregated log summary of all added events."""
-        out = []
-        for template, quantity in self.events_by_key.items():
-            out.append(template.format(quantity))
-        out.extend(self.messages_to_send)
+        with self.lock:
+            out = []
+            for template, quantity in self.events_by_key.items():
+                out.append(template.format(quantity))
+            out.extend(self.messages_to_send)
         return out
 
     def clear(self) -> None:
         """Clear the events added."""
-        self.events_by_key.clear()
-        self.messages_to_send.clear()
-        # Expire any messages that have reached their TTL. This allows them
-        # to be sent again.
-        for k, t in list(self.throttled_messages.items()):
-            if time.time() > t:
-                del self.throttled_messages[k]
+        with self.lock:
+            self.events_by_key.clear()
+            self.messages_to_send.clear()
+            # Expire any messages that have reached their TTL. This allows them
+            # to be sent again.
+            for k, t in list(self.throttled_messages.items()):
+                if time.time() > t:
+                    del self.throttled_messages[k]

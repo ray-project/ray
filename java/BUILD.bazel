@@ -2,6 +2,10 @@ load("//bazel:ray.bzl", "define_java_module")
 load("//bazel:ray.bzl", "native_java_binary")
 load("//bazel:ray.bzl", "native_java_library")
 load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
+load(
+    "@com_github_johnynek_bazel_jar_jar//:jar_jar.bzl",
+    "jar_jar",
+)
 
 exports_files([
     "testng.xml",
@@ -78,6 +82,7 @@ define_java_module(
         "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
         "@maven//:com_google_protobuf_protobuf_java",
+        "@maven//:com_google_protobuf_protobuf_java_util",
         "@maven//:com_lmax_disruptor",
         "@maven//:com_typesafe_config",
         "@maven//:commons_io_commons_io",
@@ -188,6 +193,11 @@ java_proto_compile(
 )
 
 java_proto_compile(
+    name = "runtime_env_common_java_proto",
+    deps = ["@//src/ray/protobuf:runtime_env_common_proto"],
+)
+
+java_proto_compile(
     name = "gcs_java_proto",
     deps = ["@//src/ray/protobuf:gcs_proto"],
 )
@@ -202,6 +212,7 @@ filegroup(
     srcs = [
         ":common_java_proto",
         ":gcs_java_proto",
+        ":runtime_env_common_java_proto",
     ],
 )
 
@@ -304,10 +315,23 @@ java_binary(
     ],
 )
 
+jar_jar(
+    name = "ray_dist_shaded",
+    input_jar = "//java:ray_dist_deploy.jar",
+    rules = "//java:shade_rule",
+)
+
+# Shade dependencies in tests fat jar.
+jar_jar(
+    name = "all_tests_shaded",
+    input_jar = "//java:all_tests_deploy.jar",
+    rules = "//java:shade_rule",
+)
+
 genrule(
     name = "ray_java_pkg",
     srcs = [
-        "//java:ray_dist_deploy.jar",
+        "//java:ray_dist_shaded.jar",
         "//java:gen_maven_deps",
         "//streaming/java:gen_maven_deps",
     ],
@@ -315,7 +339,7 @@ genrule(
     cmd = """
         WORK_DIR="$$(pwd)"
         rm -rf "$$WORK_DIR/python/ray/jars" && mkdir -p "$$WORK_DIR/python/ray/jars"
-        cp -f $(location //java:ray_dist_deploy.jar) "$$WORK_DIR/python/ray/jars/ray_dist.jar"
+        cp -f $(location //java:ray_dist_shaded.jar) "$$WORK_DIR/python/ray/jars/ray_dist.jar"
         date > $@
     """,
     local = 1,

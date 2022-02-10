@@ -70,7 +70,7 @@ TEST(RayClusterModeTest, FullTest) {
 
   ray::ActorHandle<Counter> actor = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
                                         .SetMaxRestarts(1)
-                                        .SetGlobalName("named_actor")
+                                        .SetName("named_actor")
                                         .Remote();
   auto named_actor_obj = actor.Task(&Counter::Plus1)
                              .SetName("named_actor_task")
@@ -78,12 +78,12 @@ TEST(RayClusterModeTest, FullTest) {
                              .Remote();
   EXPECT_EQ(1, *named_actor_obj.Get());
 
-  auto named_actor_handle_optional = ray::GetGlobalActor<Counter>("named_actor");
+  auto named_actor_handle_optional = ray::GetActor<Counter>("named_actor");
   EXPECT_TRUE(named_actor_handle_optional);
   auto &named_actor_handle = *named_actor_handle_optional;
   auto named_actor_obj1 = named_actor_handle.Task(&Counter::Plus1).Remote();
   EXPECT_EQ(2, *named_actor_obj1.Get());
-  EXPECT_FALSE(ray::GetGlobalActor<Counter>("not_exist_actor"));
+  EXPECT_FALSE(ray::GetActor<Counter>("not_exist_actor"));
 
   EXPECT_FALSE(
       *named_actor_handle.Task(&Counter::CheckRestartInActorCreationTask).Remote().Get());
@@ -102,7 +102,7 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_THROW(named_actor_handle.Task(&Counter::Plus1).Remote().Get(),
                ray::internal::RayActorException);
 
-  EXPECT_FALSE(ray::GetGlobalActor<Counter>("named_actor"));
+  EXPECT_FALSE(ray::GetActor<Counter>("named_actor"));
 
   /// actor task without args
   auto actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
@@ -196,6 +196,13 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result15, 29);
   EXPECT_EQ(result16, 30);
 
+  /// Test Put, Get & Remote for large objects
+  std::array<int, 100000> arr;
+  auto r17 = ray::Put(arr);
+  auto r18 = ray::Task(ReturnLargeArray).Remote(r17);
+  EXPECT_EQ(arr, *(ray::Get(r17)));
+  EXPECT_EQ(arr, *(ray::Get(r18)));
+
   uint64_t pid = *actor1.Task(&Counter::GetPid).Remote().Get();
   EXPECT_TRUE(Counter::IsProcessAlive(pid));
 
@@ -286,20 +293,20 @@ TEST(RayClusterModeTest, LocalRefrenceTest) {
 }
 
 TEST(RayClusterModeTest, DependencyRefrenceTest) {
-  auto r1 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Return1).Remote());
-  auto object_id = ray::ObjectID::FromBinary(r1->ID());
-  EXPECT_TRUE(CheckRefCount({{object_id, std::make_pair(1, 0)}}));
+  {
+    auto r1 = ray::Task(Return1).Remote();
+    auto object_id = ray::ObjectID::FromBinary(r1.ID());
+    EXPECT_TRUE(CheckRefCount({{object_id, std::make_pair(1, 0)}}));
 
-  auto r2 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Plus1).Remote(*r1));
-  EXPECT_TRUE(
-      CheckRefCount({{object_id, std::make_pair(1, 1)},
-                     {ray::ObjectID::FromBinary(r2->ID()), std::make_pair(1, 0)}}));
-  r2->Get();
-  EXPECT_TRUE(
-      CheckRefCount({{object_id, std::make_pair(1, 0)},
-                     {ray::ObjectID::FromBinary(r2->ID()), std::make_pair(1, 0)}}));
-  r1.reset();
-  r2.reset();
+    auto r2 = ray::Task(Plus1).Remote(r1);
+    EXPECT_TRUE(
+        CheckRefCount({{object_id, std::make_pair(1, 1)},
+                       {ray::ObjectID::FromBinary(r2.ID()), std::make_pair(1, 0)}}));
+    r2.Get();
+    EXPECT_TRUE(
+        CheckRefCount({{object_id, std::make_pair(1, 0)},
+                       {ray::ObjectID::FromBinary(r2.ID()), std::make_pair(1, 0)}}));
+  }
   EXPECT_TRUE(CheckRefCount({}));
 }
 
@@ -322,8 +329,7 @@ TEST(RayClusterModeTest, GetActorTest) {
 ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
   std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1}}};
 
-  ray::PlacementGroupCreationOptions options{false, name, bundles,
-                                             ray::PlacementStrategy::PACK};
+  ray::PlacementGroupCreationOptions options{name, bundles, ray::PlacementStrategy::PACK};
   return ray::CreatePlacementGroup(options);
 }
 
@@ -355,7 +361,7 @@ TEST(RayClusterModeTest, CreateAndRemovePlacementGroup) {
 TEST(RayClusterModeTest, CreatePlacementGroupExceedsClusterResource) {
   std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 10000}}};
 
-  ray::PlacementGroupCreationOptions options{false, "first_placement_group", bundles,
+  ray::PlacementGroupCreationOptions options{"first_placement_group", bundles,
                                              ray::PlacementStrategy::PACK};
   auto first_placement_group = ray::CreatePlacementGroup(options);
   EXPECT_FALSE(first_placement_group.Wait(3));

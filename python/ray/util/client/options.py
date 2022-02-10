@@ -36,6 +36,8 @@ options = {
     "placement_group_bundle_index": (),
     "placement_group_capture_child_tasks": (),
     "runtime_env": (),
+    "max_pending_calls": (),
+    "scheduling_strategy": (),
 }
 
 

@@ -1,59 +1,24 @@
-import concurrent.futures
-from functools import partial
 import logging
 from typing import Callable, Iterable, List, Optional, Type, Union
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
-from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy import Policy
 from ray.rllib.utils import add_mixins
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import EnvConfigDict, EnvType, \
     PartialTrainerConfigDict, ResultDict, TrainerConfigDict
+from ray.tune.logger import Logger
 
 logger = logging.getLogger(__name__)
 
 
-def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict,
-                           **kwargs):
-    assert len(kwargs) == 0, (
-        "Default execution_plan does NOT take any additional parameters")
-
-    # Collects experiences in parallel from multiple RolloutWorker actors.
-    rollouts = ParallelRollouts(workers, mode="bulk_sync")
-
-    # Combine experiences batches until we hit `train_batch_size` in size.
-    # Then, train the policy on those experiences and update the workers.
-    train_op = rollouts.combine(
-        ConcatBatches(
-            min_batch_size=config["train_batch_size"],
-            count_steps_by=config["multiagent"]["count_steps_by"],
-        ))
-
-    if config.get("simple_optimizer") is True:
-        train_op = train_op.for_each(TrainOneStep(workers))
-    else:
-        train_op = train_op.for_each(
-            MultiGPUTrainOneStep(
-                workers=workers,
-                sgd_minibatch_size=config.get("sgd_minibatch_size",
-                                              config["train_batch_size"]),
-                num_sgd_iter=config.get("num_sgd_iter", 1),
-                num_gpus=config["num_gpus"],
-                shuffle_sequences=config.get("shuffle_sequences", False),
-                _fake_gpus=config["_fake_gpus"],
-                framework=config["framework"]))
-
-    # Add on the standard episode reward, etc. metrics reporting. This returns
-    # a LocalIterator[metrics_dict] representing metrics for each train step.
-    return StandardMetricsReporting(train_op, workers, config)
-
-
-@DeveloperAPI
+@Deprecated(
+    new="Sub-class from Trainer (or another Trainer sub-class) directly! "
+    "See e.g. ray.rllib.agents.dqn.dqn.py for an example.",
+    error=False)
 def build_trainer(
         name: str,
         *,
@@ -70,7 +35,7 @@ def build_trainer(
         execution_plan: Optional[Union[Callable[
             [WorkerSet, TrainerConfigDict], Iterable[ResultDict]], Callable[[
                 Trainer, WorkerSet, TrainerConfigDict
-            ], Iterable[ResultDict]]]] = default_execution_plan,
+            ], Iterable[ResultDict]]]] = None,
         allow_unknown_configs: bool = False,
         allow_unknown_subkeys: Optional[List[str]] = None,
         override_all_subkeys_if_type_changes: Optional[List[str]] = None,
@@ -129,8 +94,14 @@ def build_trainer(
         _default_config = default_config or COMMON_CONFIG
         _policy_class = default_policy
 
-        def __init__(self, config=None, env=None, logger_creator=None):
-            Trainer.__init__(self, config, env, logger_creator)
+        def __init__(self,
+                     config: TrainerConfigDict = None,
+                     env: Union[str, EnvType, None] = None,
+                     logger_creator: Callable[[], Logger] = None,
+                     remote_checkpoint_dir: Optional[str] = None,
+                     sync_function_tpl: Optional[str] = None):
+            Trainer.__init__(self, config, env, logger_creator,
+                             remote_checkpoint_dir, sync_function_tpl)
 
         @override(base)
         def setup(self, config: PartialTrainerConfigDict):
@@ -140,7 +111,7 @@ def build_trainer(
             if override_all_subkeys_if_type_changes is not None:
                 self._override_all_subkeys_if_type_changes += \
                     override_all_subkeys_if_type_changes
-            super().setup(config)
+            Trainer.setup(self, config)
 
         def _init(self, config: TrainerConfigDict,
                   env_creator: Callable[[EnvConfigDict], EnvType]):
@@ -148,10 +119,9 @@ def build_trainer(
             # No `get_policy_class` function.
             if get_policy_class is None:
                 # Default_policy must be provided (unless in multi-agent mode,
-                # where each policy can have its own default policy class.
+                # where each policy can have its own default policy class).
                 if not config["multiagent"]["policies"]:
                     assert default_policy is not None
-                self._policy_class = default_policy
             # Query the function for a class to use.
             else:
                 self._policy_class = get_policy_class(config)
@@ -170,110 +140,38 @@ def build_trainer(
                 policy_class=self._policy_class,
                 config=config,
                 num_workers=self.config["num_workers"])
-            self.execution_plan = execution_plan
-            self.train_exec_impl = execution_plan(
+
+            self.train_exec_impl = self.execution_plan(
                 self.workers, config, **self._kwargs_for_execution_plan())
 
             if after_init:
                 after_init(self)
 
         @override(Trainer)
-        def step(self):
-            # self._iteration gets incremented after this function returns,
-            # meaning that e. g. the first time this function is called,
-            # self._iteration will be 0.
-            evaluate_this_iter = \
-                self.config["evaluation_interval"] and \
-                (self._iteration + 1) % self.config["evaluation_interval"] == 0
-
-            # No evaluation necessary, just run the next training iteration.
-            if not evaluate_this_iter:
-                step_results = next(self.train_exec_impl)
-            # We have to evaluate in this training iteration.
-            else:
-                # No parallelism.
-                if not self.config["evaluation_parallel_to_training"]:
-                    step_results = next(self.train_exec_impl)
-
-                # Kick off evaluation-loop (and parallel train() call,
-                # if requested).
-                # Parallel eval + training.
-                if self.config["evaluation_parallel_to_training"]:
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        train_future = executor.submit(
-                            lambda: next(self.train_exec_impl))
-                        if self.config["evaluation_num_episodes"] == "auto":
-
-                            # Run at least one `evaluate()` (num_episodes_done
-                            # must be > 0), even if the training is very fast.
-                            def episodes_left_fn(num_episodes_done):
-                                if num_episodes_done > 0 and \
-                                        train_future.done():
-                                    return 0
-                                else:
-                                    return self.config[
-                                        "evaluation_num_workers"]
-
-                            evaluation_metrics = self.evaluate(
-                                episodes_left_fn=episodes_left_fn)
-                        else:
-                            evaluation_metrics = self.evaluate()
-                        # Collect the training results from the future.
-                        step_results = train_future.result()
-                # Sequential: train (already done above), then eval.
-                else:
-                    evaluation_metrics = self.evaluate()
-
-                # Add evaluation results to train results.
-                assert isinstance(evaluation_metrics, dict), \
-                    "Trainer.evaluate() needs to return a dict."
-                step_results.update(evaluation_metrics)
-
-            # Check `env_task_fn` for possible update of the env's task.
-            if self.config["env_task_fn"] is not None:
-                if not callable(self.config["env_task_fn"]):
-                    raise ValueError(
-                        "`env_task_fn` must be None or a callable taking "
-                        "[train_results, env, env_ctx] as args!")
-
-                def fn(env, env_context, task_fn):
-                    new_task = task_fn(step_results, env, env_context)
-                    cur_task = env.get_task()
-                    if cur_task != new_task:
-                        env.set_task(new_task)
-
-                fn = partial(fn, task_fn=self.config["env_task_fn"])
-                self.workers.foreach_env_with_context(fn)
-
-            return step_results
-
-        @staticmethod
-        @override(Trainer)
-        def _validate_config(config: PartialTrainerConfigDict,
-                             trainer_obj_or_none: Optional["Trainer"] = None):
-            # Call super (Trainer) validation method first.
-            Trainer._validate_config(config, trainer_obj_or_none)
+        def validate_config(self, config: PartialTrainerConfigDict):
+            # Call super's validation method.
+            Trainer.validate_config(self, config)
             # Then call user defined one, if any.
             if validate_config is not None:
                 validate_config(config)
+
+        @staticmethod
+        @override(Trainer)
+        def execution_plan(workers, config, **kwargs):
+            # `execution_plan` is provided, use it inside
+            # `self.execution_plan()`.
+            if execution_plan is not None:
+                return execution_plan(workers, config, **kwargs)
+            # If `execution_plan` is not provided (None), the Trainer will use
+            # it's already existing default `execution_plan()` static method
+            # instead.
+            else:
+                return Trainer.execution_plan(workers, config, **kwargs)
 
         @override(Trainer)
         def _before_evaluate(self):
             if before_evaluate_fn:
                 before_evaluate_fn(self)
-
-        @override(Trainer)
-        def __getstate__(self):
-            state = Trainer.__getstate__(self)
-            state["train_exec_impl"] = (
-                self.train_exec_impl.shared_metrics.get().save())
-            return state
-
-        @override(Trainer)
-        def __setstate__(self, state):
-            Trainer.__setstate__(self, state)
-            self.train_exec_impl.shared_metrics.get().restore(
-                state["train_exec_impl"])
 
         @staticmethod
         @override(Trainer)
@@ -289,11 +187,15 @@ def build_trainer(
                     and `overrides`.
 
             Examples:
-                >>> MyClass = SomeOtherClass.with_updates({"name": "Mine"})
-                >>> issubclass(MyClass, SomeOtherClass)
-                ... False
-                >>> issubclass(MyClass, Trainer)
-                ... True
+                >>> from ray.rllib.agents.ppo import PPOTrainer
+                >>> MyPPOClass = PPOTrainer.with_updates({"name": "MyPPO"})
+                >>> issubclass(MyPPOClass, PPOTrainer)
+                False
+                >>> issubclass(MyPPOClass, Trainer)
+                True
+                >>> trainer = MyPPOClass()
+                >>> print(trainer)
+                MyPPO
             """
             return build_trainer(**dict(original_kwargs, **overrides))
 

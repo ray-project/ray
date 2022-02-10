@@ -1,96 +1,14 @@
 # coding: utf-8
 from abc import abstractmethod
-from functools import lru_cache
 import logging
-import os
-import time
 from typing import Dict, List, Optional
 import warnings
 
-import ray
 from ray.tune.resources import Resources
 from ray.util.annotations import DeveloperAPI
 from ray.tune.trial import Trial, Checkpoint
-from ray.tune.error import TuneError
-from ray.tune.cluster_info import is_ray_cluster
 
 logger = logging.getLogger(__name__)
-
-
-# Ideally we want to use @cache; but it's only available for python 3.9.
-# Caching is only helpful/correct for no autoscaler case.
-@lru_cache()
-def _get_cluster_resources_no_autoscaler() -> Dict:
-    return ray.cluster_resources()
-
-
-def _get_trial_cpu_and_gpu(trial: Trial) -> Dict:
-    cpu = trial.resources.cpu + trial.resources.extra_cpu
-    gpu = trial.resources.gpu + trial.resources.extra_gpu
-    if trial.placement_group_factory is not None:
-        cpu = trial.placement_group_factory.required_resources.get("CPU", 0)
-        gpu = trial.placement_group_factory.required_resources.get("GPU", 0)
-    return {"CPU": cpu, "GPU": gpu}
-
-
-def _can_fulfill_no_autoscaler(trial: Trial) -> bool:
-    """Calculates if there is enough resources for a PENDING trial.
-
-    For no autoscaler case.
-    """
-    assert trial.status == Trial.PENDING
-    trial_cpu_gpu = _get_trial_cpu_and_gpu(trial)
-
-    return trial_cpu_gpu["CPU"] <= _get_cluster_resources_no_autoscaler().get(
-        "CPU", 0
-    ) and trial_cpu_gpu["GPU"] <= _get_cluster_resources_no_autoscaler().get(
-        "GPU", 0)
-
-
-@lru_cache()
-def _get_insufficient_resources_warning_threshold() -> float:
-    if is_ray_cluster():
-        return float(
-            os.environ.get(
-                "TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER", "60"))
-    else:
-        # Set the default to 10s so that we don't prematurely determine that
-        # a cluster cannot fulfill the resources requirements.
-        # TODO(xwjiang): Change it back once #18608 is resolved.
-        return float(
-            os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "60"))
-
-
-# TODO(xwjiang): Consider having a help page with more detailed instructions.
-@lru_cache()
-def _get_insufficient_resources_warning_msg() -> str:
-    msg = (
-        f"No trial is running and no new trial has been started within"
-        f" at least the last "
-        f"{_get_insufficient_resources_warning_threshold()} seconds. "
-        f"This could be due to the cluster not having enough "
-        f"resources available to start the next trial. "
-        f"Stop the tuning job and adjust the resources requested per trial "
-        f"(possibly via `resources_per_trial` or via `num_workers` for rllib) "
-        f"and/or add more resources to your Ray runtime.")
-    if is_ray_cluster():
-        return "Ignore this message if the cluster is autoscaling. " + msg
-    else:
-        return msg
-
-
-# A beefed up version when Tune Error is raised.
-def _get_insufficient_resources_error_msg(trial: Trial) -> str:
-    trial_cpu_gpu = _get_trial_cpu_and_gpu(trial)
-    return (
-        f"Ignore this message if the cluster is autoscaling. "
-        f"You asked for {trial_cpu_gpu['CPU']} cpu and "
-        f"{trial_cpu_gpu['GPU']} gpu per trial, but the cluster only has "
-        f"{_get_cluster_resources_no_autoscaler().get('CPU', 0)} cpu and "
-        f"{_get_cluster_resources_no_autoscaler().get('GPU', 0)} gpu. "
-        f"Stop the tuning job and adjust the resources requested per trial "
-        f"(possibly via `resources_per_trial` or via `num_workers` for rllib) "
-        f"and/or add more resources to your Ray runtime.")
 
 
 # Signals when a class is directly inherited from TrialExecutor.
@@ -123,19 +41,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         """
         self._cached_trial_state = {}
         self._trials_to_cache = set()
-        # The next two variables are used to keep track of if there is any
-        # "progress" made between subsequent calls to `on_no_available_trials`.
-        # TODO(xwjiang): Clean this up once figuring out who should have a
-        #  holistic view of trials - runner or executor.
-        #  Also iterating over list of trials every time is very inefficient.
-        #  Need better visibility APIs into trials.
-        # The start time since when all active trials have been in PENDING
-        # state, or since last time we output a resource insufficent
-        # warning message, whichever comes later.
-        # -1 means either the TrialExecutor is just initialized without any
-        # trials yet, or there are some trials in RUNNING state.
-        self._no_running_trials_since = -1
-        self._all_trials_size = -1
 
     def set_status(self, trial: Trial, status: str) -> None:
         """Sets status and checkpoints metadata if needed.
@@ -155,25 +60,10 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
                          trial.status, status)
         trial.set_status(status)
         if status in [Trial.TERMINATED, Trial.ERROR]:
-            self.try_checkpoint_metadata(trial)
-
-    def try_checkpoint_metadata(self, trial: Trial) -> None:
-        """Checkpoints trial metadata.
-
-        Args:
-            trial (Trial): Trial to checkpoint.
-        """
-        if trial.checkpoint.storage == Checkpoint.MEMORY:
-            logger.debug("Trial %s: Not saving data for memory checkpoint.",
-                         trial)
-            return
-        try:
-            logger.debug("Trial %s: Saving trial metadata.", trial)
-            # Lazy cache trials
             self._trials_to_cache.add(trial)
-        except Exception:
-            logger.exception("Trial %s: Error checkpointing trial metadata.",
-                             trial)
+
+    def mark_trial_to_checkpoint(self, trial: Trial) -> None:
+        self._trials_to_cache.add(trial)
 
     def get_checkpoints(self) -> Dict[str, str]:
         """Returns a copy of mapping of the trial ID to pickled metadata."""
@@ -188,17 +78,11 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         pass
 
     @abstractmethod
-    def start_trial(self,
-                    trial: Trial,
-                    checkpoint: Optional[Checkpoint] = None,
-                    train: bool = True) -> bool:
+    def start_trial(self, trial: Trial) -> bool:
         """Starts the trial restoring from checkpoint if checkpoint is provided.
 
         Args:
             trial (Trial): Trial to be started.
-            checkpoint (Checkpoint): A Python object or path storing the state
-            of trial.
-            train (bool): Whether or not to start training.
 
         Returns:
             True if trial started successfully, False otherwise.
@@ -209,8 +93,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
     def stop_trial(self,
                    trial: Trial,
                    error: bool = False,
-                   error_msg: Optional[str] = None,
-                   destroy_pg_if_cannot_replace: bool = True) -> None:
+                   error_msg: Optional[str] = None) -> None:
         """Stops the trial.
 
         Stops this trial, releasing all allocating resources.
@@ -220,8 +103,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         Args:
             error (bool): Whether to mark this trial as terminated in error.
             error_msg (str): Optional error message.
-            destroy_pg_if_cannot_replace (bool): Whether the trial's placement
-            group should be destroyed if it cannot replace any staged ones.
 
         """
         pass
@@ -244,16 +125,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         except Exception:
             logger.exception("Error pausing runner.")
             self.set_status(trial, Trial.ERROR)
-
-    def unpause_trial(self, trial: Trial) -> None:
-        """Sets PAUSED trial to pending to allow scheduler to start."""
-        assert trial.status == Trial.PAUSED, trial.status
-        self.set_status(trial, Trial.PENDING)
-
-    def resume_trial(self, trial: Trial) -> None:
-        """Resumes PAUSED trials. This is a blocking call."""
-        assert trial.status == Trial.PAUSED, trial.status
-        self.start_trial(trial)
 
     @abstractmethod
     def reset_trial(self, trial: Trial, new_config: Dict,
@@ -298,59 +169,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
     def force_reconcilation_on_next_step_end(self) -> None:
         pass
 
-    def _may_warn_insufficient_resources(self, all_trials):
-        # This is approximately saying we are not making progress.
-        if len(all_trials) == self._all_trials_size:
-            if self._no_running_trials_since == -1:
-                self._no_running_trials_since = time.monotonic()
-            elif (time.monotonic() - self._no_running_trials_since >
-                  _get_insufficient_resources_warning_threshold()):
-                if not is_ray_cluster():  # autoscaler not enabled
-                    # If any of the pending trial cannot be fulfilled,
-                    # that's a good enough hint of trial resources not enough.
-                    for trial in all_trials:
-                        if (trial.status is Trial.PENDING
-                                and not _can_fulfill_no_autoscaler(trial)):
-                            # TODO(xwjiang):
-                            #  Raise an Error once #18608 is resolved.
-                            logger.warning(
-                                _get_insufficient_resources_error_msg(trial))
-                            break
-                else:
-                    # TODO(xwjiang): #17799.
-                    #  Output a more helpful msg for autoscaler.
-                    logger.warning(_get_insufficient_resources_warning_msg())
-                self._no_running_trials_since = time.monotonic()
-        else:
-            self._no_running_trials_since = -1
-        self._all_trials_size = len(all_trials)
-
-    def on_no_available_trials(self, trials: List[Trial]) -> None:
-        """
-        Args:
-            trials (List[Trial]): The list of trials. Note, refrain from
-                providing TrialRunner directly here.
-        """
-        self._may_warn_insufficient_resources(trials)
-        for trial in trials:
-            if trial.uses_placement_groups:
-                return
-            # TODO(xwjiang): The rest should be gone in a follow up PR
-            #  to remove non-pg case.
-            if trial.status == Trial.PENDING:
-                if not self.has_resources_for_trial(trial):
-                    resource_string = trial.resources.summary_string()
-                    trial_resource_help_msg = trial.get_trainable_cls(
-                    ).resource_help(trial.config)
-                    raise TuneError(
-                        "Insufficient cluster resources to launch trial: "
-                        f"trial requested {resource_string}, but the cluster "
-                        f"has only {self.resource_string()}. "
-                        f"{trial_resource_help_msg} ")
-            elif trial.status == Trial.PAUSED:
-                raise TuneError("There are paused trials, but no more pending "
-                                "trials with sufficient resources.")
-
     @abstractmethod
     def get_next_available_trial(self) -> Optional[Trial]:
         """Blocking call that waits until one result is ready.
@@ -387,15 +205,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         pass
 
     @abstractmethod
-    def resource_string(self) -> str:
-        """Returns a string describing the total resources available."""
-        pass
-
-    @abstractmethod
-    def restore(self,
-                trial: Trial,
-                checkpoint: Optional[Checkpoint] = None,
-                block: bool = False) -> None:
+    def restore(self, trial: Trial) -> None:
         """Restores training state from a checkpoint.
 
         If checkpoint is None, try to restore from trial.checkpoint.
@@ -403,8 +213,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
 
         Args:
             trial (Trial): Trial to be restored.
-            checkpoint (Checkpoint): Checkpoint to restore from.
-            block (bool): Whether or not to block on restore before returning.
 
         Returns:
             False if error occurred, otherwise return True.

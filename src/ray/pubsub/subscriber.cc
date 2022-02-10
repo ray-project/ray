@@ -125,8 +125,6 @@ void SubscriberChannel::HandlePublishedMessage(const rpc::Address &publisher_add
   RAY_CHECK(channel_type == channel_type_)
       << "Message from " << rpc::ChannelType_Name(channel_type) << ", this channel is "
       << rpc::ChannelType_Name(channel_type_);
-  RAY_LOG(DEBUG) << "key id " << key_id << " information was published from "
-                 << publisher_id;
 
   auto maybe_subscription_callback =
       GetSubscriptionItemCallback(publisher_address, key_id);
@@ -220,6 +218,10 @@ std::string SubscriberChannel::DebugString() const {
 ///////////////////////////////////////////////////////////////////////////////
 /// Subscriber
 ///////////////////////////////////////////////////////////////////////////////
+
+Subscriber::~Subscriber() {
+  // TODO(mwtian): flush Subscriber and ensure there is no leak during destruction.
+}
 
 bool Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
                            const rpc::ChannelType channel_type,
@@ -328,11 +330,11 @@ void Subscriber::MakeLongPollingConnectionIfNotConnected(
 void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_address) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   RAY_LOG(DEBUG) << "Make a long polling request to " << publisher_id;
-  auto publisher_client = get_client_(publisher_address);
+  auto subscriber_client = get_client_(publisher_address);
   rpc::PubsubLongPollingRequest long_polling_request;
   long_polling_request.set_subscriber_id(subscriber_id_.Binary());
 
-  publisher_client->PubsubLongPolling(
+  subscriber_client->PubsubLongPolling(
       long_polling_request,
       [this, publisher_address](Status status, const rpc::PubsubLongPollingReply &reply) {
         absl::MutexLock lock(&mutex_);
@@ -420,8 +422,8 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
     }
 
     command_batch_sent_.emplace(publisher_id);
-    auto publisher_client = get_client_(publisher_address);
-    publisher_client->PubsubCommandBatch(
+    auto subscriber_client = get_client_(publisher_address);
+    subscriber_client->PubsubCommandBatch(
         command_batch_request,
         [this, publisher_address, publisher_id, done_cb = std::move(done_cb)](
             Status status, const rpc::PubsubCommandBatchReply &reply) {

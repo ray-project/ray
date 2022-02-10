@@ -1,6 +1,6 @@
 import gym
 import numpy as np
-from pettingzoo.butterfly import pistonball_v4
+from pettingzoo.butterfly import pistonball_v5
 from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0
 import unittest
 
@@ -8,14 +8,14 @@ import ray
 from ray.rllib.agents.pg import pg
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from ray.rllib.examples.env.random_env import RandomEnv, RandomMultiAgentEnv
-from ray.rllib.examples.remote_vector_env_with_custom_api import \
-    NonVectorizedEnvToBeVectorizedIntoRemoteVectorEnv
+from ray.rllib.examples.remote_base_env_with_custom_api import \
+    NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv
 from ray import tune
 
 
 # Function that outputs the environment you wish to register.
 def env_creator(config):
-    env = pistonball_v4.env(local_ratio=config.get("local_ratio", 0.2))
+    env = pistonball_v5.env()
     env = dtype_v0(env, dtype=np.float32)
     env = color_reduction_v0(env, mode="R")
     env = normalize_obs_v0(env)
@@ -62,7 +62,7 @@ class TestRemoteWorkerEnvSetting(unittest.TestCase):
 
         # Using class directly: Sub-class of gym.Env,
         # which implements its own API.
-        config["env"] = NonVectorizedEnvToBeVectorizedIntoRemoteVectorEnv
+        config["env"] = NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv
         trainer = pg.PGTrainer(config=config)
         print(trainer.train())
         trainer.stop()

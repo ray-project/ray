@@ -91,7 +91,8 @@ def test_long_poll_restarts(serve_instance):
     assert new_timer.object_snapshot != timer.object_snapshot
 
 
-def test_client(serve_instance):
+@pytest.mark.asyncio
+async def test_client(serve_instance):
     host = ray.remote(LongPollHost).remote()
 
     # Write two values
@@ -106,10 +107,12 @@ def test_client(serve_instance):
     def key_2_callback(result):
         callback_results["key_2"] = result
 
-    client = LongPollClient(host, {
-        "key_1": key_1_callback,
-        "key_2": key_2_callback,
-    })
+    client = LongPollClient(
+        host, {
+            "key_1": key_1_callback,
+            "key_2": key_2_callback,
+        },
+        call_in_event_loop=asyncio.get_event_loop())
 
     while len(client.object_snapshots) == 0:
         time.sleep(0.1)
@@ -124,7 +127,7 @@ def test_client(serve_instance):
         values.add(client.object_snapshots["key_2"])
         if 1999 in values:
             break
-        time.sleep(1)
+        await asyncio.sleep(1)
     assert 1999 in values
 
     assert callback_results == {"key_1": 100, "key_2": 1999}

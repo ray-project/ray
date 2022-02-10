@@ -6,11 +6,12 @@ import numpy as np
 import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, \
-    BlockPartition, BlockPartitionMetadata
+    BlockPartition, BlockPartitionMetadata, MaybeBlockPartition
 from ray.data.context import DatasetContext
 from ray.data.impl.arrow_block import ArrowRow
-from ray.util.annotations import DeveloperAPI
+from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.util import _check_pyarrow_version
+from ray.util.annotations import DeveloperAPI
 
 WriteResult = Any
 
@@ -115,7 +116,7 @@ class ReadTask(Callable[[], BlockPartition]):
     def get_metadata(self) -> BlockPartitionMetadata:
         return self._metadata
 
-    def __call__(self) -> BlockPartition:
+    def __call__(self) -> MaybeBlockPartition:
         context = DatasetContext.get_current()
         result = self._read_fn()
         if not hasattr(result, "__iter__"):
@@ -123,16 +124,24 @@ class ReadTask(Callable[[], BlockPartition]):
                 "Read function must return Iterable[Block], got {}. "
                 "Probably you need to return `[block]` instead of "
                 "`block`.".format(result))
-        partition: BlockPartition = []
-        for block in result:
-            metadata = BlockAccessor.for_block(block).get_metadata(
-                input_files=self._metadata.input_files)
-            assert context.block_owner
-            partition.append((ray.put(block, _owner=context.block_owner),
-                              metadata))
-        if len(partition) == 0:
-            raise ValueError("Read task must return non-empty list.")
-        return partition
+
+        if context.block_splitting_enabled:
+            partition: BlockPartition = []
+            for block in result:
+                metadata = BlockAccessor.for_block(block).get_metadata(
+                    input_files=self._metadata.input_files,
+                    exec_stats=None)  # No exec stats for the block splits.
+                assert context.block_owner
+                partition.append((ray.put(block, _owner=context.block_owner),
+                                  metadata))
+            if len(partition) == 0:
+                raise ValueError("Read task must return non-empty list.")
+            return partition
+        else:
+            builder = DelegatingBlockBuilder()
+            for block in result:
+                builder.add_block(block)
+            return builder.build()
 
 
 class RangeDatasource(Datasource[Union[ArrowRow, int]]):
@@ -191,7 +200,8 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 num_rows=count,
                 size_bytes=8 * count,
                 schema=schema,
-                input_files=None)
+                input_files=None,
+                exec_stats=None)
             read_tasks.append(
                 ReadTask(
                     lambda i=i, count=count: [make_block(i, count)], meta))

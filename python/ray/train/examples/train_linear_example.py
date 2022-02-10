@@ -4,10 +4,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import ray.train as train
-from ray.train import Trainer, TorchConfig
+from ray.train import Trainer
 from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
-from torch.nn.parallel import DistributedDataParallel
-from torch.utils.data import DistributedSampler
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -25,9 +23,8 @@ class LinearDataset(torch.utils.data.Dataset):
         return len(self.x)
 
 
-def train_epoch(dataloader, model, loss_fn, optimizer, device):
+def train_epoch(dataloader, model, loss_fn, optimizer):
     for X, y in dataloader:
-        X, y = X.to(device), y.to(device)
         # Compute prediction error
         pred = model(X)
         loss = loss_fn(pred, y)
@@ -38,17 +35,18 @@ def train_epoch(dataloader, model, loss_fn, optimizer, device):
         optimizer.step()
 
 
-def validate_epoch(dataloader, model, loss_fn, device):
+def validate_epoch(dataloader, model, loss_fn):
     num_batches = len(dataloader)
     model.eval()
     loss = 0
     with torch.no_grad():
         for X, y in dataloader:
-            X, y = X.to(device), y.to(device)
             pred = model(X)
             loss += loss_fn(pred, y).item()
     loss /= num_batches
-    result = {"model": model.state_dict(), "loss": loss}
+    import copy
+    model_copy = copy.deepcopy(model)
+    result = {"model": model_copy.cpu().state_dict(), "loss": loss}
     return result
 
 
@@ -60,25 +58,18 @@ def train_func(config):
     lr = config.get("lr", 1e-2)
     epochs = config.get("epochs", 3)
 
-    device = torch.device(f"cuda:{train.local_rank()}"
-                          if torch.cuda.is_available() else "cpu")
-
     train_dataset = LinearDataset(2, 5, size=data_size)
     val_dataset = LinearDataset(2, 5, size=val_size)
     train_loader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        sampler=DistributedSampler(train_dataset))
+        train_dataset, batch_size=batch_size)
     validation_loader = torch.utils.data.DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        sampler=DistributedSampler(val_dataset))
+        val_dataset, batch_size=batch_size)
+
+    train_loader = train.torch.prepare_data_loader(train_loader)
+    validation_loader = train.torch.prepare_data_loader(validation_loader)
 
     model = nn.Linear(1, hidden_size)
-    model.to(device)
-    model = DistributedDataParallel(
-        model,
-        device_ids=[device.index] if torch.cuda.is_available() else None)
+    model = train.torch.prepare_model(model)
 
     loss_fn = nn.MSELoss()
 
@@ -87,8 +78,8 @@ def train_func(config):
     results = []
 
     for _ in range(epochs):
-        train_epoch(train_loader, model, loss_fn, optimizer, device)
-        result = validate_epoch(validation_loader, model, loss_fn, device)
+        train_epoch(train_loader, model, loss_fn, optimizer)
+        result = validate_epoch(validation_loader, model, loss_fn)
         train.report(**result)
         results.append(result)
 
@@ -97,9 +88,7 @@ def train_func(config):
 
 def train_linear(num_workers=2, use_gpu=False, epochs=3):
     trainer = Trainer(
-        backend=TorchConfig(backend="gloo"),
-        num_workers=num_workers,
-        use_gpu=use_gpu)
+        backend="torch", num_workers=num_workers, use_gpu=use_gpu)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
     trainer.start()
     results = trainer.run(

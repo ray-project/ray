@@ -4,13 +4,17 @@ import gym
 from gym.spaces import Box
 import logging
 import numpy as np
+import platform
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Type, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Type, TYPE_CHECKING
 
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, \
+    OverrideToImplementCustomLogic
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -18,7 +22,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     get_dummy_batch_for_space, unbatch
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
-    TensorType, TensorStructType, TrainerConfigDict, Tuple, Union
+    T, TensorType, TensorStructType, TrainerConfigDict, Tuple, Union
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -88,17 +92,18 @@ class Policy(metaclass=ABCMeta):
         """Initializes a Policy instance.
 
         Args:
-            observation_space: Observation space of the
-                policy.
+            observation_space: Observation space of the policy.
             action_space: Action space of the policy.
             config: A complete Trainer/Policy config dict. For the default
                 config keys and values, see rllib/trainer/trainer.py.
         """
         self.observation_space: gym.Space = observation_space
         self.action_space: gym.Space = action_space
-        # The base struct of the action space.
+        # The base struct of the observation/action spaces.
         # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
         # action_space_struct = {"a": Discrete(2)}
+        self.observation_space_struct = get_base_struct_from_space(
+            observation_space)
         self.action_space_struct = get_base_struct_from_space(action_space)
 
         self.config: TrainerConfigDict = config
@@ -404,6 +409,25 @@ class Policy(metaclass=ABCMeta):
         # The default implementation just returns the same, unaltered batch.
         return sample_batch
 
+    @ExperimentalAPI
+    @OverrideToImplementCustomLogic
+    def loss(self, model: ModelV2, dist_class: ActionDistribution,
+             train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+        """Loss function for this Policy.
+
+        Override this method in order to implement custom loss computations.
+
+        Args:
+            model: The model to calculate the loss(es).
+            dist_class: The action distribution class to sample actions
+                from the model's outputs.
+            train_batch: The input batch on which to calculate the loss.
+
+        Returns:
+            Either a single loss tensor or a list of loss tensors.
+        """
+        raise NotImplementedError
+
     @DeveloperAPI
     def learn_on_batch(self, samples: SampleBatch) -> Dict[str, TensorType]:
         """Perform one learning update, given `samples`.
@@ -615,13 +639,34 @@ class Policy(metaclass=ABCMeta):
         self.set_weights(state["weights"])
         self.global_timestep = state["global_timestep"]
 
+    @ExperimentalAPI
+    def apply(self,
+              func: Callable[["Policy", Optional[Any], Optional[Any]], T],
+              *args, **kwargs) -> T:
+        """Calls the given function with this Policy instance.
+
+        Useful for when the Policy class has been converted into a ActorHandle
+        and the user needs to execute some functionality (e.g. add a property)
+        on the underlying policy object.
+
+        Args:
+            func: The function to call, with this Policy as first
+                argument, followed by args, and kwargs.
+            args: Optional additional args to pass to the function call.
+            kwargs: Optional additional kwargs to pass to the function call.
+
+        Returns:
+            The return value of the function call.
+        """
+        return func(self, *args, **kwargs)
+
     @DeveloperAPI
     def on_global_var_update(self, global_vars: Dict[str, TensorType]) -> None:
         """Called on an update to global vars.
 
         Args:
-            global_vars (Dict[str, TensorType]): Global variables by str key,
-                broadcast from the driver.
+            global_vars: Global variables by str key, broadcast from the
+                driver.
         """
         # Store the current global time step (sum over all policies' sample
         # steps).
@@ -632,7 +677,7 @@ class Policy(metaclass=ABCMeta):
         """Export Policy checkpoint to local directory.
 
         Args:
-            export_dir (str): Local writable directory.
+            export_dir: Local writable directory.
         """
         raise NotImplementedError
 
@@ -646,8 +691,8 @@ class Policy(metaclass=ABCMeta):
         implementations for more details.
 
         Args:
-            export_dir (str): Local writable directory.
-            onnx (int): If given, will export model in ONNX format. The
+            export_dir: Local writable directory.
+            onnx: If given, will export model in ONNX format. The
                 value of this parameter set the ONNX OpSet version to use.
         """
         raise NotImplementedError
@@ -673,6 +718,15 @@ class Policy(metaclass=ABCMeta):
                 this policy or None.
         """
         return None
+
+    def get_host(self) -> str:
+        """Returns the computer's network name.
+
+        Returns:
+            The computer's networks name or an empty string, if the network
+            name could not be determined.
+        """
+        return platform.node()
 
     def _create_exploration(self) -> Exploration:
         """Creates the Policy's Exploration object.
@@ -871,7 +925,9 @@ class Policy(metaclass=ABCMeta):
                                 "automatically remove non-used items from the "
                                 "data stream. Remove the `del` from your "
                                 "postprocessing function.".format(key))
-                        else:
+                        # If we are not writing output to disk, save to erase
+                        # this key to save space in the sample batch.
+                        elif self.config["output"] is None:
                             del self.view_requirements[key]
 
     def _get_dummy_batch_from_view_requirements(
@@ -886,13 +942,19 @@ class Policy(metaclass=ABCMeta):
         """
         ret = {}
         for view_col, view_req in self.view_requirements.items():
-            if not self.config["_disable_preprocessor_api"] and \
-                    isinstance(view_req.space,
-                               (gym.spaces.Dict, gym.spaces.Tuple)):
+            data_col = view_req.data_col or view_col
+            # Flattened dummy batch.
+            if (isinstance(view_req.space,
+                           (gym.spaces.Tuple, gym.spaces.Dict))) and \
+                    ((data_col == SampleBatch.OBS and
+                      not self.config["_disable_preprocessor_api"]) or
+                     (data_col == SampleBatch.ACTIONS and
+                      not self.config.get("_disable_action_flattening"))):
                 _, shape = ModelCatalog.get_action_shape(
                     view_req.space, framework=self.config["framework"])
                 ret[view_col] = \
                     np.zeros((batch_size, ) + shape[1:], np.float32)
+            # Non-flattened dummy batch.
             else:
                 # Range of indices on time-axis, e.g. "-50:-1".
                 if view_req.shift_from is not None:
@@ -987,6 +1049,10 @@ class Policy(metaclass=ABCMeta):
                 if "state_out_{}".format(i) not in vr:
                     vr["state_out_{}".format(i)] = ViewRequirement(
                         space=space, used_for_training=True)
+
+    @DeveloperAPI
+    def __repr__(self):
+        return type(self).__name__
 
     @Deprecated(new="get_exploration_state", error=False)
     def get_exploration_info(self) -> Dict[str, TensorType]:

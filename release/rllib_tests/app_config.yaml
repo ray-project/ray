@@ -1,4 +1,4 @@
-base_image: "anyscale/ray-ml:pinned-nightly-py37-gpu"
+base_image: "anyscale/ray-ml:nightly-py37-gpu"
 env_vars: {}
 debian_packages:
   - unzip
@@ -7,21 +7,15 @@ debian_packages:
 python:
   # These dependencies should be handled by requirements_rllib.txt and
   # requirements_ml_docker.txt
-  pip_packages:
-    - torch==1.9.0 # TODO(amogkam): Remove after nightly images are available.
+  pip_packages: []
   conda_packages: []
 
 post_build_cmds:
-  # Create a couple of soft links so tf 2.4.3 works with cuda 11.2.
-  # TODO(jungong): remove these once product ray-ml docker gets upgraded to use tf 2.5.0.
-  - sudo ln -s /usr/local/cuda /usr/local/nvidia
-  - sudo ln -s /usr/local/cuda/lib64/libcusolver.so.11 /usr/local/cuda/lib64/libcusolver.so.10
-  - pip install tensorflow==2.5.0
-  # END: TODO
-
   - pip uninstall -y ray || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
+  # TODO(jungong): remove once nightly image gets upgraded.
+  - pip install -U pybullet==3.2.0
   # Clone the rl-experiments repo for offline-RL files.
   - git clone https://github.com/ray-project/rl-experiments.git
   - cp rl-experiments/halfcheetah-sac/2021-09-06/halfcheetah_expert_sac.zip ~/.

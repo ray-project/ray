@@ -11,8 +11,10 @@ import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError, RayActorError, GetTimeoutError
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
 from ray._private.test_utils import (wait_for_condition, SignalActor,
-                                     init_error_pubsub, get_error_message)
+                                     init_error_pubsub, get_error_message,
+                                     convert_actor_state)
 
 
 def test_unhandled_errors(ray_start_regular):
@@ -61,14 +63,23 @@ def test_unhandled_errors(ray_start_regular):
         del os.environ["RAY_IGNORE_UNHANDLED_ERRORS"]
 
 
-def test_push_error_to_driver_through_redis(ray_start_regular, error_pubsub):
+def test_publish_error_to_driver(ray_start_regular, error_pubsub):
     address_info = ray_start_regular
-    address = address_info["redis_address"]
-    redis_client = ray._private.services.create_redis_client(
-        address, password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    redis_client = None
+    gcs_publisher = None
+    if gcs_pubsub_enabled():
+        gcs_publisher = GcsPublisher(address=address_info["gcs_address"])
+    else:
+        redis_client = ray._private.services.create_redis_client(
+            address_info["redis_address"],
+            password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+
     error_message = "Test error message"
-    ray._private.utils.push_error_to_driver_through_redis(
-        redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR, error_message)
+    ray._private.utils.publish_error_to_driver(
+        ray_constants.DASHBOARD_AGENT_DIED_ERROR,
+        error_message,
+        redis_client=redis_client,
+        gcs_publisher=gcs_publisher)
     errors = get_error_message(error_pubsub, 1,
                                ray_constants.DASHBOARD_AGENT_DIED_ERROR)
     assert errors[0].type == ray_constants.DASHBOARD_AGENT_DIED_ERROR
@@ -448,21 +459,20 @@ def test_put_error2(ray_start_object_store_memory):
     # get_error_message(ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR, 1)
 
 
-@pytest.mark.skip("Publish happeds before we subscribe it")
-def test_version_mismatch(error_pubsub, shutdown_only):
+def test_version_mismatch(ray_start_cluster):
     ray_version = ray.__version__
-    ray.__version__ = "fake ray version"
+    try:
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=1)
 
-    ray.init(num_cpus=1)
-    p = error_pubsub
+        # Test the driver.
+        ray.__version__ = "fake ray version"
+        with pytest.raises(RuntimeError):
+            ray.init(address="auto")
 
-    errors = get_error_message(p, 1, ray_constants.VERSION_MISMATCH_PUSH_ERROR)
-    assert False, errors
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.VERSION_MISMATCH_PUSH_ERROR
-
-    # Reset the version.
-    ray.__version__ = ray_version
+    finally:
+        # Reset the version.
+        ray.__version__ = ray_version
 
 
 def test_export_large_objects(ray_start_regular, error_pubsub):
@@ -656,8 +666,8 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
         actors = list(ray.state.actors().values())
         assert len(actors) == 1
         print(actors)
-        return (actors[0]["State"] == gcs_utils.ActorTableData.ALIVE
-                and actors[0]["NumRestarts"] == 1)
+        return (actors[0]["State"] == convert_actor_state(
+            gcs_utils.ActorTableData.ALIVE) and actors[0]["NumRestarts"] == 1)
 
     wait_for_condition(check_actor_restart)
 

@@ -3,7 +3,6 @@ from typing import Dict
 
 import torch
 import torch.nn as nn
-from torch.nn.parallel import DistributedDataParallel
 
 import ray
 import ray.train as train
@@ -83,16 +82,8 @@ def train_func(config):
     train_dataset_pipeline_shard = train.get_dataset_shard("train")
     validation_dataset_pipeline_shard = train.get_dataset_shard("validation")
 
-    device = torch.device(f"cuda:{train.local_rank()}"
-                          if torch.cuda.is_available() else "cpu")
-    if torch.cuda.is_available():
-        torch.cuda.set_device(device)
-
     model = nn.Linear(1, hidden_size)
-    model = model.to(device)
-    model = DistributedDataParallel(
-        model,
-        device_ids=[train.local_rank()] if torch.cuda.is_available() else None)
+    model = train.torch.prepare_model(model)
 
     loss_fn = nn.MSELoss()
 
@@ -100,9 +91,9 @@ def train_func(config):
 
     results = []
 
-    train_dataset_iterator = train_dataset_pipeline_shard.iter_datasets()
+    train_dataset_iterator = train_dataset_pipeline_shard.iter_epochs()
     validation_dataset_iterator = \
-        validation_dataset_pipeline_shard.iter_datasets()
+        validation_dataset_pipeline_shard.iter_epochs()
 
     for _ in range(epochs):
         train_dataset = next(train_dataset_iterator)
@@ -112,15 +103,17 @@ def train_func(config):
             label_column="y",
             feature_columns=["x"],
             label_column_dtype=torch.float,
-            feature_column_dtypes=[torch.float],
+            feature_column_dtypes=torch.float,
             batch_size=batch_size,
         )
         validation_torch_dataset = validation_dataset.to_torch(
             label_column="y",
             feature_columns=["x"],
             label_column_dtype=torch.float,
-            feature_column_dtypes=[torch.float],
+            feature_column_dtypes=torch.float,
             batch_size=batch_size)
+
+        device = train.torch.get_device()
 
         train_epoch(train_torch_dataset, model, loss_fn, optimizer, device)
         result = validate_epoch(validation_torch_dataset, model, loss_fn,

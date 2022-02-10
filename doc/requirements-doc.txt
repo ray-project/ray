@@ -12,6 +12,7 @@ scikit-image
 pandas
 pickle5
 pillow
+pyarrow
 pydantic
 pygments
 pyyaml
@@ -29,7 +30,7 @@ sphinx-book-theme==0.0.42
 sphinxcontrib.yt
 starlette
 tabulate
-uvicorn
+uvicorn==0.16.0
 werkzeug
 py-cpuinfo==6.0.0
 git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
@@ -38,3 +39,4 @@ git+https://github.com/ray-project/lightgbm_ray@main#lightgbm_ray
 git+https://github.com/ray-project/ray_lightning#ray_lightning
 scikit-optimize
 sphinx-sitemap==2.2.0
+myst-parser

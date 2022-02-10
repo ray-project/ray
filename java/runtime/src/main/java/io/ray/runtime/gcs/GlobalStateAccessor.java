@@ -1,11 +1,9 @@
 package io.ray.runtime.gcs;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.UniqueId;
-import io.ray.runtime.RayRuntimeInternal;
 import java.util.List;
 
 /** `GlobalStateAccessor` is used for accessing information from GCS. */
@@ -94,12 +92,10 @@ public class GlobalStateAccessor {
     }
   }
 
-  public byte[] getPlacementGroupInfo(String name, boolean global) {
+  public byte[] getPlacementGroupInfo(String name, String namespace) {
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
-      RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
-      return nativeGetPlacementGroupInfoByName(
-          globalStateAccessorNativePointer, name, runtime.getRayConfig().namespace, global);
+      return nativeGetPlacementGroupInfoByName(globalStateAccessorNativePointer, name, namespace);
     }
   }
 
@@ -110,10 +106,10 @@ public class GlobalStateAccessor {
     }
   }
 
-  public byte[] getInternalKV(String k) {
+  public byte[] getInternalKV(String n, String k) {
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
-      return this.nativeGetInternalKV(globalStateAccessorNativePointer, k);
+      return this.nativeGetInternalKV(globalStateAccessorNativePointer, n, k);
     }
   }
 
@@ -175,11 +171,11 @@ public class GlobalStateAccessor {
   private native byte[] nativeGetPlacementGroupInfo(long nativePtr, byte[] placementGroupId);
 
   private native byte[] nativeGetPlacementGroupInfoByName(
-      long nativePtr, String name, String namespace, boolean global);
+      long nativePtr, String name, String namespace);
 
   private native List<byte[]> nativeGetAllPlacementGroupInfo(long nativePtr);
 
-  private native byte[] nativeGetInternalKV(long nativePtr, String k);
+  private native byte[] nativeGetInternalKV(long nativePtr, String n, String k);
 
   private native byte[] nativeGetNodeToConnectForDriver(long nativePtr, String nodeIpAddress);
 }

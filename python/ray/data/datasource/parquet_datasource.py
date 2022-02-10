@@ -1,6 +1,7 @@
 import logging
 import itertools
-from typing import Any, Callable, Dict, Optional, List, Union, TYPE_CHECKING
+from typing import Any, Callable, Dict, Optional, List, Union, \
+    Iterator, TYPE_CHECKING
 
 import numpy as np
 
@@ -9,10 +10,12 @@ if TYPE_CHECKING:
 
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
+from ray.data.context import DatasetContext
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource, _resolve_paths_and_filesystem, _resolve_kwargs)
 from ray.data.impl.block_list import BlockMetadata
+from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.util import _check_pyarrow_version
@@ -21,6 +24,10 @@ logger = logging.getLogger(__name__)
 
 PIECES_PER_META_FETCH = 6
 PARALLELIZE_META_FETCH_THRESHOLD = 24
+
+# The number of rows to read per batch. This is sized to generate 10MiB batches
+# for rows about 1KiB in size.
+PARQUET_READER_ROW_BATCH_SIZE = 100000
 
 
 class ParquetDatasource(FileBasedDatasource):
@@ -69,7 +76,7 @@ class ParquetDatasource(FileBasedDatasource):
             schema = pa.schema([schema.field(column) for column in columns],
                                schema.metadata)
 
-        def read_pieces(serialized_pieces: List[str]) -> pa.Table:
+        def read_pieces(serialized_pieces: List[str]) -> Iterator[pa.Table]:
             # Implicitly trigger S3 subsystem initialization by importing
             # pyarrow.fs.
             import pyarrow.fs  # noqa: F401
@@ -84,33 +91,36 @@ class ParquetDatasource(FileBasedDatasource):
 
             from pyarrow.dataset import _get_partition_keys
 
+            ctx = DatasetContext.get_current()
+            output_buffer = BlockOutputBuffer(
+                block_udf=_block_udf,
+                target_max_block_size=ctx.target_max_block_size)
+
             logger.debug(f"Reading {len(pieces)} parquet pieces")
             use_threads = reader_args.pop("use_threads", False)
-            tables = []
             for piece in pieces:
-                table = piece.to_table(
+                part = _get_partition_keys(piece.partition_expression)
+                batches = piece.to_batches(
                     use_threads=use_threads,
                     columns=columns,
                     schema=schema,
+                    batch_size=PARQUET_READER_ROW_BATCH_SIZE,
                     **reader_args)
-                part = _get_partition_keys(piece.partition_expression)
-                if part:
-                    for col, value in part.items():
-                        table = table.set_column(
-                            table.schema.get_field_index(col), col,
-                            pa.array([value] * len(table)))
-                # If the table is empty, drop it.
-                if table.num_rows > 0:
-                    tables.append(table)
-            if len(tables) > 1:
-                table = pa.concat_tables(tables, promote=True)
-            elif len(tables) == 1:
-                table = tables[0]
-            if _block_udf is not None:
-                table = _block_udf(table)
-            # If len(tables) == 0, all fragments were empty, and we return the
-            # empty table from the last fragment.
-            return table
+                for batch in batches:
+                    table = pyarrow.Table.from_batches([batch], schema=schema)
+                    if part:
+                        for col, value in part.items():
+                            table = table.set_column(
+                                table.schema.get_field_index(col), col,
+                                pa.array([value] * len(table)))
+                    # If the table is empty, drop it.
+                    if table.num_rows > 0:
+                        output_buffer.add_block(table)
+                        if output_buffer.has_next():
+                            yield output_buffer.next()
+            output_buffer.finalize()
+            if output_buffer.has_next():
+                yield output_buffer.next()
 
         if _block_udf is not None:
             # Try to infer dataset schema by passing dummy table through UDF.
@@ -142,7 +152,7 @@ class ParquetDatasource(FileBasedDatasource):
             meta = _build_block_metadata(pieces, metadata, inferred_schema)
             read_tasks.append(
                 ReadTask(
-                    lambda pieces_=serialized_pieces: [read_pieces(pieces_)],
+                    lambda pieces_=serialized_pieces: read_pieces(pieces_),
                     meta))
 
         return read_tasks
@@ -218,7 +228,8 @@ def _build_block_metadata(
                     m.row_group(i).total_byte_size
                     for i in range(m.num_row_groups)) for m in metadata),
             schema=schema,
-            input_files=input_files)
+            input_files=input_files,
+            exec_stats=None)  # Exec stats filled in later.
     else:
         # Piece metadata was not available, construct an empty
         # BlockMetadata.

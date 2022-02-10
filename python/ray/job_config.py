@@ -47,14 +47,18 @@ class JobConfig:
         """Serialize the struct into protobuf string"""
         return self.get_proto_job_config().SerializeToString()
 
-    def set_runtime_env(self, runtime_env: Optional[Dict[str, Any]]) -> None:
+    def set_runtime_env(self,
+                        runtime_env: Optional[Dict[str, Any]],
+                        validate: bool = False) -> None:
         """Modify the runtime_env of the JobConfig.
 
-        We don't validate the runtime_env here because it may go through some
-        translation before actually being passed to C++ (e.g., working_dir
-        translated from a local directory to a URI).
+        We don't validate the runtime_env by default here because it may go
+        through some translation before actually being passed to C++ (e.g.,
+        working_dir translated from a local directory to a URI.
         """
         self.runtime_env = runtime_env if runtime_env is not None else {}
+        if validate:
+            self.runtime_env = self._validate_runtime_env()[0]
         self._cached_pb = None
 
     def set_ray_namespace(self, ray_namespace: str) -> None:
@@ -87,17 +91,19 @@ class JobConfig:
                 pb.metadata[k] = v
 
             parsed_env, eager_install = self._validate_runtime_env()
-            pb.runtime_env.uris[:] = parsed_env.get_uris()
-            pb.runtime_env.serialized_runtime_env = parsed_env.serialize()
-            pb.runtime_env.runtime_env_eager_install = eager_install
+            pb.runtime_env_info.uris[:] = parsed_env.get_uris()
+            pb.runtime_env_info.serialized_runtime_env = \
+                parsed_env.serialize()
+            pb.runtime_env_info.runtime_env_eager_install = eager_install
 
             self._cached_pb = pb
 
         return self._cached_pb
 
-    def get_runtime_env_uris(self):
-        """Get the uris of runtime environment"""
-        return self._validate_runtime_env()[0].get_uris()
+    def runtime_env_has_uris(self):
+        """Whether there are uris in runtime env or not"""
+        return self._validate_runtime_env()[
+            0].get_proto_runtime_env().has_uris()
 
     def get_serialized_runtime_env(self) -> str:
         """Return the JSON-serialized parsed runtime env dict"""

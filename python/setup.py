@@ -13,7 +13,6 @@ import tempfile
 import zipfile
 
 from itertools import chain
-from itertools import takewhile
 from enum import Enum
 
 import urllib.error
@@ -23,11 +22,14 @@ import urllib.request
 logger = logging.getLogger(__name__)
 
 SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9)]
+# When the bazel version is updated, make sure to update it
+# in WORKSPACE file as well.
 SUPPORTED_BAZEL = (4, 2, 1)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
+BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
 
 PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
@@ -138,7 +140,6 @@ ray_files = [
     "ray/_raylet" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
-    "ray/streaming/_streaming.so",
 ]
 
 if BUILD_JAVA or os.path.exists(
@@ -158,7 +159,6 @@ if setup_spec.type == SetupType.RAY_CPP:
 # bindings are created.
 generated_python_directories = [
     "ray/core/generated",
-    "ray/streaming/generated",
     "ray/serve/generated",
 ]
 
@@ -167,6 +167,8 @@ ray_files.append("ray/nightly-wheels.yaml")
 # Autoscaler files.
 ray_files += [
     "ray/autoscaler/aws/defaults.yaml",
+    "ray/autoscaler/aws/cloudwatch/prometheus.yml",
+    "ray/autoscaler/aws/cloudwatch/ray_prometheus_waiter.sh",
     "ray/autoscaler/azure/defaults.yaml",
     "ray/autoscaler/_private/_azure/azure-vm-template.json",
     "ray/autoscaler/_private/_azure/azure-config-template.json",
@@ -196,17 +198,22 @@ if setup_spec.type == SetupType.RAY:
             "fsspec",
         ],
         "default": [
-            "aiohttp == 3.7",
+            "aiohttp >= 3.7",
+            "aiosignal",
             "aiohttp_cors",
             "aioredis < 2",
             "colorful",
+            "frozenlist",
             "py-spy >= 0.2.0",
             "requests",
             "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
             "prometheus_client >= 0.7.1",
+            "smart_open"
         ],
-        "serve": ["uvicorn", "requests", "starlette", "fastapi"],
+        "serve": [
+            "uvicorn==0.16.0", "requests", "starlette", "fastapi", "aiorwlock"
+        ],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
@@ -214,6 +221,12 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-exporter-otlp==1.1.0"
         ],
     }
+
+    if sys.version_info >= (3, 7):
+        # Numpy dropped python 3.6 support in 1.20.
+        setup_spec.extras["data"].append("numpy >= 1.20")
+    else:
+        setup_spec.extras["data"].append("numpy >= 1.19")
 
     # Ray Serve depends on the Ray dashboard components.
     setup_spec.extras["serve"] = list(
@@ -368,7 +381,6 @@ def replace_symlinks_with_junctions():
     _LINKS = {
         r"ray\new_dashboard": "../../dashboard",
         r"ray\rllib": "../../rllib",
-        r"ray\streaming": "../../streaming/python/",
     }
     root_dir = os.path.dirname(__file__)
     for link, default in _LINKS.items():
@@ -474,18 +486,10 @@ def build(build_python, build_java, build_cpp):
             ] + pip_packages,
             env=dict(os.environ, CC="gcc"))
 
-    version_info = bazel_invoke(subprocess.check_output, ["--version"])
-    bazel_version_str = version_info.rstrip().decode("utf-8").split(" ", 1)[1]
-    bazel_version_split = bazel_version_str.split(".")
-    bazel_version_digits = [
-        "".join(takewhile(str.isdigit, s)) for s in bazel_version_split
-    ]
-    bazel_version = tuple(map(int, bazel_version_digits))
-    if bazel_version < SUPPORTED_BAZEL:
-        logger.warning("Expected Bazel version {} but found {}".format(
-            ".".join(map(str, SUPPORTED_BAZEL)), bazel_version_str))
-
     bazel_flags = ["--verbose_failures"]
+    if BAZEL_LIMIT_CPUS:
+        n = int(BAZEL_LIMIT_CPUS)  # the value must be an int
+        bazel_flags.append(f"--local_cpu_resources={n}")
 
     if not is_automated_build:
         bazel_precmd_flags = []
@@ -702,7 +706,7 @@ setuptools.setup(
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
     install_requires=setup_spec.install_requires,
-    setup_requires=["cython >= 0.29.15", "wheel"],
+    setup_requires=["cython >= 0.29.26", "wheel"],
     extras_require=setup_spec.extras,
     entry_points={
         "console_scripts": [

@@ -48,12 +48,12 @@ def train_func():
 
 # __torch_distributed_begin__
 
-from torch.nn.parallel import DistributedDataParallel
+from ray import train
 
 def train_func_distributed():
     num_epochs = 3
     model = NeuralNetwork()
-    model = DistributedDataParallel(model)
+    model = train.torch.prepare_model(model)
     loss_fn = nn.MSELoss()
     optimizer = optim.SGD(model.parameters(), lr=0.1)
 
@@ -80,6 +80,10 @@ if __name__ == "__main__":
     from ray.train import Trainer
 
     trainer = Trainer(backend="torch", num_workers=4)
+
+    # For GPU Training, set `use_gpu` to True.
+    # trainer = Trainer(backend="torch", num_workers=4, use_gpu=True)
+
     trainer.start()
     results = trainer.run(train_func_distributed)
     trainer.shutdown()

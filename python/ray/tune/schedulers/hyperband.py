@@ -262,7 +262,7 @@ class HyperBandScheduler(FIFOScheduler):
                                     f"encountered: {t.status}")
                 if bracket.continue_trial(t):
                     if t.status == Trial.PAUSED:
-                        self._unpause_trial(trial_runner, t)
+                        t.status = Trial.PENDING
                     elif t.status == Trial.RUNNING:
                         action = TrialScheduler.CONTINUE
         return action
@@ -304,8 +304,8 @@ class HyperBandScheduler(FIFOScheduler):
             for bracket in sorted(
                     scrubbed, key=lambda b: b.completion_percentage()):
                 for trial in bracket.current_trials():
-                    if (trial.status == Trial.PENDING
-                            and trial_runner.has_resources_for_trial(trial)):
+                    if (trial.status == Trial.PENDING and trial_runner.
+                            trial_executor.has_resources_for_trial(trial)):
                         return trial
         return None
 
@@ -341,10 +341,6 @@ class HyperBandScheduler(FIFOScheduler):
             "num_brackets": sum(len(band) for band in self._hyperbands),
             "num_stopped": self._num_stopped
         }
-
-    def _unpause_trial(self, trial_runner: "trial_runner.TrialRunner",
-                       trial: Trial):
-        trial_runner.trial_executor.unpause_trial(trial)
 
 
 class Bracket:
@@ -465,8 +461,7 @@ class Bracket:
         This may cause bad trials to continue for a long time, in the case
         where all the good trials finish early and there are only bad trials
         left in a bracket with a large max-iteration."""
-        assert trial in self._live_trials
-        del self._live_trials[trial]
+        self._live_trials.pop(trial, None)
 
     def cleanup_full(self, trial_runner: "trial_runner.TrialRunner"):
         """Cleans up bracket after bracket is completely finished.

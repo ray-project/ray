@@ -11,8 +11,6 @@ import ray.client_builder as client_builder
 from ray._private.test_utils import run_string_as_driver_nonblocking,\
     wait_for_condition, run_string_as_driver
 
-from ray.cluster_utils import Cluster
-
 
 @pytest.mark.parametrize("address", [
     "localhost:1234", "localhost:1234/url?params",
@@ -45,8 +43,7 @@ def test_client(address):
         assert builder.address == address.replace("ray://", "")
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
-def test_namespace():
+def test_namespace(ray_start_cluster):
     """
     Most of the "checks" in this test case rely on the fact that
     `run_string_as_driver` will throw an exception if the driver string exits
@@ -61,7 +58,7 @@ def test_namespace():
     * When two drivers specify a namespace, they collide.
     * The namespace name (as provided by the runtime context) is correct.
     """
-    cluster = Cluster()
+    cluster = ray_start_cluster
     cluster.add_node(num_cpus=4, ray_client_server_port=50055)
     cluster.wait_for_nodes(1)
 
@@ -159,7 +156,7 @@ while True:
     p4 = run_string_as_driver_nonblocking(blocking_noaddr_script)
 
     wait_for_condition(
-        lambda: len(ray._private.services.find_redis_address()) == 4,
+        lambda: len(ray._private.services.find_bootstrap_address()) == 4,
         retry_interval_ms=1000)
 
     p1.kill()
@@ -177,13 +174,13 @@ while True:
     run_string_as_driver("""
 import ray
 ray.client().connect()
-assert len(ray._private.services.find_redis_address()) == 1
+assert len(ray._private.services.find_bootstrap_address()) == 1
     """)
     # ray.client("local").connect() should always create a new cluster even if
     # there's one running.
     p1 = run_string_as_driver_nonblocking(blocking_local_script)
     wait_for_condition(
-        lambda: len(ray._private.services.find_redis_address()) == 2,
+        lambda: len(ray._private.services.find_bootstrap_address()) == 2,
         retry_interval_ms=1000)
     p1.kill()
     subprocess.check_output("ray stop --force", shell=True)

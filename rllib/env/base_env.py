@@ -1,18 +1,22 @@
-from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING
+import logging
+from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING,\
+    Union, Set
 
+import gym
 import ray
-from ray.rllib.env.external_env import ExternalEnv
-from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
 from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, \
-    MultiEnvDict, PartialTrainerConfigDict
+    MultiEnvDict
 
 if TYPE_CHECKING:
     from ray.rllib.models.preprocessors import Preprocessor
+    from ray.rllib.env.external_env import ExternalEnv
+    from ray.rllib.env.multi_agent_env import MultiAgentEnv
+    from ray.rllib.env.vector_env import VectorEnv
 
 ASYNC_RESET_RETURN = "async_reset_return"
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI
@@ -20,22 +24,16 @@ class BaseEnv:
     """The lowest-level env interface used by RLlib for sampling.
 
     BaseEnv models multiple agents executing asynchronously in multiple
-    environments. A call to poll() returns observations from ready agents
-    keyed by their environment and agent ids, and actions for those agents
-    can be sent back via send_actions().
+    vectorized sub-environments. A call to `poll()` returns observations from
+    ready agents keyed by their sub-environment ID and agent IDs, and
+    actions for those agents can be sent back via `send_actions()`.
 
-    All other env types can be adapted to BaseEnv. RLlib handles these
-    conversions internally in RolloutWorker, for example:
+    All other RLlib supported env types can be converted to BaseEnv.
+    RLlib handles these conversions internally in RolloutWorker, for example:
 
     gym.Env => rllib.VectorEnv => rllib.BaseEnv
     rllib.MultiAgentEnv (is-a gym.Env) => rllib.VectorEnv => rllib.BaseEnv
     rllib.ExternalEnv => rllib.BaseEnv
-
-    Attributes:
-        action_space (gym.Space): Action space. This must be defined for
-            single-agent envs. Multi-agent envs can set this to None.
-        observation_space (gym.Space): Observation space. This must be defined
-            for single-agent envs. Multi-agent envs can set this to None.
 
     Examples:
         >>> env = MyBaseEnv()
@@ -55,13 +53,12 @@ class BaseEnv:
                 "car_3": [1.2, 0.1],
             },
         }
-        >>> env.send_actions(
-            actions={
-                "env_0": {
-                    "car_0": 0,
-                    "car_1": 1,
-                }, ...
-            })
+        >>> env.send_actions({
+        ...   "env_0": {
+        ...     "car_0": 0,
+        ...     "car_1": 1,
+        ...   }, ...
+        ... })
         >>> obs, rewards, dones, infos, off_policy_actions = env.poll()
         >>> print(obs)
         {
@@ -80,31 +77,29 @@ class BaseEnv:
         }
     """
 
-    @staticmethod
     def to_base_env(
-            env: EnvType,
+            self,
             make_env: Callable[[int], EnvType] = None,
             num_envs: int = 1,
             remote_envs: bool = False,
             remote_env_batch_wait_ms: int = 0,
-            policy_config: Optional[PartialTrainerConfigDict] = None,
     ) -> "BaseEnv":
         """Converts an RLlib-supported env into a BaseEnv object.
 
-        Supported types for the given `env` arg are gym.Env, BaseEnv,
-        VectorEnv, MultiAgentEnv, or ExternalEnv.
+        Supported types for the `env` arg are gym.Env, BaseEnv,
+        VectorEnv, MultiAgentEnv, ExternalEnv, or ExternalMultiAgentEnv.
 
         The resulting BaseEnv is always vectorized (contains n
-        sub-environments) for batched forward passes, where n may also be 1.
-        BaseEnv also supports async execution via the `poll` and `send_actions`
-        methods and thus supports external simulators.
+        sub-environments) to support batched forward passes, where n may also
+        be 1. BaseEnv also supports async execution via the `poll` and
+        `send_actions` methods and thus supports external simulators.
 
         TODO: Support gym3 environments, which are already vectorized.
 
         Args:
             env: An already existing environment of any supported env type
                 to convert/wrap into a BaseEnv. Supported types are gym.Env,
-                BaseEnv, VectorEnv, MultiAgentEnv, ExternalEnv, or
+                BaseEnv, VectorEnv, MultiAgentEnv, ExternalEnv, and
                 ExternalMultiAgentEnv.
             make_env: A callable taking an int as input (which indicates the
                 number of individual sub-environments within the final
@@ -124,85 +119,17 @@ class BaseEnv:
         Returns:
             The resulting BaseEnv object.
         """
-
-        from ray.rllib.env.remote_vector_env import RemoteVectorEnv
-        if remote_envs and num_envs == 1:
-            raise ValueError(
-                "Remote envs only make sense to use if num_envs > 1 "
-                "(i.e. vectorization is enabled).")
-
-        # Given `env` is already a BaseEnv -> Return as is.
-        if isinstance(env, BaseEnv):
-            return env
-
-        # `env` is not a BaseEnv yet -> Need to convert/vectorize.
-
-        # MultiAgentEnv (which is a gym.Env).
-        if isinstance(env, MultiAgentEnv):
-            # Sub-environments are ray.remote actors:
-            if remote_envs:
-                env = RemoteVectorEnv(
-                    make_env,
-                    num_envs,
-                    multiagent=True,
-                    remote_env_batch_wait_ms=remote_env_batch_wait_ms)
-            # Sub-environments are not ray.remote actors.
-            else:
-                env = _MultiAgentEnvToBaseEnv(
-                    make_env=make_env, existing_envs=[env], num_envs=num_envs)
-        # ExternalEnv.
-        elif isinstance(env, ExternalEnv):
-            if num_envs != 1:
-                raise ValueError(
-                    "External(MultiAgent)Env does not currently support "
-                    "num_envs > 1. One way of solving this would be to "
-                    "treat your Env as a MultiAgentEnv hosting only one "
-                    "type of agent but with several copies.")
-            env = _ExternalEnvToBaseEnv(env)
-        # VectorEnv.
-        # Note that all BaseEnvs are also vectorized, but the user may want to
-        # define custom vectorization logic and thus implement a custom
-        # VectorEnv class.
-        elif isinstance(env, VectorEnv):
-            env = _VectorEnvToBaseEnv(env)
-        # Anything else: This usually implies that env is a gym.Env object.
-        else:
-            # Sub-environments are ray.remote actors:
-            if remote_envs:
-                # Determine, whether the already existing sub-env (could
-                # be a ray.actor) is multi-agent or not.
-                multiagent = ray.get(env._is_multi_agent.remote()) if \
-                    hasattr(env, "_is_multi_agent") else False
-                env = RemoteVectorEnv(
-                    make_env,
-                    num_envs,
-                    multiagent=multiagent,
-                    remote_env_batch_wait_ms=remote_env_batch_wait_ms,
-                    existing_envs=[env],
-                )
-            # Sub-environments are not ray.remote actors.
-            else:
-                env = VectorEnv.vectorize_gym_envs(
-                    make_env=make_env,
-                    existing_envs=[env],
-                    num_envs=num_envs,
-                    action_space=env.action_space,
-                    observation_space=env.observation_space,
-                )
-                env = _VectorEnvToBaseEnv(env)
-
-        # Make sure conversion went well.
-        assert isinstance(env, BaseEnv), env
-
-        return env
+        del make_env, num_envs, remote_envs, remote_env_batch_wait_ms
+        return self
 
     @PublicAPI
     def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
                             MultiEnvDict, MultiEnvDict]:
         """Returns observations from ready agents.
 
-        All returns are two-level dicts mapping from env_id to dicts of
-        agent_ids to values. The number of agents and envs can vary over time.
+        All return values are two-level dicts mapping from EnvID to dicts
+        mapping from AgentIDs to (observation/reward/etc..) values.
+        The number of agents and sub-environments may vary over time.
 
         Returns:
             Tuple consisting of
@@ -232,8 +159,8 @@ class BaseEnv:
         raise NotImplementedError
 
     @PublicAPI
-    def try_reset(self,
-                  env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
+    def try_reset(self, env_id: Optional[EnvID] = None
+                  ) -> Optional[Union[MultiAgentDict, MultiEnvDict]]:
         """Attempt to reset the sub-env with the given id or all sub-envs.
 
         If the environment does not support synchronous reset, None can be
@@ -243,6 +170,12 @@ class BaseEnv:
             env_id: The sub-environment's ID if applicable. If None, reset
                 the entire Env (i.e. all sub-environments).
 
+        Note: A MultiAgentDict is returned when using the deprecated wrapper
+        classes such as `ray.rllib.env.base_env._MultiAgentEnvToBaseEnv`,
+        however for consistency with the poll() method, a `MultiEnvDict` is
+        returned from the new wrapper classes, such as
+        `ray.rllib.env.multi_agent_env.MultiAgentEnvWrapper`.
+
         Returns:
             The reset (multi-agent) observation dict. None if reset is not
             supported.
@@ -250,20 +183,35 @@ class BaseEnv:
         return None
 
     @PublicAPI
-    def get_sub_environments(self) -> List[EnvType]:
+    def get_sub_environments(
+            self, as_dict: bool = False) -> Union[List[EnvType], dict]:
         """Return a reference to the underlying sub environments, if any.
 
+        Args:
+            as_dict: If True, return a dict mapping from env_id to env.
+
         Returns:
-            List of the underlying sub environments or [].
+            List or dictionary of the underlying sub environments or [] / {}.
         """
+        if as_dict:
+            return {}
         return []
 
     @PublicAPI
+    def get_agent_ids(self) -> Set[AgentID]:
+        """Return the agent ids for the sub_environment.
+
+        Returns:
+            All agent ids for each the environment.
+        """
+        return {_DUMMY_AGENT_ID}
+
+    @PublicAPI
     def try_render(self, env_id: Optional[EnvID] = None) -> None:
-        """Tries to render the environment.
+        """Tries to render the sub-environment with the given id or all.
 
         Args:
-            env_id (Optional[int]): The sub-environment's ID if applicable.
+            env_id: The sub-environment's ID, if applicable.
                 If None, renders the entire Env (i.e. all sub-environments).
         """
 
@@ -283,23 +231,150 @@ class BaseEnv:
     def get_unwrapped(self) -> List[EnvType]:
         return self.get_sub_environments()
 
+    @PublicAPI
+    @property
+    def observation_space(self) -> gym.Space:
+        """Returns the observation space for each agent.
+
+        Note: samples from the observation space need to be preprocessed into a
+            `MultiEnvDict` before being used by a policy.
+
+        Returns:
+            The observation space for each environment.
+        """
+        raise NotImplementedError
+
+    @PublicAPI
+    @property
+    def action_space(self) -> gym.Space:
+        """Returns the action space for each agent.
+
+        Note: samples from the action space need to be preprocessed into a
+            `MultiEnvDict` before being passed to `send_actions`.
+
+        Returns:
+            The observation space for each environment.
+        """
+        raise NotImplementedError
+
+    @PublicAPI
+    def action_space_sample(self, agent_id: list = None) -> MultiEnvDict:
+        """Returns a random action for each environment, and potentially each
+            agent in that environment.
+
+        Args:
+            agent_id: List of agent ids to sample actions for. If None or empty
+                list, sample actions for all agents in the environment.
+
+        Returns:
+            A random action for each environment.
+        """
+        logger.warning("action_space_sample() has not been implemented")
+        del agent_id
+        return {}
+
+    @PublicAPI
+    def observation_space_sample(self, agent_id: list = None) -> MultiEnvDict:
+        """Returns a random observation for each environment, and potentially
+            each agent in that environment.
+
+        Args:
+            agent_id: List of agent ids to sample actions for. If None or empty
+                list, sample actions for all agents in the environment.
+
+        Returns:
+            A random action for each environment.
+        """
+        logger.warning("observation_space_sample() has not been implemented")
+        del agent_id
+        return {}
+
+    @PublicAPI
+    def last(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
+                            MultiEnvDict, MultiEnvDict]:
+        """Returns the last observations, rewards, and done flags that were
+            returned by the environment.
+
+        Returns:
+            The last observations, rewards, and done flags for each environment
+        """
+        logger.warning("last has not been implemented for this environment.")
+        return {}, {}, {}, {}, {}
+
+    @PublicAPI
+    def observation_space_contains(self, x: MultiEnvDict) -> bool:
+        """Checks if the given observation is valid for each environment.
+
+        Args:
+            x: Observations to check.
+
+        Returns:
+            True if the observations are contained within their respective
+                spaces. False otherwise.
+        """
+        self._space_contains(self.observation_space, x)
+
+    @PublicAPI
+    def action_space_contains(self, x: MultiEnvDict) -> bool:
+        """Checks if the given actions is valid for each environment.
+
+        Args:
+            x: Actions to check.
+
+        Returns:
+            True if the actions are contained within their respective
+                spaces. False otherwise.
+        """
+        return self._space_contains(self.action_space, x)
+
+    def _space_contains(self, space: gym.Space, x: MultiEnvDict) -> bool:
+        """Check if the given space contains the observations of x.
+
+        Args:
+            space: The space to if x's observations are contained in.
+            x: The observations to check.
+
+        Returns:
+            True if the observations of x are contained in space.
+        """
+        agents = set(self.get_agent_ids())
+        for multi_agent_dict in x.values():
+            for agent_id, obs in multi_agent_dict:
+                if (agent_id not in agents) or (
+                        not space[agent_id].contains(obs)):
+                    return False
+
+        return True
+
 
 # Fixed agent identifier when there is only the single agent in the env
 _DUMMY_AGENT_ID = "agent0"
 
 
+@Deprecated(new="with_dummy_agent_id", error=False)
 def _with_dummy_agent_id(env_id_to_values: Dict[EnvID, Any],
                          dummy_id: "AgentID" = _DUMMY_AGENT_ID
                          ) -> MultiEnvDict:
     return {k: {dummy_id: v} for (k, v) in env_id_to_values.items()}
 
 
+def with_dummy_agent_id(env_id_to_values: Dict[EnvID, Any],
+                        dummy_id: "AgentID" = _DUMMY_AGENT_ID) -> MultiEnvDict:
+    return {k: {dummy_id: v} for (k, v) in env_id_to_values.items()}
+
+
+@Deprecated(
+    old="ray.rllib.env.base_env._ExternalEnvToBaseEnv",
+    new="ray.rllib.env.external.ExternalEnvWrapper",
+    error=False)
 class _ExternalEnvToBaseEnv(BaseEnv):
     """Internal adapter of ExternalEnv to BaseEnv."""
 
     def __init__(self,
-                 external_env: ExternalEnv,
+                 external_env: "ExternalEnv",
                  preprocessor: "Preprocessor" = None):
+        from ray.rllib.env.external_multi_agent_env import \
+            ExternalMultiAgentEnv
         self.external_env = external_env
         self.prep = preprocessor
         self.multiagent = issubclass(type(external_env), ExternalMultiAgentEnv)
@@ -379,6 +454,10 @@ class _ExternalEnvToBaseEnv(BaseEnv):
                 _with_dummy_agent_id(off_policy_actions)
 
 
+@Deprecated(
+    old="ray.rllib.env.base_env._VectorEnvToBaseEnv",
+    new="ray.rllib.env.vector_env.VectorEnvWrapper",
+    error=False)
 class _VectorEnvToBaseEnv(BaseEnv):
     """Internal adapter of VectorEnv to BaseEnv.
 
@@ -387,7 +466,7 @@ class _VectorEnvToBaseEnv(BaseEnv):
     environments before calling send_actions().
     """
 
-    def __init__(self, vector_env: VectorEnv):
+    def __init__(self, vector_env: "VectorEnv"):
         self.vector_env = vector_env
         self.action_space = vector_env.action_space
         self.observation_space = vector_env.observation_space
@@ -438,6 +517,10 @@ class _VectorEnvToBaseEnv(BaseEnv):
         return self.vector_env.try_render_at(env_id)
 
 
+@Deprecated(
+    old="ray.rllib.env.base_env._MultiAgentEnvToBaseEnv",
+    new="ray.rllib.env.multi_agent_env.MultiAgentEnvWrapper",
+    error=False)
 class _MultiAgentEnvToBaseEnv(BaseEnv):
     """Internal adapter of MultiAgentEnv to BaseEnv.
 
@@ -445,7 +528,7 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
     """
 
     def __init__(self, make_env: Callable[[int], EnvType],
-                 existing_envs: List["MultiAgentEnv"], num_envs: int):
+                 existing_envs: "MultiAgentEnv", num_envs: int):
         """Wraps MultiAgentEnv(s) into the BaseEnv API.
 
         Args:
@@ -458,6 +541,7 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
                 total. This will include the given (already created)
                 `existing_envs`.
         """
+        from ray.rllib.env.multi_agent_env import MultiAgentEnv
         self.make_env = make_env
         self.envs = existing_envs
         self.num_envs = num_envs
@@ -487,7 +571,9 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
             assert isinstance(rewards, dict), "Not a multi-agent reward"
             assert isinstance(dones, dict), "Not a multi-agent return"
             assert isinstance(infos, dict), "Not a multi-agent info"
-            if set(infos).difference(set(obs)):
+            # Allow `__common__` entry in `infos` for data unrelated with any
+            # agent, but rather with the environment itself.
+            if set(infos).difference(set(obs) | {"__common__"}):
                 raise ValueError("Key set for infos must be a subset of obs: "
                                  "{} vs {}".format(infos.keys(), obs.keys()))
             if "__all__" not in dones:
@@ -519,8 +605,13 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
         return self.envs[env_id].render()
 
 
+@Deprecated(
+    old="ray.rllib.env.base_env._MultiAgentEnvState",
+    new="ray.rllib.env.multi_agent_env._MultiAgentEnvState",
+    error=False)
 class _MultiAgentEnvState:
-    def __init__(self, env: MultiAgentEnv):
+    def __init__(self, env: "MultiAgentEnv"):
+        from ray.rllib.env.multi_agent_env import MultiAgentEnv
         assert isinstance(env, MultiAgentEnv)
         self.env = env
         self.initialized = False
@@ -535,7 +626,7 @@ class _MultiAgentEnvState:
         observations = self.last_obs
         rewards = {}
         dones = {"__all__": self.last_dones["__all__"]}
-        infos = {}
+        infos = {"__common__": self.last_infos.get("__common__")}
 
         # If episode is done, release everything we have.
         if dones["__all__"]:
@@ -582,5 +673,92 @@ class _MultiAgentEnvState:
         self.last_obs = self.env.reset()
         self.last_rewards = {}
         self.last_dones = {"__all__": False}
-        self.last_infos = {}
+        self.last_infos = {"__common__": {}}
         return self.last_obs
+
+
+def convert_to_base_env(
+        env: EnvType,
+        make_env: Callable[[int], EnvType] = None,
+        num_envs: int = 1,
+        remote_envs: bool = False,
+        remote_env_batch_wait_ms: int = 0,
+) -> "BaseEnv":
+    """Converts an RLlib-supported env into a BaseEnv object.
+
+    Supported types for the `env` arg are gym.Env, BaseEnv,
+    VectorEnv, MultiAgentEnv, ExternalEnv, or ExternalMultiAgentEnv.
+
+    The resulting BaseEnv is always vectorized (contains n
+    sub-environments) to support batched forward passes, where n may also
+    be 1. BaseEnv also supports async execution via the `poll` and
+    `send_actions` methods and thus supports external simulators.
+
+    TODO: Support gym3 environments, which are already vectorized.
+
+    Args:
+        env: An already existing environment of any supported env type
+            to convert/wrap into a BaseEnv. Supported types are gym.Env,
+            BaseEnv, VectorEnv, MultiAgentEnv, ExternalEnv, and
+            ExternalMultiAgentEnv.
+        make_env: A callable taking an int as input (which indicates the
+            number of individual sub-environments within the final
+            vectorized BaseEnv) and returning one individual
+            sub-environment.
+        num_envs: The number of sub-environments to create in the
+            resulting (vectorized) BaseEnv. The already existing `env`
+            will be one of the `num_envs`.
+        remote_envs: Whether each sub-env should be a @ray.remote actor.
+            You can set this behavior in your config via the
+            `remote_worker_envs=True` option.
+        remote_env_batch_wait_ms: The wait time (in ms) to poll remote
+            sub-environments for, if applicable. Only used if
+            `remote_envs` is True.
+
+    Returns:
+        The resulting BaseEnv object.
+    """
+
+    from ray.rllib.env.remote_base_env import RemoteBaseEnv
+    from ray.rllib.env.external_env import ExternalEnv
+    from ray.rllib.env.multi_agent_env import MultiAgentEnv
+    from ray.rllib.env.vector_env import VectorEnv, VectorEnvWrapper
+    if remote_envs and num_envs == 1:
+        raise ValueError("Remote envs only make sense to use if num_envs > 1 "
+                         "(i.e. vectorization is enabled).")
+
+    # Given `env` is already a BaseEnv -> Return as is.
+    if isinstance(env, (BaseEnv, MultiAgentEnv, VectorEnv, ExternalEnv)):
+        return env.to_base_env()
+    # `env` is not a BaseEnv yet -> Need to convert/vectorize.
+    else:
+        # Sub-environments are ray.remote actors:
+        if remote_envs:
+            # Determine, whether the already existing sub-env (could
+            # be a ray.actor) is multi-agent or not.
+            multiagent = ray.get(env._is_multi_agent.remote()) if \
+                hasattr(env, "_is_multi_agent") else False
+            env = RemoteBaseEnv(
+                make_env,
+                num_envs,
+                multiagent=multiagent,
+                remote_env_batch_wait_ms=remote_env_batch_wait_ms,
+                existing_envs=[env],
+            )
+        # Sub-environments are not ray.remote actors.
+        else:
+            # Convert gym.Env to VectorEnv ...
+            env = VectorEnv.vectorize_gym_envs(
+                make_env=make_env,
+                existing_envs=[env],
+                num_envs=num_envs,
+                action_space=env.action_space,
+                observation_space=env.observation_space,
+            )
+            # ... then the resulting VectorEnv to a BaseEnv.
+            env = VectorEnvWrapper(env)
+
+    # Make sure conversion went well.
+    assert isinstance(env, BaseEnv), env
+
+    return env

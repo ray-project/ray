@@ -34,6 +34,20 @@ The following steps are then performed:
 Then the script exits. If an error occurs at any time, a fail result is
 written to the database.
 
+Exit codes
+----------
+The script exits with code 0 on success, i.e. if the test has been run
+end to end without failures and the subsequent results checks have passed.
+In all other cases, an exit code > 0 is returned.
+
+Exit code 1 is the general failure exit code returned by Python when we
+encounter an error that isn't caught by the rest of the script.
+
+Generally, we try to catch errors as they occur, and return a specific exit
+code that can be used in automation tools to e.g. retry a test when nodes
+didn't come up in time.
+
+These exit codes are defined in the ``ExitCode`` enum below.
 
 Writing a new release test
 --------------------------
@@ -68,6 +82,7 @@ A notable one is the `RAY_WHEELS` variable which points to the wheels that
 should be tested (e.g. latest master wheels). You might want to include
 something like this in your `post_build_cmds`:
 
+  - pip3 uninstall ray -y || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
 
 If you want to force rebuilds, consider using something like
@@ -81,22 +96,14 @@ only want to trigger rebuilds once per day, use `DATESTAMP` instead:
 
 Local testing
 -------------
-For local testing, make sure to authenticate with the ray-ossci AWS user
-(e.g. by setting the respective environment variables obtained from go/aws),
-or use the `--no-report` command line argument.
-
-Also make sure to set these environment variables:
+Make sure to set these environment variables:
 
 - ANYSCALE_CLI_TOKEN (should contain your anyscale credential token)
 - ANYSCALE_PROJECT (should point to a project ID you have access to)
 
 A test can then be run like this:
 
-python e2e.py --no-report --test-config ~/ray/release/xgboost_tests/xgboost_tests.yaml --test-name tune_small
-
-The `--no-report` option disables storing the results in the DB and
-artifacts on S3. If you set this option, you do not need access to the
-ray-ossci AWS user.
+python e2e.py --test-config ~/ray/release/xgboost_tests/xgboost_tests.yaml --test-name tune_small
 
 Using Compilation on Product + App Config Override
 --------------------------------------------------
@@ -109,7 +116,7 @@ After kicking off the app build, you can give the app config ID to this script
 as an app config override, where the indicated app config will be used instead
 of the app config given in the test config. E.g., running
 
-python e2e.py --no-report --test-config ~/ray/benchmarks/benchmark_tests.yaml --test-name=single_node --app-config-id-override=apt_TBngEXXXrhipMXgexVcrpC9i
+python e2e.py --test-config ~/ray/benchmarks/benchmark_tests.yaml --test-name=single_node --app-config-id-override=apt_TBngEXXXrhipMXgexVcrpC9i
 
 would run the single_node benchmark test with the apt_TBngEXXXrhipMXgexVcrpC9i
 app config instead of the app config given in
@@ -179,6 +186,11 @@ Release test yaml example
 
 """  # noqa: E501
 import argparse
+import enum
+import random
+import string
+import shlex
+
 import boto3
 import collections
 import copy
@@ -193,6 +205,7 @@ import requests
 import shutil
 import subprocess
 import sys
+import re
 import tempfile
 import time
 from queue import Empty
@@ -202,7 +215,7 @@ import yaml
 
 import anyscale
 import anyscale.conf
-from anyscale.api import instantiate_api_client
+from anyscale.authenticate import get_auth_api_client
 from anyscale.controllers.session_controller import SessionController
 from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
@@ -216,6 +229,13 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 
+def _format_link(link: str):
+    # Use ANSI escape code to allow link to be clickable
+    # https://buildkite.com/docs/pipelines/links-and-images
+    # -in-log-output
+    return "\033]1339;url='" + link + "'\a\n"
+
+
 def getenv_default(key: str, default: Optional[str] = None):
     """Return environment variable with default value"""
     # If the environment variable is set but "", still return default
@@ -226,7 +246,7 @@ GLOBAL_CONFIG = {
     "ANYSCALE_USER": getenv_default("ANYSCALE_USER",
                                     "release-automation@anyscale.com"),
     "ANYSCALE_HOST": getenv_default("ANYSCALE_HOST",
-                                    "https://beta.anyscale.com"),
+                                    "https://console.anyscale.com"),
     "ANYSCALE_CLI_TOKEN": getenv_default("ANYSCALE_CLI_TOKEN"),
     "ANYSCALE_CLOUD_ID": getenv_default(
         "ANYSCALE_CLOUD_ID",
@@ -261,10 +281,27 @@ GLOBAL_CONFIG = {
                           datetime.timedelta(days=2)).strftime("%Y-%m-%d")),
     "EXPIRATION_3D": str((datetime.datetime.now() +
                           datetime.timedelta(days=3)).strftime("%Y-%m-%d")),
+    "REPORT_RESULT": getenv_default("REPORT_RESULT", ""),
 }
 
 REPORT_S = 30
 RETRY_MULTIPLIER = 2
+
+
+class ExitCode(enum.Enum):
+    # If you change these, also change the `retry` section
+    # in `build_pipeline.py` and the `reason()` function in `run_e2e.sh`
+    UNSPECIFIED = 2
+    UNKNOWN = 3
+    RUNTIME_ERROR = 4
+    COMMAND_ERROR = 5
+    COMMAND_TIMEOUT = 6
+    PREPARE_TIMEOUT = 7
+    FILESYNC_TIMEOUT = 8
+    SESSION_TIMEOUT = 9
+    PREPARE_ERROR = 10
+    APPCONFIG_BUILD_ERROR = 11
+    INFRA_ERROR = 12
 
 
 def exponential_backoff_retry(f, retry_exceptions, initial_retry_delay_s,
@@ -302,7 +339,15 @@ class PrepareCommandRuntimeError(RuntimeError):
     pass
 
 
-class ReleaseTestTimeoutError(RuntimeError):
+class ReleaseTestRuntimeError(RuntimeError):
+    pass
+
+
+class ReleaseTestInfraError(ReleaseTestRuntimeError):
+    pass
+
+
+class ReleaseTestTimeoutError(ReleaseTestRuntimeError):
     pass
 
 
@@ -332,6 +377,113 @@ class State:
         self.state = state
         self.timestamp = timestamp
         self.data = data
+
+
+class CommandRunnerHack:
+    def __init__(self):
+        self.subprocess_pool: Dict[int, subprocess.Popen] = dict()
+        self.start_time: Dict[int, float] = dict()
+        self.counter = 0
+
+    def run_command(self, session_name, cmd_to_run, env_vars) -> int:
+        self.counter += 1
+        command_id = self.counter
+        env = os.environ.copy()
+        env["RAY_ADDRESS"] = f"anyscale://{session_name}"
+        env["ANYSCALE_CLI_TOKEN"] = GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"]
+        env["ANYSCALE_HOST"] = GLOBAL_CONFIG["ANYSCALE_HOST"]
+        full_cmd = " ".join(f"{k}={v}"
+                            for k, v in env_vars.items()) + " " + cmd_to_run
+        logger.info(
+            f"Executing {cmd_to_run} with {env_vars} via ray job submit")
+        proc = subprocess.Popen(
+            " ".join(["ray", "job", "submit",
+                      shlex.quote(full_cmd)]),
+            shell=True,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            env=env)
+        self.subprocess_pool[command_id] = proc
+        self.start_time[command_id] = time.time()
+        return command_id
+
+    def wait_command(self, command_id: int):
+        retcode = self.subprocess_pool[command_id].wait()
+        duration = time.time() - self.start_time[command_id]
+        return retcode, duration
+
+
+global_command_runner = CommandRunnerHack()
+
+
+class S3SyncSessionController(SessionController):
+    def __init__(self, sdk, result_queue):
+        self.sdk = sdk
+        self.result_queue = result_queue
+        self.s3_client = boto3.client("s3")
+        self.bucket = GLOBAL_CONFIG["RELEASE_AWS_BUCKET"]
+        super().__init__()
+
+    def _generate_tmp_s3_path(self):
+        fn = "".join(random.choice(string.ascii_lowercase) for i in range(10))
+        location = f"tmp/{fn}"
+        return location
+
+    def pull(self, session_name, source, target):
+        remote_upload_to = self._generate_tmp_s3_path()
+        # remote source -> s3
+        cid = global_command_runner.run_command(
+            session_name, (f"pip install -q awscli && aws s3 cp {source} "
+                           f"s3://{self.bucket}/{remote_upload_to} "
+                           "--acl bucket-owner-full-control"), {})
+        global_command_runner.wait_command(cid)
+
+        # s3 -> local target
+        self.s3_client.download_file(
+            Bucket=self.bucket,
+            Key=remote_upload_to,
+            Filename=target,
+        )
+
+    def _push_local_dir(self, session_name):
+        remote_upload_to = self._generate_tmp_s3_path()
+        # pack local dir
+        _, local_path = tempfile.mkstemp()
+        shutil.make_archive(local_path, "gztar", os.getcwd())
+        # local source -> s3
+        self.s3_client.upload_file(
+            Filename=local_path + ".tar.gz",
+            Bucket=self.bucket,
+            Key=remote_upload_to,
+        )
+        # s3 -> remote target
+        cid = global_command_runner.run_command(
+            session_name, ("pip install -q awscli && "
+                           f"aws s3 cp s3://{self.bucket}/{remote_upload_to} "
+                           f"archive.tar.gz && "
+                           "tar xf archive.tar.gz"), {})
+        global_command_runner.wait_command(cid)
+
+    def push(self, session_name, source, target):
+        if source is None and target is None:
+            self._push_local_dir(session_name)
+            return
+
+        assert isinstance(source, str)
+        assert isinstance(target, str)
+
+        remote_upload_to = self._generate_tmp_s3_path()
+        # local source -> s3
+        self.s3_client.upload_file(
+            Filename=source,
+            Bucket=self.bucket,
+            Key=remote_upload_to,
+        )
+        # s3 -> remote target
+        cid = global_command_runner.run_command(
+            session_name, "pip install -q awscli && "
+            f"aws s3 cp s3://{self.bucket}/{remote_upload_to} {target}", {})
+        global_command_runner.wait_command(cid)
 
 
 sys.path.insert(0, anyscale.ANYSCALE_RAY_DIR)
@@ -374,13 +526,22 @@ def wheel_exists(ray_version, git_branch, git_commit):
 
 def commit_or_url(commit_or_url: str) -> str:
     if commit_or_url.startswith("http"):
+        url = None
         # Directly return the S3 url
         if "s3" in commit_or_url and "amazonaws.com" in commit_or_url:
-            return commit_or_url
+            url = commit_or_url
         # Resolve the redirects for buildkite artifacts
         # This is needed because otherwise pip won't recognize the file name.
-        if "buildkite.com" in commit_or_url and "artifacts" in commit_or_url:
-            return requests.head(commit_or_url, allow_redirects=True).url
+        elif "buildkite.com" in commit_or_url and "artifacts" in commit_or_url:
+            url = requests.head(commit_or_url, allow_redirects=True).url
+        if url is not None:
+            # Extract commit from url so that we can do the
+            # commit sanity check later.
+            p = re.compile("/([a-f0-9]{40})/")
+            m = p.search(url)
+            if m is not None:
+                os.environ["RAY_COMMIT"] = m.group(1)
+            return url
 
     # Else, assume commit
     os.environ["RAY_COMMIT"] = commit_or_url
@@ -496,15 +657,6 @@ def _load_config(local_dir: str, config_file: Optional[str]) -> Optional[Dict]:
     return yaml.safe_load(content)
 
 
-def _wrap_app_config_pip_installs(app_config: Dict[Any, Any]):
-    """Wrap pip package install in quotation marks"""
-    if app_config.get("python", {}).get("pip_packages"):
-        new_pip_packages = []
-        for pip_package in app_config["python"]["pip_packages"]:
-            new_pip_packages.append(f"\"{pip_package}\"")
-        app_config["python"]["pip_packages"] = new_pip_packages
-
-
 def has_errored(result: Dict[Any, Any]) -> bool:
     return result.get("status", "invalid") != "finished"
 
@@ -604,7 +756,7 @@ def report_result(test_suite: str, test_name: str, status: str, last_logs: str,
         retry_exceptions=rds_data_client.exceptions.StatementTimeoutException,
         initial_retry_delay_s=retry_delay_s,
         max_retries=MAX_RDS_RETRY)
-    logger.info("Result has been persisted to the databse")
+    logger.info("Result has been persisted to the database")
 
 
 def log_results_and_artifacts(result: Dict):
@@ -856,8 +1008,9 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
             continue
 
         if build.status == "succeeded":
-            logger.info(f"Link to app config build: "
-                        f"{anyscale_app_config_build_url(build_id)}")
+            logger.info(
+                f"Link to app config build: "
+                f"{_format_link(anyscale_app_config_build_url(build_id))}")
             return build_id
 
     if last_status == "failed":
@@ -872,7 +1025,7 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
     next_report = start_wait + REPORT_S
     logger.info(f"Waiting for build {build_id} to finish...")
     logger.info(f"Track progress here: "
-                f"{anyscale_app_config_build_url(build_id)}")
+                f"{_format_link(anyscale_app_config_build_url(build_id))}")
     while not completed:
         now = time.time()
         if now > next_report:
@@ -937,6 +1090,7 @@ def create_and_wait_for_session(
         stop_event: multiprocessing.Event,
         session_name: str,
         session_options: Dict[Any, Any],
+        project_id: str,
 ) -> str:
     # Create session
     logger.info(f"Creating session {session_name}")
@@ -947,7 +1101,7 @@ def create_and_wait_for_session(
     logger.info(f"Starting session {session_name} ({session_id})")
     session_url = anyscale_session_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"], session_id=session_id)
-    logger.info(f"Link to session: {session_url}")
+    logger.info(f"Link to session: {_format_link(session_url)}")
 
     result = sdk.start_session(session_id, start_session_options={})
     sop_id = result.result.id
@@ -973,6 +1127,13 @@ def create_and_wait_for_session(
                         f"({int(now - start_wait)} seconds) ...")
             next_report = next_report + REPORT_S
 
+    result = sdk.get_session(session_id)
+    if not result.result.state != "Active":
+        raise ReleaseTestInfraError(
+            f"Cluster did not come up - most likely the nodes are currently "
+            f"not available. Please check the cluster startup logs: "
+            f"{anyscale_session_url(project_id, session_id)}")
+
     return session_id
 
 
@@ -988,7 +1149,7 @@ def run_session_command(sdk: AnyscaleSDK,
     logger.info(f"Running command in session {session_id}: \n" f"{full_cmd}")
     session_url = anyscale_session_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"], session_id=session_id)
-    logger.info(f"Link to session: {session_url}")
+    logger.info(f"Link to session: {_format_link(session_url)}")
     result_queue.put(State(state_str, time.time(), None))
     result = sdk.create_session_command(
         dict(session_id=session_id, shell_command=full_cmd))
@@ -1256,13 +1417,10 @@ def run_test_config(
     # So we use the session controller instead.
     sdk = AnyscaleSDK(auth_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"])
 
-    session_controller = SessionController(
-        api_client=instantiate_api_client(
-            cli_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"],
-            host=GLOBAL_CONFIG["ANYSCALE_HOST"],
-        ),
-        anyscale_api_client=sdk.api_client,
-    )
+    get_auth_api_client(
+        cli_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"],
+        host=GLOBAL_CONFIG["ANYSCALE_HOST"])
+    session_controller = S3SyncSessionController(sdk, result_queue)
 
     cloud_id = test_config["cluster"].get("cloud_id", None)
     cloud_name = test_config["cluster"].get("cloud_name", None)
@@ -1288,6 +1446,15 @@ def run_test_config(
 
     app_config_rel_path = test_config["cluster"].get("app_config", None)
     app_config = _load_config(local_dir, app_config_rel_path)
+    # A lot of staging tests share the same app config yaml, except the flags.
+    # `app_env_vars` in test config will help this one.
+    # Here we extend the env_vars to use the one specified in the test config.
+    if test_config.get("app_env_vars") is not None:
+        if app_config["env_vars"] is None:
+            app_config["env_vars"] = test_config["app_env_vars"]
+        else:
+            app_config["env_vars"].update(test_config["app_env_vars"])
+        logger.info(f"Using app config:\n{app_config}")
 
     compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
     compute_tpl = _load_config(local_dir, compute_tpl_rel_path)
@@ -1322,9 +1489,6 @@ def run_test_config(
         raise ValueError(
             "'autosuspend_mins' is only supported if 'use_connect' is True.")
 
-    # Only wrap pip packages after we installed the app config packages
-    _wrap_app_config_pip_installs(app_config)
-
     # Add information to results dict
     def _update_results(results: Dict):
         if "last_update" in results:
@@ -1352,8 +1516,13 @@ def run_test_config(
         _update_results(results)
 
         if scd_id:
-            logs = get_command_logs(session_controller, scd_id,
-                                    test_config.get("log_lines", 50))
+            try:
+                logs = get_command_logs(session_controller, scd_id,
+                                        test_config.get("log_lines", 50))
+            except Exception as e:
+                raise ReleaseTestInfraError(
+                    f"Could not fetch command logs: {e}. This is an "
+                    f"infrastructure error on the Anyscale side.")
         else:
             logs = "No command found to fetch logs for"
 
@@ -1467,8 +1636,10 @@ def run_test_config(
                         create_or_find_compute_template(
                             sdk, project_id, compute_tpl)
 
-                    logger.info(f"Link to compute template: "
-                                f"{anyscale_compute_tpl_url(compute_tpl_id)}")
+                    url = _format_link(
+                        anyscale_compute_tpl_url(compute_tpl_id))
+
+                    logger.info(f"Link to compute template: {url}")
 
                     # Find/create app config
                     if app_config_id is None:
@@ -1498,6 +1669,7 @@ def run_test_config(
                     stop_event=stop_event,
                     session_name=session_name,
                     session_options=session_options,
+                    project_id=project_id,
                 )
 
             prepare_command = test_config["run"].get("prepare")
@@ -1510,6 +1682,7 @@ def run_test_config(
                     "test_name": test_name
                 }, f)
 
+            on_k8s = test_config["cluster"].get("compute_on_k8s")
             if prepare_command or not test_uses_ray_connect:
                 if test_uses_ray_connect:
                     logger.info("Found a prepare command, so pushing it "
@@ -1520,8 +1693,6 @@ def run_test_config(
                     session_name=session_name,
                     source=None,
                     target=None,
-                    config=None,
-                    all_nodes=False,
                 )
 
                 logger.info("Syncing test state to session...")
@@ -1529,8 +1700,6 @@ def run_test_config(
                     session_name=session_name,
                     source=test_state_file,
                     target=state_json,
-                    config=None,
-                    all_nodes=False,
                 )
 
                 session_url = anyscale_session_url(
@@ -1542,19 +1711,27 @@ def run_test_config(
                 if prepare_command:
                     logger.info(
                         f"Running preparation command: {prepare_command}")
-                    scd_id, result = run_session_command(
-                        sdk=sdk,
-                        session_id=session_id,
-                        cmd_to_run=prepare_command,
-                        result_queue=result_queue,
-                        env_vars=env_vars,
-                        state_str="CMD_PREPARE")
-                    _, _ = wait_for_session_command_to_complete(
-                        result,
-                        sdk=sdk,
-                        scd_id=scd_id,
-                        stop_event=stop_event,
-                        state_str="CMD_PREPARE")
+                    if on_k8s:
+                        cid = global_command_runner.run_command(
+                            session_name, prepare_command, env_vars)
+                        status_code, _ = global_command_runner.wait_command(
+                            cid)
+                        if status_code != 0:
+                            raise PrepareCommandRuntimeError()
+                    else:
+                        scd_id, result = run_session_command(
+                            sdk=sdk,
+                            session_id=session_id,
+                            cmd_to_run=prepare_command,
+                            result_queue=result_queue,
+                            env_vars=env_vars,
+                            state_str="CMD_PREPARE")
+                        _, _ = wait_for_session_command_to_complete(
+                            result,
+                            sdk=sdk,
+                            scd_id=scd_id,
+                            stop_event=stop_event,
+                            state_str="CMD_PREPARE")
 
             if test_uses_ray_connect:
                 script_args = test_config["run"].get("args", [])
@@ -1588,27 +1765,43 @@ def run_test_config(
             if smoke_test:
                 cmd_to_run += " --smoke-test"
 
-            scd_id, result = run_session_command(
-                sdk=sdk,
-                session_id=session_id,
-                cmd_to_run=cmd_to_run,
-                result_queue=result_queue,
-                env_vars=env_vars,
-                state_str="CMD_RUN")
+            if on_k8s:
+                cmd_id = global_command_runner.run_command(
+                    session_name, cmd_to_run, env_vars=env_vars)
+            else:
+                scd_id, result = run_session_command(
+                    sdk=sdk,
+                    session_id=session_id,
+                    cmd_to_run=cmd_to_run,
+                    result_queue=result_queue,
+                    env_vars=env_vars,
+                    state_str="CMD_RUN")
 
             if not kick_off_only:
-                _, runtime = wait_for_session_command_to_complete(
-                    result,
-                    sdk=sdk,
-                    scd_id=scd_id,
-                    stop_event=stop_event,
-                    state_str="CMD_RUN")
-                _process_finished_command(
-                    session_controller=session_controller,
-                    scd_id=scd_id,
-                    runtime=runtime,
-                    session_url=session_url,
-                    commit_url=commit_url)
+                if on_k8s:
+                    retcode, runtime = global_command_runner.wait_command(
+                        cmd_id)
+                    if retcode != 0:
+                        raise RuntimeError("Command errored")
+                    _process_finished_command(
+                        session_controller=session_controller,
+                        scd_id="",
+                        runtime=runtime,
+                        session_url=session_url,
+                        commit_url=commit_url)
+                else:
+                    _, runtime = wait_for_session_command_to_complete(
+                        result,
+                        sdk=sdk,
+                        scd_id=scd_id,
+                        stop_event=stop_event,
+                        state_str="CMD_RUN")
+                    _process_finished_command(
+                        session_controller=session_controller,
+                        scd_id=scd_id,
+                        runtime=runtime,
+                        session_url=session_url,
+                        commit_url=commit_url)
             else:
                 result_queue.put(
                     State("END", time.time(), {
@@ -1634,24 +1827,42 @@ def run_test_config(
                 _process_finished_command(
                     session_controller=session_controller, scd_id=scd_id)
             else:
-                timeout_type = ""
                 runtime = None
                 if isinstance(e, CommandTimeoutError):
-                    timeout_type = "timeout"
+                    error_type = "timeout"
                     runtime = 0
-                elif (isinstance(e, PrepareCommandTimeoutError)
-                      or isinstance(e, FileSyncTimeoutError)
-                      or isinstance(e, SessionTimeoutError)
-                      or isinstance(e, PrepareCommandRuntimeError)
-                      or isinstance(e, AppConfigBuildFailure)):
-                    timeout_type = "infra_timeout"
+                    exit_code = ExitCode.COMMAND_TIMEOUT
+                elif isinstance(e, PrepareCommandTimeoutError):
+                    error_type = "infra_timeout"
                     runtime = None
+                    exit_code = ExitCode.PREPARE_TIMEOUT
+                elif isinstance(e, FileSyncTimeoutError):
+                    error_type = "infra_timeout"
+                    runtime = None
+                    exit_code = ExitCode.FILESYNC_TIMEOUT
+                elif isinstance(e, SessionTimeoutError):
+                    error_type = "infra_timeout"
+                    runtime = None
+                    exit_code = ExitCode.SESSION_TIMEOUT
+                elif isinstance(e, PrepareCommandRuntimeError):
+                    error_type = "infra_timeout"
+                    runtime = None
+                    exit_code = ExitCode.PREPARE_ERROR
+                elif isinstance(e, AppConfigBuildFailure):
+                    error_type = "infra_timeout"
+                    runtime = None
+                    exit_code = ExitCode.APPCONFIG_BUILD_ERROR
+                elif isinstance(e, ReleaseTestInfraError):
+                    error_type = "infra_error"
+                    exit_code = ExitCode.INFRA_ERROR
                 elif isinstance(e, RuntimeError):
-                    timeout_type = "runtime_error"
+                    error_type = "runtime_error"
                     runtime = 0
+                    exit_code = ExitCode.RUNTIME_ERROR
                 else:
-                    timeout_type = "unknown timeout"
+                    error_type = "unknown timeout"
                     runtime = None
+                    exit_code = ExitCode.UNKNOWN
 
                 # Add these metadata here to avoid changing SQL schema.
                 results = {}
@@ -1662,9 +1873,10 @@ def run_test_config(
                 result_queue.put(
                     State(
                         "END", time.time(), {
-                            "status": timeout_type,
+                            "status": error_type,
                             "last_logs": logs,
-                            "results": results
+                            "results": results,
+                            "exit_code": exit_code.value
                         }))
         finally:
             if no_terminate:
@@ -1804,7 +2016,7 @@ def run_test_config(
 
     project_url = anyscale_project_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"])
-    logger.info(f"Link to project: {project_url}")
+    logger.info(f"Link to project: {_format_link(project_url)}")
 
     msg = f"This will now run test {test_name}."
     if smoke_test:
@@ -1893,9 +2105,14 @@ def run_test_config(
         logger.info(f"Moving results dir {temp_dir} to persistent location "
                     f"{out_dir}")
 
-        shutil.rmtree(out_dir, ignore_errors=True)
-        shutil.copytree(temp_dir, out_dir)
-        logger.info(f"Dir contents: {os.listdir(out_dir)}")
+        try:
+            shutil.rmtree(out_dir, ignore_errors=True)
+            shutil.copytree(temp_dir, out_dir)
+            logger.info(f"Dir contents: {os.listdir(out_dir)}")
+        except Exception as e:
+            logger.error(
+                f"Ran into error when copying results dir to persistent "
+                f"location: {str(e)}")
 
     return result
 
@@ -2024,13 +2241,24 @@ def run_test(test_config_file: str,
                             f"({category}) - the test successfully passed!")
 
         if report:
-            report_result(**report_kwargs)
+            try:
+                report_result(**report_kwargs)
+            except Exception as e:
+                # On database error the test should still pass
+                # Todo: flag somewhere else?
+                logger.error(f"Error persisting results to database: {e}")
         else:
             logger.info(f"Usually I would now report the following results:\n"
                         f"{report_kwargs}")
 
         if has_errored(result):
-            raise RuntimeError(last_logs)
+            # If the script terminates due to an uncaught error, it
+            # will return exit code 1, so we use 2 per default to
+            # catch these cases.
+            exit_code = result.get("exit_code", ExitCode.UNSPECIFIED.value)
+            logger.error(last_logs)
+            logger.info(f"Exiting with exit code {exit_code}")
+            sys.exit(exit_code)
 
         return report_kwargs
 
@@ -2050,7 +2278,7 @@ if __name__ == "__main__":
         default=False,
         help="Don't terminate session after failure")
     parser.add_argument(
-        "--no-report",
+        "--report",
         action="store_true",
         default=False,
         help="Do not report any results or upload to S3")
@@ -2120,6 +2348,13 @@ if __name__ == "__main__":
 
     test_config_file = os.path.abspath(os.path.expanduser(args.test_config))
 
+    # Override it from the global variable.
+    report = GLOBAL_CONFIG["REPORT_RESULT"]
+    if report.lower() == "1" or report.lower() == "true":
+        report = True
+    else:
+        report = args.report
+
     run_test(
         test_config_file=test_config_file,
         test_name=args.test_name,
@@ -2130,7 +2365,7 @@ if __name__ == "__main__":
         no_terminate=args.no_terminate or args.kick_off_only,
         kick_off_only=args.kick_off_only,
         check_progress=args.check,
-        report=not args.no_report,
+        report=report,
         session_name=args.session_name,
         keep_results_dir=args.keep_results_dir,
         app_config_id_override=args.app_config_id_override,

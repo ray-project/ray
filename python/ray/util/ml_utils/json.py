@@ -10,12 +10,15 @@ class SafeFallbackEncoder(json.JSONEncoder):
 
     def default(self, value):
         try:
-            if np.isnan(value):
-                return self.nan_str
-
             if (type(value).__module__ == np.__name__
                     and isinstance(value, np.ndarray)):
                 return value.tolist()
+
+            if isinstance(value, np.bool_):
+                return bool(value)
+
+            if np.isnan(value):
+                return self.nan_str
 
             if issubclass(type(value), numbers.Integral):
                 return int(value)

@@ -52,14 +52,26 @@ class BeatLastHeuristic(Policy):
                         episodes=None,
                         **kwargs):
         def successor(x):
-            if x[ROCK] == 1:
-                return PAPER
-            elif x[PAPER] == 1:
-                return SCISSORS
-            elif x[SCISSORS] == 1:
-                return ROCK
-            elif x[-1] == 1:
-                return random.choice([ROCK, PAPER, SCISSORS])
+            # Make this also work w/o one-hot preprocessing.
+            if isinstance(self.observation_space, gym.spaces.Discrete):
+                if x == ROCK:
+                    return PAPER
+                elif x == PAPER:
+                    return SCISSORS
+                elif x == SCISSORS:
+                    return ROCK
+                else:
+                    return random.choice([ROCK, PAPER, SCISSORS])
+            # One-hot (auto-preprocessed) inputs.
+            else:
+                if x[ROCK] == 1:
+                    return PAPER
+                elif x[PAPER] == 1:
+                    return SCISSORS
+                elif x[SCISSORS] == 1:
+                    return ROCK
+                elif x[-1] == 1:
+                    return random.choice([ROCK, PAPER, SCISSORS])
 
         return [successor(x) for x in obs_batch], [], {}
 

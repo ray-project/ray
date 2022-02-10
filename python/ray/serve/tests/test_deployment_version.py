@@ -18,6 +18,14 @@ def test_validation():
         DeploymentVersion(123, {"set": set()})
 
 
+def test_other_type_equality():
+    v = DeploymentVersion("1", None)
+
+    assert v is not None
+    assert v != "1"
+    assert v != None  # noqa: E711
+
+
 def test_code_version():
     v1 = DeploymentVersion("1", None)
     v2 = DeploymentVersion("1", None)

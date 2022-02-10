@@ -1,10 +1,11 @@
 import logging
-from typing import Optional, Type
+from typing import Type
 
 from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
+from ray.rllib.agents.dqn.simple_q import SimpleQTrainer
 from ray.rllib.agents.ddpg.ddpg_tf_policy import DDPGTFPolicy
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import TrainerConfigDict
 
@@ -38,7 +39,7 @@ DEFAULT_CONFIG = with_common_config({
     # metrics are already only reported for the lowest epsilon workers.
     "evaluation_interval": None,
     # Number of episodes to run per evaluation period.
-    "evaluation_num_episodes": 10,
+    "evaluation_duration": 10,
 
     # === Model ===
     # Apply a state preprocessor with spec given by the "model" config option
@@ -93,7 +94,7 @@ DEFAULT_CONFIG = with_common_config({
     # each worker will have a replay buffer of this size.
     "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
-        "type": "LocalReplayBuffer",
+        "type": "MultiAgentReplayBuffer",
         "capacity": 50000,
     },
     # Set this to True, if you want the contents of your buffer(s) to be
@@ -177,59 +178,49 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def validate_config(config: TrainerConfigDict) -> None:
-    """Checks and updates the config based on settings.
+class DDPGTrainer(SimpleQTrainer):
+    @classmethod
+    @override(SimpleQTrainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
 
-    Rewrites rollout_fragment_length to take into account n_step truncation.
-    """
-    if config["model"]["custom_model"]:
-        logger.warning(
-            "Setting use_state_preprocessor=True since a custom model "
-            "was specified.")
-        config["use_state_preprocessor"] = True
+    @override(SimpleQTrainer)
+    def get_default_policy_class(self,
+                                 config: TrainerConfigDict) -> Type[Policy]:
+        if config["framework"] == "torch":
+            from ray.rllib.agents.ddpg.ddpg_torch_policy import DDPGTorchPolicy
+            return DDPGTorchPolicy
+        else:
+            return DDPGTFPolicy
 
-    if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
-        raise ValueError("`grad_clip` value must be > 0.0!")
+    @override(SimpleQTrainer)
+    def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
+        super().validate_config(config)
 
-    if config["exploration_config"]["type"] == "ParameterNoise":
-        if config["batch_mode"] != "complete_episodes":
+        if config["model"]["custom_model"]:
             logger.warning(
-                "ParameterNoise Exploration requires `batch_mode` to be "
-                "'complete_episodes'. Setting batch_mode=complete_episodes.")
-            config["batch_mode"] = "complete_episodes"
+                "Setting use_state_preprocessor=True since a custom model "
+                "was specified.")
+            config["use_state_preprocessor"] = True
 
-    if config.get("prioritized_replay"):
-        if config["multiagent"]["replay_mode"] == "lockstep":
-            raise ValueError("Prioritized replay is not supported when "
-                             "replay_mode=lockstep.")
-    else:
-        if config.get("worker_side_prioritization"):
-            raise ValueError(
-                "Worker side prioritization is not supported when "
-                "prioritized_replay=False.")
+        if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
+            raise ValueError("`grad_clip` value must be > 0.0!")
 
+        if config["exploration_config"]["type"] == "ParameterNoise":
+            if config["batch_mode"] != "complete_episodes":
+                logger.warning(
+                    "ParameterNoise Exploration requires `batch_mode` to be "
+                    "'complete_episodes'. Setting "
+                    "batch_mode=complete_episodes.")
+                config["batch_mode"] = "complete_episodes"
 
-def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
-    """Policy class picker function. Class is chosen based on DL-framework.
-
-    Args:
-        config (TrainerConfigDict): The trainer's configuration dict.
-
-    Returns:
-        Optional[Type[Policy]]: The Policy class to use with DQNTrainer.
-            If None, use `default_policy` provided in build_trainer().
-    """
-    if config["framework"] == "torch":
-        from ray.rllib.agents.ddpg.ddpg_torch_policy import DDPGTorchPolicy
-        return DDPGTorchPolicy
-    else:
-        return DDPGTFPolicy
-
-
-DDPGTrainer = GenericOffPolicyTrainer.with_updates(
-    name="DDPG",
-    default_config=DEFAULT_CONFIG,
-    default_policy=DDPGTFPolicy,
-    get_policy_class=get_policy_class,
-    validate_config=validate_config,
-)
+        if config.get("prioritized_replay"):
+            if config["multiagent"]["replay_mode"] == "lockstep":
+                raise ValueError("Prioritized replay is not supported when "
+                                 "replay_mode=lockstep.")
+        else:
+            if config.get("worker_side_prioritization"):
+                raise ValueError(
+                    "Worker side prioritization is not supported when "
+                    "prioritized_replay=False.")

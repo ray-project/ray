@@ -24,7 +24,7 @@ pkg_install_helper() {
 
 install_bazel() {
   if command -v bazel; then
-    if [[ -n "${BUILDKITE-}" ]]; then
+    if [[ -n "${BUILDKITE-}" ]] && [ "${OSTYPE}" != msys ]; then
       # Only reinstall Bazel if we need to upgrade to a different version.
       python="$(command -v python3 || command -v python || echo python)"
       current_version="$(bazel --version | grep -o "[0-9]\+.[0-9]\+.[0-9]\+")"
@@ -221,14 +221,12 @@ install_upgrade_pip() {
   fi
 
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
-    "${python}" -m pip install --quiet pip==21.0.1
+    "${python}" -m pip install --quiet pip==21.3.1
 
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
       "${python}" -W ignore -m pip config -q --user set global.disable-pip-version-check True
-      "${python}" -W ignore -m pip config -q --user set global.no-color True
       "${python}" -W ignore -m pip config -q --user set global.progress_bar off
-      "${python}" -W ignore -m pip config -q --user set global.quiet True
     fi
 
     "${python}" -m ensurepip
@@ -275,6 +273,9 @@ install_toolchains() {
 }
 
 download_mnist() {
+  if [ -d "${HOME}/data/MNIST" ]; then
+    return
+  fi
   mkdir -p "${HOME}/data"
   curl -o "${HOME}/data/mnist.zip" https://ray-ci-mnist.s3-us-west-2.amazonaws.com/mnist.zip
   unzip "${HOME}/data/mnist.zip" -d "${HOME}/data"
@@ -307,7 +308,7 @@ install_dependencies() {
 
   if [ -n "${PYTHON-}" ] && [ "${MINIMAL_INSTALL-}" != 1 ]; then
     # Remove this entire section once Serve dependencies are fixed.
-    if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
+    if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
       # PyTorch is installed first since we are using a "-f" directive to find the wheels.
       # We want to install the CPU version only.
       local torch_url="https://download.pytorch.org/whl/torch_stable.html"
@@ -359,6 +360,12 @@ install_dependencies() {
     pip install 'recsim>=0.2.4'
   fi
 
+  # Additional Train test dependencies.
+  if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_train.txt
+  fi
+
+
   # Additional Tune/SGD/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_tune.txt
@@ -387,7 +394,7 @@ install_dependencies() {
   fi
 
   # Remove this entire section once Serve dependencies are fixed.
-  if [ "${MINIMAL_INSTALL-}" != 1 ] && [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
+  if [ "${MINIMAL_INSTALL-}" != 1 ] && [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
     # If CI has deemed that a different version of Torch
     # should be installed, then upgrade/downgrade to that specific version.
     if [ -n "${TORCH_VERSION-}" ]; then
@@ -409,7 +416,7 @@ install_dependencies() {
   # This must be run last (i.e., torch cannot be re-installed after this)
   if [ "${INSTALL_HOROVOD-}" = 1 ]; then
     # TODO: eventually pin this to master.
-    HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 pip install -U git+https://github.com/horovod/horovod.git
+    HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 pip install -U git+https://github.com/horovod/horovod.git@06aa579c9966035453f92208706157dee14c14ab
   fi
 
   CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"

@@ -12,13 +12,13 @@ import ray
 from ray.rllib.agents import Trainer, with_common_config
 from ray.rllib.agents.ars.ars_tf_policy import ARSTFPolicy
 from ray.rllib.agents.es import optimizers, utils
-from ray.rllib.agents.es.es import validate_config
 from ray.rllib.agents.es.es_tf_policy import rollout
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.torch_utils import set_torch_seed
+from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.utils import FilterManager
 
 logger = logging.getLogger(__name__)
@@ -203,12 +203,33 @@ def get_policy_class(config):
 class ARSTrainer(Trainer):
     """Large-scale implementation of Augmented Random Search in Ray."""
 
-    _name = "ARS"
-    _default_config = DEFAULT_CONFIG
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
+
+    @override(Trainer)
+    def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
+        super().validate_config(config)
+
+        if config["num_gpus"] > 1:
+            raise ValueError("`num_gpus` > 1 not yet supported for ARS!")
+        if config["num_workers"] <= 0:
+            raise ValueError("`num_workers` must be > 0 for ARS!")
+        if config["evaluation_config"]["num_envs_per_worker"] != 1:
+            raise ValueError(
+                "`evaluation_config.num_envs_per_worker` must always be 1 for "
+                "ARS! To parallelize evaluation, increase "
+                "`evaluation_num_workers` to > 1.")
+        if config["evaluation_config"]["observation_filter"] != "NoFilter":
+            raise ValueError(
+                "`evaluation_config.observation_filter` must always be "
+                "`NoFilter` for ARS!")
 
     @override(Trainer)
     def _init(self, config, env_creator):
-        validate_config(config)
+        self.validate_config(config)
         env_context = EnvContext(config["env_config"] or {}, worker_index=0)
         env = env_creator(env_context)
 
@@ -245,7 +266,7 @@ class ARSTrainer(Trainer):
         return self.policy
 
     @override(Trainer)
-    def step(self):
+    def step_attempt(self):
         config = self.config
 
         theta = self.policy.get_flat_weights()
