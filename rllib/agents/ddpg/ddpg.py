@@ -11,7 +11,7 @@ from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Twin Delayed DDPG (TD3) and Soft Actor-Critic (SAC) tricks ===
@@ -175,7 +175,7 @@ DEFAULT_CONFIG = with_common_config({
     "min_time_s_per_reporting": 1,
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class DDPGTrainer(SimpleQTrainer):

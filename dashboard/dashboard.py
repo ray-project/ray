@@ -48,6 +48,7 @@ class Dashboard:
         redis_password=None,
         log_dir=None,
         temp_dir=None,
+        session_dir=None,
         minimal=False,
     ):
         self.dashboard_head = dashboard_head.DashboardHead(
@@ -59,6 +60,7 @@ class Dashboard:
             redis_password=redis_password,
             log_dir=log_dir,
             temp_dir=temp_dir,
+            session_dir=session_dir,
             minimal=minimal,
         )
 
@@ -151,6 +153,13 @@ if __name__ == "__main__":
         help="Specify the path of the temporary directory use by Ray process.",
     )
     parser.add_argument(
+        "--session-dir",
+        required=True,
+        type=str,
+        default=None,
+        help="Specify the path of the session directory of the cluster.",
+    )
+    parser.add_argument(
         "--minimal",
         action="store_true",
         help=(
@@ -187,6 +196,7 @@ if __name__ == "__main__":
             redis_password=args.redis_password,
             log_dir=args.log_dir,
             temp_dir=args.temp_dir,
+            session_dir=args.session_dir,
             minimal=args.minimal,
         )
         loop = asyncio.get_event_loop()

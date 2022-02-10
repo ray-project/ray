@@ -36,7 +36,7 @@ class _MockWorker:
         obs_filter = self.obs_filter.copy()
         rew_filter = self.rew_filter.copy()
         if flush_after:
-            self.obs_filter.clear_buffer(), self.rew_filter.clear_buffer()
+            self.obs_filter.reset_buffer(), self.rew_filter.reset_buffer()
 
         return {"obs_filter": obs_filter, "rew_filter": rew_filter}
 

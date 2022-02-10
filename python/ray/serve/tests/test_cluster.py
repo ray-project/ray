@@ -48,24 +48,26 @@ def test_scale_up(ray_cluster):
     D.deploy()
     pids1 = get_pids(1)
 
-    goal_ref = D.options(num_replicas=3).deploy(_blocking=False)
+    D.options(num_replicas=3).deploy(_blocking=False)
 
     # Check that a new replica has not started in 1.0 seconds.  This
     # doesn't guarantee that a new replica won't ever be started, but
     # 1.0 seconds is a reasonable upper bound on replica startup time.
-    assert not client._wait_for_goal(goal_ref, timeout=1.0)
+    with pytest.raises(TimeoutError):
+        client._wait_for_deployment_running(D.name, timeout_s=1)
     assert get_pids(1) == pids1
 
     # Add a node with another CPU, another replica should get placed.
     cluster.add_node(num_cpus=1)
-    assert not client._wait_for_goal(goal_ref, timeout=1.0)
+    with pytest.raises(TimeoutError):
+        client._wait_for_deployment_running(D.name, timeout_s=1)
     pids2 = get_pids(2)
     assert pids1.issubset(pids2)
 
     # Add a node with another CPU, the final replica should get placed
     # and the deploy goal should be done.
     cluster.add_node(num_cpus=1)
-    assert client._wait_for_goal(goal_ref)
+    client._wait_for_deployment_running(D.name)
     pids3 = get_pids(3)
     assert pids2.issubset(pids3)
 
@@ -141,6 +143,8 @@ def test_replica_startup_status_transitions(ray_cluster):
     wait_for_condition(lambda: len(get_replicas(ReplicaState.STARTING)) > 0)
     replica = get_replicas(ReplicaState.STARTING)[0]
 
+    # FIXME: We switched our code formatter from YAPF to Black. Check whether we still
+    # need shorthands and update the comment below. See issue #21318.
     # declare shorthands as yapf doesn't like long lambdas
     PENDING_ALLOCATION = ReplicaStartupStatus.PENDING_ALLOCATION
     PENDING_INITIALIZATION = ReplicaStartupStatus.PENDING_INITIALIZATION

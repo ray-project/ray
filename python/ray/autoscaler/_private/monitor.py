@@ -531,7 +531,7 @@ if __name__ == "__main__":
         "--gcs-address", required=False, type=str, help="The address (ip:port) of GCS."
     )
     parser.add_argument(
-        "--redis-address", required=True, type=str, help="the address to use for Redis"
+        "--redis-address", required=False, type=str, help="the address to use for Redis"
     )
     parser.add_argument(
         "--autoscaling-config",
@@ -620,8 +620,14 @@ if __name__ == "__main__":
     else:
         autoscaling_config = None
 
+    bootstrap_address = (
+        args.gcs_address if use_gcs_for_bootstrap() else args.redis_address
+    )
+    if bootstrap_address is None:
+        raise ValueError("One of --gcs-address or --redis-address must be set!")
+
     monitor = Monitor(
-        args.gcs_address if use_gcs_for_bootstrap() else args.redis_address,
+        bootstrap_address,
         autoscaling_config,
         redis_password=args.redis_password,
         monitor_ip=args.monitor_ip,
