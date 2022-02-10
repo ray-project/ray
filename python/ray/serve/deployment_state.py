@@ -1,20 +1,20 @@
-import math
-import json
-import pickle
-import time
 from collections import defaultdict, OrderedDict
 from enum import Enum
+import json
+import math
 import os
+import pickle
+import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import ray
 from ray import ObjectRef
 from ray.actor import ActorHandle
-from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (
     DeploymentInfo,
+    DeploymentStatus,
+    DeploymentStatusInfo,
     Duration,
-    GoalId,
     ReplicaTag,
     ReplicaName,
     RunningReplicaInfo,
@@ -30,7 +30,6 @@ from ray.serve.utils import (
     format_actor_name,
     get_random_letters,
     logger,
-    wrap_to_ray_error,
 )
 from ray.serve.version import DeploymentVersion, VersionedReplica
 from ray.util.placement_group import PlacementGroup
@@ -49,14 +48,6 @@ class ReplicaStartupStatus(Enum):
     PENDING_INITIALIZATION = 2
     SUCCEEDED = 3
     FAILED = 4
-
-
-class GoalStatus(Enum):
-    NONE = 1
-    PENDING = 2
-    SUCCEEDED = 3
-    SUCCESSFULLY_DELETED = 4
-    FAILED = 5
 
 
 CHECKPOINT_KEY = "serve-deployment-state-checkpoint"
@@ -677,7 +668,6 @@ class DeploymentState:
         controller_name: str,
         detached: bool,
         long_poll_host: LongPollHost,
-        goal_manager: AsyncGoalManager,
         _save_checkpoint_func: Callable,
     ):
 
@@ -685,21 +675,19 @@ class DeploymentState:
         self._controller_name: str = controller_name
         self._detached: bool = detached
         self._long_poll_host: LongPollHost = long_poll_host
-        self._goal_manager: AsyncGoalManager = goal_manager
         self._save_checkpoint_func = _save_checkpoint_func
 
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.
-        # In case the new deployment goal failed to complete, we keep track of
-        # previous DeploymentInfo and rollback to it.
         self._target_info: DeploymentInfo = None
-        self._rollback_info: DeploymentInfo = None
         self._target_replicas: int = -1
-        self._curr_goal: Optional[GoalId] = None
         self._target_version: DeploymentVersion = None
         self._prev_startup_warning: float = time.time()
         self._replica_constructor_retry_counter: int = 0
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
+        self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
+            DeploymentStatus.UPDATING
+        )
 
     def get_target_state_checkpoint_data(self):
         """
@@ -765,8 +753,8 @@ class DeploymentState:
         return self._target_info
 
     @property
-    def curr_goal(self) -> Optional[GoalId]:
-        return self._curr_goal
+    def curr_status_info(self) -> DeploymentStatusInfo:
+        return self._curr_status_info
 
     def get_running_replica_infos(self) -> List[RunningReplicaInfo]:
         return [
@@ -789,9 +777,6 @@ class DeploymentState:
                 replica config, if passed in as None, we're marking
                 target deployment as shutting down.
         """
-        existing_goal_id = self._curr_goal
-        new_goal_id = self._goal_manager.create_goal()
-
         if deployment_info is not None:
             self._target_info = deployment_info
             self._target_replicas = deployment_info.deployment_config.num_replicas
@@ -804,23 +789,21 @@ class DeploymentState:
         else:
             self._target_replicas = 0
 
-        self._curr_goal = new_goal_id
+        self._curr_status_info = DeploymentStatusInfo(DeploymentStatus.UPDATING)
+
         version_str = (
             deployment_info if deployment_info is None else deployment_info.version
         )
-        logger.debug(f"Set deployment goal for {self._name} with version {version_str}")
-        return new_goal_id, existing_goal_id
+        logger.debug(f"Deploying new version of {self._name}: {version_str}")
 
-    def deploy(self, deployment_info: DeploymentInfo) -> Tuple[Optional[GoalId], bool]:
+    def deploy(self, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
 
         If the deployment already exists with the same version and config,
-        this is a no-op and returns the GoalId corresponding to the existing
-        update if there is one.
+        this is a no-op and returns False.
 
         Returns:
-            GoalId, bool: The GoalId for the client to wait for and whether or
-            not the deployment is being updated.
+            bool: Whether or not the deployment is being updated.
         """
         # Ensures this method is idempotent.
         existing_info = self._target_info
@@ -833,33 +816,23 @@ class DeploymentState:
                 and deployment_info.version is not None
                 and existing_info.version == deployment_info.version
             ):
-                return self._curr_goal, False
-
-        # Keep a copy of previous deployment info in case goal failed to
-        # complete to initiate rollback.
-        self._rollback_info = self._target_info
+                return False
 
         # Reset constructor retry counter.
         self._replica_constructor_retry_counter = 0
 
-        new_goal_id, existing_goal_id = self._set_deployment_goal(deployment_info)
+        self._set_deployment_goal(deployment_info)
 
         # NOTE(edoakes): we must write a checkpoint before starting new
         # or pushing the updated config to avoid inconsistent state if we
         # crash while making the change.
         self._save_checkpoint_func()
 
-        if existing_goal_id is not None:
-            self._goal_manager.complete_goal(existing_goal_id)
-        return new_goal_id, True
+        return True
 
-    def delete(self) -> Optional[GoalId]:
-        new_goal_id, existing_goal_id = self._set_deployment_goal(None)
-
+    def delete(self) -> None:
+        self._set_deployment_goal(None)
         self._save_checkpoint_func()
-        if existing_goal_id is not None:
-            self._goal_manager.complete_goal(existing_goal_id)
-        return new_goal_id
 
     def _stop_wrong_version_replicas(self) -> bool:
         """Stops replicas with outdated versions to implement rolling updates.
@@ -1035,18 +1008,21 @@ class DeploymentState:
 
         return replicas_stopped
 
-    def _check_curr_goal_status(self) -> GoalStatus:
-        """
-        In each update() cycle, upon finished calling _scale_all_deployments(),
-        check difference between target vs. running relica count for each
-        deployment and return whether or not the current goal is complete.
+    def _get_curr_status(self) -> Tuple[DeploymentStatusInfo, bool]:
+        """Get the current deployment status.
+
+        Checks the difference between the target vs. running replica count for
+        the target version.
+
+        TODO(edoakes): we should report the status as FAILED if replicas are
+        repeatedly failing health checks. Need a reasonable heuristic here.
 
         Returns:
-            AsyncGoalStatus
+            (DeploymentStatusInfo, was_deleted)
         """
-
-        if self._curr_goal is None:
-            return GoalStatus.NONE
+        # TODO(edoakes): we could make this more efficient in steady-state by
+        # having a "healthy" flag that gets flipped if an update or replica
+        # failure happens.
 
         target_version = self._target_version
         target_replica_count = self._target_replicas
@@ -1076,7 +1052,17 @@ class DeploymentState:
                 # reached target replica count
                 self._replica_constructor_retry_counter = -1
             else:
-                return GoalStatus.FAILED
+                return (
+                    DeploymentStatusInfo(
+                        status=DeploymentStatus.FAILED,
+                        message=(
+                            "The Deployment constructor failed "
+                            f"{failed_to_start_count} times in a row. See "
+                            "logs for details."
+                        ),
+                    ),
+                    False,
+                )
 
         # If we have pending ops, the current goal is *not* ready.
         if (
@@ -1092,13 +1078,23 @@ class DeploymentState:
         ):
             # Check for deleting.
             if target_replica_count == 0 and all_running_replica_cnt == 0:
-                return GoalStatus.SUCCESSFULLY_DELETED
+                return DeploymentStatusInfo(status=DeploymentStatus.UPDATING), True
 
             # Check for a non-zero number of deployments.
             elif target_replica_count == running_at_target_version_replica_cnt:
-                return GoalStatus.SUCCEEDED
+                return DeploymentStatusInfo(status=DeploymentStatus.RUNNING), False
 
-        return GoalStatus.PENDING
+        return (
+            DeploymentStatusInfo(
+                status=DeploymentStatus.UPDATING,
+                message=(
+                    f"Running replicas of target version: "
+                    f"{running_at_target_version_replica_cnt}, target "
+                    "replicas: {target_replica_count}"
+                ),
+            ),
+            False,
+        )
 
     def _check_startup_replicas(
         self, original_state: ReplicaState, stop_on_slow=False
@@ -1239,7 +1235,15 @@ class DeploymentState:
         return running_replicas_changed
 
     def update(self) -> bool:
-        """Updates the state of all deployments to match their goal state."""
+        """Attempts to reconcile this deployment to match its goal state.
+
+        This is an asynchronous call; it's expected to be called repeatedly.
+
+        Also updates the internal DeploymentStatusInfo based on the current
+        state of the system.
+
+        Returns true if this deployment was successfully deleted.
+        """
         try:
             # Add or remove DeploymentReplica instances in self._replicas.
             # This should be the only place we adjust total number of replicas
@@ -1252,60 +1256,16 @@ class DeploymentState:
             if running_replicas_changed:
                 self._notify_running_replicas_changed()
 
-            status = self._check_curr_goal_status()
-            exception = None
+            status_info, deleted = self._get_curr_status()
         except Exception as e:
-            status = GoalStatus.FAILED
-            exception = e
+            status_info = DeploymentStatusInfo(
+                status=DeploymentStatus.FAILED,
+                message=f"Failed to update deployment:\n{e}.",
+            )
+            deleted = False
 
-        if status == GoalStatus.SUCCEEDED:
-            # Deployment successul, complete the goal and clear the
-            # backup deployment_info.
-            self._goal_manager.complete_goal(self._curr_goal)
-            self._rollback_info = None
-        elif status == GoalStatus.FAILED:
-            if exception is None:
-                # report a generic exception if none was caught
-                # TODO: in which cases can we get the exception
-                # that caused the failure?
-                exception = RuntimeError(
-                    "Failed to reach deployment goal. "
-                    "Check the serve logs for details."
-                )
-            # wrap this exception so that it can be sent across the cluster
-            exception = wrap_to_ray_error("unknown", exception)
-
-            # Roll back or delete the deployment if it failed.
-            if self._rollback_info is None:
-                # No info to roll back to, delete it.
-                self._goal_manager.complete_goal(
-                    self._curr_goal,
-                    exception,
-                )
-                logger.info(
-                    f"Deployment '{self._name}' failed, deleting it. "
-                    f"component=serve deployment={self._name}"
-                )
-                self.delete()
-            else:
-                # Roll back to the previous version.
-                rollback_info = self._rollback_info
-                self._goal_manager.complete_goal(
-                    self._curr_goal,
-                    exception,
-                )
-                self._curr_goal = None
-                self._rollback_info = None
-                logger.info(
-                    f"Updating deployment '{self._name}' failed, rolling "
-                    f"back to version {rollback_info.version}. "
-                    f"component=serve deployment={self._name}"
-                )
-                self.deploy(rollback_info)
-        elif status == GoalStatus.SUCCESSFULLY_DELETED:
-            self._goal_manager.complete_goal(self._curr_goal)
-
-        return status == GoalStatus.SUCCESSFULLY_DELETED
+        self._curr_status_info = status_info
+        return deleted
 
     def _stop_one_running_replica_for_testing(self):
         running_replicas = self._replicas.pop(states=[ReplicaState.RUNNING])
@@ -1329,7 +1289,6 @@ class DeploymentStateManager:
         detached: bool,
         kv_store: KVStoreBase,
         long_poll_host: LongPollHost,
-        goal_manager: AsyncGoalManager,
         all_current_actor_names: List[str],
     ):
 
@@ -1337,13 +1296,11 @@ class DeploymentStateManager:
         self._detached = detached
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
-        self._goal_manager = goal_manager
         self._create_deployment_state: Callable = lambda name: DeploymentState(
             name,
             controller_name,
             detached,
             long_poll_host,
-            goal_manager,
             self._save_checkpoint_func,
         )
         self._deployment_states: Dict[str, DeploymentState] = dict()
@@ -1415,7 +1372,7 @@ class DeploymentStateManager:
                     )
                 self._deployment_states[deployment_tag] = deployment_state
 
-    def shutdown(self) -> List[GoalId]:
+    def shutdown(self):
         """
         Shutdown all running replicas by notifying the controller, and leave
         it to the controller event loop to take actions afterwards.
@@ -1427,11 +1384,8 @@ class DeploymentStateManager:
         difference compare to calling it once.
         """
 
-        shutdown_goals = []
         for deployment_state in self._deployment_states.values():
-            goal = deployment_state.delete()
-            if goal is not None:
-                shutdown_goals.append(goal)
+            deployment_state.delete()
 
         # TODO(jiaodong): This might not be 100% safe since we deleted
         # everything without ensuring all shutdown goals are completed
@@ -1440,7 +1394,6 @@ class DeploymentStateManager:
 
         # TODO(jiaodong): Need to add some logic to prevent new replicas
         # from being created once shutdown signal is sent.
-        return shutdown_goals
 
     def _save_checkpoint_func(self) -> None:
         deployment_state_info = {
@@ -1493,18 +1446,20 @@ class DeploymentStateManager:
         else:
             return None
 
-    def deploy(
-        self, deployment_name: str, deployment_info: DeploymentInfo
-    ) -> Tuple[Optional[GoalId], bool]:
+    def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
+        return {
+            name: state.curr_status_info
+            for name, state in self._deployment_states.items()
+        }
+
+    def deploy(self, deployment_name: str, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
 
         If the deployment already exists with the same version and config,
-        this is a no-op and returns the GoalId corresponding to the existing
-        update if there is one.
+        this is a no-op and returns False.
 
         Returns:
-            GoalId, bool: The GoalId for the client to wait for and whether or
-            not the deployment is being updated.
+            bool: Whether or not the deployment is being updated.
         """
         if deployment_name in self._deleted_deployment_metadata:
             del self._deleted_deployment_metadata[deployment_name]
@@ -1516,16 +1471,13 @@ class DeploymentStateManager:
 
         return self._deployment_states[deployment_name].deploy(deployment_info)
 
-    def delete_deployment(self, deployment_name: str) -> Optional[GoalId]:
+    def delete_deployment(self, deployment_name: str):
         # This method must be idempotent. We should validate that the
         # specified deployment exists on the client.
-        if deployment_name not in self._deployment_states:
-            return None
+        if deployment_name in self._deployment_states:
+            self._deployment_states[deployment_name].delete()
 
-        deployment_state = self._deployment_states[deployment_name]
-        return deployment_state.delete()
-
-    def update(self) -> bool:
+    def update(self):
         """Updates the state of all deployments to match their goal state."""
         deleted_tags = []
         for deployment_name, deployment_state in self._deployment_states.items():

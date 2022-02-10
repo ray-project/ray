@@ -16,7 +16,7 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray.actor import ActorHandle
-from ray.serve.common import DeploymentInfo, GoalId, ReplicaTag
+from ray.serve.common import DeploymentInfo, DeploymentStatus, ReplicaTag
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
@@ -168,9 +168,9 @@ class Client:
         Shuts down all processes and deletes all state associated with the
         instance.
         """
-        if (not self._shutdown) and ray.is_initialized():
-            for goal_id in ray.get(self._controller.shutdown.remote()):
-                self._wait_for_goal(goal_id)
+        if ray.is_initialized() and not self._shutdown:
+            ray.get(self._controller.shutdown.remote())
+            self._wait_for_deployments_shutdown()
 
             ray.kill(self._controller, no_restart=True)
 
@@ -193,24 +193,82 @@ class Client:
 
             self._shutdown = True
 
-    def _wait_for_goal(
-        self, goal_id: Optional[GoalId], timeout: Optional[float] = None
-    ) -> bool:
-        if goal_id is None:
-            return True
+    def _wait_for_deployments_shutdown(self, timeout_s: int = 60):
+        """Waits for all deployments to be shut down and deleted.
 
-        ready, _ = ray.wait(
-            [self._controller.wait_for_goal.remote(goal_id)], timeout=timeout
-        )
-        # AsyncGoal could return exception if set, ray.get()
-        # retrieves and throws it to user code explicitly.
-        if len(ready) == 1:
-            async_goal_exception = ray.get(ready)[0]
-            if async_goal_exception is not None:
-                raise async_goal_exception
-            return True
+        Raises TimeoutError if this doesn't happen before timeout_s.
+        """
+        start = time.time()
+        while time.time() - start < timeout_s:
+            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            if len(statuses) == 0:
+                break
+            else:
+                logger.debug(
+                    f"Waiting for shutdown, {len(statuses)} deployments still alive."
+                )
+            time.sleep(1)
         else:
-            return False
+            live_names = list(statuses.keys())
+            raise TimeoutError(
+                f"Shutdown didn't complete after {timeout_s}s. "
+                f"Deployments still alive: {live_names}."
+            )
+
+    def _wait_for_deployment_running(self, name: str, timeout_s: int = -1):
+        """Waits for the named deployment to enter "RUNNING" status.
+
+        Raises RuntimeError if the deployment enters the "FAILED" status
+        instead.
+
+        Raises TimeoutError if this doesn't happen before timeout_s.
+        """
+        start = time.time()
+        while time.time() - start < timeout_s or timeout_s < 0:
+            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            try:
+                status = statuses[name]
+            except KeyError:
+                raise RuntimeError(
+                    f"Waiting for deployment {name} to be RUNNING, "
+                    "but deployment doesn't exist."
+                ) from None
+
+            if status.status == DeploymentStatus.RUNNING:
+                break
+            elif status.status == DeploymentStatus.FAILED:
+                raise RuntimeError(f"Deployment {name} is FAILED: {status.message}")
+            else:
+                # Guard against new unhandled statuses being added.
+                assert status.status == DeploymentStatus.UPDATING
+
+            logger.debug(
+                f"Waiting for {name} to be healthy, current status: {status.status}."
+            )
+            time.sleep(1)
+        else:
+            raise TimeoutError(
+                f"Deployment {name} did not become RUNNING after {timeout_s}s."
+            )
+
+    def _wait_for_deployment_deleted(self, name: str, timeout_s: int = 60):
+        """Waits for the named deployment to be shut down and deleted.
+
+        Raises TimeoutError if this doesn't happen before timeout_s.
+        """
+        start = time.time()
+        while time.time() - start < timeout_s:
+            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            if name not in statuses:
+                break
+            else:
+                curr_status = statuses[name].status
+                logger.debug(
+                    f"Waiting for {name} to be deleted, current status: {curr_status}."
+                )
+            time.sleep(1)
+        else:
+            raise TimeoutError(f"Deployment {name} wasn't deleted after {timeout_s}s.")
 
     @_ensure_connected
     def deploy(
@@ -226,7 +284,7 @@ class Client:
         route_prefix: Optional[str] = None,
         url: Optional[str] = None,
         _blocking: Optional[bool] = True,
-    ) -> Optional[GoalId]:
+    ):
 
         controller_deploy_args = self.get_deploy_args(
             name=name,
@@ -240,22 +298,16 @@ class Client:
             route_prefix=route_prefix,
         )
 
-        goal_id, updating = ray.get(
-            self._controller.deploy.remote(**controller_deploy_args)
-        )
+        updating = ray.get(self._controller.deploy.remote(**controller_deploy_args))
 
         tag = self.log_deployment_update_status(name, version, updating)
 
         if _blocking:
-            self._wait_for_goal(goal_id)
+            self._wait_for_deployment_running(name)
             self.log_deployment_ready(name, version, url, tag)
-        else:
-            return goal_id
 
     @_ensure_connected
-    def deploy_group(
-        self, deployments: List[Dict], _blocking: bool = True
-    ) -> List[GoalId]:
+    def deploy_group(self, deployments: List[Dict], _blocking: bool = True):
         deployment_args_list = []
         for deployment in deployments:
             deployment_args_list.append(
@@ -272,35 +324,29 @@ class Client:
                 )
             )
 
-        update_goals = ray.get(
+        updating_list = ray.get(
             self._controller.deploy_group.remote(deployment_args_list)
         )
 
         tags = []
-        for i in range(len(deployments)):
+        for i, updating in enumerate(updating_list):
             deployment = deployments[i]
             name, version = deployment["name"], deployment["version"]
-            updating = update_goals[i][1]
 
             tags.append(self.log_deployment_update_status(name, version, updating))
 
-        nonblocking_goal_ids = []
-        for i in range(len(deployments)):
-            deployment = deployments[i]
+        for i, deployment in enumerate(deployments):
+            name = deployment["name"]
             url = deployment["url"]
-            goal_id = update_goals[i][0]
 
             if _blocking:
-                self._wait_for_goal(goal_id)
+                self._wait_for_deployment_running(name)
                 self.log_deployment_ready(name, version, url, tags[i])
-            else:
-                nonblocking_goal_ids.append(goal_id)
-
-        return nonblocking_goal_ids
 
     @_ensure_connected
     def delete_deployment(self, name: str) -> None:
-        self._wait_for_goal(ray.get(self._controller.delete_deployment.remote(name)))
+        ray.get(self._controller.delete_deployment.remote(name))
+        self._wait_for_deployment_deleted(name)
 
     @_ensure_connected
     def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
@@ -1330,7 +1376,7 @@ def list_deployments() -> Dict[str, Deployment]:
     return deployments
 
 
-def deploy_group(deployments: List[Deployment], _blocking: bool = True) -> List[GoalId]:
+def deploy_group(deployments: List[Deployment], _blocking: bool = True):
     """
     EXPERIMENTAL API
 
@@ -1369,4 +1415,4 @@ def deploy_group(deployments: List[Deployment], _blocking: bool = True) -> List[
 
         parameter_group.append(deployment_parameters)
 
-    return _get_global_client().deploy_group(parameter_group, _blocking=_blocking)
+    _get_global_client().deploy_group(parameter_group, _blocking=_blocking)
