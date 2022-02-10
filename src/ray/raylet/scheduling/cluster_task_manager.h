@@ -135,10 +135,11 @@ class ClusterTaskManager : public ClusterTaskManagerInterface, public syncing::R
     // if (version_ <= current_version) {
     //   return std::nullopt;
     // }
+    static uint64_t version = 0;
     syncing::RaySyncMessage msg;
     rpc::ResourcesData resource_data;
     FillResourceUsage(resource_data);
-    msg.set_version(version_);
+    msg.set_version(++version);
     msg.set_component_id(syncing::RayComponentId::SCHEDULER);
     msg.set_message_type(syncing::RaySyncMessageType::AGGREGATE);
     std::string serialized_msg;
@@ -163,7 +164,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface, public syncing::R
   ///                                     resources have been changed.
   void FillResourceUsage(rpc::ResourcesData &data,
                          const std::shared_ptr<SchedulingResources>
-                             &last_reported_resources = nullptr) override;
+                             &last_reported_resources = nullptr) const;
 
   /// Return if any tasks are pending resource acquisition.
   ///

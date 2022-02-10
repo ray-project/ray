@@ -75,7 +75,7 @@ class RaySyncer {
 
   void Update(RaySyncMessage message) {
     if (message.message_type() == RaySyncMessageType::AGGREGATE) {
-      BroadcastMessage(make_shared<RaySyncMessage>(std::move(message)));
+      BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(message)));
       return;
     }
 

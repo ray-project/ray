@@ -797,7 +797,7 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
 
 void ClusterTaskManager::FillResourceUsage(
     rpc::ResourcesData &data,
-    const std::shared_ptr<SchedulingResources> &last_reported_resources) {
+    const std::shared_ptr<SchedulingResources> &last_reported_resources) const {
   scheduler_resource_reporter_.FillResourceUsage(data, last_reported_resources);
 }
 

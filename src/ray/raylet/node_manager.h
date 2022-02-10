@@ -139,7 +139,7 @@ class HeartbeatSender {
   uint64_t last_heartbeat_at_ms_;
 };
 
-class NodeManager : public rpc::NodeManagerServiceHandler {
+class NodeManager : public rpc::NodeManagerServiceHandler, public syncing::Receiver {
  public:
   /// Create a node manager.
   ///
@@ -205,6 +205,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Stop this node manager.
   void Stop();
+
+
+  void Update(const syncing::RaySyncMessage &message) override {
+    rpc::ResourcesData data;
+    data.ParseFromString(message.sync_message());
+    NodeID node_id = NodeID::FromBinary(data.node_id());
+    UpdateResourceUsage(node_id, data);
+  }
 
  private:
   /// Methods for handling nodes.
