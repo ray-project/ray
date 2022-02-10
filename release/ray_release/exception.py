@@ -30,6 +30,18 @@ class ClusterManagerError(RuntimeError):
     pass
 
 
+class ClusterEnvBuildError(ClusterManagerError):
+    pass
+
+
+class ClusterEnvBuildTimeout(ClusterManagerError):
+    pass
+
+
+class ClusterComputeBuildError(ClusterManagerError):
+    pass
+
+
 class ClusterCreationError(ClusterManagerError):
     pass
 
@@ -50,7 +62,7 @@ class CommandTimeout(RuntimeError):
     pass
 
 
-class PrepareCommandTimouet(CommandTimeout):
+class PrepareCommandTimeout(CommandTimeout):
     pass
 
 

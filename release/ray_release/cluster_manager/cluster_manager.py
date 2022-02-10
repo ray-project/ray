@@ -9,10 +9,9 @@ from ray_release.util import dict_hash, get_anyscale_sdk, anyscale_cluster_url
 
 
 class ClusterManager(abc.ABC):
-    def __init__(self,
-                 test_name: str,
-                 project_id: str,
-                 sdk: Optional[AnyscaleSDK] = None):
+    def __init__(
+        self, test_name: str, project_id: str, sdk: Optional[AnyscaleSDK] = None
+    ):
         self.sdk = sdk or get_anyscale_sdk()
 
         self.test_name = test_name
@@ -35,24 +34,27 @@ class ClusterManager(abc.ABC):
 
     def set_cluster_env(self, cluster_env: Dict[str, Any]):
         self.cluster_env = cluster_env
-        self.cluster_env_name = (f"{self.project_name}_{self.project_id[4:8]}"
-                                 f"__env__{self.test_name}__"
-                                 f"{dict_hash(cluster_env)}")
+        self.cluster_env_name = (
+            f"{self.project_name}_{self.project_id[4:8]}"
+            f"__env__{self.test_name}__"
+            f"{dict_hash(cluster_env)}"
+        )
 
     def set_cluster_compute(self, cluster_compute: Dict[str, Any]):
         self.cluster_compute = cluster_compute
         self.cluster_compute_name = (
             f"{self.project_name}_{self.project_id[4:8]}"
             f"__compute__{self.test_name}__"
-            f"{dict_hash(cluster_compute)}")
+            f"{dict_hash(cluster_compute)}"
+        )
 
-    def build_configs(self, timeout: float = 30.):
+    def build_configs(self, timeout: float = 30.0):
         raise NotImplementedError
 
     def delete_configs(self):
         raise NotImplementedError
 
-    def start_cluster(self, timeout: float = 600.):
+    def start_cluster(self, timeout: float = 600.0):
         raise NotImplementedError
 
     def terminate_cluster(self):

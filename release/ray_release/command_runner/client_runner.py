@@ -19,7 +19,8 @@ from ray_release.command_runner.command_runner import CommandRunner
 def install_matching_ray(ray_wheels: Optional[str]):
     if not ray_wheels:
         logger.warning(
-            "No Ray wheels found - can't install matching Ray wheels locally!")
+            "No Ray wheels found - can't install matching Ray wheels locally!"
+        )
         return
     assert "manylinux2014_x86_64" in ray_wheels, ray_wheels
     if sys.platform == "darwin":
@@ -31,9 +32,11 @@ def install_matching_ray(ray_wheels: Optional[str]):
     ray_wheels = ray_wheels.replace("manylinux2014_x86_64", platform)
     logger.info(f"Installing matching Ray wheels locally: {ray_wheels}")
     subprocess.check_output(
-        "pip uninstall -y ray", shell=True, env=os.environ, text=True)
+        "pip uninstall -y ray", shell=True, env=os.environ, text=True
+    )
     subprocess.check_output(
-        f"pip install -U {ray_wheels}", shell=True, env=os.environ, text=True)
+        f"pip install -U {ray_wheels}", shell=True, env=os.environ, text=True
+    )
 
 
 def install_cluster_env_packages(cluster_env: Dict[Any, Any]):
@@ -43,14 +46,18 @@ def install_cluster_env_packages(cluster_env: Dict[Any, Any]):
 
     for package in packages:
         subprocess.check_output(
-            f"pip install -U {package}", shell=True, env=os.environ, text=True)
+            f"pip install -U {package}", shell=True, env=os.environ, text=True
+        )
 
 
 class ClientRunner(CommandRunner):
-    def __init__(self, cluster_manager: ClusterManager,
-                 file_manager: FileManager, working_dir: str):
-        super(ClientRunner, self).__init__(cluster_manager, file_manager,
-                                           working_dir)
+    def __init__(
+        self,
+        cluster_manager: ClusterManager,
+        file_manager: FileManager,
+        working_dir: str,
+    ):
+        super(ClientRunner, self).__init__(cluster_manager, file_manager, working_dir)
 
         self.last_logs = None
         self.result_output_json = tempfile.mktemp()
@@ -59,8 +66,7 @@ class ClientRunner(CommandRunner):
         pass
 
     def prepare_local_env(self, ray_wheels_url: Optional[str] = None):
-        install_matching_ray(
-            ray_wheels_url or os.environ.get("RAY_WHEELS", None))
+        install_matching_ray(ray_wheels_url or os.environ.get("RAY_WHEELS", None))
         install_cluster_env_packages(self.cluster_manager.cluster_env)
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
@@ -78,15 +84,18 @@ class ClientRunner(CommandRunner):
             logger.info(
                 f"Waiting for nodes to come up: "
                 f"{len(ray.nodes())}/{num_nodes} "
-                f"({time_elapsed} seconds, timeout: {timeout} seconds).")
+                f"({time_elapsed} seconds, timeout: {timeout} seconds)."
+            )
 
         def _error_fn():
             raise ClusterStartupTimeout(
                 f"Only {len(ray.nodes())}/{num_nodes} are up after "
-                f"{timeout} seconds.")
+                f"{timeout} seconds."
+            )
 
         run_with_timeout(
-            _wait, timeout=timeout, status_fn=_status_fn, error_fn=_error_fn)
+            _wait, timeout=timeout, status_fn=_status_fn, error_fn=_error_fn
+        )
 
     def get_last_logs(self) -> Optional[str]:
         return self.last_logs
@@ -96,23 +105,27 @@ class ClientRunner(CommandRunner):
             with open(self.result_output_json, "rt") as fp:
                 return json.load(fp)
         except Exception as e:
-            raise ResultsError(f"Could not load local results from "
-                               f"client command: {e}") from e
+            raise ResultsError(
+                f"Could not load local results from " f"client command: {e}"
+            ) from e
 
-    def run_command(self,
-                    command: str,
-                    env: Optional[Dict] = None,
-                    timeout: float = 3600.) -> float:
-        logger.info(f"Running command using Ray client on cluster "
-                    f"{self.cluster_manager.cluster_name}: {command}")
+    def run_command(
+        self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
+    ) -> float:
+        logger.info(
+            f"Running command using Ray client on cluster "
+            f"{self.cluster_manager.cluster_name}: {command}"
+        )
 
         env = env or {}
-        full_env = self.get_full_command_env({
-            **os.environ,
-            **env,
-            "RAY_ADDRESS": self.cluster_manager.get_cluster_address(),
-            "RAY_JOB_NAME": "test_job",
-        })
+        full_env = self.get_full_command_env(
+            {
+                **os.environ,
+                **env,
+                "RAY_ADDRESS": self.cluster_manager.get_cluster_address(),
+                "RAY_JOB_NAME": "test_job",
+            }
+        )
 
         start_time = time.monotonic()
         proc = subprocess.Popen(
@@ -121,7 +134,8 @@ class ClientRunner(CommandRunner):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             shell=True,
-            text=True)
+            text=True,
+        )
         proc.stdout.reconfigure(line_buffering=True)
         logs = ""
         for line in proc.stdout:

@@ -23,16 +23,18 @@ DEFAULT_CLOUD_ID = "cld_4F7k8814aZzGG8TNUGPKnc"
 DEFAULT_ENV = {
     "DATESTAMP": str(datetime.datetime.now().strftime("%Y%m%d")),
     "TIMESTAMP": str(int(datetime.datetime.now().timestamp())),
-    "EXPIRATION_1D": str((datetime.datetime.now() +
-                          datetime.timedelta(days=1)).strftime("%Y-%m-%d")),
-    "EXPIRATION_2D": str((datetime.datetime.now() +
-                          datetime.timedelta(days=2)).strftime("%Y-%m-%d")),
-    "EXPIRATION_3D": str((datetime.datetime.now() +
-                          datetime.timedelta(days=3)).strftime("%Y-%m-%d"))
+    "EXPIRATION_1D": str(
+        (datetime.datetime.now() + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+    ),
+    "EXPIRATION_2D": str(
+        (datetime.datetime.now() + datetime.timedelta(days=2)).strftime("%Y-%m-%d")
+    ),
+    "EXPIRATION_3D": str(
+        (datetime.datetime.now() + datetime.timedelta(days=3)).strftime("%Y-%m-%d")
+    ),
 }
 
-RELEASE_PACKAGE_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), ".."))
+RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 
 class TestEnvironment(dict):
@@ -77,7 +79,8 @@ def validate_release_test_collection(test_collection: List[Dict[str, Any]]):
 
     if errors:
         raise ReleaseTestConfigError(
-            f"Release test configuration error: Found {len(errors)} warnings.")
+            f"Release test configuration error: Found {len(errors)} warnings."
+        )
 
 
 def validate_test(test: Test):
@@ -97,7 +100,8 @@ def as_smoke_test(test: Test) -> Test:
     if "smoke_test" not in test:
         logger.warning(
             f"Requested smoke test, but test with name {test['name']} does "
-            f"not have any smoke test configuration.")
+            f"not have any smoke test configuration."
+        )
         return test
 
     smoke_test_config = test.pop("smoke_test")
@@ -107,23 +111,29 @@ def as_smoke_test(test: Test) -> Test:
 
 def get_wheels_sanity_check(commit: Optional[str] = None):
     if not commit:
-        cmd = ("python -c 'import ray; print("
-               "\"No commit sanity check available, but this is the "
-               "Ray wheel commit:\", ray.__commit__)'")
+        cmd = (
+            "python -c 'import ray; print("
+            '"No commit sanity check available, but this is the '
+            "Ray wheel commit:\", ray.__commit__)'"
+        )
     else:
-        cmd = (f"python -c 'import ray; "
-               f"assert ray.__commit__ == \"{commit}\", ray.__commit__'")
+        cmd = (
+            f"python -c 'import ray; "
+            f'assert ray.__commit__ == "{commit}", ray.__commit__\''
+        )
     return cmd
 
 
 def load_and_render_yaml_template(
-        template_path: str, env: Optional[Dict] = None) -> Optional[Dict]:
+    template_path: str, env: Optional[Dict] = None
+) -> Optional[Dict]:
     if not template_path:
         return None
 
     if not os.path.exists(template_path):
         raise ReleaseTestConfigError(
-            f"Cannot load yaml template from {template_path}: Path not found.")
+            f"Cannot load yaml template from {template_path}: Path not found."
+        )
 
     with open(template_path, "rt") as f:
         content = f.read()
@@ -138,9 +148,9 @@ def load_and_render_yaml_template(
 
 def load_test_cluster_env(test: Test, ray_wheels_url: str) -> Optional[Dict]:
     cluster_env_file = test["cluster"]["cluster_env"]
-    cluster_env_path = os.path.join(RELEASE_PACKAGE_DIR,
-                                    test.get("working_dir", ""),
-                                    cluster_env_file)
+    cluster_env_path = os.path.join(
+        RELEASE_PACKAGE_DIR, test.get("working_dir", ""), cluster_env_file
+    )
     env = get_test_environment()
 
     commit = env.get("commit", None)
@@ -152,9 +162,9 @@ def load_test_cluster_env(test: Test, ray_wheels_url: str) -> Optional[Dict]:
 
 def load_test_cluster_compute(test: Test) -> Optional[Dict]:
     cluster_compute_file = test["cluster"]["cluster_compute"]
-    cluster_compute_path = os.path.join(RELEASE_PACKAGE_DIR,
-                                        test.get("working_dir", ""),
-                                        cluster_compute_file)
+    cluster_compute_path = os.path.join(
+        RELEASE_PACKAGE_DIR, test.get("working_dir", ""), cluster_compute_file
+    )
     env = get_test_environment()
 
     cloud_id = get_test_cloud_id(test)
@@ -170,12 +180,12 @@ def get_test_cloud_id(test: Test) -> str:
         raise RuntimeError(
             f"You can't supply both a `cloud_name` ({cloud_name}) and a "
             f"`cloud_id` ({cloud_id}) in the test cluster configuration. "
-            f"Please provide only one.")
+            f"Please provide only one."
+        )
     elif cloud_name and not cloud_id:
         cloud_id = find_cloud_by_name(cloud_name)
         if not cloud_id:
-            raise RuntimeError(
-                f"Couldn't find cloud with name `{cloud_name}`.")
+            raise RuntimeError(f"Couldn't find cloud with name `{cloud_name}`.")
     else:
         cloud_id = cloud_id or DEFAULT_CLOUD_ID
     return cloud_id

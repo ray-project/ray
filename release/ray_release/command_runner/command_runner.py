@@ -6,8 +6,12 @@ from ray_release.file_manager.file_manager import FileManager
 
 
 class CommandRunner(abc.ABC):
-    def __init__(self, cluster_manager: ClusterManager,
-                 file_manager: FileManager, working_dir: str):
+    def __init__(
+        self,
+        cluster_manager: ClusterManager,
+        file_manager: FileManager,
+        working_dir: str,
+    ):
         self.cluster_manager = cluster_manager
         self.file_manager = file_manager
         self.working_dir = working_dir
@@ -34,7 +38,7 @@ class CommandRunner(abc.ABC):
         """Prepare remote environment, e.g. upload files."""
         raise NotImplementedError
 
-    def wait_for_nodes(self, num_nodes: int, timeout: float = 900.):
+    def wait_for_nodes(self, num_nodes: int, timeout: float = 900.0):
         """Wait for cluster nodes to be up.
 
         Args:
@@ -50,10 +54,9 @@ class CommandRunner(abc.ABC):
         """
         raise NotImplementedError
 
-    def run_command(self,
-                    command: str,
-                    env: Optional[Dict] = None,
-                    timeout: float = 3600.) -> float:
+    def run_command(
+        self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
+    ) -> float:
         """Run command."""
         raise NotImplementedError
 

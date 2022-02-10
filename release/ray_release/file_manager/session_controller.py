@@ -9,9 +9,11 @@ from ray_release.logger import logger
 
 
 class SessionControllerFileManager(FileManager):
-    def __init__(self,
-                 cluster_manager: ClusterManager,
-                 session_controller: Optional[SessionController] = None):
+    def __init__(
+        self,
+        cluster_manager: ClusterManager,
+        session_controller: Optional[SessionController] = None,
+    ):
         super(SessionControllerFileManager, self).__init__(cluster_manager)
         self.session_controller = session_controller or SessionController()
 
@@ -19,11 +21,11 @@ class SessionControllerFileManager(FileManager):
         with open(os.path.join(os.getcwd(), ".anyscale.yaml"), "wt") as f:
             f.write(f"project_id: {self.cluster_manager.project_id}")
 
-    def upload(self,
-               source: Optional[str] = None,
-               target: Optional[str] = None):
-        logger.info(f"Uploading {source or '<cwd>'} to {target or '<cwd>'} "
-                    f"using SessionController")
+    def upload(self, source: Optional[str] = None, target: Optional[str] = None):
+        logger.info(
+            f"Uploading {source or '<cwd>'} to {target or '<cwd>'} "
+            f"using SessionController"
+        )
 
         if source and os.path.isdir(source) and target:
             # Add trailing slashes
@@ -36,11 +38,14 @@ class SessionControllerFileManager(FileManager):
             target=target,
             config=None,
             all_nodes=False,
-            no_warning=True)
+            no_warning=True,
+        )
 
     def download(self, source: str, target: str):
-        logger.info(f"Downloading {source or '<cwd>'} to {target or '<cwd>'} "
-                    f"using SessionController")
+        logger.info(
+            f"Downloading {source or '<cwd>'} to {target or '<cwd>'} "
+            f"using SessionController"
+        )
         self.session_controller.pull(
             session_name=self.cluster_manager.cluster_name,
             source=source,

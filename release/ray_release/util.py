@@ -45,27 +45,35 @@ def format_link(link: str):
 
 
 def anyscale_project_url(project_id: str):
-    return f"{ANYSCALE_HOST}" \
-           f"/o/anyscale-internal/projects/{project_id}" \
-           f"/?tab=session-list"
+    return (
+        f"{ANYSCALE_HOST}"
+        f"/o/anyscale-internal/projects/{project_id}"
+        f"/?tab=session-list"
+    )
 
 
 def anyscale_cluster_url(project_id: str, session_id: str):
-    return f"{ANYSCALE_HOST}" \
-           f"/o/anyscale-internal/projects/{project_id}" \
-           f"/clusters/{session_id}"
+    return (
+        f"{ANYSCALE_HOST}"
+        f"/o/anyscale-internal/projects/{project_id}"
+        f"/clusters/{session_id}"
+    )
 
 
 def anyscale_cluster_compute_url(compute_tpl_id: str):
-    return f"{ANYSCALE_HOST}" \
-           f"/o/anyscale-internal/configurations/cluster-computes" \
-           f"/{compute_tpl_id}"
+    return (
+        f"{ANYSCALE_HOST}"
+        f"/o/anyscale-internal/configurations/cluster-computes"
+        f"/{compute_tpl_id}"
+    )
 
 
 def anyscale_cluster_env_build_url(build_id: str):
-    return f"{ANYSCALE_HOST}" \
-           f"/o/anyscale-internal/configurations/app-config-details" \
-           f"/{build_id}"
+    return (
+        f"{ANYSCALE_HOST}"
+        f"/o/anyscale-internal/configurations/app-config-details"
+        f"/{build_id}"
+    )
 
 
 _anyscale_sdk = None
@@ -81,11 +89,13 @@ def get_anyscale_sdk() -> AnyscaleSDK:
 
 
 # Todo: remove to get rid of threading
-def run_with_timeout(fn: Callable[[], None],
-                     timeout: float,
-                     status_fn: Callable[[float], None],
-                     error_fn: Callable[[], None],
-                     status_interval: float = 30.):
+def run_with_timeout(
+    fn: Callable[[], None],
+    timeout: float,
+    status_fn: Callable[[float], None],
+    error_fn: Callable[[], None],
+    status_interval: float = 30.0,
+):
     start_time = time.monotonic()
     next_status = start_time + status_interval
     thread = threading.Thread(target=fn)
@@ -101,8 +111,7 @@ def run_with_timeout(fn: Callable[[], None],
         error_fn()
 
 
-def exponential_backoff_retry(f, retry_exceptions, initial_retry_delay_s,
-                              max_retries):
+def exponential_backoff_retry(f, retry_exceptions, initial_retry_delay_s, max_retries):
     retry_cnt = 0
     retry_delay_s = initial_retry_delay_s
     while True:
@@ -112,7 +121,9 @@ def exponential_backoff_retry(f, retry_exceptions, initial_retry_delay_s,
             retry_cnt += 1
             if retry_cnt > max_retries:
                 raise
-            logger.info(f"Retry function call failed due to {e} "
-                        f"in {retry_delay_s} seconds...")
+            logger.info(
+                f"Retry function call failed due to {e} "
+                f"in {retry_delay_s} seconds..."
+            )
             time.sleep(retry_delay_s)
             retry_delay_s *= 2

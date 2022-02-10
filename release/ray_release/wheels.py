@@ -8,8 +8,11 @@ import urllib.request
 from typing import Optional, List
 
 from ray_release.config import set_test_env_var
-from ray_release.exception import RayWheelsUnspecifiedError, \
-    RayWheelsNotFoundError, RayWheelsTimeoutError
+from ray_release.exception import (
+    RayWheelsUnspecifiedError,
+    RayWheelsNotFoundError,
+    RayWheelsTimeoutError,
+)
 from ray_release.logger import logger
 from ray_release.util import url_exists
 
@@ -18,11 +21,11 @@ DEFAULT_GIT_OWNER = "ray-project"
 DEFAULT_GIT_PACKAGE = "ray"
 
 REPO_URL_TPL = "https://github.com/{owner}/{package}.git"
-INIT_URL_TPL = ("https://raw.githubusercontent.com/"
-                "{fork}/{commit}/python/ray/__init__.py")
+INIT_URL_TPL = (
+    "https://raw.githubusercontent.com/" "{fork}/{commit}/python/ray/__init__.py"
+)
 
-DEFAULT_REPO = REPO_URL_TPL.format(
-    owner=DEFAULT_GIT_OWNER, package=DEFAULT_GIT_PACKAGE)
+DEFAULT_REPO = REPO_URL_TPL.format(owner=DEFAULT_GIT_OWNER, package=DEFAULT_GIT_PACKAGE)
 
 
 def get_ray_version(repo_url: str, commit: str) -> str:
@@ -39,7 +42,8 @@ def get_ray_version(repo_url: str, commit: str) -> str:
 
     raise RayWheelsNotFoundError(
         f"Unable to parse Ray version information for repo {repo_url} "
-        f"and commit {commit} (please check this URL: {init_url})")
+        f"and commit {commit} (please check this URL: {init_url})"
+    )
 
 
 def get_latest_commits(repo_url: str, branch: str = "master") -> List[str]:
@@ -67,27 +71,32 @@ def get_latest_commits(repo_url: str, branch: str = "master") -> List[str]:
         ]
 
         subprocess.check_output(clone_cmd)
-        commits = subprocess.check_output(log_cmd).decode(
-            sys.stdout.encoding).split("\n")
+        commits = (
+            subprocess.check_output(log_cmd).decode(sys.stdout.encoding).split("\n")
+        )
     os.chdir(cur)
     return commits
 
 
-def get_ray_wheels_url(repo_url: str, branch: str, commit: str,
-                       ray_version: str) -> str:
+def get_ray_wheels_url(
+    repo_url: str, branch: str, commit: str, ray_version: str
+) -> str:
     if not repo_url.startswith("https://github.com/ray-project/ray"):
         raise RayWheelsNotFoundError(
             f"Automatically retrieving Ray wheels URLs is currently not "
             f"implemented for PRs or foreign repositories. Got repository "
             f"{repo_url}, branch {branch}, commit {commit}, "
-            f"version {ray_version}")
+            f"version {ray_version}"
+        )
 
-    return f"https://s3-us-west-2.amazonaws.com/ray-wheels/" \
-           f"{branch}/{commit}/" \
-           f"ray-{ray_version}-cp37-cp37m-manylinux2014_x86_64.whl"
+    return (
+        f"https://s3-us-west-2.amazonaws.com/ray-wheels/"
+        f"{branch}/{commit}/"
+        f"ray-{ray_version}-cp37-cp37m-manylinux2014_x86_64.whl"
+    )
 
 
-def wait_for_url(url, timeout: float = 300.) -> str:
+def wait_for_url(url, timeout: float = 300.0) -> str:
     start_time = time.monotonic()
     timeout_at = start_time + timeout
     next_status = start_time + 30
@@ -95,11 +104,14 @@ def wait_for_url(url, timeout: float = 300.) -> str:
         now = time.monotonic()
         if now >= timeout_at:
             raise RayWheelsTimeoutError(
-                f"Time out when waiting for URL to be available: {url}")
+                f"Time out when waiting for URL to be available: {url}"
+            )
 
         if now >= next_status:
-            logger.info(f"... still waiting for URL {url} "
-                        f"({int(now - start_time)} seconds) ...")
+            logger.info(
+                f"... still waiting for URL {url} "
+                f"({int(now - start_time)} seconds) ..."
+            )
             next_status += 30
 
         # Sleep 1 sec before next check.
@@ -107,8 +119,9 @@ def wait_for_url(url, timeout: float = 300.) -> str:
     return url
 
 
-def find_and_wait_for_ray_wheels_url(ray_wheels: Optional[str] = None,
-                                     timeout: float = 300.) -> str:
+def find_and_wait_for_ray_wheels_url(
+    ray_wheels: Optional[str] = None, timeout: float = 300.0
+) -> str:
     ray_wheels_url = find_ray_wheels_url(ray_wheels)
     return wait_for_url(ray_wheels_url, timeout=timeout)
 
@@ -122,7 +135,8 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
                 "No Ray wheels specified. Pass `--ray-wheels` or set "
                 "`BUILDKITE_COMMIT` environment variable. "
                 "Hint: You can use `-ray-wheels master` to fetch "
-                "the latest available master wheels.")
+                "the latest available master wheels."
+            )
         branch = os.environ.get("BUILDKITE_BRANCH", DEFAULT_BRANCH)
         repo_url = os.environ.get("BUILDKITE_REPO", DEFAULT_REPO)
         ray_version = get_ray_version(repo_url, commit)
@@ -152,8 +166,7 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
         # Already is a repo URL
         repo_url = owner_or_url
     else:
-        repo_url = REPO_URL_TPL.format(
-            owner=owner_or_url, package=DEFAULT_GIT_PACKAGE)
+        repo_url = REPO_URL_TPL.format(owner=owner_or_url, package=DEFAULT_GIT_PACKAGE)
 
     # Todo: This is not ideal as branches that mimic a SHA1 hash
     # will also match this.
@@ -167,8 +180,7 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
         ray_version = get_ray_version(repo_url, latest_commits[0])
 
         for commit in latest_commits:
-            wheels_url = get_ray_wheels_url(repo_url, branch, commit,
-                                            ray_version)
+            wheels_url = get_ray_wheels_url(repo_url, branch, commit, ray_version)
             if url_exists(wheels_url):
                 set_test_env_var("RAY_COMMIT", commit)
 
@@ -178,7 +190,8 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
             f"Couldn't find latest available wheels for repo "
             f"{repo_url}, branch {branch} (version {ray_version}). "
             f"Try again later or check Buildkite logs if wheel builds "
-            f"failed.")
+            f"failed."
+        )
 
     # Else, this is a commit
     commit = commit_or_branch

@@ -18,9 +18,7 @@ class FileManager(abc.ABC):
     #     target_dir_basename = os.path.basename(source)
     #     return f"{RAY_REMOTE_HOME}/{target_dir_basename}"
 
-    def upload(self,
-               source: Optional[str] = None,
-               target: Optional[str] = None):
+    def upload(self, source: Optional[str] = None, target: Optional[str] = None):
         """Upload source to target.
 
         Infers target dir from basename if not stated.

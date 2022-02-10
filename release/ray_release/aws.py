@@ -21,7 +21,8 @@ RELEASE_AWS_ANYSCALE_SECRET_ARN = os.getenv(
     "RELEASE_AWS_ANYSCALE_SECRET_ARN",
     "arn:aws:secretsmanager:us-west-2:029272617770:secret:"
     "release-automation/"
-    "anyscale-token20210505220406333800000001-BcUuKB")
+    "anyscale-token20210505220406333800000001-BcUuKB",
+)
 
 
 def maybe_fetch_api_token():
@@ -34,10 +35,9 @@ def maybe_fetch_api_token():
         except Exception:
             pass  # Ignore errors
 
-        logger.info(
-            "Missing ANYSCALE_CLI_TOKEN, retrieving from AWS secrets store")
+        logger.info("Missing ANYSCALE_CLI_TOKEN, retrieving from AWS secrets store")
         # NOTE(simon) This should automatically retrieve
         # release-automation@anyscale.com's anyscale token
         os.environ["ANYSCALE_CLI_TOKEN"] = boto3.client(
-            "secretsmanager", region_name="us-west-2").get_secret_value(
-                SecretId=RELEASE_AWS_ANYSCALE_SECRET_ARN)["SecretString"]
+            "secretsmanager", region_name="us-west-2"
+        ).get_secret_value(SecretId=RELEASE_AWS_ANYSCALE_SECRET_ARN)["SecretString"]
