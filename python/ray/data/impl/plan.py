@@ -64,16 +64,17 @@ class ExecutionPlan:
         else:
             return None
 
-    def execute(self) -> BlockList:
+    def execute(self, clear_input_blocks: bool = True) -> BlockList:
         # TODO: add optimizations:
-        # 1. task fusion
-        # 2. "move" block references into op()
+        # 1. task fusion of OneToOne
+        # 2. task fusion of OneToOne to AlltoAll
+        # 3. clear input blocks
         if self._out_blocks is None:
             blocks = self._in_blocks
             stats = self._in_stats
             for stage in self._stages:
                 stats_builder = stats.child_builder(stage.name)
-                blocks, stage_info = stage(blocks)
+                blocks, stage_info = stage(blocks, clear_input_blocks)
                 if stage_info:
                     stats = stats_builder.build_multistage(stage_info)
                 else:
@@ -97,7 +98,9 @@ class Stage:
         self.name = name
         self.num_blocks = num_blocks
 
-    def __call__(self, blocks: BlockList) -> Tuple[BlockList, dict]:
+    def __call__(
+        self, blocks: BlockList, clear_input_blocks: bool
+    ) -> Tuple[BlockList, dict]:
         raise NotImplementedError
 
 
@@ -114,9 +117,13 @@ class OneToOneStage(Stage):
         self.compute = compute
         self.ray_remote_args = ray_remote_args
 
-    def __call__(self, blocks: BlockList) -> Tuple[BlockList, dict]:
+    def __call__(
+        self, blocks: BlockList, clear_input_blocks: bool
+    ) -> Tuple[BlockList, dict]:
         compute = get_compute(self.compute)
-        blocks = compute.apply(self.block_fn, self.ray_remote_args, blocks)
+        blocks = compute.apply(
+            self.block_fn, self.ray_remote_args, blocks, clear_input_blocks
+        )
         return blocks, {}
 
 
@@ -125,10 +132,12 @@ class AllToAllStage(Stage):
         self,
         name: str,
         num_blocks: Optional[int],
-        fn: Callable[[BlockList], Tuple[BlockList, dict]],
+        fn: Callable[[BlockList, bool], Tuple[BlockList, dict]],
     ):
         super().__init__(name, num_blocks)
         self.fn = fn
 
-    def __call__(self, blocks: BlockList) -> Tuple[BlockList, dict]:
-        return self.fn(blocks)
+    def __call__(
+        self, blocks: BlockList, clear_input_blocks: bool
+    ) -> Tuple[BlockList, dict]:
+        return self.fn(blocks, clear_input_blocks)

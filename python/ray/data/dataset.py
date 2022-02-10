@@ -123,7 +123,7 @@ class Dataset(Generic[T]):
         self._lazy = lazy
 
         if not lazy:
-            self._plan.execute()
+            self._plan.execute(clear_input_blocks=False)
 
     def map(
         self,
@@ -462,7 +462,8 @@ class Dataset(Generic[T]):
 
         if shuffle:
 
-            def do_shuffle(blocks):
+            def do_shuffle(blocks, clear_input_blocks: bool):
+                # TODO: implement clear_input_blocks
                 return simple_shuffle(blocks, num_blocks)
 
             plan = self._plan.with_stage(
@@ -470,7 +471,8 @@ class Dataset(Generic[T]):
             )
             return Dataset(plan, self._epoch, self._lazy)
 
-        def do_fast():
+        def do_fast(blocks, clear_input_blocks: bool):
+            # TODO: implement clear_input_blocks
             # Compute the (n-1) indices needed for an equal split of the data.
             count = self.count()
             indices = []
@@ -559,7 +561,8 @@ class Dataset(Generic[T]):
             The shuffled dataset.
         """
 
-        def do_shuffle(blocks):
+        def do_shuffle(blocks, clear_input_blocks: bool):
+            # TODO: implement clear_input_blocks
             num_blocks = blocks.executed_num_blocks()  # Blocking.
             if num_blocks == 0:
                 return blocks
@@ -1357,7 +1360,8 @@ class Dataset(Generic[T]):
             A new, sorted dataset.
         """
 
-        def do_sort(blocks):
+        def do_sort(blocks, keep_input_blocks: bool):
+            # TODO: implement clear_input_blocks
             # Handle empty dataset.
             if blocks.initial_num_blocks() == 0:
                 return blocks
@@ -1396,7 +1400,8 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
-        def do_zip_all(blocks):
+        def do_zip_all(blocks, keep_input_blocks: bool):
+            # TODO: implement clear_input_blocks
             blocks1 = blocks.get_blocks()
             blocks2 = other.get_internal_block_refs()
 

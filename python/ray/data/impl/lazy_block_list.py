@@ -52,7 +52,8 @@ class LazyBlockList(BlockList):
 
     def clear(self) -> None:
         self._block_partitions = None
-        self._calls = None
+        # TODO(ekl) we might also want to clear this in some cases.
+        # self._calls = None
 
     def _check_if_cleared(self) -> None:
         if self._block_partitions is None:
