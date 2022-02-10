@@ -33,11 +33,12 @@ public class RuntimeEnvTest extends BaseTest {
     int pid1 = 0;
     int pid2 = 0;
     {
-      RuntimeEnv runtimeEnv = new RuntimeEnvBuilder()
-        .addEnvVar("KEY1", "A")
-        .addEnvVar("KEY2", "B")
-        .addEnvVar("KEY1", "C")
-        .build();
+      RuntimeEnv runtimeEnv =
+          new RuntimeEnvBuilder()
+              .addEnvVar("KEY1", "A")
+              .addEnvVar("KEY2", "B")
+              .addEnvVar("KEY1", "C")
+              .build();
 
       ActorHandle<A> actor1 = Ray.actor(A::new).setRuntimeEnv(runtimeEnv).remote();
       String val = actor1.task(A::getEnv, "KEY1").remote().get();
@@ -62,5 +63,4 @@ public class RuntimeEnvTest extends BaseTest {
     // different runtime env.
     Assert.assertNotEquals(pid1, pid2);
   }
-
 }

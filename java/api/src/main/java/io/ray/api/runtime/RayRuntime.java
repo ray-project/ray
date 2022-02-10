@@ -20,7 +20,6 @@ import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.api.runtimeenv.RuntimeEnv;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;

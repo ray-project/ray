@@ -1,7 +1,6 @@
 package io.ray.api.runtimeenv;
 
 import io.ray.api.Ray;
-
 import java.util.HashMap;
 import java.util.Map;
 

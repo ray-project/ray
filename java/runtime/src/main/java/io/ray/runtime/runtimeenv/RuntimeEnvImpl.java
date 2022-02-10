@@ -3,7 +3,6 @@ package io.ray.runtime.runtimeenv;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import io.ray.api.runtimeenv.RuntimeEnv;
-
 import java.util.HashMap;
 import java.util.Map;
 
@@ -27,5 +26,4 @@ public class RuntimeEnvImpl implements RuntimeEnv {
     }
     return GSON.toJson(json);
   }
-
 }
