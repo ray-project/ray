@@ -498,7 +498,7 @@ def read_text(
     """
     def to_text(s):
         lines = s.decode(encoding).split("\n")
-        if filter_empty_lines:
+        if drop_empty_lines:
             lines = [line for line in lines if line.strip() != ""]
         return lines
 
