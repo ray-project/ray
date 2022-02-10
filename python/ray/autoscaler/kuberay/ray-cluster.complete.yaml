@@ -111,6 +111,16 @@ spec:
               name: autoscaler-config
             - mountPath: /tmp/ray
               name: ray-logs
+          env:
+          - name: RAY_CLUSTER_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: RAY_CLUSTER_NAME
+            # This value must match the metadata.name of the RayCluster CR.
+            # The autoscaler uses this env variable to determine which Ray CR to interact with.
+            # TODO (Dmitri): Match with CR name automatically via operator, Helm, and/or Kustomize.
+            value: raycluster-complete
         volumes:
         # You set volumes at the Pod level, then mount them into containers inside that Pod
         - name: autoscaler-config
