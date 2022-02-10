@@ -9,8 +9,7 @@ import yaml
 import click
 
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
-from ray.dashboard.modules.job.common import JobStatus
-from ray.dashboard.modules.job.sdk import JobSubmissionClient
+from ray.job_submission import JobStatus, JobSubmissionClient
 
 
 def _get_sdk_client(
