@@ -2549,7 +2549,9 @@ Dict[str, List[str]]]): The names of the columns
                 blocks = self._splits.pop(0)
 
                 def gen():
-                    ds = Dataset(blocks, self._epoch, outer_stats)
+                    ds = Dataset(
+                        ExecutionPlan(blocks, outer_stats), self._epoch, lazy=False
+                    )
                     return ds
 
                 return gen

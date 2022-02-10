@@ -101,7 +101,7 @@ class PipelineExecutor:
                     pass
 
         self._pipeline._stats.wait_time_s.append(time.perf_counter() - start)
-        self._pipeline._stats.add(output._stats)
+        self._pipeline._stats.add(output._plan.stats())
         return output
 
 
