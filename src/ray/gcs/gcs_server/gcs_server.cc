@@ -226,7 +226,7 @@ void GcsServer::Stop() {
       gcs_resource_report_poller_->Stop();
     }
 
-    if (config_.grpc_based_resource_broadcast) {
+    if (grpc_based_resource_broadcaster_) {
       grpc_based_resource_broadcaster_->Stop();
     }
 
@@ -534,7 +534,7 @@ void GcsServer::InstallEventListeners() {
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
     if (!RayConfig::instance().syncer_reporting()) {
       gcs_resource_report_poller_->HandleNodeAdded(*node);
-      if (config_.grpc_based_resource_broadcast) {
+      if (grpc_based_resource_broadcaster_) {
         grpc_based_resource_broadcaster_->HandleNodeAdded(*node);
       }
     }
@@ -551,9 +551,9 @@ void GcsServer::InstallEventListeners() {
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
         if (!RayConfig::instance().syncer_reporting()) {
           gcs_resource_report_poller_->HandleNodeRemoved(*node);
-        }
-        if (config_.grpc_based_resource_broadcast) {
-          grpc_based_resource_broadcaster_->HandleNodeRemoved(*node);
+          if (grpc_based_resource_broadcaster_) {
+            grpc_based_resource_broadcaster_->HandleNodeRemoved(*node);
+          }
         }
       });
 

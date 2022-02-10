@@ -242,7 +242,7 @@ class NodeSyncContext : public T {
   }
 
   void HandleFailure() {
-    RAY_LOG(ERROR) << "Sync with " << GetNodeId() << " failed";
+    RAY_LOG(ERROR) << "Sync with " << NodeID::FromBinary(GetNodeId()).Hex() << " failed";
     if constexpr (kIsServer) {
       T::Finish(grpc::Status::OK);
     } else {
@@ -297,7 +297,7 @@ struct SyncClientReactor : public NodeSyncContext<ClientBidiReactor> {
   }
 
   void OnDone(const grpc::Status &status) override {
-    RAY_LOG(INFO) << "NodeId: " << GetNodeId()
+    RAY_LOG(INFO) << "NodeId: " << NodeID::FromBinary(GetNodeId()).Hex()
                   << " disconnects from sync server with status "
                   << status.error_message();
     delete this;

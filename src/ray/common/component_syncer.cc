@@ -26,7 +26,7 @@ void RaySyncer::ConnectTo(std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stu
   RAY_CHECK(leader_ == nullptr);
   leader_stub_ = std::move(stub);
   auto client_context = std::make_unique<grpc::ClientContext>().release();
-  client_context->AddMetadata("node_id", GetNodeId());
+  client_context->AddMetadata("node_id", NodeID::FromBinary(GetNodeId()).Hex());
   leader_ = std::make_unique<SyncClientReactor>(*this, this->io_context_, client_context)
                 .release();
   leader_stub_->async()->StartSync(client_context, leader_);
@@ -39,10 +39,10 @@ void RaySyncer::DisconnectFrom(std::string node_id) {
 }
 
 SyncServerReactor *RaySyncer::ConnectFrom(grpc::CallbackServerContext *context) {
-  context->AddInitialMetadata("node_id", GetNodeId());
+  context->AddInitialMetadata("node_id", NodeID::FromBinary(GetNodeId()).Hex());
   auto reactor = std::make_unique<SyncServerReactor>(*this, this->io_context_, context);
   reactor->Init();
-  RAY_LOG(INFO) << "Adding node: " << reactor->GetNodeId();
+  RAY_LOG(INFO) << "Adding node: " << NodeID::FromBinary(reactor->GetNodeId()).Hex();
   auto [iter, added] = followers_.emplace(reactor->GetNodeId(), std::move(reactor));
   RAY_CHECK(added);
   return iter->second.get();
