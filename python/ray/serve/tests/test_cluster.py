@@ -141,6 +141,8 @@ def test_replica_startup_status_transitions(ray_cluster):
     wait_for_condition(lambda: len(get_replicas(ReplicaState.STARTING)) > 0)
     replica = get_replicas(ReplicaState.STARTING)[0]
 
+    # FIXME: We switched our code formatter from YAPF to Black. Check whether we still
+    # need shorthands and update the comment below. See issue #21318.
     # declare shorthands as yapf doesn't like long lambdas
     PENDING_ALLOCATION = ReplicaStartupStatus.PENDING_ALLOCATION
     PENDING_INITIALIZATION = ReplicaStartupStatus.PENDING_INITIALIZATION
