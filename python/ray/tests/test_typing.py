@@ -1,5 +1,6 @@
 import sys
-import os, shutil
+import os
+import shutil
 
 import mypy.api as mypy_api
 import pytest
