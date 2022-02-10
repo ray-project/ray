@@ -3,12 +3,6 @@ from typing import Callable, Optional, List, TYPE_CHECKING
 
 from ray.util.annotations import PublicAPI
 from ray.data.block import T, U, KeyType, AggType, KeyFn, _validate_key_fn
-from ray.data.impl.null_aggregate import (
-    _null_wrap_init,
-    _null_wrap_accumulate,
-    _null_wrap_merge,
-    _null_wrap_finalize,
-)
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -81,15 +75,13 @@ class Count(AggregateFn):
 class Sum(_AggregateOnKeyBase):
     """Defines sum aggregation."""
 
-    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
+    def __init__(self, on: Optional[KeyFn] = None):
         self._set_key_fn(on)
         on_fn = _to_on_fn(on)
-
         super().__init__(
-            init=_null_wrap_init(lambda k: 0),
-            accumulate=_null_wrap_accumulate(ignore_nulls, on_fn, lambda a, r: a + r),
-            merge=_null_wrap_merge(ignore_nulls, lambda a1, a2: a1 + a2),
-            finalize=_null_wrap_finalize(lambda a: a),
+            init=lambda k: 0,
+            accumulate=lambda a, r: a + on_fn(r),
+            merge=lambda a1, a2: a1 + a2,
             name=(f"sum({str(on)})"),
         )
 
@@ -98,15 +90,13 @@ class Sum(_AggregateOnKeyBase):
 class Min(_AggregateOnKeyBase):
     """Defines min aggregation."""
 
-    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
+    def __init__(self, on: Optional[KeyFn] = None):
         self._set_key_fn(on)
         on_fn = _to_on_fn(on)
-
         super().__init__(
-            init=_null_wrap_init(lambda k: float("inf")),
-            accumulate=_null_wrap_accumulate(ignore_nulls, on_fn, min),
-            merge=_null_wrap_merge(ignore_nulls, min),
-            finalize=_null_wrap_finalize(lambda a: a),
+            init=lambda k: None,
+            accumulate=(lambda a, r: (on_fn(r) if a is None else min(a, on_fn(r)))),
+            merge=lambda a1, a2: min(a1, a2),
             name=(f"min({str(on)})"),
         )
 
@@ -115,15 +105,13 @@ class Min(_AggregateOnKeyBase):
 class Max(_AggregateOnKeyBase):
     """Defines max aggregation."""
 
-    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
+    def __init__(self, on: Optional[KeyFn] = None):
         self._set_key_fn(on)
         on_fn = _to_on_fn(on)
-
         super().__init__(
-            init=_null_wrap_init(lambda k: float("-inf")),
-            accumulate=_null_wrap_accumulate(ignore_nulls, on_fn, max),
-            merge=_null_wrap_merge(ignore_nulls, max),
-            finalize=_null_wrap_finalize(lambda a: a),
+            init=lambda k: None,
+            accumulate=(lambda a, r: (on_fn(r) if a is None else max(a, on_fn(r)))),
+            merge=lambda a1, a2: max(a1, a2),
             name=(f"max({str(on)})"),
         )
 
@@ -132,19 +120,14 @@ class Max(_AggregateOnKeyBase):
 class Mean(_AggregateOnKeyBase):
     """Defines mean aggregation."""
 
-    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
+    def __init__(self, on: Optional[KeyFn] = None):
         self._set_key_fn(on)
         on_fn = _to_on_fn(on)
-
         super().__init__(
-            init=_null_wrap_init(lambda k: [0, 0]),
-            accumulate=_null_wrap_accumulate(
-                ignore_nulls, on_fn, lambda a, r: [a[0] + r, a[1] + 1]
-            ),
-            merge=_null_wrap_merge(
-                ignore_nulls, lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]]
-            ),
-            finalize=_null_wrap_finalize(lambda a: a[0] / a[1]),
+            init=lambda k: [0, 0],
+            accumulate=lambda a, r: [a[0] + on_fn(r), a[1] + 1],
+            merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
+            finalize=lambda a: a[0] / a[1],
             name=(f"mean({str(on)})"),
         )
 
@@ -162,12 +145,7 @@ class Std(_AggregateOnKeyBase):
     https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
     """
 
-    def __init__(
-        self,
-        on: Optional[KeyFn] = None,
-        ddof: int = 1,
-        ignore_nulls: bool = True,
-    ):
+    def __init__(self, on: Optional[KeyFn] = None, ddof: int = 1):
         self._set_key_fn(on)
         on_fn = _to_on_fn(on)
 
@@ -175,11 +153,14 @@ class Std(_AggregateOnKeyBase):
             # Accumulates the current count, the current mean, and the sum of
             # squared differences from the current mean (M2).
             M2, mean, count = a
+            # Select the data on which we want to calculate the standard
+            # deviation.
+            val = on_fn(r)
 
             count += 1
-            delta = r - mean
+            delta = val - mean
             mean += delta / count
-            delta2 = r - mean
+            delta2 = val - mean
             M2 += delta * delta2
             return [M2, mean, count]
 
@@ -209,10 +190,10 @@ class Std(_AggregateOnKeyBase):
             return math.sqrt(M2 / (count - ddof))
 
         super().__init__(
-            init=_null_wrap_init(lambda k: [0, 0, 0]),
-            accumulate=_null_wrap_accumulate(ignore_nulls, on_fn, accumulate),
-            merge=_null_wrap_merge(ignore_nulls, merge),
-            finalize=_null_wrap_finalize(finalize),
+            init=lambda k: [0, 0, 0],
+            accumulate=accumulate,
+            merge=merge,
+            finalize=finalize,
             name=(f"std({str(on)})"),
         )
 

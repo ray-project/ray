@@ -562,7 +562,7 @@ class Dataset(Generic[T]):
         return Dataset(new_blocks, self._epoch, stats.build_multistage(stage_info))
 
     def split(
-        self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
+        self, n: int, *, equal: bool = False, locality_hints: List[Any] = None
     ) -> List["Dataset[T]"]:
         """Split the dataset into ``n`` disjoint pieces.
 
@@ -975,7 +975,7 @@ class Dataset(Generic[T]):
             LazyBlockList(calls, metadata, block_partitions), max_epoch, dataset_stats
         )
 
-    def groupby(self, key: Optional[KeyFn]) -> "GroupedDataset[T]":
+    def groupby(self, key: KeyFn) -> "GroupedDataset[T]":
         """Group the dataset by the key function or column name.
 
         This is a lazy operation.
@@ -1034,9 +1034,7 @@ class Dataset(Generic[T]):
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
-    def sum(
-        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
-    ) -> U:
+    def sum(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute sum over entire dataset.
 
         This is a blocking operation.
@@ -1059,11 +1057,6 @@ class Dataset(Generic[T]):
                 - For an Arrow dataset: it can be a column name or a list
                   thereof, and the default is to return an ``ArrowRow``
                   containing the column-wise sum of all columns.
-            ignore_nulls: Whether to ignore null values. If ``True``, null
-                values will be ignored when computing the sum; if ``False``,
-                if a null value is encountered, the output will be None.
-                We consider np.nan, None, and pd.NaT to be null values.
-                Default is ``True``.
 
         Returns:
             The sum result.
@@ -1086,15 +1079,15 @@ class Dataset(Generic[T]):
             - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
               containing the column-wise sum of the provided columns.
 
-            If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output will be None.
+            If the dataset is empty, then the output is 0.
         """
-        ret = self._aggregate_on(Sum, on, ignore_nulls)
-        return self._aggregate_result(ret)
+        ret = self._aggregate_on(Sum, on)
+        if ret is None:
+            return 0
+        else:
+            return self._aggregate_result(ret)
 
-    def min(
-        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
-    ) -> U:
+    def min(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute minimum over entire dataset.
 
         This is a blocking operation.
@@ -1117,11 +1110,6 @@ class Dataset(Generic[T]):
                 - For an Arrow dataset: it can be a column name or a list
                   thereof, and the default is to return an ``ArrowRow``
                   containing the column-wise min of all columns.
-            ignore_nulls: Whether to ignore null values. If ``True``, null
-                values will be ignored when computing the min; if ``False``,
-                if a null value is encountered, the output will be None.
-                We consider np.nan, None, and pd.NaT to be null values.
-                Default is ``True``.
 
         Returns:
             The min result.
@@ -1144,15 +1132,15 @@ class Dataset(Generic[T]):
             - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
               containing the column-wise min of the provided columns.
 
-            If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output will be None.
+            If the dataset is empty, then a ``ValueError`` is raised.
         """
-        ret = self._aggregate_on(Min, on, ignore_nulls)
-        return self._aggregate_result(ret)
+        ret = self._aggregate_on(Min, on)
+        if ret is None:
+            raise ValueError("Cannot compute min on an empty dataset")
+        else:
+            return self._aggregate_result(ret)
 
-    def max(
-        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
-    ) -> U:
+    def max(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute maximum over entire dataset.
 
         This is a blocking operation.
@@ -1175,11 +1163,6 @@ class Dataset(Generic[T]):
                 - For an Arrow dataset: it can be a column name or a list
                   thereof, and the default is to return an ``ArrowRow``
                   containing the column-wise max of all columns.
-            ignore_nulls: Whether to ignore null values. If ``True``, null
-                values will be ignored when computing the max; if ``False``,
-                if a null value is encountered, the output will be None.
-                We consider np.nan, None, and pd.NaT to be null values.
-                Default is ``True``.
 
         Returns:
             The max result.
@@ -1202,15 +1185,15 @@ class Dataset(Generic[T]):
             - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
               containing the column-wise max of the provided columns.
 
-            If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output will be None.
+            If the dataset is empty, then a ``ValueError`` is raised.
         """
-        ret = self._aggregate_on(Max, on, ignore_nulls)
-        return self._aggregate_result(ret)
+        ret = self._aggregate_on(Max, on)
+        if ret is None:
+            raise ValueError("Cannot compute max on an empty dataset")
+        else:
+            return self._aggregate_result(ret)
 
-    def mean(
-        self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
-    ) -> U:
+    def mean(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute mean over entire dataset.
 
         This is a blocking operation.
@@ -1233,11 +1216,6 @@ class Dataset(Generic[T]):
                 - For an Arrow dataset: it can be a column name or a list
                   thereof, and the default is to return an ``ArrowRow``
                   containing the column-wise mean of all columns.
-            ignore_nulls: Whether to ignore null values. If ``True``, null
-                values will be ignored when computing the mean; if ``False``,
-                if a null value is encountered, the output will be None.
-                We consider np.nan, None, and pd.NaT to be null values.
-                Default is ``True``.
 
         Returns:
             The mean result.
@@ -1260,18 +1238,15 @@ class Dataset(Generic[T]):
             - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
               containing the column-wise mean of the provided columns.
 
-            If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output will be None.
+            If the dataset is empty, then a ``ValueError`` is raised.
         """
-        ret = self._aggregate_on(Mean, on, ignore_nulls)
-        return self._aggregate_result(ret)
+        ret = self._aggregate_on(Mean, on)
+        if ret is None:
+            raise ValueError("Cannot compute mean on an empty dataset")
+        else:
+            return self._aggregate_result(ret)
 
-    def std(
-        self,
-        on: Optional[Union[KeyFn, List[KeyFn]]] = None,
-        ddof: int = 1,
-        ignore_nulls: bool = True,
-    ) -> U:
+    def std(self, on: Union[KeyFn, List[KeyFn]] = None, ddof: int = 1) -> U:
         """Compute standard deviation over entire dataset.
 
         This is a blocking operation.
@@ -1304,11 +1279,6 @@ class Dataset(Generic[T]):
                   containing the column-wise std of all columns.
             ddof: Delta Degrees of Freedom. The divisor used in calculations
                 is ``N - ddof``, where ``N`` represents the number of elements.
-            ignore_nulls: Whether to ignore null values. If ``True``, null
-                values will be ignored when computing the std; if ``False``,
-                if a null value is encountered, the output will be None.
-                We consider np.nan, None, and pd.NaT to be null values.
-                Default is ``True``.
 
         Returns:
             The standard deviation result.
@@ -1331,15 +1301,15 @@ class Dataset(Generic[T]):
             - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
               containing the column-wise std of the provided columns.
 
-            If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output will be None.
+            If the dataset is empty, then a ``ValueError`` is raised.
         """
-        ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
-        return self._aggregate_result(ret)
+        ret = self._aggregate_on(Std, on, ddof=ddof)
+        if ret is None:
+            raise ValueError("Cannot compute std on an empty dataset")
+        else:
+            return self._aggregate_result(ret)
 
-    def sort(
-        self, key: Optional[KeyFn] = None, descending: bool = False
-    ) -> "Dataset[T]":
+    def sort(self, key: KeyFn = None, descending: bool = False) -> "Dataset[T]":
         """Sort the dataset by the specified key column or key function.
 
         This is a blocking operation.
@@ -1894,7 +1864,7 @@ class Dataset(Generic[T]):
         self,
         *,
         prefetch_blocks: int = 0,
-        batch_size: Optional[int] = None,
+        batch_size: int = None,
         batch_format: str = "native",
         drop_last: bool = False,
     ) -> Iterator[BatchType]:
@@ -1983,12 +1953,12 @@ class Dataset(Generic[T]):
         self,
         *,
         label_column: Optional[str] = None,
-        feature_columns: Optional[
-            Union[List[str], List[List[str]], Dict[str, List[str]]]
+        feature_columns: Union[
+            None, List[str], List[List[str]], Dict[str, List[str]]
         ] = None,
         label_column_dtype: Optional["torch.dtype"] = None,
-        feature_column_dtypes: Optional[
-            Union["torch.dtype", List["torch.dtype"], Dict[str, "torch.dtype"]]
+        feature_column_dtypes: Union[
+            None, "torch.dtype", List["torch.dtype"], Dict[str, "torch.dtype"]
         ] = None,
         batch_size: int = 1,
         prefetch_blocks: int = 0,
@@ -2433,7 +2403,7 @@ Dict[str, List[str]]]): The names of the columns
         block_to_arrow = cached_remote_fn(_block_to_arrow)
         return [block_to_arrow.remote(block) for block in blocks]
 
-    def repeat(self, times: Optional[int] = None) -> "DatasetPipeline[T]":
+    def repeat(self, times: int = None) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by looping over this dataset.
 
         Transformations prior to the call to ``repeat()`` are evaluated once.
@@ -2695,7 +2665,7 @@ Dict[str, List[str]]]): The names of the columns
         return "simple"
 
     def _aggregate_on(
-        self, agg_cls: type, on: Optional[Union[KeyFn, List[KeyFn]]], *args, **kwargs
+        self, agg_cls: type, on: Union[KeyFn, List[KeyFn]], *args, **kwargs
     ):
         """Helper for aggregating on a particular subset of the dataset.
 
@@ -2710,10 +2680,9 @@ Dict[str, List[str]]]): The names of the columns
     def _build_multicolumn_aggs(
         self,
         agg_cls: type,
-        on: Optional[Union[KeyFn, List[KeyFn]]],
-        ignore_nulls: bool,
-        *args,
+        on: Union[KeyFn, List[KeyFn]],
         skip_cols: Optional[List[str]] = None,
+        *args,
         **kwargs,
     ):
         """Build set of aggregations for applying a single aggregation to
@@ -2737,10 +2706,10 @@ Dict[str, List[str]]]): The names of the columns
 
         if not isinstance(on, list):
             on = [on]
-        return [agg_cls(on_, *args, ignore_nulls=ignore_nulls, **kwargs) for on_ in on]
+        return [agg_cls(on_, *args, **kwargs) for on_ in on]
 
     def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
-        if result is not None and len(result) == 1:
+        if len(result) == 1:
             if isinstance(result, tuple):
                 return result[0]
             else:
