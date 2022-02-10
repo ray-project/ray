@@ -468,7 +468,7 @@ def read_text(
     *,
     encoding: str = "utf-8",
     errors: str = "ignore",
-    filter_empty_lines: bool = True,
+    drop_empty_lines: bool = True,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = 200,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
