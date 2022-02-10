@@ -52,7 +52,7 @@ class DataClient:
         # Waiting for response or shutdown.
         self.cv = threading.Condition(lock=self.lock)
 
-        self.request_queue = queue.SimpleQueue()
+        self.request_queue = queue.Queue()
         # Maps request ID (Python object address) to response.
         self.ready_data: Dict[int, Any] = {}
         # NOTE: Dictionary insertion is guaranteed to complete before lookup
