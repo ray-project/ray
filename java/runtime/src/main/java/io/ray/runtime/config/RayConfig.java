@@ -203,6 +203,7 @@ public class RayConfig {
 
     startupToken = config.getInt("ray.raylet.startup-token");
 
+    /// Driver needn't this config item.
     if (workerMode == WorkerType.WORKER && config.hasPath("ray.internal.runtime-env-hash")) {
       runtimeEnvHash = config.getInt("ray.internal.runtime-env-hash");
     }

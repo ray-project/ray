@@ -13,7 +13,6 @@ public class RuntimeEnvImpl implements RuntimeEnv {
   private Map<String, String> envVars = new HashMap<>();
 
   public RuntimeEnvImpl(Map<String, String> envVars) {
-    /// TODO: Do we need clone instead of ref?
     this.envVars = envVars;
   }
 
