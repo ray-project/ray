@@ -1007,7 +1007,7 @@ def test_read_text(ray_start_regular_shared, tmp_path):
         f.write("ray\n")
     ds = ray.data.read_text(path)
     assert sorted(ds.take()) == ["goodbye", "hello", "ray", "world"]
-    ds = ray.data.read_text(path, filter_empty_lines=False)
+    ds = ray.data.read_text(path, drop_empty_lines=False)
     assert ds.count()== 5
 
 
