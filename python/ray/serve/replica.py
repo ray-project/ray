@@ -43,11 +43,14 @@ def create_replica_wrapper(
 
     if (import_path is None) and (serialized_deployment_def is None):
         raise ValueError(
-            f"Either the import_name or the serialized_deployment_def must be specified, but both were unspecified."
+            "Either the import_name or the serialized_deployment_def must "
+            "be specified, but both were unspecified."
         )
     elif (import_path is not None) and (serialized_deployment_def is not None):
         raise ValueError(
-            f"Only one of either the import_name or the serialized_deployment_def must be specified, but both were specified."
+            "Only one of either the import_name or the "
+            "serialized_deployment_def must be specified, but both were "
+            "specified."
         )
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
