@@ -1490,6 +1490,7 @@ def run_test_config(
         "TEST_OUTPUT_JSON": results_json,
         "TEST_STATE_JSON": state_json,
         "IS_SMOKE_TEST": "1" if smoke_test else "0",
+        "RAY_lineage_pinning_enabled": "1",
     }
 
     with open(os.path.join(local_dir, ".anyscale.yaml"), "wt") as f:
