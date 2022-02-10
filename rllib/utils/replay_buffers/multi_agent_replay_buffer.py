@@ -119,6 +119,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         self.update_priorities_timer = TimerStat()
         self._num_added = 0
 
+        # TODO(artur): Double check if this global variable is needed when adding unit tests.
         # Make externally accessible for testing.
         global _local_replay_buffer
         _local_replay_buffer = self
