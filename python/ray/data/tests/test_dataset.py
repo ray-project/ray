@@ -3290,11 +3290,10 @@ def test_groupby_arrow_sum(ray_start_regular_shared, num_parts):
     # Test ignore_nulls=False
     nan_agg_ds = nan_grouped_ds.sum("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
-    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
-        {"A": 0, "sum(B)": None},
-        {"A": 1, "sum(B)": 1617},
-        {"A": 2, "sum(B)": 1650},
-    ]
+    pd.testing.assert_frame_equal(
+        nan_agg_ds.to_pandas(),
+        pd.DataFrame({"A": [0, 1, 2], "sum(B)": [None, 1617, 1650]}),
+    )
     # Test all nans
     nan_agg_ds = (
         ray.data.from_items([{"A": (x % 3), "B": None} for x in xs])
@@ -3371,11 +3370,9 @@ def test_groupby_arrow_min(ray_start_regular_shared, num_parts):
     # Test ignore_nulls=False
     nan_agg_ds = nan_grouped_ds.min("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
-    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
-        {"A": 0, "min(B)": None},
-        {"A": 1, "min(B)": 1},
-        {"A": 2, "min(B)": 2},
-    ]
+    pd.testing.assert_frame_equal(
+        nan_agg_ds.to_pandas(), pd.DataFrame({"A": [0, 1, 2], "min(B)": [None, 1, 2]})
+    )
     # Test all nans
     nan_agg_ds = (
         ray.data.from_items([{"A": (x % 3), "B": None} for x in xs])
@@ -3451,11 +3448,9 @@ def test_groupby_arrow_max(ray_start_regular_shared, num_parts):
     # Test ignore_nulls=False
     nan_agg_ds = nan_grouped_ds.max("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
-    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
-        {"A": 0, "max(B)": None},
-        {"A": 1, "max(B)": 97},
-        {"A": 2, "max(B)": 98},
-    ]
+    pd.testing.assert_frame_equal(
+        nan_agg_ds.to_pandas(), pd.DataFrame({"A": [0, 1, 2], "max(B)": [None, 97, 98]})
+    )
     # Test all nans
     nan_agg_ds = (
         ray.data.from_items([{"A": (x % 3), "B": None} for x in xs])
@@ -3532,11 +3527,10 @@ def test_groupby_arrow_mean(ray_start_regular_shared, num_parts):
     # Test ignore_nulls=False
     nan_agg_ds = nan_grouped_ds.mean("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
-    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
-        {"A": 0, "mean(B)": None},
-        {"A": 1, "mean(B)": 49.0},
-        {"A": 2, "mean(B)": 50.0},
-    ]
+    pd.testing.assert_frame_equal(
+        nan_agg_ds.to_pandas(),
+        pd.DataFrame({"A": [0, 1, 2], "mean(B)": [None, 49.0, 50.0]}),
+    )
     # Test all nans
     nan_agg_ds = (
         ray.data.from_items([{"A": (x % 3), "B": None} for x in xs])
