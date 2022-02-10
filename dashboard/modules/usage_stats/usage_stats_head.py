@@ -7,7 +7,6 @@ import ray
 
 import ray.dashboard.utils as dashboard_utils
 import ray._private.usage.usage_lib as ray_usage_lib
-import ray._private.usage.usage_constants as usage_constants
 
 from ray.dashboard.utils import async_loop_forever
 
@@ -20,9 +19,9 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         self.cluster_metadata = None
         self.session_dir = dashboard_head.session_dir
 
-    @async_loop_forever(usage_constants.USAGE_REPORT_INTERVAL_S)
+    @async_loop_forever(ray_usage_lib._usage_stats_report_interval_s())
     async def _report_usage(self):
-        assert usage_constants.USAGE_REPORT_ENABLED
+        assert ray_usage_lib._usage_stats_enabled()
         if not self.cluster_metadata:
             self.cluster_metadata = ray_usage_lib.get_cluster_metadata(
                 ray.experimental.internal_kv.internal_kv_get_gcs_client(),
@@ -36,17 +35,15 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         with ThreadPoolExecutor(max_workers=1) as executor:
             await ray_usage_lib.write_usage_data_async(data, self.session_dir, executor)
             await ray_usage_lib.report_usage_data_async(
-                usage_constants.USAGE_REPORT_URL, data, executor
+                ray_usage_lib._usage_stats_report_url(), data, executor
             )
 
     async def run(self, server):
-        if not usage_constants.USAGE_REPORT_ENABLED:
-            logger.info(
-                "Usage module won't be started because the usage report is disabled."
-            )
+        if not ray_usage_lib._usage_stats_enabled():
+            logger.info("Usage reporting is disabled.")
             return
         else:
-            logger.info("Start the usage stats module.")
+            logger.info("Starting to record the usage stats.")
             await asyncio.gather(self._report_usage())
 
     @staticmethod

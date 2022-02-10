@@ -3,15 +3,16 @@ import sys
 import ray
 import pathlib
 import json
+import time
+
+from pathlib import Path
 
 import ray._private.usage.usage_lib as ray_usage_lib
 import ray._private.usage.usage_constants as usage_constants
 
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition, run_string_as_driver
 from ray import serve
 
-# TODO(sang): Remove the hand-written schema validation once
-# the public schema is published via Pypi.
 schema = {
     # Version of the schema.
     "schema_version": str,
@@ -61,7 +62,16 @@ def shutdown_serve():
     serve.shutdown()
 
 
-def test_usage_lib_cluster_metadata_generation(shutdown_only):
+@pytest.mark.parametrize(
+    "set_env_var",
+    [
+        {
+            "RAY_USAGE_STATS_ENABLED": "1",
+        }
+    ],
+    indirect=True,
+)
+def test_usage_lib_cluster_metadata_generation(set_env_var, shutdown_only):
     ray.init(num_cpus=0)
     """
     Test metadata stored is equivalent to `_generate_cluster_metadata`.
@@ -86,7 +96,26 @@ def test_usage_lib_cluster_metadata_generation(shutdown_only):
     )
 
 
-def test_usage_lib_report_data(shutdown_only, shutdown_serve):
+def test_usage_lib_cluster_metadata_generation_usage_disabled(shutdown_only):
+    """
+    Make sure only version information is generated when usage stats are not enabled.
+    """
+    meta = ray_usage_lib._generate_cluster_metadata()
+    assert "ray_version" in meta
+    assert "python_version" in meta
+    assert len(meta) == 2
+
+
+@pytest.mark.parametrize(
+    "set_env_var",
+    [
+        {
+            "RAY_USAGE_STATS_ENABLED": "1",
+        }
+    ],
+    indirect=True,
+)
+def test_usage_lib_report_data(set_env_var, shutdown_only, shutdown_serve):
     ray.init(num_cpus=0)
     """
     Make sure the generated data is following the schema.
@@ -102,7 +131,7 @@ def test_usage_lib_report_data(shutdown_only, shutdown_serve):
     """
     global_node = ray.worker._global_node
     temp_dir = global_node.get_temp_dir_path()
-    ray_usage_lib.write_usage_data(d, temp_dir)
+    ray_usage_lib._write_usage_data(d, temp_dir)
 
     def file_exists():
         for path in pathlib.Path(temp_dir).iterdir():
@@ -130,7 +159,7 @@ def test_usage_lib_report_data(shutdown_only, shutdown_serve):
     usage.deploy()
 
     # Query our endpoint over HTTP.
-    r = ray_usage_lib.report_usage_data("http://127.0.0.1:8000/usage", d)
+    r = ray_usage_lib._report_usage_data("http://127.0.0.1:8000/usage", d)
     r.raise_for_status()
     assert json.loads(r.text) is True
 
@@ -139,9 +168,9 @@ def test_usage_lib_report_data(shutdown_only, shutdown_serve):
     "set_env_var",
     [
         {
-            "RAY_USAGE_REPORT_URL": "http://127.0.0.1:8000/usage",
-            "RAY_USAGE_STATS_ENABLE": "1",
-            "RAY_USAGE_REPORT_INTERVAL_S": "1",
+            "RAY_USAGE_STATS_REPORT_URL": "http://127.0.0.1:8000/usage",
+            "RAY_USAGE_STATS_ENABLED": "1",
+            "RAY_USAGE_STATS_REPORT_INTERVAL_S": "1",
         }
     ],
     indirect=True,
@@ -184,9 +213,86 @@ def test_usage_report_e2e(set_env_var, shutdown_only, shutdown_serve):
 
     usage.deploy()
     # Since the interval is 1 second, there must have been
-    # more than 5 requests sent within 10 seconds.
-    wait_for_condition(lambda: ray.get(reporter.get.remote()) > 5, timeout=10)
+    # more than 5 requests sent within 30 seconds.
+    wait_for_condition(lambda: ray.get(reporter.get.remote()) > 5, timeout=30)
     _validate_schema(ray.get(reporter.get_payload.remote()))
+
+
+@pytest.mark.parametrize(
+    "set_env_var",
+    [
+        {
+            "RAY_USAGE_STATS_REPORT_URL": "http://127.0.0.1:8000",
+            "RAY_USAGE_STATS_ENABLED": "1",
+            "RAY_USAGE_STATS_REPORT_INTERVAL_S": "1",
+        }
+    ],
+    indirect=True,
+)
+def test_usage_report_error_not_displayed_to_users(set_env_var):
+    """
+    Make sure when the incorrect URL is set, the error message is not printed to users.
+    """
+    script = """
+import ray
+import time
+
+ray.init(num_cpus=0)
+# Wait long enough
+time.sleep(2)
+    """
+    out = run_string_as_driver(script)
+    # Only the basic message;
+    # View the Ray dashboard at http://127.0.0.1:8265
+    # should be displayed. No more output should be displayed although
+    # the usage stats report fail.
+    assert len(out.strip().split("\n")) <= 1
+
+
+@pytest.mark.parametrize(
+    "set_env_var",
+    [
+        {
+            "RAY_USAGE_STATS_REPORT_URL": "http://127.0.0.1:8000",
+            "RAY_USAGE_STATS_ENABLED": "0",
+            "RAY_USAGE_STATS_REPORT_INTERVAL_S": "1",
+        }
+    ],
+    indirect=True,
+)
+def test_usage_report_disabled(set_env_var):
+    """
+    Make sure usage report module is disabled when the env var is not set.
+    It also verifies that the failure message is not printed (note that
+    the invalid report url is given as an env var).
+    """
+    ray.init(num_cpus=0)
+    # Wait enough so that usage report should happen.
+    time.sleep(5)
+
+    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    log_dir_path = session_path / "logs"
+
+    paths = list(log_dir_path.iterdir())
+
+    contents = None
+    for path in paths:
+        if "dashboard.log" in str(path):
+            with open(str(path), "r") as f:
+                contents = f.readlines()
+    assert contents is not None
+
+    keyword_found = False
+    for c in contents:
+        if "Usage reporting is disabled" in c:
+            keyword_found = True
+
+    # Make sure the module was disabled.
+    assert keyword_found
+
+    for c in contents:
+        assert "Failed to report usage stats" not in c
 
 
 if __name__ == "__main__":

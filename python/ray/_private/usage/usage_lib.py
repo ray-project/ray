@@ -28,17 +28,15 @@ Aggregation           -> Ray API server (currently a dashboard server)
 Usage data collection -> Various components (Ray agent, GCS, etc.) + usage_lib (cluster metadata).
 
 Usage report is currently "off by default". You can enable the report by setting an environment variable
-RAY_USAGE_STATS_ENABLE=1. For example, `RAY_USAGE_STATS_ENABLE=1 ray start --head`.
-Or `RAY_USAGE_STATS_ENABLE=1 python [drivers with ray.init()]`.
+RAY_USAGE_STATS_ENABLED=1. For example, `RAY_USAGE_STATS_ENABLED=1 ray start --head`.
+Or `RAY_USAGE_STATS_ENABLED=1 python [drivers with ray.init()]`.
 
-"Ray API server (currently a dashboard server)" reports the usage data to the hard-coded URL.
-`ray._private.usage.usage_constants.USAGE_REPORT_URL`.
+"Ray API server (currently a dashboard server)" reports the usage data to https://usage-stats.ray.io/.
 
-Data is reported
-- Every `ray._private.usage.usage_constants.USAGE_REPORT_INTERVAL_S`.
+Data is reported ever hour by default.
 
 Note that it is also possible to configure the interval using the environment variable,
-`RAY_USAGE_REPORT_INTERVAL_S`.
+`RAY_USAGE_STATS_REPORT_INTERVAL_S`.
 
 To see collected/reported data, see `usage_stats.json` inside a temp
 folder (e.g., /tmp/ray/session_[id]/*).
@@ -67,18 +65,45 @@ logger = logging.getLogger(__name__)
 #################
 
 
+def _usage_stats_report_url():
+    # The usage collection server URL.
+    # The environment variable is testing-purpose only.
+    return os.getenv("RAY_USAGE_STATS_REPORT_URL", "https://usage-stats.ray.io/")
+
+
+def _usage_stats_report_interval_s():
+    return int(os.getenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", 3600))
+
+
+def _usage_stats_enabled():
+    """
+    NOTE: This is the private API, and it is not a reliable
+    way to know if usage stats are enabled from the cluster.
+    """
+    return int(os.getenv("RAY_USAGE_STATS_ENABLED", "0")) == 1
+
+
 def _generate_cluster_metadata():
     """Return a dictionary of cluster metadata."""
     ray_version, python_version = ray._private.utils.compute_version_info()
-    return {
-        "schema_version": usage_constant.SCHEMA_VERSION,
-        "source": os.getenv("RAY_USAGE_STATS_SOURCE", "OSS"),
-        "session_id": str(uuid.uuid4()),
+    # These two metadata is necessary although usage report is not enabled
+    # to check version compatibility.
+    metadata = {
         "ray_version": ray_version,
-        "git_commit": ray.__commit__,
         "python_version": python_version,
-        "os": sys.platform,
     }
+    # Additional metadata is recorded only when usage stats are enabled.
+    if _usage_stats_enabled():
+        metadata.update(
+            {
+                "schema_version": usage_constant.SCHEMA_VERSION,
+                "source": os.getenv("RAY_USAGE_STATS_SOURCE", "OSS"),
+                "session_id": str(uuid.uuid4()),
+                "git_commit": ray.__commit__,
+                "os": sys.platform,
+            }
+        )
+    return metadata
 
 
 def put_cluster_metadata(gcs_client, num_retries) -> None:
@@ -148,27 +173,25 @@ def generate_report_data(cluster_metadata: dict) -> dict:
     return data
 
 
-def write_usage_data(data: dict, dir_path: str) -> None:
+def _write_usage_data(data: dict, dir_path: str) -> None:
     """Write the usage data to the directory.
 
     Params:
         data (dict): Data to report
         dir_path (Path): The path to the directory to write usage data.
-
-    Raises:
-
     """
+    assert _usage_stats_enabled()
     # Atomically update the file.
     dir_path = Path(dir_path)
     destination = dir_path / usage_constant.USAGE_STATS_FILE
-    temp = dir_path / "usage_stats_tmp.json"
+    temp = dir_path / f"{usage_constant.USAGE_STATS_FILE}.tmp"
     with temp.open(mode="w") as json_file:
         json_file.write(json.dumps(data))
     temp.rename(destination)
 
 
-def report_usage_data(url: str, data: dict) -> None:
-    """Report the usage data to the hard-coded usage server.
+def _report_usage_data(url: str, data: dict) -> None:
+    """Report the usage data to the usage server.
 
     Params:
         url (str): The URL to update resource usage.
@@ -177,6 +200,7 @@ def report_usage_data(url: str, data: dict) -> None:
     Raises:
         requests.HTTPError if requests fails.
     """
+    assert _usage_stats_enabled()
     r = requests.request(
         "POST",
         url,
@@ -191,14 +215,20 @@ def report_usage_data(url: str, data: dict) -> None:
 async def write_usage_data_async(data: dict, dir_path: str, executor: Executor) -> None:
     loop = asyncio.get_running_loop()
     try:
-        await loop.run_in_executor(executor, write_usage_data, data, dir_path)
+        await loop.run_in_executor(executor, _write_usage_data, data, dir_path)
     except Exception as e:
-        logger.exception(e)
+        logger.info(
+            f"Failed to write usage stats to {dir_path}. "
+            f"This is harmless and won't affect Ray. Error message: {e}"
+        )
 
 
 async def report_usage_data_async(url: str, data: dict, executor: Executor) -> None:
     loop = asyncio.get_running_loop()
     try:
-        await loop.run_in_executor(executor, report_usage_data, url, data)
+        await loop.run_in_executor(executor, _report_usage_data, url, data)
     except Exception as e:
-        logger.exception(e)
+        logger.info(
+            f"Failed to report usage stats to {url}. "
+            f"This is harmless and won't affect Ray. Error message: {e}"
+        )
