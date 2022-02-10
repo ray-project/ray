@@ -13,7 +13,6 @@ from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.deployment_state import ReplicaState, DeploymentStateManager
 from ray.serve.common import (
     DeploymentInfo,
-    str,
     EndpointTag,
     EndpointInfo,
     GoalId,

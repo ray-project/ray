@@ -113,12 +113,13 @@ def test_detached_deployment(ray_cluster):
     first_job_id = ray.get_runtime_context().job_id
     serve.start(detached=True)
 
-    @serve.deployment
+    @serve.deployment(route_prefix="/say_hi")
     def f(*args):
         return "hello"
 
     f.deploy()
     assert ray.get(f.get_handle().remote()) == "hello"
+    assert requests.get("http://localhost:8000/say_hi").text == "hello"
 
     serve.api._global_client = None
     ray.shutdown()
@@ -127,12 +128,13 @@ def test_detached_deployment(ray_cluster):
     ray.init(head_node.address, namespace="serve")
     assert ray.get_runtime_context().job_id != first_job_id
 
-    @serve.deployment
+    @serve.deployment(route_prefix="/say_hi")
     def g(*args):
         return "world"
 
     g.deploy()
     assert ray.get(g.get_handle().remote()) == "world"
+    assert requests.get("http://localhost:8000/say_hi").text == "world"
 
 
 @pytest.mark.parametrize("detached", [True, False])
