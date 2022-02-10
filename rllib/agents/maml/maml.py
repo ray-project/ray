@@ -27,7 +27,7 @@ from ray.util.iter import from_actors, LocalIterator
 
 logger = logging.getLogger(__name__)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # If true, use the Generalized Advantage Estimator (GAE)
@@ -80,7 +80,7 @@ DEFAULT_CONFIG = with_common_config({
     "vf_share_layers": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 # @mluo: TODO

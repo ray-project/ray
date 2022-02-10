@@ -185,7 +185,6 @@ ray_files += [
     "ray/autoscaler/local/defaults.yaml",
     "ray/autoscaler/kubernetes/defaults.yaml",
     "ray/autoscaler/_private/_kubernetes/kubectl-rsync.sh",
-    "ray/autoscaler/staroid/defaults.yaml",
     "ray/autoscaler/ray-schema.json",
 ]
 
@@ -280,6 +279,7 @@ if setup_spec.type == SetupType.RAY:
         "aioredis < 2",
         "aiosignal",
         "frozenlist",
+        "virtualenv",  # For pip runtime env.
     ]
 
 

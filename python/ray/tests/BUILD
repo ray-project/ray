@@ -94,6 +94,7 @@ py_test_module_list(
     "test_placement_group.py",
     "test_placement_group_2.py",
     "test_placement_group_3.py",
+    "test_placement_group_4.py",
     "test_ray_init.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
@@ -143,6 +144,7 @@ py_test_module_list(
     "test_unhandled_error.py",
     "test_top_level_api.py",
     "test_list_actors.py",
+    "test_usage_stats.py",
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -222,6 +224,7 @@ py_test_module_list(
     "test_runtime_env_conda_and_pip.py",
     "test_runtime_env_conda_and_pip_2.py",
     "test_runtime_env_conda_and_pip_3.py",
+    "test_runtime_env_conda_and_pip_4.py",
     "test_runtime_env_complicated.py"
   ],
   size = "large",

@@ -47,7 +47,7 @@ from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.iter import LocalIterator
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 APEX_DEFAULT_CONFIG = merge_dicts(
     # See also the options in dqn.py, which are also supported.
@@ -92,7 +92,7 @@ APEX_DEFAULT_CONFIG = merge_dicts(
     },
 )
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 # Update worker weights as they finish generating experiences.

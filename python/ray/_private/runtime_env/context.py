@@ -57,6 +57,11 @@ class RuntimeEnvContext:
         if sys.platform == "win32":
             os.system(command_str)
         else:
-            os.execvp(file="bash", args=["bash", "-c", command_str])
+            # PyCharm will monkey patch the os.execvp at
+            # .pycharm_helpers/pydev/_pydev_bundle/pydev_monkey.py
+            # The monkey patched os.execvp function has a different
+            # signature. So, we use os.execvp("executable", args=[])
+            # instead of os.execvp(file="executable", args=[])
+            os.execvp("bash", args=["bash", "-c", command_str])
 
         logger.info(f"Exec'ing worker with command: {command_str}")
