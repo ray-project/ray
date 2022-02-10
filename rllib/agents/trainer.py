@@ -116,7 +116,7 @@ logger = logging.getLogger(__name__)
 # times in a row since that would indicate a persistent cluster issue.
 MAX_WORKER_FAILURE_RETRIES = 3
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 COMMON_CONFIG: TrainerConfigDict = {
     # === Settings for Rollout Worker processes ===
@@ -649,7 +649,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     "collect_metrics_timeout": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 @DeveloperAPI
@@ -766,7 +766,7 @@ class Trainer(Trainable):
 
         # The env creator callable, taking an EnvContext (config dict)
         # as arg and returning an RLlib supported Env type (e.g. a gym.Env).
-        self.env_creator: EnvCreator = None
+        self.env_creator: Optional[EnvCreator] = None
 
         # Placeholder for a local replay buffer instance.
         self.local_replay_buffer = None
@@ -1732,9 +1732,14 @@ class Trainer(Trainable):
             state = [np.stack(s) for s in state]
 
         input_dict = {SampleBatch.OBS: obs_batch}
-        if prev_action:
+
+        # prev_action and prev_reward can be None, np.ndarray, or tensor-like structure.
+        # Explicitly check for None here to avoid the error message "The truth value of
+        # an array with more than one element is ambiguous.", when np arrays are passed
+        # as arguments.
+        if prev_action is not None:
             input_dict[SampleBatch.PREV_ACTIONS] = prev_action
-        if prev_reward:
+        if prev_reward is not None:
             input_dict[SampleBatch.PREV_REWARDS] = prev_reward
         if info:
             input_dict[SampleBatch.INFOS] = info
@@ -2465,15 +2470,7 @@ class Trainer(Trainable):
                 "complete_episodes]! Got {}".format(config["batch_mode"])
             )
 
-        # Check multi-agent batch count mode.
-        if config["multiagent"].get("count_steps_by", "env_steps") not in [
-            "env_steps",
-            "agent_steps",
-        ]:
-            raise ValueError(
-                "`count_steps_by` must be one of [env_steps|agent_steps]! "
-                "Got {}".format(config["multiagent"]["count_steps_by"])
-            )
+        # Store multi-agent batch count mode.
         self._by_agent_steps = (
             self.config["multiagent"].get("count_steps_by") == "agent_steps"
         )

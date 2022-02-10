@@ -186,7 +186,7 @@ def exec_cmd(
 
 
 def exec_cmd_stream_to_logger(
-    cmd: List[str], logger: logging.Logger, n_lines: int = 10
+    cmd: List[str], logger: logging.Logger, n_lines: int = 50
 ) -> Tuple[int, str]:
     """Runs a command as a child process, streaming output to the logger.
 
