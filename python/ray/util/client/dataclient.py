@@ -3,6 +3,7 @@ back to the ray clientserver.
 """
 import logging
 import queue
+import sys
 import threading
 import traceback
 
@@ -52,7 +53,7 @@ class DataClient:
         # Waiting for response or shutdown.
         self.cv = threading.Condition(lock=self.lock)
 
-        self.request_queue = queue.Queue()
+        self.request_queue = self._create_queue()
         # Maps request ID (Python object address) to response.
         self.ready_data: Dict[int, Any] = {}
         # NOTE: Dictionary insertion is guaranteed to complete before lookup
@@ -277,7 +278,7 @@ class DataClient:
 
         # Recreate the request queue, and resend outstanding requests
         with self.lock:
-            new_queue = queue.Queue()
+            new_queue = self._create_queue()
             # Fill the new request queue first with outstanding requests, which
             # have lower req_id. Must use the order of req_id.
             for req_id, request in sorted(self.outstanding_requests.items()):
@@ -293,6 +294,11 @@ class DataClient:
                     return
                 if req.req_id not in self.outstanding_requests:
                     self.request_queue.put((req, callback))
+
+    # Use SimpleQueue to avoid deadlocks when appending to queue from __del__()
+    @staticmethod
+    def _create_queue():
+        return queue.Queue() if sys.version_info < (3, 7) else queue.SimpleQueue()
 
     def close(self) -> None:
         thread = None
