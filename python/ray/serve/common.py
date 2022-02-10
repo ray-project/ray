@@ -71,7 +71,7 @@ class DeploymentInfo:
                 )
             else:
                 self._cached_actor_def = ray.remote(
-                    create_replica_wrapper(self.actor_name, import_name=self.replica_config.func_or_class_name)
+                    create_replica_wrapper(self.actor_name, import_path=self.replica_config.func_or_class_name)
                 )
         return self._cached_actor_def
 

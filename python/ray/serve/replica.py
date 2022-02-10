@@ -26,21 +26,21 @@ from ray.serve.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
 )
 from ray.serve.version import DeploymentVersion
-from ray.serve.utils import wrap_to_ray_error
+from ray.serve.utils import wrap_to_ray_error, parse_import_path
 
 logger = _get_logger()
 
 
-def create_replica_wrapper(name: str, import_name: str=None, serialized_deployment_def: bytes=None):
+def create_replica_wrapper(name: str, import_path: str=None, serialized_deployment_def: bytes=None):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
     provided class and the RayServeReplica class.
     """
 
-    if (import_name is None) and (serialized_deployment_def is None):
+    if (import_path is None) and (serialized_deployment_def is None):
         raise ValueError(f"Either the import_name or the serialized_deployment_def must be specified, but both were unspecified.")
-    elif (import_name is not None) and (serialized_deployment_def is not None):
+    elif (import_path is not None) and (serialized_deployment_def is not None):
         raise ValueError(f"Only one of either the import_name or the serialized_deployment_def must be specified, but both were specified.")
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
@@ -57,8 +57,9 @@ def create_replica_wrapper(name: str, import_name: str=None, serialized_deployme
             detached: bool,
         ):
 
-            if import_name is not None:
-                import import_name as deployment_def
+            if import_path is not None:
+                module_name, class_name = parse_import_path(import_path)
+                from module_name import class_name as deployment_def
             else:
                 deployment_def = cloudpickle.loads(serialized_deployment_def)
 
