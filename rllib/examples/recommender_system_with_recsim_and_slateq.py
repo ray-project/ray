@@ -94,7 +94,7 @@ parser.add_argument(
     " once at the beginning and the agent always has to pick "
     "`--env-slate-size` docs from this sample.",
 )
-parser.add_argument("--env-seed", type=int, default=0)
+parser.add_argument("--env-seed", type=int, default=42)
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument("--num-gpus", type=float, default=0)
 parser.add_argument("--num-workers", type=int, default=0)
@@ -140,10 +140,10 @@ def main():
         "lr_choice_model": 0.003,
         "lr_q_model": 0.003,
         "rollout_fragment_length": 4,
-        "exploration_config": {
-            "epsilon_timesteps": 50000,
-            "final_epsilon": 0.02,
-        },
+        #"exploration_config": {
+        #    "epsilon_timesteps": 50000,
+        #    "final_epsilon": 0.02,
+        #},
         "target_network_update_freq": 800,
         "tau": 1.0,  # 5e-3,
         "evaluation_interval": 1,
