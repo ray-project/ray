@@ -231,10 +231,10 @@ class GlobalStateAccessor {
 
   /// Whether this client is connected to gcs server.
   bool is_connected_ GUARDED_BY(mutex_) = false;
-  std::unique_ptr<GcsClient> gcs_client_ GUARDED_BY(mutex_);
 
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<instrumented_io_context> io_service_;
+  std::unique_ptr<GcsClient> gcs_client_ GUARDED_BY(mutex_);
 };
 
 }  // namespace gcs

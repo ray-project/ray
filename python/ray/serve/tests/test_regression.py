@@ -1,9 +1,11 @@
 import gc
+import asyncio
 
 import numpy as np
 import requests
 import pytest
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 import ray
 from ray.exceptions import GetTimeoutError
@@ -37,6 +39,7 @@ def test_fastapi_serialization(shutdown_ray):
             data = request["data"]
             columns = request["columns"]
             import pandas as pd
+
             data = pd.DataFrame(data, columns=columns)
             data.drop_duplicates(inplace=True)
             return data.values.tolist()
@@ -164,6 +167,75 @@ def test_handle_cache_out_of_scope(serve_instance):
     assert len(handle_cache) == initial_num_cached + 1
 
 
+def test_out_of_order_chaining(serve_instance):
+    # https://discuss.ray.io/t/concurrent-queries-blocking-following-queries/3949
+
+    @ray.remote(num_cpus=0)
+    class Collector:
+        def __init__(self):
+            self.lst = []
+
+        def append(self, msg):
+            self.lst.append(msg)
+
+        def get(self):
+            return self.lst
+
+    collector = Collector.remote()
+
+    @serve.deployment
+    async def composed_model(_id: int):
+        first_func_h = first_func.get_handle()
+        second_func_h = second_func.get_handle()
+        first_res_h = first_func_h.remote(_id=_id)
+        ref = second_func_h.remote(_id=first_res_h)
+        await ref
+
+    @serve.deployment
+    async def first_func(_id):
+        if _id == 0:
+            await asyncio.sleep(1000)
+        print(f"First output: {_id}")
+        ray.get(collector.append.remote(f"first-{_id}"))
+        return _id
+
+    @serve.deployment
+    async def second_func(_id):
+        print(f"Second output: {_id}")
+        ray.get(collector.append.remote(f"second-{_id}"))
+        return _id
+
+    serve.start(detached=True)
+
+    composed_model.deploy()
+    first_func.deploy()
+    second_func.deploy()
+
+    main_p = composed_model.get_handle()
+    main_p.remote(_id=0)
+    ray.get(main_p.remote(_id=1))
+
+    assert ray.get(collector.get.remote()) == ["first-1", "second-1"]
+
+
+def test_uvicorn_duplicate_headers(serve_instance):
+    # https://github.com/ray-project/ray/issues/21876
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class A:
+        @app.get("/")
+        def func(self):
+            return JSONResponse({"a": "b"})
+
+    A.deploy()
+    resp = requests.get("http://127.0.0.1:8000/A")
+    # If the header duplicated, it will be "9, 9"
+    assert resp.headers["content-length"] == "9"
+
+
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

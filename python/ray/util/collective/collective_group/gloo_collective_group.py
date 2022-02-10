@@ -10,12 +10,18 @@ import pygloo
 import numpy
 
 from ray.util.collective.collective_group import gloo_util
-from ray.util.collective.collective_group.base_collective_group \
-    import BaseGroup
-from ray.util.collective.types import AllReduceOptions, \
-    BarrierOptions, Backend, ReduceOptions, BroadcastOptions, \
-    AllGatherOptions, ReduceScatterOptions, SendOptions, \
-    RecvOptions
+from ray.util.collective.collective_group.base_collective_group import BaseGroup
+from ray.util.collective.types import (
+    AllReduceOptions,
+    BarrierOptions,
+    Backend,
+    ReduceOptions,
+    BroadcastOptions,
+    AllGatherOptions,
+    ReduceScatterOptions,
+    SendOptions,
+    RecvOptions,
+)
 from ray.util.collective.const import get_store_name
 
 logger = logging.getLogger(__name__)
@@ -37,13 +43,16 @@ class Rendezvous:
     def __init__(self, group_name, context, store_type, device_type):
         self._group_name = group_name
         self._context = context
-        self._redis_ip_address, self._redis_port = \
-            ray.worker._global_node.redis_address.split(":")
-        self._process_ip_address = \
-            ray.util.get_node_ip_address()
-        logger.debug("Redis address: {}, port: {}, this actor address: {}."
-                     .format(self._redis_ip_address, self._redis_port,
-                             self._process_ip_address))
+        (
+            self._redis_ip_address,
+            self._redis_port,
+        ) = ray.worker._global_node.redis_address.split(":")
+        self._process_ip_address = ray.util.get_node_ip_address()
+        logger.debug(
+            "Redis address: {}, port: {}, this actor address: {}.".format(
+                self._redis_ip_address, self._redis_port, self._process_ip_address
+            )
+        )
         self._store_type = store_type
         self._device_type = device_type
         self._store = None
@@ -53,8 +62,9 @@ class Rendezvous:
 
     def create_store(self, store_type):
         if store_type == "redis":
-            redisStore = pygloo.rendezvous.RedisStore(self._redis_ip_address,
-                                                      int(self._redis_port))
+            redisStore = pygloo.rendezvous.RedisStore(
+                self._redis_ip_address, int(self._redis_port)
+            )
             redis_password = ray_constants.REDIS_DEFAULT_PASSWORD
             redisStore.authorize(redis_password)
             self._store = redisStore
@@ -72,13 +82,11 @@ class Rendezvous:
                     time.sleep(0.1)
             # Note: multi-machines needs a shared NFS.
             fileStore = pygloo.rendezvous.FileStore(store_path)
-            self._store = pygloo.rendezvous.PrefixStore(
-                self._group_name, fileStore)
+            self._store = pygloo.rendezvous.PrefixStore(self._group_name, fileStore)
         elif store_type == "hash":
             raise NotImplementedError("No implementation for hash store.")
         else:
-            raise RuntimeError("Unrecognized store type: {}."
-                               .format(store_type))
+            raise RuntimeError("Unrecognized store type: {}.".format(store_type))
 
     def create_device(self, device_type):
         if device_type == "tcp":
@@ -97,8 +105,10 @@ class Rendezvous:
             None
         """
         if timeout_s <= 0:
-            raise ValueError("The 'timeout' argument must be positive. "
-                             "Got '{}'.".format(timeout_s))
+            raise ValueError(
+                "The 'timeout' argument must be positive. "
+                "Got '{}'.".format(timeout_s)
+            )
 
         timeout_delta = datetime.timedelta(seconds=timeout_s)
         elapsed = datetime.timedelta(seconds=0)
@@ -115,12 +125,13 @@ class Rendezvous:
                     if self._context.rank == 0:
                         if not q:
                             ray.remote(gloo_util.glooQueue).options(
-                                name="gloo_queue",
-                                lifetime="detached").remote(1000)
+                                name="gloo_queue", lifetime="detached"
+                            ).remote(1000)
                         if not s:
                             gloo_util.SignalActor.options(
                                 name=f"gloo_{self._group_name}_signal",
-                                lifetime="detached").remote(self._context.size)
+                                lifetime="detached",
+                            ).remote(self._context.size)
                     else:
                         time.sleep(0.1)
                 elapsed = datetime.datetime.now() - start_time
@@ -128,7 +139,7 @@ class Rendezvous:
                 raise RuntimeError("Unable to get gloo_queue.")
             if self._context.rank == 0:
                 ray.get(q.put_nowait.remote(self._group_name))
-            while (ray.get(q.index.remote(self._group_name))):
+            while ray.get(q.index.remote(self._group_name)):
                 time.sleep(0.1)
             self._context.connectFullMesh(self._store, self._device)
             ray.get(s.send.remote(self._context.rank))
@@ -164,12 +175,9 @@ class Rendezvous:
 
 
 class GLOOGroup(BaseGroup):
-    def __init__(self,
-                 world_size,
-                 rank,
-                 group_name,
-                 store_type="redis",
-                 device_type="tcp"):
+    def __init__(
+        self, world_size, rank, group_name, store_type="redis", device_type="tcp"
+    ):
         """Init an GLOO collective group.
 
         Args:
@@ -182,10 +190,10 @@ class GLOOGroup(BaseGroup):
                                Optional: "tcp", "uv".
         """
         super(GLOOGroup, self).__init__(world_size, rank, group_name)
-        self._gloo_context = gloo_util.create_gloo_context(
-            self.rank, self.world_size)
-        self._rendezvous = Rendezvous(self.group_name, self._gloo_context,
-                                      store_type, device_type)
+        self._gloo_context = gloo_util.create_gloo_context(self.rank, self.world_size)
+        self._rendezvous = Rendezvous(
+            self.group_name, self._gloo_context, store_type, device_type
+        )
         self._rendezvous.meet()
 
     def destroy_group(self):
@@ -221,11 +229,13 @@ class GLOOGroup(BaseGroup):
 
         def collective_fn(input_tensor, output_tensor, context):
             pygloo.allreduce(
-                context, gloo_util.get_tensor_ptr(input_tensor),
+                context,
+                gloo_util.get_tensor_ptr(input_tensor),
                 gloo_util.get_tensor_ptr(output_tensor),
                 gloo_util.get_tensor_n_elements(input_tensor),
                 gloo_util.get_gloo_tensor_dtype(input_tensor),
-                gloo_util.get_gloo_reduce_op(allreduce_options.reduceOp))
+                gloo_util.get_gloo_reduce_op(allreduce_options.reduceOp),
+            )
 
         self._collective(tensors, tensors, collective_fn)
 
@@ -256,12 +266,14 @@ class GLOOGroup(BaseGroup):
 
         def collective_fn(input_tensor, output_tensor, context):
             pygloo.reduce(
-                context, gloo_util.get_tensor_ptr(input_tensor),
+                context,
+                gloo_util.get_tensor_ptr(input_tensor),
                 gloo_util.get_tensor_ptr(output_tensor),
                 gloo_util.get_tensor_n_elements(input_tensor),
                 gloo_util.get_gloo_tensor_dtype(input_tensor),
                 gloo_util.get_gloo_reduce_op(reduce_options.reduceOp),
-                root_rank)
+                root_rank,
+            )
 
         self._collective(tensors, tensors, collective_fn)
 
@@ -278,18 +290,18 @@ class GLOOGroup(BaseGroup):
         root_rank = broadcast_options.root_rank
 
         def collective_fn(input_tensor, output_tensor, context):
-            pygloo.broadcast(context, gloo_util.get_tensor_ptr(input_tensor),
-                             gloo_util.get_tensor_ptr(output_tensor),
-                             gloo_util.get_tensor_n_elements(input_tensor),
-                             gloo_util.get_gloo_tensor_dtype(input_tensor),
-                             root_rank)
+            pygloo.broadcast(
+                context,
+                gloo_util.get_tensor_ptr(input_tensor),
+                gloo_util.get_tensor_ptr(output_tensor),
+                gloo_util.get_tensor_n_elements(input_tensor),
+                gloo_util.get_gloo_tensor_dtype(input_tensor),
+                root_rank,
+            )
 
         self._collective(tensors, tensors, collective_fn)
 
-    def allgather(self,
-                  tensor_lists,
-                  tensors,
-                  allgather_options=AllGatherOptions()):
+    def allgather(self, tensor_lists, tensors, allgather_options=AllGatherOptions()):
         """Allgather tensors on CPU into a list of tensors.
 
         Args:
@@ -303,10 +315,13 @@ class GLOOGroup(BaseGroup):
         """
 
         def collective_fn(input_tensor, output_tensor, context):
-            pygloo.allgather(context, gloo_util.get_tensor_ptr(input_tensor),
-                             gloo_util.get_tensor_ptr(output_tensor),
-                             gloo_util.get_tensor_n_elements(input_tensor),
-                             gloo_util.get_gloo_tensor_dtype(input_tensor))
+            pygloo.allgather(
+                context,
+                gloo_util.get_tensor_ptr(input_tensor),
+                gloo_util.get_tensor_ptr(output_tensor),
+                gloo_util.get_tensor_n_elements(input_tensor),
+                gloo_util.get_gloo_tensor_dtype(input_tensor),
+            )
 
         _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists)
         output_flattened = [
@@ -320,15 +335,12 @@ class GLOOGroup(BaseGroup):
                     gloo_util.copy_tensor(tensor, output_flattened[i][j])
 
         self._collective(
-            tensors,
-            output_flattened,
-            collective_fn,
-            postprocess_fn=postprocess_fn)
+            tensors, output_flattened, collective_fn, postprocess_fn=postprocess_fn
+        )
 
-    def reducescatter(self,
-                      tensors,
-                      tensor_lists,
-                      reducescatter_options=ReduceScatterOptions()):
+    def reducescatter(
+        self, tensors, tensor_lists, reducescatter_options=ReduceScatterOptions()
+    ):
         """Reduce the scatter a list of tensors across the group.
 
         Args:
@@ -346,11 +358,14 @@ class GLOOGroup(BaseGroup):
             size = gloo_util.get_tensor_n_elements(input_tensor)
             world_size = self._gloo_context.size
             pygloo.reduce_scatter(
-                context, gloo_util.get_tensor_ptr(input_tensor),
-                gloo_util.get_tensor_ptr(output_tensor), size,
+                context,
+                gloo_util.get_tensor_ptr(input_tensor),
+                gloo_util.get_tensor_ptr(output_tensor),
+                size,
                 [size // world_size for _ in range(world_size)],
                 gloo_util.get_gloo_tensor_dtype(output_tensor),
-                gloo_util.get_gloo_reduce_op(reducescatter_options.reduceOp))
+                gloo_util.get_gloo_reduce_op(reducescatter_options.reduceOp),
+            )
 
         _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists)
         input_flattened = [
@@ -364,10 +379,8 @@ class GLOOGroup(BaseGroup):
                     gloo_util.copy_tensor(input_flattened[i][j], tensor)
 
         self._collective(
-            input_flattened,
-            tensors,
-            collective_fn,
-            preprocess_fn=preprocess_fn)
+            input_flattened, tensors, collective_fn, preprocess_fn=preprocess_fn
+        )
 
     def send(self, tensors, send_options=SendOptions()):
         """Send a tensor to a destination rank in the group.
@@ -381,9 +394,13 @@ class GLOOGroup(BaseGroup):
         """
 
         def p2p_fn(tensor, context, peer):
-            pygloo.send(context, gloo_util.get_tensor_ptr(tensor),
-                        gloo_util.get_tensor_n_elements(tensor),
-                        gloo_util.get_gloo_tensor_dtype(tensor), peer)
+            pygloo.send(
+                context,
+                gloo_util.get_tensor_ptr(tensor),
+                gloo_util.get_tensor_n_elements(tensor),
+                gloo_util.get_gloo_tensor_dtype(tensor),
+                peer,
+            )
 
         self._point2point(tensors, p2p_fn, send_options.dst_rank)
 
@@ -399,18 +416,24 @@ class GLOOGroup(BaseGroup):
         """
 
         def p2p_fn(tensor, context, peer):
-            pygloo.recv(context, gloo_util.get_tensor_ptr(tensor),
-                        gloo_util.get_tensor_n_elements(tensor),
-                        gloo_util.get_gloo_tensor_dtype(tensor), peer)
+            pygloo.recv(
+                context,
+                gloo_util.get_tensor_ptr(tensor),
+                gloo_util.get_tensor_n_elements(tensor),
+                gloo_util.get_gloo_tensor_dtype(tensor),
+                peer,
+            )
 
         self._point2point(tensors, p2p_fn, recv_options.src_rank)
 
-    def _collective(self,
-                    input_tensors,
-                    output_tensors,
-                    collective_fn,
-                    preprocess_fn=None,
-                    postprocess_fn=None):
+    def _collective(
+        self,
+        input_tensors,
+        output_tensors,
+        collective_fn,
+        preprocess_fn=None,
+        postprocess_fn=None,
+    ):
         """A method to encapsulate all collective calls.
 
         Args:
@@ -453,8 +476,10 @@ def _check_cpu_tensors(tensors):
     if not tensors or not isinstance(tensors, list):
         raise RuntimeError("'tensors' must be a nonempty list.")
     if len(tensors) != 1:
-        raise RuntimeError("Gloo only accept one tensor in the tensor list."
-                           " Got {} != 1.".format(len(tensors)))
+        raise RuntimeError(
+            "Gloo only accept one tensor in the tensor list."
+            " Got {} != 1.".format(len(tensors))
+        )
     d = gloo_util.get_tensor_device(tensors[0])
     if d != "cpu":
         raise RuntimeError("Gloo only accept cpu tensor." " Got {}.".format(d))
@@ -488,22 +513,25 @@ def _flatten_for_scatter_gather(tensor_list, copy=False):
 def _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists):
     """Check the compatibility between tensor input and tensor list input."""
     if not tensors or not isinstance(tensors, list):
-        raise RuntimeError(
-            "The first argument 'tensors' expects a list of tensors.")
+        raise RuntimeError("The first argument 'tensors' expects a list of tensors.")
 
     if len(tensors) != 1:
         raise RuntimeError(
             "Gloo only accept one tensor in the first argument 'tensors'."
-            " Got {} != 1.".format(len(tensors)))
+            " Got {} != 1.".format(len(tensors))
+        )
 
     if not tensor_lists or not isinstance(tensor_lists, list):
-        raise RuntimeError("The second argument 'tensor_lists' "
-                           "expects a list of tensor list.")
+        raise RuntimeError(
+            "The second argument 'tensor_lists' " "expects a list of tensor list."
+        )
 
     if len(tensor_lists) != 1:
-        raise RuntimeError("Gloo only accept one tensor list "
-                           "in the second argument 'tensor_lists'."
-                           " Got {} != 1.".format(len(tensor_lists)))
+        raise RuntimeError(
+            "Gloo only accept one tensor list "
+            "in the second argument 'tensor_lists'."
+            " Got {} != 1.".format(len(tensor_lists))
+        )
 
     dtype = gloo_util.get_gloo_tensor_dtype(tensors[0])
     shape = gloo_util.get_tensor_shape(tensors[0])
@@ -515,9 +543,11 @@ def _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists):
         if dt != dtype:
             raise RuntimeError(
                 "All tensor operands to scatter/gather must "
-                "have the same dtype. Got '{}' and '{}'.".format(dt, dtype))
+                "have the same dtype. Got '{}' and '{}'.".format(dt, dtype)
+            )
         s = gloo_util.get_tensor_shape(t)
         if s != shape:
             raise RuntimeError(
                 "All tensor operands to scatter/gather must "
-                "have the same shape. Got '{}' and '{}'.".format(s, shape))
+                "have the same shape. Got '{}' and '{}'.".format(s, shape)
+            )

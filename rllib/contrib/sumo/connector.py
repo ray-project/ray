@@ -62,7 +62,7 @@ DEFAULT_CONFIG = {
 
 
 class SUMOConnector(object):
-    """ Handler of a SUMO simulation. """
+    """Handler of a SUMO simulation."""
 
     def __init__(self, config):
         """
@@ -86,26 +86,29 @@ class SUMOConnector(object):
             raise Exception(
                 "ERROR: '{}' is not a valid option for 'sumo_connector'. "
                 "The possible connectors are 'traci' or 'libsumo'.".format(
-                    config["sumo_connector"]))
+                    config["sumo_connector"]
+                )
+            )
 
         # TraCI Handler and SUMO simulation
         logger.debug("Starting SUMOConnector in process %d.", os.getpid())
         self._sumo_label = "{}".format(os.getpid())
-        self._sumo_output_prefix = "{}{}".format(config["sumo_output"],
-                                                 self._sumo_label)
+        self._sumo_output_prefix = "{}{}".format(
+            config["sumo_output"], self._sumo_label
+        )
         self._sumo_parameters = ["sumo", "-c", config["sumo_cfg"]]
         if config["sumo_gui"] and config["sumo_connector"] == "traci":
             self._sumo_parameters[0] = "sumo-gui"
             self._sumo_parameters.extend(["--start", "--quit-on-end"])
         if config["sumo_params"] is not None:
             self._sumo_parameters.extend(config["sumo_params"])
-        self._sumo_parameters.extend(
-            ["--output-prefix", self._sumo_output_prefix])
+        self._sumo_parameters.extend(["--output-prefix", self._sumo_output_prefix])
         logger.debug("SUMO command line: %s", str(self._sumo_parameters))
         if config["trace_file"]:
             traci.start(
                 self._sumo_parameters,
-                traceFile="{}.tracefile.log".format(self._sumo_output_prefix))
+                traceFile="{}.tracefile.log".format(self._sumo_output_prefix),
+            )
         else:
             traci.start(self._sumo_parameters)
         self.traci_handler = traci
@@ -132,49 +135,47 @@ class SUMOConnector(object):
     ###########################################################################
 
     def _initialize_simulation(self):
-        """ Specific simulation initialization. """
+        """Specific simulation initialization."""
         raise NotImplementedError
 
     def _initialize_metrics(self):
-        """ Specific metrics initialization """
+        """Specific metrics initialization"""
         raise NotImplementedError
 
     def _default_step_action(self, agents):
-        """ Specific code to be executed in every simulation step """
+        """Specific code to be executed in every simulation step"""
         raise NotImplementedError
 
     ###########################################################################
 
     def _stopping_condition(self, current_step_counter, until_end):
-        """ Computes the stopping condition. """
+        """Computes the stopping condition."""
         if self._manually_stopped:
             return True
         if self.traci_handler.simulation.getMinExpectedNumber() <= 0:
             # No entities left in the simulation.
             return True
         if self._config["end_of_sim"] is not None:
-            if self.traci_handler.simulation.getTime(
-            ) > self._config["end_of_sim"]:
+            if self.traci_handler.simulation.getTime() > self._config["end_of_sim"]:
                 # the simulatio reach the predefined (from parameters) end
                 return True
-        if (current_step_counter == self._config["update_freq"]
-                and not until_end):
+        if current_step_counter == self._config["update_freq"] and not until_end:
             return True
         return False
 
     def step(self, until_end=False, agents=None):
         """
-            Runs a "learning" step and returns if the simulation has finished.
-            This function in meant to be called by the RLLIB Environment.
+        Runs a "learning" step and returns if the simulation has finished.
+        This function in meant to be called by the RLLIB Environment.
 
-            Params:
-                until_end: Bool. If True, run the sumo simulation
-                           until the end.
-                agents: Set(String). It passes the agents to the
-                        _default_step_action function.
+        Params:
+            until_end: Bool. If True, run the sumo simulation
+                       until the end.
+            agents: Set(String). It passes the agents to the
+                    _default_step_action function.
 
-            Return:
-                Bool. True iff the simulation is still ongoing.
+        Return:
+            Bool. True iff the simulation is still ongoing.
         """
         if agents is None:
             agents = set()
@@ -185,9 +186,12 @@ class SUMOConnector(object):
             "================================================================="
         )
         while not self._stopping_condition(current_step_counter, until_end):
-            logger.debug("[%s] Current step counter: %d, Update frequency: %d",
-                         str(until_end), current_step_counter,
-                         self._config["update_freq"])
+            logger.debug(
+                "[%s] Current step counter: %d, Update frequency: %d",
+                str(until_end),
+                current_step_counter,
+                self._config["update_freq"],
+            )
             self.traci_handler.simulationStep()
             self._sumo_steps += 1
             current_step_counter += 1
@@ -204,48 +208,49 @@ class SUMOConnector(object):
 
     def fast_forward(self, time):
         """
-            Move the simulation forward (without doing anything else) until the
-            given time.
-            Param:
-                time: Float, simulation time in seconds.
+        Move the simulation forward (without doing anything else) until the
+        given time.
+        Param:
+            time: Float, simulation time in seconds.
         """
-        logger.debug("Fast-forward from time %.2f",
-                     self.traci_handler.simulation.getTime())
+        logger.debug(
+            "Fast-forward from time %.2f", self.traci_handler.simulation.getTime()
+        )
         self.traci_handler.simulationStep(float(time))
-        logger.debug("Fast-forward to time %.2f",
-                     self.traci_handler.simulation.getTime())
+        logger.debug(
+            "Fast-forward to time %.2f", self.traci_handler.simulation.getTime()
+        )
 
     ###########################################################################
 
     def get_sumo_steps(self):
-        """ Returns the total number of traci.simulationStep() calls."""
+        """Returns the total number of traci.simulationStep() calls."""
         return self._sumo_steps
 
     def is_ongoing_sim(self):
-        """ Return True iff the SUMO simulation is still ongoing. """
+        """Return True iff the SUMO simulation is still ongoing."""
         if self._manually_stopped:
             return False
         if self.traci_handler.simulation.getMinExpectedNumber() <= 0:
             # No entities left in the simulation.
             return False
         if self._config["end_of_sim"] is not None:
-            if self.traci_handler.simulation.getTime(
-            ) > self._config["end_of_sim"]:
+            if self.traci_handler.simulation.getTime() > self._config["end_of_sim"]:
                 # the simulatio reach the predefined (from parameters) end
                 return False
         return True
 
     def get_current_time(self):
         """
-            Returns the current simulation time, or None if the simulation is
-            not ongoing.
+        Returns the current simulation time, or None if the simulation is
+        not ongoing.
         """
         if self.is_ongoing_sim():
             return self.traci_handler.simulation.getTime()
         return None
 
     def end_simulation(self):
-        """ Forces the simulation to stop. """
+        """Forces the simulation to stop."""
         if self.is_ongoing_sim():
             logger.info("Closing TraCI %s", self._sumo_label)
             self._manually_stopped = True

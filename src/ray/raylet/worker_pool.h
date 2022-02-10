@@ -61,10 +61,17 @@ enum PopWorkerStatus {
   RuntimeEnvCreationFailed = 4,
 };
 
-/// \Return true if the worker was used. Otherwise, return false and the worker will be
-/// returned to the worker pool.
+/// \param[in] worker The started worker instance. Nullptr if worker is not started.
+/// \param[in] status The pop worker status. OK if things go well. Otherwise, it will
+/// contain the error status.
+/// \param[in] runtime_env_setup_error_message The error message
+/// when runtime env setup is failed. This should be empty unless status ==
+/// RuntimeEnvCreationFailed.
+/// \return true if the worker was used. Otherwise, return false
+/// and the worker will be returned to the worker pool.
 using PopWorkerCallback = std::function<bool(
-    const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status)>;
+    const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,
+    const std::string &runtime_env_setup_error_message)>;
 
 /// \class WorkerPoolInterface
 ///
@@ -217,7 +224,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param[in] worker The worker to be registered.
   /// \param[in] pid The PID of the worker.
-  /// \param[in] worker_shim_pid The PID of the process for setup worker runtime env.
   /// \param[in] worker_startup_token The startup token of the process assigned to
   /// it during startup as a command line argument.
   /// \param[in] send_reply_callback The callback to invoke after registration is
@@ -225,7 +231,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Returns 0 if the worker should bind on a random port.
   /// \return If the registration is successful.
   Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker, pid_t pid,
-                        pid_t worker_shim_pid, StartupToken worker_startup_token,
+                        StartupToken worker_startup_token,
                         std::function<void(Status, int)> send_reply_callback);
 
   /// To be invoked when a worker is started. This method should be called when the worker
@@ -622,7 +628,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Create runtime env asynchronously by runtime env agent.
   void CreateRuntimeEnv(
       const std::string &serialized_runtime_env, const JobID &job_id,
-      const std::function<void(bool, const std::string &)> &callback,
+      const CreateRuntimeEnvCallback &callback,
       const std::string &serialized_allocated_resource_instances = "{}");
 
   void AddStartingWorkerProcess(

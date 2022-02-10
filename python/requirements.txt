@@ -40,7 +40,7 @@ pandas>=1.2.0; python_version >= '3.7'
 scipy==1.4.1
 tabulate
 tensorboardX >= 1.9
-uvicorn
+uvicorn==0.16.0
 dataclasses; python_version < '3.7'
 starlette
 aiorwlock
@@ -95,3 +95,7 @@ tqdm
 async-exit-stack
 async-generator
 cryptography>=3.0.0
+# For doc tests
+myst-parser==0.15.2
+myst-nb==0.13.1
+jupytext==1.13.6

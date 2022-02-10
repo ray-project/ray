@@ -7,7 +7,7 @@ import time
 
 import ray
 from ray import serve
-from ray.serve.constants import (SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME)
+from ray.serve.constants import SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME
 from ray.serve.tests.test_failure import request_with_retries
 from ray._private.test_utils import SignalActor
 from ray.serve.utils import get_random_letters
@@ -19,8 +19,7 @@ def test_recover_start_from_replica_actor_names(serve_instance):
     """
     # Test failed to deploy with total of 2 replicas,
     # but first constructor call fails.
-    @serve.deployment(
-        name="recover_start_from_replica_actor_names", num_replicas=2)
+    @serve.deployment(name="recover_start_from_replica_actor_names", num_replicas=2)
     class TransientConstructorFailureDeployment:
         def __init__(self):
             return True
@@ -31,12 +30,12 @@ def test_recover_start_from_replica_actor_names(serve_instance):
     TransientConstructorFailureDeployment.deploy()
     for _ in range(10):
         response = request_with_retries(
-            "/recover_start_from_replica_actor_names/", timeout=30)
+            "/recover_start_from_replica_actor_names/", timeout=30
+        )
         assert response.text == "hii"
     # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy() call with transient error
-    deployment_dict = ray.get(
-        serve_instance._controller._all_running_replicas.remote())
+    deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
     assert len(deployment_dict["recover_start_from_replica_actor_names"]) == 2
 
     replica_version_hash = None
@@ -47,7 +46,8 @@ def test_recover_start_from_replica_actor_names(serve_instance):
             replica_version_hash = hash(version)
         assert replica_version_hash == hash(version), (
             "Replica version hash should be the same for "
-            "same code version and user config.")
+            "same code version and user config."
+        )
 
     # Sample: [
     # 'TransientConstructorFailureDeployment#xlituP',
@@ -56,29 +56,38 @@ def test_recover_start_from_replica_actor_names(serve_instance):
     # 'SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-node:192.168.86.165-0']
     all_actor_names = ray.util.list_named_actors()
     all_replica_names = [
-        actor_name for actor_name in all_actor_names
-        if (SERVE_CONTROLLER_NAME not in actor_name
-            and SERVE_PROXY_NAME not in actor_name)
+        actor_name
+        for actor_name in all_actor_names
+        if (
+            SERVE_CONTROLLER_NAME not in actor_name
+            and SERVE_PROXY_NAME not in actor_name
+        )
     ]
-    assert len(all_replica_names) == 2, (
-        "Should have two running replicas fetched from ray API.")
+    assert (
+        len(all_replica_names) == 2
+    ), "Should have two running replicas fetched from ray API."
 
     # Kill controller and wait for endpoint to be available again
     ray.kill(serve.api._global_client._controller, no_restart=False)
     for _ in range(10):
         response = request_with_retries(
-            "/recover_start_from_replica_actor_names/", timeout=30)
+            "/recover_start_from_replica_actor_names/", timeout=30
+        )
         assert response.text == "hii"
 
     # Ensure recovered replica names are the same
     recovered_all_actor_names = ray.util.list_named_actors()
     recovered_all_replica_names = [
-        actor_name for actor_name in recovered_all_actor_names
-        if (SERVE_CONTROLLER_NAME not in actor_name
-            and SERVE_PROXY_NAME not in actor_name)
+        actor_name
+        for actor_name in recovered_all_actor_names
+        if (
+            SERVE_CONTROLLER_NAME not in actor_name
+            and SERVE_PROXY_NAME not in actor_name
+        )
     ]
-    assert recovered_all_replica_names == all_replica_names, (
-        "Running replica actor names after recovery must match")
+    assert (
+        recovered_all_replica_names == all_replica_names
+    ), "Running replica actor names after recovery must match"
 
     # Ensure recovered replica version has are the same
     for replica_name in recovered_all_replica_names:
@@ -86,8 +95,8 @@ def test_recover_start_from_replica_actor_names(serve_instance):
         ref = actor_handle.get_metadata.remote()
         _, version = ray.get(ref)
         assert replica_version_hash == hash(version), (
-            "Replica version hash should be the same after "
-            "recover from actor names")
+            "Replica version hash should be the same after " "recover from actor names"
+        )
 
 
 def test_recover_rolling_update_from_replica_actor_names(serve_instance):
@@ -136,18 +145,16 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
         timeout_value = 60 if sys.platform == "win32" else 30
         while time.time() - start < timeout_value:
             refs = [call.remote(block=False) for _ in range(10)]
-            ready, not_ready = ray.wait(
-                refs, timeout=5, num_returns=num_returns)
+            ready, not_ready = ray.wait(refs, timeout=5, num_returns=num_returns)
             for ref in ready:
                 val, pid = ray.get(ref)
                 responses[val].add(pid)
             for ref in not_ready:
                 blocking.extend(not_ready)
 
-            if (all(
-                    len(responses[val]) >= num
-                    for val, num in expected.items())
-                    and (expect_blocking is False or len(blocking) > 0)):
+            if all(len(responses[val]) >= num for val, num in expected.items()) and (
+                expect_blocking is False or len(blocking) > 0
+            ):
                 break
         else:
             assert False, f"Timed out, responses: {responses}."
@@ -161,10 +168,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     # ref2 will block a single replica until the signal is sent. Check that
     # some requests are now blocking.
     ref2 = call.remote(block=True)
-    responses2, blocking2 = make_nonblocking_calls(
-        {
-            "1": 1
-        }, expect_blocking=True)
+    responses2, blocking2 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
     assert list(responses2["1"])[0] in pids1
 
     ray.kill(serve.api._global_client._controller, no_restart=False)
@@ -174,10 +178,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     V2 = V1.options(func_or_class=V2, version="2")
     goal_ref = V2.deploy(_blocking=False)
     assert not client._wait_for_goal(goal_ref, timeout=0.1)
-    responses3, blocking3 = make_nonblocking_calls(
-        {
-            "1": 1
-        }, expect_blocking=True)
+    responses3, blocking3 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
 
     ray.kill(serve.api._global_client._controller, no_restart=False)
 

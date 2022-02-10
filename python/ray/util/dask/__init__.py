@@ -1,6 +1,10 @@
 import dask
-from .scheduler import ray_dask_get, ray_dask_get_sync, enable_dask_on_ray, \
-    disable_dask_on_ray
+from .scheduler import (
+    ray_dask_get,
+    ray_dask_get_sync,
+    enable_dask_on_ray,
+    disable_dask_on_ray,
+)
 from .callbacks import (
     RayDaskCallback,
     local_ray_callbacks,
