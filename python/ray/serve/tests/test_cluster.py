@@ -126,22 +126,23 @@ def test_replica_startup_status_transitions(ray_cluster):
     signal = SignalActor.remote()
 
     @serve.deployment(version="1", ray_actor_options={"num_cpus": 2})
-    class D:
+    class E:
         def __init__(self):
             ray.get(signal.wait.remote())
 
-    D.deploy(_blocking=False)
+    E.deploy(_blocking=False)
 
     def get_replicas(replica_state):
         controller = serve_instance._controller
-        replicas = ray.get(
-            controller._dump_replica_states_for_testing.remote(D.name))
+        replicas = ray.get(controller._dump_replica_states_for_testing.remote(E.name))
         return replicas.get([replica_state])
 
     # wait for serve to start the replica, and catch a reference to it.
     wait_for_condition(lambda: len(get_replicas(ReplicaState.STARTING)) > 0)
     replica = get_replicas(ReplicaState.STARTING)[0]
 
+    # FIXME: We switched our code formatter from YAPF to Black. Check whether we still
+    # need shorthands and update the comment below. See issue #21318.
     # declare shorthands as yapf doesn't like long lambdas
     PENDING_ALLOCATION = ReplicaStartupStatus.PENDING_ALLOCATION
     PENDING_INITIALIZATION = ReplicaStartupStatus.PENDING_INITIALIZATION
@@ -152,8 +153,15 @@ def test_replica_startup_status_transitions(ray_cluster):
 
     # add the necessary resources to allocate the replica
     cluster.add_node(num_cpus=4)
-    wait_for_condition(
-        lambda: (replica.check_started() == PENDING_INITIALIZATION))
+    wait_for_condition(lambda: (ray.cluster_resources().get("CPU", 0) >= 4))
+    wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) >= 2))
+
+    def is_replica_pending_initialization():
+        status = replica.check_started()
+        print(status)
+        return status == PENDING_INITIALIZATION
+
+    wait_for_condition(is_replica_pending_initialization, timeout=25)
 
     # send signal to complete replica intialization
     signal.send.remote()

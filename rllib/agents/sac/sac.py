@@ -1,21 +1,11 @@
-"""
-Soft Actor Critic (SAC)
-=======================
-
-This file defines the distributed Trainer class for the soft actor critic
-algorithm.
-See `sac_[tf|torch]_policy.py` for the definition of the policy loss.
-
-Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#sac
-"""
-
 import logging
-from typing import Optional, Type
+from typing import Type
 
 from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
+from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.typing import TrainerConfigDict
@@ -26,12 +16,17 @@ tfp = try_import_tfp()
 logger = logging.getLogger(__name__)
 
 OPTIMIZER_SHARED_CONFIGS = [
-    "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
-    "prioritized_replay_beta", "prioritized_replay_eps",
-    "rollout_fragment_length", "train_batch_size", "learning_starts"
+    "buffer_size",
+    "prioritized_replay",
+    "prioritized_replay_alpha",
+    "prioritized_replay_beta",
+    "prioritized_replay_eps",
+    "rollout_fragment_length",
+    "train_batch_size",
+    "learning_starts",
 ]
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 
 # Adds the following updates to the (base) `Trainer` config in
@@ -166,8 +161,8 @@ DEFAULT_CONFIG = with_common_config({
     "num_cpus_per_worker": 1,
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
-    # Prevent iterations from going lower than this time span.
-    "min_iter_time_s": 1,
+    # Prevent reporting frequency from going lower than this time span.
+    "min_time_s_per_reporting": 1,
 
     # Whether the loss should be calculated deterministically (w/o the
     # stochastic action sampling step). True only useful for cont. actions and
@@ -178,58 +173,55 @@ DEFAULT_CONFIG = with_common_config({
     "_use_beta_distribution": False,
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
-def validate_config(config: TrainerConfigDict) -> None:
-    """Validates the Trainer's config dict.
+class SACTrainer(DQNTrainer):
+    """Soft Actor Critic (SAC) Trainer class.
 
-    Args:
-        config (TrainerConfigDict): The Trainer's config to check.
+    This file defines the distributed Trainer class for the soft actor critic
+    algorithm.
+    See `sac_[tf|torch]_policy.py` for the definition of the policy loss.
 
-    Raises:
-        ValueError: In case something is wrong with the config.
+    Detailed documentation:
+    https://docs.ray.io/en/master/rllib-algorithms.html#sac
     """
-    if config["use_state_preprocessor"] != DEPRECATED_VALUE:
-        deprecation_warning(
-            old="config['use_state_preprocessor']", error=False)
-        config["use_state_preprocessor"] = DEPRECATED_VALUE
 
-    if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
-        raise ValueError("`grad_clip` value must be > 0.0!")
+    def __init__(self, *args, **kwargs):
+        self._allow_unknown_subkeys += ["policy_model", "Q_model"]
+        super().__init__(*args, **kwargs)
 
-    if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
-        logger.warning(
-            "You need `tensorflow_probability` in order to run SAC! "
-            "Install it via `pip install tensorflow_probability`. Your "
-            f"tf.__version__={tf.__version__ if tf else None}."
-            "Trying to import tfp results in the following error:")
-        try_import_tfp(error=True)
+    @classmethod
+    @override(DQNTrainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
 
+    @override(DQNTrainer)
+    def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
+        super().validate_config(config)
 
-def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
-    """Policy class picker function. Class is chosen based on DL-framework.
+        if config["use_state_preprocessor"] != DEPRECATED_VALUE:
+            deprecation_warning(old="config['use_state_preprocessor']", error=False)
+            config["use_state_preprocessor"] = DEPRECATED_VALUE
 
-    Args:
-        config (TrainerConfigDict): The trainer's configuration dict.
+        if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
+            raise ValueError("`grad_clip` value must be > 0.0!")
 
-    Returns:
-        Optional[Type[Policy]]: The Policy class to use with PPOTrainer.
-            If None, use `default_policy` provided in build_trainer().
-    """
-    if config["framework"] == "torch":
-        from ray.rllib.agents.sac.sac_torch_policy import SACTorchPolicy
-        return SACTorchPolicy
+        if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
+            logger.warning(
+                "You need `tensorflow_probability` in order to run SAC! "
+                "Install it via `pip install tensorflow_probability`. Your "
+                f"tf.__version__={tf.__version__ if tf else None}."
+                "Trying to import tfp results in the following error:"
+            )
+            try_import_tfp(error=True)
 
+    @override(DQNTrainer)
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+        if config["framework"] == "torch":
+            from ray.rllib.agents.sac.sac_torch_policy import SACTorchPolicy
 
-# Build a child class of `Trainer` (based on the kwargs used to create the
-# GenericOffPolicyTrainer class and the kwargs used in the call below), which
-# uses the framework specific Policy determined in `get_policy_class()` above.
-SACTrainer = GenericOffPolicyTrainer.with_updates(
-    name="SAC",
-    default_config=DEFAULT_CONFIG,
-    validate_config=validate_config,
-    default_policy=SACTFPolicy,
-    get_policy_class=get_policy_class,
-    allow_unknown_subkeys=["Q_model", "policy_model"],
-)
+            return SACTorchPolicy
+        else:
+            return SACTFPolicy

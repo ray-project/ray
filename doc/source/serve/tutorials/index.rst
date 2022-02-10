@@ -15,8 +15,7 @@ Ray Serve functionality and how to integrate different modeling frameworks.
    sklearn.rst
    batch.rst
    web-server-integration.rst
-   rllib.rst
-
+   rllib
 
 Other Topics:
 

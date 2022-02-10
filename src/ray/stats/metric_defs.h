@@ -14,6 +14,12 @@
 
 #pragma once
 
+#include "ray/stats/metric.h"
+
+namespace ray {
+
+namespace stats {
+
 /// The definitions of metrics that you can use everywhere.
 ///
 /// There are 4 types of metric:
@@ -27,9 +33,71 @@
 /// NOTE: When adding a new metric, add the metric name to the _METRICS list in
 /// python/ray/tests/test_metrics_agent.py to ensure that its existence is tested.
 
+/// Convention
+/// Following Prometheus convention
+/// https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels
+/// Units: ray_[component]_[metrics_name]_[units] (e.g.,
+/// ray_pull_manager_spill_throughput_mb) Gauge: ray_[component]_[metrics_name]s (e.g.,
+/// ray_pull_manager_requests) Cumulative Gauge / Count:
+/// ray_[component]_[metrics_name]_total (e.g., ray_pull_manager_total)
+///
+
+/// Event stats
+DECLARE_stats(operation_count);
+DECLARE_stats(operation_run_time_ms);
+DECLARE_stats(operation_queue_time_ms);
+DECLARE_stats(operation_active_count);
+
+/// GRPC server
+DECLARE_stats(grpc_server_req_process_time_ms);
+DECLARE_stats(grpc_server_req_new);
+DECLARE_stats(grpc_server_req_handling);
+DECLARE_stats(grpc_server_req_finished);
+
+/// Object Manager.
+DECLARE_stats(object_manager_received_chunks);
+
+/// Pull Manager
+DECLARE_stats(pull_manager_usage_bytes);
+// TODO(sang): Remove pull_manager_active_bundles and
+// support active/inactive get/wait/task_args
+DECLARE_stats(pull_manager_requested_bundles);
+DECLARE_stats(pull_manager_requests);
+DECLARE_stats(pull_manager_active_bundles);
+DECLARE_stats(pull_manager_retries_total);
+
+/// Push Manager
+DECLARE_stats(push_manager_in_flight_pushes);
+DECLARE_stats(push_manager_chunks);
+
+/// Scheduler
+DECLARE_stats(scheduler_failed_worker_startup_total);
+DECLARE_stats(scheduler_tasks);
+DECLARE_stats(scheduler_unscheduleable_tasks);
+
+/// Local Object Manager
+DECLARE_stats(spill_manager_objects);
+DECLARE_stats(spill_manager_objects_bytes);
+DECLARE_stats(spill_manager_request_total);
+DECLARE_stats(spill_manager_throughput_mb);
+
+/// GCS Resource Manager
+DECLARE_stats(gcs_new_resource_creation_latency_ms);
+
+/// Placement Group
+DECLARE_stats(gcs_placement_group_creation_latency_ms);
+DECLARE_stats(gcs_placement_group_scheduling_latency_ms);
+DECLARE_stats(gcs_placement_group_count);
+
+DECLARE_stats(gcs_actors_count);
+
+/// The below items are legacy implementation of metrics.
+/// TODO(sang): Use DEFINE_stats instead.
+
 ///
 /// Common
 ///
+/// RPC
 static Histogram GcsLatency("gcs_latency",
                             "The latency of a GCS (by default Redis) operation.", "us",
                             {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},
@@ -38,6 +106,8 @@ static Histogram GcsLatency("gcs_latency",
 ///
 /// Raylet Metrics
 ///
+
+/// Raylet Resource Manager
 static Gauge LocalAvailableResource("local_available_resource",
                                     "The available resources on this node.", "",
                                     {ResourceNameKey});
@@ -46,11 +116,7 @@ static Gauge LocalTotalResource("local_total_resource",
                                 "The total resources on this node.", "",
                                 {ResourceNameKey});
 
-static Gauge LiveActors("live_actors", "Number of live actors.", "actors");
-
-static Gauge RestartingActors("restarting_actors", "Number of restarting actors.",
-                              "actors");
-
+/// Object Manager.
 static Gauge ObjectStoreAvailableMemory(
     "object_store_available_memory",
     "Amount of memory currently available in the object store.", "bytes");
@@ -71,6 +137,7 @@ static Gauge ObjectManagerPullRequests("object_manager_num_pull_requests",
                                        "Number of active pull requests for objects.",
                                        "requests");
 
+/// Object Directory.
 static Gauge ObjectDirectoryLocationSubscriptions(
     "object_directory_subscriptions",
     "Number of object location subscriptions. If this is high, the raylet is attempting "
@@ -102,6 +169,7 @@ static Gauge ObjectDirectoryRemovedLocations(
     "have been removed from this node.",
     "removals");
 
+/// Node Manager
 static Histogram HeartbeatReportMs(
     "heartbeat_report_ms",
     "Heartbeat report time in raylet. If this value is high, that means there's a high "
@@ -109,6 +177,7 @@ static Histogram HeartbeatReportMs(
     "heartbeats.",
     "ms", {100, 200, 400, 800, 1600, 3200, 6400, 15000, 30000});
 
+/// Worker Pool
 static Histogram ProcessStartupTimeMs("process_startup_time_ms",
                                       "Time to start up a worker process.", "ms",
                                       {1, 10, 100, 1000, 10000});
@@ -117,49 +186,32 @@ static Sum NumWorkersStarted(
     "internal_num_processes_started",
     "The total number of worker processes the worker pool has created.", "processes");
 
-static Sum NumReceivedTasks(
-    "internal_num_received_tasks",
-    "The cumulative number of lease requeusts that this raylet has received.", "tasks");
-
-static Sum NumDispatchedTasks(
-    "internal_num_dispatched_tasks",
-    "The cumulative number of lease requeusts that this raylet has granted.", "tasks");
-
 static Sum NumSpilledTasks("internal_num_spilled_tasks",
                            "The cumulative number of lease requeusts that this raylet "
                            "has spilled to other raylets.",
                            "tasks");
 
-static Gauge NumInfeasibleTasks(
-    "internal_num_infeasible_tasks",
-    "The number of tasks in the scheduler that are in the 'infeasible' state.", "tasks");
-
 static Gauge NumInfeasibleSchedulingClasses(
     "internal_num_infeasible_scheduling_classes",
     "The number of unique scheduling classes that are infeasible.", "tasks");
 
-static Gauge SpillingBandwidthMB("object_spilling_bandwidth_mb",
-                                 "Bandwidth of object spilling.", "MB");
-
-static Gauge RestoringBandwidthMB("object_restoration_bandwidth_mb",
-                                  "Bandwidth of object restoration.", "MB");
-
 ///
 /// GCS Server Metrics
 ///
+
+/// Workers
 static Count UnintentionalWorkerFailures(
     "unintentional_worker_failures_total",
     "Number of worker failures that are not intentional. For example, worker failures "
     "due to system related errors.",
     "");
 
+/// Nodes
 static Count NodeFailureTotal(
     "node_failure_total", "Number of node failures that have happened in the cluster.",
     "");
 
-static Gauge PendingActors("pending_actors", "Number of pending actors in GCS server.",
-                           "actors");
-
+/// Resources
 static Histogram OutboundHeartbeatSizeKB("outbound_heartbeat_size_kb",
                                          "Outbound heartbeat payload size", "kb",
                                          {10, 50, 100, 1000, 10000, 100000});
@@ -167,3 +219,12 @@ static Histogram OutboundHeartbeatSizeKB("outbound_heartbeat_size_kb",
 static Histogram GcsUpdateResourceUsageTime(
     "gcs_update_resource_usage_time", "The average RTT of a UpdateResourceUsage RPC.",
     "ms", {1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000}, {CustomKey});
+
+/// Testing
+static Gauge LiveActors("live_actors", "Number of live actors.", "actors");
+static Gauge RestartingActors("restarting_actors", "Number of restarting actors.",
+                              "actors");
+
+}  // namespace stats
+
+}  // namespace ray

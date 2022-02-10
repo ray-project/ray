@@ -7,8 +7,14 @@ from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING, Union
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, \
-    PartialTrainerConfigDict, TensorStructType, TensorType
+from ray.rllib.utils.typing import (
+    LocalOptimizer,
+    ModelGradients,
+    PartialTrainerConfigDict,
+    SpaceStruct,
+    TensorStructType,
+    TensorType,
+)
 
 if TYPE_CHECKING:
     from ray.rllib.policy.tf_policy import TFPolicy
@@ -58,6 +64,103 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     return tf.maximum(-1.0, 1 - (diff_var / y_var))
 
 
+def flatten_inputs_to_1d_tensor(
+    inputs: TensorStructType,
+    spaces_struct: Optional[SpaceStruct] = None,
+    time_axis: bool = False,
+) -> TensorType:
+    """Flattens arbitrary input structs according to the given spaces struct.
+
+    Returns a single 1D tensor resulting from the different input
+    components' values.
+
+    Thereby:
+    - Boxes (any shape) get flattened to (B, [T]?, -1). Note that image boxes
+    are not treated differently from other types of Boxes and get
+    flattened as well.
+    - Discrete (int) values are one-hot'd, e.g. a batch of [1, 0, 3] (B=3 with
+    Discrete(4) space) results in [[0, 1, 0, 0], [1, 0, 0, 0], [0, 0, 0, 1]].
+    - MultiDiscrete values are multi-one-hot'd, e.g. a batch of
+    [[0, 2], [1, 4]] (B=2 with MultiDiscrete([2, 5]) space) results in
+    [[1, 0,  0, 0, 1, 0, 0], [0, 1,  0, 0, 0, 0, 1]].
+
+    Args:
+        inputs: The inputs to be flattened.
+        spaces_struct: The structure of the spaces that behind the input
+        time_axis: Whether all inputs have a time-axis (after the batch axis).
+            If True, will keep not only the batch axis (0th), but the time axis
+            (1st) as-is and flatten everything from the 2nd axis up.
+
+    Returns:
+        A single 1D tensor resulting from concatenating all
+        flattened/one-hot'd input components. Depending on the time_axis flag,
+        the shape is (B, n) or (B, T, n).
+
+    Examples:
+        >>> # B=2
+        >>> out = flatten_inputs_to_1d_tensor(
+        ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
+        ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
+        ... )
+        >>> print(out)
+        ... [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
+
+        >>> # B=2; T=2
+        >>> out = flatten_inputs_to_1d_tensor(
+        ...     ([[1, 0], [0, 1]],
+        ...      [[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]]),
+        ...     spaces_struct=tuple([Discrete(2), Box(shape=(2, ))]),
+        ...     time_axis=True
+        ... )
+        >>> print(out)
+        ... [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],
+        ...  [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
+    """
+
+    flat_inputs = tree.flatten(inputs)
+    flat_spaces = (
+        tree.flatten(spaces_struct)
+        if spaces_struct is not None
+        else [None] * len(flat_inputs)
+    )
+
+    B = None
+    T = None
+    out = []
+    for input_, space in zip(flat_inputs, flat_spaces):
+        input_ = tf.convert_to_tensor(input_)
+        shape = tf.shape(input_)
+        # Store batch and (if applicable) time dimension.
+        if B is None:
+            B = shape[0]
+            if time_axis:
+                T = shape[1]
+
+        # One-hot encoding.
+        if isinstance(space, Discrete):
+            if time_axis:
+                input_ = tf.reshape(input_, [B * T])
+            out.append(tf.cast(one_hot(input_, space), tf.float32))
+        elif isinstance(space, MultiDiscrete):
+            if time_axis:
+                input_ = tf.reshape(input_, [B * T, -1])
+            out.append(tf.cast(one_hot(input_, space), tf.float32))
+        # Flatten.
+        else:
+            if time_axis:
+                input_ = tf.reshape(input_, [B * T, -1])
+            else:
+                input_ = tf.reshape(input_, [B, -1])
+            out.append(tf.cast(input_, tf.float32))
+
+    merged = tf.concat(out, axis=-1)
+    # Restore the time-dimension, if applicable.
+    if time_axis:
+        merged = tf.reshape(merged, [B, T, -1])
+
+    return merged
+
+
 def get_gpu_devices() -> List[str]:
     """Returns a list of GPU device names, e.g. ["/gpu:0", "/gpu:1"].
 
@@ -68,6 +171,7 @@ def get_gpu_devices() -> List[str]:
     """
     if tfv == 1:
         from tensorflow.python.client import device_lib
+
         devices = device_lib.list_local_devices()
     else:
         try:
@@ -79,12 +183,14 @@ def get_gpu_devices() -> List[str]:
     return [d.name for d in devices if "GPU" in d.device_type]
 
 
-def get_placeholder(*,
-                    space: Optional[gym.Space] = None,
-                    value: Optional[Any] = None,
-                    name: Optional[str] = None,
-                    time_axis: bool = False,
-                    flatten: bool = True) -> "tf1.placeholder":
+def get_placeholder(
+    *,
+    space: Optional[gym.Space] = None,
+    value: Optional[Any] = None,
+    name: Optional[str] = None,
+    time_axis: bool = False,
+    flatten: bool = True
+) -> "tf1.placeholder":
     """Returns a tf1.placeholder object given optional hints, such as a space.
 
     Note that the returned placeholder will always have a leading batch
@@ -119,7 +225,7 @@ def get_placeholder(*,
                     get_base_struct_from_space(space),
                 )
         return tf1.placeholder(
-            shape=(None, ) + ((None, ) if time_axis else ()) + space.shape,
+            shape=(None,) + ((None,) if time_axis else ()) + space.shape,
             dtype=tf.float32 if space.dtype == np.float64 else space.dtype,
             name=name,
         )
@@ -127,17 +233,17 @@ def get_placeholder(*,
         assert value is not None
         shape = value.shape[1:]
         return tf1.placeholder(
-            shape=(None, ) + ((None, )
-                              if time_axis else ()) + (shape if isinstance(
-                                  shape, tuple) else tuple(shape.as_list())),
+            shape=(None,)
+            + ((None,) if time_axis else ())
+            + (shape if isinstance(shape, tuple) else tuple(shape.as_list())),
             dtype=tf.float32 if value.dtype == np.float64 else value.dtype,
             name=name,
         )
 
 
 def get_tf_eager_cls_if_necessary(
-        orig_cls: Type["TFPolicy"],
-        config: PartialTrainerConfigDict) -> Type["TFPolicy"]:
+    orig_cls: Type["TFPolicy"], config: PartialTrainerConfigDict
+) -> Type["TFPolicy"]:
     """Returns the corresponding tf-eager class for a given TFPolicy class.
 
     Args:
@@ -163,12 +269,15 @@ def get_tf_eager_cls_if_necessary(
                 cls = orig_cls.as_eager()
                 if config.get("eager_tracing"):
                     cls = cls.with_tracing()
-            # Could be some other type of policy.
+            # Could be some other type of policy or already
+            # eager-ized.
             elif not issubclass(orig_cls, TFPolicy):
                 pass
             else:
-                raise ValueError("This policy does not support eager "
-                                 "execution: {}".format(orig_cls))
+                raise ValueError(
+                    "This policy does not support eager "
+                    "execution: {}".format(orig_cls)
+                )
     return cls
 
 
@@ -196,8 +305,9 @@ def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
     )
 
 
-def make_tf_callable(session_or_none: Optional["tf1.Session"],
-                     dynamic_shape: bool = False) -> Callable:
+def make_tf_callable(
+    session_or_none: Optional["tf1.Session"], dynamic_shape: bool = False
+) -> Callable:
     """Returns a function that can be executed in either graph or eager mode.
 
     The function must take only positional args.
@@ -248,7 +358,7 @@ def make_tf_callable(session_or_none: Optional["tf1.Session"],
                         def _create_placeholders(path, value):
                             if dynamic_shape:
                                 if len(value.shape) > 0:
-                                    shape = (None, ) + value.shape[1:]
+                                    shape = (None,) + value.shape[1:]
                                 else:
                                     shape = ()
                             else:
@@ -260,20 +370,24 @@ def make_tf_callable(session_or_none: Optional["tf1.Session"],
                             )
 
                         placeholders = tree.map_structure_with_path(
-                            _create_placeholders, args)
+                            _create_placeholders, args
+                        )
                         for ph in tree.flatten(placeholders):
                             args_placeholders.append(ph)
 
                         placeholders = tree.map_structure_with_path(
-                            _create_placeholders, kwargs)
+                            _create_placeholders, kwargs
+                        )
                         for k, ph in placeholders.items():
                             kwargs_placeholders[k] = ph
 
-                        symbolic_out[0] = fn(*args_placeholders,
-                                             **kwargs_placeholders)
+                        symbolic_out[0] = fn(*args_placeholders, **kwargs_placeholders)
                 feed_dict = dict(zip(args_placeholders, tree.flatten(args)))
-                tree.map_structure(lambda ph, v: feed_dict.__setitem__(ph, v),
-                                   kwargs_placeholders, kwargs)
+                tree.map_structure(
+                    lambda ph, v: feed_dict.__setitem__(ph, v),
+                    kwargs_placeholders,
+                    kwargs,
+                )
                 ret = session_or_none.run(symbolic_out[0], feed_dict)
                 return ret
 
@@ -286,10 +400,10 @@ def make_tf_callable(session_or_none: Optional["tf1.Session"],
 
 
 def minimize_and_clip(
-        optimizer: LocalOptimizer,
-        objective: TensorType,
-        var_list: List["tf.Variable"],
-        clip_val: float = 10.0,
+    optimizer: LocalOptimizer,
+    objective: TensorType,
+    var_list: List["tf.Variable"],
+    clip_val: float = 10.0,
 ) -> ModelGradients:
     """Computes, then clips gradients using objective, optimizer and var list.
 
@@ -314,14 +428,15 @@ def minimize_and_clip(
 
     if tf.executing_eagerly():
         tape = optimizer.tape
-        grads_and_vars = list(
-            zip(list(tape.gradient(objective, var_list)), var_list))
+        grads_and_vars = list(zip(list(tape.gradient(objective, var_list)), var_list))
     else:
-        grads_and_vars = optimizer.compute_gradients(
-            objective, var_list=var_list)
+        grads_and_vars = optimizer.compute_gradients(objective, var_list=var_list)
 
-    return [(tf.clip_by_norm(g, clip_val) if clip_val is not None else g, v)
-            for (g, v) in grads_and_vars if g is not None]
+    return [
+        (tf.clip_by_norm(g, clip_val) if clip_val is not None else g, v)
+        for (g, v) in grads_and_vars
+        if g is not None
+    ]
 
 
 def one_hot(x: TensorType, space: gym.Space) -> TensorType:
@@ -361,13 +476,13 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
                 tf.one_hot(x[:, i], n, dtype=tf.float32)
                 for i, n in enumerate(space.nvec)
             ],
-            axis=-1)
+            axis=-1,
+        )
     else:
         raise ValueError("Unsupported space for `one_hot`: {}".format(space))
 
 
-def reduce_mean_ignore_inf(x: TensorType,
-                           axis: Optional[int] = None) -> TensorType:
+def reduce_mean_ignore_inf(x: TensorType, axis: Optional[int] = None) -> TensorType:
     """Same as tf.reduce_mean() but ignores -inf values.
 
     Args:
@@ -379,12 +494,14 @@ def reduce_mean_ignore_inf(x: TensorType,
     """
     mask = tf.not_equal(x, tf.float32.min)
     x_zeroed = tf.where(mask, x, tf.zeros_like(x))
-    return (tf.math.reduce_sum(x_zeroed, axis) / tf.math.reduce_sum(
-        tf.cast(mask, tf.float32), axis))
+    return tf.math.reduce_sum(x_zeroed, axis) / tf.math.reduce_sum(
+        tf.cast(mask, tf.float32), axis
+    )
 
 
-def scope_vars(scope: Union[str, "tf1.VariableScope"],
-               trainable_only: bool = False) -> List["tf.Variable"]:
+def scope_vars(
+    scope: Union[str, "tf1.VariableScope"], trainable_only: bool = False
+) -> List["tf.Variable"]:
     """Get variables inside a given scope.
 
     Args:
@@ -397,8 +514,10 @@ def scope_vars(scope: Union[str, "tf1.VariableScope"],
     """
     return tf1.get_collection(
         tf1.GraphKeys.TRAINABLE_VARIABLES
-        if trainable_only else tf1.GraphKeys.VARIABLES,
-        scope=scope if isinstance(scope, str) else scope.name)
+        if trainable_only
+        else tf1.GraphKeys.VARIABLES,
+        scope=scope if isinstance(scope, str) else scope.name,
+    )
 
 
 def zero_logps_from_actions(actions: TensorStructType) -> TensorType:

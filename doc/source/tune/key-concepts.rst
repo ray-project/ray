@@ -24,49 +24,74 @@ To start, let's try to maximize this objective function:
 
 To use Tune, you will need to wrap this function in a lightweight :ref:`trainable API <trainable-docs>`. You can either use a :ref:`function-based version <tune-function-api>` or a :ref:`class-based version <tune-class-api>`.
 
-.. tabs::
-    .. group-tab:: Function API
+.. tabbed:: Function API
 
-        Here's an example of specifying the objective function using :ref:`the function-based Trainable API <tune-function-api>`:
+    Here's an example of specifying the objective function using :ref:`the function-based Trainable API <tune-function-api>`:
 
-        .. code-block:: python
+    .. code-block:: python
 
-            def trainable(config):
-                # config (dict): A dict of hyperparameters.
+        def trainable(config):
+            # config (dict): A dict of hyperparameters.
 
-                for x in range(20):
-                    score = objective(x, config["a"], config["b"])
+            for x in range(20):
+                score = objective(x, config["a"], config["b"])
 
-                    tune.report(score=score)  # This sends the score to Tune.
+                tune.report(score=score)  # This sends the score to Tune.
 
-    .. group-tab:: Class API
+.. tabbed:: Class API
 
-        Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
+    Here's an example of specifying the objective function using the :ref:`class-based API <tune-class-api>`:
 
-        .. code-block:: python
+    .. code-block:: python
 
-            from ray import tune
+        from ray import tune
 
-            class Trainable(tune.Trainable):
-                def setup(self, config):
-                    # config (dict): A dict of hyperparameters
-                    self.x = 0
-                    self.a = config["a"]
-                    self.b = config["b"]
+        class Trainable(tune.Trainable):
+            def setup(self, config):
+                # config (dict): A dict of hyperparameters
+                self.x = 0
+                self.a = config["a"]
+                self.b = config["b"]
 
-                def step(self):  # This is called iteratively.
-                    score = objective(self.x, self.a, self.b)
-                    self.x += 1
-                    return {"score": score}
+            def step(self):  # This is called iteratively.
+                score = objective(self.x, self.a, self.b)
+                self.x += 1
+                return {"score": score}
 
-        .. tip:: Do not use ``tune.report`` within a ``Trainable`` class.
+    .. tip:: Do not use ``tune.report`` within a ``Trainable`` class.
 
 See the documentation: :ref:`trainable-docs` and :ref:`examples <tune-general-examples>`.
+
+Hyperparameters
+---------------
+
+What are *hyperparameters?* And how are they different from *model parameters*?
+
+In supervised learning, we train a model with labeled data so the model can properly identify new data values.
+Everything about the model is defined by a set of parameters, such as the weights in a linear regression. These
+are *model parameters*; they are learned during training.
+
+.. image:: /images/hyper-model-parameters.png
+
+In contrast, the *hyperparameters* define structural details about the kind of model itself, like whether or not
+we are using a linear regression or classification, what architecture is best for a neural network, how many layers, what kind
+of filters, etc. They are defined before training, not learned.
+
+.. image:: /images/hyper-network-params.png
+
+Other quantities considered *hyperparameters* include learning rates, discount rates, etc. If we want our training
+process and resulting model to work well, we first need to determine the optimal or near-optimal set of *hyperparameters*.
+
+How do we determine the optimal *hyperparameters*? The most direct approach is to perform a loop where we pick
+a candidate set of values from some reasonably inclusive list of possible values, train a model, compare the results
+achieved with previous loop iterations, and pick the set that performed best. This process is called
+*Hyperparameter Tuning* or *Optimization* (HPO). And *hyperparameters* are specified over a configured and confined
+search space, collectively defined for each *hyperparameter* in a ``config`` dictionary.
 
 tune.run and Trials
 -------------------
 
-Use :ref:`tune.run <tune-run-ref>` to execute hyperparameter tuning. This function manages your experiment and provides many features such as :ref:`logging <tune-logging>`, :ref:`checkpointing <tune-checkpoint-syncing>`, and :ref:`early stopping <tune-stopping>`.
+Use :ref:`tune.run <tune-run-ref>` to execute hyperparameter tuning. This function manages your experiment and provides many features such as :ref:`logging <tune-logging>`, :ref:`checkpointing <tune-checkpoint-syncing>`, and :ref:`early stopping <tune-stopping-ref>`.
 
 .. code-block:: python
 
@@ -119,7 +144,7 @@ See more documentation: :ref:`tune-run-ref`.
 Search spaces
 -------------
 
-To optimize your hyperparameters, you have to define a *search space*.
+To optimize your *hyperparameters*, you have to define a *search space*.
 A search space defines valid values for your hyperparameters and can specify
 how these values are sampled (e.g. from a uniform distribution or a normal
 distribution).
@@ -254,7 +279,6 @@ What's Next?
 
 Now that you have a working understanding of Tune, check out:
 
-* :doc:`/tune/user-guide`: A comprehensive overview of Tune's features.
 * :ref:`tune-guides`: Tutorials for using Tune with your preferred machine learning library.
 * :doc:`/tune/examples/index`: End-to-end examples and templates for using Tune with your preferred machine learning library.
 * :ref:`tune-tutorial`: A simple tutorial that walks you through the process of setting up a Tune experiment.
@@ -263,4 +287,4 @@ Now that you have a working understanding of Tune, check out:
 Further Questions or Issues?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. include:: /_help.rst
+.. include:: /_includes/_help.rst

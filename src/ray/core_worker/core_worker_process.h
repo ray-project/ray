@@ -60,6 +60,21 @@ class CoreWorker;
 /// `num_workers` in `CoreWorkerOptions` is set to 1), all threads will be automatically
 /// associated to the only worker. Then no need to call `SetCurrentThreadWorkerId` in
 /// your own threads. Currently a Python worker process starts only 1 worker.
+///
+/// How does core worker process dealloation work?
+///
+/// For an individual core worker thread's shutdown process, please check core_worker.h.
+/// For the core worker process, it has 2 ways to properly shutdown the worker.
+///
+/// If it is a driver:
+///     If the core worker is initialized at a driver, ShutdownDriver must be called.
+///     before deallocating the core worker process.
+///
+/// If it is a worker:
+///    If the core worker is initialized at a worker, it is expected to be shutdown
+///    when the task execution loop is terminated from each core worker instance.
+///    Core worker ensures this by having a strong check there.
+///
 class CoreWorkerProcess {
  public:
   ///
@@ -97,6 +112,7 @@ class CoreWorkerProcess {
   ///
 
   /// Shutdown the driver completely at the process level.
+  /// It must be only used by drivers, not workers.
   static void Shutdown();
 
   ///
@@ -106,16 +122,7 @@ class CoreWorkerProcess {
   /// Start receiving and executing tasks.
   static void RunTaskExecutionLoop();
 
-  // The destructor is not to be used as a public API, but it's required by smart
-  // pointers.
-  ~CoreWorkerProcess();
-
  private:
-  /// Create an `CoreWorkerProcess` with proper options.
-  ///
-  /// \param[in] options The various initialization options.
-  CoreWorkerProcess(const CoreWorkerOptions &options);
-
   /// Check that the core worker environment is initialized for this process.
   ///
   /// \param[in] quick_exit If set to true, quick exit if uninitialized without
@@ -124,6 +131,16 @@ class CoreWorkerProcess {
   static void EnsureInitialized(bool quick_exit);
 
   static void HandleAtExit();
+};
+
+class CoreWorkerProcessImpl {
+ public:
+  /// Create an `CoreWorkerProcessImpl` with proper options.
+  ///
+  /// \param[in] options The various initialization options.
+  CoreWorkerProcessImpl(const CoreWorkerOptions &options);
+
+  ~CoreWorkerProcessImpl();
 
   void InitializeSystemConfig();
 
@@ -151,15 +168,29 @@ class CoreWorkerProcess {
   /// Get the `GlobalWorker` instance, if the number of workers is 1.
   std::shared_ptr<CoreWorker> GetGlobalWorker() LOCKS_EXCLUDED(mutex_);
 
+  /// Run worker execution loop.
+  void RunWorkerTaskExecutionLoop();
+
+  /// Shutdown the driver completely at the process level.
+  void ShutdownDriver();
+
+  /// Return the CoreWorker for current thread.
+  CoreWorker &GetCoreWorkerForCurrentThread();
+
+  /// Set the core worker associated with the current thread by worker ID.
+  /// Currently used by Java worker only.
+  void SetThreadLocalWorkerById(const WorkerID &worker_id);
+
+ private:
   /// The various options.
   const CoreWorkerOptions options_;
 
-  /// The core worker instance associated with the current thread.
-  /// Use weak_ptr here to avoid memory leak due to multi-threading.
-  static thread_local std::weak_ptr<CoreWorker> current_core_worker_;
-
   /// The only core worker instance, if the number of workers is 1.
   std::shared_ptr<CoreWorker> global_worker_ GUARDED_BY(mutex_);
+
+  /// The core worker instance associated with the current thread.
+  /// Use weak_ptr here to avoid memory leak due to multi-threading.
+  static thread_local std::weak_ptr<CoreWorker> thread_local_core_worker_;
 
   /// The worker ID of the global worker, if the number of workers is 1.
   const WorkerID global_worker_id_;

@@ -62,7 +62,7 @@ struct GcsServerMocker {
    public:
     /// WorkerLeaseInterface
     ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
-                             bool disconnect_worker) override {
+                             bool disconnect_worker, bool worker_exiting) override {
       if (disconnect_worker) {
         num_workers_disconnected++;
       } else {
@@ -77,17 +77,9 @@ struct GcsServerMocker {
 
     /// WorkerLeaseInterface
     void RequestWorkerLease(
-        const ray::TaskSpecification &resource_spec, bool grant_or_reject,
-        const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
-        const int64_t backlog_size = -1) override {
-      num_workers_requested += 1;
-      callbacks.push_back(callback);
-    }
-
-    void RequestWorkerLease(
         const rpc::TaskSpec &spec, bool grant_or_reject,
         const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
-        const int64_t backlog_size = -1) override {
+        const int64_t backlog_size, const bool is_selected_based_on_locality) override {
       num_workers_requested += 1;
       callbacks.push_back(callback);
     }
@@ -175,7 +167,7 @@ struct GcsServerMocker {
 
     /// ResourceReserveInterface
     void PrepareBundleResources(
-        const BundleSpecification &bundle_spec,
+        const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
         const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback)
         override {
       num_lease_requested += 1;
@@ -184,7 +176,7 @@ struct GcsServerMocker {
 
     /// ResourceReserveInterface
     void CommitBundleResources(
-        const BundleSpecification &bundle_spec,
+        const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
         const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback)
         override {
       num_commit_requested += 1;
