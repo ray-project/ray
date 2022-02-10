@@ -12,6 +12,9 @@ Defining Concurrency Groups
 
 You can define concurrency groups for asyncio actors using the ``concurrency_groups`` decorator argument:
 
+You can define concurrency groups for asyncio actors in Python and for Concurrent
+actors in Java.
+
 This defines two concurrency groups, "io" with max concurrency = 2 and
 "compute" with max concurrency = 4.  The methods ``f1`` and ``f2`` are
 placed in the "io" group, and the methods ``f3`` and ``f4`` are placed
@@ -20,6 +23,8 @@ concurrency group, which has a default concurrency of 1000 in Python and
 1 in Java.
 
 .. tabbed:: Python
+
+    You can define concurrency groups for asyncio actors using the ``concurrency_group`` decorator argument:
 
     .. code-block:: python
 
@@ -55,6 +60,8 @@ concurrency group, which has a default concurrency of 1000 in Python and
         a.f5.remote()  # executed in the default group.
 
 .. tabbed:: Java
+
+    You can define concurrency groups for concurrency actors using the API ``setConcurrencyGroups()`` argument:
 
     .. code-block:: java
 
@@ -128,7 +135,7 @@ The concurrency of the default group can be changed by setting the ``max_concurr
 
         actor = AsyncIOActor.options(max_concurrency=10).remote()
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
     The following ConcurrentActor has 2 concurrency groups: "io" and "default".
     The max concurrency of "io" is 2, and the max concurrency of "default" is 10.
