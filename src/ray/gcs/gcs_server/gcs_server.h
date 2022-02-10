@@ -250,6 +250,7 @@ class GcsServer {
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
+  NodeID node_id_;
 };
 
 }  // namespace gcs
