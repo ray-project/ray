@@ -7,7 +7,6 @@ See https://github.com/ray-project/ray/issues/3721.
 # WARNING: Any additional ID types defined in this file must be added to the
 # _ID_TYPES list at the bottom of this file.
 
-from concurrent.futures import Future
 import logging
 import os
 
@@ -275,8 +274,7 @@ cdef class WorkerID(UniqueID):
 cdef class ActorID(BaseID):
 
     def __init__(self, id):
-        check_id(id, CActorID.Size())
-        self.data = CActorID.FromBinary(<c_string>id)
+        self._set_id(id)
 
     @classmethod
     def of(cls, job_id, parent_task_id, parent_task_counter):
@@ -301,6 +299,10 @@ cdef class ActorID(BaseID):
     def size(self):
         return CActorID.Size()
 
+    def _set_id(self, id):
+        check_id(id, CActorID.Size())
+        self.data = CActorID.FromBinary(<c_string>id)
+
     @property
     def job_id(self):
         return JobID(self.data.JobId().Binary())
@@ -320,82 +322,6 @@ cdef class ActorID(BaseID):
     cdef CActorID native(self):
         return <CActorID>self.data
 
-
-cdef class ClientActorRef(ActorID):
-
-    def __init__(self, id: Union[bytes, concurrent.futures.Future]):
-        self._mutex = threading.Lock()
-        self._worker = client.ray.get_context().client_worker
-        if isinstance(id, bytes):
-            self._set_id(id)
-        elif isinstance(id, Future):
-            self._id_future = id
-        else:
-            raise TypeError("Unexpected type for id {}".format(id))
-
-    def __dealloc__(self):
-        # This function is necessary, since within `__dealloc__`, we are not
-        # supposed to do any python related operations. It's for C related
-        # resource cleanup.
-        # Besides, we can't use `__del__` here, since cython won't call this
-        # unless it's > 3.0.
-        def _connected():
-            try:
-                return client is not None and \
-                    self._worker is not None and self._worker.is_connected()
-            except Exception:
-                return False
-
-        if _connected():
-            try:
-                self._wait_for_id()
-            # cython would suppress this exception as well, but it tries to
-            # print out the exception which may crash. Log a simpler message
-            # instead.
-            except Exception:
-                logger.info(
-                    "Exception from actor creation is ignored in destructor. "
-                    "To receive this exception in application code, call "
-                    "a method on the actor reference before its destructor "
-                    "is run.")
-            if not self.data.IsNil():
-                self._worker.call_release(self.id)
-
-    def binary(self):
-        self._wait_for_id()
-        return self.data.Binary()
-
-    def hex(self):
-        self._wait_for_id()
-        return decode(self.data.Hex())
-
-    def is_nil(self):
-        self._wait_for_id()
-        return self.data.IsNil()
-
-    cdef size_t hash(self):
-        self._wait_for_id()
-        return self.data.Hash()
-
-    cdef CActorID native(self):
-        self._wait_for_id()
-        return <CActorID>self.data
-
-    @property
-    def id(self):
-        return self.binary()
-
-    cdef _set_id(self, id):
-        check_id(id, CActorID.Size())
-        self.data = CActorID.FromBinary(<c_string>id)
-        self._worker.call_retain(id)
-
-    cdef _wait_for_id(self, timeout=None):
-        if self._id_future:
-            with self._mutex:
-                if self._id_future:
-                    self._set_id(self._id_future.result(timeout=timeout))
-                    self._id_future = None
 
 cdef class FunctionID(UniqueID):
 

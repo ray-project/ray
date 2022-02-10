@@ -2,11 +2,14 @@
 """
 This file holds code for the Torch best-practices guide in the documentation.
 
+FIXME: We switched our code formatter from YAPF to Black. Check if we can enable code
+formatting on this module and update the paragraph below. See issue #21318.
+
 It ignores yapf because yapf doesn't allow comments right after code blocks,
 but we put comments right after code blocks to prevent large white spaces
 in the documentation.
 """
-# yapf: disable
+# fmt: off
 # __torch_model_start__
 import argparse
 
@@ -35,9 +38,9 @@ class Model(nn.Module):
 
 
 # __torch_model_end__
-# yapf: enable
+# fmt: on
 
-# yapf: disable
+# fmt: off
 # __torch_helper_start__
 from filelock import FileLock
 from torchvision import datasets, transforms
@@ -112,9 +115,9 @@ def dataset_creator(use_cuda, data_dir):
 
 
 # __torch_helper_end__
-# yapf: enable
+# fmt: on
 
-# yapf: disable
+# fmt: off
 # __torch_net_start__
 import torch.optim as optim
 
@@ -155,9 +158,9 @@ args = parser.parse_args()
 net = Network(data_dir=args.data_dir)
 net.train()
 # __torch_net_end__
-# yapf: enable
+# fmt: on
 
-# yapf: disable
+# fmt: off
 # __torch_ray_start__
 import ray
 
@@ -167,18 +170,18 @@ RemoteNetwork = ray.remote(Network)
 # Use the below instead of `ray.remote(network)` to leverage the GPU.
 # RemoteNetwork = ray.remote(num_gpus=1)(Network)
 # __torch_ray_end__
-# yapf: enable
+# fmt: on
 
-# yapf: disable
+# fmt: off
 # __torch_actor_start__
 NetworkActor = RemoteNetwork.remote()
 NetworkActor2 = RemoteNetwork.remote()
 
 ray.get([NetworkActor.train.remote(), NetworkActor2.train.remote()])
 # __torch_actor_end__
-# yapf: enable
+# fmt: on
 
-# yapf: disable
+# fmt: off
 # __weight_average_start__
 weights = ray.get(
     [NetworkActor.get_weights.remote(),
