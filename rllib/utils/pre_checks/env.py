@@ -458,6 +458,8 @@ def _check_if_element_multi_agent_dict(env, element, function_string, base_env=F
                 f" that are not the names of the agents in the env. "
                 f"\nAgent_ids in this MultiAgentDict: "
                 f"{list(element.keys())}\nAgent_ids in this env:"
-                f"{list(env.get_agent_ids())}"
+                f"{list(env.get_agent_ids())}. You likley need to add the private "
+                f"attribute `_agent_ids` to your env, which is a set containing the "
+                f"ids of agents supported by your env."
             )
         raise ValueError(error)

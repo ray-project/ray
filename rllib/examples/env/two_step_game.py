@@ -114,6 +114,8 @@ class TwoStepGameWithGroupedAgents(MultiAgentEnv):
         )
         self.observation_space = self.env.observation_space
         self.action_space = self.env.action_space
+        self._agent_ids = {"agents"}
+        self._skip_env_checking = True
 
     def reset(self):
         return self.env.reset()
