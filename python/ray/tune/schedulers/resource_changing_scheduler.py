@@ -423,7 +423,9 @@ class DistributeResources:
             base_bundles, added_bundles, increase_by, False
         )
 
-        return PlacementGroupFactory(new_bundles)
+        pgf = PlacementGroupFactory(new_bundles)
+        pgf._head_bundle_is_empty = base_trial_resource._head_bundle_is_empty
+        return pgf
 
 
 @PublicAPI(stability="beta")
