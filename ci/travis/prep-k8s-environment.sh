@@ -2,10 +2,13 @@
 
 set -ex
 
-./scripts/ci.sh install_go
+# Install kind
+wget https://github.com/kubernetes-sigs/kind/releases/download/v0.11.1/kind-linux-amd64
+chmod +x kind-linux-amd64
+mv ./kind-linux-amd64 ~/.local/bin
+kind --help
 
-GO111MODULE="on" go get sigs.k8s.io/kind@v0.11.1
-
+# Install kubectl
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
 chmod +x kubectl
 mkdir -p ~/.local/bin/kubectl
