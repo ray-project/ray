@@ -121,6 +121,14 @@ def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     # Stage 1: prepare inputs
     workflow_data = workflow.data
     inputs = workflow_data.inputs
+    # Here A is the outer workflow step, B & C are the inner steps.
+    # C is the output step for A, because C produces the output for A.
+    #
+    # @workflow.step
+    # def A():
+    #     b = B.step()
+    #     return C.step(b)
+    #
     # If the outer workflow step skips checkpointing, it would
     # update the checkpoint context of all inner steps except
     # the output step, marking them "detached" from the DAG.
@@ -128,6 +136,7 @@ def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     # completed, it replaces the output of the outer step.
     step_context = workflow_context.get_workflow_step_context()
     checkpoint_context = step_context.checkpoint_context.copy()
+    # "detached" could be defined recursively:
     # detached := already detached or the outer step skips checkpointing
     checkpoint_context.detached_from_dag = (
         checkpoint_context.detached_from_dag
@@ -135,7 +144,8 @@ def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     )
     # Apply checkpoint context to input steps. Since input steps
     # further apply them to their inputs, this would eventually
-    # apply to all steps except the output step.
+    # apply to all steps except the output step. This avoids
+    # detaching the output step.
     workflow_outputs = []
     with workflow_context.fork_workflow_step_context(
         outer_most_step_id=None,
