@@ -1,6 +1,6 @@
 import os
 import time
-from typing import Dict, Optional
+from typing import Optional, List
 
 from ray_release.anyscale_util import get_cluster_name
 from ray_release.cluster_manager.full import FullClusterManager
@@ -17,7 +17,8 @@ from ray_release.file_manager.remote_task import RemoteTaskFileManager
 from ray_release.file_manager.session_controller import \
     SessionControllerFileManager
 from ray_release.logger import logger
-from ray_release.util import deep_update
+from ray_release.reporter.reporter import Reporter
+from ray_release.result import Result
 
 type_str_to_command_runner = {
     "command": SDKRunner,
@@ -42,14 +43,19 @@ uploader_str_to_uploader = {"client": None, "s3": None, "command_runner": None}
 
 def run_release_test(test: Test,
                      anyscale_project: str,
-                     results: Dict,
+                     result: Result,
                      ray_wheels_url: str,
+                     reporters: Optional[List[Reporter]] = None,
+                     smoke_test: bool = False,
                      cluster_id: Optional[str] = None,
-                     no_terminate: bool = False) -> Dict:
-    results["_runtime"] = None
-    results["_session_url"] = None
-    results["_commit_url"] = ray_wheels_url
-    results["_stable"] = test.get("stable", True)
+                     no_terminate: bool = False) -> Result:
+    result.wheels_url = ray_wheels_url
+    result.stable = test.get("stable", True)
+
+    buildkite_url = os.getenv("BUILDKITE_BUILD_URL", "")
+    if buildkite_url:
+        buildkite_url += "#" + os.getenv("BUILDKITE_JOB_ID", "")
+    result.buildkite_url = buildkite_url
 
     working_dir = test["working_dir"]
 
@@ -107,9 +113,7 @@ def run_release_test(test: Test,
 
             cluster_manager.start_cluster(timeout=session_timeout)
 
-        # session_url only for legacy support
-        results["_session_url"] = cluster_manager.get_cluster_url()
-        results["_cluster_url"] = cluster_manager.get_cluster_url()
+        result.cluster_url = cluster_manager.get_cluster_url()
 
         # Upload files
         command_runner.prepare_remote_env()
@@ -123,10 +127,26 @@ def run_release_test(test: Test,
             command_runner.run_command(prepare_cmd, timeout=prepare_timeout)
 
         command = test["run"]["script"]
-        command_runner.run_command(command, timeout=command_timeout)
+        command_env = {}
+
+        if smoke_test:
+            command = f"{command} --smoke-test"
+            command_env["IS_SMOKE_TEST"] = "1"
+
+        command_runner.run_command(
+            command, env=command_env, timeout=command_timeout)
 
         command_results = command_runner.fetch_results()
-        deep_update(results, command_results)
+
+        # Postprocess result:
+        if "last_update" in command_results:
+            command_results["last_update_diff"] = time.time(
+            ) - command_results["last_update"]
+        if smoke_test:
+            command_results["smoke_test"] = True
+
+        result.results = command_results
+
     except Exception as e:
         exc = e
 
@@ -136,18 +156,26 @@ def run_release_test(test: Test,
         logger.error(f"Error fetching logs: {e}")
         last_logs = "No logs could be retrieved."
 
+    result.last_logs = last_logs
+
     if not no_terminate:
-        cluster_manager.terminate_cluster(wait=False)
+        try:
+            cluster_manager.terminate_cluster(wait=False)
+        except Exception as e:
+            logger.error(f"Could not terminate cluster: {e}")
 
     time_taken = time.monotonic() - start_time
-    results["_runtime"] = time_taken
+    result.runtime = time_taken
 
     os.chdir(old_wd)
+
+    for reporter in reporters:
+        try:
+            reporter.report_result(test, result)
+        except Exception as e:
+            logger.error(f"Error reporting results via {type(reporter)}: {e}")
 
     if exc:
         raise exc
 
-    print(results)
-    print(last_logs)
-
-    return results
+    return result

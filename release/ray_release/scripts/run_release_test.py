@@ -5,12 +5,16 @@ from typing import Optional
 
 import click
 
+from ray_release.aws import maybe_fetch_api_token
 from ray_release.config import (read_and_validate_release_test_collection,
                                 find_test, as_smoke_test,
                                 DEFAULT_WHEEL_WAIT_TIMEOUT)
 from ray_release.exception import ReleaseTestCLIError
 from ray_release.glue import run_release_test
 from ray_release.logger import logger
+from ray_release.reporter.legacy_rds import LegacyRDSReporter
+from ray_release.reporter.log import LogReporter
+from ray_release.result import Result
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
 
 
@@ -27,6 +31,12 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
     type=bool,
     is_flag=True,
     help="Finish quickly for testing")
+@click.option(
+    "--report",
+    default=False,
+    type=bool,
+    is_flag=True,
+    help="Report results to database")
 @click.option(
     "--ray-wheels",
     default=None,
@@ -52,6 +62,7 @@ def main(
         test_name: str,
         test_collection_file: Optional[str] = None,
         smoke_test: bool = False,
+        report: bool = False,
         ray_wheels: Optional[str] = None,
         cluster_id: Optional[str] = None,
         no_terminate: bool = False,
@@ -85,13 +96,20 @@ def main(
         raise ReleaseTestCLIError(
             "You have to set the ANYSCALE_PROJECT environment variable!")
 
-    results = {}
+    maybe_fetch_api_token()
+
+    result = Result()
+
+    reporters = [LogReporter()]
+    if report:
+        reporters.append(LegacyRDSReporter())
 
     run_release_test(
         test,
         anyscale_project=anyscale_project,
-        results=results,
+        result=result,
         ray_wheels_url=ray_wheels_url,
+        reporters=reporters,
         cluster_id=cluster_id,
         no_terminate=no_terminate)
 

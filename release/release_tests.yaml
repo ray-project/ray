@@ -3,6 +3,11 @@
   group: XGBoost
   working_dir: xgboost_tests
 
+  legacy:
+    test_name: train_small
+    test_suite: xgboost_tests
+
+
   frequency: nightly
   team: ml
 

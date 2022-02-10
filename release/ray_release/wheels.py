@@ -128,6 +128,8 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
         ray_version = get_ray_version(repo_url, commit)
 
         set_test_env_var("RAY_COMMIT", commit)
+        set_test_env_var("RAY_BRANCH", branch)
+        set_test_env_var("RAY_VERSION", ray_version)
 
         return get_ray_wheels_url(repo_url, branch, commit, ray_version)
 
@@ -185,5 +187,7 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
     wheels_url = get_ray_wheels_url(repo_url, branch, commit, ray_version)
 
     set_test_env_var("RAY_COMMIT", commit)
+    set_test_env_var("RAY_BRANCH", branch)
+    set_test_env_var("RAY_VERSION", ray_version)
 
     return wheels_url

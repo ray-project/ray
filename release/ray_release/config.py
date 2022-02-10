@@ -56,6 +56,11 @@ def set_test_env_var(key: str, value: str):
     test_env[key] = value
 
 
+def get_test_env_var(key: str, default: Optional[str] = None):
+    test_env = get_test_environment()
+    return test_env.get(key, default)
+
+
 def read_and_validate_release_test_collection(config_file: str) -> List[Test]:
     """Read and validate test collection from config file"""
     with open(config_file, "rt") as fp:
