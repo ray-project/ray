@@ -36,8 +36,7 @@ class BackendConfig:
         raise NotImplementedError
 
     @property
-    def default_accelerator_factory(self) -> Optional[Callable[[], Accelerator]]:
-        """A function that constructs the default accelerator for this backend."""
+    def accelerator_cls(self) -> Optional[Type[Accelerator]]:
         return None
 
 
@@ -391,7 +390,7 @@ class BackendExecutor:
             checkpoint,
             dataset_shard,
             encode_data_fn,
-            default_accelerator_factory,
+            accelerator_cls,
         ):
             try:
                 init_session(
@@ -403,7 +402,7 @@ class BackendExecutor:
                     checkpoint=checkpoint,
                     encode_data_fn=encode_data_fn,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
-                    default_accelerator_factory=default_accelerator_factory,
+                    accelerator_cls=accelerator_cls,
                 )
             except ValueError:
                 raise TrainBackendError(
@@ -431,7 +430,7 @@ class BackendExecutor:
                     dataset_shard=self.dataset_shards[index],
                     checkpoint=checkpoint,
                     encode_data_fn=self._backend.encode_data,
-                    default_accelerator_factory=self._backend_config.default_accelerator_factory,  # noqa: E501
+                    accelerator_cls=self._backend_config.accelerator_cls,
                 )
             )
 

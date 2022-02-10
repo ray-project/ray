@@ -4,7 +4,7 @@ import logging
 import os
 
 from datetime import timedelta
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any, Type
 
 import ray
 from ray.train.backend import BackendConfig, Backend, EncodedData
@@ -50,8 +50,7 @@ class TorchConfig(BackendConfig):
         return TorchBackend
 
     @property
-    def default_accelerator_factory(self) -> Optional[Callable[[], Accelerator]]:
-        """Returns a ``TorchAccelerator`` factory."""
+    def accelerator_cls(self) -> Type[Accelerator]:
         return TorchAccelerator
 
 
