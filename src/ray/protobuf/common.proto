@@ -186,6 +186,7 @@ enum ErrorType {
 message RayErrorInfo {
   oneof error {
     ActorDeathCause actor_died_error = 2;
+    RuntimeEnvFailedContext runtime_env_setup_failed_error = 3;
   }
 }
 
@@ -204,13 +205,13 @@ message ActorDeathCause {
   oneof context {
     // Indicates that this actor is marked as DEAD due to actor creation task failure.
     RayException creation_task_failure_context = 1;
-    ActorDeathRuntimeEnvFailedContext runtime_env_failed_context = 2;
+    RuntimeEnvFailedContext runtime_env_failed_context = 2;
     ActorDiedErrorContext actor_died_error_context = 3;
   }
 }
 // ---Actor death contexts start----
 // Indicates that this actor is marked as DEAD due to runtime environment setup failure.
-message ActorDeathRuntimeEnvFailedContext {
+message RuntimeEnvFailedContext {
   // TODO(sang,lixin) Get this error message from agent.
   string error_message = 1;
 }
@@ -237,8 +238,7 @@ message ActorDiedErrorContext {
 // ---Actor death contexts end----
 
 /// The task specification encapsulates all immutable information about the
-/// task. These fields are determined at submission time, converse to the
-/// `TaskExecutionSpec` may change at execution time.
+/// task.
 message TaskSpec {
   // Type of this task.
   TaskType type = 1;
@@ -432,20 +432,9 @@ message ActorTaskSpec {
   bytes previous_actor_task_dummy_object_id = 7;
 }
 
-// The task execution specification encapsulates all mutable information about
-// the task. These fields may change at execution time, converse to the
-// `TaskSpec` is determined at submission time.
-message TaskExecutionSpec {
-  // The last time this task was received for scheduling.
-  double last_timestamp = 1;
-  // The number of times this task was spilled back by raylets.
-  uint64 num_forwards = 2;
-}
-
-// Represents a task, including task spec, and task execution spec.
+// Represents a task, including task spec.
 message Task {
   TaskSpec task_spec = 1;
-  TaskExecutionSpec task_execution_spec = 2;
 }
 
 // Represents a resource id.

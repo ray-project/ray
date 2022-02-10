@@ -14,9 +14,8 @@ import ray
 from ray.exceptions import RuntimeEnvSetupError
 import ray.ray_constants as ray_constants
 from ray.actor import ActorHandle
+from ray.job_submission import JobStatus, JobStatusInfo
 from ray.dashboard.modules.job.common import (
-    JobStatus,
-    JobStatusInfo,
     JobStatusStorageClient,
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
@@ -115,11 +114,8 @@ class JobSupervisor:
         # fire and forget call from outer job manager to this actor
         self._stop_event = asyncio.Event()
 
-    def ready(self):
-        """Dummy object ref. Return of this function represents job supervisor
-        actor stated successfully with runtime_env configured, and is ready to
-        move on to running state.
-        """
+    def ping(self):
+        """Used to check the health of the actor."""
         pass
 
     def _exec_entrypoint(self, logs_path: str) -> subprocess.Popen:
@@ -193,8 +189,10 @@ class JobSupervisor:
             variables.
         3) Handle concurrent events of driver execution and
         """
-        cur_status = self._get_status()
-        assert cur_status.status == JobStatus.PENDING, "Run should only be called once."
+        curr_status = self._status_client.get_status(self._job_id)
+        assert (
+            curr_status.status == JobStatus.PENDING
+        ), "Run should only be called once."
 
         if _start_signal_actor:
             # Block in PENDING state until start signal received.
@@ -210,13 +208,22 @@ class JobSupervisor:
                     "metadata": self._metadata,
                 }
             )
-            # Set RAY_ADDRESS to local Ray address, if it is not set.
+            # Always set RAY_ADDRESS as find_bootstrap_address address for
+            # job submission. In case of local development, prevent user from
+            # re-using http://{address}:{dashboard_port} to interact with
+            # jobs SDK.
+            # TODO:(mwtian) Check why "auto" does not work in entrypoint script
             os.environ[
                 ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE
-            ] = ray._private.services.get_ray_address_from_environment()
+            ] = ray._private.services.find_bootstrap_address().pop()
+
             # Set PYTHONUNBUFFERED=1 to stream logs during the job instead of
             # only streaming them upon completion of the job.
             os.environ["PYTHONUNBUFFERED"] = "1"
+            logger.info(
+                "Submitting job with RAY_ADDRESS = "
+                f"{os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
+            )
             log_path = self._log_client.get_log_file_path(self._job_id)
             child_process = self._exec_entrypoint(log_path)
 
@@ -260,9 +267,6 @@ class JobSupervisor:
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
 
-    def _get_status(self) -> Optional[JobStatusInfo]:
-        return self._status_client.get_status(self._job_id)
-
     def stop(self):
         """Set step_event and let run() handle the rest in its asyncio.wait()."""
         self._stop_event.set()
@@ -279,17 +283,91 @@ class JobManager:
     # Time that we will sleep while tailing logs if no new log line is
     # available.
     LOG_TAIL_SLEEP_S = 1
+    JOB_MONITOR_LOOP_PERIOD_S = 1
 
     def __init__(self):
         self._status_client = JobStatusStorageClient()
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
 
+        self._recover_running_jobs()
+
+    def _recover_running_jobs(self):
+        """Recovers all running jobs from the status client.
+
+        For each job, we will spawn a coroutine to monitor it.
+        Each will be added to self._running_jobs and reconciled.
+        """
+        all_jobs = self._status_client.get_all_jobs()
+        for job_id, status_info in all_jobs.items():
+            if not status_info.status.is_terminal():
+                create_task(self._monitor_job(job_id))
+
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
             return ray.get_actor(self.JOB_ACTOR_NAME.format(job_id=job_id))
         except ValueError:  # Ray returns ValueError for nonexistent actor.
             return None
+
+    async def _monitor_job(
+        self, job_id: str, job_supervisor: Optional[ActorHandle] = None
+    ):
+        """Monitors the specified job until it enters a terminal state.
+
+        This is necessary because we need to handle the case where the
+        JobSupervisor dies unexpectedly.
+        """
+        is_alive = True
+        if job_supervisor is None:
+            job_supervisor = self._get_actor_for_job(job_id)
+
+            if job_supervisor is None:
+                logger.error(f"Failed to get job supervisor for job {job_id}.")
+                self._status_client.put_status(
+                    job_id,
+                    JobStatusInfo(
+                        status=JobStatus.FAILED,
+                        message=(
+                            "Unexpected error occurred: Failed to get job supervisor."
+                        ),
+                    ),
+                )
+                is_alive = False
+
+        while is_alive:
+            try:
+                await job_supervisor.ping.remote()
+                await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
+            except Exception as e:
+                is_alive = False
+                if self._status_client.get_status(job_id).status.is_terminal():
+                    # If the job is already in a terminal state, then the actor
+                    # exiting is expected.
+                    pass
+                elif isinstance(e, RuntimeEnvSetupError):
+                    logger.info(f"Failed to set up runtime_env for job {job_id}.")
+                    self._status_client.put_status(
+                        job_id,
+                        JobStatusInfo(
+                            status=JobStatus.FAILED,
+                            message=(f"runtime_env setup failed: {e}"),
+                        ),
+                    )
+                else:
+                    logger.warning(
+                        f"Job supervisor for job {job_id} failed unexpectedly: {e}."
+                    )
+                    self._status_client.put_status(
+                        job_id,
+                        JobStatusInfo(
+                            status=JobStatus.FAILED,
+                            message=f"Unexpected error occurred: {e}",
+                        ),
+                    )
+
+        # Kill the actor defensively to avoid leaking actors in unexpected error cases.
+        if job_supervisor is not None:
+            ray.kill(job_supervisor, no_restart=True)
 
     def _get_current_node_resource_key(self) -> str:
         """Get the Ray resource key for current node.
@@ -317,26 +395,6 @@ class JobManager:
         """
         if result is None:
             return
-        elif isinstance(result, RuntimeEnvSetupError):
-            logger.info(f"Failed to set up runtime_env for job {job_id}.")
-            self._status_client.put_status(
-                job_id,
-                JobStatusInfo(
-                    status=JobStatus.FAILED,
-                    message=(f"runtime_env setup failed: {result}"),
-                ),
-            )
-        elif isinstance(result, Exception):
-            logger.error(f"Failed to start supervisor for job {job_id}: {result}.")
-            self._status_client.put_status(
-                job_id,
-                JobStatusInfo(
-                    status=JobStatus.FAILED,
-                    message=f"Error occurred while starting the job: {result}",
-                ),
-            )
-        else:
-            assert False, "This should not be reached."
 
     def submit_job(
         self,
@@ -385,9 +443,9 @@ class JobManager:
 
         # Wait for the actor to start up asynchronously so this call always
         # returns immediately and we can catch errors with the actor starting
-        # up. We may want to put this in an actor instead in the future.
+        # up.
         try:
-            actor = self._supervisor_actor_cls.options(
+            supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=self.JOB_ACTOR_NAME.format(job_id=job_id),
                 num_cpus=0,
@@ -398,26 +456,26 @@ class JobManager:
                 },
                 runtime_env=runtime_env,
             ).remote(job_id, entrypoint, metadata or {})
-            actor.run.remote(_start_signal_actor=_start_signal_actor)
+            supervisor.run.remote(_start_signal_actor=_start_signal_actor)
 
-            def callback(result: Optional[Exception]):
-                return self._handle_supervisor_startup(job_id, result)
-
-            actor.ready.remote()._on_completed(callback)
+            # Monitor the job in the background so we can detect errors without
+            # requiring a client to poll.
+            create_task(self._monitor_job(job_id, job_supervisor=supervisor))
         except Exception as e:
-            self._handle_supervisor_startup(job_id, e)
+            self._status_client.put_status(
+                job_id,
+                JobStatusInfo(
+                    status=JobStatus.FAILED,
+                    message=f"Failed to start job supervisor: {e}.",
+                ),
+            )
 
         return job_id
 
     def stop_job(self, job_id) -> bool:
-        """Request job to exit, fire and forget.
+        """Request a job to exit, fire and forget.
 
-        Args:
-            job_id: ID of the job.
-        Returns:
-            stopped:
-                True if there's running job
-                False if no running job found
+        Returns whether or not the job was running.
         """
         job_supervisor_actor = self._get_actor_for_job(job_id)
         if job_supervisor_actor is not None:
@@ -429,35 +487,15 @@ class JobManager:
             return False
 
     def get_job_status(self, job_id: str) -> Optional[JobStatus]:
-        """Get latest status of a job. If job supervisor actor is no longer
-        alive, it will also attempt to make adjustments needed to bring job
-        to correct terminiation state.
-
-        All job status is stored and read only from GCS.
-
-        Args:
-            job_id: ID of the job.
-        Returns:
-            job_status: Latest known job status
-        """
-        job_supervisor_actor = self._get_actor_for_job(job_id)
-        if job_supervisor_actor is None:
-            # Job actor either exited or failed, we need to ensure never
-            # left job in non-terminal status in case actor failed without
-            # updating GCS with latest status.
-            last_status = self._status_client.get_status(job_id)
-            if last_status and last_status.status in {
-                JobStatus.PENDING,
-                JobStatus.RUNNING,
-            }:
-                self._status_client.put_status(job_id, JobStatus.FAILED)
-
+        """Get latest status of a job."""
         return self._status_client.get_status(job_id)
 
     def get_job_logs(self, job_id: str) -> str:
+        """Get all logs produced by a job."""
         return self._log_client.get_logs(job_id)
 
     async def tail_job_logs(self, job_id: str) -> Iterator[str]:
+        """Return an iterator following the logs of a job."""
         if self.get_job_status(job_id) is None:
             raise RuntimeError(f"Job '{job_id}' does not exist.")
 
