@@ -591,7 +591,7 @@ def start(
     # Initialize ray if needed.
     ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
-        ray.init(namespace=_namespace if namespace is not None else "serve")
+        ray.init(namespace=_namespace if _namespace is not None else "serve")
 
     # Allow manually overriding the namespace.
     if _namespace is not None:
@@ -600,7 +600,7 @@ def start(
         controller_namespace = _get_controller_namespace(detached)
 
     try:
-        client = _get_global_client(namespace=_namespace)
+        client = _get_global_client(namespace=controller_namespace)
         logger.info(
             "Connecting to existing Serve instance in namespace "
             f"'{controller_namespace}'."
@@ -623,7 +623,7 @@ def start(
         http_options = HTTPOptions()
 
     controller = ServeController.options(
-        num_cpus=(1 if dedicated_cpu else 0),
+        num_cpus=1 if dedicated_cpu else 0,
         name=controller_name,
         lifetime="detached" if detached else None,
         max_restarts=-1,

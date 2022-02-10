@@ -282,8 +282,6 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
                         raise e from None
 
                 if connect_to_serve:
-                    # TODO(edoakes): this is a bit hacky, 
-                    # figure out what exactly we want to do here.
                     serve.start(detached=True, _namespace="serve")
 
                 return await f(self, *args, **kwargs)
