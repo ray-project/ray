@@ -15,11 +15,14 @@ if __name__ == "__main__":
 
     config = {
         "env": ParametricItemRecoEnv,
+        "env_config": {
+            "num_candidates": 500,
+        },
     }
 
     # Actual training_iterations will be 10 * timesteps_per_iteration
     # (100 by default) = 2,000
-    training_iterations = 10
+    training_iterations = 50
 
     print("Running training for %s time steps" % training_iterations)
 
@@ -28,7 +31,7 @@ if __name__ == "__main__":
         "BanditLinUCB",
         config=config,
         stop={"training_iteration": training_iterations},
-        num_samples=2,
+        num_samples=4,
         checkpoint_at_end=False,
     )
 

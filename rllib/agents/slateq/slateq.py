@@ -55,7 +55,7 @@ DEFAULT_CONFIG = with_common_config({
     "hiddens": [256, 64, 16],
 
     # Set batch_mode.
-    "batch_mode": "complete_episodes",
+    "batch_mode": "truncate_episodes",
 
     # === Deep Learning Framework Settings ===
     # Currently, only PyTorch is supported
@@ -116,7 +116,7 @@ DEFAULT_CONFIG = with_common_config({
     "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
-    "rollout_fragment_length": 1000,
+    "rollout_fragment_length": 4,
     # Size of a batch sampled from replay buffer for training. Note that
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.

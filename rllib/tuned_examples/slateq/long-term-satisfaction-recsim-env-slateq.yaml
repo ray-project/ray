@@ -16,7 +16,7 @@ long-term-satisfaction-recsim-env-slateq:
         # RLlib/RecSim wrapper specific settings:
         env_config:
             config:
-                # Each step, sample 100 documents using the env-internal
+                # Each step, sample `num_candidates` documents using the env-internal
                 # document sampler model (a logic that creates n documents to select
                 # the slate from).
                 resample_documents: true
@@ -37,8 +37,6 @@ long-term-satisfaction-recsim-env-slateq:
 
         lr_choice_model: 0.00001
         lr_q_model:      0.00003
-        rollout_fragment_length: 4
-        batch_mode: truncate_episodes
 
         target_network_update_freq: 800
         tau: 1.0

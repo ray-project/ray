@@ -194,7 +194,7 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
             if policy_id not in trainable_policies:
                 continue
 
-            logger.info(f"\t{policy_id} win-rate={win_rate} -> ", end="")
+            logger.info(f"\t{policy_id} win-rate={win_rate} -> ")
 
             # If win rate is good enough -> Snapshot current policy and decide,
             # whether to freeze the new snapshot or not.
