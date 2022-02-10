@@ -183,6 +183,19 @@ test_python() {
   fi
 }
 
+test_post_wheel_build() {
+  bazel test --config=ci "$(./scripts/bazel_export_options)" \
+      --test_tag_filters=post_wheel_build \
+      --test_env=CONDA_EXE \
+      --test_env=CONDA_PYTHON_EXE \
+      --test_env=CONDA_SHLVL \
+      --test_env=CONDA_PREFIX \
+      --test_env=CONDA_DEFAULT_ENV \
+      --test_env=CI \
+      --test_env=RAY_CI_POST_WHEEL_TESTS=True \
+      python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/... doc/...
+}
+
 # For running large Python tests on Linux and MacOS.
 test_large() {
   bazel test --config=ci "$(./scripts/bazel_export_options)" --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
