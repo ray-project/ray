@@ -2,7 +2,6 @@ import os
 import pytest
 import sys
 
-
 from ray._private.runtime_env.pip import PipProcessor
 import ray
 
