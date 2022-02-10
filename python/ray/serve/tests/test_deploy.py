@@ -1352,6 +1352,61 @@ class TestDeployGroup:
         with pytest.raises(TypeError):
             deploy_group([self.f, self.C, "not a Deployment object"])
 
+    def test_import_path_deployment(self, serve_instance):
+        test_env_uri = (
+            "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
+        )
+        test_module_uri = (
+            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+        )
+
+        ray_actor_options = {
+            "runtime_env": {"py_modules": [test_env_uri, test_module_uri]}
+        }
+
+        shallow = serve.deployment(
+            name="shallow",
+            ray_actor_options=ray_actor_options,
+        )("test_env.shallow_import.ShallowClass")
+
+        deep = serve.deployment(
+            name="deep",
+            ray_actor_options=ray_actor_options,
+        )("test_env.subdir1.subdir2.deep_import.DeepClass")
+
+        one = serve.deployment(
+            name="one",
+            ray_actor_options=ray_actor_options,
+        )("test_module.test.one")
+
+        deployments = [shallow, deep, one]
+        responses = ["Hello shallow world!", "Hello deep world!", 2]
+
+        self.deploy_and_check_responses(deployments, responses)
+
+    def test_different_pymodules(self, serve_instance):
+        test_env_uri = (
+            "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
+        )
+        test_module_uri = (
+            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+        )
+
+        shallow = serve.deployment(
+            name="shallow",
+            ray_actor_options={"runtime_env": {"py_modules": [test_env_uri]}},
+        )("test_env.shallow_import.ShallowClass")
+
+        one = serve.deployment(
+            name="one",
+            ray_actor_options={"runtime_env": {"py_modules": [test_module_uri]}},
+        )("test_module.test.one")
+
+        deployments = [shallow, one]
+        responses = ["Hello shallow world!", 2]
+
+        self.deploy_and_check_responses(deployments, responses)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

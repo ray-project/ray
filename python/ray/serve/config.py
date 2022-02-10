@@ -1,7 +1,7 @@
 import inspect
 import pickle
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import pydantic
 from google.protobuf.json_format import MessageToDict
@@ -155,14 +155,16 @@ class DeploymentConfig(BaseModel):
 class ReplicaConfig:
     def __init__(
         self,
-        deployment_def: Callable,
+        deployment_def: Union[Callable, str],
         init_args: Optional[Tuple[Any]] = None,
         init_kwargs: Optional[Dict[Any, Any]] = None,
         ray_actor_options=None,
     ):
         # Validate that deployment_def is an import path, function, or class.
+        self.import_path = None
         if isinstance(deployment_def, str):
             self.func_or_class_name = deployment_def
+            self.import_path = deployment_def
         elif inspect.isfunction(deployment_def):
             self.func_or_class_name = deployment_def.__name__
             if init_args:
