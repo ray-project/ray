@@ -26,7 +26,9 @@ def get_azure_sdk_function(client: Any, function_name: str) -> Callable:
     versions of the SDK by first trying the old name and falling back to
     the prefixed new name.
     """
-    func = getattr(client, function_name, getattr(client, f"begin_{function_name}", None))
+    func = getattr(
+        client, function_name, getattr(client, f"begin_{function_name}", None)
+    )
     if func is None:
         raise AttributeError(
             "'{obj}' object has no {func} or begin_{func} attribute".format(
@@ -67,8 +69,8 @@ def _configure_resource_group(config):
 
     logger.info("Creating/Updating Resource Group: %s", resource_group)
     rg_create_or_update = get_azure_sdk_function(
-        client=resource_client.resource_groups,
-        function_name="create_or_update")
+        client=resource_client.resource_groups, function_name="create_or_update"
+    )
     rg_create_or_update(resource_group_name=resource_group, parameters=params)
 
     # load the template file
