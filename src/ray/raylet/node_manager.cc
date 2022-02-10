@@ -1571,6 +1571,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   auto task_id = task.GetTaskSpecification().TaskId();
   ActorID actor_id = ActorID::Nil();
   metrics_num_task_scheduled_ += 1;
+  auto task_name = task.GetTaskSpecification().GetName();
 
   if (is_actor_creation_task) {
     actor_id = task.GetTaskSpecification().ActorCreationId();
@@ -1589,7 +1590,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   }
 
   auto send_reply_callback_wrapper = [this, is_actor_creation_task, actor_id, reply,
-                                      task_id, send_reply_callback](
+                                      task_id, task_name, send_reply_callback](
                                          Status status, std::function<void()> success,
                                          std::function<void()> failure) {
     // If resources are not enough due to normal tasks' preemption
@@ -1614,7 +1615,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
       resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
     }
 
-    RAY_LOG(INFO) << "Return lease " << task_id << " " << reply->rejected();
+    RAY_LOG(INFO) << "Return lease " << task_id << " " << reply->rejected() << " " << task_name;
     send_reply_callback(status, success, failure);
   };
 
