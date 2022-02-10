@@ -25,6 +25,7 @@ from ray.serve.config import DeploymentConfig
 from ray.serve.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_NUM_DELETED_DEPLOYMENTS,
+    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
 )
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
@@ -117,6 +118,7 @@ class ActorReplicaWrapper:
         self._health_timeout_s: float = 0.0
         self._health_check_ref: ObjectRef = None
         self._last_health_check_time: float = 0.0
+        self._consecutive_health_check_failures = 0
         # NOTE: storing these is necessary to keep the actor and PG alive in
         # the non-detached case.
         self._actor_handle: ActorHandle = None
@@ -357,11 +359,15 @@ class ActorReplicaWrapper:
 
         return stopped
 
+    def _start_health_check(self):
+        self._last_health_check_time = time.time()
+        self._health_check_ref = self._actor_handle.check_health.remote()
+
     def check_health(self) -> bool:
         """Check if the actor is healthy."""
         if self._health_check_ref is None:
-            self._last_health_check_time = time.time()
-            self._health_check_ref = self._actor_handle.check_health.remote()
+            self._consecutive_health_check_failures = 0
+            self._start_health_check()
 
         healthy = True
         ready, pending = ray.wait([self._health_check_ref], timeout=0)
@@ -379,15 +385,13 @@ class ActorReplicaWrapper:
                     0.9, 1.1
                 )
                 if time_since_last > randomized_period:
-                    self._last_health_check_time = time.time()
-                    self._health_check_ref = (
-                        self._actor_handle.check_health.remote()  # noqa: E501
-                    )
+                    self._start_health_check()
             except RayError as e:
                 logger.info(
                     f"Health check for replica {self._replica_tag} " f"failed: {e}"
                 )
                 healthy = False
+                self._start_health_check()
         elif time.time() - self._last_health_check_time > self._health_check_timeout_s:
             logger.info(
                 "Didn't receive health check response for replica "
@@ -395,8 +399,26 @@ class ActorReplicaWrapper:
                 f"{self._health_check_timeout_s}s, marking it unhealthy."
             )
             healthy = False
+            self._start_health_check()
         else:
             healthy = True
+
+        if healthy:
+            self._consecutive_health_check_failures = 0
+        else:
+            self._consecutive_health_check_failures += 1
+            if (
+                self._consecutive_health_check_failures
+                < REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+            ):
+                # Replica still healthy until we fail N times in a row.
+                healthy = True
+            else:
+                logger.info(
+                    f"Replica {self._replica_tag} failed the health "
+                    f"check {self._consecutive_health_check_failures}"
+                    "times in a row, marking it unhealthy."
+                )
 
         return healthy
 
@@ -1056,17 +1078,17 @@ class DeploymentState:
 
         return replicas_stopped
 
-    def _get_curr_status(self) -> Tuple[DeploymentStatusInfo, bool]:
-        """Get the current deployment status.
+    def _check_curr_status(self) -> bool:
+        """Check the current deployment status.
 
         Checks the difference between the target vs. running replica count for
         the target version.
 
-        TODO(edoakes): we should report the status as FAILED if replicas are
-        repeatedly failing health checks. Need a reasonable heuristic here.
+        This will update the current deployment status depending on the state
+        of the replicas.
 
         Returns:
-            (DeploymentStatusInfo, was_deleted)
+            was_deleted
         """
         # TODO(edoakes): we could make this more efficient in steady-state by
         # having a "healthy" flag that gets flipped if an update or replica
@@ -1100,17 +1122,15 @@ class DeploymentState:
                 # reached target replica count
                 self._replica_constructor_retry_counter = -1
             else:
-                return (
-                    DeploymentStatusInfo(
-                        status=DeploymentStatus.FAILED,
-                        message=(
-                            "The Deployment constructor failed "
-                            f"{failed_to_start_count} times in a row. See "
-                            "logs for details."
-                        ),
+                self._curr_status_info = DeploymentStatusInfo(
+                    status=DeploymentStatus.UNHEALTHY,
+                    message=(
+                        "The Deployment constructor failed "
+                        f"{failed_to_start_count} times in a row. See "
+                        "logs for details."
                     ),
-                    False,
                 )
+                return False
 
         # If we have pending ops, the current goal is *not* ready.
         if (
@@ -1126,23 +1146,14 @@ class DeploymentState:
         ):
             # Check for deleting.
             if target_replica_count == 0 and all_running_replica_cnt == 0:
-                return DeploymentStatusInfo(status=DeploymentStatus.UPDATING), True
+                return True
 
             # Check for a non-zero number of deployments.
             elif target_replica_count == running_at_target_version_replica_cnt:
-                return DeploymentStatusInfo(status=DeploymentStatus.RUNNING), False
+                self._curr_status_info = DeploymentStatusInfo(DeploymentStatus.HEALTHY)
+                return False
 
-        return (
-            DeploymentStatusInfo(
-                status=DeploymentStatus.UPDATING,
-                message=(
-                    f"Running replicas of target version: "
-                    f"{running_at_target_version_replica_cnt}, target "
-                    "replicas: {target_replica_count}"
-                ),
-            ),
-            False,
-        )
+        return False
 
     def _check_startup_replicas(
         self, original_state: ReplicaState, stop_on_slow=False
@@ -1214,6 +1225,11 @@ class DeploymentState:
                 )
                 replica.stop(graceful=False)
                 self._replicas.add(ReplicaState.STOPPING, replica)
+                # Deployment enters "UNHEALTHY" status until the replica is
+                # recovered or a new deploy happens.
+                self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
+                    DeploymentStatus.UNHEALTHY
+                )
 
         slow_start_replicas = []
         slow_start, starting_to_running = self._check_startup_replicas(
@@ -1304,15 +1320,14 @@ class DeploymentState:
             if running_replicas_changed:
                 self._notify_running_replicas_changed()
 
-            status_info, deleted = self._get_curr_status()
+            deleted = self._check_curr_status()
         except Exception as e:
-            status_info = DeploymentStatusInfo(
-                status=DeploymentStatus.FAILED,
+            self._curr_status_info = DeploymentStatusInfo(
+                status=DeploymentStatus.UNHEALTHY,
                 message=f"Failed to update deployment:\n{e}.",
             )
             deleted = False
 
-        self._curr_status_info = status_info
         return deleted
 
     def _stop_one_running_replica_for_testing(self):
