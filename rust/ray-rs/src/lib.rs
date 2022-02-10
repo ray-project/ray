@@ -248,7 +248,7 @@ pub extern "C" fn rust_worker_execute(
     let fn_str = fn_name.to_str().unwrap();
 
     ray_info!(
-        "Executing: {:?} with {} args (name: {})",
+        "Executing: {:?} with {} args (task name: {})",
         task_type,
         args_slice.len(),
         fn_str,

@@ -22,7 +22,7 @@ pub fn add_assign_vec2(v: &mut Vec2, other: Vec2) -> () {
 }
 
 remote_actor! {
-pub fn get_vec2(v: &mut Vec2) -> Vec2 {
+pub fn get_vec2(v: &Vec2) -> Vec2 {
     v.clone()
 }
 }
@@ -37,5 +37,11 @@ remote_actor! {
 pub fn append(s: &mut String, tail: String) -> String {
     s.push_str(&tail);
     s.to_string()
+}
+}
+
+remote! {
+pub fn append_stateless(head: String, tail: String) -> String {
+    format!("{}, {}", head, tail)
 }
 }

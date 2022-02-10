@@ -89,7 +89,6 @@ RAY_EXPORT void c_worker_InitConfig(int workerMode, int language, int num_worker
   InitOptions(&stored_config, &stored_worker_options, code_search_path, head_args, argc, argv);
 }
 
-
 ray::Status ExecutionCallback(
   ray::rpc::TaskType task_type, const std::string task_name,
   const ray::core::RayFunction &ray_function,
@@ -103,7 +102,6 @@ ray::Status ExecutionCallback(
   const std::vector<ray::ConcurrencyGroup> &defined_concurrency_groups,
   const std::string name_of_concurrency_group_to_execute
 ) {
-  RAY_LOG(INFO) << "HERE";
   // convert RayFunction
   auto function_descriptor = ray_function.GetFunctionDescriptor();
 
@@ -123,8 +121,6 @@ ray::Status ExecutionCallback(
     args_array_list.push_back(c_worker_AllocateDataValue(
         data->Data(), data->Size(), nullptr, 0));//meta->Data(), meta->Size()));
   }
-
-    RAY_LOG(INFO) << "HERE 1" << args_array_list.size();
 
   std::vector<const DataValue *> return_value_list;
   for (size_t i = 0; i < return_ids.size(); i++) {
@@ -147,7 +143,6 @@ ray::Status ExecutionCallback(
     execute_return_value_list
   );
 
-    RAY_LOG(INFO) << "HERE2";
   for (auto arg: args_array_list) {
     c_worker_DeallocateDataValue(arg);
   }
@@ -155,8 +150,6 @@ ray::Status ExecutionCallback(
   if (task_type == ray::rpc::ACTOR_CREATION_TASK) {
 
   } else {
-
-      RAY_LOG(INFO) << "HERE 3";
     results->clear();
     for (size_t i = 0; i < return_value_list.size(); i++) {
       auto &result_id = return_ids[i];
@@ -175,8 +168,6 @@ ray::Status ExecutionCallback(
           // std::make_shared<ray::LocalMemoryBuffer>(
           //     reinterpret_cast<uint8_t *>(return_value->meta->p),
           //     return_value->meta->size, false);
-
-            RAY_LOG(INFO) << "HERE4";
       std::vector<ray::ObjectID> contained_object_ids;
       auto contained_object_refs =
           ray::core::CoreWorkerProcess::GetCoreWorker().GetObjectRefs(
@@ -193,7 +184,6 @@ ray::Status ExecutionCallback(
           result_id, value));
     }
   }
-    RAY_LOG(INFO) << "HERE5";
   for (auto arg: return_value_list) {
     c_worker_DeallocateDataValue(arg);
   }
@@ -473,16 +463,21 @@ RAY_EXPORT int c_worker_SubmitTask(int task_type, /*optional*/ const char *actor
   } else if (task_type == ray::rpc::TaskType::ACTOR_TASK) {
       auto actor_id_obj = ByteArrayToId<ray::ActorID>(actor_id);
       // TODO: why is there a different contract for SubmitActorTask and SubmitTask? (possibly null)
+      //
+      // Probably because you always want to return values for stateless functions, but
+      // Stateful functions can be mutated in-place.
       auto optional_result = ray::core::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
           actor_id_obj, ray_function, args, task_options);
           // /*max_retries=*/1, false, scheduling_strategy, ""
       // );
-      if (!optional_result) {
+      if (!optional_result && num_returns == 0) {
+        return 0;
+      } else if (!optional_result && num_returns > 0) {
         RAY_LOG(FATAL) << "Failed to get return values for actor task";
         return 1;
+      } else {
+        return_refs = *optional_result;
       }
-      // TODO: Does this introduce a copy?
-      return_refs = *optional_result;
   } else {
     // RAY_THROW("Invalid task type for c_worker task submission");
   }
@@ -514,8 +509,21 @@ RAY_EXPORT void c_worker_AddLocalRef(const char* id) {
 
 RAY_EXPORT void c_worker_RemoveLocalRef(const char* id) {
   // TODO: again, shouldn't this be uint8_t?
-  auto obj_id = ByteArrayToId<ray::ObjectID>(id);
-  ray::core::CoreWorkerProcess::GetCoreWorker().RemoveLocalReference(obj_id);
+  //
+  // Since this may run outside of a programer's control
+  // after a worker process has been shutdown,
+  // we first check if the core worker is still initialized.
+  // We assume that this function is blocking
+  //
+  // This is actually not foolproof and may result in weird concurrency bugs
+  // The story is not too bad: if the user joins all outstanding threads which
+  // May talk to the CoreWorker before calling shutdown, we are mostly fine.
+  if (ray::core::CoreWorkerProcess::IsInitialized()) {
+    auto obj_id = ByteArrayToId<ray::ObjectID>(id);
+    ray::core::CoreWorkerProcess::GetCoreWorker().RemoveLocalReference(obj_id);
+  } else {
+    RAY_LOG(DEBUG) << "Tried to remove local ref while core worker is dead. noop.";
+  }
 }
 
 RAY_EXPORT int c_worker_Get(const char* const object_ids[], int object_ids_size, int timeout,
