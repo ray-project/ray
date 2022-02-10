@@ -1,7 +1,7 @@
 import inspect
 import pickle
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import pydantic
 from google.protobuf.json_format import MessageToDict
@@ -155,7 +155,7 @@ class DeploymentConfig(BaseModel):
 class ReplicaConfig:
     def __init__(
         self,
-        deployment_def: Callable,
+        deployment_def: Union[Callable, str],
         init_args: Optional[Tuple[Any]] = None,
         init_kwargs: Optional[Dict[Any, Any]] = None,
         ray_actor_options=None,
