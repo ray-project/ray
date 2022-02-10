@@ -169,9 +169,7 @@ class TorchAccelerator(Accelerator):
 
         return device
 
-    def prepare_optimizer(
-        self, optimizer: torch.optim.Optimizer
-    ) -> torch.optim.Optimizer:
+    def prepare_optimizer(self, optimizer: Optimizer) -> Optimizer:
         """Wraps optimizer to support automatic mixed precision.
 
         Args:
