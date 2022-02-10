@@ -161,8 +161,10 @@ class ReplicaConfig:
         ray_actor_options=None,
     ):
         # Validate that deployment_def is an import path, function, or class.
+        self.import_path = None
         if isinstance(deployment_def, str):
             self.func_or_class_name = deployment_def
+            self.import_path = deployment_def
         elif inspect.isfunction(deployment_def):
             self.func_or_class_name = deployment_def.__name__
             if init_args:

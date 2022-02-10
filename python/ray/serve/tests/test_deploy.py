@@ -1352,7 +1352,7 @@ class TestDeployGroup:
         with pytest.raises(TypeError):
             deploy_group([self.f, self.C, "not a Deployment object"])
 
-    def test_import_path_based_deployment(self, serve_instance):
+    def test_import_path_deployment(self, serve_instance):
         test_env_uri = (
             "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
         )
