@@ -336,8 +336,9 @@ def convert_element_to_space_type(element: Any, sampled_element: Any) -> Any:
                 elem = elem.astype(s.dtype)
 
         elif isinstance(s, int):
-            if isinstance(elem, float):
+            if isinstance(elem, float) and elem.is_integer():
                 elem = int(elem)
+
         return elem
 
     return tree.map_structure(map_, element, sampled_element, check_types=False)

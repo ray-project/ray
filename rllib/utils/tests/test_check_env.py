@@ -1,9 +1,12 @@
 import logging
+
+import gym
 import numpy as np
 import pytest
 import unittest
 from unittest.mock import Mock, MagicMock
 
+from ray.rllib.env.base_env import convert_to_base_env
 from ray.rllib.env.multi_agent_env import make_multi_agent, MultiAgentEnvWrapper
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.pre_checks.env import (
@@ -40,31 +43,6 @@ class TestGymCheckEnv(unittest.TestCase):
             check_env(env)
         del env
 
-    def test_sampled_observation_contained(self):
-        env = RandomEnv()
-        # check for observation that is out of bounds
-        error = ".*A sampled observation from your env wasn't contained .*"
-        env.observation_space.sample = MagicMock(return_value=5)
-        with pytest.raises(ValueError, match=error):
-            check_env(env)
-        # check for observation that is in bounds, but the wrong type
-        env.observation_space.sample = MagicMock(return_value=float(1))
-        with pytest.raises(ValueError, match=error):
-            check_env(env)
-        del env
-
-    def test_sampled_action_contained(self):
-        env = RandomEnv()
-        error = ".*A sampled action from your env wasn't contained .*"
-        env.action_space.sample = MagicMock(return_value=5)
-        with pytest.raises(ValueError, match=error):
-            check_env(env)
-        # check for observation that is in bounds, but the wrong type
-        env.action_space.sample = MagicMock(return_value=float(1))
-        with pytest.raises(ValueError, match=error):
-            check_env(env)
-        del env
-
     def test_reset(self):
         reset = MagicMock(return_value=5)
         env = RandomEnv()
@@ -74,7 +52,7 @@ class TestGymCheckEnv(unittest.TestCase):
         with pytest.raises(ValueError, match=error):
             check_env(env)
         # check reset with obs of incorrect type fails
-        reset = MagicMock(return_value=float(1))
+        reset = MagicMock(return_value=float(0.1))
         env.reset = reset
         with pytest.raises(ValueError, match=error):
             check_env(env)
@@ -89,7 +67,7 @@ class TestGymCheckEnv(unittest.TestCase):
             check_env(env)
 
         # check reset that returns obs of incorrect type fails
-        step = MagicMock(return_value=(float(1), 5, True, {}))
+        step = MagicMock(return_value=(float(0.1), 5, True, {}))
         env.step = step
         with pytest.raises(ValueError, match=error):
             check_env(env)
@@ -369,6 +347,9 @@ class TestCheckBaseEnv:
 
     def test_check_correct_env(self):
         env = self._make_base_env()
+        check_env(env)
+        env = gym.make("CartPole-v0")
+        env = convert_to_base_env(env)
         check_env(env)
 
 

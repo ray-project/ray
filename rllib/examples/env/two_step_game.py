@@ -13,6 +13,7 @@ class TwoStepGame(MultiAgentEnv):
         self.state = None
         self.agent_1 = 0
         self.agent_2 = 1
+        self._skip_env_checking = True
         # MADDPG emits action logits instead of actual discrete actions
         self.actions_are_logits = env_config.get("actions_are_logits", False)
         self.one_hot_state_encoding = env_config.get("one_hot_state_encoding", False)

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Set
 
 import gym
 
+from ray.actor import ActorHandle
 from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
 from ray.rllib.utils.typing import EnvType
 
@@ -32,6 +33,11 @@ def check_env(env: EnvType) -> None:
         ExternalMultiAgentEnv,
         ExternalEnv,
     )
+    if hasattr(env, "_skip_env_checking") and env._skip_env_checking:
+        # This is a work around for some environments that we already have in RLlb
+        # that we want to skip checking for now until we have the time to fix them.
+        logger.warning("Skipping env checking for this experiment")
+        return
 
     if not isinstance(
         env,
@@ -43,12 +49,13 @@ def check_env(env: EnvType) -> None:
             VectorEnv,
             ExternalMultiAgentEnv,
             ExternalEnv,
+            ActorHandle
         ),
     ):
         raise ValueError(
             "Env must be one of the supported types: BaseEnv, gym.Env, "
             "MultiAgentEnv, VectorEnv, RemoteBaseEnv, ExternalMultiAgentEnv, "
-            "ExternalEnv"
+            f"ExternalEnv, but instead was a {type(env)}"
         )
 
     if isinstance(env, MultiAgentEnv):
@@ -60,7 +67,7 @@ def check_env(env: EnvType) -> None:
     else:
         logger.warning(
             "Env checking isn't implemented for VectorEnvs, RemoteBaseEnvs, "
-            "ExternalMultiAgentEnv,or ExternalEnvs"
+            "ExternalMultiAgentEnv,or ExternalEnvs or Environments that are Ray actors"
         )
 
 
@@ -144,11 +151,8 @@ def check_gym_environments(env: gym.Env) -> None:
         temp_sampled_reset_obs = convert_element_to_space_type(
             reset_obs, sampled_observation
         )
-        try:
-            if not env.observation_space.contains(temp_sampled_reset_obs):
-                raise ValueError(error)
-        except Exception as e:
-            raise Exception(e, [ValueError(error)])
+        if not env.observation_space.contains(temp_sampled_reset_obs):
+            raise ValueError(error)
     # check if env.step can run, and generates observations rewards, done
     # signals and infos that are within their respective spaces and are of
     # the correct dtypes
@@ -168,11 +172,8 @@ def check_gym_environments(env: gym.Env) -> None:
         temp_sampled_next_obs = convert_element_to_space_type(
             next_obs, sampled_observation
         )
-        try:
-            if not env.observation_space.contains(temp_sampled_next_obs):
-                raise ValueError(error)
-        except Exception as e:
-            raise Exception(e, [ValueError(error)])
+        if not env.observation_space.contains(temp_sampled_next_obs):
+            raise ValueError(error)
     _check_done(done)
     _check_reward(reward)
     _check_info(info)
@@ -189,11 +190,6 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
 
     if not isinstance(env, MultiAgentEnv):
         raise ValueError("The passed env is not a MultiAgentEnv.")
-
-    if hasattr(env, "_skip_env_checking") and env._skip_env_checking:
-        # This is a work around for some environments that we already have in RLlb
-        # that we want to skip checking for now until we have the time to fix them.
-        return
 
     reset_obs = env.reset()
     sampled_obs = env.observation_space_sample()
@@ -280,7 +276,7 @@ def check_base_env(env: "BaseEnv") -> None:
         env.observation_space_contains(reset_obs)
     except Exception as e:
         raise ValueError(
-            "Your observation_space_contains function has some " "error "
+            "Your observation_space_contains function has some error "
         ) from e
 
     if not env.observation_space_contains(reset_obs):
@@ -344,7 +340,7 @@ def _check_reward(reward, base_env=False, agent_ids=None):
                     f" integer or float. reward: {rew}. Instead it was a "
                     f"{type(reward)}"
                 )
-                assert agent_id in agent_ids, (
+                assert agent_id in agent_ids or agent_id == "__all__", (
                     f"Your reward dictionary must have agent ids that belong to the "
                     f"environment. Agent_ids recieved from env.get_agent_ids() are: "
                     f"{agent_ids}"
@@ -352,8 +348,10 @@ def _check_reward(reward, base_env=False, agent_ids=None):
     else:
         assert (
             np.isreal(reward) and not isinstance(reward, bool) and np.isscalar(reward)
-        ), "Your step function must return a reward that is integer or float. " \
-           "Instead it was a {}".format(type(reward))
+        ), (
+            "Your step function must return a reward that is integer or float. "
+            "Instead it was a {}".format(type(reward))
+        )
 
 
 def _check_done(done, base_env=False, agent_ids=None):
@@ -364,7 +362,7 @@ def _check_done(done, base_env=False, agent_ids=None):
                     "Your step function must return dones that are boolean. But "
                     f"instead was a {type(done)}"
                 )
-                assert agent_id in agent_ids, (
+                assert agent_id in agent_ids or agent_id == "__all__", (
                     f"Your dones dictionary must have agent ids that belong to the "
                     f"environment. Agent_ids recieved from env.get_agent_ids() are: "
                     f"{agent_ids}"
@@ -384,7 +382,7 @@ def _check_info(info, base_env=False, agent_ids=None):
                     "Your step function must return infos that are a dict. "
                     f"element: {inf}"
                 )
-                assert agent_id in agent_ids, (
+                assert agent_id in agent_ids or agent_id == "__all__", (
                     f"Your dones dictionary must have agent ids that belong to the "
                     f"environment. Agent_ids recieved from env.get_agent_ids() are: "
                     f"{agent_ids}"
