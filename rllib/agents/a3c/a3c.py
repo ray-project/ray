@@ -1,28 +1,15 @@
 import logging
-from typing import Any, Dict, Type
+from typing import Type
 
-from ray.actor import ActorHandle
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
 from ray.rllib.execution.rollout_ops import AsyncGradients
 from ray.rllib.execution.train_ops import ApplyGradients
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.metrics import (
-    APPLY_GRADS_TIMER,
-    GRAD_WAIT_TIMER,
-    NUM_AGENT_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_TRAINED,
-    NUM_ENV_STEPS_SAMPLED,
-    NUM_ENV_STEPS_TRAINED,
-    SYNCH_WORKER_WEIGHTS_TIMER,
-)
-from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
-from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
+from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
@@ -52,20 +39,11 @@ DEFAULT_CONFIG = with_common_config({
     "entropy_coeff": 0.01,
     # Entropy coefficient schedule
     "entropy_coeff_schedule": None,
-    # Min time (in seconds) per reporting.
-    # This causes not every call to `training_iteration` to be reported,
-    # but to wait until n seconds have passed and then to summarize the
-    # thus far collected results.
+    # Min time per reporting
     "min_time_s_per_reporting": 5,
     # Workers sample async. Note that this increases the effective
     # rollout_fragment_length by up to 5x due to async buffering of batches.
     "sample_async": True,
-
-    # Use the Trainer's `training_iteration` function instead of `execution_plan`.
-    # Fixes a severe performance problem with A3C. Setting this to True leads to a
-    # speedup of up to 3x for a large number of workers and heavier
-    # gradient computations (e.g. ray/rllib/tuned_examples/a3c/pong-a3c.yaml)).
-    "_disable_execution_plan_api": True,
 })
 # __sphinx_doc_end__
 # fmt: on
