@@ -233,7 +233,7 @@ class MultiAgentEnv(gym.Env):
         # By default, do nothing.
         pass
 
-    # yapf: disable
+    # fmt: off
     # __grouping_doc_begin__
     @ExperimentalAPI
     def with_agent_groups(
@@ -279,7 +279,7 @@ class MultiAgentEnv(gym.Env):
         return GroupAgentsWrapper(self, groups, obs_space, act_space)
 
     # __grouping_doc_end__
-    # yapf: enable
+    # fmt: on
 
     @PublicAPI
     def to_base_env(

@@ -389,7 +389,13 @@ class _CliLogger:
         """Print a line feed."""
         self.print("")
 
-    def _print(self, msg: str, _level_str: str = "INFO", _linefeed: bool = True):
+    def _print(
+        self,
+        msg: str,
+        _level_str: str = "INFO",
+        _linefeed: bool = True,
+        end: str = None,
+    ):
         """Proxy for printing messages.
 
         Args:
@@ -435,7 +441,8 @@ class _CliLogger:
             stream.flush()
             return
 
-        print(rendered_message, file=stream)
+        kwargs = {"end": end}
+        print(rendered_message, file=stream, **kwargs)
 
     def indented(self):
         """Context manager that starts an indented block of output."""
@@ -557,12 +564,19 @@ class _CliLogger:
         self._error(*args, _level_str="PANIC", **kwargs)
 
     # Fine to expose _level_str here, since this is a general log function.
-    def print(self, msg: str, *args: Any, _level_str: str = "INFO", **kwargs: Any):
+    def print(
+        self,
+        msg: str,
+        *args: Any,
+        _level_str: str = "INFO",
+        end: str = None,
+        **kwargs: Any
+    ):
         """Prints a message.
 
         For arguments, see `_format_msg`.
         """
-        self._print(_format_msg(msg, *args, **kwargs), _level_str=_level_str)
+        self._print(_format_msg(msg, *args, **kwargs), _level_str=_level_str, end=end)
 
     def abort(
         self, msg: Optional[str] = None, *args: Any, exc: Any = None, **kwargs: Any
