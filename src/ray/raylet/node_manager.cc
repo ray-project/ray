@@ -414,6 +414,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
     syncer_->ConnectTo(ray::rpc::syncer::RaySyncer::NewStub(channel));
     syncer_->Register(syncing::RayComponentId::RESOURCE_MANAGER,
                       &cluster_resource_scheduler_->GetLocalResourceManager(), nullptr);
+    syncer_->Register(syncing::RayComponentId::SCHEDULER,
+                      cluster_task_manager_.get(), nullptr, 1000);
   }
 }
 
