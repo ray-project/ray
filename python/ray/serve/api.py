@@ -68,11 +68,11 @@ def _get_controller_namespace(detached):
     return controller_namespace
 
 
-def _get_global_client():
+def _get_global_client(namespace: Optional[str] = None):
     if _global_client is not None:
         return _global_client
 
-    return _connect()
+    return _connect(namespace=namespace)
 
 
 def _set_global_client(client):
@@ -591,7 +591,7 @@ def start(
     # Initialize ray if needed.
     ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
-        ray.init(namespace="serve")
+        ray.init(namespace=_namespace if namespace is not None else "serve")
 
     # Allow manually overriding the namespace.
     if _namespace is not None:
@@ -600,7 +600,7 @@ def start(
         controller_namespace = _get_controller_namespace(detached)
 
     try:
-        client = _get_global_client()
+        client = _get_global_client(namespace=_namespace)
         logger.info(
             "Connecting to existing Serve instance in namespace "
             f"'{controller_namespace}'."
@@ -660,7 +660,7 @@ def start(
     return client
 
 
-def _connect() -> Client:
+def _connect(namespace: Optional[str] = None) -> Client:
     """Connect to an existing Serve instance on this Ray cluster.
 
     If calling from the driver program, the Serve instance on this Ray cluster
@@ -673,7 +673,7 @@ def _connect() -> Client:
     # Initialize ray if needed.
     ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
-        ray.init(namespace="serve")
+        ray.init(namespace=namespace if namespace is not None else "serve")
 
     # When running inside of a replica, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
@@ -683,6 +683,9 @@ def _connect() -> Client:
     else:
         controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
         controller_namespace = _INTERNAL_REPLICA_CONTEXT._internal_controller_namespace
+
+    if namespace is not None:
+        controller_namespace = namespace
 
     # Try to get serve controller if it exists
     try:

@@ -203,7 +203,6 @@ class HTTPProxy:
             )
 
         self.prefix_router = LongestPrefixRouter(get_handle)
-        print("CONNECTING WITH CONTROLLER/NAMESPACE:", controller_name, controller_namespace)
         self.long_poll_client = LongPollClient(
             ray.get_actor(controller_name, namespace=controller_namespace),
             {
