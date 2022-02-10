@@ -218,10 +218,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       },
       /*callback_service*/ &io_service_);
 
+  auto check_node_alive_fn = [this](const NodeID &node_id) {
+    auto node = gcs_client_->Nodes().Get(node_id);
+    return node != nullptr;
+  };
   reference_counter_ = std::make_shared<ReferenceCounter>(
       rpc_address_,
       /*object_info_publisher=*/object_info_publisher_.get(),
-      /*object_info_subscriber=*/object_info_subscriber_.get(),
+      /*object_info_subscriber=*/object_info_subscriber_.get(), check_node_alive_fn,
       RayConfig::instance().lineage_pinning_enabled(), [this](const rpc::Address &addr) {
         return std::shared_ptr<rpc::CoreWorkerClient>(
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
@@ -257,17 +261,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   periodical_runner_.RunFnPeriodically([this] { InternalHeartbeat(); },
                                        kInternalHeartbeatMillis);
 
-  auto check_node_alive_fn = [this](const NodeID &node_id) {
-    auto node = gcs_client_->Nodes().Get(node_id);
-    return node != nullptr;
-  };
-  auto reconstruct_object_callback = [this](const ObjectID &object_id) {
-    io_service_.post(
-        [this, object_id]() {
-          RAY_CHECK(object_recovery_manager_->RecoverObject(object_id));
-        },
-        "CoreWorker.ReconstructObject");
-  };
   auto push_error_callback = [this](const JobID &job_id, const std::string &type,
                                     const std::string &error_message, double timestamp) {
     return PushError(job_id, type, error_message, timestamp);
@@ -301,8 +294,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           }
         }
       },
-      check_node_alive_fn, reconstruct_object_callback, push_error_callback,
-      RayConfig::instance().max_lineage_bytes()));
+      push_error_callback, RayConfig::instance().max_lineage_bytes()));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -458,6 +450,24 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   RayEventContext::Instance().SetEventContext(
       ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
       {{"worker_id", worker_id.Hex()}});
+
+  periodical_runner_.RunFnPeriodically(
+      [this] {
+        const auto lost_objects = reference_counter_->FlushObjectsToRecover();
+        // Delete the objects from the in-memory store to indicate that they are not
+        // available. The object recovery manager will guarantee that a new value
+        // will eventually be stored for the objects (either an
+        // UnreconstructableError or a value reconstructed from lineage).
+        memory_store_->Delete(lost_objects);
+        for (const auto &object_id : lost_objects) {
+          // NOTE(swang): There is a race condition where this can return false if
+          // the reference went out of scope since the call to the ref counter to get
+          // the lost objects. It's okay to not mark the object as failed or recover
+          // the object since there are no reference holders.
+          RAY_UNUSED(object_recovery_manager_->RecoverObject(object_id));
+        }
+      },
+      100);
 }
 
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
@@ -621,22 +631,7 @@ void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
   RAY_LOG(INFO) << "Node failure from " << node_id
                 << ". All objects pinned on that node will be lost if object "
                    "reconstruction is not enabled.";
-  const auto lost_objects = reference_counter_->ResetObjectsOnRemovedNode(node_id);
-  // Delete the objects from the in-memory store to indicate that they are not
-  // available. The object recovery manager will guarantee that a new value
-  // will eventually be stored for the objects (either an
-  // UnreconstructableError or a value reconstructed from lineage).
-  memory_store_->Delete(lost_objects);
-  for (const auto &object_id : lost_objects) {
-    // NOTE(swang): There is a race condition where this can return false if
-    // the reference went out of scope since the call to the ref counter to get
-    // the lost objects. It's okay to not mark the object as failed or recover
-    // the object since there are no reference holders.
-    auto recovered = object_recovery_manager_->RecoverObject(object_id);
-    if (!recovered) {
-      RAY_LOG(DEBUG) << "Object " << object_id << " lost due to node failure " << node_id;
-    }
-  }
+  reference_counter_->ResetObjectsOnRemovedNode(node_id);
 }
 
 const WorkerID &CoreWorker::GetWorkerID() const { return worker_context_.GetWorkerID(); }
@@ -2953,7 +2948,7 @@ void CoreWorker::HandleAddSpilledUrl(const rpc::AddSpilledUrlRequest &request,
                  << ", which has been spilled to " << spilled_url << " on node "
                  << node_id;
   auto reference_exists = reference_counter_->HandleObjectSpilled(
-      object_id, spilled_url, node_id, request.size(), /*release*/ false);
+      object_id, spilled_url, node_id, request.size());
   Status status =
       reference_exists
           ? Status::OK()

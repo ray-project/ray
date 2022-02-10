@@ -40,7 +40,8 @@ class ReferenceCountTest : public ::testing::Test {
     rpc::Address addr;
     publisher_ = std::make_shared<mock_pubsub::MockPublisher>();
     subscriber_ = std::make_shared<mock_pubsub::MockSubscriber>();
-    rc = std::make_unique<ReferenceCounter>(addr, publisher_.get(), subscriber_.get());
+    rc = std::make_unique<ReferenceCounter>(addr, publisher_.get(), subscriber_.get(),
+                                            [](const NodeID &node_id) { return true; });
   }
 
   virtual void TearDown() {
@@ -63,8 +64,10 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
     rpc::Address addr;
     publisher_ = std::make_shared<mock_pubsub::MockPublisher>();
     subscriber_ = std::make_shared<mock_pubsub::MockSubscriber>();
-    rc = std::make_unique<ReferenceCounter>(addr, publisher_.get(), subscriber_.get(),
-                                            /*lineage_pinning_enabled=*/true);
+    rc = std::make_unique<ReferenceCounter>(
+        addr, publisher_.get(), subscriber_.get(),
+        [](const NodeID &node_id) { return true; },
+        /*lineage_pinning_enabled=*/true);
   }
 
   virtual void TearDown() {
@@ -280,7 +283,9 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
         subscriber_(std::make_shared<MockDistributedSubscriber>(
             &directory, &subscription_callback_map, &subscription_failure_callback_map,
             WorkerID::FromBinary(address_.worker_id()), client_factory)),
-        rc_(rpc::WorkerAddress(address_), publisher_.get(), subscriber_.get(),
+        rc_(
+            rpc::WorkerAddress(address_), publisher_.get(), subscriber_.get(),
+            [](const NodeID &node_id) { return true; },
             /*lineage_pinning_enabled=*/false, client_factory) {}
 
   ~MockWorkerClient() override {
@@ -704,8 +709,9 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
 
   auto publisher = std::make_shared<mock_pubsub::MockPublisher>();
   auto subscriber = std::make_shared<mock_pubsub::MockSubscriber>();
-  auto rc = std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
-      rpc::WorkerAddress(rpc::Address()), publisher.get(), subscriber.get()));
+  auto rc = std::shared_ptr<ReferenceCounter>(
+      new ReferenceCounter(rpc::WorkerAddress(rpc::Address()), publisher.get(),
+                           subscriber.get(), [](const NodeID &node_id) { return true; }));
   CoreWorkerMemoryStore store(rc);
 
   // Tests putting an object with no references is ignored.
@@ -2543,7 +2549,8 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
   rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true, /*add_local_ref=*/true);
   ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
   rc->UpdateObjectPinnedAtRaylet(id, node_id);
-  auto objects = rc->ResetObjectsOnRemovedNode(node_id);
+  rc->ResetObjectsOnRemovedNode(node_id);
+  auto objects = rc->FlushObjectsToRecover();
   ASSERT_EQ(objects.size(), 1);
   ASSERT_EQ(objects[0], id);
   ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &owned_by_us, &pinned_at, &spilled));
