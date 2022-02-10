@@ -86,16 +86,16 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler, public syncing::
   const absl::flat_hash_map<NodeID, SchedulingResources> &GetClusterResources() const;
 
   void Update(const syncing::RaySyncMessage &message) override {
-    rpc::ResourcesData data;
-    data.ParseFromString(message.sync_message());
-    NodeID node_id = NodeID::FromBinary(data.node_id());
-    if (message.message_type() == ray::rpc::syncer::SCHEDULER) {
+    rpc::ResourcesData resources;
+    resources.ParseFromString(message.sync_message());
+    NodeID node_id = NodeID::FromBinary(resources.node_id());
+    if (message.component_id() == syncing::RayComponentId::SCHEDULER) {
       if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-        UpdateNodeNormalTaskResources(node_id, data);
+        UpdateNodeNormalTaskResources(node_id, resources);
       } else {
         if (node_resource_usages_.count(node_id) == 0 ||
-            data.resources_available_changed()) {
-          const auto &resource_changed = MapFromProtobuf(data.resources_available());
+            resources.resources_available_changed()) {
+          const auto &resource_changed = MapFromProtobuf(resources.resources_available());
           SetAvailableResources(node_id, ResourceSet(resource_changed));
         }
       }
@@ -109,7 +109,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler, public syncing::
       return;
     }
 
-    if (message.message_type() == ray::rpc::syncer::RESOURCE_MANAGER) {
+    if (message.component_id() == syncing::RayComponentId::RESOURCE_MANAGER) {
       if (resources.resources_total_size() > 0) {
         (*iter->second.mutable_resources_total()) = resources.resources_total();
       }

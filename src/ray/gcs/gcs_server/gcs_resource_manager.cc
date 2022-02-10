@@ -185,6 +185,7 @@ void GcsResourceManager::HandleGetAllAvailableResources(
 
 void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data) {
   auto resources_data = std::make_shared<rpc::ResourcesData>();
+  NodeID node_id = NodeID::FromBinary(data.node_id());
   resources_data->CopyFrom(data);
 
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
