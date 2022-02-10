@@ -55,7 +55,7 @@ class MeanStdFilterTest(unittest.TestCase):
             self.assertEqual(filt2.rs.n, 5)
             self.assertEqual(filt2.buffer.n, 5)
 
-            filt.clear_buffer()
+            filt.reset_buffer()
             self.assertEqual(filt.buffer.n, 0)
             self.assertEqual(filt2.buffer.n, 5)
 
@@ -83,7 +83,7 @@ class FilterManagerTest(unittest.TestCase):
         for i in range(10):
             filt1(i)
         self.assertEqual(filt1.rs.n, 10)
-        filt1.clear_buffer()
+        filt1.reset_buffer()
         self.assertEqual(filt1.buffer.n, 0)
 
         RemoteWorker = ray.remote(_MockWorker)
