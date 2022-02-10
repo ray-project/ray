@@ -240,17 +240,17 @@ def parse_import_path(import_path: str):
     """
     Takes in an import_path of form:
     
-    [subdirectory 1].[subdir 2]...[subdir n].[file name].[class name]
+    [subdirectory 1].[subdir 2]...[subdir n].[file name].[attribute name]
 
     Parses this path and returns the module name (everything before the last 
-    dot) and class name (everything after the last dot), such that the class
-    can be imported using "from module_name import class_name".
+    dot) and attribute name (everything after the last dot), such that the 
+    attribute can be imported using "from module_name import attr_name".
     """
 
     nodes = import_path.split(".")
     if len(nodes) < 2:
         raise ValueError(f"Got {import_path} as import path. The import path "
-                         f"should at least specify the file name and class "
-                         f"name connected by a dot.")
+                         f"should at least specify the file name and "
+                         f"attribute name connected by a dot.")
     
     return ".".join(nodes[:-1]), nodes[-1]

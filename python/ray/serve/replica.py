@@ -5,6 +5,7 @@ import inspect
 from typing import Any, Callable, Optional, Tuple, Dict
 import time
 import aiorwlock
+from importlib import import_module
 
 import starlette.responses
 
@@ -58,8 +59,8 @@ def create_replica_wrapper(name: str, import_path: str=None, serialized_deployme
         ):
 
             if import_path is not None:
-                module_name, class_name = parse_import_path(import_path)
-                from module_name import class_name as deployment_def
+                module_name, attr_name = parse_import_path(import_path)
+                deployment_def = getattr(import_module(module_name), attr_name)
             else:
                 deployment_def = cloudpickle.loads(serialized_deployment_def)
 
