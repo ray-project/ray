@@ -44,9 +44,10 @@ class TaskManagerTest : public ::testing::Test {
       : store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
         publisher_(std::make_shared<mock_pubsub::MockPublisher>()),
         subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
-        reference_counter_(std::shared_ptr<ReferenceCounter>(
-            new ReferenceCounter(rpc::Address(), publisher_.get(), subscriber_.get(),
-                                 lineage_pinning_enabled))),
+        reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
+            rpc::Address(), publisher_.get(), subscriber_.get(),
+            [this](const NodeID &node_id) { return all_nodes_alive_; },
+            lineage_pinning_enabled))),
         manager_(
             store_, reference_counter_,
             [this](const RayObject &object, const ObjectID &object_id) {
@@ -55,10 +56,6 @@ class TaskManagerTest : public ::testing::Test {
             [this](TaskSpecification &spec, bool delay) {
               num_retries_++;
               return Status::OK();
-            },
-            [this](const NodeID &node_id) { return all_nodes_alive_; },
-            [this](const ObjectID &object_id) {
-              objects_to_recover_.push_back(object_id);
             },
             [](const JobID &job_id, const std::string &type,
                const std::string &error_message,
@@ -79,7 +76,6 @@ class TaskManagerTest : public ::testing::Test {
   std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
   bool all_nodes_alive_ = true;
-  std::vector<ObjectID> objects_to_recover_;
   TaskManager manager_;
   int num_retries_ = 0;
   std::unordered_set<ObjectID> stored_in_plasma;
@@ -173,7 +169,7 @@ TEST_F(TaskManagerTest, TestPlasmaConcurrentFailure) {
   auto return_id = spec.ReturnId(0);
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
 
-  ASSERT_TRUE(objects_to_recover_.empty());
+  ASSERT_TRUE(reference_counter_->FlushObjectsToRecover().empty());
   all_nodes_alive_ = false;
 
   rpc::PushTaskReply reply;
@@ -185,9 +181,12 @@ TEST_F(TaskManagerTest, TestPlasmaConcurrentFailure) {
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
 
   std::vector<std::shared_ptr<RayObject>> results;
-  ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
-  ASSERT_EQ(objects_to_recover_.size(), 1);
-  ASSERT_EQ(objects_to_recover_[0], return_id);
+  // Caller of FlushObjectsToRecover is responsible for deleting the object
+  // from the in-memory store and recovering the object.
+  ASSERT_TRUE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
+  auto objects_to_recover = reference_counter_->FlushObjectsToRecover();
+  ASSERT_EQ(objects_to_recover.size(), 1);
+  ASSERT_EQ(objects_to_recover[0], return_id);
 }
 
 TEST_F(TaskManagerTest, TestFailPendingTask) {

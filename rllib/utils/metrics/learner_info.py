@@ -59,6 +59,21 @@ class LearnerInfoBuilder:
                 else:
                     self.results_all_towers[policy_id][-1][k] = v
 
+    def add_learn_on_batch_results_multi_agent(
+        self,
+        all_policies_results: Dict,
+    ) -> None:
+        """Adds multiple policy.learn_on_(loaded)?_batch() results to this builder.
+
+        Args:
+            all_policies_results: The results returned by all Policy.learn_on_batch or
+                Policy.learn_on_loaded_batch wrapped as a dict mapping policy ID to
+                results.
+        """
+        for pid, result in all_policies_results.items():
+            if pid != "batch_count":
+                self.add_learn_on_batch_results(result, policy_id=pid)
+
     def finalize(self):
         self.is_finalized = True
 

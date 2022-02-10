@@ -116,6 +116,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
         task_resubmitter_(std::make_shared<MockTaskResubmitter>()),
         ref_counter_(std::make_shared<ReferenceCounter>(
             rpc::Address(), publisher_.get(), subscriber_.get(),
+            [](const NodeID &node_id) { return true; },
             /*lineage_pinning_enabled=*/lineage_enabled)),
         manager_(
             rpc::Address(),
@@ -257,7 +258,8 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
   ASSERT_EQ(object_directory_->Flush(), 0);
 
   // The object is removed and can be recovered again.
-  auto objects = ref_counter_->ResetObjectsOnRemovedNode(remote_node_id);
+  ref_counter_->ResetObjectsOnRemovedNode(remote_node_id);
+  auto objects = ref_counter_->FlushObjectsToRecover();
   ASSERT_EQ(objects.size(), 1);
   ASSERT_EQ(objects[0], object_id);
   memory_store_->Delete(objects);

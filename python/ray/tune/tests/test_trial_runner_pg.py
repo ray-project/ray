@@ -53,7 +53,6 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
             self.assertFalse(pg_manager._staging[pgf])
         for pgf in pg_manager._ready:
             self.assertFalse(pg_manager._ready[pgf])
-        self.assertTrue(pg_manager._latest_staging_start_time)
 
         num_non_removed_pgs = len(
             [p for pid, p in placement_group_table().items() if p["state"] != "REMOVED"]
@@ -109,17 +108,6 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
 
                 total_num_tracked = num_staging + num_ready + num_in_use + num_cached
 
-                num_non_removed_pgs = len(
-                    [
-                        p
-                        for pid, p in placement_group_table().items()
-                        if p["state"] != "REMOVED"
-                    ]
-                )
-                num_removal_scheduled_pgs = len(
-                    trial_executor._pg_manager._pgs_for_removal
-                )
-
                 # All trials should be scheduled
                 this.assertEqual(
                     scheduled,
@@ -139,13 +127,6 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
                     max(scheduled, len(trials)) - num_finished + num_parallel_reuse,
                     total_num_tracked,
                     msg=f"Num tracked iter {iteration}",
-                )
-
-                # The number of actual placement groups should match this
-                this.assertGreaterEqual(
-                    max(scheduled, len(trials)) - num_finished + num_parallel_reuse,
-                    num_non_removed_pgs - num_removal_scheduled_pgs,
-                    msg=f"Num actual iter {iteration}",
                 )
 
         start = time.time()

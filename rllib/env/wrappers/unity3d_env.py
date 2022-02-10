@@ -295,9 +295,9 @@ class Unity3DEnv(MultiAgentEnv):
         }
         action_spaces = {
             # 3DBall.
-            "3DBall": Box(float("-inf"), float("inf"), (2,), dtype=np.float32),
+            "3DBall": Box(-1.0, 1.0, (2,), dtype=np.float32),
             # 3DBallHard.
-            "3DBallHard": Box(float("-inf"), float("inf"), (2,), dtype=np.float32),
+            "3DBallHard": Box(-1.0, 1.0, (2,), dtype=np.float32),
             # GridFoodCollector.
             "GridFoodCollector": MultiDiscrete([3, 3, 3, 2]),
             # Pyramids.
@@ -308,11 +308,11 @@ class Unity3DEnv(MultiAgentEnv):
             # Sorter.
             "Sorter": MultiDiscrete([3, 3, 3]),
             # Tennis.
-            "Tennis": Box(float("-inf"), float("inf"), (3,)),
+            "Tennis": Box(-1.0, 1.0, (3,)),
             # VisualHallway.
             "VisualHallway": MultiDiscrete([5]),
             # Walker.
-            "Walker": Box(float("-inf"), float("inf"), (39,)),
+            "Walker": Box(-1.0, 1.0, (39,)),
             # FoodCollector.
             "FoodCollector": MultiDiscrete([3, 3, 3, 2]),
         }
