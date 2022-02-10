@@ -19,7 +19,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
-#include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
@@ -317,12 +316,12 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// failed).
   ///
   /// \param actor The actor whose creation task is infeasible.
-  /// \param runtime_env_setup_failed Whether creation is failed due to runtime env setup
-  /// failure. If false is given, the actor will be rescheduled. Otherwise, all
-  /// the interest party (driver that has actor handles) will notify
-  /// that the actor is dead.
-  void OnActorSchedulingFailed(std::shared_ptr<GcsActor> actor,
-                               bool runtime_env_setup_failed = false);
+  /// \param failure_type Scheduling failure type.
+  /// \param scheduling_failure_message The scheduling failure error message.
+  void OnActorSchedulingFailed(
+      std::shared_ptr<GcsActor> actor,
+      const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+      const std::string &scheduling_failure_message);
 
   /// Handle actor creation task success. This should be called when the actor
   /// creation task has been scheduled successfully.

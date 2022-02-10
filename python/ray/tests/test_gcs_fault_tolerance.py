@@ -4,9 +4,12 @@ import ray
 import ray._private.gcs_pubsub as gcs_pubsub
 import ray._private.gcs_utils as gcs_utils
 import pytest
-from ray._private.test_utils import (generate_system_config_map,
-                                     wait_for_condition, wait_for_pid_to_exit,
-                                     convert_actor_state)
+from ray._private.test_utils import (
+    generate_system_config_map,
+    wait_for_condition,
+    wait_for_pid_to_exit,
+    convert_actor_state,
+)
 
 
 @ray.remote
@@ -21,11 +24,14 @@ def increase(x):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis", [
+    "ray_start_regular_with_external_redis",
+    [
         generate_system_config_map(
-            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60)
+            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+        )
     ],
-    indirect=True)
+    indirect=True,
+)
 def test_gcs_server_restart(ray_start_regular_with_external_redis):
     actor1 = Increase.remote()
     result = ray.get(actor1.method.remote(1))
@@ -49,17 +55,22 @@ def test_gcs_server_restart(ray_start_regular_with_external_redis):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis", [
+    "ray_start_regular_with_external_redis",
+    [
         generate_system_config_map(
-            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60)
+            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+        )
     ],
-    indirect=True)
+    indirect=True,
+)
 @pytest.mark.skipif(
     gcs_pubsub.gcs_pubsub_enabled(),
     reason="GCS pubsub may lose messages after GCS restarts. Need to "
-    "implement re-fetching state in GCS client.")
+    "implement re-fetching state in GCS client.",
+)
 def test_gcs_server_restart_during_actor_creation(
-        ray_start_regular_with_external_redis):
+    ray_start_regular_with_external_redis,
+):
     ids = []
     # We reduce the number of actors because there are too many actors created
     # and `Too many open files` error will be thrown.
@@ -80,13 +91,17 @@ def test_gcs_server_restart_during_actor_creation(
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head_with_external_redis", [
+    "ray_start_cluster_head_with_external_redis",
+    [
         generate_system_config_map(
-            num_heartbeats_timeout=2, gcs_rpc_server_reconnect_timeout_s=60)
+            num_heartbeats_timeout=2, gcs_rpc_server_reconnect_timeout_s=60
+        )
     ],
-    indirect=True)
+    indirect=True,
+)
 def test_node_failure_detector_when_gcs_server_restart(
-        ray_start_cluster_head_with_external_redis):
+    ray_start_cluster_head_with_external_redis,
+):
     """Checks that the node failure detector is correct when gcs server restart.
 
     We set the cluster to timeout nodes after 2 seconds of heartbeats. We then
@@ -141,13 +156,15 @@ def test_node_failure_detector_when_gcs_server_restart(
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis", [
+    "ray_start_regular_with_external_redis",
+    [
         generate_system_config_map(
-            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60)
+            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+        )
     ],
-    indirect=True)
-def test_del_actor_after_gcs_server_restart(
-        ray_start_regular_with_external_redis):
+    indirect=True,
+)
+def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redis):
     actor = Increase.options(name="abc").remote()
     result = ray.get(actor.method.remote(1))
     assert result == 3
@@ -160,8 +177,7 @@ def test_del_actor_after_gcs_server_restart(
 
     def condition():
         actor_status = ray.state.actors(actor_id=actor_id)
-        if actor_status["State"] == convert_actor_state(
-                gcs_utils.ActorTableData.DEAD):
+        if actor_status["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD):
             return True
         else:
             return False
@@ -176,11 +192,13 @@ def test_del_actor_after_gcs_server_restart(
 
 
 @pytest.mark.parametrize("auto_reconnect", [True, False])
-def test_gcs_client_reconnect(ray_start_regular_with_external_redis,
-                              auto_reconnect):
+def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconnect):
     gcs_address = ray.worker.global_worker.gcs_client.address
-    gcs_client = gcs_utils.GcsClient(address=gcs_address) if auto_reconnect \
+    gcs_client = (
+        gcs_utils.GcsClient(address=gcs_address)
+        if auto_reconnect
         else gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=0)
+    )
 
     gcs_client.internal_kv_put(b"a", b"b", True, None)
     gcs_client.internal_kv_get(b"a", None) == b"b"
@@ -199,4 +217,5 @@ def test_gcs_client_reconnect(ray_start_regular_with_external_redis,
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

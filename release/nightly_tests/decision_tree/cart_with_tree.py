@@ -6,14 +6,14 @@ import time
 import tempfile
 import os
 import json
+
 """Binary tree with decision tree semantics and ASCII visualization."""
 
 
 class Node:
     """A decision tree node."""
 
-    def __init__(self, gini, num_samples, num_samples_per_class,
-                 predicted_class):
+    def __init__(self, gini, num_samples, num_samples_per_class, predicted_class):
         self.gini = gini
         self.num_samples = num_samples
         self.num_samples_per_class = num_samples_per_class
@@ -26,7 +26,8 @@ class Node:
     def debug(self, feature_names, class_names, show_details):
         """Print an ASCII visualization of the tree."""
         lines, _, _, _ = self._debug_aux(
-            feature_names, class_names, show_details, root=True)
+            feature_names, class_names, show_details, root=True
+        )
         for line in lines:
             print(line)
 
@@ -37,8 +38,7 @@ class Node:
             lines = [class_names[self.predicted_class]]
         else:
             lines = [
-                "{} < {:.2f}".format(feature_names[self.feature_index],
-                                     self.threshold)
+                "{} < {:.2f}".format(feature_names[self.feature_index], self.threshold)
             ]
         if show_details:
             lines += [
@@ -49,15 +49,11 @@ class Node:
         width = max(len(line) for line in lines)
         height = len(lines)
         if is_leaf:
-            lines = [
-                "║ {:^{width}} ║".format(line, width=width) for line in lines
-            ]
+            lines = ["║ {:^{width}} ║".format(line, width=width) for line in lines]
             lines.insert(0, "╔" + "═" * (width + 2) + "╗")
             lines.append("╚" + "═" * (width + 2) + "╝")
         else:
-            lines = [
-                "│ {:^{width}} │".format(line, width=width) for line in lines
-            ]
+            lines = ["│ {:^{width}} │".format(line, width=width) for line in lines]
             lines.insert(0, "┌" + "─" * (width + 2) + "┐")
             lines.append("└" + "─" * (width + 2) + "┘")
             lines[-2] = "┤" + lines[-2][1:-1] + "├"
@@ -65,14 +61,12 @@ class Node:
 
         if is_leaf:
             middle = width // 2
-            lines[0] = lines[0][:middle] + "╧" + lines[0][middle + 1:]
+            lines[0] = lines[0][:middle] + "╧" + lines[0][middle + 1 :]
             return lines, width, height, middle
 
         # If not a leaf, must have two children.
-        left, n, p, x = self.left._debug_aux(feature_names, class_names,
-                                             show_details)
-        right, m, q, y = self.right._debug_aux(feature_names, class_names,
-                                               show_details)
+        left, n, p, x = self.left._debug_aux(feature_names, class_names, show_details)
+        right, m, q, y = self.right._debug_aux(feature_names, class_names, show_details)
         top_lines = [n * " " + line + m * " " for line in lines[:-2]]
         # fmt: off
         middle_line = x * " " + "┌" + (
@@ -85,11 +79,14 @@ class Node:
         elif q < p:
             right += [m * " "] * (p - q)
         zipped_lines = zip(left, right)
-        lines = (top_lines + [middle_line, bottom_line] +
-                 [a + width * " " + b for a, b in zipped_lines])
+        lines = (
+            top_lines
+            + [middle_line, bottom_line]
+            + [a + width * " " + b for a, b in zipped_lines]
+        )
         middle = n + width // 2
         if not root:
-            lines[0] = lines[0][:middle] + "┴" + lines[0][middle + 1:]
+            lines[0] = lines[0][:middle] + "┴" + lines[0][middle + 1 :]
         return lines, n + m + width, max(p, q) + 2 + len(top_lines), middle
 
 
@@ -101,8 +98,7 @@ class DecisionTreeClassifier:
 
     def fit(self, X, y):
         """Build decision tree classifier."""
-        self.n_classes_ = len(
-            set(y))  # classes are assumed to go from 0 to n-1
+        self.n_classes_ = len(set(y))  # classes are assumed to go from 0 to n-1
         self.n_features_ = X.shape[1]
         self.tree_ = self._grow_tree(X, y)
 
@@ -121,8 +117,7 @@ class DecisionTreeClassifier:
         class within the node. Since Σ p = 1, this is equivalent to 1 - Σ p^2.
         """
         m = y.size
-        return 1.0 - sum(
-            (np.sum(y == c) / m)**2 for c in range(self.n_classes_))
+        return 1.0 - sum((np.sum(y == c) / m) ** 2 for c in range(self.n_classes_))
 
     def _best_split(self, X, y):
         return best_split(self, X, y)
@@ -192,12 +187,11 @@ def grow_tree_remote(tree, X, y, depth=0):
             X_right, y_right = X[~indices_left], y[~indices_left]
             node.feature_index = idx
             node.threshold = thr
-            if (len(X_left) > tree.tree_limit
-                    or len(X_right) > tree.tree_limit):
-                left_future = grow_tree_remote.remote(tree, X_left, y_left,
-                                                      depth + 1)
-                right_future = grow_tree_remote.remote(tree, X_right, y_right,
-                                                       depth + 1)
+            if len(X_left) > tree.tree_limit or len(X_right) > tree.tree_limit:
+                left_future = grow_tree_remote.remote(tree, X_left, y_left, depth + 1)
+                right_future = grow_tree_remote.remote(
+                    tree, X_right, y_right, depth + 1
+                )
                 node.left = ray.get(left_future)
                 node.right = ray.get(right_future)
             else:
@@ -217,7 +211,7 @@ def best_split_original(tree, X, y):
     num_parent = [np.sum(y == c) for c in range(tree.n_classes_)]
 
     # Gini of current node.
-    best_gini = 1.0 - sum((n / m)**2 for n in num_parent)
+    best_gini = 1.0 - sum((n / m) ** 2 for n in num_parent)
     best_idx, best_thr = None, None
 
     # Loop through all features.
@@ -237,9 +231,11 @@ def best_split_original(tree, X, y):
             num_left[c] += 1
             num_right[c] -= 1
             gini_left = 1.0 - sum(
-                (num_left[x] / i)**2 for x in range(tree.n_classes_))
+                (num_left[x] / i) ** 2 for x in range(tree.n_classes_)
+            )
             gini_right = 1.0 - sum(
-                (num_right[x] / (m - i))**2 for x in range(tree.n_classes_))
+                (num_right[x] / (m - i)) ** 2 for x in range(tree.n_classes_)
+            )
 
             # The Gini impurity of a split is the weighted average of the Gini
             # impurity of the children.
@@ -260,8 +256,7 @@ def best_split_original(tree, X, y):
 
 
 def best_split_for_idx(tree, idx, X, y, num_parent, best_gini):
-    """Find the best split for a node and a given index
-    """
+    """Find the best split for a node and a given index"""
     # Sort data along selected feature.
     thresholds, classes = zip(*sorted(zip(X[:, idx], y)))
     # print("Classes are: ", classes, " ", thresholds)
@@ -278,10 +273,10 @@ def best_split_for_idx(tree, idx, X, y, num_parent, best_gini):
         # print("c is ", c, "num left is", len(num_left))
         num_left[c] += 1
         num_right[c] -= 1
-        gini_left = 1.0 - sum(
-            (num_left[x] / i)**2 for x in range(tree.n_classes_))
+        gini_left = 1.0 - sum((num_left[x] / i) ** 2 for x in range(tree.n_classes_))
         gini_right = 1.0 - sum(
-            (num_right[x] / (m - i))**2 for x in range(tree.n_classes_))
+            (num_right[x] / (m - i)) ** 2 for x in range(tree.n_classes_)
+        )
 
         # The Gini impurity of a split is the weighted average of the Gini
         # impurity of the children.
@@ -315,12 +310,11 @@ def best_split(tree, X, y):
     num_parent = [np.sum(y == c) for c in range(tree.n_classes_)]
 
     # Gini of current node.
-    best_gini = 1.0 - sum((n / m)**2 for n in num_parent)
+    best_gini = 1.0 - sum((n / m) ** 2 for n in num_parent)
     best_idx, best_thr = -1, best_gini
-    if (m > tree.feature_limit):
+    if m > tree.feature_limit:
         split_futures = [
-            best_split_for_idx_remote.remote(tree, i, X, y, num_parent,
-                                             best_gini)
+            best_split_for_idx_remote.remote(tree, i, X, y, num_parent, best_gini)
             for i in range(tree.n_features_)
         ]
         best_splits = [ray.get(result) for result in split_futures]
@@ -354,6 +348,7 @@ def run_in_cluster():
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--concurrency", type=int, default=1)
     args = parser.parse_args()

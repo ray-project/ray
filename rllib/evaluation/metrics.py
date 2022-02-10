@@ -17,15 +17,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-RolloutMetrics = collections.namedtuple("RolloutMetrics", [
-    "episode_length",
-    "episode_reward",
-    "agent_rewards",
-    "custom_metrics",
-    "perf_stats",
-    "hist_data",
-    "media",
-])
+RolloutMetrics = collections.namedtuple(
+    "RolloutMetrics",
+    [
+        "episode_length",
+        "episode_reward",
+        "agent_rewards",
+        "custom_metrics",
+        "perf_stats",
+        "hist_data",
+        "media",
+    ],
+)
 RolloutMetrics.__new__.__defaults__ = (0, 0, {}, {}, {}, {}, {})
 
 
@@ -65,10 +68,13 @@ def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
 
 
 @DeveloperAPI
-def collect_metrics(local_worker: Optional["RolloutWorker"] = None,
-                    remote_workers: Optional[List[ActorHandle]] = None,
-                    to_be_collected: Optional[List[ObjectRef]] = None,
-                    timeout_seconds: int = 180) -> ResultDict:
+def collect_metrics(
+    local_worker: Optional["RolloutWorker"] = None,
+    remote_workers: Optional[List[ActorHandle]] = None,
+    to_be_collected: Optional[List[ObjectRef]] = None,
+    timeout_seconds: int = 180,
+    keep_custom_metrics: bool = False,
+) -> ResultDict:
     """Gathers episode metrics from RolloutWorker instances."""
     if remote_workers is None:
         remote_workers = []
@@ -77,20 +83,20 @@ def collect_metrics(local_worker: Optional["RolloutWorker"] = None,
         to_be_collected = []
 
     episodes, to_be_collected = collect_episodes(
-        local_worker,
-        remote_workers,
-        to_be_collected,
-        timeout_seconds=timeout_seconds)
-    metrics = summarize_episodes(episodes, episodes)
+        local_worker, remote_workers, to_be_collected, timeout_seconds=timeout_seconds
+    )
+    metrics = summarize_episodes(
+        episodes, episodes, keep_custom_metrics=keep_custom_metrics
+    )
     return metrics
 
 
 @DeveloperAPI
 def collect_episodes(
-        local_worker: Optional["RolloutWorker"] = None,
-        remote_workers: Optional[List[ActorHandle]] = None,
-        to_be_collected: Optional[List[ObjectRef]] = None,
-        timeout_seconds: int = 180
+    local_worker: Optional["RolloutWorker"] = None,
+    remote_workers: Optional[List[ActorHandle]] = None,
+    to_be_collected: Optional[List[ObjectRef]] = None,
+    timeout_seconds: int = 180,
 ) -> Tuple[List[Union[RolloutMetrics, OffPolicyEstimate]], List[ObjectRef]]:
     """Gathers new episodes metrics tuples from the given evaluators."""
     if remote_workers is None:
@@ -104,11 +110,12 @@ def collect_episodes(
             a.apply.remote(lambda ev: ev.get_metrics()) for a in remote_workers
         ] + to_be_collected
         collected, to_be_collected = ray.wait(
-            pending, num_returns=len(pending), timeout=timeout_seconds * 1.0)
+            pending, num_returns=len(pending), timeout=timeout_seconds * 1.0
+        )
         if pending and len(collected) == 0:
             logger.warning(
-                "WARNING: collected no metrics in {} seconds".format(
-                    timeout_seconds))
+                "WARNING: collected no metrics in {} seconds".format(timeout_seconds)
+            )
         metric_lists = ray.get(collected)
     else:
         metric_lists = []
@@ -123,8 +130,9 @@ def collect_episodes(
 
 @DeveloperAPI
 def summarize_episodes(
-        episodes: List[Union[RolloutMetrics, OffPolicyEstimate]],
-        new_episodes: List[Union[RolloutMetrics, OffPolicyEstimate]] = None
+    episodes: List[Union[RolloutMetrics, OffPolicyEstimate]],
+    new_episodes: List[Union[RolloutMetrics, OffPolicyEstimate]] = None,
+    keep_custom_metrics: bool = False,
 ) -> ResultDict:
     """Summarizes a set of episode metrics tuples.
 
@@ -192,14 +200,17 @@ def summarize_episodes(
 
     for k, v_list in custom_metrics.copy().items():
         filt = [v for v in v_list if not np.any(np.isnan(v))]
-        custom_metrics[k + "_mean"] = np.mean(filt)
-        if filt:
-            custom_metrics[k + "_min"] = np.min(filt)
-            custom_metrics[k + "_max"] = np.max(filt)
+        if keep_custom_metrics:
+            custom_metrics[k] = filt
         else:
-            custom_metrics[k + "_min"] = float("nan")
-            custom_metrics[k + "_max"] = float("nan")
-        del custom_metrics[k]
+            custom_metrics[k + "_mean"] = np.mean(filt)
+            if filt:
+                custom_metrics[k + "_min"] = np.min(filt)
+                custom_metrics[k + "_max"] = np.max(filt)
+            else:
+                custom_metrics[k + "_min"] = float("nan")
+                custom_metrics[k + "_max"] = float("nan")
+            del custom_metrics[k]
 
     for k, v_list in perf_stats.copy().items():
         perf_stats[k] = np.mean(v_list)
@@ -227,11 +238,13 @@ def summarize_episodes(
         custom_metrics=dict(custom_metrics),
         hist_stats=dict(hist_stats),
         sampler_perf=dict(perf_stats),
-        off_policy_estimator=dict(estimators))
+        off_policy_estimator=dict(estimators),
+    )
 
 
-def _partition(episodes: List[RolloutMetrics]
-               ) -> Tuple[List[RolloutMetrics], List[OffPolicyEstimate]]:
+def _partition(
+    episodes: List[RolloutMetrics],
+) -> Tuple[List[RolloutMetrics], List[OffPolicyEstimate]]:
     """Divides metrics data into true rollouts vs off-policy estimates."""
 
     rollouts, estimates = [], []
