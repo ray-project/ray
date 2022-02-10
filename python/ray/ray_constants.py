@@ -161,6 +161,10 @@ CPU_INSTRUCTION_SETS = ""
 CPU_INSTRUCTION_SETS_ENV = "CPU_INSTRUCTION_SET"
 CPU_INSTRUCTION_SETS_FLAGS = "flags"
 
+# Operation System
+WINDOWS_SYSTEM = "Windows"
+LINUX_SYSTEM = "Linux"
+
 # The reporter will report its statistics this often (milliseconds).
 REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 

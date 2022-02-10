@@ -18,7 +18,7 @@ import traceback
 
 from typing import Optional, Dict
 from collections import defaultdict
-from cpuinfo import get_cpu_info
+import platform
 
 import ray
 import ray.ray_constants as ray_constants
@@ -443,7 +443,9 @@ class Node:
             required_cpu_instruction_sets = [
                 x.strip() for x in required_cpu_instruction_sets_str.split(",")
             ]
-            if len(required_cpu_instruction_sets) > 0:
+            if len(required_cpu_instruction_sets) > 0 \
+                and platform.system() != ray_constants.WINDOWS_SYSTEM:
+                from cpuinfo import get_cpu_info
                 cpu_info = get_cpu_info()
                 env_resources.update({
                     required_ins:

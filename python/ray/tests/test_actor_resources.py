@@ -11,7 +11,8 @@ import time
 
 import ray
 import ray.cluster_utils
-from cpuinfo import get_cpu_info
+import ray.ray_constants as ray_constants
+import platform
 
 
 def test_actor_deletion_with_gpus(shutdown_only):
@@ -640,8 +641,12 @@ def test_creating_more_actors_than_resources(shutdown_only):
 
 
 def test_cpu_instruction(shutdown_only):
-    os.environ["CPU_INSTRUCTION_SET"] = "avx2"
-    os.environ["EXTEND_CPU_INSTRUCTIONS"] = "avx2"
+    if platform.system() == ray_constants.WINDOWS_SYSTEM:
+        return True
+    from cpuinfo import get_cpu_info
+
+    os.environ[ray_constants.CPU_INSTRUCTION_SETS_ENV] = "avx2"
+    os.environ[ray_constants.CPU_INSTRUCTION_SETS] = "avx2"
     ray.init()
 
     @ray.remote
