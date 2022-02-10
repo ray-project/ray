@@ -74,7 +74,8 @@ def create_replica_wrapper(name: str, import_path: str=None, serialized_deployme
             else:
                 assert False, (
                     "deployment_def must be function, class, or "
-                    "corresponding import path."
+                    "corresponding import path. Instead, it's type was "
+                    f"{type(deployment_def)}."
                 )
 
             # Set the controller name so that serve.connect() in the user's
