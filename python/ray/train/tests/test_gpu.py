@@ -105,16 +105,17 @@ def test_torch_amp(ray_start_4_cpus_2_gpus):
                 optimizer.step()
 
     trainer = Trainer("torch", num_workers=2, use_gpu=True)
-    trainer.start()
 
+    trainer.start()
     start_time = timer()
     trainer.run(train_func, config={"amp": True})
     latency_with_amp = timer() - start_time
+    trainer.shutdown()
 
+    trainer.start()
     start_time = timer()
     trainer.run(train_func, config={"amp": False})
     latency_without_amp = timer() - start_time
-
     trainer.shutdown()
 
     # Training should be at least 5% faster with AMP.
