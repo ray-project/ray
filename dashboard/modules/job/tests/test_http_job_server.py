@@ -8,10 +8,10 @@ import pytest
 from unittest.mock import patch
 
 import ray
-from ray.dashboard.modules.job.common import CURRENT_VERSION, JobStatus
+from ray.job_submission import JobSubmissionClient, JobStatus
+from ray.dashboard.modules.job.common import CURRENT_VERSION
 from ray.dashboard.modules.job.sdk import (
     ClusterInfo,
-    JobSubmissionClient,
     parse_cluster_info,
 )
 from ray.dashboard.tests.conftest import *  # noqa

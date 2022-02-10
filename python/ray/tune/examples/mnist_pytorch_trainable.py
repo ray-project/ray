@@ -28,7 +28,7 @@ parser.add_argument(
 
 
 # Below comments are for documentation purposes only.
-# yapf: disable
+# fmt: off
 # __trainable_example_begin__
 class TrainMNIST(tune.Trainable):
     def setup(self, config):
@@ -57,7 +57,7 @@ class TrainMNIST(tune.Trainable):
 
 
 # __trainable_example_end__
-# yapf: enable
+# fmt: on
 
 if __name__ == "__main__":
     args = parser.parse_args()
