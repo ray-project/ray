@@ -115,7 +115,7 @@ def update_global_seed_if_necessary(
                 # Not all Operations support this.
                 torch.use_deterministic_algorithms(True)
             else:
-                torch.set_deterministic(True)
+                torch._set_deterministic(True)
         # This is only for Convolution no problem.
         torch.backends.cudnn.deterministic = True
     elif framework == "tf2" or framework == "tfe":
