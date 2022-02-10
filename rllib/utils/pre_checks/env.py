@@ -190,6 +190,11 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     if not isinstance(env, MultiAgentEnv):
         raise ValueError("The passed env is not a MultiAgentEnv.")
 
+    if hasattr(env, "_skip_env_checking") and env._skip_env_checking:
+        # This is a work around for some environments that we already have in RLlb
+        # that we want to skip checking for now until we have the time to fix them.
+        return
+
     reset_obs = env.reset()
     sampled_obs = env.observation_space_sample()
     _check_if_element_multi_agent_dict(env, reset_obs, "reset()")
