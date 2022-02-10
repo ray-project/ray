@@ -223,7 +223,7 @@ By default, each actor making up a Serve deployment is health checked and restar
    The @serve.healthcheck feature is experimental and may be subject to change before the interface is stabilized. If you have any feedback or run into any issues or unexpected behaviors, please file an issue on GitHub.
 
 You can customize this behavior to perform an application-level health check or to adjust the frequency/timeout.
-To define a custom healthcheck, annotate a method on your deployment class using the :mod:`@serve.healthcheck <ray.serve.healthcheck>` decorator.
+To define a custom healthcheck, define a ``check_health`` method on your deployment class.
 This method should take no arguments and return no result, raising an exception if the replica should be considered unhealthy.
 You can also customize how frequently the health check is run and the timeout when a replica will be deemed unhealthy if it hasn't responded in the deployment options.
 
@@ -237,8 +237,8 @@ You can also customize how frequently the health check is run and the timeout wh
         def __call__(self, request):
             return self._do_something_cool()
 
-        @serve.healthcheck
-        def check_db_connection(self):
+        # Will be called by Serve to check the health of the replica.
+        def check_health(self):
             if not self._my_db_connection.is_connected():
                 # The specific type of exception is not important.
                 raise RuntimeError("uh-oh, DB connection is broken.")

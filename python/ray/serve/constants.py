@@ -47,6 +47,9 @@ DEFAULT_LATENCY_BUCKET_MS = [
     5000,
 ]
 
+#: Name of deployment health check method implemented by user.
+HEALTH_CHECK_METHOD = "check_health"
+
 #: Name of deployment reconfiguration method implemented by user.
 RECONFIGURE_METHOD = "reconfigure"
 

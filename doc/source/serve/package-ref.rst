@@ -17,8 +17,6 @@ Deployment API
 .. autoclass:: ray.serve.api.Deployment
     :members: deploy, delete, options, get_handle
 
-.. autofunction:: ray.serve.healthcheck
-
 .. _`servehandle-api`:
 
 ServeHandle API

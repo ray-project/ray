@@ -4,73 +4,6 @@ import ray
 from ray.exceptions import RayError
 from ray._private.test_utils import wait_for_condition
 from ray import serve
-from ray.serve.healthcheck import get_healthcheck_method
-
-
-class TestHealthcheckDecorator:
-    def test_no_decorator(self):
-        class A:
-            def hi(self):
-                pass
-
-        assert get_healthcheck_method(A) is None
-
-    def test_single_method(self):
-        class A:
-            def hi(self):
-                pass
-
-            @serve.healthcheck
-            def healthz(self):
-                pass
-
-        assert get_healthcheck_method(A) == "healthz"
-
-    def test_two_methods(self):
-        class A:
-            @serve.healthcheck
-            def hi(self):
-                pass
-
-            @serve.healthcheck
-            def healthz(self):
-                pass
-
-        with pytest.raises(ValueError, match="defined on both 'healthz' and 'hi'"):
-            get_healthcheck_method(A)
-
-    def test_inheritance(self):
-        class ParentWithHealthcheck:
-            @serve.healthcheck
-            def parent_method(self):
-                pass
-
-        class ChildWithoutHealthcheck(ParentWithHealthcheck):
-            def child_method(self):
-                pass
-
-        assert get_healthcheck_method(ChildWithoutHealthcheck) == "parent_method"
-
-        class ParentWithoutHealthcheck:
-            def parent_method(self):
-                pass
-
-        class ChildWithHealthcheck(ParentWithoutHealthcheck):
-            @serve.healthcheck
-            def child_method(self):
-                pass
-
-        assert get_healthcheck_method(ChildWithHealthcheck) == "child_method"
-
-        class BothParentAndChild(ParentWithHealthcheck):
-            @serve.healthcheck
-            def child_method(self):
-                pass
-
-        with pytest.raises(
-            ValueError, match="defined on both 'child_method' and 'parent_method'"
-        ):
-            get_healthcheck_method(BothParentAndChild)
 
 
 @serve.deployment(_health_check_period_s=1, _health_check_timeout_s=1)
@@ -79,14 +12,15 @@ class Patient:
         self.healthy = True
         self.should_hang = False
 
-    @serve.healthcheck
-    def __call__(self, *args):
+    def check_health(self):
         if self.should_hang:
             import time
 
             time.sleep(10000)
         elif not self.healthy:
             raise Exception("intended to fail")
+
+    def __call__(self, *args):
         return ray.get_runtime_context().current_actor
 
     def set_should_fail(self):
@@ -172,8 +106,7 @@ def test_inherit_healthcheck(serve_instance):
         def __init__(self):
             self.should_fail = False
 
-        @serve.healthcheck
-        def healthz(self):
+        def check_health(self):
             if self.should_fail:
                 raise Exception("intended to fail")
 
