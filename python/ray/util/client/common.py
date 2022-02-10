@@ -89,6 +89,8 @@ CLIENT_SERVER_MAX_THREADS = float(os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100
 class ClientObjectRef(raylet.ObjectRef):
     def __init__(self, id: Union[bytes, Future]):
         self._mutex = threading.Lock()
+        # Use weakref here to avoid circular reference so that __del__
+        # won't happen in GC but when reference count is 0
         self._worker = weakref.ref(ray.get_context().client_worker)
         self._id_future = None
         if isinstance(id, bytes):
