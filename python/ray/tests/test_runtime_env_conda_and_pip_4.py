@@ -89,20 +89,6 @@ class TestGC:
 
         ray.shutdown()
 
-        # It should be OK to install ray optional dependencies in runtime env.
-        with pytest.raises(ModuleNotFoundError):
-            from ray import serve  # noqa: F401
-
-        ray.init(address, runtime_env={"pip": ["ray[serve]"]})
-
-        @ray.remote
-        def f():
-            from ray import serve  # noqa: F401,F811
-
-            return True
-
-        assert ray.get(f.remote())
-
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
