@@ -20,21 +20,6 @@ RaySyncer::RaySyncer(std::string node_id, instrumented_io_context &io_context)
       receivers_({}),
       io_context_(io_context),
       timer_(io_context) {
-  timer_.RunFnPeriodically(
-      [this]() {
-        const auto &local_view = cluster_view_[GetNodeId()];
-        for (size_t i = 0; i < kComponentArraySize; ++i) {
-          auto reporter = reporters_[i];
-          if (reporter != nullptr) {
-            auto version = local_view[i] ? local_view[i]->version() : 0;
-            auto update = reporter->Snapshot(version);
-            if (update) {
-              Update(*update);
-            }
-          }
-        }
-      },
-      100);
 }
 
 void RaySyncer::ConnectTo(std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub) {
@@ -66,19 +51,23 @@ SyncServerReactor *RaySyncer::ConnectFrom(grpc::CallbackServerContext *context) 
 
 void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {
   // Children
-  for (auto &follower : followers_) {
-    follower.second->Send(message);
+  if(message->message_type() == RaySyncMessageType::BROADCAST) {
+    for (auto &follower : followers_) {
+      follower.second->Send(message);
+    }
   }
 
-  // Parents
+  // Parents: always send upward
   if (leader_) {
     leader_->Send(message);
   }
 
   // The current node
-  if (message->node_id() != GetNodeId()) {
-    if (receivers_[message->component_id()]) {
-      receivers_[message->component_id()]->Update(*message);
+  if(leader_ == nullptr || message->message_type() != RaySyncMessageType::AGGREGATE) {
+    if (message->node_id() != GetNodeId()) {
+      if (receivers_[message->component_id()]) {
+        receivers_[message->component_id()]->Update(*message);
+      }
     }
   }
 }

@@ -207,6 +207,8 @@ void GcsServer::InitSyncing() {
     rpc_server_.RegisterService(*syncer_service_);
     syncer_->Register(syncing::RayComponentId::RESOURCE_MANAGER, nullptr,
                       gcs_resource_manager_.get());
+    syncer_->Register(syncing::RayComponentId::SCHEDULER, nullptr,
+                      gcs_resource_manager_.get());
   }
 }
 

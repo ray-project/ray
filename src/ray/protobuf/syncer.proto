@@ -4,10 +4,12 @@ package ray.rpc.syncer;
 
 enum RayComponentId {
   RESOURCE_MANAGER = 0;
+  SCHEDULER = 1;
 }
 
 enum RaySyncMessageType {
-  SNAPSHOT = 0;
+  BROADCAST = 0;
+  AGGREGATE = 1;
 }
 
 message RaySyncMessage {

@@ -88,7 +88,44 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler, public syncing::
   void Update(const syncing::RaySyncMessage &message) override {
     rpc::ResourcesData data;
     data.ParseFromString(message.sync_message());
-    UpdateFromResourceReport(data);
+    NodeID node_id = NodeID::FromBinary(data.node_id());
+    if(message.message_type() == ray::rpc::syncer::SCHEDULER) {
+      if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+        UpdateNodeNormalTaskResources(node_id, data);
+      } else {
+        if (node_resource_usages_.count(node_id) == 0 || data.resources_available_changed()) {
+          const auto &resource_changed = MapFromProtobuf(data.resources_available());
+          SetAvailableResources(node_id, ResourceSet(resource_changed));
+        }
+      }
+    }
+
+    auto iter = node_resource_usages_.find(node_id);
+    if (iter == node_resource_usages_.end()) {
+      auto resources_data = std::make_shared<rpc::ResourcesData>();
+      resources_data->CopyFrom(resources);
+      node_resource_usages_[node_id] = *resources_data;
+      return;
+    }
+
+    if (message.message_type() == ray::rpc::syncer::RESOURCE_MANAGER) {
+      if (resources.resources_total_size() > 0) {
+        (*iter->second.mutable_resources_total()) = resources.resources_total();
+      }
+      if (resources.resources_available_changed()) {
+        (*iter->second.mutable_resources_available()) = resources.resources_available();
+      }
+    } else {
+      if (resources.resource_load_changed()) {
+        (*iter->second.mutable_resource_load()) = resources.resource_load();
+      }
+      if (resources.resources_normal_task_changed()) {
+        (*iter->second.mutable_resources_normal_task()) = resources.resources_normal_task();
+      }
+      (*iter->second.mutable_resource_load_by_shape()) = resources.resource_load_by_shape();
+      iter->second.set_cluster_full_of_actors_detected(
+          resources.cluster_full_of_actors_detected());
+    }
   }
 
   /// Handle a node registration.

@@ -58,7 +58,7 @@ class LocalResourceManager : public syncing::Reporter {
     FillResourceUsage(resource_data);
     msg.set_version(version_);
     msg.set_component_id(syncing::RayComponentId::RESOURCE_MANAGER);
-    msg.set_message_type(syncing::RaySyncMessageType::SNAPSHOT);
+    msg.set_message_type(syncing::RaySyncMessageType::BROADCAST);
     std::string serialized_msg;
     RAY_CHECK(resource_data.SerializeToString(&serialized_msg));
     msg.set_sync_message(std::move(serialized_msg));

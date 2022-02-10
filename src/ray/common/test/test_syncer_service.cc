@@ -38,7 +38,7 @@ class LocalNode : public Reporter {
       return std::nullopt;
     }
     ray::rpc::syncer::RaySyncMessage msg;
-    msg.set_message_type(ray::rpc::syncer::RaySyncMessageType::SNAPSHOT);
+    msg.set_message_type(ray::rpc::syncer::RaySyncMessageType::BROADCAST);
     msg.set_component_id(ray::rpc::syncer::RayComponentId::RESOURCE_MANAGER);
     msg.set_version(version_);
     msg.set_sync_message(
