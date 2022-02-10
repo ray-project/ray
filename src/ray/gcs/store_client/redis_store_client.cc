@@ -87,8 +87,8 @@ Status RedisStoreClient::AsyncGetAll(
   std::string match_pattern = GenRedisMatchPattern(table_name);
   auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name);
   auto on_done = [callback,
-                  scanner](const std::unordered_map<std::string, std::string> &result) {
-    callback(result);
+                  scanner](std::unordered_map<std::string, std::string> &&result) {
+    callback(std::move(result));
   };
   return scanner->ScanKeysAndValues(match_pattern, on_done);
 }
@@ -319,7 +319,7 @@ std::string RedisStoreClient::GetKeyFromRedisKey(const std::string &redis_key,
 Status RedisStoreClient::MGetValues(
     std::shared_ptr<RedisClient> redis_client, std::string table_name,
     const std::vector<std::string> &keys,
-    const ItemCallback<std::unordered_map<std::string, std::string>> &callback) {
+    const MapCallback<std::string, std::string> &callback) {
   // The `MGET` command for each shard.
   int total_count = 0;
   auto mget_commands_by_shards =
@@ -344,7 +344,7 @@ Status RedisStoreClient::MGetValues(
 
         ++(*finished_count);
         if (*finished_count == total_count) {
-          callback(*key_value_map);
+          callback(std::move(*key_value_map));
         }
       };
       RAY_CHECK_OK(command_list.first->RunArgvAsync(mget_keys, mget_callback));
@@ -362,8 +362,7 @@ RedisStoreClient::RedisScanner::RedisScanner(std::shared_ptr<RedisClient> redis_
 }
 
 Status RedisStoreClient::RedisScanner::ScanKeysAndValues(
-    std::string match_pattern,
-    const ItemCallback<std::unordered_map<std::string, std::string>> &callback) {
+    std::string match_pattern, const MapCallback<std::string, std::string> &callback) {
   auto on_done = [this, callback](const Status &status,
                                   const std::vector<std::string> &result) {
     if (result.empty()) {
@@ -380,7 +379,7 @@ Status RedisStoreClient::RedisScanner::ScanKeys(
   auto on_done = [this, callback](const Status &status) {
     std::vector<std::string> result;
     result.insert(result.begin(), keys_.begin(), keys_.end());
-    callback(status, result);
+    callback(status, std::move(result));
   };
   Scan(match_pattern, on_done);
   return Status::OK();
