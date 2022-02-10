@@ -11,7 +11,6 @@ import requests
 
 import ray
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.exceptions import RayTaskError
 from ray import serve
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import get_random_letters
@@ -278,16 +277,6 @@ def test_reconfigure_with_exception(serve_instance):
     with pytest.raises(RuntimeError):
         A.options(user_config="hi").deploy()
 
-    def rolled_back():
-        try:
-            config = ray.get(A.get_handle().remote())
-            return config == "not_hi"
-        except Exception:
-            return False
-
-    # Ensure we should be able to rollback to "hi" config
-    wait_for_condition(rolled_back)
-
 
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_redeploy_single_replica(serve_instance, use_handle):
@@ -343,8 +332,9 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     # Redeploy new version. This should not go through until the old version
     # replica completely stops.
     V2 = V1.options(func_or_class=V2, version="2")
-    goal_ref = V2.deploy(_blocking=False)
-    assert not client._wait_for_goal(goal_ref, timeout=0.1)
+    V2.deploy(_blocking=False)
+    with pytest.raises(TimeoutError):
+        client._wait_for_deployment_running(V2.name, timeout_s=0.1)
 
     # It may take some time for the handle change to propagate and requests
     # to get sent to the new version. Repeatedly send requests until they
@@ -372,7 +362,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     assert pid2 == pid1
 
     # Now the goal and request to the new version should complete.
-    assert client._wait_for_goal(goal_ref)
+    client._wait_for_deployment_running(V2.name)
     new_version_val, new_version_pid = ray.get(new_version_ref)
     assert new_version_val == "2"
     assert new_version_pid != pid2
@@ -461,8 +451,9 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     # Redeploy new version. Since there is one replica blocking, only one new
     # replica should be started up.
     V2 = V1.options(func_or_class=V2, version="2")
-    goal_ref = V2.deploy(_blocking=False)
-    assert not client._wait_for_goal(goal_ref, timeout=0.1)
+    V2.deploy(_blocking=False)
+    with pytest.raises(TimeoutError):
+        client._wait_for_deployment_running(V2.name, timeout_s=0.1)
     responses3, blocking3 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
 
     # Signal the original call to exit.
@@ -473,7 +464,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
 
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.
-    assert client._wait_for_goal(goal_ref)
+    client._wait_for_deployment_running(V2.name)
     make_nonblocking_calls({"2": 2})
 
 
@@ -552,14 +543,14 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
 
     # Reconfigure should block one replica until the signal is sent. Check that
     # some requests are now blocking.
-    goal_ref = V1.options(user_config="2").deploy(_blocking=False)
+    V1.options(user_config="2").deploy(_blocking=False)
     responses2, blocking2 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
     assert list(responses2["1"])[0] in pids1
 
     # Signal reconfigure to finish. Now the goal should complete and both
     # replicas should have the updated config.
     ray.get(signal.send.remote())
-    assert client._wait_for_goal(goal_ref)
+    client._wait_for_deployment_running(V1.name)
     make_nonblocking_calls({"2": 2})
 
 
@@ -1154,21 +1145,12 @@ def test_deployment_error_handling(serve_instance):
     def f():
         pass
 
-    with pytest.raises(Exception) as exception_info:
+    with pytest.raises(RuntimeError, match=". is not a valid URI"):
         # This is an invalid configuration since dynamic upload of working
         # directories is not supported. The error this causes in the controller
         # code should be caught and reported back to the `deploy` caller.
 
         f.options(ray_actor_options={"runtime_env": {"working_dir": "."}}).deploy()
-
-    assert isinstance(exception_info.value, RayTaskError)
-
-    # This is the file where deployment exceptions should
-    # be caught. If this frame is not present in the stacktrace,
-    # the stacktrace is incomplete.
-    assert os.sep.join(("ray", "serve", "deployment_state.py")) in str(
-        exception_info.value
-    )
 
 
 def test_http_proxy_request_cancellation(serve_instance):
@@ -1246,18 +1228,24 @@ class TestDeployGroup:
         the client to wait until the deployments finish deploying.
         """
 
-        goal_ids = deploy_group(deployments, _blocking=blocking)
+        deploy_group(deployments, _blocking=blocking)
+
+        def check_all_deployed():
+            try:
+                for deployment, response in zip(deployments, responses):
+                    if ray.get(deployment.get_handle().remote()) != response:
+                        return False
+            except Exception:
+                return False
+
+            return True
 
         if blocking:
-            assert len(goal_ids) == 0
+            # If blocking, this should be guaranteed to pass immediately.
+            assert check_all_deployed()
         else:
-            assert len(goal_ids) == len(deployments)
-            if client:
-                for id in goal_ids:
-                    client._wait_for_goal(id)
-
-        for deployment, response in zip(deployments, responses):
-            assert ray.get(deployment.get_handle().remote()) == response
+            # If non-blocking, this should pass eventually.
+            wait_for_condition(check_all_deployed)
 
     def test_basic_deploy_group(self, serve_instance):
         """
