@@ -210,7 +210,7 @@ def make_recsim_env(
             # Fix observation space and - if necessary - convert to discrete
             # action space (from multi-discrete).
             env = recsim_gym_wrapper(
-                gym_env, env_ctx["convert_to_discrete_action_space"]
+                gym_env, config["convert_to_discrete_action_space"]
             )
             # Call the super (Wrapper constructor) passing it the created env.
             super().__init__(env=env)
