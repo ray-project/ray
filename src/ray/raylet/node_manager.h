@@ -206,7 +206,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler, public syncing::Recei
   /// Stop this node manager.
   void Stop();
 
-
   void Update(const syncing::RaySyncMessage &message) override {
     rpc::ResourcesData data;
     data.ParseFromString(message.sync_message());
