@@ -1,7 +1,6 @@
 import functools
 import logging
 from typing import Any, Dict, Optional
-from collections.abc import Mapping
 
 import torch
 from torch.cuda.amp import autocast, GradScaler
