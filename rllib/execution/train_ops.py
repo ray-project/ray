@@ -399,13 +399,11 @@ class ComputeGradients:
         _check_sample_batch_type(samples)
         metrics = _get_shared_metrics()
         with metrics.timers[COMPUTE_GRADS_TIMER]:
-            grad, info = self.workers.local_worker().compute_gradients(samples)
-        # RolloutWorker.compute_gradients returns pure single agent stats
-        # in a non-multi agent setup.
-        if isinstance(samples, MultiAgentBatch):
-            metrics.info[LEARNER_INFO] = info
-        else:
-            metrics.info[LEARNER_INFO] = {DEFAULT_POLICY_ID: info}
+            grad, info = self.workers.local_worker().compute_gradients(
+                samples, single_agent=True
+            )
+        # RolloutWorker.compute_gradients returned single-agent stats.
+        metrics.info[LEARNER_INFO] = {DEFAULT_POLICY_ID: info}
         return grad, samples.count
 
 
