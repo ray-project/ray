@@ -66,9 +66,10 @@ def _configure_resource_group(config):
         params["tags"] = config["provider"]["tags"]
 
     logger.info("Creating/Updating Resource Group: %s", resource_group)
-    resource_client.resource_groups.create_or_update(
-        resource_group_name=resource_group, parameters=params
-    )
+    rg_create_or_update = get_azure_sdk_function(
+        client=resource_client.resource_groups,
+        function_name="create_or_update")
+    rg_create_or_update(resource_group_name=resource_group, parameters=params)
 
     # load the template file
     current_path = Path(__file__).parent
