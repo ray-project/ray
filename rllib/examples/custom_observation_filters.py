@@ -80,7 +80,7 @@ class CustomFilter(Filter):
         self.buffer = SimpleRollingStat()
         self.shape = shape
 
-    def clear_buffer(self):
+    def reset_buffer(self) -> None:
         self.buffer = SimpleRollingStat(self.shape)
 
     def apply_changes(self, other, with_buffer=False):
