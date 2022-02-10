@@ -240,7 +240,7 @@ class Session:
     def accelerator(self) -> Optional[Accelerator]:
         """The accelerator for this training session, if any.
 
-        If the accelerator has not been set and a accelerator class has been provided,
+        If the accelerator has not been set and an accelerator class has been provided,
         then this method will construct an accelerator using the provided accelerator
         class.
         """

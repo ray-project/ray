@@ -50,7 +50,8 @@ class TorchConfig(BackendConfig):
         return TorchBackend
 
     @property
-    def accelerator_cls(self) -> Type[Accelerator]:
+    def accelerator_cls(self) -> Optional[Type[Accelerator]]:
+        """Returns the ``TorchAccelerator`` type."""
         return TorchAccelerator
 
 

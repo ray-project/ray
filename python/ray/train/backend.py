@@ -37,6 +37,7 @@ class BackendConfig:
 
     @property
     def accelerator_cls(self) -> Optional[Type[Accelerator]]:
+        """The ``Accelerator`` type for this backend, if any."""
         return None
 
 
