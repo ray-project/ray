@@ -19,8 +19,7 @@ RaySyncer::RaySyncer(std::string node_id, instrumented_io_context &io_context)
       reporters_({}),
       receivers_({}),
       io_context_(io_context),
-      timer_(io_context) {
-}
+      timer_(io_context) {}
 
 void RaySyncer::ConnectTo(std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub) {
   // We don't allow connect to new leader.
@@ -51,7 +50,7 @@ SyncServerReactor *RaySyncer::ConnectFrom(grpc::CallbackServerContext *context) 
 
 void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {
   // Children
-  if(message->message_type() == RaySyncMessageType::BROADCAST) {
+  if (message->message_type() == RaySyncMessageType::BROADCAST) {
     for (auto &follower : followers_) {
       follower.second->Send(message);
     }
@@ -63,7 +62,7 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {
   }
 
   // The current node
-  if(leader_ == nullptr || message->message_type() != RaySyncMessageType::AGGREGATE) {
+  if (leader_ == nullptr || message->message_type() != RaySyncMessageType::AGGREGATE) {
     if (message->node_id() != GetNodeId()) {
       if (receivers_[message->component_id()]) {
         receivers_[message->component_id()]->Update(*message);

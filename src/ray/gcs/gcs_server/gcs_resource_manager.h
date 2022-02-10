@@ -89,11 +89,12 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler, public syncing::
     rpc::ResourcesData data;
     data.ParseFromString(message.sync_message());
     NodeID node_id = NodeID::FromBinary(data.node_id());
-    if(message.message_type() == ray::rpc::syncer::SCHEDULER) {
+    if (message.message_type() == ray::rpc::syncer::SCHEDULER) {
       if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
         UpdateNodeNormalTaskResources(node_id, data);
       } else {
-        if (node_resource_usages_.count(node_id) == 0 || data.resources_available_changed()) {
+        if (node_resource_usages_.count(node_id) == 0 ||
+            data.resources_available_changed()) {
           const auto &resource_changed = MapFromProtobuf(data.resources_available());
           SetAvailableResources(node_id, ResourceSet(resource_changed));
         }
@@ -120,9 +121,11 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler, public syncing::
         (*iter->second.mutable_resource_load()) = resources.resource_load();
       }
       if (resources.resources_normal_task_changed()) {
-        (*iter->second.mutable_resources_normal_task()) = resources.resources_normal_task();
+        (*iter->second.mutable_resources_normal_task()) =
+            resources.resources_normal_task();
       }
-      (*iter->second.mutable_resource_load_by_shape()) = resources.resource_load_by_shape();
+      (*iter->second.mutable_resource_load_by_shape()) =
+          resources.resource_load_by_shape();
       iter->second.set_cluster_full_of_actors_detected(
           resources.cluster_full_of_actors_detected());
     }

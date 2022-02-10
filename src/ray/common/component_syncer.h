@@ -50,18 +50,19 @@ class RaySyncer {
   void DisconnectFrom(std::string node_id);
 
   // Register a component
-  void Register(RayComponentId component_id, const Reporter *reporter,
-                Receiver *receiver, int64_t publish_ms = 100) {
+  void Register(RayComponentId component_id, const Reporter *reporter, Receiver *receiver,
+                int64_t publish_ms = 100) {
     reporters_[component_id] = reporter;
     receivers_[component_id] = receiver;
-    if(reporter != nullptr) {
+    if (reporter != nullptr) {
       RAY_CHECK(publish_ms > 0);
       timer_.RunFnPeriodically(
           [this, component_id]() {
             const auto &local_view = cluster_view_[GetNodeId()];
             auto reporter = reporters_[component_id];
             if (reporter != nullptr) {
-              auto version = local_view[component_id] ? local_view[component_id]->version() : 0;
+              auto version =
+                  local_view[component_id] ? local_view[component_id]->version() : 0;
               auto update = reporter->Snapshot(version);
               if (update) {
                 Update(*update);
@@ -73,7 +74,7 @@ class RaySyncer {
   }
 
   void Update(RaySyncMessage message) {
-    if(message.message_type() == RaySyncMessageType::AGGREGATE) {
+    if (message.message_type() == RaySyncMessageType::AGGREGATE) {
       BroadcastMessage(make_shared<RaySyncMessage>(std::move(message)));
       return;
     }
