@@ -17,6 +17,7 @@ namespace gcs {
 
 class MockGcsResourceManager : public GcsResourceManager {
  public:
+  using GcsResourceManager::GcsResourceManager;
   MOCK_METHOD(void, HandleGetResources,
               (const rpc::GetResourcesRequest &request, rpc::GetResourcesReply *reply,
                rpc::SendReplyCallback send_reply_callback),

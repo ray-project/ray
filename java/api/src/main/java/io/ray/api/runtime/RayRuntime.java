@@ -10,14 +10,17 @@ import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
+import io.ray.api.function.RayFuncR;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.api.runtimecontext.RuntimeContext;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
@@ -65,6 +68,24 @@ public interface RayRuntime {
   <T> List<T> get(List<ObjectRef<T>> objectRefs);
 
   /**
+   * Get an object from the object store.
+   *
+   * @param objectRef The reference of the object to get.
+   * @param timeoutMs The maximum amount of time in millseconds to wait before returning.
+   * @return The Java object.
+   */
+  <T> T get(ObjectRef<T> objectRef, long timeoutMs);
+
+  /**
+   * Get a list of objects from the object store.
+   *
+   * @param objectRefs The list of object references.
+   * @param timeoutMs The maximum amount of time in millseconds to wait before returning.
+   * @return A list of Java objects.
+   */
+  <T> List<T> get(List<ObjectRef<T>> objectRefs, long timeoutMs);
+
+  /**
    * Wait for a list of RayObjects to be available, until specified number of objects are ready, or
    * specified timeout has passed.
    *
@@ -97,10 +118,10 @@ public interface RayRuntime {
    * name specified.
    *
    * @param name The name of the named actor.
-   * @param global Whether the named actor is global.
+   * @param namespace The namespace of the actor.
    * @return ActorHandle to the actor.
    */
-  <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global);
+  <T extends BaseActorHandle> Optional<T> getActor(String name, String namespace);
 
   /**
    * Kill the actor immediately.
@@ -206,6 +227,16 @@ public interface RayRuntime {
   void exitActor();
 
   /**
+   * Get the resources available on this worker. Note that this API doesn't work on driver.
+   *
+   * @return The resource info of one node.
+   */
+  Map<String, List<ResourceValue>> getAvailableResourceIds();
+
+  /** Get the namespace of this job. */
+  String getNamespace();
+
+  /**
    * Get a placement group by id.
    *
    * @param id placement group id.
@@ -217,10 +248,10 @@ public interface RayRuntime {
    * Get a placement group by name.
    *
    * @param name The name of the placement group.
-   * @param global Whether the named placement group is global.
+   * @param namespace The namespace of the placement group.
    * @return The placement group.
    */
-  PlacementGroup getPlacementGroup(String name, boolean global);
+  PlacementGroup getPlacementGroup(String name, String namespace);
 
   /**
    * Get all placement groups in this cluster.
@@ -247,4 +278,6 @@ public interface RayRuntime {
 
   /** Create concurrency group instance at runtime. */
   ConcurrencyGroup createConcurrencyGroup(String name, int maxConcurrency, List<RayFunc> funcs);
+
+  List<ConcurrencyGroup> extractConcurrencyGroups(RayFuncR<?> actorConstructorLambda);
 }

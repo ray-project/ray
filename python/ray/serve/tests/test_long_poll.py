@@ -7,7 +7,7 @@ from typing import Dict
 import pytest
 
 import ray
-from ray.serve.long_poll import (LongPollClient, LongPollHost, UpdatedObject)
+from ray.serve.long_poll import LongPollClient, LongPollHost, UpdatedObject
 
 
 def test_host_standalone(serve_instance):
@@ -35,6 +35,20 @@ def test_host_standalone(serve_instance):
     result = ray.get(object_ref)
     assert len(result) == 1
     assert "key_2" in result
+
+
+def test_long_poll_wait_for_keys(serve_instance):
+    # Variation of the basic case, but the keys are requests before any values
+    # are set.
+    host = ray.remote(LongPollHost).remote()
+    object_ref = host.listen_for_change.remote({"key_1": -1, "key_2": -1})
+    ray.get(host.notify_changed.remote("key_1", 999))
+    ray.get(host.notify_changed.remote("key_2", 999))
+
+    # We should be able to get the one of the result immediately
+    result: Dict[str, UpdatedObject] = ray.get(object_ref)
+    assert set(result.keys()).issubset({"key_1", "key_2"})
+    assert {v.object_snapshot for v in result.values()} == {999}
 
 
 def test_long_poll_restarts(serve_instance):
@@ -77,7 +91,8 @@ def test_long_poll_restarts(serve_instance):
     assert new_timer.object_snapshot != timer.object_snapshot
 
 
-def test_client(serve_instance):
+@pytest.mark.asyncio
+async def test_client(serve_instance):
     host = ray.remote(LongPollHost).remote()
 
     # Write two values
@@ -92,10 +107,14 @@ def test_client(serve_instance):
     def key_2_callback(result):
         callback_results["key_2"] = result
 
-    client = LongPollClient(host, {
-        "key_1": key_1_callback,
-        "key_2": key_2_callback,
-    })
+    client = LongPollClient(
+        host,
+        {
+            "key_1": key_1_callback,
+            "key_2": key_2_callback,
+        },
+        call_in_event_loop=asyncio.get_event_loop(),
+    )
 
     while len(client.object_snapshots) == 0:
         time.sleep(0.1)
@@ -110,7 +129,7 @@ def test_client(serve_instance):
         values.add(client.object_snapshots["key_2"])
         if 1999 in values:
             break
-        time.sleep(1)
+        await asyncio.sleep(1)
     assert 1999 in values
 
     assert callback_results == {"key_1": 100, "key_2": 1999}
@@ -127,10 +146,12 @@ async def test_client_threadsafe(serve_instance):
         e.set()
 
     _ = LongPollClient(
-        host, {
+        host,
+        {
             "key_1": key_1_callback,
         },
-        call_in_event_loop=asyncio.get_event_loop())
+        call_in_event_loop=asyncio.get_event_loop(),
+    )
 
     await e.wait()
 

@@ -27,6 +27,12 @@
                 "[0-9a-f]*": {
                   "type": "object",
                   "properties": {
+                    "status": {
+                      "type": ["string", "null"]
+                    },
+                    "status_message": {
+                      "type": ["string", "null"]
+                    },
                     "isDead": {
                       "type": "boolean"
                     },
@@ -39,9 +45,6 @@
                     "config": {
                       "type": "object",
                       "properties": {
-                        "envVars": {
-                          "type": "object"
-                        },
                         "namespace": {
                           "type": "string"
                         },
@@ -53,7 +56,6 @@
                         }
                       },
                       "required": [
-                        "envVars",
                         "namespace",
                         "metadata",
                         "runtimeEnv"
@@ -133,7 +135,7 @@
                             "type": "string"
                           },
                           "version": {
-                            "type": "string"
+                            "type": ["string", "null"]
                           }
                         },
                         "required": [
@@ -179,7 +181,7 @@
                       "type": "integer"
                     },
                     "httpRoute": {
-                      "type": "string"
+                      "type": ["string", "null"]
                     },
                     "name": {
                       "type": "string"
@@ -194,7 +196,7 @@
                       "type": "string"
                     },
                     "version": {
-                      "type": "string"
+                      "type": ["string", "null"]
                     }
                   },
                   "required": [

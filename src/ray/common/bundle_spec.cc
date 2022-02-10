@@ -102,7 +102,6 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
     os << original_resource_name << kGroupKeyword << group_id.Hex();
   }
   std::string result = os.str();
-  RAY_LOG(INFO) << result;
   RAY_DCHECK(GetOriginalResourceName(result) == original_resource_name)
       << "Generated: " << GetOriginalResourceName(result)
       << " Original: " << original_resource_name;
@@ -126,5 +125,14 @@ std::string GetOriginalResourceName(const std::string &resource) {
   RAY_CHECK(idx >= 0) << "This isn't a placement group resource " << resource;
   return resource.substr(0, idx);
 }
+
+std::string GetDebugStringForBundles(
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundles) {
+  std::ostringstream debug_info;
+  for (const auto &bundle : bundles) {
+    debug_info << "{" << bundle->DebugString() << "},";
+  }
+  return debug_info.str();
+};
 
 }  // namespace ray

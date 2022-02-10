@@ -66,6 +66,7 @@ else
     "$(command -v sudo || echo command)" "${target}" > /dev/null  # system-wide install for CI
   else
     "${target}" --user > /dev/null
+    export PATH=$PATH:"$HOME/bin"
   fi
   which bazel
   rm -f "${target}"
@@ -143,6 +144,9 @@ EOF
       cat <<EOF >> ~/.bazelrc
 build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}
 EOF
+      if [ "${BUILDKITE_PULL_REQUEST}" != "false" ]; then
+        echo "build --remote_upload_local_results=false" >> ~/.bazelrc
+      fi
     fi
 
   else

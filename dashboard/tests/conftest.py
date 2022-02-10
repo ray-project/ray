@@ -11,13 +11,6 @@ def enable_test_module():
 
 
 @pytest.fixture
-def enable_event_module():
-    os.environ["RAY_DASHBOARD_MODULE_EVENT"] = "true"
-    yield
-    os.environ.pop("RAY_DASHBOARD_MODULE_EVENT", None)
-
-
-@pytest.fixture
 def disable_aiohttp_cache():
     os.environ["RAY_DASHBOARD_NO_CACHE"] = "true"
     yield

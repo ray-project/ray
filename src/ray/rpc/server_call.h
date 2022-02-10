@@ -23,11 +23,7 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
 #include "ray/stats/metric.h"
-
-DECLARE_stats(grpc_server_req_latency_ms);
-DECLARE_stats(grpc_server_req_new);
-DECLARE_stats(grpc_server_req_handling);
-DECLARE_stats(grpc_server_req_finished);
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace rpc {
@@ -145,27 +141,23 @@ class ServerCallImpl : public ServerCall {
         handle_request_function_(handle_request_function),
         response_writer_(&context_),
         io_service_(io_service),
-        call_name_(std::move(call_name)) {
+        call_name_(std::move(call_name)),
+        start_time_(0) {
     reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
     // TODO call_name_ sometimes get corrunpted due to memory issues.
     RAY_CHECK(!call_name_.empty()) << "Call name is empty";
-    STATS_grpc_server_req_new.Record(1.0, call_name_);
-    start_time_ = absl::GetCurrentTimeNanos();
+    ray::stats::STATS_grpc_server_req_new.Record(1.0, call_name_);
   }
 
-  ~ServerCallImpl() override {
-    STATS_grpc_server_req_finished.Record(1.0, call_name_);
-    auto end_time = absl::GetCurrentTimeNanos();
-    STATS_grpc_server_req_latency_ms.Record((end_time - start_time_) / 1000000,
-                                            call_name_);
-  }
+  ~ServerCallImpl() override = default;
 
   ServerCallState GetState() const override { return state_; }
 
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
-    STATS_grpc_server_req_handling.Record(1.0, call_name_);
+    start_time_ = absl::GetCurrentTimeNanos();
+    ray::stats::STATS_grpc_server_req_handling.Record(1.0, call_name_);
     if (!io_service_.stopped()) {
       io_service_.post([this] { HandleRequestImpl(); }, call_name_);
     } else {
@@ -205,22 +197,32 @@ class ServerCallImpl : public ServerCall {
   }
 
   void OnReplySent() override {
+    ray::stats::STATS_grpc_server_req_finished.Record(1.0, call_name_);
     if (send_reply_success_callback_ && !io_service_.stopped()) {
       auto callback = std::move(send_reply_success_callback_);
       io_service_.post([callback]() { callback(); }, call_name_ + ".success_callback");
     }
+    LogProcessTime();
   }
 
   void OnReplyFailed() override {
+    ray::stats::STATS_grpc_server_req_finished.Record(1.0, call_name_);
     if (send_reply_failure_callback_ && !io_service_.stopped()) {
       auto callback = std::move(send_reply_failure_callback_);
       io_service_.post([callback]() { callback(); }, call_name_ + ".failure_callback");
     }
+    LogProcessTime();
   }
 
   const ServerCallFactory &GetServerCallFactory() override { return factory_; }
 
  private:
+  /// Log the duration this query used
+  void LogProcessTime() {
+    auto end_time = absl::GetCurrentTimeNanos();
+    ray::stats::STATS_grpc_server_req_process_time_ms.Record(
+        (end_time - start_time_) / 1000000.0, call_name_);
+  }
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
     state_ = ServerCallState::SENDING_REPLY;

@@ -10,17 +10,23 @@ import ray
 import threading
 from datetime import datetime, timedelta
 from ray.cluster_utils import Cluster
+from ray.dashboard.modules.node.node_consts import (
+    LOG_PRUNE_THREASHOLD,
+    MAX_LOGS_TO_CACHE,
+)
 from ray.dashboard.tests.conftest import *  # noqa
 from ray._private.test_utils import (
-    format_web_url, wait_until_server_available, wait_for_condition,
-    wait_until_succeeded_without_exception)
+    format_web_url,
+    wait_until_server_available,
+    wait_for_condition,
+    wait_until_succeeded_without_exception,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def test_nodes_update(enable_test_module, ray_start_with_dashboard):
-    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
-            is True)
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
 
@@ -42,8 +48,7 @@ def test_nodes_update(enable_test_module, ray_start_with_dashboard):
             assert len(dump_data["agents"]) == 1
             assert len(dump_data["nodeIdToIp"]) == 1
             assert len(dump_data["nodeIdToHostname"]) == 1
-            assert dump_data["nodes"].keys() == dump_data[
-                "nodeIdToHostname"].keys()
+            assert dump_data["nodes"].keys() == dump_data["nodeIdToHostname"].keys()
 
             response = requests.get(webui_url + "/test/notified_agents")
             response.raise_for_status()
@@ -68,14 +73,14 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
     @ray.remote
     class Actor:
         def getpid(self):
+            print(f"actor pid={os.getpid()}")
             return os.getpid()
 
     actors = [Actor.remote(), Actor.remote()]
     actor_pids = [actor.getpid.remote() for actor in actors]
     actor_pids = set(ray.get(actor_pids))
 
-    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
-            is True)
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
     node_id = ray_start_with_dashboard["node_id"]
@@ -131,15 +136,19 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
             last_ex = ex
         finally:
             if time.time() > start_time + timeout_seconds:
-                ex_stack = traceback.format_exception(
-                    type(last_ex), last_ex,
-                    last_ex.__traceback__) if last_ex else []
+                ex_stack = (
+                    traceback.format_exception(
+                        type(last_ex), last_ex, last_ex.__traceback__
+                    )
+                    if last_ex
+                    else []
+                )
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
 
 def test_memory_table(disable_aiohttp_cache, ray_start_with_dashboard):
-    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"]))
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
 
     @ray.remote
     class ActorWithObjs:
@@ -153,8 +162,7 @@ def test_memory_table(disable_aiohttp_cache, ray_start_with_dashboard):
     actors = [ActorWithObjs.remote() for _ in range(2)]  # noqa
     results = ray.get([actor.get_obj.remote() for actor in actors])  # noqa
     webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
-    resp = requests.get(
-        webui_url + "/memory/set_fetch", params={"shouldFetch": "true"})
+    resp = requests.get(webui_url + "/memory/set_fetch", params={"shouldFetch": "true"})
     resp.raise_for_status()
 
     def check_mem_table():
@@ -165,15 +173,16 @@ def test_memory_table(disable_aiohttp_cache, ray_start_with_dashboard):
         summary = latest_memory_table["summary"]
         # 1 ref per handle and per object the actor has a ref to
         assert summary["totalActorHandles"] == len(actors) * 2
-        # 1 ref for my_obj
-        assert summary["totalLocalRefCount"] == 1
+        # 1 ref for my_obj. 2 refs for self.obj_ref for each actor.
+        assert summary["totalLocalRefCount"] == 3
 
-    wait_until_succeeded_without_exception(
-        check_mem_table, (AssertionError, ), timeout_ms=1000)
+    assert wait_until_succeeded_without_exception(
+        check_mem_table, (AssertionError,), timeout_ms=10000
+    )
 
 
 def test_get_all_node_details(disable_aiohttp_cache, ray_start_with_dashboard):
-    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"]))
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
 
     webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
 
@@ -203,8 +212,7 @@ def test_get_all_node_details(disable_aiohttp_cache, ray_start_with_dashboard):
         assert "workers" in node
         assert "logCount" in node
         # Two lines printed by ActorWithObjs
-        # One line printed by autoscaler: monitor.py:118 -- Monitor: Started
-        assert node["logCount"] > 2
+        assert node["logCount"] >= 2
         print(node["workers"])
         assert len(node["workers"]) == 2
         assert node["workers"][0]["logCount"] == 1
@@ -218,21 +226,25 @@ def test_get_all_node_details(disable_aiohttp_cache, ray_start_with_dashboard):
             last_ex = ex
         finally:
             if time.time() > start_time + timeout_seconds:
-                ex_stack = traceback.format_exception(
-                    type(last_ex), last_ex,
-                    last_ex.__traceback__) if last_ex else []
+                ex_stack = (
+                    traceback.format_exception(
+                        type(last_ex), last_ex, last_ex.__traceback__
+                    )
+                    if last_ex
+                    else []
+                )
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "include_dashboard": True
-    }], indirect=True)
-def test_multi_nodes_info(enable_test_module, disable_aiohttp_cache,
-                          ray_start_cluster_head):
+    "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
+)
+def test_multi_nodes_info(
+    enable_test_module, disable_aiohttp_cache, ray_start_cluster_head
+):
     cluster: Cluster = ray_start_cluster_head
-    assert (wait_until_server_available(cluster.webui_url) is True)
+    assert wait_until_server_available(cluster.webui_url) is True
     webui_url = cluster.webui_url
     webui_url = format_web_url(webui_url)
     cluster.add_node()
@@ -267,13 +279,13 @@ def test_multi_nodes_info(enable_test_module, disable_aiohttp_cache,
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "include_dashboard": True
-    }], indirect=True)
-def test_multi_node_churn(enable_test_module, disable_aiohttp_cache,
-                          ray_start_cluster_head):
+    "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
+)
+def test_multi_node_churn(
+    enable_test_module, disable_aiohttp_cache, ray_start_cluster_head
+):
     cluster: Cluster = ray_start_cluster_head
-    assert (wait_until_server_available(cluster.webui_url) is True)
+    assert wait_until_server_available(cluster.webui_url) is True
     webui_url = format_web_url(cluster.webui_url)
 
     def cluster_chaos_monkey():
@@ -313,13 +325,11 @@ def test_multi_node_churn(enable_test_module, disable_aiohttp_cache,
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "include_dashboard": True
-    }], indirect=True)
-def test_logs(enable_test_module, disable_aiohttp_cache,
-              ray_start_cluster_head):
+    "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
+)
+def test_logs(enable_test_module, disable_aiohttp_cache, ray_start_cluster_head):
     cluster = ray_start_cluster_head
-    assert (wait_until_server_available(cluster.webui_url) is True)
+    assert wait_until_server_available(cluster.webui_url) is True
     webui_url = cluster.webui_url
     webui_url = format_web_url(webui_url)
     nodes = ray.nodes()
@@ -346,39 +356,38 @@ def test_logs(enable_test_module, disable_aiohttp_cache,
 
     def check_logs():
         node_logs_response = requests.get(
-            f"{webui_url}/node_logs", params={"ip": node_ip})
+            f"{webui_url}/node_logs", params={"ip": node_ip}
+        )
         node_logs_response.raise_for_status()
         node_logs = node_logs_response.json()
         assert node_logs["result"]
         assert type(node_logs["data"]["logs"]) is dict
-        assert all(
-            pid in node_logs["data"]["logs"] for pid in (la_pid, la2_pid))
+        assert all(pid in node_logs["data"]["logs"] for pid in (la_pid, la2_pid))
         assert len(node_logs["data"]["logs"][la2_pid]) == 1
 
         actor_one_logs_response = requests.get(
-            f"{webui_url}/node_logs",
-            params={
-                "ip": node_ip,
-                "pid": str(la_pid)
-            })
+            f"{webui_url}/node_logs", params={"ip": node_ip, "pid": str(la_pid)}
+        )
         actor_one_logs_response.raise_for_status()
         actor_one_logs = actor_one_logs_response.json()
         assert actor_one_logs["result"]
         assert type(actor_one_logs["data"]["logs"]) is dict
         assert len(actor_one_logs["data"]["logs"][la_pid]) == 4
 
-    wait_until_succeeded_without_exception(
-        check_logs, (AssertionError), timeout_ms=1000)
+    assert wait_until_succeeded_without_exception(
+        check_logs, (AssertionError,), timeout_ms=1000
+    )
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "include_dashboard": True
-    }], indirect=True)
-def test_errors(enable_test_module, disable_aiohttp_cache,
-                ray_start_cluster_head):
+    "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
+)
+def test_logs_clean_up(
+    enable_test_module, disable_aiohttp_cache, ray_start_cluster_head
+):
+    """Check if logs from the dead pids are GC'ed."""
     cluster = ray_start_cluster_head
-    assert (wait_until_server_available(cluster.webui_url) is True)
+    assert wait_until_server_available(cluster.webui_url) is True
     webui_url = cluster.webui_url
     webui_url = format_web_url(webui_url)
     nodes = ray.nodes()
@@ -386,41 +395,105 @@ def test_errors(enable_test_module, disable_aiohttp_cache,
     node_ip = nodes[0]["NodeManagerAddress"]
 
     @ray.remote
-    class ErrorActor():
-        def go(self):
-            raise ValueError("This is an error")
+    class LoggingActor:
+        def go(self, n):
+            i = 0
+            while i < n:
+                print(f"On number {i}")
+                i += 1
 
         def get_pid(self):
             return os.getpid()
 
-    ea = ErrorActor.remote()
-    ea_pid = ea.get_pid.remote()
-    ea.go.remote()
+    la = LoggingActor.remote()
+    la_pid = str(ray.get(la.get_pid.remote()))
+    ray.get(la.go.remote(1))
 
-    def check_errs():
-        node_errs_response = requests.get(
-            f"{webui_url}/node_logs", params={"ip": node_ip})
-        node_errs_response.raise_for_status()
-        node_errs = node_errs_response.json()
-        assert node_errs["result"]
-        assert type(node_errs["data"]["errors"]) is dict
-        assert ea_pid in node_errs["data"]["errors"]
-        assert len(node_errs["data"]["errors"][ea_pid]) == 1
+    def check_logs():
+        node_logs_response = requests.get(
+            f"{webui_url}/node_logs", params={"ip": node_ip}
+        )
+        node_logs_response.raise_for_status()
+        node_logs = node_logs_response.json()
+        assert node_logs["result"]
+        assert la_pid in node_logs["data"]["logs"]
 
-        actor_err_response = requests.get(
-            f"{webui_url}/node_logs",
-            params={
-                "ip": node_ip,
-                "pid": str(ea_pid)
-            })
-        actor_err_response.raise_for_status()
-        actor_errs = actor_err_response.json()
-        assert actor_errs["result"]
-        assert type(actor_errs["data"]["errors"]) is dict
-        assert len(actor_errs["data"]["errors"][ea_pid]) == 4
+    assert wait_until_succeeded_without_exception(
+        check_logs, (AssertionError,), timeout_ms=1000
+    )
+    ray.kill(la)
 
-    wait_until_succeeded_without_exception(
-        check_errs, (AssertionError), timeout_ms=1000)
+    def check_logs_not_exist():
+        node_logs_response = requests.get(
+            f"{webui_url}/node_logs", params={"ip": node_ip}
+        )
+        node_logs_response.raise_for_status()
+        node_logs = node_logs_response.json()
+        assert node_logs["result"]
+        assert la_pid not in node_logs["data"]["logs"]
+
+    assert wait_until_succeeded_without_exception(
+        check_logs_not_exist, (AssertionError,), timeout_ms=10000
+    )
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
+)
+def test_logs_max_count(
+    enable_test_module, disable_aiohttp_cache, ray_start_cluster_head
+):
+    """Test that each Ray worker cannot cache more than 1000 logs at a time."""
+    cluster = ray_start_cluster_head
+    assert wait_until_server_available(cluster.webui_url) is True
+    webui_url = cluster.webui_url
+    webui_url = format_web_url(webui_url)
+    nodes = ray.nodes()
+    assert len(nodes) == 1
+    node_ip = nodes[0]["NodeManagerAddress"]
+
+    @ray.remote
+    class LoggingActor:
+        def go(self, n):
+            i = 0
+            while i < n:
+                print(f"On number {i}")
+                i += 1
+
+        def get_pid(self):
+            return os.getpid()
+
+    la = LoggingActor.remote()
+    la_pid = str(ray.get(la.get_pid.remote()))
+    ray.get(la.go.remote(MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD))
+
+    def check_logs():
+        node_logs_response = requests.get(
+            f"{webui_url}/node_logs", params={"ip": node_ip}
+        )
+        node_logs_response.raise_for_status()
+        node_logs = node_logs_response.json()
+        assert node_logs["result"]
+        assert type(node_logs["data"]["logs"]) is dict
+        assert la_pid in node_logs["data"]["logs"]
+        log_lengths = len(node_logs["data"]["logs"][la_pid])
+        assert log_lengths >= MAX_LOGS_TO_CACHE
+        assert log_lengths <= MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD
+
+        actor_one_logs_response = requests.get(
+            f"{webui_url}/node_logs", params={"ip": node_ip, "pid": str(la_pid)}
+        )
+        actor_one_logs_response.raise_for_status()
+        actor_one_logs = actor_one_logs_response.json()
+        assert actor_one_logs["result"]
+        assert type(actor_one_logs["data"]["logs"]) is dict
+        log_lengths = len(actor_one_logs["data"]["logs"][la_pid])
+        assert log_lengths >= MAX_LOGS_TO_CACHE
+        assert log_lengths <= MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD
+
+    assert wait_until_succeeded_without_exception(
+        check_logs, (AssertionError,), timeout_ms=10000
+    )
 
 
 if __name__ == "__main__":

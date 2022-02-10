@@ -114,8 +114,20 @@ public abstract class ObjectStore {
    */
   @SuppressWarnings("unchecked")
   public <T> List<T> get(List<ObjectId> ids, Class<?> elementType) {
-    // Pass -1 as timeout to wait until all objects are available in object store.
-    List<NativeRayObject> dataAndMetaList = getRaw(ids, -1);
+    return get(ids, elementType, -1);
+  }
+
+  /**
+   * Get a list of objects from the object store.
+   *
+   * @param ids List of the object ids.
+   * @param <T> Type of these objects.
+   * @param timeoutMs The maximum amount of time in seconds to wait before returning.
+   * @return A list of GetResult objects.
+   */
+  @SuppressWarnings("unchecked")
+  public <T> List<T> get(List<ObjectId> ids, Class<?> elementType, long timeoutMs) {
+    List<NativeRayObject> dataAndMetaList = getRaw(ids, timeoutMs);
 
     List<T> results = new ArrayList<>();
     for (int i = 0; i < dataAndMetaList.size(); i++) {
@@ -224,12 +236,12 @@ public abstract class ObjectStore {
   public abstract Address getOwnerAddress(ObjectId id);
 
   /**
-   * Promote the given object to the underlying object store, and get the ownership info.
+   * Get the ownership info.
    *
    * @param objectId The ID of the object to promote
    * @return the serialized ownership address
    */
-  public abstract byte[] promoteAndGetOwnershipInfo(ObjectId objectId);
+  public abstract byte[] getOwnershipInfo(ObjectId objectId);
 
   /**
    * Add a reference to an ObjectID that will deserialized. This will also start the process to

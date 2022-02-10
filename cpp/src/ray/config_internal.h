@@ -14,8 +14,11 @@
 
 #pragma once
 #include <ray/api/ray_config.h>
+
 #include <memory>
 #include <string>
+#include <string_view>
+
 #include "ray/core_worker/common.h"
 
 namespace ray {
@@ -31,9 +34,9 @@ class ConfigInternal {
 
   RunMode run_mode = RunMode::SINGLE_PROCESS;
 
-  std::string redis_ip;
+  std::string bootstrap_ip;
 
-  int redis_port = 6379;
+  int bootstrap_port = 6379;
 
   std::string redis_password = "5241590000000000";
 
@@ -53,6 +56,8 @@ class ConfigInternal {
 
   std::string node_ip_address = "";
 
+  StartupToken startup_token;
+
   std::vector<std::string> head_args = {};
 
   static ConfigInternal &Instance() {
@@ -62,7 +67,7 @@ class ConfigInternal {
 
   void Init(RayConfig &config, int argc, char **argv);
 
-  void SetRedisAddress(const std::string address);
+  void SetBootstrapAddress(std::string_view address);
 
   ConfigInternal(ConfigInternal const &) = delete;
 

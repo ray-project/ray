@@ -5,20 +5,23 @@ import ray
 from ray import workflow
 from ray.workflow.storage import set_global_storage
 
-_GLOBAL_MARK_FILE = pathlib.Path(tempfile.gettempdir()) / "__workflow_test"
+_GLOBAL_MARK_PATH = pathlib.Path(tempfile.gettempdir())
 
 
-def unset_global_mark():
-    if _GLOBAL_MARK_FILE.exists():
-        _GLOBAL_MARK_FILE.unlink()
+def unset_global_mark(name="workflow"):
+    mark_file = _GLOBAL_MARK_PATH / f"workflow-{name}"
+    if mark_file.exists():
+        mark_file.unlink()
 
 
-def set_global_mark():
-    _GLOBAL_MARK_FILE.touch()
+def set_global_mark(name="workflow"):
+    mark_file = _GLOBAL_MARK_PATH / f"workflow-{name}"
+    mark_file.touch()
 
 
-def check_global_mark():
-    return _GLOBAL_MARK_FILE.exists()
+def check_global_mark(name="workflow"):
+    mark_file = _GLOBAL_MARK_PATH / f"workflow-{name}"
+    return mark_file.exists()
 
 
 def _alter_storage(new_storage):
@@ -27,3 +30,9 @@ def _alter_storage(new_storage):
     ray.shutdown()
     os.system("ray stop --force")
     workflow.init(new_storage)
+
+
+def clear_marks():
+    files = _GLOBAL_MARK_PATH.glob("**/workflow-*")
+    for file in files:
+        file.unlink()

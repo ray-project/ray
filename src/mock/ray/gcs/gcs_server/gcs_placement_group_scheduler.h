@@ -1,4 +1,4 @@
-// Copyright  The Ray Authors.
+// Copyright 2021 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,8 +30,8 @@ class MockGcsPlacementGroupSchedulerInterface
  public:
   MOCK_METHOD(void, ScheduleUnplacedBundles,
               (std::shared_ptr<GcsPlacementGroup> placement_group,
-               std::function<void(std::shared_ptr<GcsPlacementGroup>)> failure_callback,
-               std::function<void(std::shared_ptr<GcsPlacementGroup>)> success_callback),
+               PGSchedulingFailureCallback failure_callback,
+               PGSchedulingSuccessfulCallback success_callback),
               (override));
   MOCK_METHOD((absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>),
               GetBundlesOnNode, (const NodeID &node_id), (override));
@@ -43,6 +43,11 @@ class MockGcsPlacementGroupSchedulerInterface
       void, ReleaseUnusedBundles,
       ((const std::unordered_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles)),
       (override));
+  MOCK_METHOD(void, Initialize,
+              ((const std::unordered_map<
+                  PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
+                    &group_to_bundles)),
+              (override));
 };
 
 }  // namespace gcs
@@ -63,11 +68,12 @@ namespace gcs {
 
 class MockGcsScheduleStrategy : public GcsScheduleStrategy {
  public:
-  MOCK_METHOD(ScheduleMap, Schedule,
-              (std::vector<std::shared_ptr<const ray::BundleSpecification>> & bundles,
-               const std::unique_ptr<ScheduleContext> &context,
-               GcsResourceScheduler &gcs_resource_scheduler),
-              (override));
+  MOCK_METHOD(
+      ScheduleResult, Schedule,
+      (const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
+       const std::unique_ptr<ScheduleContext> &context,
+       GcsResourceScheduler &gcs_resource_scheduler),
+      (override));
 };
 
 }  // namespace gcs
@@ -78,11 +84,12 @@ namespace gcs {
 
 class MockGcsPackStrategy : public GcsPackStrategy {
  public:
-  MOCK_METHOD(ScheduleMap, Schedule,
-              (std::vector<std::shared_ptr<const ray::BundleSpecification>> & bundles,
-               const std::unique_ptr<ScheduleContext> &context,
-               GcsResourceScheduler &gcs_resource_scheduler),
-              (override));
+  MOCK_METHOD(
+      ScheduleResult, Schedule,
+      (const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
+       const std::unique_ptr<ScheduleContext> &context,
+       GcsResourceScheduler &gcs_resource_scheduler),
+      (override));
 };
 
 }  // namespace gcs
@@ -93,11 +100,12 @@ namespace gcs {
 
 class MockGcsSpreadStrategy : public GcsSpreadStrategy {
  public:
-  MOCK_METHOD(ScheduleMap, Schedule,
-              (std::vector<std::shared_ptr<const ray::BundleSpecification>> & bundles,
-               const std::unique_ptr<ScheduleContext> &context,
-               GcsResourceScheduler &gcs_resource_scheduler),
-              (override));
+  MOCK_METHOD(
+      ScheduleResult, Schedule,
+      (const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
+       const std::unique_ptr<ScheduleContext> &context,
+       GcsResourceScheduler &gcs_resource_scheduler),
+      (override));
 };
 
 }  // namespace gcs
@@ -108,11 +116,12 @@ namespace gcs {
 
 class MockGcsStrictPackStrategy : public GcsStrictPackStrategy {
  public:
-  MOCK_METHOD(ScheduleMap, Schedule,
-              (std::vector<std::shared_ptr<const ray::BundleSpecification>> & bundles,
-               const std::unique_ptr<ScheduleContext> &context,
-               GcsResourceScheduler &gcs_resource_scheduler),
-              (override));
+  MOCK_METHOD(
+      ScheduleResult, Schedule,
+      (const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
+       const std::unique_ptr<ScheduleContext> &context,
+       GcsResourceScheduler &gcs_resource_scheduler),
+      (override));
 };
 
 }  // namespace gcs
@@ -123,11 +132,12 @@ namespace gcs {
 
 class MockGcsStrictSpreadStrategy : public GcsStrictSpreadStrategy {
  public:
-  MOCK_METHOD(ScheduleMap, Schedule,
-              (std::vector<std::shared_ptr<const ray::BundleSpecification>> & bundles,
-               const std::unique_ptr<ScheduleContext> &context,
-               GcsResourceScheduler &gcs_resource_scheduler),
-              (override));
+  MOCK_METHOD(
+      ScheduleResult, Schedule,
+      (const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
+       const std::unique_ptr<ScheduleContext> &context,
+       GcsResourceScheduler &gcs_resource_scheduler),
+      (override));
 };
 
 }  // namespace gcs
@@ -160,8 +170,8 @@ class MockGcsPlacementGroupScheduler : public GcsPlacementGroupScheduler {
  public:
   MOCK_METHOD(void, ScheduleUnplacedBundles,
               (std::shared_ptr<GcsPlacementGroup> placement_group,
-               std::function<void(std::shared_ptr<GcsPlacementGroup>)> failure_handler,
-               std::function<void(std::shared_ptr<GcsPlacementGroup>)> success_handler),
+               PGSchedulingFailureCallback failure_handler,
+               PGSchedulingSuccessfulCallback success_handler),
               (override));
   MOCK_METHOD(void, DestroyPlacementGroupBundleResourcesIfExists,
               (const PlacementGroupID &placement_group_id), (override));

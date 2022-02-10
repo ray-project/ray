@@ -1,6 +1,8 @@
-********************
-RayDP (Spark on Ray)
-********************
+.. _spark-on-ray:
+
+**************************
+Using Spark on Ray (RayDP)
+**************************
 
 RayDP combines your Spark and Ray clusters, making it easy to do large scale
 data processing using the PySpark API and seemlessly use that data to train
@@ -140,7 +142,7 @@ PyTorch.
       return torch.optim.lr_scheduler.MultiStepLR(
         optimizer, milestones=[150, 250, 350], gamma=0.1)
 
-  # You can use the RayDP Estimator API or libraries like RaySGD for distributed training.
+  # You can use the RayDP Estimator API or libraries like Ray Train for distributed training.
   from raydp.torch import TorchEstimator
   estimator = TorchEstimator(
     num_workers = 2,

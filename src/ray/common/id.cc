@@ -15,13 +15,13 @@
 #include "ray/common/id.h"
 
 #include <limits.h>
+
 #include <algorithm>
 #include <chrono>
 #include <mutex>
 #include <random>
 
 #include "absl/time/clock.h"
-
 #include "ray/common/constants.h"
 #include "ray/common/status.h"
 #include "ray/util/macros.h"
@@ -160,9 +160,10 @@ TaskID TaskID::ForDriverTask(const JobID &job_id) {
   return TaskID::FromBinary(data);
 }
 
-TaskID TaskID::ForFakeTask() {
-  std::string data(kLength, 0);
+TaskID TaskID::FromRandom(const JobID &job_id) {
+  std::string data(kLength - JobID::kLength, 0);
   FillRandom(&data);
+  std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
   return TaskID::FromBinary(data);
 }
 
@@ -191,6 +192,19 @@ TaskID TaskID::ForNormalTask(const JobID &job_id, const TaskID &parent_task_id,
   std::copy_n(dummy_actor_id.Data(), ActorID::kLength, std::back_inserter(data));
   RAY_CHECK(data.size() == TaskID::kLength);
   return TaskID::FromBinary(data);
+}
+
+TaskID TaskID::ForExecutionAttempt(const TaskID &task_id, uint64_t attempt_number) {
+  std::string data_str;
+  std::copy_n(task_id.Data(), TaskID::kLength, std::back_inserter(data_str));
+  static_assert(TaskID::kUniqueBytesLength >= 8, "TaskID must have at least 64 bits");
+  auto data = reinterpret_cast<uint64_t *>(data_str.data());
+  // Zero out the low byte for readability.
+  uint64_t mask = 0xFFFFFFFFFFFFFF00;
+  data[0] &= mask;
+  // Add attempt number to the task ID unique bytes.
+  (*data) += attempt_number;
+  return TaskID::FromBinary(data_str);
 }
 
 ActorID TaskID::ActorId() const {

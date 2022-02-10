@@ -33,11 +33,11 @@ body:
         - "Ray Core"
         - "Ray Tune"
         - "Ray Serve"
+        - "Ray Train"
         - "RLlib"
         - "Ray Clusters"
         - "Monitoring & Debugging"
         - "Dashboard"
-        - "RaySGD"
         - "Others"
     validations:
       required: true
@@ -52,6 +52,15 @@ body:
         copy and paste the fragment of logs showing the exact error messages or wrong behaviour here.
 
         **NOTE**: please copy and paste texts instead of taking screenshots of them for easy future search.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Versions / Dependencies
+      description: Please specify the versions of Ray, Python, OS, and other libraries that are used.
+      placeholder: >
+        Please specify the versions of dependencies.
     validations:
       required: true
 

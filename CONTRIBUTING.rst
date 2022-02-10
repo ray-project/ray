@@ -13,17 +13,16 @@ You can post questions or issues or feedback through the following channels:
 To contribute a patch:
 ----------------------
 
-1. Break your work into small, single-purpose patches if possible. It's much
-   harder to merge in a large change with a lot of disjoint features.
-2. Submit the patch as a GitHub pull request against the master branch.
-3. Make sure that your code passes the unit tests.
-4. Make sure that your code passes the linter. Run setup_hooks.sh to create
-   a git hook that will run the linter before you push your changes.
-5. Add new unit tests for your code.
+We welcome your contribution!  Please see https://docs.ray.io/en/master/getting-involved.html for instructions.
+
+For instructions on setting up your development environment, check out the
+`getting involved`_ documentation page.
+
 
 .. _`Github Discussions`: https://github.com/ray-project/ray/discussions
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
+.. _`getting involved`: https://docs.ray.io/en/master/getting-involved.html
 
 PR Review Process
 -----------------

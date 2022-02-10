@@ -1,0 +1,10 @@
+{
+   "pgs_per_second":18.38968677640112,
+   "num_pgs":1000,
+   "time":54.378305196762085,
+   "success":"1",
+   "_runtime":70.17751049995422,
+   "_session_url":"https://beta.anyscale.com/o/anyscale-internal/projects/prj_2xR6uT6t7jJuu1aCwWMsle/clusters/ses_NTMUAfRBeFAnGucHNvxk9SCe",
+   "_commit_url":"https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.8.0/d28be7e0c555808b38a5ce2da8d6c48d5162ce12/ray-1.8.0-cp37-cp37m-manylinux2014_x86_64.whl",
+   "_stable":true
+}

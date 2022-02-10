@@ -1,16 +1,14 @@
 import logging
+from six.moves import queue
 import threading
 
-from six.moves import queue
-
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.execution.learner_thread import LearnerThread
-from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
+from ray.rllib.execution.buffers.minibatch_buffer import MinibatchBuffer
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, \
-    LEARNER_STATS_KEY
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
@@ -48,19 +46,19 @@ class MultiGPULearnerThread(LearnerThread):
     """
 
     def __init__(
-            self,
-            local_worker: RolloutWorker,
-            num_gpus: int = 1,
-            lr=None,  # deprecated.
-            train_batch_size: int = 500,
-            num_multi_gpu_tower_stacks: int = 1,
-            num_sgd_iter: int = 1,
-            learner_queue_size: int = 16,
-            learner_queue_timeout: int = 300,
-            num_data_load_threads: int = 16,
-            _fake_gpus: bool = False,
-            # Deprecated arg, use
-            minibatch_buffer_size=None,
+        self,
+        local_worker: RolloutWorker,
+        num_gpus: int = 1,
+        lr=None,  # deprecated.
+        train_batch_size: int = 500,
+        num_multi_gpu_tower_stacks: int = 1,
+        num_sgd_iter: int = 1,
+        learner_queue_size: int = 16,
+        learner_queue_timeout: int = 300,
+        num_data_load_threads: int = 16,
+        _fake_gpus: bool = False,
+        # Deprecated arg, use
+        minibatch_buffer_size=None,
     ):
         """Initializes a MultiGPULearnerThread instance.
 
@@ -104,17 +102,12 @@ class MultiGPULearnerThread(LearnerThread):
 
         self.train_batch_size = train_batch_size
 
-        # TODO: (sven) Allow multi-GPU to work for multi-agent as well.
-        self.policy = self.local_worker.policy_map[DEFAULT_POLICY_ID]
+        self.policy_map = self.local_worker.policy_map
+        self.devices = next(iter(self.policy_map.values())).devices
 
-        logger.info("MultiGPULearnerThread devices {}".format(
-            self.policy.devices))
-        assert self.train_batch_size % len(self.policy.devices) == 0
-        assert self.train_batch_size >= len(self.policy.devices),\
-            "batch too small"
-
-        if set(self.local_worker.policy_map.keys()) != {DEFAULT_POLICY_ID}:
-            raise NotImplementedError("Multi-gpu mode for multi-agent")
+        logger.info("MultiGPULearnerThread devices {}".format(self.devices))
+        assert self.train_batch_size % len(self.devices) == 0
+        assert self.train_batch_size >= len(self.devices), "batch too small"
 
         self.tower_stack_indices = list(range(num_multi_gpu_tower_stacks))
 
@@ -130,16 +123,18 @@ class MultiGPULearnerThread(LearnerThread):
         # Start n threads that are responsible for loading data into the
         # different (idle) stacks.
         for i in range(num_data_load_threads):
-            self.loader_thread = _MultiGPULoaderThread(
-                self, share_stats=(i == 0))
+            self.loader_thread = _MultiGPULoaderThread(self, share_stats=(i == 0))
             self.loader_thread.start()
 
         # Create a buffer that holds stack indices that are "ready"
         # (loaded with data). Those are stacks that we can call
         # "learn_on_loaded_batch" on.
         self.ready_tower_stacks_buffer = MinibatchBuffer(
-            self.ready_tower_stacks, num_multi_gpu_tower_stacks,
-            learner_queue_timeout, num_sgd_iter)
+            self.ready_tower_stacks,
+            num_multi_gpu_tower_stacks,
+            learner_queue_timeout,
+            num_sgd_iter,
+        )
 
     @override(LearnerThread)
     def step(self) -> None:
@@ -147,37 +142,42 @@ class MultiGPULearnerThread(LearnerThread):
         with self.load_wait_timer:
             buffer_idx, released = self.ready_tower_stacks_buffer.get()
 
+        get_num_samples_loaded_into_buffer = 0
         with self.grad_timer:
             # Use LearnerInfoBuilder as a unified way to build the final
             # results dict from `learn_on_loaded_batch` call(s).
             # This makes sure results dicts always have the same structure
             # no matter the setup (multi-GPU, multi-agent, minibatch SGD,
             # tf vs torch).
-            learner_info_builder = LearnerInfoBuilder(
-                num_devices=len(self.policy.devices))
-            default_policy_results = self.policy.learn_on_loaded_batch(
-                offset=0, buffer_index=buffer_idx)
-            learner_info_builder.add_learn_on_batch_results(
-                default_policy_results)
+            learner_info_builder = LearnerInfoBuilder(num_devices=len(self.devices))
+
+            for pid in self.policy_map.keys():
+                # Not a policy-to-train.
+                if not self.local_worker.is_policy_to_train(pid):
+                    continue
+                policy = self.policy_map[pid]
+                default_policy_results = policy.learn_on_loaded_batch(
+                    offset=0, buffer_index=buffer_idx
+                )
+                learner_info_builder.add_learn_on_batch_results(default_policy_results)
+                self.weights_updated = True
+                get_num_samples_loaded_into_buffer += (
+                    policy.get_num_samples_loaded_into_buffer(buffer_idx)
+                )
+
             self.learner_info = learner_info_builder.finalize()
-            learner_stats = {
-                DEFAULT_POLICY_ID: self.learner_info[DEFAULT_POLICY_ID][
-                    LEARNER_STATS_KEY]
-            }
-            self.weights_updated = True
 
         if released:
             self.idle_tower_stacks.put(buffer_idx)
 
-        self.outqueue.put(
-            (self.policy.get_num_samples_loaded_into_buffer(buffer_idx),
-             learner_stats))
+        self.outqueue.put((get_num_samples_loaded_into_buffer, self.learner_info))
         self.learner_queue_size.push(self.inqueue.qsize())
 
 
 class _MultiGPULoaderThread(threading.Thread):
-    def __init__(self, multi_gpu_learner_thread: MultiGPULearnerThread,
-                 share_stats: bool):
+    def __init__(
+        self, multi_gpu_learner_thread: MultiGPULearnerThread, share_stats: bool
+    ):
         threading.Thread.__init__(self)
         self.multi_gpu_learner_thread = multi_gpu_learner_thread
         self.daemon = True
@@ -194,7 +194,7 @@ class _MultiGPULoaderThread(threading.Thread):
 
     def _step(self) -> None:
         s = self.multi_gpu_learner_thread
-        policy = s.policy
+        policy_map = s.policy_map
 
         # Get a new batch from the data (inqueue).
         with self.queue_timer:
@@ -205,7 +205,16 @@ class _MultiGPULoaderThread(threading.Thread):
 
         # Load the batch into the idle stack.
         with self.load_timer:
-            policy.load_batch_into_buffer(batch=batch, buffer_index=buffer_idx)
+            for pid in policy_map.keys():
+                if not s.local_worker.is_policy_to_train(pid, batch):
+                    continue
+                policy = policy_map[pid]
+                policy.load_batch_into_buffer(
+                    batch=batch
+                    if isinstance(batch, SampleBatch)
+                    else batch.policy_batches[pid],
+                    buffer_index=buffer_idx,
+                )
 
         # Tag just-loaded stack as "ready".
         s.ready_tower_stacks.put(buffer_idx)

@@ -13,8 +13,9 @@ def test_was_current_actor_reconstructed(shutdown_only):
     @ray.remote(max_restarts=10)
     class A(object):
         def __init__(self):
-            self._was_reconstructed = ray.get_runtime_context(
-            ).was_current_actor_reconstructed
+            self._was_reconstructed = (
+                ray.get_runtime_context().was_current_actor_reconstructed
+            )
 
         def get_was_reconstructed(self):
             return self._was_reconstructed
@@ -143,21 +144,14 @@ def test_actor_stats_sync_actor(ray_start_regular):
     actor = SyncActor.remote()
     counts = ray.get(actor.run.remote())
     assert counts == {
-        "SyncActor.run": {
-            "pending": 0,
-            "running": 1,
-            "finished": 0
-        },
-        "SyncActor.__init__": {
-            "pending": 0,
-            "running": 0,
-            "finished": 1
-        }
+        "SyncActor.run": {"pending": 0, "running": 1, "finished": 0},
+        "SyncActor.__init__": {"pending": 0, "running": 0, "finished": 1},
     }
 
     ref = actor.wait_signal.remote()
-    other_refs = [actor.run.remote() for _ in range(3)
-                  ] + [actor.wait_signal.remote() for _ in range(5)]
+    other_refs = [actor.run.remote() for _ in range(3)] + [
+        actor.wait_signal.remote() for _ in range(5)
+    ]
     ray.wait(other_refs, timeout=1)
     signal.send.remote()
     counts = ray.get(ref)
@@ -172,11 +166,7 @@ def test_actor_stats_sync_actor(ray_start_regular):
             "running": 1,
             "finished": 0,
         },
-        "SyncActor.__init__": {
-            "pending": 0,
-            "running": 0,
-            "finished": 1
-        }
+        "SyncActor.__init__": {"pending": 0, "running": 0, "finished": 1},
     }
 
 
@@ -195,10 +185,8 @@ def test_actor_stats_threaded_actor(ray_start_regular):
     assert len(ready) == 0
     signal.send.remote()
     results = ray.get(refs)
-    assert max(result["ThreadedActor.func"]["running"]
-               for result in results) > 1
-    assert max(result["ThreadedActor.func"]["pending"]
-               for result in results) > 1
+    assert max(result["ThreadedActor.func"]["running"] for result in results) > 1
+    assert max(result["ThreadedActor.func"]["pending"] for result in results) > 1
 
 
 def test_actor_stats_async_actor(ray_start_regular):
@@ -220,6 +208,15 @@ def test_actor_stats_async_actor(ray_start_regular):
     assert max(result["AysncActor.func"]["pending"] for result in results) == 3
 
 
+# get_runtime_context() can be called outside of Ray so it should not start
+# Ray automatically.
+def test_no_auto_init(shutdown_only):
+    assert not ray.is_initialized()
+    ray.get_runtime_context()
+    assert not ray.is_initialized()
+
+
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

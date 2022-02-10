@@ -102,6 +102,23 @@ TEST(UtilTest, ParseCommandLineTest) {
   ASSERT_EQ(ParseCommandLine(R"(x' a \b')", win32), ArgList({R"(x')", R"(a)", R"(\b')"}));
 }
 
+TEST(UtilTest, ExponentialBackOffTest) {
+  auto exp = ExponentialBackOff(1, 2, 9);
+  ASSERT_EQ(1, exp.Next());
+  ASSERT_EQ(2, exp.Next());
+  ASSERT_EQ(4, exp.Next());
+  ASSERT_EQ(8, exp.Next());
+  ASSERT_EQ(9, exp.Next());
+  ASSERT_EQ(9, exp.Next());
+  exp.Reset();
+  ASSERT_EQ(1, exp.Next());
+  ASSERT_EQ(2, exp.Next());
+  ASSERT_EQ(4, exp.Next());
+  ASSERT_EQ(8, exp.Next());
+  ASSERT_EQ(9, exp.Next());
+  ASSERT_EQ(9, exp.Next());
+}
+
 TEST(UtilTest, ParseURLTest) {
   const std::string url = "http://abc?num_objects=9&offset=8388878&size=8388878";
   auto parsed_url = *ParseURL(url);

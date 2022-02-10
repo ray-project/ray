@@ -31,16 +31,15 @@
 #include <iostream>
 #include <sstream>
 
-#include "spdlog/sinks/basic_file_sink.h"
-#include "spdlog/sinks/rotating_file_sink.h"
-#include "spdlog/sinks/stdout_color_sinks.h"
-#include "spdlog/spdlog.h"
-
 #include "absl/debugging/failure_signal_handler.h"
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
 #include "ray/util/event_label.h"
 #include "ray/util/filesystem.h"
+#include "spdlog/sinks/basic_file_sink.h"
+#include "spdlog/sinks/rotating_file_sink.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
+#include "spdlog/spdlog.h"
 
 namespace ray {
 
@@ -54,6 +53,7 @@ std::string RayLog::logger_name_ = "ray_log_sink";
 long RayLog::log_rotation_max_size_ = 1 << 29;
 long RayLog::log_rotation_file_num_ = 10;
 bool RayLog::is_failure_signal_handler_installed_ = false;
+std::atomic<bool> RayLog::initialized_ = false;
 
 std::string GetCallTrace() {
   std::vector<void *> local_stack;
@@ -198,23 +198,19 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   // All the logging sinks to add.
   std::vector<spdlog::sink_ptr> sinks;
   auto level = static_cast<spdlog::level::level_enum>(severity_threshold_);
+  std::string app_name_without_path = app_name;
+  if (app_name.empty()) {
+    app_name_without_path = "DefaultApp";
+  } else {
+    // Find the app name without the path.
+    std::string app_file_name = ray::GetFileName(app_name);
+    if (!app_file_name.empty()) {
+      app_name_without_path = app_file_name;
+    }
+  }
 
   if (!log_dir_.empty()) {
     // Enable log file if log_dir_ is not empty.
-    std::string dir_ends_with_slash = log_dir_;
-    if (!ray::IsDirSep(log_dir_[log_dir_.length() - 1])) {
-      dir_ends_with_slash += ray::GetDirSep();
-    }
-    std::string app_name_without_path = app_name;
-    if (app_name.empty()) {
-      app_name_without_path = "DefaultApp";
-    } else {
-      // Find the app name without the path.
-      std::string app_file_name = ray::GetFileName(app_name);
-      if (!app_file_name.empty()) {
-        app_name_without_path = app_file_name;
-      }
-    }
 #ifdef _WIN32
     int pid = _getpid();
 #else
@@ -247,10 +243,14 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
       spdlog::drop(RayLog::GetLoggerName());
     }
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        dir_ends_with_slash + app_name_without_path + "_" + std::to_string(pid) + ".log",
+        JoinPaths(log_dir_, app_name_without_path + "_" + std::to_string(pid) + ".log"),
         log_rotation_max_size_, log_rotation_file_num_);
     sinks.push_back(file_sink);
   } else {
+    // Format pattern is 2020-08-21 17:00:00,000 I 100 1001 msg.
+    // %L is loglevel, %P is process id, %t for thread id.
+    log_format_pattern_ =
+        "[%Y-%m-%d %H:%M:%S,%e %L %P %t] (" + app_name_without_path + ") %v";
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     console_sink->set_pattern(log_format_pattern_);
     console_sink->set_level(level);
@@ -272,6 +272,8 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   spdlog::set_level(static_cast<spdlog::level::level_enum>(severity_threshold_));
   spdlog::set_pattern(log_format_pattern_);
   spdlog::set_default_logger(logger);
+
+  initialized_ = true;
 }
 
 void RayLog::UninstallSignalAction() {
@@ -297,6 +299,11 @@ void RayLog::UninstallSignalAction() {
 }
 
 void RayLog::ShutDownRayLog() {
+  if (!initialized_) {
+    // If the log wasn't initialized, make it no-op.
+    RAY_LOG(INFO) << "The log wasn't initialized. ShutdownRayLog requests are ignored";
+    return;
+  }
   UninstallSignalAction();
   if (spdlog::default_logger()) {
     spdlog::default_logger()->flush();
@@ -326,7 +333,7 @@ bool RayLog::IsFailureSignalHandlerEnabled() {
   return is_failure_signal_handler_installed_;
 }
 
-void RayLog::InstallFailureSignalHandler() {
+void RayLog::InstallFailureSignalHandler(const char *argv0, bool call_previous_handler) {
 #ifdef _WIN32
   // If process fails to initialize, don't display an error window.
   SetErrorMode(GetErrorMode() | SEM_FAILCRITICALERRORS);
@@ -336,7 +343,9 @@ void RayLog::InstallFailureSignalHandler() {
   if (is_failure_signal_handler_installed_) {
     return;
   }
-  absl::FailureSignalHandlerOptions options{};
+  absl::InitializeSymbolizer(argv0);
+  absl::FailureSignalHandlerOptions options;
+  options.call_previous_handler = call_previous_handler;
   options.writerfn = WriteFailureMessage;
   absl::InstallFailureSignalHandler(options);
   is_failure_signal_handler_installed_ = true;

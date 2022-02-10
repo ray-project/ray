@@ -6,17 +6,46 @@ Windows Vista and later SDKs define struct pollfd for WSAPoll(), but it has a pe
 civetweb provides its own implementation of poll, but it has a conflicting definition for pollfd.
 Hence we block Windows from defining pollfd (which this project doesn't use).
 ---
- bazel/civetweb.BUILD | 1 +
- 1 file changed, 1 insertion(+)
+ bazel/civetweb.BUILD | 7 +++++++
+ 1 file changed, 7 insertions(+)
 
 diff --git bazel/civetweb.BUILD bazel/civetweb.BUILD
 --- bazel/civetweb.BUILD
 +++ bazel/civetweb.BUILD
-@@ -34,5 +34,6 @@ cc_library(
+@@ -9,6 +9,11 @@ config_setting(
+     values = {"cpu": "darwin_x86_64"},
+ )
+
++config_setting(
++    name = "darwin_arm64",
++    values = {"cpu": "darwin_arm64"},
++)
++
+ config_setting(
+     name = "windows",
+     values = { "cpu": "x64_windows" },
+@@ -34,6 +39,7 @@ cc_library(
          "-DNO_CACHING",
          "-DNO_SSL",
          "-DNO_FILES",
 +        "-D_WIN32_WINNT=0x0502",
          "-UDEBUG",
      ],
--- 
+     includes = [
+@@ -46,6 +52,7 @@ cc_library(
+     }) + select({
+         ":darwin": [],
+         ":darwin_x86_64": [],
++        ":darwin_arm64": [],
+         ":windows": [],
+         ":windows_msvc": [],
+         "//conditions:default": ["-lrt"],
+@@ -86,6 +93,7 @@ cc_library(
+     }) + select({
+         ":darwin": [],
+         ":darwin_x86_64": [],
++        ":darwin_arm64": [],
+         ":windows": [],
+         ":windows_msvc": [],
+         "//conditions:default": ["-lrt"],
+--

@@ -1,3 +1,5 @@
+.. include:: we_are_hiring.rst
+
 .. _ref-cluster-setup:
 
 Ray with Cluster Managers
@@ -11,6 +13,7 @@ Ray with Cluster Managers
    :maxdepth: 2
 
    kubernetes.rst
+   kuberay.md
    yarn.rst
    slurm.rst
    lsf.rst

@@ -19,18 +19,10 @@
 #include <boost/asio/detail/socket_holder.hpp>
 
 #include "ray/common/ray_config.h"
+#include "ray/rpc/common.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/stats/metric.h"
 #include "ray/util/util.h"
-
-DEFINE_stats(grpc_server_req_latency_ms, "Request latency in grpc server", ("Method"), (),
-             ray::stats::GAUGE);
-DEFINE_stats(grpc_server_req_new, "New request number in grpc server", ("Method"), (),
-             ray::stats::COUNT);
-DEFINE_stats(grpc_server_req_handling, "Request number are handling in grpc server",
-             ("Method"), (), ray::stats::COUNT);
-DEFINE_stats(grpc_server_req_finished, "Finished request number in grpc server",
-             ("Method"), (), ray::stats::COUNT);
 
 namespace ray {
 namespace rpc {
@@ -65,8 +57,24 @@ void GrpcServer::Run() {
                              RayConfig::instance().grpc_keepalive_timeout_ms());
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
 
-  // TODO(hchen): Add options for authentication.
-  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
+  if (RayConfig::instance().USE_TLS()) {
+    // Create credentials from locations specified in config
+    std::string rootcert = ReadCert(RayConfig::instance().TLS_CA_CERT());
+    std::string servercert = ReadCert(RayConfig::instance().TLS_SERVER_CERT());
+    std::string serverkey = ReadCert(RayConfig::instance().TLS_SERVER_KEY());
+    grpc::SslServerCredentialsOptions::PemKeyCertPair pkcp = {serverkey, servercert};
+    grpc::SslServerCredentialsOptions ssl_opts(
+        GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY);
+    ssl_opts.pem_root_certs = rootcert;
+    ssl_opts.pem_key_cert_pairs.push_back(pkcp);
+
+    // Create server credentials
+    std::shared_ptr<grpc::ServerCredentials> server_creds;
+    server_creds = grpc::SslServerCredentials(ssl_opts);
+    builder.AddListeningPort(server_address, server_creds, &port_);
+  } else {
+    builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
+  }
   // Register all the services to this server.
   if (services_.empty()) {
     RAY_LOG(WARNING) << "No service is found when start grpc server " << name_;
@@ -161,15 +169,18 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       // `ok == false` will occur in two situations:
 
       // First, server has sent reply to client and failed, the server call's status is
-      // SENDING_REPLY.
+      // SENDING_REPLY. This can happen, for example, when the client deadline has
+      // exceeded or the client side is dead.
       if (server_call->GetState() == ServerCallState::SENDING_REPLY) {
         server_call->OnReplyFailed();
         // A new call should be suplied.
         need_new_call = true;
       }
-
       // Second, the server has been shut down, the server call's status is PENDING.
       // And don't need to do anything other than deleting this call.
+      // See
+      // https://grpc.github.io/grpc/cpp/classgrpc_1_1_completion_queue.html#a86d9810ced694e50f7987ac90b9f8c1a
+      // for more details.
       delete_call = true;
     }
     if (delete_call) {

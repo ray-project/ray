@@ -258,6 +258,21 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
             self._function_id = self._get_function_id()
         return self._function_id
 
+    @property
+    def repr(self):
+        """Get the module_name.Optional[class_name].function_name
+            of the descriptor.
+
+        Returns:
+            The value of module_name.Optional[class_name].function_name
+        """
+        if self.is_actor_method():
+            return ".".join(
+                [self.module_name, self.class_name, self.function_name])
+        else:
+            return ".".join(
+                [self.module_name, self.function_name])
+
     def _get_function_id(self):
         """Calculate the function id of current function descriptor.
 

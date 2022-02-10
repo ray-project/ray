@@ -76,12 +76,12 @@ class GcsPubSubTest : public ::testing::Test {
       absl::MutexLock lock(&vector_mutex_);
       result.push_back(std::make_pair(id, data));
     };
-    RAY_CHECK_OK((pub_sub_->SubscribeAll(channel, subscribe, done)));
+    RAY_CHECK_OK(pub_sub_->SubscribeAll(channel, subscribe, done));
     WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool Unsubscribe(const std::string &channel, const std::string &id) {
-    return pub_sub_->Unsubscribe(channel, id).ok();
+  void Unsubscribe(const std::string &channel, const std::string &id) {
+    RAY_CHECK_OK(pub_sub_->Unsubscribe(channel, id));
   }
 
   bool Publish(const std::string &channel, const std::string &id,

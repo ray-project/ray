@@ -1,4 +1,5 @@
 import concurrent.futures
+import asyncio
 import pytest
 import requests
 
@@ -146,7 +147,7 @@ def test_repeated_get_handle_cached(serve_instance):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("sync", [True, False])
-async def test_args_kwargs(sync):
+async def test_args_kwargs(serve_instance, sync):
     @serve.deployment
     async def f(*args, **kwargs):
         assert args[0] == "hi"
@@ -192,7 +193,34 @@ async def test_nonexistent_method(serve_instance, sync):
     assert "Available methods: ['exists']" in exception_string
 
 
+def test_handle_across_loops(serve_instance):
+    @serve.deployment
+    class A:
+        def exists(self):
+            return True
+
+    A.deploy()
+
+    async def refresh_get():
+        handle = A.get_handle(sync=False)
+        assert await (await handle.exists.remote())
+
+    for _ in range(10):
+        asyncio.set_event_loop(asyncio.new_event_loop())
+        asyncio.get_event_loop().run_until_complete(refresh_get())
+
+    handle = A.get_handle(sync=False)
+
+    async def cache_get():
+        assert await (await handle.exists.remote())
+
+    for _ in range(10):
+        asyncio.set_event_loop(asyncio.new_event_loop())
+        asyncio.get_event_loop().run_until_complete(cache_get())
+
+
 if __name__ == "__main__":
     import sys
     import pytest
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -17,6 +17,7 @@ namespace gcs {
 
 class MockRedisStoreClient : public RedisStoreClient {
  public:
+  MockRedisStoreClient() : RedisStoreClient(nullptr) {}
   MOCK_METHOD(Status, AsyncPut,
               (const std::string &table_name, const std::string &key,
                const std::string &data, const StatusCallback &callback),

@@ -3,8 +3,9 @@ import os
 
 import ray
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.examples.policy.bare_metal_policy_with_custom_view_reqs \
-    import BareMetalPolicyWithCustomViewReqs
+from ray.rllib.examples.policy.bare_metal_policy_with_custom_view_reqs import (
+    BareMetalPolicyWithCustomViewReqs,
+)
 from ray import tune
 
 
@@ -14,8 +15,18 @@ def get_cli_args():
 
     # general args
     parser.add_argument(
-        "--run", default="PPO", help="The RLlib-registered algorithm to use.")
+        "--run", default="PPO", help="The RLlib-registered algorithm to use."
+    )
     parser.add_argument("--num-cpus", type=int, default=3)
+    parser.add_argument(
+        "--stop-iters", type=int, default=1, help="Number of iterations to train."
+    )
+    parser.add_argument(
+        "--stop-timesteps",
+        type=int,
+        default=100000,
+        help="Number of timesteps to train.",
+    )
     parser.add_argument(
         "--stop-iters",
         type=int,
@@ -34,7 +45,8 @@ def get_cli_args():
     parser.add_argument(
         "--local-mode",
         action="store_true",
-        help="Init Ray in local mode for easier debugging.")
+        help="Init Ray in local mode for easier debugging.",
+    )
 
     args = parser.parse_args()
     print(f"Running with following CLI args: {args}")
@@ -48,7 +60,8 @@ if __name__ == "__main__":
 
     # Create q custom Trainer class using our custom Policy.
     BareMetalPolicyTrainer = build_trainer(
-        name="MyPolicy", default_policy=BareMetalPolicyWithCustomViewReqs)
+        name="MyPolicy", default_policy=BareMetalPolicyWithCustomViewReqs
+    )
 
     config = {
         "env": "CartPole-v0",
@@ -74,5 +87,5 @@ if __name__ == "__main__":
     }
 
     # Train the Trainer with our policy.
-    results = tune.run(BareMetalPolicyTrainer, config=config)
+    results = tune.run(BareMetalPolicyTrainer, config=config, stop=stop)
     print(results)

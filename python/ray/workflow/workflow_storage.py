@@ -12,13 +12,19 @@ import ray
 from ray import cloudpickle
 from ray._private import signature
 from ray.workflow import storage
-from ray.workflow.common import (Workflow, StepID, WorkflowMetaData,
-                                 WorkflowStatus, WorkflowRef, StepType)
+from ray.workflow.common import (
+    Workflow,
+    StepID,
+    WorkflowMetaData,
+    WorkflowStatus,
+    WorkflowRef,
+    WorkflowNotFoundError,
+    WorkflowStepRuntimeOptions,
+)
 from ray.workflow import workflow_context
 from ray.workflow import serialization
 from ray.workflow import serialization_context
-from ray.workflow.storage import (DataLoadError, DataSaveError,
-                                  KeyNotFoundError)
+from ray.workflow.storage import DataLoadError, DataSaveError, KeyNotFoundError
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
@@ -29,6 +35,9 @@ ArgsType = Tuple[List[Any], Dict[str, Any]]  # args and kwargs
 OBJECTS_DIR = "objects"
 STEPS_DIR = "steps"
 STEP_INPUTS_METADATA = "inputs.json"
+STEP_USER_METADATA = "user_step_metadata.json"
+STEP_PRERUN_METADATA = "pre_step_metadata.json"
+STEP_POSTRUN_METADATA = "post_step_metadata.json"
 STEP_OUTPUTS_METADATA = "outputs.json"
 STEP_ARGS = "args.pkl"
 STEP_OUTPUT = "output.pkl"
@@ -36,6 +45,9 @@ STEP_EXCEPTION = "exception.pkl"
 STEP_FUNC_BODY = "func_body.pkl"
 CLASS_BODY = "class_body.pkl"
 WORKFLOW_META = "workflow_meta.json"
+WORKFLOW_USER_METADATA = "user_run_metadata.json"
+WORKFLOW_PRERUN_METADATA = "pre_run_metadata.json"
+WORKFLOW_POSTRUN_METADATA = "post_run_metadata.json"
 WORKFLOW_PROGRESS = "progress.json"
 # Without this counter, we're going to scan all steps to get the number of
 # steps with a given name. This can be very expensive if there are too
@@ -65,21 +77,17 @@ class StepInspectResult:
     workflows: Optional[List[str]] = None
     # The dynamically referenced workflows in the input of the workflow.
     workflow_refs: Optional[List[str]] = None
-    # The num of retry for application exception
-    max_retries: int = 1
-    # Whether the user want to handle the exception mannually
-    catch_exceptions: bool = False
-    # ray_remote options
-    ray_options: Optional[Dict[str, Any]] = None
-    # type of workflow step
-    step_type: Optional[StepType] = None
+    # The options of the workflow step.
+    step_options: Optional[WorkflowStepRuntimeOptions] = None
     # step throw exception
     step_raised_exception: bool = False
 
     def is_recoverable(self) -> bool:
-        return (self.output_object_valid or self.output_step_id
-                or (self.args_valid and self.workflows is not None
-                    and self.func_body_valid))
+        return (
+            self.output_object_valid
+            or self.output_step_id
+            or (self.args_valid and self.workflows is not None and self.func_body_valid)
+        )
 
 
 class WorkflowStorage:
@@ -102,10 +110,11 @@ class WorkflowStorage:
 
         tasks = [
             self._get(self._key_step_output(step_id), no_exception=True),
-            self._get(self._key_step_exception(step_id), no_exception=True)
+            self._get(self._key_step_exception(step_id), no_exception=True),
         ]
-        ((output_ret, output_err), (exception_ret, exception_err)) = \
-            asyncio_run(asyncio.gather(*tasks))
+        ((output_ret, output_err), (exception_ret, exception_err)) = asyncio_run(
+            asyncio.gather(*tasks)
+        )
         # When we have output, always return output first
         if output_err is None:
             return output_ret
@@ -117,9 +126,14 @@ class WorkflowStorage:
         # In this case, there is no such step
         raise output_err
 
-    def save_step_output(self, step_id: StepID, ret: Union[Workflow, Any], *,
-                         exception: Optional[Exception],
-                         outer_most_step_id: StepID) -> None:
+    def save_step_output(
+        self,
+        step_id: StepID,
+        ret: Union[Workflow, Any],
+        *,
+        exception: Optional[Exception],
+        outer_most_step_id: StepID,
+    ) -> None:
         """When a workflow step returns,
         1. If the returned object is a workflow, this means we are a nested
            workflow. We save the output metadata that points to the workflow.
@@ -133,6 +147,7 @@ class WorkflowStorage:
             outer_most_step_id: See WorkflowStepContext.
         """
         tasks = []
+        dynamic_output_id = None
         if isinstance(ret, Workflow):
             # This workflow step returns a nested workflow.
             assert step_id != ret.step_id
@@ -140,32 +155,47 @@ class WorkflowStorage:
             tasks.append(
                 self._put(
                     self._key_step_output_metadata(step_id),
-                    {"output_step_id": ret.step_id}, True))
+                    {"output_step_id": ret.step_id},
+                    True,
+                )
+            )
             dynamic_output_id = ret.step_id
         else:
             if exception is None:
                 # This workflow step returns a object.
                 ret = ray.get(ret) if isinstance(ret, ray.ObjectRef) else ret
                 promise = serialization.dump_to_storage(
-                    self._key_step_output(step_id), ret, self._workflow_id,
-                    self._storage)
+                    self._key_step_output(step_id),
+                    ret,
+                    self._workflow_id,
+                    self._storage,
+                )
                 tasks.append(promise)
                 # tasks.append(self._put(self._key_step_output(step_id), ret))
                 dynamic_output_id = step_id
                 # TODO (yic): Delete exception file
-                tasks.append(
-                    self._update_dynamic_output(outer_most_step_id,
-                                                dynamic_output_id))
             else:
                 assert ret is None
                 promise = serialization.dump_to_storage(
-                    self._key_step_exception(step_id), exception,
-                    self._workflow_id, self._storage)
+                    self._key_step_exception(step_id),
+                    exception,
+                    self._workflow_id,
+                    self._storage,
+                )
                 tasks.append(promise)
                 # tasks.append(
                 #     self._put(self._key_step_exception(step_id), exception))
 
+        # Finish checkpointing.
         asyncio_run(asyncio.gather(*tasks))
+
+        # NOTE: if we update the dynamic output before
+        # finishing checkpointing, then during recovery, the dynamic could
+        # would point to a checkpoint that does not exist.
+        if dynamic_output_id is not None:
+            asyncio_run(
+                self._update_dynamic_output(outer_most_step_id, dynamic_output_id)
+            )
 
     def load_step_func_body(self, step_id: StepID) -> Callable:
         """Load the function body of the workflow step.
@@ -192,8 +222,8 @@ class WorkflowStorage:
         return asyncio_run(_gen_step_id())
 
     def load_step_args(
-            self, step_id: StepID, workflows: List[Any],
-            workflow_refs: List[WorkflowRef]) -> Tuple[List, Dict[str, Any]]:
+        self, step_id: StepID, workflows: List[Any], workflow_refs: List[WorkflowRef]
+    ) -> Tuple[List, Dict[str, Any]]:
         """Load the input arguments of the workflow step. This must be
         done under a serialization context, otherwise the arguments would
         not be reconstructed successfully.
@@ -208,9 +238,9 @@ class WorkflowStorage:
             Args and kwargs.
         """
         with serialization_context.workflow_args_resolving_context(
-                workflows, workflow_refs):
-            flattened_args = asyncio_run(
-                self._get(self._key_step_args(step_id)))
+            workflows, workflow_refs
+        ):
+            flattened_args = asyncio_run(self._get(self._key_step_args(step_id)))
             # dereference arguments like Ray remote functions
             flattened_args = [
                 ray.get(a) if isinstance(a, ray.ObjectRef) else a
@@ -241,13 +271,14 @@ class WorkflowStorage:
 
         async def _load_obj_ref() -> ray.ObjectRef:
             data = await self._get(self._key_obj_id(object_id))
-            ref = _put_obj_ref.remote((data, ))
+            ref = _put_obj_ref.remote((data,))
             return ref
 
         return asyncio_run(_load_obj_ref())
 
-    async def _update_dynamic_output(self, outer_most_step_id: StepID,
-                                     dynamic_output_step_id: StepID) -> None:
+    async def _update_dynamic_output(
+        self, outer_most_step_id: StepID, dynamic_output_step_id: StepID
+    ) -> None:
         """Update dynamic output.
 
         There are two steps involved:
@@ -275,20 +306,19 @@ class WorkflowStorage:
             return
 
         metadata = await self._get(
-            self._key_step_output_metadata(outer_most_step_id), True)
-        if (dynamic_output_step_id != metadata["output_step_id"]
-                and dynamic_output_step_id !=
-                metadata.get("dynamic_output_step_id")):
+            self._key_step_output_metadata(outer_most_step_id), True
+        )
+        if dynamic_output_step_id != metadata[
+            "output_step_id"
+        ] and dynamic_output_step_id != metadata.get("dynamic_output_step_id"):
             metadata["dynamic_output_step_id"] = dynamic_output_step_id
             await self._put(
-                self._key_step_output_metadata(outer_most_step_id), metadata,
-                True)
+                self._key_step_output_metadata(outer_most_step_id), metadata, True
+            )
 
     async def _locate_output_step_id(self, step_id: StepID) -> str:
-        metadata = await self._get(
-            self._key_step_output_metadata(step_id), True)
-        return (metadata.get("dynamic_output_step_id")
-                or metadata["output_step_id"])
+        metadata = await self._get(self._key_step_output_metadata(step_id), True)
+        return metadata.get("dynamic_output_step_id") or metadata["output_step_id"]
 
     def get_entrypoint_step_id(self) -> StepID:
         """Load the entrypoint step ID of the workflow.
@@ -300,8 +330,10 @@ class WorkflowStorage:
         try:
             return asyncio_run(self._locate_output_step_id(""))
         except Exception as e:
-            raise ValueError("Fail to get entrypoint step ID from workflow"
-                             f"[id={self._workflow_id}]") from e
+            raise ValueError(
+                "Fail to get entrypoint step ID from workflow"
+                f"[id={self._workflow_id}]"
+            ) from e
 
     def inspect_step(self, step_id: StepID) -> StepInspectResult:
         """
@@ -329,17 +361,15 @@ class WorkflowStorage:
 
         # read inputs metadata
         try:
-            metadata = await self._get(
-                self._key_step_input_metadata(step_id), True)
+            metadata = await self._get(self._key_step_input_metadata(step_id), True)
             return StepInspectResult(
                 args_valid=(STEP_ARGS in keys),
                 func_body_valid=(STEP_FUNC_BODY in keys),
                 workflows=metadata["workflows"],
                 workflow_refs=metadata["workflow_refs"],
-                max_retries=metadata.get("max_retries"),
-                catch_exceptions=metadata.get("catch_exceptions"),
-                ray_options=metadata.get("ray_options", {}),
-                step_type=StepType[metadata.get("step_type")],
+                step_options=WorkflowStepRuntimeOptions.from_dict(
+                    metadata["step_options"]
+                ),
                 step_raised_exception=(STEP_EXCEPTION in keys),
             )
         except Exception:
@@ -372,6 +402,151 @@ class WorkflowStorage:
         """
         asyncio_run(self._put(self._key_class_body(), cls))
 
+    def save_step_prerun_metadata(self, step_id: StepID, metadata: Dict[str, Any]):
+        """Save pre-run metadata of the current step.
+
+        Args:
+            step_id: ID of the workflow step.
+            metadata: pre-run metadata of the current step.
+
+        Raises:
+            DataSaveError: if we fail to save the pre-run metadata.
+        """
+
+        asyncio_run(self._put(self._key_step_prerun_metadata(step_id), metadata, True))
+
+    def save_step_postrun_metadata(self, step_id: StepID, metadata: Dict[str, Any]):
+        """Save post-run metadata of the current step.
+
+        Args:
+            step_id: ID of the workflow step.
+            metadata: post-run metadata of the current step.
+
+        Raises:
+            DataSaveError: if we fail to save the post-run metadata.
+        """
+
+        asyncio_run(self._put(self._key_step_postrun_metadata(step_id), metadata, True))
+
+    def save_workflow_user_metadata(self, metadata: Dict[str, Any]):
+        """Save user metadata of the current workflow.
+
+        Args:
+            metadata: user metadata of the current workflow.
+
+        Raises:
+            DataSaveError: if we fail to save the user metadata.
+        """
+
+        asyncio_run(self._put(self._key_workflow_user_metadata(), metadata, True))
+
+    def save_workflow_prerun_metadata(self, metadata: Dict[str, Any]):
+        """Save pre-run metadata of the current workflow.
+
+        Args:
+            metadata: pre-run metadata of the current workflow.
+
+        Raises:
+            DataSaveError: if we fail to save the pre-run metadata.
+        """
+
+        asyncio_run(self._put(self._key_workflow_prerun_metadata(), metadata, True))
+
+    def save_workflow_postrun_metadata(self, metadata: Dict[str, Any]):
+        """Save post-run metadata of the current workflow.
+
+        Args:
+            metadata: post-run metadata of the current workflow.
+
+        Raises:
+            DataSaveError: if we fail to save the post-run metadata.
+        """
+
+        asyncio_run(self._put(self._key_workflow_postrun_metadata(), metadata, True))
+
+    def load_step_metadata(self, step_id: StepID) -> Dict[str, Any]:
+        """Load the metadata of the given step.
+
+        Returns:
+            The metadata of the given step.
+        """
+
+        async def _load_step_metadata():
+            if not await self._scan([self._workflow_id, "steps", step_id]):
+                if not await self._scan([self._workflow_id]):
+                    raise ValueError("No such workflow_id {}".format(self._workflow_id))
+                else:
+                    raise ValueError(
+                        "No such step_id {} in workflow {}".format(
+                            step_id, self._workflow_id
+                        )
+                    )
+
+            tasks = [
+                self._get(self._key_step_input_metadata(step_id), True, True),
+                self._get(self._key_step_prerun_metadata(step_id), True, True),
+                self._get(self._key_step_postrun_metadata(step_id), True, True),
+            ]
+
+            (
+                (input_metadata, _),
+                (prerun_metadata, _),
+                (postrun_metadata, _),
+            ) = await asyncio.gather(*tasks)
+
+            input_metadata = input_metadata or {}
+            prerun_metadata = prerun_metadata or {}
+            postrun_metadata = postrun_metadata or {}
+
+            metadata = input_metadata
+            metadata["stats"] = {}
+            metadata["stats"].update(prerun_metadata)
+            metadata["stats"].update(postrun_metadata)
+
+            return metadata
+
+        return asyncio_run(_load_step_metadata())
+
+    def load_workflow_metadata(self) -> Dict[str, Any]:
+        """Load the metadata of the current workflow.
+
+        Returns:
+            The metadata of the current workflow.
+        """
+
+        async def _load_workflow_metadata():
+            if not await self._scan([self._workflow_id]):
+                raise ValueError("No such workflow_id {}".format(self._workflow_id))
+
+            tasks = [
+                self._get(self._key_workflow_metadata(), True, True),
+                self._get(self._key_workflow_user_metadata(), True, True),
+                self._get(self._key_workflow_prerun_metadata(), True, True),
+                self._get(self._key_workflow_postrun_metadata(), True, True),
+            ]
+
+            (
+                (status_metadata, _),
+                (user_metadata, _),
+                (prerun_metadata, _),
+                (postrun_metadata, _),
+            ) = await asyncio.gather(*tasks)
+
+            status_metadata = status_metadata or {}
+            user_metadata = user_metadata or {}
+            prerun_metadata = prerun_metadata or {}
+            postrun_metadata = postrun_metadata or {}
+
+            metadata = status_metadata
+            metadata["user_metadata"] = user_metadata
+            metadata["stats"] = {}
+            metadata["stats"].update(prerun_metadata)
+            metadata["stats"].update(postrun_metadata)
+
+            return metadata
+
+        return asyncio_run(_load_workflow_metadata())
+
     def save_workflow_meta(self, metadata: WorkflowMetaData) -> None:
         """Save the metadata of the current workflow.
 
@@ -396,8 +571,7 @@ class WorkflowStorage:
         """
 
         try:
-            metadata = asyncio_run(
-                self._get(self._key_workflow_metadata(), True))
+            metadata = asyncio_run(self._get(self._key_workflow_metadata(), True))
             return WorkflowMetaData(status=WorkflowStatus(metadata["status"]))
         except KeyNotFoundError:
             return None
@@ -405,12 +579,16 @@ class WorkflowStorage:
     async def _list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
         prefix = self._storage.make_key("")
         workflow_ids = await self._storage.scan_prefix(prefix)
-        metadata = await asyncio.gather(*[
-            self._get([workflow_id, WORKFLOW_META], True)
-            for workflow_id in workflow_ids
-        ])
-        return [(wid, WorkflowStatus(meta["status"]) if meta else None)
-                for (wid, meta) in zip(workflow_ids, metadata)]
+        metadata = await asyncio.gather(
+            *[
+                self._get([workflow_id, WORKFLOW_META], True)
+                for workflow_id in workflow_ids
+            ]
+        )
+        return [
+            (wid, WorkflowStatus(meta["status"]) if meta else None)
+            for (wid, meta) in zip(workflow_ids, metadata)
+        ]
 
     def list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
         return asyncio_run(self._list_workflow())
@@ -426,9 +604,14 @@ class WorkflowStorage:
             DataSaveError: if we fail to save the progress.
         """
         asyncio_run(
-            self._put(self._key_workflow_progress(), {
-                "step_id": finished_step_id,
-            }, True))
+            self._put(
+                self._key_workflow_progress(),
+                {
+                    "step_id": finished_step_id,
+                },
+                True,
+            )
+        )
 
     def get_latest_progress(self) -> "StepID":
         """Load the latest progress of a workflow. This is used by a
@@ -440,11 +623,30 @@ class WorkflowStorage:
         Returns:
             The step that contains the latest output.
         """
-        return asyncio_run(self._get(self._key_workflow_progress(),
-                                     True))["step_id"]
+        return asyncio_run(self._get(self._key_workflow_progress(), True))["step_id"]
 
-    async def _put(self, paths: List[str], data: Any,
-                   is_json: bool = False) -> str:
+    def delete_workflow(self):
+        prefix = self._storage.make_key(self._workflow_id)
+
+        scan = []
+        scan_future = self._storage.scan_prefix(prefix)
+        delete_future = self._storage.delete_prefix(prefix)
+
+        try:
+            # TODO (Alex): There's a race condition here if someone tries to
+            # start the workflow between thesea ops.
+            scan = asyncio_run(scan_future)
+            asyncio_run(delete_future)
+        except FileNotFoundError:
+            # TODO (Alex): Different file systems seem to have different
+            # behavior when deleting a prefix that doesn't exist, so we may
+            # need to catch a broader class of exceptions.
+            pass
+
+        if not scan:
+            raise WorkflowNotFoundError(self._workflow_id)
+
+    async def _put(self, paths: List[str], data: Any, is_json: bool = False) -> str:
         """
         Serialize and put an object in the object store.
 
@@ -459,7 +661,8 @@ class WorkflowStorage:
             upload_tasks: List[ObjectRef] = []
             if not is_json:
                 await serialization.dump_to_storage(
-                    paths, data, self._workflow_id, self._storage)
+                    paths, data, self._workflow_id, self._storage
+                )
             else:
                 value = data
                 outer_coro = self._storage.put(key, value, is_json=is_json)
@@ -474,10 +677,9 @@ class WorkflowStorage:
 
         return key
 
-    async def _get(self,
-                   paths: List[str],
-                   is_json: bool = False,
-                   no_exception: bool = False) -> Any:
+    async def _get(
+        self, paths: List[str], is_json: bool = False, no_exception: bool = False
+    ) -> Any:
         err = None
         ret = None
         try:
@@ -517,6 +719,15 @@ class WorkflowStorage:
     def _key_step_input_metadata(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, STEP_INPUTS_METADATA]
 
+    def _key_step_user_metadata(self, step_id):
+        return [self._workflow_id, STEPS_DIR, step_id, STEP_USER_METADATA]
+
+    def _key_step_prerun_metadata(self, step_id):
+        return [self._workflow_id, STEPS_DIR, step_id, STEP_PRERUN_METADATA]
+
+    def _key_step_postrun_metadata(self, step_id):
+        return [self._workflow_id, STEPS_DIR, step_id, STEP_POSTRUN_METADATA]
+
     def _key_step_output(self, step_id):
         return [self._workflow_id, STEPS_DIR, step_id, STEP_OUTPUT]
 
@@ -544,6 +755,15 @@ class WorkflowStorage:
     def _key_workflow_metadata(self):
         return [self._workflow_id, WORKFLOW_META]
 
+    def _key_workflow_user_metadata(self):
+        return [self._workflow_id, WORKFLOW_USER_METADATA]
+
+    def _key_workflow_prerun_metadata(self):
+        return [self._workflow_id, WORKFLOW_PRERUN_METADATA]
+
+    def _key_workflow_postrun_metadata(self):
+        return [self._workflow_id, WORKFLOW_POSTRUN_METADATA]
+
     def _key_num_steps_with_name(self, name):
         return [self._workflow_id, DUPLICATE_NAME_COUNTER, name]
 
@@ -563,12 +783,10 @@ def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:
     return WorkflowStorage(workflow_id, store)
 
 
-def _load_object_ref(paths: List[str],
-                     wf_storage: WorkflowStorage) -> ObjectRef:
+def _load_object_ref(paths: List[str], wf_storage: WorkflowStorage) -> ObjectRef:
     @ray.remote(num_cpus=0)
     def load_ref(paths: List[str], wf_storage: WorkflowStorage):
-        return asyncio.get_event_loop().run_until_complete(
-            wf_storage._get(paths))
+        return asyncio.get_event_loop().run_until_complete(wf_storage._get(paths))
 
     return load_ref.remote(paths, wf_storage)
 

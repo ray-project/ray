@@ -99,6 +99,9 @@ available_node_types:
             InstanceType: m5.large
             ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
             # Run workers on spot by default. Comment this out to use on-demand.
+            # NOTE: If relying on spot instances, it is best to specify multiple different instance
+            # types to avoid interruption when one instance type is experiencing heightened demand.
+            # Demand information can be found at https://aws.amazon.com/ec2/spot/instance-advisor/
             InstanceMarketOptions:
                 MarketType: spot
                 # Additional options can be found in the boto docs, e.g.

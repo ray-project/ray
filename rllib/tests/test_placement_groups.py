@@ -8,35 +8,27 @@ from ray.rllib.agents.pg import PGTrainer, DEFAULT_CONFIG
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.trial import Trial
 from ray.tune.utils.placement_groups import PlacementGroupFactory
-from ray.util import placement_group_table
 
 trial_executor = None
 
 
 class _TestCallback(Callback):
     def on_step_end(self, iteration, trials, **info):
-        num_finished = len([
-            t for t in trials
-            if t.status == Trial.TERMINATED or t.status == Trial.ERROR
-        ])
+        num_finished = len(
+            [
+                t
+                for t in trials
+                if t.status == Trial.TERMINATED or t.status == Trial.ERROR
+            ]
+        )
         num_running = len([t for t in trials if t.status == Trial.RUNNING])
 
-        num_staging = sum(
-            len(s) for s in trial_executor._pg_manager._staging.values())
-        num_ready = sum(
-            len(s) for s in trial_executor._pg_manager._ready.values())
+        num_staging = sum(len(s) for s in trial_executor._pg_manager._staging.values())
+        num_ready = sum(len(s) for s in trial_executor._pg_manager._ready.values())
         num_in_use = len(trial_executor._pg_manager._in_use_pgs)
         num_cached = len(trial_executor._pg_manager._cached_pgs)
 
-        total_num_tracked = num_staging + num_ready + \
-            num_in_use + num_cached
-
-        num_non_removed_pgs = len([
-            p for pid, p in placement_group_table().items()
-            if p["state"] != "REMOVED"
-        ])
-        num_removal_scheduled_pgs = len(
-            trial_executor._pg_manager._pgs_for_removal)
+        total_num_tracked = num_staging + num_ready + num_in_use + num_cached
 
         # All 3 trials (3 different learning rates) should be scheduled.
         assert 3 == min(3, len(trials))
@@ -46,9 +38,6 @@ class _TestCallback(Callback):
         # The number of placement groups should decrease
         # when trials finish.
         assert max(3, len(trials)) - num_finished == total_num_tracked
-        # The number of actual placement groups should match this.
-        assert max(3, len(trials)) - num_finished == \
-            num_non_removed_pgs - num_removal_scheduled_pgs
 
 
 class TestPlacementGroups(unittest.TestCase):
@@ -68,18 +57,19 @@ class TestPlacementGroups(unittest.TestCase):
         config["env"] = "CartPole-v0"
         config["framework"] = "tf"
 
-        class DefaultResourceRequest:
+        # Create a trainer with an overridden default_resource_request
+        # method that returns a PlacementGroupFactory.
+
+        class MyTrainer(PGTrainer):
             @classmethod
             def default_resource_request(cls, config):
                 head_bundle = {"CPU": 1, "GPU": 0}
                 child_bundle = {"CPU": 1}
                 return PlacementGroupFactory(
                     [head_bundle, child_bundle, child_bundle],
-                    strategy=config["placement_strategy"])
+                    strategy=config["placement_strategy"],
+                )
 
-        # Create a trainer with an overridden default_resource_request
-        # method that returns a PlacementGroupFactory.
-        MyTrainer = PGTrainer.with_updates(mixins=[DefaultResourceRequest])
         tune.register_trainable("my_trainable", MyTrainer)
 
         global trial_executor
@@ -128,9 +118,7 @@ class TestPlacementGroups(unittest.TestCase):
                 "PG",
                 config=config,
                 stop={"training_iteration": 2},
-                resources_per_trial=PlacementGroupFactory([{
-                    "CPU": 1
-                }]),
+                resources_per_trial=PlacementGroupFactory([{"CPU": 1}]),
                 verbose=2,
             )
         except ValueError as e:
@@ -140,4 +128,5 @@ class TestPlacementGroups(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

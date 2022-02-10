@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "config_internal.h"
+
 #include <boost/dll/runtime_symbol_info.hpp>
+#include <charconv>
+
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/strings/str_split.h"
-
-#include "config_internal.h"
 
 ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
 
@@ -53,12 +55,15 @@ ABSL_FLAG(std::string, ray_head_args, "",
           "command. It takes effect only if Ray head is started by a driver. Run `ray "
           "start --help` for details.");
 
+ABSL_FLAG(int64_t, startup_token, -1,
+          "The startup token assigned to this worker process by the raylet.");
+
 namespace ray {
 namespace internal {
 
 void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   if (!config.address.empty()) {
-    SetRedisAddress(config.address);
+    SetBootstrapAddress(config.address);
   }
   run_mode = config.local_mode ? RunMode::SINGLE_PROCESS : RunMode::CLUSTER;
   if (!config.code_search_path.empty()) {
@@ -80,7 +85,7 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
                                         absl::SkipEmpty());
     }
     if (!FLAGS_ray_address.CurrentValue().empty()) {
-      SetRedisAddress(FLAGS_ray_address.CurrentValue());
+      SetBootstrapAddress(FLAGS_ray_address.CurrentValue());
     }
     // Don't rewrite `ray_redis_password` when it is not set in the command line.
     if (FLAGS_ray_redis_password.CurrentValue() !=
@@ -111,14 +116,15 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
           absl::StrSplit(FLAGS_ray_head_args.CurrentValue(), ' ', absl::SkipEmpty());
       head_args.insert(head_args.end(), args.begin(), args.end());
     }
+    startup_token = absl::GetFlag<int64_t>(FLAGS_startup_token);
   }
   if (worker_type == WorkerType::DRIVER && run_mode == RunMode::CLUSTER) {
-    if (redis_ip.empty()) {
+    if (bootstrap_ip.empty()) {
       auto ray_address_env = std::getenv("RAY_ADDRESS");
       if (ray_address_env) {
         RAY_LOG(DEBUG) << "Initialize Ray cluster address to \"" << ray_address_env
                        << "\" from environment variable \"RAY_ADDRESS\".";
-        SetRedisAddress(ray_address_env);
+        SetBootstrapAddress(ray_address_env);
       }
     }
     if (code_search_path.empty()) {
@@ -140,11 +146,13 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   }
 };
 
-void ConfigInternal::SetRedisAddress(const std::string address) {
+void ConfigInternal::SetBootstrapAddress(std::string_view address) {
   auto pos = address.find(':');
   RAY_CHECK(pos != std::string::npos);
-  redis_ip = address.substr(0, pos);
-  redis_port = std::stoi(address.substr(pos + 1, address.length()));
+  bootstrap_ip = address.substr(0, pos);
+  auto ret = std::from_chars(address.data() + pos + 1, address.data() + address.size(),
+                             bootstrap_port);
+  RAY_CHECK(ret.ec == std::errc());
 }
 }  // namespace internal
 }  // namespace ray

@@ -1,11 +1,11 @@
-from fastapi import FastAPI, Request
+import time
 
 import pytest
-
 import requests
-
+from fastapi import FastAPI, Request
 from starlette.responses import RedirectResponse
 
+import ray
 from ray import serve
 
 
@@ -86,6 +86,21 @@ def test_routes_endpoint(serve_instance):
     assert len(routes) == 1, routes
     assert "/hello" in routes, routes
     assert routes["/hello"] == "D3", routes
+
+
+def test_deployment_without_route(serve_instance):
+    @serve.deployment(route_prefix=None)
+    class D:
+        def __call__(self, *args):
+            return "1"
+
+    D.deploy()
+    routes = requests.get("http://localhost:8000/-/routes").json()
+    assert len(routes) == 0
+
+    # make sure the deployment is not exposed under the default route
+    r = requests.get(f"http://localhost:8000/{D.name}")
+    assert r.status_code == 404
 
 
 def test_deployment_options_default_route(serve_instance):
@@ -198,8 +213,7 @@ def test_redirect(serve_instance, base_path):
             root_path = request.scope.get("root_path")
             if root_path.endswith("/"):
                 root_path = root_path[:-1]
-            return RedirectResponse(url=root_path +
-                                    app.url_path_for("redirect_root"))
+            return RedirectResponse(url=root_path + app.url_path_for("redirect_root"))
 
     D.deploy()
 
@@ -217,6 +231,32 @@ def test_redirect(serve_instance, base_path):
     assert r.json() == "hello from /"
 
 
+def test_default_error_handling(serve_instance):
+    @serve.deployment
+    def f():
+        1 / 0
+
+    f.deploy()
+    r = requests.get("http://localhost:8000/f")
+    assert r.status_code == 500
+    assert "ZeroDivisionError" in r.text, r.text
+
+    @ray.remote(num_cpus=0)
+    def intentional_kill(actor_handle):
+        ray.kill(actor_handle, no_restart=False)
+
+    @serve.deployment
+    def h():
+        ray.get(intentional_kill.remote(ray.get_runtime_context().current_actor))
+        time.sleep(100)  # Don't return here to leave time for actor exit.
+
+    h.deploy()
+    r = requests.get("http://localhost:8000/h")
+    assert r.status_code == 500
+    assert "retries" in r.text, r.text
+
+
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

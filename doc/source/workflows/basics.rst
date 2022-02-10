@@ -274,7 +274,7 @@ Mixing steps with Ray tasks and actors
 Workflows are compatible with Ray tasks and actors. There are two methods of using them together:
 
 1. Workflows can be launched from within a Ray task or actor. For example, you can launch a long-running workflow from Ray serve in response to a user request. This is no different from launching a workflow from the driver program.
-2. Workflow steps can use Ray tasks or actors within a single step. For example, a step could use RaySGD internally to train a model. No durability guarantees apply to the tasks or actors used within the step; if the step fails, it will be re-executed from scratch.
+2. Workflow steps can use Ray tasks or actors within a single step. For example, a step could use Ray Train internally to train a model. No durability guarantees apply to the tasks or actors used within the step; if the step fails, it will be re-executed from scratch.
 
 Passing nested arguments
 ~~~~~~~~~~~~~~~~~~~~~~~~

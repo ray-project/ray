@@ -3,7 +3,7 @@ apiVersion: v1
 kind: Service
 metadata:
   namespace: ray
-  name: ray-head
+  name: example-cluster-ray-head
 spec:
   ports:
   - name: client
@@ -57,7 +57,7 @@ spec:
           imagePullPolicy: IfNotPresent
           command: [ "/bin/bash", "-c", "--" ]
           args:
-            - "ray start --head --port=6379 --redis-shard-ports=6380,6381 --num-cpus=$MY_CPU_REQUEST --object-manager-port=12345 --node-manager-port=12346 --dashboard-host=0.0.0.0 --block"
+            - "ray start --head --port=6379 --redis-shard-ports=6380,6381 --num-cpus=$MY_CPU_REQUEST --object-manager-port=22345 --node-manager-port=22346 --dashboard-host=0.0.0.0 --block"
           ports:
             - containerPort: 6379 # Redis port
             - containerPort: 10001 # Used by Ray Client
@@ -111,7 +111,7 @@ spec:
         imagePullPolicy: IfNotPresent
         command: ["/bin/bash", "-c", "--"]
         args:
-          - "ray start --num-cpus=$MY_CPU_REQUEST --address=$RAY_HEAD_SERVICE_HOST:$RAY_HEAD_SERVICE_PORT_REDIS --object-manager-port=12345 --node-manager-port=12346 --block"
+          - "ray start --num-cpus=$MY_CPU_REQUEST --address=$EXAMPLE_CLUSTER_RAY_HEAD_SERVICE_HOST:$EXAMPLE_CLUSTER_RAY_HEAD_SERVICE_PORT_REDIS --object-manager-port=22345 --node-manager-port=22346 --block"
         # This volume allocates shared memory for Ray to use for its plasma
         # object store. If you do not provide this, Ray will fall back to
         # /tmp which cause slowdowns if is not a shared memory volume.
