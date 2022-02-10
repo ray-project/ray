@@ -1,4 +1,3 @@
-import os
 import sys
 
 import pytest
@@ -16,10 +15,6 @@ from ray._private.test_utils import wait_for_condition, check_local_files_gced
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
-)
 @pytest.mark.parametrize(
     "ray_start_cluster",
     [

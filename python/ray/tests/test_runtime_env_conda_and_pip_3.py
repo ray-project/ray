@@ -19,10 +19,6 @@ if not os.environ.get("CI"):
 
 
 class TestGC:
-    @pytest.mark.skipif(
-        os.environ.get("CI") and sys.platform != "linux",
-        reason="Needs PR wheels built in CI, so only run on linux CI machines.",
-    )
     @pytest.mark.parametrize("field", ["conda", "pip"])
     @pytest.mark.parametrize("spec_format", ["file", "python_object"])
     def test_actor_level_gc(
@@ -52,10 +48,6 @@ class TestGC:
             ray.kill(actors[i])
         wait_for_condition(lambda: check_local_files_gced(cluster))
 
-    @pytest.mark.skipif(
-        os.environ.get("CI") and sys.platform != "linux",
-        reason="Needs PR wheels built in CI, so only run on linux CI machines.",
-    )
     @pytest.mark.parametrize(
         "ray_start_cluster",
         [
@@ -160,10 +152,6 @@ def skip_local_gc():
 
 
 class TestSkipLocalGC:
-    @pytest.mark.skipif(
-        os.environ.get("CI") and sys.platform != "linux",
-        reason="Requires PR wheels built in CI, so only run on linux CI " "machines.",
-    )
     @pytest.mark.parametrize("field", ["conda", "pip"])
     def test_skip_local_gc_env_var(self, skip_local_gc, start_cluster, field, tmp_path):
         cluster, address = start_cluster

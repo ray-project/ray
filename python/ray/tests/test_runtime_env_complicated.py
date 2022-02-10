@@ -120,10 +120,6 @@ context.disconnect()
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment",
 )
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head --ray-client-server-port 24001 --port 0"],
@@ -150,10 +146,6 @@ def test_client_tasks_and_actors_inherit_from_driver(conda_envs, call_ray_start)
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment",
-)
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
 )
 def test_task_actor_conda_env(conda_envs, shutdown_only):
     ray.init()
@@ -192,10 +184,6 @@ def test_task_actor_conda_env(conda_envs, shutdown_only):
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment",
 )
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 def test_job_config_conda_env(conda_envs, shutdown_only):
     for package_version in REQUEST_VERSIONS:
         runtime_env = {"conda": f"package-{package_version}"}
@@ -207,10 +195,6 @@ def test_job_config_conda_env(conda_envs, shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment",
-)
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
 )
 def test_job_eager_install(shutdown_only):
     # Test enable eager install. This flag is set to True by default.
@@ -270,10 +254,6 @@ def test_get_conda_env_dir(tmp_path):
         assert env_dir == str(tmp_path / "envs" / "tf2")
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 def test_conda_create_task(shutdown_only):
     """Tests dynamic creation of a conda env in a task's runtime env."""
     ray.init()
@@ -296,10 +276,6 @@ def test_conda_create_task(shutdown_only):
     assert ray.get(f.options(runtime_env=runtime_env).remote())
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 def test_conda_create_job_config(shutdown_only):
     """Tests dynamic conda env creation in a runtime env in the JobConfig."""
 
@@ -358,10 +334,6 @@ def test_inject_dependencies():
         assert output == outputs[i], error_msg
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head --ray-client-server-port 24001 --port 0"],
@@ -393,10 +365,6 @@ def test_conda_create_ray_client(call_ray_start):
             ray.get(f.remote())
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 @pytest.mark.parametrize("pip_as_str", [True, False])
 def test_pip_task(shutdown_only, pip_as_str, tmp_path):
     """Tests pip installs in the runtime env specified in f.options()."""
@@ -429,10 +397,6 @@ def test_pip_task(shutdown_only, pip_as_str, tmp_path):
     assert ray.get(f.options(runtime_env=runtime_env).remote())
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 @pytest.mark.parametrize("option", ["conda", "pip"])
 def test_conda_pip_extras_ray_serve(shutdown_only, option):
     """Tests that ray[extras] can be included as a conda/pip dependency."""
@@ -460,10 +424,6 @@ def test_conda_pip_extras_ray_serve(shutdown_only, option):
     assert ray.get(f.options(runtime_env=runtime_env).remote())
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 @pytest.mark.parametrize("pip_as_str", [True, False])
 def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
     """Tests dynamic installation of pip packages in a task's runtime env."""
@@ -531,10 +491,6 @@ def test_experimental_package_github(shutdown_only):
     assert ray.get(pkg.my_func.remote()) == "hello world"
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head --ray-client-server-port 24001 --port 0"],
@@ -579,10 +535,6 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
             assert ray.get(f.remote())
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head --ray-client-server-port 24001 --port 0"],
@@ -653,10 +605,6 @@ time.sleep(5)
 """
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 def test_env_installation_nonblocking(shutdown_only):
     """Test fix for https://github.com/ray-project/ray/issues/16226."""
     env1 = {"pip": ["pip-install-test==0.5"]}
@@ -697,10 +645,6 @@ def test_env_installation_nonblocking(shutdown_only):
     proc.wait()
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 def test_simultaneous_install(shutdown_only):
     """Test that two envs can be installed without affecting each other."""
     ray.init()
@@ -733,10 +677,6 @@ def test_simultaneous_install(shutdown_only):
 CLIENT_SERVER_PORT = 24001
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 @pytest.mark.parametrize(
     "call_ray_start",
     [f"ray start --head --ray-client-server-port {CLIENT_SERVER_PORT}" " --port 0"],
@@ -875,10 +815,6 @@ def test_e2e_complex(call_ray_start, tmp_path):
         assert ray.get(a.test.remote()) == "Hello"
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 def test_runtime_env_override(call_ray_start):
     # https://github.com/ray-project/ray/issues/16481
 
@@ -932,10 +868,6 @@ def test_runtime_env_override(call_ray_start):
         ray.shutdown()
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 def test_runtime_env_logging_to_driver(ray_start_regular_shared, log_pubsub):
     @ray.remote(runtime_env={"pip": [f"requests=={REQUEST_VERSIONS[0]}"]})
     def func():
@@ -952,6 +884,4 @@ def test_runtime_env_logging_to_driver(ray_start_regular_shared, log_pubsub):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

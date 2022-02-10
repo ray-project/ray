@@ -66,10 +66,6 @@ def test_get_conda_dict_with_ray_inserted_m1_wheel(monkeypatch):
     }
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
-)
 @pytest.mark.parametrize("field", ["conda", "pip"])
 def test_requirements_files(start_cluster, field):
     """Test the use of requirements.txt and environment.yaml.
@@ -118,10 +114,6 @@ def test_requirements_files(start_cluster, field):
 
 
 class TestGC:
-    @pytest.mark.skipif(
-        os.environ.get("CI") and sys.platform != "linux",
-        reason="Needs PR wheels built in CI, so only run on linux CI machines.",
-    )
     @pytest.mark.parametrize("field", ["conda", "pip"])
     @pytest.mark.parametrize("spec_format", ["file", "python_object"])
     def test_job_level_gc(
@@ -165,10 +157,6 @@ class TestGC:
 
         assert ray.get(f.remote())
 
-    @pytest.mark.skipif(
-        os.environ.get("CI") and sys.platform != "linux",
-        reason=("Requires PR wheels built in CI, so only run on linux CI " "machines."),
-    )
     @pytest.mark.parametrize("field", ["conda", "pip"])
     @pytest.mark.parametrize("spec_format", ["file", "python_object"])
     def test_detached_actor_gc(
@@ -207,10 +195,6 @@ class TestGC:
 
         wait_for_condition(lambda: check_local_files_gced(cluster), timeout=30)
 
-    @pytest.mark.skipif(
-        os.environ.get("CI") and sys.platform != "linux",
-        reason=("Requires PR wheels built in CI, so only run on linux CI " "machines."),
-    )
     @pytest.mark.parametrize("field", ["conda", "pip"])
     @pytest.mark.parametrize("spec_format", ["file", "python_object"])
     def test_actor_level_gc(
