@@ -102,7 +102,6 @@ class ClientObjectRef(raylet.ObjectRef):
     # transitively by a destructor. Otherwise deadlocks can happen. See
     # https://stackoverflow.com/questions/18774401/self-deadlock-due-to-garbage-collector-in-single-threaded-code
     def __del__(self):
-        print("???")
         worker = self._worker()
         if worker is not None and worker.is_connected():
             try:
