@@ -65,9 +65,14 @@ def test_input_step_multiple_args_rejected():
         step1(pipeline.INPUT, step2(pipeline.INPUT))
 
 
-@pytest.mark.parametrize("execution_mode", [(ExecutionMode.LOCAL, "LOCAL"),
-                                            (ExecutionMode.TASKS, "TASKS"),
-                                            (ExecutionMode.ACTORS, "ACTORS")])
+@pytest.mark.parametrize(
+    "execution_mode",
+    [
+        (ExecutionMode.LOCAL, "LOCAL"),
+        (ExecutionMode.TASKS, "TASKS"),
+        (ExecutionMode.ACTORS, "ACTORS"),
+    ],
+)
 def test_execution_mode_validation(execution_mode):
     mode_enum, mode_str = execution_mode
 
@@ -92,4 +97,5 @@ def test_execution_mode_validation(execution_mode):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

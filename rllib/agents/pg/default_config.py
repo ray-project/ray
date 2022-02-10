@@ -1,6 +1,6 @@
 from ray.rllib.agents.trainer import with_common_config
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 
 # Add the following (PG-specific) updates to the (base) `Trainer` config in
@@ -15,10 +15,9 @@ DEFAULT_CONFIG = with_common_config({
     "_disable_preprocessor_api": True,
 
     # PG is the first algo (experimental) to not use the distr. exec API
-    # anymore. Only supported for simple_optimizer=True so far.
-    "simple_optimizer": True,
+    # anymore.
     "_disable_execution_plan_api": True,
 })
 
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on

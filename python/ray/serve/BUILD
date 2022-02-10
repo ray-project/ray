@@ -26,7 +26,7 @@ py_test(
 
 py_test(
     name = "test_get_deployment",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -273,7 +273,7 @@ py_test(
 
 py_test(
     name = "test_autoscaling_policy",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -341,19 +341,21 @@ py_test(
 )
 
 py_test(
-    name = "tutorial_batch",
+    name = "tutorial_sklearn_ray_overview",
     size = "small",
-    srcs = glob(["examples/doc/*.py"]),
+    main = "quick_start.py",
+    srcs = ["//doc/source/serve/_examples/doc_code:serve_doc_code"],
     tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"]
 )
 
 py_test(
     name = "tutorial_rllib",
     size = "small",
-    srcs = glob(["examples/doc/*.py"]),
+    srcs = serve_tests_srcs,
+    main = "test_myst_doc.py",
+    args = ["--path", "doc/source/serve/tutorials/rllib.md"],
+    data = ["//doc/source/serve/tutorials:markdowns"],
     tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"]
 )
 
 py_test(

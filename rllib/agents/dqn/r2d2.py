@@ -1,8 +1,7 @@
 import logging
 from typing import Type
 
-from ray.rllib.agents.dqn import DQNTrainer, DEFAULT_CONFIG as \
-    DQN_DEFAULT_CONFIG
+from ray.rllib.agents.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_DEFAULT_CONFIG
 from ray.rllib.agents.dqn.r2d2_tf_policy import R2D2TFPolicy
 from ray.rllib.agents.dqn.r2d2_torch_policy import R2D2TorchPolicy
 from ray.rllib.agents.trainer import Trainer
@@ -12,7 +11,7 @@ from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
     DQN_DEFAULT_CONFIG,  # See keys in impala.py, which are also supported.
@@ -71,7 +70,7 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
     _allow_unknown_configs=True,
 )
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 # Build an R2D2 trainer, which uses the framework specific Policy
@@ -97,8 +96,7 @@ class R2D2Trainer(DQNTrainer):
         return R2D2_DEFAULT_CONFIG
 
     @override(DQNTrainer)
-    def get_default_policy_class(self,
-                                 config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return R2D2TorchPolicy
         else:
@@ -111,16 +109,19 @@ class R2D2Trainer(DQNTrainer):
         Rewrites rollout_fragment_length to take into account burn-in and
         max_seq_len truncation.
         """
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["replay_sequence_length"] != -1:
             raise ValueError(
                 "`replay_sequence_length` is calculated automatically to be "
-                "model->max_seq_len + burn_in!")
+                "model->max_seq_len + burn_in!"
+            )
         # Add the `burn_in` to the Model's max_seq_len.
         # Set the replay sequence length to the max_seq_len of the model.
-        config["replay_sequence_length"] = \
+        config["replay_sequence_length"] = (
             config["burn_in"] + config["model"]["max_seq_len"]
+        )
 
         if config.get("batch_mode") != "complete_episodes":
             raise ValueError("`batch_mode` must be 'complete_episodes'!")

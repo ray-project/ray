@@ -75,7 +75,7 @@ def pbt_function(config, checkpoint_dir=None):
             cur_lr=lr,
             optimal_lr=optimal_lr,  # for debugging
             q_err=q_err,  # for debugging
-            done=accuracy > midpoint * 2  # this stops the training process
+            done=accuracy > midpoint * 2,  # this stops the training process
         )
 
 
@@ -88,7 +88,8 @@ def run_tune_pbt():
             "lr": lambda: random.uniform(0.0001, 0.02),
             # allow perturbations within this set of categorical values
             "some_other_factor": [1, 2],
-        })
+        },
+    )
 
     analysis = tune.run(
         pbt_function,
@@ -107,7 +108,8 @@ def run_tune_pbt():
             # note: this parameter is perturbed but has no effect on
             # the model training in this example
             "some_other_factor": 1,
-        })
+        },
+    )
 
     print("Best hyperparameters found were: ", analysis.best_config)
 
@@ -115,14 +117,15 @@ def run_tune_pbt():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using " "Ray Client.",
+    )
     args, _ = parser.parse_known_args()
     if args.smoke_test:
         ray.init(num_cpus=2)  # force pausing to happen for test

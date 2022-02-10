@@ -1,9 +1,11 @@
-from ray.rllib.agents.marwil.marwil import MARWILTrainer, \
-    DEFAULT_CONFIG as MARWIL_CONFIG
+from ray.rllib.agents.marwil.marwil import (
+    MARWILTrainer,
+    DEFAULT_CONFIG as MARWIL_CONFIG,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 BC_DEFAULT_CONFIG = MARWILTrainer.merge_trainer_configs(
     MARWIL_CONFIG, {
@@ -17,7 +19,7 @@ BC_DEFAULT_CONFIG = MARWILTrainer.merge_trainer_configs(
         "input_evaluation": [],
     })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class BCTrainer(MARWILTrainer):
@@ -33,8 +35,8 @@ class BCTrainer(MARWILTrainer):
 
     @override(MARWILTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["beta"] != 0.0:
-            raise ValueError(
-                "For behavioral cloning, `beta` parameter must be 0.0!")
+            raise ValueError("For behavioral cloning, `beta` parameter must be 0.0!")

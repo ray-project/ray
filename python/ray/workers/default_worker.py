@@ -11,97 +11,98 @@ import ray.node
 import ray.ray_constants as ray_constants
 import ray._private.utils
 from ray._private.parameter import RayParams
-from ray._private.ray_logging import (get_worker_log_file_name,
-                                      configure_log_file)
+from ray._private.ray_logging import get_worker_log_file_name, configure_log_file
 
 parser = argparse.ArgumentParser(
-    description=("Parse addresses for the worker "
-                 "to connect to."))
+    description=("Parse addresses for the worker " "to connect to.")
+)
 parser.add_argument(
     "--node-ip-address",
     required=True,
     type=str,
-    help="the ip address of the worker's node")
+    help="the ip address of the worker's node",
+)
 parser.add_argument(
-    "--node-manager-port",
-    required=True,
-    type=int,
-    help="the port of the worker's node")
+    "--node-manager-port", required=True, type=int, help="the port of the worker's node"
+)
 parser.add_argument(
     "--raylet-ip-address",
     required=False,
     type=str,
     default=None,
-    help="the ip address of the worker's raylet")
+    help="the ip address of the worker's raylet",
+)
 parser.add_argument(
-    "--redis-address",
-    required=True,
-    type=str,
-    help="the address to use for Redis")
+    "--redis-address", required=True, type=str, help="the address to use for Redis"
+)
 parser.add_argument(
-    "--gcs-address",
-    required=True,
-    type=str,
-    help="the address to use for GCS")
+    "--gcs-address", required=True, type=str, help="the address to use for GCS"
+)
 parser.add_argument(
     "--redis-password",
     required=False,
     type=str,
     default=None,
-    help="the password to use for Redis")
+    help="the password to use for Redis",
+)
 parser.add_argument(
-    "--object-store-name",
-    required=True,
-    type=str,
-    help="the object store's name")
-parser.add_argument(
-    "--raylet-name", required=False, type=str, help="the raylet's name")
+    "--object-store-name", required=True, type=str, help="the object store's name"
+)
+parser.add_argument("--raylet-name", required=False, type=str, help="the raylet's name")
 parser.add_argument(
     "--logging-level",
     required=False,
     type=str,
     default=ray_constants.LOGGER_LEVEL,
     choices=ray_constants.LOGGER_LEVEL_CHOICES,
-    help=ray_constants.LOGGER_LEVEL_HELP)
+    help=ray_constants.LOGGER_LEVEL_HELP,
+)
 parser.add_argument(
     "--logging-format",
     required=False,
     type=str,
     default=ray_constants.LOGGER_FORMAT,
-    help=ray_constants.LOGGER_FORMAT_HELP)
+    help=ray_constants.LOGGER_FORMAT_HELP,
+)
 parser.add_argument(
     "--temp-dir",
     required=False,
     type=str,
     default=None,
-    help="Specify the path of the temporary directory use by Ray process.")
+    help="Specify the path of the temporary directory use by Ray process.",
+)
 parser.add_argument(
     "--load-code-from-local",
     default=False,
     action="store_true",
-    help="True if code is loaded from local files, as opposed to the GCS.")
+    help="True if code is loaded from local files, as opposed to the GCS.",
+)
 parser.add_argument(
     "--use-pickle",
     default=False,
     action="store_true",
-    help="True if cloudpickle should be used for serialization.")
+    help="True if cloudpickle should be used for serialization.",
+)
 parser.add_argument(
     "--worker-type",
     required=False,
     type=str,
     default="WORKER",
-    help="Specify the type of the worker process")
+    help="Specify the type of the worker process",
+)
 parser.add_argument(
     "--metrics-agent-port",
     required=True,
     type=int,
-    help="the port of the node's metric agent.")
+    help="the port of the node's metric agent.",
+)
 parser.add_argument(
     "--object-spilling-config",
     required=False,
     type=str,
     default="",
-    help="The configuration of object spilling. Only used by I/O workers.")
+    help="The configuration of object spilling. Only used by I/O workers.",
+)
 parser.add_argument(
     "--logging-rotate-bytes",
     required=False,
@@ -109,36 +110,35 @@ parser.add_argument(
     default=ray_constants.LOGGING_ROTATE_BYTES,
     help="Specify the max bytes for rotating "
     "log file, default is "
-    f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.")
+    f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.",
+)
 parser.add_argument(
     "--logging-rotate-backup-count",
     required=False,
     type=int,
     default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
     help="Specify the backup count of rotated log file, default is "
-    f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.")
+    f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.",
+)
 parser.add_argument(
     "--runtime-env-hash",
     required=False,
     type=int,
     default=0,
-    help="The computed hash of the runtime env for this worker.")
-parser.add_argument(
-    "--worker-shim-pid",
-    required=False,
-    type=int,
-    default=0,
-    help="The PID of the process for setup worker runtime env.")
+    help="The computed hash of the runtime env for this worker.",
+)
 parser.add_argument(
     "--startup-token",
     required=True,
     type=int,
-    help="The startup token assigned to this worker process by the raylet.")
+    help="The startup token assigned to this worker process by the raylet.",
+)
 parser.add_argument(
     "--ray-debugger-external",
     default=False,
     action="store_true",
-    help="True if Ray debugger is made available externally.")
+    help="True if Ray debugger is made available externally.",
+)
 
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
@@ -146,8 +146,7 @@ if __name__ == "__main__":
     # as a step function. For more details, check out
     # https://github.com/ray-project/ray/pull/12225#issue-525059663.
     args = parser.parse_args()
-    ray._private.ray_logging.setup_logger(args.logging_level,
-                                          args.logging_format)
+    ray._private.ray_logging.setup_logger(args.logging_level, args.logging_format)
 
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE
@@ -163,9 +162,9 @@ if __name__ == "__main__":
     # external storage is intialized.
     if mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
         from ray import external_storage
+
         if args.object_spilling_config:
-            object_spilling_config = base64.b64decode(
-                args.object_spilling_config)
+            object_spilling_config = base64.b64decode(args.object_spilling_config)
             object_spilling_config = json.loads(object_spilling_config)
         else:
             object_spilling_config = {}
@@ -193,15 +192,16 @@ if __name__ == "__main__":
         head=False,
         shutdown_at_exit=False,
         spawn_reaper=False,
-        connect_only=True)
+        connect_only=True,
+    )
     ray.worker._global_node = node
     ray.worker.connect(
         node,
         mode=mode,
         runtime_env_hash=args.runtime_env_hash,
-        worker_shim_pid=args.worker_shim_pid,
         startup_token=args.startup_token,
-        ray_debugger_external=args.ray_debugger_external)
+        ray_debugger_external=args.ray_debugger_external,
+    )
 
     # Add code search path to sys.path, set load_code_from_local.
     core_worker = ray.worker.global_worker.core_worker
@@ -217,7 +217,8 @@ if __name__ == "__main__":
 
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(
-        get_worker_log_file_name(args.worker_type))
+        get_worker_log_file_name(args.worker_type)
+    )
     configure_log_file(out_file, err_file)
 
     if mode == ray.WORKER_MODE:
