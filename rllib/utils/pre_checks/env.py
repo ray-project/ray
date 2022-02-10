@@ -341,7 +341,8 @@ def _check_reward(reward, base_env=False, agent_ids=None):
                     np.isreal(rew) and not isinstance(rew, bool) and np.isscalar(rew)
                 ), (
                     "Your step function must return rewards that are"
-                    f" integer or float. reward: {rew}"
+                    f" integer or float. reward: {rew}. Instead it was a "
+                    f"{type(reward)}"
                 )
                 assert agent_id in agent_ids, (
                     f"Your reward dictionary must have agent ids that belong to the "
@@ -351,16 +352,17 @@ def _check_reward(reward, base_env=False, agent_ids=None):
     else:
         assert (
             np.isreal(reward) and not isinstance(reward, bool) and np.isscalar(reward)
-        ), "Your step function must return a reward that is integer or float."
+        ), "Your step function must return a reward that is integer or float. " \
+           "Instead it was a {}".format(type(reward))
 
 
 def _check_done(done, base_env=False, agent_ids=None):
     if base_env:
         for _, multi_agent_dict in done.items():
             for agent_id, done_ in multi_agent_dict.items():
-                assert isinstance(done_, bool), (
-                    "Your step function must return dones that are boolean. "
-                    f"element: {done_}"
+                assert isinstance(done_, (bool, np.bool, np.bool_)), (
+                    "Your step function must return dones that are boolean. But "
+                    f"instead was a {type(done)}"
                 )
                 assert agent_id in agent_ids, (
                     f"Your dones dictionary must have agent ids that belong to the "
@@ -368,8 +370,9 @@ def _check_done(done, base_env=False, agent_ids=None):
                     f"{agent_ids}"
                 )
     else:
-        assert isinstance(done, bool), (
-            "Your step function must return a done that is a " "boolean."
+        assert isinstance(done, (bool, np.bool, np.bool_)), (
+            "Your step function must return a done that is a boolean. But instead "
+            f"was a {type(done)}"
         )
 
 
