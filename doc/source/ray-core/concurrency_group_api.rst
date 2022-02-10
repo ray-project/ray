@@ -12,13 +12,14 @@ Defining Concurrency Groups
 
 You can define concurrency groups for asyncio actors using the ``concurrency_groups`` decorator argument:
 
-.. tabbed:: Python
+This defines two concurrency groups, "io" with max concurrency = 2 and
+"compute" with max concurrency = 4.  The methods ``f1`` and ``f2`` are
+placed in the "io" group, and the methods ``f3`` and ``f4`` are placed
+into the "compute" group. Note that there is always a default
+concurrency group, which has a default concurrency of 1000 in Python and
+1 in Java.
 
-    This defines two concurrency groups, "io" with max_concurrency=2 and
-    "compute" with max_concurrency=4.  The methods ``f1`` and ``f2`` are
-    placed in the "io" group, and the methods ``f3`` and ``f4`` are placed
-    into the "compute" group. Note that there is always a default
-    concurrency group, which has a default concurrency of 1000.
+.. tabbed:: Python
 
     .. code-block:: python
 
@@ -53,14 +54,7 @@ You can define concurrency groups for asyncio actors using the ``concurrency_gro
         a.f4.remote()  # executed in the "compute" group.
         a.f5.remote()  # executed in the default group.
 
-  .. group-tab:: Java
-
-    This defines two concurrency groups, "io" with max_concurrency=2 and
-    "compute" with max_concurrency=4.  The methods ``f1`` and ``f2`` are
-    placed in the "io" group, and the methods ``f3`` and ``f4`` are placed
-    into the "compute" group. Note that there is always a default
-    concurrency group, which has a default concurrency of 1000 in Python and
-    1 in Java.
+.. tabbed:: Java
 
     .. code-block:: java
 
@@ -117,7 +111,7 @@ You can define concurrency groups for asyncio actors using the ``concurrency_gro
 Default Concurrency Group
 -------------------------
 
-By default, methods are placed in a default concurrency group which has a concurrency limit of 1000.
+By default, methods are placed in a default concurrency group which has a concurrency limit of 1000 in Python, 1 in Java.
 The concurrency of the default group can be changed by setting the ``max_concurrency`` actor option.
 
 .. tabbed:: Python
@@ -165,13 +159,13 @@ Setting the Concurrency Group at Runtime
 ----------------------------------------
 
 You can also dispatch actor methods into a specific concurrency group at runtime.
-You can use the ``.options`` method in Python, and use `setConcurrencyGroup`
-in Java.
+
+The following snippet demonstrates setting the concurrency group of the
+``f2`` method dynamically at runtime.
 
 .. tabbed:: Python
-
-    The following snippet demonstrates setting the concurrency group of the
-    ``f2`` method dynamically at runtime.
+    
+    You can use the ``.options`` method. 
 
     .. code-block:: python
 
@@ -181,10 +175,9 @@ in Java.
         # Executed in the "compute" group.
         a.f2.options(concurrency_group="compute").remote()
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
-    The following snippet demonstrates setting the concurrency group of the
-    ``f2`` method dynamically at runtime.
+    You can use ``setConcurrencyGroup`` method.
 
     .. code-block:: java
 
