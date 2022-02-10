@@ -21,6 +21,7 @@ from ray.util.inspect import (
 )
 import logging
 import threading
+import weakref
 from collections import OrderedDict
 from typing import Any
 from typing import List
@@ -88,7 +89,7 @@ CLIENT_SERVER_MAX_THREADS = float(os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100
 class ClientObjectRef(raylet.ObjectRef):
     def __init__(self, id: Union[bytes, Future]):
         self._mutex = threading.Lock()
-        self._worker = ray.get_context().client_worker
+        self._worker = weakref.ref(ray.get_context().client_worker)
         self._id_future = None
         if isinstance(id, bytes):
             self._set_id(id)
@@ -101,10 +102,12 @@ class ClientObjectRef(raylet.ObjectRef):
     # transitively by a destructor. Otherwise deadlocks can happen. See
     # https://stackoverflow.com/questions/18774401/self-deadlock-due-to-garbage-collector-in-single-threaded-code
     def __del__(self):
-        if self._worker is not None and self._worker.is_connected():
+        print("???")
+        worker = self._worker()
+        if worker is not None and worker.is_connected():
             try:
                 if not self.is_nil():
-                    self._worker.call_release(self.id)
+                    worker.call_release(self.id)
             except Exception:
                 logger.info(
                     "Exception in ObjectRef is ignored in destructor. "
@@ -177,12 +180,11 @@ class ClientObjectRef(raylet.ObjectRef):
                     data = loads_from_server(resp.get.data)
 
             py_callback(data)
-
-        self._worker.register_callback(self, deserialize_obj)
+        self._worker().register_callback(self, deserialize_obj)
 
     def _set_id(self, id):
         super()._set_id(id)
-        self._worker.call_retain(id)
+        self._worker().call_retain(id)
 
     def _wait_for_id(self, timeout=None):
         if self._id_future:
@@ -195,7 +197,7 @@ class ClientObjectRef(raylet.ObjectRef):
 class ClientActorRef(raylet.ActorID):
     def __init__(self, id: Union[bytes, Future]):
         self._mutex = threading.Lock()
-        self._worker = ray.get_context().client_worker
+        self._worker = weakref.ref(ray.get_context().client_worker)
         if isinstance(id, bytes):
             self._set_id(id)
             self._id_future = None
@@ -208,10 +210,11 @@ class ClientActorRef(raylet.ActorID):
     # transitively by a destructor. Otherwise deadlocks can happen. See
     # https://stackoverflow.com/questions/18774401/self-deadlock-due-to-garbage-collector-in-single-threaded-code
     def __del__(self):
-        if self._worker is not None and self._worker.is_connected():
+        worker = self._worker()
+        if worker is not None and worker.is_connected():
             try:
                 if not self.is_nil():
-                    self._worker.call_release(self.id)
+                    worker.call_release(self.id)
             except Exception:
                 logger.info(
                     "Exception from actor creation is ignored in destructor. "
@@ -241,7 +244,7 @@ class ClientActorRef(raylet.ActorID):
 
     def _set_id(self, id):
         super()._set_id(id)
-        self._worker.call_retain(id)
+        self._worker().call_retain(id)
 
     def _wait_for_id(self, timeout=None):
         if self._id_future:
