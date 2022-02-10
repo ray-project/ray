@@ -27,7 +27,7 @@ class BasicMultiAgent(MultiAgentEnv):
     def __init__(self, num):
         super().__init__()
         self.agents = [MockEnv(25) for _ in range(num)]
-        self._agent_ids = {i for i in range(num)}
+        self._agent_ids = {range(num)}
         self.dones = set()
         self.observation_space = gym.spaces.Discrete(2)
         self.action_space = gym.spaces.Discrete(2)
@@ -60,7 +60,7 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
     def __init__(self):
         super().__init__()
         self.agents = [MockEnv(3), MockEnv(5)]
-        self._agent_ids = {i for i in range(len(self.agents))}
+        self._agent_ids = {range(len(self.agents))}
         self.dones = set()
         self.last_obs = {}
         self.last_rew = {}
@@ -179,7 +179,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         else:
             # Observations are all zeros
             self.agents = [MockEnv(5) for _ in range(num)]
-        self._agent_ids = {i for i in range(num)}
+        self._agent_ids = {range(num)}
         self.dones = set()
         self.last_obs = {}
         self.last_rew = {}
