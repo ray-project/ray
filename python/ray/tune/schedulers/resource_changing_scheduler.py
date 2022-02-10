@@ -274,6 +274,32 @@ class DistributeResources:
             ]
         return added_bundles
 
+    def _are_bundles_below_limit(
+        self,
+        bundles: List[Dict[str, float]],
+        base_bundles: Optional[List[Dict[str, float]]] = None,
+        max_added_cpus: Optional[float] = None,
+        max_added_gpus: Optional[float] = None,
+    ):
+        if not max_added_cpus:
+            if self.increase_by_times > 0:
+                max_added_cpus = self.increase_by.get("CPU", 0) * self.increase_by_times
+            else:
+                max_added_cpus = np.inf
+        if not max_added_gpus:
+            if self.increase_by_times > 0:
+                max_added_gpus = self.increase_by.get("GPU", 0) * self.increase_by_times
+            else:
+                max_added_gpus = np.inf
+        added_resources = self._get_resources_from_bundles(
+            self._get_added_bundles(bundles, base_bundles) if base_bundles else bundles
+        )
+        ret = (
+            added_resources.get("CPU", -np.inf) < max_added_cpus
+            or added_resources.get("GPU", -np.inf) < max_added_gpus
+        )
+        return ret
+
     def _get_new_added_bundles(
         self,
         trial: Trial,
@@ -523,27 +549,16 @@ class DistributeResourcesToTopJob(DistributeResources):
             trial.placement_group_factory.bundles, base_bundles
         )
 
-        if self.increase_by_times > 0:
-            max_added_cpus = self.increase_by.get("CPU", 0) * self.increase_by_times
-            max_added_gpus = self.increase_by.get("GPU", 0) * self.increase_by_times
-
-            def is_trial_below_limit(trial: Trial):
-                added_resources = self._get_resources_from_bundles(
-                    self._get_added_bundles(
-                        trial.placement_group_factory.bundles, base_bundles
-                    )
+        best_trial = next(
+            (
+                t
+                for t in sorted_trials
+                if self._are_bundles_below_limit(
+                    t.placement_group_factory.bundles, base_bundles
                 )
-                ret = (
-                    added_resources.get("CPU", -np.inf) < max_added_cpus
-                    or added_resources.get("GPU", -np.inf) < max_added_gpus
-                )
-                return ret
-
-            best_trial = next(
-                (t for t in sorted_trials if is_trial_below_limit(t)), sorted_trials[0]
-            )
-        else:
-            best_trial = sorted_trials[0]
+            ),
+            sorted_trials[0],
+        )
 
         if (
             trial.trial_id != best_trial.trial_id
