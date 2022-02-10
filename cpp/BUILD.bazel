@@ -133,7 +133,7 @@ cc_test(
         "src/ray/test/*.cc",
     ]),
     copts = COPTS,
-    linkstatic = False,
+    linkstatic = True,
     tags = ["team:core"],
     deps = [
         "ray_api",
