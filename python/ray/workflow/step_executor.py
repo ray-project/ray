@@ -33,7 +33,6 @@ from ray.workflow.common import (
 if TYPE_CHECKING:
     from ray.workflow.common import (
         WorkflowRef,
-        CheckpointModeType,
         WorkflowStepRuntimeOptions,
     )
     from ray.workflow.workflow_context import WorkflowStepContext
@@ -252,7 +251,6 @@ def commit_step(
     ret: Union["Workflow", Any],
     *,
     exception: Optional[Exception],
-    checkpoint: "CheckpointModeType",
 ):
     """Checkpoint the step output.
     Args:
@@ -260,14 +258,9 @@ def commit_step(
         step_id: The ID of the step.
         ret: The returned object of the workflow step.
         exception: The exception caught by the step.
-        checkpoint: The checkpoint mode.
     """
     from ray.workflow.common import Workflow
 
-    if checkpoint == CheckpointMode.SKIP.value:
-        return
-    elif checkpoint != CheckpointMode.SYNC.value:
-        raise ValueError(f"Unknown checkpoint mode: {checkpoint}.")
     if isinstance(ret, Workflow):
         assert not ret.executed
         tasks = []
@@ -414,7 +407,7 @@ def _workflow_step_executor(
         store.save_step_postrun_metadata(step_id, step_postrun_metadata)
     except Exception as e:
         # Always checkpoint the exception.
-        commit_step(store, step_id, None, exception=e, checkpoint=True)
+        commit_step(store, step_id, None, exception=e)
         raise e
 
     # Part 4: save outputs
@@ -428,13 +421,13 @@ def _workflow_step_executor(
         # TODO(suquark): Validate checkpoint options before
         # commit the step.
         store = workflow_storage.get_workflow_storage()
-        commit_step(
-            store,
-            step_id,
-            persisted_output,
-            exception=None,
-            checkpoint=runtime_options.checkpoint,
-        )
+        if CheckpointMode(runtime_options.checkpoint) == CheckpointMode.SYNC:
+            commit_step(
+                store,
+                step_id,
+                persisted_output,
+                exception=None,
+            )
         if isinstance(persisted_output, Workflow):
             outer_most_step_id = context.outer_most_step_id
             if step_type == StepType.FUNCTION:
@@ -518,7 +511,6 @@ def _workflow_wait_executor(
 
     # Part 3: Save the outputs.
     store = workflow_storage.get_workflow_storage()
-    commit_step(store, step_id, persisted_output, exception=None, checkpoint=False)
     if context.last_step_of_workflow:
         # advance the progress of the workflow
         store.advance_progress(step_id)
