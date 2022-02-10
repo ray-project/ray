@@ -94,6 +94,7 @@ class PettingZooEnv(MultiAgentEnv):
             "SuperSuit's pad_action_space wrapper can help (usage: "
             "`supersuit.aec_wrappers.pad_action_space(env)`"
         )
+        self._agent_ids = {agent for agent in self.env.agents}
 
     def reset(self):
         self.env.reset()

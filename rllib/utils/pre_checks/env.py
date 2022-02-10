@@ -24,12 +24,15 @@ def check_env(env: EnvType) -> None:
         ValueError: If env is not an instance of SUPPORTED_ENVIRONMENT_TYPES.
         ValueError: See check_gym_env docstring for details.
     """
-    from ray.rllib.env import BaseEnv, MultiAgentEnv, RemoteBaseEnv, VectorEnv
+    from ray.rllib.env import BaseEnv, MultiAgentEnv, RemoteBaseEnv, VectorEnv, \
+        ExternalMultiAgentEnv, ExternalEnv
 
-    if not isinstance(env, (BaseEnv, gym.Env, MultiAgentEnv, RemoteBaseEnv, VectorEnv)):
+    if not isinstance(env, (BaseEnv, gym.Env, MultiAgentEnv, RemoteBaseEnv,
+                            VectorEnv, ExternalMultiAgentEnv, ExternalEnv)):
         raise ValueError(
             "Env must be one of the supported types: BaseEnv, gym.Env, "
-            "MultiAgentEnv, VectorEnv, RemoteBaseEnv"
+            "MultiAgentEnv, VectorEnv, RemoteBaseEnv, ExternalMultiAgentEnv, "
+            "ExternalEnv"
         )
 
     if isinstance(env, MultiAgentEnv):
@@ -40,7 +43,8 @@ def check_env(env: EnvType) -> None:
         check_base_env(env)
     else:
         logger.warning(
-            "Env checking isn't implemented for VectorEnvs or " "RemoteBaseEnvs."
+            "Env checking isn't implemented for VectorEnvs, RemoteBaseEnvs, "
+            "ExternalMultiAgentEnv,or ExternalEnvs"
         )
 
 
