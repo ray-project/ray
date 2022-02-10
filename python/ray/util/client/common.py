@@ -180,6 +180,7 @@ class ClientObjectRef(raylet.ObjectRef):
                     data = loads_from_server(resp.get.data)
 
             py_callback(data)
+
         self._worker().register_callback(self, deserialize_obj)
 
     def _set_id(self, id):
