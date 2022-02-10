@@ -4,6 +4,7 @@ back to the ray clientserver.
 import math
 import logging
 import queue
+import sys
 import threading
 import warnings
 import grpc
@@ -44,7 +45,7 @@ def chunk_put(req: ray_client_pb2.DataRequest):
     if total_size >= OBJECT_TRANSFER_WARNING_SIZE and log_once(
         "client_object_put_size_warning"
     ):
-        size_gb = total_size / 2 ** 30
+        size_gb = total_size / 2**30
         warnings.warn(
             "Ray Client is attempting to send a "
             f"{size_gb:.2f} GiB object over the network, which may "
@@ -103,7 +104,7 @@ class ChunkCollector:
         if get_resp.total_size > OBJECT_TRANSFER_WARNING_SIZE and log_once(
             "client_object_transfer_size_warning"
         ):
-            size_gb = get_resp.total_size / 2 ** 30
+            size_gb = get_resp.total_size / 2**30
             warnings.warn(
                 "Ray Client is attempting to retrieve a "
                 f"{size_gb:.2f} GiB object over the network, which may "
@@ -171,7 +172,7 @@ class DataClient:
         # Waiting for response or shutdown.
         self.cv = threading.Condition(lock=self.lock)
 
-        self.request_queue = queue.Queue()
+        self.request_queue = self._create_queue()
         self.ready_data: Dict[int, Any] = {}
         # NOTE: Dictionary insertion is guaranteed to complete before lookup
         # and/or removal because of synchronization via the request_queue.
@@ -372,10 +373,15 @@ class DataClient:
 
         # Recreate the request queue, and resend outstanding requests
         with self.lock:
-            self.request_queue = queue.Queue()
+            self.request_queue = self._create_queue()
             for request in self.outstanding_requests.values():
                 # Resend outstanding requests
                 self.request_queue.put(request)
+
+    # Use SimpleQueue to avoid deadlocks when appending to queue from __del__()
+    @staticmethod
+    def _create_queue():
+        return queue.Queue() if sys.version_info < (3, 7) else queue.SimpleQueue()
 
     def close(self) -> None:
         thread = None
