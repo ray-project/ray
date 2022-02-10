@@ -17,6 +17,7 @@
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
+#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 namespace raylet {
