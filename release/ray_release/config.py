@@ -145,8 +145,13 @@ def load_and_render_yaml_template(
     if env:
         render_env.update(env)
 
-    content = jinja2.Template(content).render(env=env)
-    return yaml.safe_load(content)
+    try:
+        content = jinja2.Template(content).render(env=env)
+        return yaml.safe_load(content)
+    except Exception as e:
+        raise ReleaseTestConfigError(
+            f"Error rendering/loading yaml template: {e}"
+        ) from e
 
 
 def load_test_cluster_env(test: Test, ray_wheels_url: str) -> Optional[Dict]:

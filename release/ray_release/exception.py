@@ -10,6 +10,10 @@ class ReleaseTestCLIError(ReleaseTestPackageError):
     pass
 
 
+class ReleaseTestSetupError(ReleaseTestPackageError):
+    pass
+
+
 class RayWheelsError(RuntimeError):
     pass
 

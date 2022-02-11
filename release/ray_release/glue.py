@@ -17,8 +17,9 @@ from ray_release.config import (
     DEFAULT_SESSION_TIMEOUT,
     DEFAULT_COMMAND_TIMEOUT,
     RELEASE_PACKAGE_DIR,
+    validate_test,
 )
-from ray_release.exception import ReleaseTestConfigError
+from ray_release.exception import ReleaseTestConfigError, ReleaseTestSetupError
 from ray_release.file_manager.remote_task import RemoteTaskFileManager
 from ray_release.file_manager.session_controller import SessionControllerFileManager
 from ray_release.logger import logger
@@ -56,6 +57,8 @@ def run_release_test(
     cluster_id: Optional[str] = None,
     no_terminate: bool = False,
 ) -> Result:
+    validate_test(test)
+
     result.wheels_url = ray_wheels_url
     result.stable = test.get("stable", True)
 
@@ -82,9 +85,12 @@ def run_release_test(
     file_manager_cls = command_runner_to_file_manager[command_runner_cls]
 
     # Instantiate managers and command runner
-    cluster_manager = cluster_manager_cls(test["name"], anyscale_project)
-    file_manager = file_manager_cls(cluster_manager=cluster_manager)
-    command_runner = command_runner_cls(cluster_manager, file_manager, working_dir)
+    try:
+        cluster_manager = cluster_manager_cls(test["name"], anyscale_project)
+        file_manager = file_manager_cls(cluster_manager=cluster_manager)
+        command_runner = command_runner_cls(cluster_manager, file_manager, working_dir)
+    except Exception as e:
+        raise ReleaseTestSetupError(f"Error setting up release test: {e}") from e
 
     pipeline_exception = None
     try:
@@ -188,6 +194,7 @@ def run_release_test(
         if runtime is not None:
             result.runtime = runtime
 
+    reporters = reporters or []
     for reporter in reporters:
         try:
             reporter.report_result(test, result)
