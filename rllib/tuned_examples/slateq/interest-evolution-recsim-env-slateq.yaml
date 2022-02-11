@@ -1,5 +1,5 @@
 interest-evolution-recsim-env-slateq:
-    env: ray.rllib.examples.env.recsim_recommender_system_envs.InterestEvolutionRecSimEnv
+    env: ray.rllib.examples.env.recommender_system_envs_with_recsim.InterestEvolutionRecSimEnv
     run: SlateQ
     stop:
         episode_reward_mean: 500.0
@@ -31,6 +31,8 @@ interest-evolution-recsim-env-slateq:
 
         num_workers: 0
         num_gpus: 0
+
+        train_batch_size: 64
 
         lr_choice_model: 0.003
         lr_q_model: 0.003

@@ -2,7 +2,7 @@ import unittest
 
 import ray
 import ray.rllib.agents.slateq as slateq
-from ray.rllib.examples.env.recsim_recommender_system_envs import (
+from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
     LongTermSatisfactionRecSimEnv,
 )
 from ray.rllib.utils.test_utils import (

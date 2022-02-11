@@ -1,5 +1,5 @@
 long-term-satisfaction-recsim-env-slateq:
-    env: ray.rllib.examples.env.recsim_recommender_system_envs.LongTermSatisfactionRecSimEnv
+    env: ray.rllib.examples.env.recommender_system_envs_with_recsim.LongTermSatisfactionRecSimEnv
     run: SlateQ
     stop:
         # Random baseline rewards:
