@@ -101,8 +101,11 @@ message PutRequest {
   //
   // Empty if no late binding is possible, as in a normal put().
   bytes client_ref_id = 2;
+  // Identifies which chunk the data belongs to
   int32 chunk_id = 3;
+  // Total number of chunks
   int32 total_chunks = 4;
+  // Total size in bytes of the data being retrieved
   int64 total_size = 5;
 }
 
