@@ -1,7 +1,8 @@
 base_image: "anyscale/ray:nightly-py37-cu102"
 
 python:
-  pip_packages: []
+  pip_packages:
+    - pyarrow<7.0.0
   conda_packages: []
 
 post_build_cmds:

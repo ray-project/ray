@@ -64,6 +64,7 @@ def create_replica_wrapper(
             deployment_config_proto_bytes: bytes,
             version: DeploymentVersion,
             controller_name: str,
+            controller_namespace: str,
             detached: bool,
         ):
 
@@ -92,12 +93,15 @@ def create_replica_wrapper(
             # code will connect to the instance that this deployment is running
             # in.
             ray.serve.api._set_internal_replica_context(
-                deployment_name, replica_tag, controller_name, servable_object=None
+                deployment_name,
+                replica_tag,
+                controller_name,
+                controller_namespace,
+                servable_object=None,
             )
 
             assert controller_name, "Must provide a valid controller_name"
 
-            controller_namespace = ray.serve.api._get_controller_namespace(detached)
             controller_handle = ray.get_actor(
                 controller_name, namespace=controller_namespace
             )
@@ -123,6 +127,7 @@ def create_replica_wrapper(
                     deployment_name,
                     replica_tag,
                     controller_name,
+                    controller_namespace,
                     servable_object=_callable,
                 )
 
