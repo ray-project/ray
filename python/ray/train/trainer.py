@@ -485,7 +485,10 @@ class Trainer:
 
     @property
     def best_checkpoint(self) -> Optional[Dict]:
-        """The best saved checkpoint.
+        """Best saved checkpoint from the latest run.
+
+        "Best" is defined by the input ``CheckpointStrategy``.
+        Default behavior is to return the most recent checkpoint.
 
         Returns ``None`` if ``run()`` has not been called or if
         ``train.save_checkpoint()`` has not been called from ``train_func``
@@ -498,9 +501,18 @@ class Trainer:
             return load_checkpoint_from_path(best_checkpoint_path)
 
     @staticmethod
-    def load_checkpoint(path: Path) -> Dict:
-        """Convenince method to load a checkpoint from path."""
-        return load_checkpoint_from_path(path)
+    def load_checkpoint(checkpoint_file_path: Union[str, Path]) -> Dict:
+        """Convenience method to load a checkpoint from path.
+
+        An error will be raised if the provided path does not exist.
+
+        Args:
+            checkpoint_file_path (Union[str, Path]): The path to the checkpoint
+                to load. If the checkpoint saved in this path has not been
+                created by Ray Train, there is no guarantee that it can be
+                loaded in successfully.
+        """
+        return load_checkpoint_from_path(checkpoint_file_path)
 
     def shutdown(self):
         """Shuts down the training execution service."""
