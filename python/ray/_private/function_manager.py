@@ -405,8 +405,8 @@ class FunctionActorManager:
                 warning_message = (
                     "This worker was asked to execute a "
                     "function that it does not have "
-                    "registered. You may have to restart "
-                    "Ray."
+                    "registered ({}). You may have to restart "
+                    "Ray.".format(function_descriptor)
                 )
                 if not warning_sent:
                     ray._private.utils.push_error_to_driver(
