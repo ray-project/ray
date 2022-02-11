@@ -432,14 +432,12 @@ class ActorReplicaWrapper:
         ) = self._check_active_health_check()
         if health_check_succeeded is None:
             # No info; don't update replica health.
-            logger.debug("No health info.")
             pass
         elif health_check_succeeded:
             # Health check succeeded. Reset the consecutive failure counter
             # and mark the replica healthy.
             self._consecutive_health_check_failures = 0
             self._healthy = True
-            logger.debug("Replica marked healthy.")
         else:
             # Health check failed. If it has failed more than N times in a row,
             # mark the replica unhealthy.
@@ -462,11 +460,8 @@ class ActorReplicaWrapper:
                 self._healthy = False
 
         if self._should_start_new_health_check():
-            logger.debug("Starting new health check.")
             self._last_health_check_time = time.time()
             self._health_check_ref = self._actor_handle.check_health.remote()
-        else:
-            logger.debug("Not starting new health check yet.")
 
         return self._healthy
 

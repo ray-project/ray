@@ -130,7 +130,7 @@ def test_inherit_healthcheck(serve_instance):
         def set_should_fail(self):
             self.should_fail = True
 
-    @serve.deployment
+    @serve.deployment(_health_check_period_s=1)
     class Child(Parent):
         def __call__(self, *args):
             return ray.get_runtime_context().current_actor
