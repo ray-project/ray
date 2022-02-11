@@ -50,6 +50,7 @@ Status InMemoryStoreClient::AsyncPutWithIndex(const std::string &table_name,
 Status InMemoryStoreClient::AsyncGet(const std::string &table_name,
                                      const std::string &key,
                                      const OptionalItemCallback<std::string> &callback) {
+  RAY_CHECK(callback != nullptr);
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   auto iter = table->records_.find(key);
@@ -57,17 +58,18 @@ Status InMemoryStoreClient::AsyncGet(const std::string &table_name,
   if (iter != table->records_.end()) {
     data = iter->second;
   }
-  if (callback) {
-    main_io_service_.post(
-        [callback, data = std::move(data)]() { callback(Status::OK(), data); },
-        "GcsInMemoryStore.Get");
-  }
+
+  main_io_service_.post(
+      [callback, data = std::move(data)]() { callback(Status::OK(), data); },
+      "GcsInMemoryStore.Get");
+
   return Status::OK();
 }
 
 Status InMemoryStoreClient::AsyncGetAll(
     const std::string &table_name,
     const MapCallback<std::string, std::string> &callback) {
+  RAY_CHECK(callback);
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   auto result = std::unordered_map<std::string, std::string>();
@@ -171,6 +173,7 @@ Status InMemoryStoreClient::AsyncBatchDeleteWithIndex(
 Status InMemoryStoreClient::AsyncGetByIndex(
     const std::string &table_name, const std::string &index_key,
     const MapCallback<std::string, std::string> &callback) {
+  RAY_CHECK(callback);
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   auto iter = table->index_keys_.find(index_key);
