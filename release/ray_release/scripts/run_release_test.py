@@ -1,4 +1,3 @@
-import logging
 import os
 import sys
 from typing import Optional
@@ -78,13 +77,6 @@ def main(
     cluster_id: Optional[str] = None,
     no_terminate: bool = False,
 ):
-    handler = logging.StreamHandler(stream=sys.stdout)
-    formatter = logging.Formatter(
-        fmt="[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s"
-    )
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-
     test_collection_file = test_collection_file or os.path.join(
         os.path.dirname(__file__), "..", "..", "release_tests.yaml"
     )

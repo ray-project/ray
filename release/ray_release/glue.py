@@ -14,7 +14,7 @@ from ray_release.config import (
     load_test_cluster_env,
     load_test_cluster_compute,
     DEFAULT_BUILD_TIMEOUT,
-    DEFAULT_SESSION_TIMEOUT,
+    DEFAULT_CLUSTER_TIMEOUT,
     DEFAULT_COMMAND_TIMEOUT,
     RELEASE_PACKAGE_DIR,
     validate_test,
@@ -113,15 +113,15 @@ def run_release_test(
             build_timeout = test["run"].get("build_timeout", DEFAULT_BUILD_TIMEOUT)
             cluster_manager.build_configs(timeout=build_timeout)
 
-            session_timeout = test["run"].get(
-                "session_timeout", DEFAULT_SESSION_TIMEOUT
+            cluster_timeout = test["run"].get(
+                "session_timeout", DEFAULT_CLUSTER_TIMEOUT
             )
 
             autosuspend_mins = test["run"].get("autosuspend_mins", None)
             if autosuspend_mins:
                 cluster_manager.autosuspend_minutes = autosuspend_mins
 
-            cluster_manager.start_cluster(timeout=session_timeout)
+            cluster_manager.start_cluster(timeout=cluster_timeout)
 
         result.cluster_url = cluster_manager.get_cluster_url()
 

@@ -228,9 +228,23 @@ class MinimalClusterManager(ClusterManager):
                 )
 
     def build_configs(self, timeout: float = 30.0):
-        self.create_cluster_compute()
-        self.create_cluster_env()
-        self.build_cluster_env(timeout=timeout)
+        try:
+            self.create_cluster_compute()
+        except ClusterComputeBuildError as e:
+            raise e
+        except Exception as e:
+            raise ClusterComputeBuildError(
+                f"Unexpected cluster compute build error: {e}"
+            ) from e
+        try:
+            self.create_cluster_env()
+            self.build_cluster_env(timeout=timeout)
+        except ClusterEnvBuildError as e:
+            raise e
+        except Exception as e:
+            raise ClusterEnvBuildError(
+                f"Unexpected cluster env build error: {e}"
+            ) from e
 
     def delete_configs(self):
         if self.cluster_id:

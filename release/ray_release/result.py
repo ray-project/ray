@@ -2,16 +2,6 @@ import enum
 from dataclasses import dataclass
 from typing import Optional, Dict, Tuple
 
-from ray_release.exception import (
-    TestCommandTimeout,
-    PrepareCommandTimeout,
-    ClusterStartupTimeout,
-    PrepareCommandError,
-    ClusterEnvBuildError,
-    ClusterEnvBuildTimeout,
-    ClusterStartupError,
-)
-
 
 @dataclass
 class Result:
@@ -34,48 +24,58 @@ class ExitCode(enum.Enum):
     # in `build_pipeline.py` and the `reason()` function in `run_e2e.sh`
     UNSPECIFIED = 2
     UNKNOWN = 3
-    RUNTIME_ERROR = 4
-    COMMAND_ERROR = 5
-    COMMAND_TIMEOUT = 6
-    PREPARE_TIMEOUT = 7
-    # FILESYNC_TIMEOUT = 8
-    SESSION_TIMEOUT = 9
-    PREPARE_ERROR = 10
-    APPCONFIG_BUILD_ERROR = 11
-    INFRA_ERROR = 12
+
+    # Hard infra errors (non-retryable)
+    CLI_ERROR = 10
+    CONFIG_ERROR = 11
+    SETUP_ERROR = 12
+    CLUSTER_RESOURCE_ERROR = 13
+    CLUSTER_ENV_BUILD_ERROR = 14
+    CLUSTER_STARTUP_ERROR = 15
+    LOCAL_ENV_SETUP_ERROR = 16
+    REMOTE_ENV_SETUP_ERROR = 17
+    # ANYSCALE_SDK_ERROR = 19
+
+    # Infra timeouts (retryable)
+    RAY_WHEELS_TIMEOUT = 30
+    CLUSTER_ENV_BUILD_TIMEOUT = 31
+    CLUSTER_STARTUP_TIMEOUT = 32
+    CLUSTER_WAIT_TIMEOUT = 33
+
+    # Command errors
+    COMMAND_ERROR = 40
+    COMMAND_ALERT = 41
+    COMMAND_TIMEOUT = 42
+    PREPARE_ERROR = 43
 
 
 def handle_exception(e: Exception) -> Tuple[ExitCode, str, Optional[int]]:
-    if isinstance(e, TestCommandTimeout):
-        error_type = "timeout"
-        runtime = 0
-        exit_code = ExitCode.COMMAND_TIMEOUT
-    elif isinstance(e, PrepareCommandTimeout):
-        error_type = "infra_timeout"
-        runtime = None
-        exit_code = ExitCode.PREPARE_TIMEOUT
-    elif isinstance(e, ClusterStartupTimeout):
-        error_type = "infra_timeout"
-        runtime = None
-        exit_code = ExitCode.SESSION_TIMEOUT
-    elif isinstance(e, PrepareCommandError):
-        error_type = "infra_timeout"
-        runtime = None
-        exit_code = ExitCode.PREPARE_ERROR
-    elif isinstance(e, (ClusterEnvBuildError, ClusterEnvBuildTimeout)):
-        error_type = "infra_timeout"
-        runtime = None
-        exit_code = ExitCode.APPCONFIG_BUILD_ERROR
-    elif isinstance(e, ClusterStartupError):
-        error_type = "infra_error"
-        exit_code = ExitCode.INFRA_ERROR
-    elif isinstance(e, RuntimeError):
-        error_type = "runtime_error"
-        runtime = 0
-        exit_code = ExitCode.RUNTIME_ERROR
+    from ray_release.exception import ReleaseTestError
+
+    if isinstance(e, ReleaseTestError):
+        exit_code = e.exit_code
+        # Legacy reporting
+        if 1 <= exit_code.value < 10:
+            error_type = "unknown error"
+            runtime = None
+        elif 10 <= exit_code.value < 20:
+            error_type = "infra_error"
+            runtime = None
+        elif 30 <= exit_code.value < 40:
+            error_type = "infra_timeout"
+            runtime = None
+        elif exit_code == ExitCode.COMMAND_TIMEOUT:
+            error_type = "timeout"
+            runtime = 0
+        elif 40 <= exit_code.value < 50:
+            error_type = "runtime_error"
+            runtime = 0
+        else:
+            error_type = "unknown timeout"
+            runtime = 0
     else:
-        error_type = "unknown timeout"
-        runtime = None
         exit_code = ExitCode.UNKNOWN
+        error_type = "unknown error"
+        runtime = 0
 
     return exit_code, error_type, runtime

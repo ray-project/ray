@@ -9,7 +9,11 @@ from typing import Optional, Dict, Any
 import ray
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
-from ray_release.exception import ClusterStartupTimeout, ResultsError
+from ray_release.exception import (
+    ClusterStartupTimeout,
+    ResultsError,
+    LocalEnvSetupError,
+)
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.logger import logger
 from ray_release.util import run_with_timeout
@@ -66,8 +70,11 @@ class ClientRunner(CommandRunner):
         pass
 
     def prepare_local_env(self, ray_wheels_url: Optional[str] = None):
-        install_matching_ray(ray_wheels_url or os.environ.get("RAY_WHEELS", None))
-        install_cluster_env_packages(self.cluster_manager.cluster_env)
+        try:
+            install_matching_ray(ray_wheels_url or os.environ.get("RAY_WHEELS", None))
+            install_cluster_env_packages(self.cluster_manager.cluster_env)
+        except Exception as e:
+            raise LocalEnvSetupError(f"Error setting up local environment: {e}") from e
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         ray_address = self.cluster_manager.get_cluster_address()

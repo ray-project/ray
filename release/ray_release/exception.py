@@ -1,89 +1,108 @@
-class ReleaseTestPackageError(RuntimeError):
+from ray_release.result import ExitCode
+
+
+class ReleaseTestError(RuntimeError):
+    exit_code = ExitCode.UNSPECIFIED
+
+
+class ReleaseTestPackageError(ReleaseTestError):
     pass
 
 
 class ReleaseTestConfigError(ReleaseTestPackageError):
-    pass
+    exit_code = ExitCode.CONFIG_ERROR
 
 
 class ReleaseTestCLIError(ReleaseTestPackageError):
-    pass
+    exit_code = ExitCode.CLI_ERROR
 
 
 class ReleaseTestSetupError(ReleaseTestPackageError):
-    pass
+    exit_code = ExitCode.SETUP_ERROR
 
 
-class RayWheelsError(RuntimeError):
-    pass
+class RayWheelsError(ReleaseTestError):
+    exit_code = ExitCode.CLI_ERROR
 
 
 class RayWheelsUnspecifiedError(RayWheelsError):
-    pass
+    exit_code = ExitCode.CLI_ERROR
 
 
 class RayWheelsNotFoundError(RayWheelsError):
-    pass
+    exit_code = ExitCode.CLI_ERROR
 
 
 class RayWheelsTimeoutError(RayWheelsError):
-    pass
+    exit_code = ExitCode.RAY_WHEELS_TIMEOUT
 
 
-class ClusterManagerError(RuntimeError):
-    pass
+class ClusterManagerError(ReleaseTestError):
+    exit_code = ExitCode.CLUSTER_RESOURCE_ERROR
 
 
 class ClusterEnvBuildError(ClusterManagerError):
-    pass
+    exit_code = ExitCode.CLUSTER_ENV_BUILD_ERROR
 
 
 class ClusterEnvBuildTimeout(ClusterManagerError):
-    pass
+    exit_code = ExitCode.CLUSTER_ENV_BUILD_TIMEOUT
 
 
 class ClusterComputeBuildError(ClusterManagerError):
-    pass
+    exit_code = ExitCode.CLUSTER_RESOURCE_ERROR
 
 
 class ClusterCreationError(ClusterManagerError):
-    pass
+    exit_code = ExitCode.CLUSTER_RESOURCE_ERROR
 
 
 class ClusterStartupError(ClusterManagerError):
-    pass
+    exit_code = ExitCode.CLUSTER_RESOURCE_ERROR
 
 
 class ClusterStartupTimeout(ClusterManagerError):
-    pass
+    exit_code = ExitCode.CLUSTER_STARTUP_TIMEOUT
 
 
 class ClusterStartupFailed(ClusterManagerError):
-    pass
+    exit_code = ExitCode.CLUSTER_STARTUP_ERROR
 
 
-class CommandTimeout(RuntimeError):
-    pass
+class EnvironmentSetupError(ReleaseTestError):
+    exit_code = ExitCode.CLUSTER_STARTUP_ERROR
+
+
+class LocalEnvSetupError(EnvironmentSetupError):
+    exit_code = ExitCode.LOCAL_ENV_SETUP_ERROR
+
+
+class RemoteEnvSetupError(EnvironmentSetupError):
+    exit_code = ExitCode.REMOTE_ENV_SETUP_ERROR
+
+
+class CommandTimeout(ReleaseTestError):
+    exit_code = ExitCode.COMMAND_TIMEOUT
 
 
 class PrepareCommandTimeout(CommandTimeout):
-    pass
+    exit_code = ExitCode.CLUSTER_WAIT_TIMEOUT
 
 
 class TestCommandTimeout(CommandTimeout):
-    pass
+    exit_code = ExitCode.COMMAND_TIMEOUT
 
 
-class CommandError(RuntimeError):
-    pass
+class CommandError(ReleaseTestError):
+    exit_code = ExitCode.COMMAND_ERROR
 
 
 class PrepareCommandError(CommandError):
-    pass
+    exit_code = ExitCode.PREPARE_ERROR
 
 
 class TestCommandError(CommandError):
-    pass
+    exit_code = ExitCode.COMMAND_ERROR
 
 
 class LogsError(CommandError):
@@ -95,44 +114,4 @@ class ResultsError(CommandError):
 
 
 class ResultsAlert(CommandError):
-    pass
-
-
-# ---
-
-
-class PrepareCommandRuntimeError(RuntimeError):
-    pass
-
-
-class ReleaseTestRuntimeError(RuntimeError):
-    pass
-
-
-class ReleaseTestInfraError(ReleaseTestRuntimeError):
-    pass
-
-
-class ReleaseTestTimeoutError(ReleaseTestRuntimeError):
-    pass
-
-
-class SessionTimeoutError(ReleaseTestTimeoutError):
-    pass
-
-
-class FileSyncTimeoutError(ReleaseTestTimeoutError):
-    pass
-
-
-class CommandTimeoutError(ReleaseTestTimeoutError):
-    pass
-
-
-class PrepareCommandTimeoutError(ReleaseTestTimeoutError):
-    pass
-
-
-# e.g., App config failure.
-class AppConfigBuildFailure(RuntimeError):
-    pass
+    exit_code = ExitCode.COMMAND_ALERT
