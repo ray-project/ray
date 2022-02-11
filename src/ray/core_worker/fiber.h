@@ -27,13 +27,13 @@ namespace core {
 class FiberEvent {
  public:
   // Block the fiber until the event is notified.
-  void Wait() {
+  void Await() {
     std::unique_lock<boost::fibers::mutex> lock(mutex_);
     cond_.wait(lock, [this]() { return ready_; });
   }
 
-  // Notify the event and unblock all waiters.
-  void Notify() {
+  // Notify the event and unblock one waiter.
+  void NotifyReady() {
     {
       std::unique_lock<boost::fibers::mutex> lock(mutex_);
       ready_ = true;
@@ -113,7 +113,7 @@ class FiberState {
               // The event here is used to make sure fiber_runner_thread_ never
               // terminates. Because fiber_shutdown_event_ is never notified,
               // fiber_runner_thread_ will immediately start working on any ready fibers.
-              shutdown_worker_event_.Wait();
+              shutdown_worker_event_.Await();
             });
   }
 
@@ -128,7 +128,7 @@ class FiberState {
 
   ~FiberState() {
     channel_.close();
-    shutdown_worker_event_.Notify();
+    shutdown_worker_event_.NotifyReady();
     if (fiber_runner_thread_.joinable()) {
       fiber_runner_thread_.join();
     }

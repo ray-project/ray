@@ -236,7 +236,7 @@ pub mod internal {
         }
     }
 
-    pub fn create_actor(fn_name: CString, args: &[&[u8]]) -> ActorID {
+    pub fn create_actor(fn_name: CString, args: &[&[u8]], is_async: bool) -> ActorID {
         // Create data
         let mut meta_vec = vec![0u8];
         let mut data = args
@@ -265,6 +265,7 @@ pub mod internal {
                 std::ptr::null_mut::<*const c_char>(),
                 data.len() as i32,
                 actor_ids.as_mut_ptr(),
+                is_async,
             );
         }
 
@@ -283,6 +284,40 @@ pub mod internal {
 pub fn dv_as_slice<'a>(data: DataValue) -> &'a [u8] {
     unsafe { std::slice::from_raw_parts::<u8>((*data.data).p, (*data.data).size as usize) }
 }
+
+// Fiber Event is basically a (thread-safe) channel that
+//
+#[derive(Clone, Copy)]
+pub struct FiberEvent {
+    fiber_event_ptr: *mut c_void,
+}
+
+// This struct's methods does not modify self, they merely modify
+// the FiberEvent its ptr is pointing to, which has its own Send/Sync
+// guards
+impl FiberEvent {
+    pub fn new() -> Self {
+        Self {
+            fiber_event_ptr: unsafe { c_worker_CreateFiberEvent() },
+        }
+    }
+
+    pub fn notify_ready(&self) {
+        unsafe {
+            c_worker_NotifyReady(self.fiber_event_ptr);
+        }
+    }
+
+    pub fn yield_and_await(&self) {
+        unsafe {
+            c_worker_YieldFiberAndAwait(self.fiber_event_ptr);
+        }
+    }
+}
+
+// TODO: why is this correct?
+unsafe impl std::marker::Send for FiberEvent {}
+unsafe impl std::marker::Sync for FiberEvent {}
 
 #[cfg(test)]
 pub mod test {

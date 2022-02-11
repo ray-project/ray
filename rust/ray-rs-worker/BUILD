@@ -5,7 +5,7 @@ rust_binary(
     srcs = glob(["src/**/*.rs"]),
     deps = [
         "//rust/ray-rs-sys:ray_rs_sys",
-        "//rust/ray-rs:ray_rs",
+        "//rust/ray-rs:ray_rs_async",
     ],
     visibility = ["//rust:__subpackages__"],
 )

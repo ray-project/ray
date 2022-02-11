@@ -22,7 +22,7 @@ use std::{
     collections::{HashMap, HashSet},
     convert::TryInto,
     marker::PhantomData,
-    mem::drop,
+    mem::ManuallyDrop,
     ops::{Deref, Drop},
     os::raw::c_char,
     sync::{Arc, Mutex},
@@ -52,6 +52,9 @@ lazy_static::lazy_static! {
     pub static ref GLOBAL_ACTOR_METHOD_NAMES_SET: Mutex<HashSet<CString>> = {
         Mutex::new(HashSet::new())
     };
+    pub static ref GLOBAL_ASYNC_ACTOR_METHOD_NAMES_SET: Mutex<HashSet<CString>> = {
+        Mutex::new(HashSet::new())
+    };
     pub static ref GLOBAL_ACTOR_CREATION_NAMES_SET: Mutex<HashSet<CString>> = {
         Mutex::new(HashSet::new())
     };
@@ -62,9 +65,17 @@ lazy_static::lazy_static! {
     static ref GLOBAL_ACTOR_METHODS_MAP: Mutex<HashMap<CString, Symbol<'static, ActorMethod>>> = {
         Mutex::new(HashMap::new())
     };
+    static ref GLOBAL_ASYNC_ACTOR_METHODS_MAP: Mutex<HashMap<CString, Symbol<'static, ActorMethod>>> = {
+        Mutex::new(HashMap::new())
+    };
     static ref GLOBAL_ACTOR_CREATION_MAP: Mutex<HashMap<CString, Symbol<'static, ActorCreation>>> = {
         Mutex::new(HashMap::new())
     };
+}
+
+#[cfg(feature = "async")]
+lazy_static::lazy_static! {
+    static ref ASYNC_RUNTIME_SENDER: Mutex<Option<std::sync::mpsc::Sender<(TaskData, Arc<FiberEvent>)>>> = Mutex::new(None);
 }
 // Prints each argument on a separate line
 //
@@ -129,7 +140,7 @@ impl<T> Drop for ObjectRefInner<T> {
 
 // For safety to hold, the libraries cannot be unloaded once loaded
 // Below, we are doing the incredibly unsafe "std::mem::transmute"
-// to have the library lifetime be static
+// to have the lifetimes of the symbols loaded be static
 pub fn load_libraries_from_paths(paths: &Vec<&str>) {
     let mut libs = LIBRARIES.lock().unwrap();
     for path in paths {
@@ -180,12 +191,14 @@ fn load_function_ptrs_from_library(lib: &Library) {
     );
 }
 
-fn resolve_fn<'a, F>(
+fn resolve_fn<F>(
     fn_name: &CString,
     fn_str: &str,
-    map: &'a mut HashMap<CString, Symbol<'static, F>>,
-) -> &'a Symbol<'static, F> {
+    fn_map: &Mutex<HashMap<CString, Symbol<'static, F>>>,
+) -> Symbol<'static, F> {
     use std::collections::hash_map::Entry;
+
+    let mut map = fn_map.lock().unwrap();
 
     map.entry(fn_name.clone()).or_insert_with(|| {
         for lib in LIBRARIES.lock().unwrap().iter() {
@@ -202,18 +215,88 @@ fn resolve_fn<'a, F>(
             format!("Could not find symbol for fn of name {}", fn_str)
         );
         panic!();
-    })
+    }).clone()
+}
+// This function accepts an async function description.
+// It resolves
+// async handle_async_task()
+
+// This function initializes the async runtime (Tokio for now)
+//
+// We probably want an Option<tx> instead.
+#[cfg(feature = "async")]
+fn handle_async_startup() {
+    let mut guard = ASYNC_RUNTIME_SENDER.lock().unwrap();
+
+    match *guard {
+        // TODO: do proper error handling here.
+        // TODO: extend to rt-multi-thread (e.g. Runtime::new())
+        //
+        // Shouldn't this be spawned on another thread, though, so as not
+        // to block the current one...?
+        //
+        // Tokio futures need to be Send anyway... Except if you are using
+        // tokio::task::LocalSet??
+        None => {
+            let (tx, rx) = std::sync::mpsc::channel::<(TaskData, Arc<FiberEvent>)>();
+            *guard = Some(tx);
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Builder::new_multi_thread()
+                    .worker_threads(4)
+                    .enable_all()
+                    .build()
+                    .unwrap();
+
+                loop {
+                    let (task_data, notifier) = rx.recv().expect("did not receive");
+                    rt.spawn(
+                        async move {
+                            rust_worker_execute(
+                                task_data.actor_ptr,
+                                task_data.task_type_int,
+                                task_data.ray_function_info,
+                                task_data.args,
+                                task_data.args_len,
+                                task_data.return_values
+                            );
+                            notifier.notify_ready();
+                        }
+                    );
+                }
+            });
+        },
+        _ => (),
+    };
 }
 
-use serde::{Deserialize, Serialize};
+// #[cfg(feature = "async")]
+// fn handle_async_shutdown() {
+//     let mut guard = ASYNC_RUNTIME.lock().unwrap();
+//     match &mut *guard {
+//         // TODO: do proper error handling here.
+//         Some(rt) => {
+//             // TODO: figure out appropriate wait time (or force by setting to 0?)
+//             rt.shutdown_timeout(std::time::Duration::from_millis(2_000));
+//             *guard = None;
+//         }
+//         _ => (),
+//     };
+// }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Vec2 {
-    x: u64,
-    y: u64,
+struct TaskData {
+    actor_ptr: *mut *mut std::os::raw::c_void,
+    task_type_int: i32,
+    ray_function_info: RaySlice,
+    args: *const *const DataValue,
+    args_len: u64,
+    return_values: RaySlice,
 }
 
-pub extern "C" fn rust_worker_execute(
+unsafe impl Send for TaskData {}
+unsafe impl Sync for TaskData {}
+
+#[cfg(feature = "async")]
+pub extern "C" fn rust_worker_execute_async(
     actor_ptr: *mut *mut std::os::raw::c_void,
     task_type_int: i32,
     ray_function_info: RaySlice,
@@ -221,10 +304,44 @@ pub extern "C" fn rust_worker_execute(
     args_len: u64,
     return_values: RaySlice,
 ) {
-    let task_type = internal::parse_task_type(task_type_int);
-    // TODO (jon-chuang): One should replace RustBuffer with RaySlice...
-    // TODO (jon-chuang): Try to move unsafe into ray_rs_sys
-    // Replace all size_t with u64?
+    let mut e = Arc::new(FiberEvent::new());
+    let e_ = e.clone();
+
+    handle_async_startup();
+
+    ASYNC_RUNTIME_SENDER
+        .lock()
+        .unwrap()
+        .as_ref()
+        .expect("runtime is not initialized")
+        .send(
+            (TaskData {
+                actor_ptr,
+                task_type_int,
+                ray_function_info,
+                args,
+                args_len,
+                return_values,
+            },
+            e_)
+        );
+
+    // Not sure if this is safe. When we call yield, are we sure
+    // boost.asio is aware enough to save all of Rust's (or other lang's)
+    // live state?
+    e.yield_and_await();
+}
+
+
+// TODO (jon-chuang): One should replace RustBuffer with RaySlice...
+// TODO (jon-chuang): Try to move unsafe into ray_rs_sys
+// Replace all size_t with u64?
+fn prepare_inputs(
+    task_type_int: i32,
+    ray_function_info: RaySlice,
+    args: *const *const DataValue,
+    args_len: u64
+) -> (RustBuffer, ManuallyDrop<CString>, ray::TaskType) {
     let args_slice = unsafe { std::slice::from_raw_parts(args, args_len as usize) };
 
     let mut arg_ptrs = Vec::<u64>::new();
@@ -232,7 +349,6 @@ pub extern "C" fn rust_worker_execute(
 
     for &arg in args_slice {
         // Todo: change this to ingest the raw ptr to hide unsafe
-        // ray_rs_sys::util::dv_as_slice(*arg);
         unsafe {
             arg_ptrs.push((*(*arg).data).p as u64);
             arg_sizes.push((*(*arg).data).size as u64);
@@ -245,33 +361,102 @@ pub extern "C" fn rust_worker_execute(
     let fn_name = std::mem::ManuallyDrop::new(unsafe {
         CString::from_raw(*(ray_function_info.data as *mut *mut std::os::raw::c_char))
     });
-    let fn_str = fn_name.to_str().unwrap();
+
+    let task_type = internal::parse_task_type(task_type_int);
 
     ray_info!(
-        "Executing: {:?} with {} args (task name: {})",
+        "Executing: {:?} with {} args (task name: {:?})",
         task_type,
         args_slice.len(),
-        fn_str,
+        *fn_name,
     );
 
+    (args_buffer, fn_name, task_type)
+}
+
+async extern "C" fn rust_worker_execute_async_internal(
+    actor_ptr: *mut *mut std::os::raw::c_void,
+    task_type_int: i32,
+    ray_function_info: RaySlice,
+    args: *const *const DataValue,
+    args_len: u64,
+    return_values: RaySlice,
+) {
+    let (args_buffer, fn_name, task_type) = prepare_inputs(task_type_int, ray_function_info, args, args_len);
+    // Better error handling...?
+    let fn_str = fn_name.to_str().unwrap();
+
     if task_type == ray::TaskType::ACTOR_CREATION_TASK {
-        let mut fn_map = GLOBAL_ACTOR_CREATION_MAP.lock().unwrap();
-        let a_ptr = resolve_fn(&fn_name, fn_str, &mut fn_map)(args_buffer);
+        let a_ptr = resolve_fn(&fn_name, fn_str, &GLOBAL_ACTOR_CREATION_MAP)(args_buffer);
+        ray_info!("Actor Created @ address {:p} by {}", a_ptr, fn_str);
+        // TODO: this needs to be wrapped with a thread-safe lock managed from the c_worker side
+        // i.e. c_worker_ReassignActorPtr(old, new); Then we can also get rid of **void
+        unsafe {
+            *actor_ptr = a_ptr;
+        }
+    } else {
+        let ret = if task_type == ray::TaskType::NORMAL_TASK {
+            let ret = resolve_fn(&fn_name, fn_str, &GLOBAL_FUNCTION_MAP)(args_buffer);
+            ray_info!("Executed: {}", fn_str);
+            ret
+        } else if task_type == ray::TaskType::ACTOR_TASK {
+            // This will result in a sigsegv if the actor has not been initialized
+            //
+            // Also, we may want the runtimes to be able to move the actor ptr...
+            // now that is a different story...
+            let a_ptr = unsafe { *actor_ptr };
+            let ret = resolve_fn(&fn_name, fn_str, &GLOBAL_ACTOR_METHODS_MAP)(a_ptr, args_buffer);
+            ray_info!("Executed {} on actor at {:p}", fn_str, a_ptr);
+            ret
+        } else {
+            ray_info!("Invalid task type");
+            panic!();
+        };
+
+        let ret_owned = std::mem::ManuallyDrop::new(ret.destroy_into_vec());
+
+        unsafe {
+            let ret_slice = std::slice::from_raw_parts_mut(
+                return_values.data as *mut *const DataValue,
+                return_values.len as usize,
+            );
+            ret_slice[0] = c_worker_AllocateDataValue(
+                ret_owned.as_ptr(),
+                ret_owned.len() as u64,
+                std::ptr::null(),
+                0,
+            );
+        }
+    }
+}
+
+pub extern "C" fn rust_worker_execute(
+    actor_ptr: *mut *mut std::os::raw::c_void,
+    task_type_int: i32,
+    ray_function_info: RaySlice,
+    args: *const *const DataValue,
+    args_len: u64,
+    return_values: RaySlice,
+) {
+    let (args_buffer, fn_name, task_type) = prepare_inputs(task_type_int, ray_function_info, args, args_len);
+    // Better error handling...?
+    let fn_str = fn_name.to_str().unwrap();
+
+    if task_type == ray::TaskType::ACTOR_CREATION_TASK {
+        let a_ptr = resolve_fn(&fn_name, fn_str, &*GLOBAL_ACTOR_CREATION_MAP)(args_buffer);
         ray_info!("Actor Created @ address {:p} by {}", a_ptr, fn_str);
         unsafe {
             *actor_ptr = a_ptr;
         }
     } else {
         let ret = if task_type == ray::TaskType::NORMAL_TASK {
-            let mut fn_map = GLOBAL_FUNCTION_MAP.lock().unwrap();
-            let ret = resolve_fn(&fn_name, fn_str, &mut fn_map)(args_buffer);
+            let ret = resolve_fn(&fn_name, fn_str, &*GLOBAL_FUNCTION_MAP)(args_buffer);
             ray_info!("Executed: {}", fn_str);
             ret
         } else if task_type == ray::TaskType::ACTOR_TASK {
-            let mut fn_map = GLOBAL_ACTOR_METHODS_MAP.lock().unwrap();
-            // This will result in a sigsev if the actor has not been initialized
+            // This will result in a sigsegv if the actor has not been initialized
             let a_ptr = unsafe { *actor_ptr };
-            let ret = resolve_fn(&fn_name, fn_str, &mut fn_map)(a_ptr, args_buffer);
+            let ret = resolve_fn(&fn_name, fn_str, &*GLOBAL_ACTOR_METHODS_MAP)(a_ptr, args_buffer);
             ray_info!("Executed {} on actor at {:p}", fn_str, a_ptr);
             ret
         } else {

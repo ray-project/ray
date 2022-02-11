@@ -82,8 +82,8 @@ cdef extern from "ray/core_worker/profiling.h" nogil:
 cdef extern from "ray/core_worker/fiber.h" nogil:
     cdef cppclass CFiberEvent "ray::core::FiberEvent":
         CFiberEvent()
-        void Wait()
-        void Notify()
+        void Await()
+        void NotifyReady()
 
 cdef extern from "ray/core_worker/context.h" nogil:
     cdef cppclass CWorkerContext "ray::core::WorkerContext":
@@ -236,7 +236,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string MemoryUsageString()
 
         CWorkerContext &GetWorkerContext()
-        void YieldCurrentFiber(CFiberEvent &coroutine_done)
+        void YieldFiberAndAwait(CFiberEvent &coroutine_done)
 
         unordered_map[CObjectID, pair[size_t, size_t]] GetAllReferenceCounts()
 

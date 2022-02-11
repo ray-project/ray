@@ -742,7 +742,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
 
   /// Block current fiber until event is triggered.
-  void YieldCurrentFiber(FiberEvent &event);
+  void YieldFiberAndAwait(FiberEvent &event);
 
   /// The callback expected to be implemented by the client.
   using SetResultCallback =

@@ -19,3 +19,23 @@ rust_library(
     # )),
     visibility = ["//visibility:public"],
 )
+
+rust_library(
+    name = "ray_rs_async",
+    crate_name = "ray_rs",
+    srcs = glob(["src/**/*.rs"]),
+    proc_macro_deps = [
+        crate("paste"),
+        crate("ctor"),
+    ],
+    deps = [
+        "//rust/ray-rs-sys:ray_rs_sys",
+    ] +
+    crates_from("//rust/ray-rs:Cargo.toml"),
+    # sets.to_list(sets.difference(
+    #     sets.make(crates_from("//rust/ray-rs:Cargo.toml")),
+    #     sets.make([crate("ray-rs-sys")]),
+    # )),
+    visibility = ["//visibility:public"],
+    crate_features = ["async"]
+)

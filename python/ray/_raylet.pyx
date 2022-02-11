@@ -2057,10 +2057,10 @@ cdef class CoreWorker:
             future = asyncio.ensure_future(coroutine, eventloop)
         else:
             future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
-        future.add_done_callback(lambda _: event.Notify())
+        future.add_done_callback(lambda _: event.NotifyReady())
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
-                .YieldCurrentFiber(event))
+                .YieldFiberAndAwait(event))
         return future.result()
 
     def destroy_event_loop_if_exists(self):
@@ -2093,9 +2093,9 @@ cdef class CoreWorker:
     def is_exiting(self):
         return CCoreWorkerProcess.GetCoreWorker().IsExiting()
 
-    cdef yield_current_fiber(self, CFiberEvent &fiber_event):
+    cdef yield_fiber_and_await(self, CFiberEvent &fiber_event):
         with nogil:
-            CCoreWorkerProcess.GetCoreWorker().YieldCurrentFiber(fiber_event)
+            CCoreWorkerProcess.GetCoreWorker().YieldFiberAndAwait(fiber_event)
 
     def get_all_reference_counts(self):
         cdef:

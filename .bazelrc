@@ -5,6 +5,7 @@ build --enable_platform_specific_config
 # On all platforms, provide: PYTHON3_BIN_PATH=python
 ###############################################################################
 build --local_ram_resources=HOST_RAM*.68
+build --compilation_mode=fastbuild
 build --action_env=PATH
 # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
 build --compilation_mode=opt

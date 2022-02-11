@@ -3055,10 +3055,10 @@ void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &re
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
+void CoreWorker::YieldFiberAndAwait(FiberEvent &event) {
   RAY_CHECK(worker_context_.CurrentActorIsAsync());
   boost::this_fiber::yield();
-  event.Wait();
+  event.Await();
 }
 
 void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_callback,

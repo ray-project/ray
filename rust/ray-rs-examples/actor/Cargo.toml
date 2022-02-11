@@ -8,7 +8,7 @@ publish = true
 
 [dependencies]
 # ray-rs = "0.0.0"
-ray-rs = { path="../../ray-rs" }
+ray-rs = { path="../../ray-rs", features = ["async"] }
 serde = "1.0.132"
 
 [build-dependencies]

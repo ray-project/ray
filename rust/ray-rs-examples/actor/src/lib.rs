@@ -45,3 +45,20 @@ pub fn append_stateless(head: String, tail: String) -> String {
     format!("{}, {}", head, tail)
 }
 }
+
+use std::sync::Mutex;
+
+remote_create_actor! {
+pub fn new_string_threadsafe(s: String) -> Mutex<String> {
+    Mutex::new(s)
+}
+}
+
+remote_actor! {
+pub fn append_threadsafe(s: &mut Mutex<String>, tail: String) -> String {
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let mut guard = s.lock().unwrap();
+    guard.push_str(&tail);
+    guard.to_string()
+}
+}

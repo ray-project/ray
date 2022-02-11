@@ -5,10 +5,13 @@
 
 #include <stdint.h>
 #include <iostream>
+// Future: change this to abseil/flat_hash_map in the future?
+#include <unordered_map>
 #include <boost/algorithm/string.hpp>
 
 #include "ray/common/id.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/fiber.h"
 // #include "ray/core_worker/common.h"
 #include "ray/gcs/gcs_client/global_state_accessor.h"
 
@@ -23,15 +26,22 @@ namespace {
 // and unmarshall data to/from C-ABI callback (or maybe this is much simpler if
 // they are simply `std::function<void()>`)
 static c_worker_ExecuteCallback c_worker_execute;
+// static c_worker_ExecuteAsyncCallback c_worker_execute_async;
 static ray::core::CoreWorkerOptions stored_worker_options;
 static Config stored_config;
 static void* current_actor_ptr = nullptr;
+// static std::unordered_map args
 }
 
 int c_worker_RegisterExecutionCallback(const c_worker_ExecuteCallback callback) {
     c_worker_execute = callback;
     return 1;
 }
+
+// int c_worker_RegisterExecutionAsyncCallback(const c_worker_ExecuteAsyncCallback callback) {
+//     c_worker_execute_async = callback;
+//     return 1;
+// }
 
 // We assume that the byte array is properly allocated, i.e.
 // has len == ID::Size()
@@ -73,6 +83,21 @@ void c_worker_DeallocateDataValue(const DataValue *dv_ptr) {
     }
     delete dv_ptr;
   }
+}
+
+void *c_worker_CreateFiberEvent() {
+  ray::core::FiberEvent *e = new ray::core::FiberEvent();
+  return static_cast<void *>(e);
+}
+
+void c_worker_NotifyReady(void *e) {
+  (*reinterpret_cast<ray::core::FiberEvent *>(e)).NotifyReady();
+}
+
+void c_worker_YieldFiberAndAwait(void *e) {
+  auto event = reinterpret_cast<ray::core::FiberEvent *>(e);
+  ray::core::CoreWorkerProcess::GetCoreWorker().YieldFiberAndAwait(*event);
+  delete event;
 }
 
 RAY_EXPORT void c_worker_Log(const char *msg) {
@@ -136,20 +161,32 @@ ray::Status ExecutionCallback(
     // TODO (jon-chuang): RAY_THROW.
     assert (false);
   }
-  c_worker_execute(
-    &current_actor_ptr,
-    task_type, fd_list,
-    args_array_list.data(), args_array_list.size(),
-    execute_return_value_list
-  );
+
+  // if (ray::core::CoreWorkerProcess::GetCoreWorker().GetWorkerContext().CurrentActorIsAsync()) {
+  //   // Put the args buffers into a global hashmap so that they are still referenced.
+  //   //
+  //   // The `current_actor_ptr` should actually
+  //   // c_worker_execute_async(
+  //   //   &current_actor_ptr,
+  //   //   task_type, fd_list,
+  //   //   args_array_list.data(), args_array_list.size(),
+  //   //   execute_return_value_list
+  //   // );
+  // } else {
+    c_worker_execute(
+      &current_actor_ptr,
+      task_type, fd_list,
+      args_array_list.data(), args_array_list.size(),
+      execute_return_value_list
+    );
+  // }
 
   for (auto arg: args_array_list) {
     c_worker_DeallocateDataValue(arg);
   }
 
-  if (task_type == ray::rpc::ACTOR_CREATION_TASK) {
-
-  } else {
+  // Handle return values
+  if (task_type == ray::rpc::ACTOR_TASK || task_type == ray::rpc::NORMAL_TASK) {
     results->clear();
     for (size_t i = 0; i < return_value_list.size(); i++) {
       auto &result_id = return_ids[i];
@@ -189,6 +226,10 @@ ray::Status ExecutionCallback(
   }
   return ray::Status::OK();
 };
+
+void c_worker_HandleAsyncReturn() {
+
+}
 
 RAY_EXPORT void c_worker_Initialize() {
   ray::core::CoreWorkerOptions options = stored_worker_options;
@@ -339,7 +380,7 @@ inline std::shared_ptr<ray::RayObject> DataValueToRayObjectOwned(const DataValue
 // TODO: maybe make this
 RAY_EXPORT int c_worker_CreateActor(const char *create_fn_name, const bool *input_is_ref,
                                     const DataValue* const input_values[], const char **input_refs,
-                                    int num_input_value, char **result) {
+                                    int num_input_value, char **result, bool is_async) {
   std::vector<std::string> function_descriptor_list = { create_fn_name };
   ray::FunctionDescriptor function_descriptor =
       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::RUST,
@@ -371,7 +412,8 @@ RAY_EXPORT int c_worker_CreateActor(const char *create_fn_name, const bool *inpu
       args.push_back(std::unique_ptr<ray::TaskArg>(
                      new ray::TaskArgByReference(obj_id, owner_id, /*call_site=*/"")));
     } else {
-      // The
+      // This is valid since the CreateActor call is synchronous...? But where does the lifetime
+      // of the RayObject data end...?
       auto value = DataValueToRayObjectOwned(static_cast<const DataValue *>(input_values[i]));
       args.push_back(std::unique_ptr<ray::TaskArg>(new ray::TaskArgByValue(value)));
     }
@@ -379,14 +421,14 @@ RAY_EXPORT int c_worker_CreateActor(const char *create_fn_name, const bool *inpu
 
   ray::core::ActorCreationOptions actor_creation_options{0,
                                                          0,
-                                                         static_cast<int>(1), // ???
+                                                         static_cast<int>(1000), // ???
                                                          {},
                                                          {},
                                                          {},
                                                          /*is_detached=*/false,
                                                          full_name,
                                                          ray_namespace,
-                                                         /*is_asyncio=*/false,
+                                                         is_async,
                                                          scheduling_strategy};
   auto status = ray::core::CoreWorkerProcess::GetCoreWorker().CreateActor(
       ray_function,
@@ -400,10 +442,10 @@ RAY_EXPORT int c_worker_CreateActor(const char *create_fn_name, const bool *inpu
   // For buffer overflow safety, the ActorID proto def needs to be consistent
   // across the downstream language worker and the c_worker (here).
   int result_length = ActorID::Size();
-  // TODO: wtf? why + 1?
+  // TODO: why + 1??
   *result = (char *)malloc(result_length + 1);
   memcpy(*result, (char *)actor_id.Data(), result_length);
-  // ???
+  // Why return this ???
   return result_length;
 }
 
@@ -432,11 +474,13 @@ RAY_EXPORT int c_worker_SubmitTask(int task_type, /*optional*/ const char *actor
   for (int i = 0; i < num_input_value; i++) {
     if (input_is_ref[i]) {
       auto obj_id = ByteArrayToId<ray::ObjectID>(input_refs[i]);
+      // TODO: Cache this value instead...?
       auto owner_id = ray::core::CoreWorkerProcess::GetCoreWorker().GetOwnerAddress(obj_id);
       args.push_back(std::unique_ptr<ray::TaskArg>(
                      new ray::TaskArgByReference(obj_id, owner_id, /*call_site=*/"")));
     } else {
-      // The
+      // This is valid since the `SubmitTask` and `SubmitActorTask` calls are synchronous...?
+      // But where does the lifetime of the RayObject data end...?
       auto value = DataValueToRayObjectOwned(static_cast<const DataValue *>(input_values[i]));
       args.push_back(std::unique_ptr<ray::TaskArg>(new ray::TaskArgByValue(value)));
     }

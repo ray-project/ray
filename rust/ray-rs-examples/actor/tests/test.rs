@@ -55,43 +55,68 @@ mod test {
         }
     }
 
+    // #[test]
+    // fn test_create_vec2() {
+    //     try_init();
+    //     {
+    //         let handle = new_vec2.remote(4, 5);
+    //
+    //         let obj_ref = get_vec2.remote(&handle);
+    //         let obj = get(&obj_ref);
+    //
+    //         println!("{:?}", obj);
+    //         let obj_ref_0 = add_assign_vec2.remote(&handle, new_vec2.call(5, 4));
+    //         let obj_0 = get(&obj_ref_0);
+    //         println!("{:?}", obj_0);
+    //
+    //         let obj_ref = get_vec2.remote(&handle);
+    //         let obj = get(&obj_ref);
+    //
+    //         println!("{:?}", obj);
+    //     }
+    //     try_shutdown();
+    // }
+
+    // #[test]
+    // fn test_append_string() {
+    //     try_init();
+    //     {
+    //         let handle = new_string.remote_async(String::from("Hello"));
+    //
+    //         // let obj_ref_0 = append_stateless.remote(String::from("Hello"), String::from(" World"));
+    //         // let obj_0 = get(&obj_ref_0);
+    //         // println!("{:?}", obj_0);
+    //         let obj_ref = append.remote(&handle, String::from(" World"));
+    //
+    //         let obj = get(&obj_ref);
+    //     }
+    //     try_shutdown();
+    // }
+
     #[test]
-    fn test_create_vec2() {
+    fn test_append_string_async() {
         try_init();
         {
-            let handle = new_vec2.remote(4, 5);
+            // Remote async with more than one thread requires
+            let handle = new_string_threadsafe.remote_async(String::from("Hello"));
 
-            let obj_ref = get_vec2.remote(&handle);
-            let obj = get(&obj_ref);
+            // let obj_ref_0 = append_stateless.remote(String::from("Hello"), String::from(" World"));
+            // let obj_0 = get(&obj_ref_0);
+            // println!("{:?}", obj_0);
+            let now = std::time::Instant::now();
+            // Next step: define tasks with closures etc...
+            let mut obj_refs: Vec<_> = (0..10)
+                .map(|i| append_threadsafe.remote(&handle, format!(" World X {}", i)))
+                .collect();
 
-            println!("{:?}", obj);
-            let obj_ref_0 = add_assign_vec2.remote(&handle, new_vec2.call(5, 4));
-            let obj_0 = get(&obj_ref_0);
-            println!("{:?}", obj_0);
+            obj_refs.iter().for_each(|obj_ref| {
+                let obj = get(&obj_ref);
+                println!("{:?} {:?}", obj, now.elapsed().as_millis());
+            });
 
-            let obj_ref = get_vec2.remote(&handle);
-            let obj = get(&obj_ref);
-
-            println!("{:?}", obj);
+            let obj = get(&append_threadsafe.remote(&handle, format!(" World X {}", "MAX")));
+            println!("{:?} {:?}", obj, now.elapsed().as_millis());
         }
-        try_shutdown();
-    }
-
-    #[test]
-    fn test_append_string() {
-        try_init();
-        {
-            let handle = new_string.remote(String::from("Hello"));
-
-            let obj_ref_0 = append_stateless.remote(String::from("Hello"), String::from(" World"));
-            let obj_0 = get(&obj_ref_0);
-            println!("{:?}", obj_0);
-
-            let obj_ref = append.remote(&handle, String::from(" World"));
-            let obj1 = get(&obj_ref);
-            println!("{:?}", obj);
-        }
-
         try_shutdown();
     }
 }

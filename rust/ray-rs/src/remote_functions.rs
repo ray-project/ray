@@ -83,7 +83,20 @@ macro_rules! impl_ray_function {
                         let result = rmp_serde::to_vec($arg.borrow()).unwrap();
                         task_args.push(result.as_slice());
                     )*
-                    ray_rs_sys::internal::create_actor(self.ffi_lookup_name.clone(), &task_args)
+                    ray_rs_sys::internal::create_actor(self.ffi_lookup_name.clone(), &task_args, /*is_async*/false)
+                }
+
+                pub fn remote_async<$([<$argp Borrow>]: std::borrow::Borrow<$argp>),*>(
+                    &self,
+                    $($arg: [<$argp Borrow>]),*
+                ) -> ActorID
+                {
+                    let mut task_args = Vec::new();
+                    $(
+                        let result = rmp_serde::to_vec($arg.borrow()).unwrap();
+                        task_args.push(result.as_slice());
+                    )*
+                    ray_rs_sys::internal::create_actor(self.ffi_lookup_name.clone(), &task_args, /*is_async*/true)
                 }
 
                 // pub fn ray_call(&self, args: RustBuffer) -> RustBuffer {
@@ -129,20 +142,6 @@ macro_rules! impl_ray_function {
                     ObjectRef::new(
                         ray_rs_sys::internal::submit_task(None, self.ffi_lookup_name.clone(), &task_args)
                     )
-                }
-
-                pub fn create_actor<$([<$argp Borrow>]: std::borrow::Borrow<$argp>),*>(
-                    &self,
-                    $($arg: [<$argp Borrow>]),*
-                ) -> ActorID
-                {
-                    let mut task_args = Vec::new();
-                    $(
-                        let result = rmp_serde::to_vec($arg.borrow()).unwrap();
-                        task_args.push(result.as_slice());
-                    )*
-                    // TODO: convert self.ffi_lookup_name.clone() to pass by reference...?
-                    ray_rs_sys::internal::create_actor(self.ffi_lookup_name.clone(), &task_args)
                 }
 
                 pub fn ray_call(&self, args: RustBuffer) -> RustBuffer {
@@ -221,44 +220,45 @@ macro_rules! serialize {
 macro_rules! remote_internal {
     ($lit_n:literal, $name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block) => {
         paste! {
-            fn [<ray_rust_private_ $name>]($($arg: $argty,)*) -> $ret {
+            fn [<ray_rust_private__ $name>]($($arg: $argty,)*) -> $ret {
                 $body
             }
 
             // TODO: convert this `no_mangle` name to use module_path!():: $name
             #[no_mangle]
-            pub extern "C" fn [<ray_rust_ffi_ $name>](args: RustBuffer) -> RustBuffer {
+            pub extern "C" fn [<ray_rust_ffi__ $name>](args: RustBuffer) -> RustBuffer {
                 let (arg_raw_ptrs, sizes) = rmp_serde::from_read_ref::<_, (Vec<u64>, Vec<u64>)>(
                     &args.destroy_into_vec()
                 ).unwrap();
                 // TODO: ensure this
                 deserialize!(arg_raw_ptrs, sizes, $($arg:$argty),*);
-                let ret: $ret = [<ray_rust_private_ $name>]($($arg,)*);
+                let ret: $ret = [<ray_rust_private__ $name>]($($arg,)*);
                 let result = rmp_serde::to_vec(&ret).unwrap();
                 RustBuffer::from_vec(result)
             }
+
             // #[allow(non_upper_case_globals)]
             lazy_static! {
                 pub static ref $name: [<RayFunction $lit_n>]<$($argty,)* $ret>
                     = [<RayFunction $lit_n>]::new(
-                        [<ray_rust_private_ $name>],
-                        [<ray_rust_ffi_ $name>],
+                        [<ray_rust_private__ $name>],
+                        [<ray_rust_ffi__ $name>],
                         CString::new(
                             // concat!(module_path!(), "::", // we are temporarily disabling this
                             // When using proc macros we can modify the extern "C" fn name itself to include the
                             // module path
                             // Else, one could also reasonably mangle for Ray namespace using a random string...
-                            stringify!([<ray_rust_ffi_ $name>])
+                            stringify!([<ray_rust_ffi__ $name>])
                         ).unwrap(),
                     );
             }
 
             // Run this function before main
             #[ctor]
-            fn [<register_function_name _ray_rust_ffi_ $name>]() {
+            fn [<register_function_name _ray_rust_ffi__ $name>]() {
                 let mut guard = GLOBAL_FUNCTION_NAMES_SET.lock().unwrap();
                 guard.insert(
-                    CString::new(stringify!([<ray_rust_ffi_ $name>])).unwrap()
+                    CString::new(stringify!([<ray_rust_ffi__ $name>])).unwrap()
                 );
             }
         }
@@ -270,18 +270,18 @@ macro_rules! remote_internal {
 macro_rules! remote_create_actor_internal {
     ($lit_n:literal, $name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block) => {
         paste! {
-            fn [<ray_rust_private_ $name>]($($arg: $argty,)*) -> $ret {
+            fn [<ray_rust_private__ $name>]($($arg: $argty,)*) -> $ret {
                 $body
             }
 
             #[no_mangle]
-            pub extern "C" fn [<ray_rust_create_actor_ $name>](args: RustBuffer) -> *mut std::os::raw::c_void {
+            pub extern "C" fn [<ray_rust_create_actor__ $name>](args: RustBuffer) -> *mut std::os::raw::c_void {
                 let (arg_raw_ptrs, sizes) = rmp_serde::from_read_ref::<_, (Vec<u64>, Vec<u64>)>(
                     &args.destroy_into_vec()
                 ).unwrap();
                 // TODO: ensure this
                 deserialize!(arg_raw_ptrs, sizes $(,$arg:$argty)*);
-                let mut ret: Box<$ret> = Box::new([<ray_rust_private_ $name>]($($arg,)*));
+                let mut ret: Box<$ret> = Box::new([<ray_rust_private__ $name>]($($arg,)*));
                 ray_info!("return value: {:?} @ {:p}", ret, &ret);
 
                 let mut ret_owned = std::mem::ManuallyDrop::new(ret);
@@ -293,24 +293,88 @@ macro_rules! remote_create_actor_internal {
             lazy_static! {
                 pub static ref $name: [<RayActorCreator $lit_n>]<$($argty,)* $ret>
                     = [<RayActorCreator $lit_n>]::new(
-                        [<ray_rust_private_ $name>],
-                        [<ray_rust_create_actor_ $name>],
+                        [<ray_rust_private__ $name>],
+                        [<ray_rust_create_actor__ $name>],
                         CString::new(
                             // concat!(module_path!(), "::", // we are temporarily disabling this
                             // When using proc macros we can modify the extern "C" fn name itself to include the
                             // module path
                             // Else, one could also reasonably mangle for Ray namespace using a random string...
-                            stringify!([<ray_rust_create_actor_ $name>])
+                            stringify!([<ray_rust_create_actor__ $name>])
                         ).unwrap(),
                     );
             }
 
             // Run this function before main
             #[ctor]
-            fn [<register_function_name _ray_rust_ffi_ $name>]() {
+            fn [<register_function_name _ray_rust_ffi__ $name>]() {
                 let mut guard = GLOBAL_ACTOR_CREATION_NAMES_SET.lock().unwrap();
                 guard.insert(
-                    CString::new(stringify!([<ray_rust_create_actor_ $name>])).unwrap()
+                    CString::new(stringify!([<ray_rust_create_actor__ $name>])).unwrap()
+                );
+            }
+        }
+    };
+}
+
+// When porting this to
+//
+// T: Send  Box<T>: Send, so
+// Ideally, this is what our async task execution looks like.
+#[macro_export]
+macro_rules! remote_async_actor_internal {
+    ($lit_n:literal, $name:ident ($arg0:ident: $argty0:ty $(,$arg:ident: $argty:ty)*) -> $ret:ty $body:block) => {
+        paste! {
+            async fn [<ray_rust_private__ $name>]($arg0: $argty0 $(,$arg: $argty)*) -> $ret {
+                $body
+            }
+
+            #[no_mangle]
+            // TODO: have the namespace include the class/type's name...
+            pub extern "C" fn [<ray_rust_actor_method__ $name>](
+                actor_ptr: *mut std::os::raw::c_void,
+                args: RustBuffer,
+                // Not sure if RustBuffer is actually "Send" here: It contains ptrs.
+            ) -> FfiFuture<RustBuffer> {
+                async {
+                    let (arg_raw_ptrs, sizes) = rmp_serde::from_read_ref::<_, (Vec<u64>, Vec<u64>)>(
+                        &args.destroy_into_vec()
+                    ).unwrap();
+                    // TODO: ensure this
+                    deserialize!(arg_raw_ptrs, sizes $(,$arg:$argty)*);
+                    // This is probably not threadsafe... We would want to take a lock for that...
+                    // However, if the struct itself is not mutable (and only the resources it points to are),
+                    // then we are fine.
+                    let actor_ref = unsafe { &mut *(actor_ptr as *mut _) };
+
+                    ray_info!("Actor Value: {:?}", actor_ref);
+
+                    let ret: $ret = [<ray_rust_private__ $name>](actor_ref, $($arg,)*).await;
+                    let result = rmp_serde::to_vec(&ret).unwrap();
+                    RustBuffer::from_vec(result)
+                }.into_ffi()
+            }
+
+            // #[allow(non_upper_case_globals)]
+            lazy_static! {
+                pub static ref $name: [<RayActorMethod $lit_n>]<$($argty,)* $ret>
+                    = [<RayActorMethod $lit_n>]::new(
+                        CString::new(
+                            // concat!(module_path!(), "::", // we are temporarily disabling this
+                            // When using proc macros we can modify the extern "C" fn name itself to include the
+                            // module path
+                            // Else, one could also reasonably mangle for Ray namespace using a random string...
+                            stringify!([<ray_rust_actor_method__ $name>])
+                        ).unwrap(),
+                    );
+            }
+
+            // Run this function before main
+            #[ctor]
+            fn [<register_function_name _ray_rust_ffi__ $name>]() {
+                let mut guard = GLOBAL_ACTOR_METHOD_NAMES_SET.lock().unwrap();
+                guard.insert(
+                    CString::new(stringify!([<ray_rust_actor_method__ $name>])).unwrap()
                 );
             }
         }
@@ -318,43 +382,33 @@ macro_rules! remote_create_actor_internal {
 }
 
 #[macro_export]
-macro_rules! strip_ref {
-    (&mut t:ty) => {
-        t
-    };
-    (&t:ty) => {
-        t
-    };
-    (t:ty) => {
-        t
-    };
-}
-
-// When porting this to
-#[macro_export]
 macro_rules! remote_actor_internal {
     ($lit_n:literal, $name:ident ($arg0:ident: $argty0:ty $(,$arg:ident: $argty:ty)*) -> $ret:ty $body:block) => {
         paste! {
-            fn [<ray_rust_private_ $name>]($arg0: $argty0 $(,$arg: $argty)*) -> $ret {
+            fn [<ray_rust_private__ $name>]($arg0: $argty0 $(,$arg: $argty)*) -> $ret {
                 $body
             }
 
             #[no_mangle]
             // TODO: have the namespace include the class/type's name...
-            pub extern "C" fn [<ray_rust_actor_method_ $name>](
+            pub extern "C" fn [<ray_rust_actor_method__ $name>](
                 actor_ptr: *mut std::os::raw::c_void,
                 args: RustBuffer,
+                // Not sure if RustBuffer is actually "Send" here: It contains ptrs.
             ) -> RustBuffer {
                 let (arg_raw_ptrs, sizes) = rmp_serde::from_read_ref::<_, (Vec<u64>, Vec<u64>)>(
                     &args.destroy_into_vec()
                 ).unwrap();
                 // TODO: ensure this
                 deserialize!(arg_raw_ptrs, sizes $(,$arg:$argty)*);
+                // This is probably not threadsafe... We would want to take a lock for that...
+                // However, if the struct itself is not mutable (and only the resources it points to are),
+                // then we are fine.
                 let actor_ref = unsafe { &mut *(actor_ptr as *mut _) };
 
                 ray_info!("Actor Value: {:?}", actor_ref);
 
-                let ret: $ret = [<ray_rust_private_ $name>](actor_ref, $($arg,)*);
+                let ret: $ret = [<ray_rust_private__ $name>](actor_ref, $($arg,)*);
                 let result = rmp_serde::to_vec(&ret).unwrap();
                 RustBuffer::from_vec(result)
             }
@@ -368,17 +422,17 @@ macro_rules! remote_actor_internal {
                             // When using proc macros we can modify the extern "C" fn name itself to include the
                             // module path
                             // Else, one could also reasonably mangle for Ray namespace using a random string...
-                            stringify!([<ray_rust_actor_method_ $name>])
+                            stringify!([<ray_rust_actor_method__ $name>])
                         ).unwrap(),
                     );
             }
 
             // Run this function before main
             #[ctor]
-            fn [<register_function_name _ray_rust_ffi_ $name>]() {
+            fn [<register_function_name _ray_rust_ffi__ $name>]() {
                 let mut guard = GLOBAL_ACTOR_METHOD_NAMES_SET.lock().unwrap();
                 guard.insert(
-                    CString::new(stringify!([<ray_rust_actor_method_ $name>])).unwrap()
+                    CString::new(stringify!([<ray_rust_actor_method__ $name>])).unwrap()
                 );
             }
         }
@@ -386,56 +440,36 @@ macro_rules! remote_actor_internal {
 }
 
 #[macro_export]
-macro_rules! match_remote {
-    ([$name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block]) => { remote_internal!(0, $name ($($arg: $argty),*) -> $ret $body); };
-    ($x:tt [$name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block]) => { remote_internal!(1, $name ($($arg: $argty),*) -> $ret $body); };
-    ($x:tt $y:tt [$name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block]) => { remote_internal!(2, $name ($($arg: $argty),*) -> $ret $body); };
-    ($x:tt $y:tt $z:tt [$name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block]) => { remote_internal!(3, $name ($($arg: $argty),*) -> $ret $body); };
-    // ($x:tt $y:tt $z: tt $a:tt) => remote_internal!(4, $name($($arg: $argty),*) -> $ret $body);
-}
-
-#[macro_export]
-macro_rules! match_create_actor_remote {
-    ([$name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block]) => { remote_create_actor_internal!(0, $name ($($arg: $argty),*) -> $ret $body); };
-    ($x:tt [$name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block]) => { remote_create_actor_internal!(1, $name ($($arg: $argty),*) -> $ret $body); };
-    ($x:tt $y:tt [$name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block]) => { remote_create_actor_internal!(2, $name ($($arg: $argty),*) -> $ret $body); };
-    ($x:tt $y:tt $z:tt [$name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block]) => { remote_create_actor_internal!(3, $name ($($arg: $argty),*) -> $ret $body); };
-    // ($x:tt $y:tt $z: tt $a:tt) => remote_internal!(4, $name($($arg: $argty),*) -> $ret $body);
-}
-
-#[macro_export]
-macro_rules! match_actor_remote {
-    ([$name:ident ($arg0:ident: $argty0:ty $(,$arg:ident: $argty:ty)*) -> $ret:ty $body:block]) => {
-        remote_actor_internal!(0, $name ($arg0: $argty0 $(,$arg: $argty)*) -> $ret $body);
-    };
-    ($x:tt [$name:ident ($arg0:ident: $argty0:ty $(,$arg:ident: $argty:ty)*) -> $ret:ty $body:block]) => {
-        remote_actor_internal!(1, $name ($arg0: $argty0 $(,$arg: $argty)*) -> $ret $body);
-    };
-    ($x:tt $y:tt [$name:ident ($arg0:ident: $argty0:ty $(,$arg:ident: $argty:ty)*) -> $ret:ty $body:block]) => {
-        remote_actor_internal!(2, $name ($arg0: $argty0 $(,$arg: $argty)*) -> $ret $body);
-    };
+macro_rules! match_sig {
+    ([$macro:ident $name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block]) => { $macro!(0, $name ($($arg: $argty),*) -> $ret $body); };
+    ($x:tt [$macro:ident $name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block]) => { $macro!(1, $name ($($arg: $argty),*) -> $ret $body); };
+    ($x:tt $y:tt [$macro:ident $name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block]) => { $macro!(2, $name ($($arg: $argty),*) -> $ret $body); };
+    ($x:tt $y:tt $z:tt [$macro:ident $name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block]) => { $macro!(3, $name ($($arg: $argty),*) -> $ret $body); };
     // ($x:tt $y:tt $z: tt $a:tt) => remote_internal!(4, $name($($arg: $argty),*) -> $ret $body);
 }
 
 #[macro_export]
 macro_rules! remote {
     (pub fn $name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block) => {
-        match_remote!($($arg)* [$name ($($arg: $argty),*) -> $ret $body]);
+        match_sig!($($arg)* [remote_internal $name ($($arg: $argty),*) -> $ret $body]);
     }
 }
 
 #[macro_export]
 macro_rules! remote_create_actor {
     (pub fn $name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block) => {
-        match_create_actor_remote!($($arg)* [$name ($($arg: $argty),*) -> $ret $body]);
+        match_sig!($($arg)* [remote_create_actor_internal $name ($($arg: $argty),*) -> $ret $body]);
     }
 }
 
 #[macro_export]
 macro_rules! remote_actor {
     (pub fn $name:ident ($arg0:ident: $argty0:ty $(,$arg:ident: $argty:ty)*) -> $ret:ty $body:block) => {
-        match_actor_remote!($($arg)* [$name ($arg0: $argty0 $(,$arg: $argty),*) -> $ret $body]);
+        match_sig!($($arg)* [remote_actor_internal $name ($arg0: $argty0 $(,$arg: $argty),*) -> $ret $body]);
     }
+    // (pub async fn $name:ident ($arg0:ident: $argty0:ty $(,$arg:ident: $argty:ty)*) -> $ret:ty $body:block) => {
+    //     match!($($arg)* [remote_async_actor_internal $name ($arg0: $argty0 $(,$arg: $argty),*) -> $ret $body]);
+    // }
 }
 
 pub fn get<R: serde::de::DeserializeOwned>(id: &ObjectRef<R>) -> R {
