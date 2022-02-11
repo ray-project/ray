@@ -30,6 +30,7 @@ from ray_release.exception import (
     ResultsError,
     LogsError,
     ResultsAlert,
+    ClusterNodesWaitTimeout,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.glue import (
@@ -135,7 +136,12 @@ class GlueTest(unittest.TestCase):
 
         self.test = Test(
             name="unit_test_end_to_end",
-            run=dict(type="unit_test", prepare="prepare_cmd", script="test_cmd"),
+            run=dict(
+                type="unit_test",
+                prepare="prepare_cmd",
+                script="test_cmd",
+                wait_for_nodes=dict(num_nodes=4, timeout=40),
+            ),
             working_dir=self.tempdir,
             cluster=dict(
                 cluster_env="cluster_env.yaml", cluster_compute="cluster_compute.yaml"
@@ -177,6 +183,11 @@ class GlueTest(unittest.TestCase):
         self.command_runner_return["prepare_remote_env"] = None
 
         if until == "remote_env":
+            return
+
+        self.command_runner_return["wait_for_nodes"] = None
+
+        if until == "wait_for_nodes":
             return
 
         self.command_runner_return["run_prepare_command"] = None
@@ -377,10 +388,23 @@ class GlueTest(unittest.TestCase):
             self._run(result)
         self.assertEqual(result.return_code, ExitCode.REMOTE_ENV_SETUP_ERROR.value)
 
-    def testPrepareCommandFails(self):
+    def testWaitForNodesFails(self):
         result = Result()
 
         self._succeed_until("remote_env")
+
+        # Wait for nodes command fails
+        self.command_runner_return["wait_for_nodes"] = _fail_on_call(
+            ClusterNodesWaitTimeout
+        )
+        with self.assertRaises(ClusterNodesWaitTimeout):
+            self._run(result)
+        self.assertEqual(result.return_code, ExitCode.CLUSTER_WAIT_TIMEOUT.value)
+
+    def testPrepareCommandFails(self):
+        result = Result()
+
+        self._succeed_until("wait_for_nodes")
 
         # Prepare command fails
         self.command_runner_return["run_prepare_command"] = _fail_on_call(CommandError)

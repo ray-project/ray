@@ -85,6 +85,10 @@ class RemoteEnvSetupError(EnvironmentSetupError):
     exit_code = ExitCode.REMOTE_ENV_SETUP_ERROR
 
 
+class ClusterNodesWaitTimeout(ReleaseTestError):
+    exit_code = ExitCode.CLUSTER_WAIT_TIMEOUT
+
+
 class CommandTimeout(ReleaseTestError):
     exit_code = ExitCode.COMMAND_TIMEOUT
 

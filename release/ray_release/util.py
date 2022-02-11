@@ -98,7 +98,8 @@ def run_with_timeout(
 ):
     start_time = time.monotonic()
     next_status = start_time + status_interval
-    thread = threading.Thread(target=fn)
+    stop_event = threading.Event()
+    thread = threading.Thread(target=fn, args=(stop_event,))
     thread.start()
 
     while thread.is_alive() and time.monotonic() < start_time + timeout:
@@ -108,6 +109,7 @@ def run_with_timeout(
         time.sleep(1)
 
     if thread.is_alive():
+        stop_event.set()
         error_fn()
 
 

@@ -139,6 +139,12 @@ def run_release_test(
 
         command_timeout = test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT)
 
+        wait_for_nodes = test["run"].get("wait_for_nodes", None)
+        if wait_for_nodes:
+            num_nodes = test["run"]["wait_for_nodes"]["num_nodes"]
+            wait_timeout = test["run"]["wait_for_nodes"]["timeout"]
+            command_runner.wait_for_nodes(num_nodes, wait_timeout)
+
         prepare_cmd = test["run"].get("prepare", None)
         if prepare_cmd:
             prepare_timeout = test["run"].get("prepare_timeout", command_timeout)

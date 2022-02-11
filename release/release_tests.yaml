@@ -20,6 +20,10 @@
     type: sdk_command
     # type: client
     timeout: 600
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 40
+    prepare: echo test
     script: python workloads/train_small.py
 
     build_timeout: 300

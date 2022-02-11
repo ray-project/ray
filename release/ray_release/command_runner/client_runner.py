@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from typing import Optional, Dict, Any
 
@@ -10,9 +11,9 @@ import ray
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (
-    ClusterStartupTimeout,
     ResultsError,
     LocalEnvSetupError,
+    ClusterNodesWaitTimeout,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.logger import logger
@@ -81,9 +82,9 @@ class ClientRunner(CommandRunner):
         if ray.is_initialized:
             ray.shutdown()
 
-        def _wait():
+        def _wait(should_stop: threading.Event):
             ray.init(address=ray_address)
-            while len(ray.nodes()) < num_nodes:
+            while not should_stop.is_set() and len(ray.nodes()) < num_nodes:
                 time.sleep(1)
             ray.shutdown()
 
@@ -95,7 +96,7 @@ class ClientRunner(CommandRunner):
             )
 
         def _error_fn():
-            raise ClusterStartupTimeout(
+            raise ClusterNodesWaitTimeout(
                 f"Only {len(ray.nodes())}/{num_nodes} are up after "
                 f"{timeout} seconds."
             )

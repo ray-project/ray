@@ -14,6 +14,7 @@ from ray_release.exception import (
     ResultsError,
     LogsError,
     RemoteEnvSetupError,
+    ClusterNodesWaitTimeout,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.logger import logger
@@ -41,6 +42,13 @@ class SDKRunner(CommandRunner):
         pass
 
     def prepare_remote_env(self):
+        # Copy wait script to working dir
+        wait_script = os.path.join(os.path.dirname(__file__), "_wait_cluster.py")
+        # Copy wait script to working dir
+        if os.path.exists("wait_cluster.py"):
+            os.unlink("wait_cluster.py")
+        os.link(wait_script, "wait_cluster.py")
+
         try:
             self.file_manager.upload()
         except Exception as e:
@@ -49,7 +57,16 @@ class SDKRunner(CommandRunner):
             ) from e
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
-        pass
+        # Wait script should be uploaded already. Kick off command
+        try:
+            # Give 30 seconds more to acount for communication
+            self.run_prepare_command(
+                f"python wait_cluster.py {num_nodes} {timeout}", timeout=timeout + 30
+            )
+        except (CommandError, CommandTimeout) as e:
+            raise ClusterNodesWaitTimeout(
+                f"Not all {num_nodes} nodes came up within {timeout} seconds."
+            ) from e
 
     def run_command(
         self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
