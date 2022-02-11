@@ -413,6 +413,9 @@ class ActorReplicaWrapper:
             # Health check hasn't returned and the timeout isn't up yet.
             response = HealthCheckResponse.NONE
 
+        if response != HealthCheckResponse.NONE:
+            self._health_check_ref = None
+
         return response
 
     def _should_start_new_health_check(self) -> bool:
