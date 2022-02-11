@@ -13,14 +13,21 @@ from pydantic import (
     PositiveInt,
     validator,
 )
-from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
-from ray.serve.generated.serve_pb2 import (
-    DeploymentConfig as DeploymentConfigProto,
-    AutoscalingConfig as AutoscalingConfigProto,
-)
-from ray.serve.generated.serve_pb2 import DeploymentLanguage
 
 from ray import cloudpickle as cloudpickle
+from ray.serve.constants import (
+    DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
+    DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
+    DEFAULT_HEALTH_CHECK_PERIOD_S,
+    DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+    DEFAULT_HTTP_HOST,
+    DEFAULT_HTTP_PORT,
+)
+from ray.serve.generated.serve_pb2 import (
+    DeploymentConfig as DeploymentConfigProto,
+    DeploymentLanguage,
+    AutoscalingConfig as AutoscalingConfigProto,
+)
 
 
 class AutoscalingConfig(BaseModel):
@@ -87,18 +94,30 @@ class DeploymentConfig(BaseModel):
             user_config is not None.
         graceful_shutdown_wait_loop_s (Optional[float]): Duration
             that deployment replicas will wait until there is no more work to
-            be done before shutting down. Defaults to 2s.
+            be done before shutting down.
         graceful_shutdown_timeout_s (Optional[float]):
             Controller waits for this duration to forcefully kill the replica
-            for shutdown. Defaults to 20s.
+            for shutdown.
+        health_check_period_s (Optional[float]):
+            Frequency at which the controller will health check replicas.
+        health_check_timeout_s (Optional[float]):
+            Timeout that the controller will wait for a response from the
+            replica's health check before marking it unhealthy.
     """
 
     num_replicas: PositiveInt = 1
     max_concurrent_queries: Optional[int] = None
     user_config: Any = None
 
-    graceful_shutdown_wait_loop_s: NonNegativeFloat = 2.0
-    graceful_shutdown_timeout_s: NonNegativeFloat = 20.0
+    graceful_shutdown_timeout_s: NonNegativeFloat = (
+        DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S  # noqa: E501
+    )
+    graceful_shutdown_wait_loop_s: NonNegativeFloat = (
+        DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S  # noqa: E501
+    )
+
+    health_check_period_s: PositiveFloat = DEFAULT_HEALTH_CHECK_PERIOD_S
+    health_check_timeout_s: PositiveFloat = DEFAULT_HEALTH_CHECK_TIMEOUT_S
 
     autoscaling_config: Optional[AutoscalingConfig] = None
 
