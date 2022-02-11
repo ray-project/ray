@@ -103,12 +103,12 @@ class RaySyncer {
   void BroadcastMessage(std::shared_ptr<RaySyncMessage> message);
   const std::string node_id_;
   std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> leader_stub_;
-  SyncClientReactor *leader_ = nullptr;
+  std::shared_ptr<SyncClientReactor> leader_;
 
   absl::flat_hash_map<std::string, Array<std::shared_ptr<RaySyncMessage>>> cluster_view_;
 
   // Manage connections
-  absl::flat_hash_map<std::string, std::unique_ptr<SyncServerReactor>> followers_;
+  absl::flat_hash_map<std::string, std::shared_ptr<SyncServerReactor>> followers_;
 
   // For local nodes
   std::array<const Reporter *, kComponentArraySize> reporters_;
@@ -129,7 +129,7 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
 };
 
 template <typename T>
-class NodeSyncContext : public T {
+class NodeSyncContext : public T, public std::enable_shared_from_this<NodeSyncContext<T>> {
  public:
   using T::StartRead;
   using T::StartWrite;
@@ -139,7 +139,10 @@ class NodeSyncContext : public T {
       std::conditional_t<kIsServer, grpc::CallbackServerContext, grpc::ClientContext>;
 
   NodeSyncContext(RaySyncer &syncer, instrumented_io_context &io_context, C *rpc_context)
-      : rpc_context_(rpc_context), io_context_(io_context), instance_(syncer) {
+      : finished_(false),
+        rpc_context_(rpc_context),
+        io_context_(io_context),
+        instance_(syncer) {
     // write_opts_.set_corked();
   }
 
@@ -167,24 +170,29 @@ class NodeSyncContext : public T {
       node_versions[message->component_id()] = message->version();
     }
 
-    if (out_message_ == nullptr) {
+    if (!sending_) {
       SendNextMessage();
     }
   }
 
   void OnReadDone(bool ok) override {
     if (ok) {
+      auto _this = this->shared_from_this();
       io_context_.dispatch(
-          [this] {
-            for (auto &message : in_message_.sync_messages()) {
-              auto &node_versions = this->GetNodeComponentVersions(message.node_id());
+          [_this] {
+            if(_this->finished_) {
+              return;
+            }
+
+            for (auto &message : _this->in_message_.sync_messages()) {
+              auto &node_versions = _this->GetNodeComponentVersions(message.node_id());
               if (node_versions[message.component_id()] < message.version()) {
                 node_versions[message.component_id()] = message.version();
               }
             }
-            instance_.Update(std::move(in_message_));
-            in_message_.Clear();
-            StartRead(&in_message_);
+            _this->instance_.Update(std::move(_this->in_message_));
+            _this->in_message_.Clear();
+            _this->StartRead(&_this->in_message_);
           },
           "ReadDone");
     } else {
@@ -194,7 +202,13 @@ class NodeSyncContext : public T {
 
   void OnWriteDone(bool ok) override {
     if (ok) {
-      io_context_.dispatch([this] { this->SendNextMessage(); }, "RaySyncWrite");
+      auto _this = this->shared_from_this();
+      io_context_.dispatch([_this] {
+        if(_this->finished_) {
+          return;
+        }
+        _this->SendNextMessage();
+      }, "RaySyncWrite");
     } else {
       HandleFailure();
     }
@@ -202,21 +216,15 @@ class NodeSyncContext : public T {
 
  protected:
   void SendNextMessage() {
-    if (out_message_ != nullptr) {
-      out_buffer_.erase(out_buffer_.begin(), out_buffer_.begin() + consumed_messages_);
-      consumed_messages_ = 0;
-      arena_.Reset();
-    }
+    out_buffer_.erase(out_buffer_.begin(), out_buffer_.begin() + consumed_messages_);
+    consumed_messages_ = 0;
+    arena_.Reset();
+    out_message_ = google::protobuf::Arena::CreateMessage<RaySyncMessages>(&arena_);
+
 
     if (out_buffer_.empty()) {
-      if (out_message_ != nullptr) {
-        StartWrite(nullptr);
-      }
-      out_message_ = nullptr;
+      sending_ = false;
     } else {
-      out_message_ =
-          google::protobuf::Arena::CreateMessage<ray::rpc::syncer::RaySyncMessages>(
-              &arena_);
       absl::flat_hash_set<std::string> inserted;
       for (auto iter = out_buffer_.rbegin(); iter != out_buffer_.rend(); ++iter) {
         if (inserted.find((*iter)->node_id()) != inserted.end()) {
@@ -226,6 +234,7 @@ class NodeSyncContext : public T {
         out_message_->mutable_sync_messages()->UnsafeArenaAddAllocated((*iter).get());
       }
       consumed_messages_ = out_buffer_.size();
+      sending_ = true;
       StartWrite(out_message_, write_opts_);
     }
   }
@@ -242,6 +251,10 @@ class NodeSyncContext : public T {
   }
 
   void HandleFailure() {
+    if(finished_) {
+      return;
+    }
+    finished_ = true;
     RAY_LOG(ERROR) << "Sync with " << NodeID::FromBinary(GetNodeId()).Hex() << " failed";
     if constexpr (kIsServer) {
       T::Finish(grpc::Status::OK);
@@ -250,6 +263,8 @@ class NodeSyncContext : public T {
     }
   }
 
+  bool sending_ = false;
+  bool finished_;
   C *rpc_context_;
   instrumented_io_context &io_context_;
   RaySyncer &instance_;
@@ -273,11 +288,14 @@ struct SyncServerReactor : public NodeSyncContext<ServerBidiReactor> {
     if (ok) {
       StartRead(&in_message_);
     } else {
-      Finish(grpc::Status::OK);
+      HandleFailure();
     }
   }
 
-  void OnDone() override { instance_.DisconnectFrom(node_id_); }
+  void OnDone() override {
+    finished_ = true;
+    instance_.DisconnectFrom(node_id_);
+  }
 };
 
 struct SyncClientReactor : public NodeSyncContext<ClientBidiReactor> {
@@ -297,10 +315,10 @@ struct SyncClientReactor : public NodeSyncContext<ClientBidiReactor> {
   }
 
   void OnDone(const grpc::Status &status) override {
+    finished_ = true;
     RAY_LOG(INFO) << "NodeId: " << NodeID::FromBinary(GetNodeId()).Hex()
                   << " disconnects from sync server with status "
                   << status.error_message();
-    delete this;
   }
 
   void OnWritesDoneDone(bool ok) override {

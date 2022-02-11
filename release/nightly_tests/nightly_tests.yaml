@@ -353,8 +353,8 @@
 
   run:
     timeout: 7200
-    prepare: python wait_cluster.py 251 5400
-    script: python many_nodes_tests/actor_test.py
+    prepare: python wait_cluster.py 101 5400
+    script: python many_nodes_tests/actor_test.py --total-actors=2000
 
 - name: pg_autoscaling_regression_test
   team: core

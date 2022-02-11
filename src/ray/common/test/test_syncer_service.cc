@@ -11,12 +11,13 @@
 
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/component_syncer.h"
+#include "ray/common/id.h"
 using namespace std;
 using namespace ray::syncing;
 
 class LocalNode : public Reporter {
  public:
-  LocalNode(const std::string &node_id, instrumented_io_context &io_context)
+  LocalNode(instrumented_io_context &io_context, ray::NodeID node_id)
       : node_id_(node_id), timer_(io_context) {
     timer_.RunFnPeriodically(
         [this]() {
@@ -43,14 +44,14 @@ class LocalNode : public Reporter {
     msg.set_version(version_);
     msg.set_sync_message(
         std::string(reinterpret_cast<const char *>(&state_), sizeof(state_)));
-    msg.set_node_id(node_id_);
+    msg.set_node_id(node_id_.Binary());
     return msg;
   }
 
  private:
   uint64_t version_ = 1;
   int state_ = 0;
-  const std::string node_id_;
+  ray::NodeID node_id_;
   ray::PeriodicalRunner timer_;
 };
 
@@ -62,7 +63,7 @@ class RemoteNodes : public Receiver {
     int state = *reinterpret_cast<const int *>(msg.sync_message().data());
     auto iter = infos_.find(msg.node_id());
     if (iter == infos_.end() || iter->second.second < version) {
-      RAY_LOG(INFO) << "Update node " << msg.node_id() << " to (" << state
+      RAY_LOG(INFO) << "Update node " << ray::NodeID::FromBinary(msg.node_id()).Hex() << " to (" << state
                     << ", v:" << version << ")";
       infos_[msg.node_id()] = std::make_pair(state, version);
     }
@@ -75,13 +76,13 @@ class RemoteNodes : public Receiver {
 int main(int argc, char *argv[]) {
   std::srand(std::time(nullptr));
   instrumented_io_context io_context;
-  RAY_CHECK(argc == 4) << "./test_syncer_service node_id server_port leader_port";
-  auto node_id = std::string(argv[1]);
-  auto server_port = std::string(argv[2]);
-  auto leader_port = std::string(argv[3]);
-  auto local_node = std::make_unique<LocalNode>(node_id, io_context);
+  RAY_CHECK(argc == 3) << "./test_syncer_service server_port leader_port";
+  auto node_id = ray::NodeID::FromRandom();
+  auto server_port = std::string(argv[1]);
+  auto leader_port = std::string(argv[2]);
+  auto local_node = std::make_unique<LocalNode>(io_context, node_id);
   auto remote_node = std::make_unique<RemoteNodes>();
-  RaySyncer syncer(node_id, io_context);
+  RaySyncer syncer(node_id.Binary(), io_context);
   // RPC related field
   grpc::ServerBuilder builder;
   std::unique_ptr<RaySyncerService> service;

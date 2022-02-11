@@ -27,20 +27,19 @@ void RaySyncer::ConnectTo(std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stu
   leader_stub_ = std::move(stub);
   auto client_context = std::make_unique<grpc::ClientContext>().release();
   client_context->AddMetadata("node_id", NodeID::FromBinary(GetNodeId()).Hex());
-  leader_ = std::make_unique<SyncClientReactor>(*this, this->io_context_, client_context)
-                .release();
-  leader_stub_->async()->StartSync(client_context, leader_);
+  leader_ = std::make_shared<SyncClientReactor>(*this, this->io_context_, client_context);
+  leader_stub_->async()->StartSync(client_context, leader_.get());
   leader_->Init();
 }
 
 void RaySyncer::DisconnectFrom(std::string node_id) {
-  RAY_LOG(INFO) << "NodeId: " << node_id << " exits";
+  RAY_LOG(INFO) << "NodeId: " << NodeID::FromBinary(node_id).Hex() << " exits";
   RAY_CHECK(followers_.erase(node_id) > 0);
 }
 
 SyncServerReactor *RaySyncer::ConnectFrom(grpc::CallbackServerContext *context) {
   context->AddInitialMetadata("node_id", NodeID::FromBinary(GetNodeId()).Hex());
-  auto reactor = std::make_unique<SyncServerReactor>(*this, this->io_context_, context);
+  auto reactor = std::make_shared<SyncServerReactor>(*this, this->io_context_, context);
   reactor->Init();
   RAY_LOG(INFO) << "Adding node: " << NodeID::FromBinary(reactor->GetNodeId()).Hex();
   auto [iter, added] = followers_.emplace(reactor->GetNodeId(), std::move(reactor));

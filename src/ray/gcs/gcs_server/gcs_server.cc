@@ -203,7 +203,7 @@ void GcsServer::InitSyncing() {
   if (RayConfig::instance().syncer_reporting()) {
     node_id_ = NodeID::FromRandom();
     RAY_LOG(INFO) << "Enable syncer module";
-    syncer_ = std::make_unique<ray::syncing::RaySyncer>(node_id_.Hex(), main_service_);
+    syncer_ = std::make_unique<ray::syncing::RaySyncer>(node_id_.Binary(), main_service_);
     syncer_service_ = std::make_unique<ray::syncing::RaySyncerService>(*syncer_);
     rpc_server_.RegisterService(*syncer_service_);
     syncer_->Register(syncing::RayComponentId::RESOURCE_MANAGER, nullptr,
