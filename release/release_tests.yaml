@@ -25,4 +25,4 @@
     build_timeout: 300
 
 
-  alert: long_running_test
+  alert: long_running_tests

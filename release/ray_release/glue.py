@@ -2,6 +2,7 @@ import os
 import time
 from typing import Optional, List
 
+from ray_release.alerts.handle import handle_result
 from ray_release.anyscale_util import get_cluster_name
 from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.cluster_manager.minimal import MinimalClusterManager
@@ -171,6 +172,13 @@ def run_release_test(
     result.runtime = time_taken
 
     os.chdir(old_wd)
+
+    if not pipeline_exception:
+        # Only handle results if we didn't run into issues earlier
+        try:
+            handle_result(test, result)
+        except Exception as e:
+            pipeline_exception = e
 
     if pipeline_exception:
         exit_code, error_type, runtime = handle_exception(pipeline_exception)

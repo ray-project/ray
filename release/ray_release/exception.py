@@ -90,6 +90,10 @@ class ResultsError(CommandError):
     pass
 
 
+class ResultsAlert(CommandError):
+    pass
+
+
 # ---
 
 

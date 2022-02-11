@@ -11,7 +11,10 @@ from ray_release.exception import ReleaseTestConfigError
 from ray_release.logger import logger
 from ray_release.util import deep_update
 
-Test = Dict[str, Any]
+
+class Test(dict):
+    pass
+
 
 DEFAULT_WHEEL_WAIT_TIMEOUT = 1200
 DEFAULT_COMMAND_TIMEOUT = 1800
