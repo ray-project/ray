@@ -1,8 +1,9 @@
 import collections
 
-from typing import Dict, Iterator, List, Union, Tuple, Any, TypeVar, TYPE_CHECKING
+from typing import Dict, Iterator, List, Union, Any, TypeVar, TYPE_CHECKING
 
 from ray.data.block import Block, BlockAccessor
+from ray.data.row import TableRow
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.size_estimator import SizeEstimator
 
@@ -14,38 +15,6 @@ T = TypeVar("T")
 # The max size of Python tuples to buffer before compacting them into a
 # table in the BlockBuilder.
 MAX_UNCOMPACTED_SIZE_BYTES = 50 * 1024 * 1024
-
-
-class TableRow:
-    def __init__(self, row: Any):
-        self._row = row
-
-    def as_pydict(self) -> dict:
-        raise NotImplementedError
-
-    def keys(self) -> Iterator[str]:
-        return self.as_pydict().keys()
-
-    def values(self) -> Iterator[Any]:
-        return self.as_pydict().values()
-
-    def items(self) -> Iterator[Tuple[str, Any]]:
-        return self.as_pydict().items()
-
-    def __getitem__(self, key: str) -> Any:
-        raise NotImplementedError
-
-    def __eq__(self, other: Any) -> bool:
-        return self.as_pydict() == other
-
-    def __str__(self):
-        return str(self.as_pydict())
-
-    def __repr__(self):
-        return str(self)
-
-    def __len__(self):
-        raise NotImplementedError
 
 
 class TableBlockBuilder(BlockBuilder[T]):

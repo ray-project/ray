@@ -73,6 +73,12 @@ Custom Datasource API
 .. autoclass:: ray.data.ReadTask
     :members:
 
+Table Row API
+---------------------
+
+.. autoclass:: ray.data.row.TableRow
+    :members:
+
 Utility
 -------
 .. autofunction:: ray.data.set_progress_bars
