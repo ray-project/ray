@@ -367,6 +367,7 @@ def test_checkpoint(ray_start_2_cpus):
     def train_func():
         assert train.load_checkpoint() is None
         for i in range(3):
+            time.sleep(1)
             train.save_checkpoint(epoch=i)
         return 1
 
@@ -385,6 +386,7 @@ def test_checkpoint(ray_start_2_cpus):
         assert checkpoint["epoch"] == 2
 
         for i in range(checkpoint["epoch"], 5):
+            time.sleep(1)
             train.save_checkpoint(epoch=i)
         return 1
 
