@@ -1130,7 +1130,7 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
         allocation_map, allocations);
     rpc::ResourcesData data;
     resource_scheduler.GetLocalResourceManager().ResetLastReportResourceUsage(
-        std::make_shared<SchedulingResources>());
+        SchedulingResources{});
     resource_scheduler.GetLocalResourceManager().FillResourceUsage(data);
 
     auto available = data.resources_available();

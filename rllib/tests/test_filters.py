@@ -9,7 +9,7 @@ from ray.rllib.tests.mock_worker import _MockWorker
 
 class RunningStatTest(unittest.TestCase):
     def testRunningStat(self):
-        for shp in ((), (3, ), (3, 4)):
+        for shp in ((), (3,), (3, 4)):
             li = []
             rs = RunningStat(shp)
             for _ in range(5):
@@ -18,12 +18,11 @@ class RunningStatTest(unittest.TestCase):
                 li.append(val)
                 m = np.mean(li, axis=0)
                 self.assertTrue(np.allclose(rs.mean, m))
-                v = (np.square(m)
-                     if (len(li) == 1) else np.var(li, ddof=1, axis=0))
+                v = np.square(m) if (len(li) == 1) else np.var(li, ddof=1, axis=0)
                 self.assertTrue(np.allclose(rs.var, v))
 
     def testCombiningStat(self):
-        for shape in [(), (3, ), (3, 4)]:
+        for shape in [(), (3,), (3, 4)]:
             li = []
             rs1 = RunningStat(shape)
             rs2 = RunningStat(shape)
@@ -44,7 +43,7 @@ class RunningStatTest(unittest.TestCase):
 
 class MeanStdFilterTest(unittest.TestCase):
     def testBasic(self):
-        for shape in [(), (3, ), (3, 4, 4)]:
+        for shape in [(), (3,), (3, 4, 4)]:
             filt = MeanStdFilter(shape)
             for i in range(5):
                 filt(np.ones(shape))
@@ -72,9 +71,8 @@ class MeanStdFilterTest(unittest.TestCase):
 class FilterManagerTest(unittest.TestCase):
     def setUp(self):
         ray.init(
-            num_cpus=1,
-            object_store_memory=1000 * 1024 * 1024,
-            ignore_reinit_error=True)
+            num_cpus=1, object_store_memory=1000 * 1024 * 1024, ignore_reinit_error=True
+        )
 
     def tearDown(self):
         ray.shutdown()
@@ -92,10 +90,9 @@ class FilterManagerTest(unittest.TestCase):
         remote_e = RemoteWorker.remote(sample_count=10)
         remote_e.sample.remote()
 
-        FilterManager.synchronize({
-            "obs_filter": filt1,
-            "rew_filter": filt1.copy()
-        }, [remote_e])
+        FilterManager.synchronize(
+            {"obs_filter": filt1, "rew_filter": filt1.copy()}, [remote_e]
+        )
 
         filters = ray.get(remote_e.get_filters.remote())
         obs_f = filters["obs_filter"]
@@ -108,4 +105,5 @@ class FilterManagerTest(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

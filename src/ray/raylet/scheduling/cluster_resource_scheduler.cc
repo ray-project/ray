@@ -344,16 +344,7 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &node_id
     it = nodes_.emplace(node_id, node_resources).first;
   }
 
-  int idx = -1;
-  if (resource_name == ray::kCPU_ResourceLabel) {
-    idx = (int)CPU;
-  } else if (resource_name == ray::kGPU_ResourceLabel) {
-    idx = (int)GPU;
-  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
-    idx = (int)OBJECT_STORE_MEM;
-  } else if (resource_name == ray::kMemory_ResourceLabel) {
-    idx = (int)MEM;
-  };
+  int idx = GetPredefinedResourceIndex(resource_name);
 
   auto local_view = it->second.GetMutableLocalView();
   FixedPoint resource_total_fp(resource_total);
@@ -398,16 +389,7 @@ void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
     return;
   }
 
-  int idx = -1;
-  if (resource_name == ray::kCPU_ResourceLabel) {
-    idx = (int)CPU;
-  } else if (resource_name == ray::kGPU_ResourceLabel) {
-    idx = (int)GPU;
-  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
-    idx = (int)OBJECT_STORE_MEM;
-  } else if (resource_name == ray::kMemory_ResourceLabel) {
-    idx = (int)MEM;
-  };
+  int idx = GetPredefinedResourceIndex(resource_name);
   auto local_view = it->second.GetMutableLocalView();
   if (idx != -1) {
     local_view->predefined_resources[idx].available = 0;
