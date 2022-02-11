@@ -74,7 +74,7 @@ class GroupedDataset(Generic[T]):
                 boundaries = []
             else:
                 boundaries = sort.sample_boundaries(
-                    blocks,
+                    blocks.get_blocks(),
                     [(self._key, "ascending")]
                     if isinstance(self._key, str)
                     else self._key,
