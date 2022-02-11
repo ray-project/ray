@@ -243,26 +243,6 @@ def test_locking():
     shutdown_session()
 
 
-def load_save_checkpoint_warn(reset_session_log_once):
-    """Checks if calling train functions outside of session raises warning."""
-
-    with pytest.warns(UserWarning) as record:
-        assert not load_checkpoint()
-
-    # Should only warn once.
-    assert "save_checkpoint" in record[0].message.args[0]
-
-
-def load_checkpoint_warn(reset_session_log_once):
-    """Checks if calling train functions outside of session raises warning."""
-
-    with pytest.warns(UserWarning) as record:
-        assert not load_checkpoint()
-
-    # Should only warn once.
-    assert "load_checkpoint" in record[0].message.args[0]
-
-
 @pytest.mark.parametrize(
     "fn", [load_checkpoint, save_checkpoint, report, get_dataset_shard]
 )
