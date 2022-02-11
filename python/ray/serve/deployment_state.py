@@ -159,6 +159,10 @@ class ActorReplicaWrapper:
     def max_concurrent_queries(self) -> int:
         return self._max_concurrent_queries
 
+    def _check_obj_ref_ready(self, obj_ref: ObjectRef) -> bool:
+        ready, _ = ray.wait([obj_ref], timeout=0)
+        return len(ready) == 1
+
     def create_placement_group(
         self, placement_group_name: str, actor_resources: dict
     ) -> PlacementGroup:
@@ -307,20 +311,19 @@ class ActorReplicaWrapper:
                     - replica __init__() and reconfigure() succeeded.
         """
 
-        # check whether the replica has been allocated
-        ready, _ = ray.wait([self._allocated_obj_ref], timeout=0)
-        if len(ready) == 0:
+        # Check whether the replica has been allocated.
+        if not self._check_obj_ref_ready(self._allocated_obj_ref):
             return ReplicaStartupStatus.PENDING_ALLOCATION, None
 
-        # check whether relica initialization has completed
-        ready, _ = ray.wait([self._ready_obj_ref], timeout=0)
+        # Check whether relica initialization has completed.
+        replica_ready = self._check_obj_ref_ready(self._ready_obj_ref)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
-        if len(ready) == 0:
+        if not replica_ready == 0:
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
-        elif len(ready) > 0:
+        else:
             try:
-                deployment_config, version = ray.get(ready)[0]
+                deployment_config, version = ray.get(self._ready_obj_ref)
                 self._max_concurrent_queries = deployment_config.max_concurrent_queries
                 self._graceful_shutdown_timeout_s = (
                     deployment_config.graceful_shutdown_timeout_s
@@ -358,8 +361,7 @@ class ActorReplicaWrapper:
         """Check if the actor has exited."""
         try:
             handle = ray.get_actor(self._actor_name)
-            ready, _ = ray.wait([self._graceful_shutdown_ref], timeout=0)
-            stopped = len(ready) == 1
+            stopped = self._check_obj_ref_ready(self._graceful_shutdown_ref)
             if stopped:
                 ray.kill(handle, no_restart=True)
         except ValueError:
@@ -385,7 +387,7 @@ class ActorReplicaWrapper:
         if self._health_check_ref is None:
             # There is no outstanding health check.
             response = HealthCheckResponse.NONE
-        elif ray.wait([self._health_check_ref], timeout=0)[0] == 1:
+        elif self._check_obj_ref_ready(self._health_check_ref):
             # Object ref is ready, ray.get it to check for exceptions.
             try:
                 ray.get(self._health_check_ref)
