@@ -1003,8 +1003,12 @@ def test_read_text(ray_start_regular_shared, tmp_path):
         f.write("world")
     with open(os.path.join(path, "file2.txt"), "w") as f:
         f.write("goodbye")
+    with open(os.path.join(path, "file3.txt"), "w") as f:
+        f.write("ray\n")
     ds = ray.data.read_text(path)
-    assert sorted(ds.take()) == ["goodbye", "hello", "world"]
+    assert sorted(ds.take()) == ["goodbye", "hello", "ray", "world"]
+    ds = ray.data.read_text(path, drop_empty_lines=False)
+    assert ds.count() == 5
 
 
 @pytest.mark.parametrize("pipelined", [False, True])

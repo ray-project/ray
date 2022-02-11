@@ -468,6 +468,7 @@ def read_text(
     *,
     encoding: str = "utf-8",
     errors: str = "ignore",
+    drop_empty_lines: bool = True,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = 200,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
@@ -496,12 +497,18 @@ def read_text(
         Dataset holding lines of text read from the specified paths.
     """
 
+    def to_text(s):
+        lines = s.decode(encoding).split("\n")
+        if drop_empty_lines:
+            lines = [line for line in lines if line.strip() != ""]
+        return lines
+
     return read_binary_files(
         paths,
         filesystem=filesystem,
         parallelism=parallelism,
         arrow_open_stream_args=arrow_open_stream_args,
-    ).flat_map(lambda x: x.decode(encoding, errors=errors).split("\n"))
+    ).flat_map(to_text)
 
 
 @PublicAPI(stability="beta")
