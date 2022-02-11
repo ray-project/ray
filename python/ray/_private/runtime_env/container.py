@@ -50,7 +50,7 @@ class ContainerManager:
         # can connect to raylet.
         self._ray_tmp_dir = tmp_dir
 
-    def setup(
+    async def setup(
         self,
         runtime_env: RuntimeEnv,
         context: RuntimeEnvContext,

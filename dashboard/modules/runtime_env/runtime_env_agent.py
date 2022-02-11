@@ -123,7 +123,7 @@ class RuntimeEnvAgent(
             serialized_runtime_env, serialized_allocated_resource_instances
         ):
             # This function will be ran inside a thread
-            def run_setup_with_logger():
+            async def run_setup_with_logger():
                 runtime_env = RuntimeEnv(serialized_runtime_env=serialized_runtime_env)
                 allocated_resource: dict = json.loads(
                     serialized_allocated_resource_instances or "{}"
@@ -135,7 +135,7 @@ class RuntimeEnvAgent(
                 # avoid lint error. That will be moved to cgroup plugin.
                 per_job_logger.debug(f"Worker has resource :" f"{allocated_resource}")
                 context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
-                self._container_manager.setup(
+                await self._container_manager.setup(
                     runtime_env, context, logger=per_job_logger
                 )
 
@@ -148,7 +148,7 @@ class RuntimeEnvAgent(
                     if uri is not None:
                         if uri not in uri_cache:
                             per_job_logger.debug(f"Cache miss for URI {uri}.")
-                            size_bytes = manager.create(
+                            size_bytes = await manager.create(
                                 uri, runtime_env, context, logger=per_job_logger
                             )
                             uri_cache.add(uri, size_bytes, logger=per_job_logger)
@@ -165,7 +165,7 @@ class RuntimeEnvAgent(
                     for uri in py_modules_uris:
                         if uri not in self._py_modules_uri_cache:
                             per_job_logger.debug(f"Cache miss for URI {uri}.")
-                            size_bytes = self._py_modules_manager.create(
+                            size_bytes = await self._py_modules_manager.create(
                                 uri, runtime_env, context, logger=per_job_logger
                             )
                             self._py_modules_uri_cache.add(
@@ -214,8 +214,7 @@ class RuntimeEnvAgent(
 
                 return context
 
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, run_setup_with_logger)
+            return await run_setup_with_logger()
 
         serialized_env = request.serialized_runtime_env
 
