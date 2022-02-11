@@ -26,7 +26,7 @@ class TestA3C(unittest.TestCase):
         config["num_workers"] = 2
         config["num_envs_per_worker"] = 2
 
-        num_iterations = 2
+        num_iterations = 1
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):

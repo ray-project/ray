@@ -89,12 +89,6 @@ def _import_kuberay(provider_config):
     return KuberayNodeProvider
 
 
-def _import_staroid(provider_config):
-    from ray.autoscaler._private.staroid.node_provider import StaroidNodeProvider
-
-    return StaroidNodeProvider
-
-
 def _import_aliyun(provider_config):
     from ray.autoscaler._private.aliyun.node_provider import AliyunNodeProvider
 
@@ -139,12 +133,6 @@ def _load_azure_defaults_config():
     return os.path.join(os.path.dirname(ray_azure.__file__), "defaults.yaml")
 
 
-def _load_staroid_defaults_config():
-    import ray.autoscaler.staroid as ray_staroid
-
-    return os.path.join(os.path.dirname(ray_staroid.__file__), "defaults.yaml")
-
-
 def _load_aliyun_defaults_config():
     import ray.autoscaler.aliyun as ray_aliyun
 
@@ -164,7 +152,6 @@ _NODE_PROVIDERS = {
     "aws": _import_aws,
     "gcp": _import_gcp,
     "azure": _import_azure,
-    "staroid": _import_staroid,
     "kubernetes": _import_kubernetes,
     "kuberay": _import_kuberay,
     "aliyun": _import_aliyun,
@@ -179,7 +166,6 @@ _PROVIDER_PRETTY_NAMES = {
     "aws": "AWS",
     "gcp": "GCP",
     "azure": "Azure",
-    "staroid": "Staroid",
     "kubernetes": "Kubernetes",
     "kuberay": "Kuberay",
     "aliyun": "Aliyun",
@@ -192,7 +178,6 @@ _DEFAULT_CONFIGS = {
     "aws": _load_aws_defaults_config,
     "gcp": _load_gcp_defaults_config,
     "azure": _load_azure_defaults_config,
-    "staroid": _load_staroid_defaults_config,
     "aliyun": _load_aliyun_defaults_config,
     "kubernetes": _load_kubernetes_defaults_config,
 }

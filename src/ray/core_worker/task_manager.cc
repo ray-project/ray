@@ -238,17 +238,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     const auto nested_refs =
         VectorFromProtobuf<rpc::ObjectReference>(return_object.nested_inlined_refs());
     if (return_object.in_plasma()) {
+      // Mark it as in plasma with a dummy object.
+      RAY_CHECK(
+          in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
       const auto pinned_at_raylet_id = NodeID::FromBinary(worker_addr.raylet_id());
-      if (check_node_alive_(pinned_at_raylet_id)) {
-        reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
-        // Mark it as in plasma with a dummy object.
-        RAY_CHECK(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                        object_id));
-      } else {
-        RAY_LOG(DEBUG) << "Task " << task_id << " returned object " << object_id
-                       << " in plasma on a dead node, attempting to recover.";
-        reconstruct_object_callback_(object_id);
-      }
+      reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
     } else {
       // NOTE(swang): If a direct object was promoted to plasma, then we do not
       // record the node ID that it was pinned at, which means that we will not

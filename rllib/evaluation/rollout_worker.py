@@ -1411,7 +1411,7 @@ class RolloutWorker(ParallelIteratorWorker):
         for k, f in self.filters.items():
             return_filters[k] = f.as_serializable()
             if flush_after:
-                f.clear_buffer()
+                f.reset_buffer()
         return return_filters
 
     @DeveloperAPI

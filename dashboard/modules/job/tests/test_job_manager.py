@@ -9,8 +9,8 @@ import signal
 import pytest
 
 import ray
+from ray.job_submission import JobStatus
 from ray.dashboard.modules.job.common import (
-    JobStatus,
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
 )
