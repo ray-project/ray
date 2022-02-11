@@ -1500,7 +1500,8 @@ def run_test_config(
     # Unfortunately, there currently seems to be no great way to
     # transfer files with the Anyscale SDK.
     # So we use the session controller instead.
-    sdk = AnyscaleSDK(auth_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"])
+    sdk = AnyscaleSDK(auth_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"],
+                      host=GLOBAL_CONFIG["ANYSCALE_HOST"])
 
     get_auth_api_client(
         cli_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"],
