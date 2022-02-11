@@ -168,16 +168,12 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                  2) When the result is ready, it yields
             """
             for req in iter(request_queue.get, None):
-                logger.info("Head of loop")
-                if req.WhichOneof("type") == "put":
-                    logger.info(f"{req.put.chunk_id}")
                 if isinstance(req, ray_client_pb2.DataResponse):
                     # Early shortcut if this is the result of an async get.
                     yield req
                     continue
 
                 assert isinstance(req, ray_client_pb2.DataRequest)
-                logger.info("Here?")
                 if _should_cache(req) and reconnect_enabled:
                     cached_resp = response_cache.check_cache(req.req_id)
                     if isinstance(cached_resp, Exception):
@@ -187,7 +183,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         yield cached_resp
                         continue
 
-                logger.info("Here2?")
                 resp = None
                 req_type = req.WhichOneof("type")
                 if req_type == "init":
@@ -218,10 +213,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     resp = ray_client_pb2.DataResponse(get=get_resp)
                 elif req_type == "put":
                     if not self.chunk_collector.add_chunk(req):
-                        logger.info("Heryo!")
                         # Put request still in progress
                         continue
-                    logger.info("Hmm...")
                     put_resp = self.basic_service._put_object(
                         self.chunk_collector.data, req.put.client_ref_id, client_id
                     )
