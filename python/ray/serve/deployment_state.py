@@ -197,7 +197,8 @@ class ActorReplicaWrapper:
                 deployment_info.replica_config.init_args,
                 deployment_info.replica_config.init_kwargs,
                 deployment_info.deployment_config.to_proto_bytes(), version,
-                self._controller_name, self._detached)
+                self._controller_name, self._controller_namespace,
+                self._detached)
 
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
