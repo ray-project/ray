@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import ray
 from ray import ObjectRef
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayError
+from ray.exceptions import RayError
 from ray.serve.common import (
     DeploymentInfo,
     DeploymentStatus,

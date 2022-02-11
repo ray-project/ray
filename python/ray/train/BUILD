@@ -119,6 +119,14 @@ py_test(
 )
 
 py_test(
+    name = "test_minimal",
+    size = "small",
+    srcs = ["tests/test_minimal.py"],
+    tags = ["team:ml", "exclusive", "minimal"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_session",
     size = "small",
     srcs = ["tests/test_session.py"],
