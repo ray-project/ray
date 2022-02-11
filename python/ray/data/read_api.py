@@ -496,6 +496,7 @@ def read_text(
     Returns:
         Dataset holding lines of text read from the specified paths.
     """
+
     def to_text(s):
         lines = s.decode(encoding).split("\n")
         if drop_empty_lines:
