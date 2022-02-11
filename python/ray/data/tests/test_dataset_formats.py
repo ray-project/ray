@@ -1362,3 +1362,9 @@ def test_csv_write_block_path_provider(
         ]
     )
     assert df.equals(ds_df)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
