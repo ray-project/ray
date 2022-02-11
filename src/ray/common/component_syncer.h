@@ -25,7 +25,9 @@ static constexpr size_t kComponentArraySize =
     static_cast<size_t>(ray::rpc::syncer::RayComponentId_ARRAYSIZE);
 
 struct Reporter {
-  virtual std::optional<RaySyncMessage> Snapshot(uint64_t current_version) const = 0;
+  virtual std::optional<RaySyncMessage> Snapshot(
+      uint64_t current_version,
+      RayComponentId component_id) const = 0;
   virtual ~Reporter() {}
 };
 
@@ -63,7 +65,7 @@ class RaySyncer {
             if (reporter != nullptr) {
               auto version =
                   local_view[component_id] ? local_view[component_id]->version() : 0;
-              auto update = reporter->Snapshot(version);
+              auto update = reporter->Snapshot(version, component_id);
               if (update) {
                 Update(*update);
               }
@@ -81,6 +83,8 @@ class RaySyncer {
 
     auto &current_message = cluster_view_[message.node_id()][message.component_id()];
     if (current_message && current_message->version() >= message.version()) {
+      RAY_LOG(DEBUG) << "DBG: Sync: " << "Skip this message: " << current_message->version()
+                    << " " << message.version();
       // We've already got the newer messages. Skip this.
       return;
     }
@@ -169,10 +173,12 @@ class NodeSyncContext : public T,
     if (node_versions[message->component_id()] < message->version()) {
       out_buffer_.push_back(message);
       node_versions[message->component_id()] = message->version();
-    }
-
-    if (!sending_) {
-      SendNextMessage();
+      if (!sending_) {
+        SendNextMessage();
+      }
+    } else {
+      RAY_LOG(DEBUG) << "SKip sending: " << node_versions[message->component_id()]
+                     << " vs " << message->version();
     }
   }
 
@@ -219,12 +225,16 @@ class NodeSyncContext : public T,
 
  protected:
   void SendNextMessage() {
-    out_buffer_.erase(out_buffer_.begin(), out_buffer_.begin() + consumed_messages_);
-    consumed_messages_ = 0;
+    while(consumed_messages_ > 0) {
+      out_buffer_.pop_front();
+      --consumed_messages_;
+    }
+
     arena_.Reset();
     out_message_ = google::protobuf::Arena::CreateMessage<RaySyncMessages>(&arena_);
 
     if (out_buffer_.empty()) {
+      RAY_LOG(DEBUG) << "DBG: Stop sending since no more messages";
       sending_ = false;
     } else {
       absl::flat_hash_set<std::string> inserted;
@@ -276,7 +286,7 @@ class NodeSyncContext : public T,
   ray::rpc::syncer::RaySyncMessages in_message_;
   ray::rpc::syncer::RaySyncMessages *out_message_ = nullptr;
   size_t consumed_messages_ = 0;
-  std::vector<std::shared_ptr<RaySyncMessage>> out_buffer_;
+  std::deque<std::shared_ptr<RaySyncMessage>> out_buffer_;
 
   absl::flat_hash_map<std::string, std::array<uint64_t, kComponentArraySize>>
       node_versions_;

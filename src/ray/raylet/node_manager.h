@@ -139,7 +139,7 @@ class HeartbeatSender {
   uint64_t last_heartbeat_at_ms_;
 };
 
-class NodeManager : public rpc::NodeManagerServiceHandler, public syncing::Receiver {
+class NodeManager : public rpc::NodeManagerServiceHandler, public syncing::Receiver, public syncing::Reporter {
  public:
   /// Create a node manager.
   ///
@@ -211,6 +211,50 @@ class NodeManager : public rpc::NodeManagerServiceHandler, public syncing::Recei
     data.ParseFromString(message.sync_message());
     NodeID node_id = NodeID::FromBinary(data.node_id());
     UpdateResourceUsage(node_id, data);
+  }
+
+  std::optional<syncing::RaySyncMessage> Snapshot(
+      uint64_t current_version,
+      syncing::RayComponentId component_id) const {
+    if(component_id == syncing::RayComponentId::SCHEDULER) {
+      static uint64_t version = 0;
+      syncing::RaySyncMessage msg;
+      rpc::ResourcesData resource_data;
+      cluster_task_manager_->FillResourceUsage(resource_data);
+      resource_data.set_node_id(self_node_id_.Binary());
+      resource_data.set_node_manager_address(initial_config_.node_manager_address);
+
+      msg.set_version(++version);
+      msg.set_node_id(self_node_id_.Binary());
+      msg.set_component_id(syncing::RayComponentId::SCHEDULER);
+      msg.set_message_type(syncing::RaySyncMessageType::AGGREGATE);
+      std::string serialized_msg;
+      RAY_CHECK(resource_data.SerializeToString(&serialized_msg));
+      msg.set_sync_message(std::move(serialized_msg));
+      return std::make_optional(std::move(msg));
+    } else {
+      auto& local = cluster_resource_scheduler_->GetLocalResourceManager();
+      RAY_LOG(DEBUG) << "DBG: ResourceReporting: LocalVersion:" << local.Version()
+                    << " SyncVersion:" << current_version;
+
+      if (local.Version() <= current_version) {
+        return std::nullopt;
+      }
+      syncing::RaySyncMessage msg;
+      rpc::ResourcesData resource_data;
+      local.FillResourceUsage(resource_data);
+      resource_data.set_node_id(self_node_id_.Binary());
+      resource_data.set_node_manager_address(initial_config_.node_manager_address);
+
+      msg.set_node_id(self_node_id_.Binary());
+      msg.set_version(local.Version());
+      msg.set_component_id(syncing::RayComponentId::RESOURCE_MANAGER);
+      msg.set_message_type(syncing::RaySyncMessageType::BROADCAST);
+      std::string serialized_msg;
+      RAY_CHECK(resource_data.SerializeToString(&serialized_msg));
+      msg.set_sync_message(std::move(serialized_msg));
+      return std::make_optional(std::move(msg));
+    }
   }
 
  private:

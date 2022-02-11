@@ -48,7 +48,7 @@ namespace raylet {
 ///       there is a new worker which can dispatch the tasks.
 /// 5. When a worker finishes executing its task(s), the requester will return
 ///    it and we should release the resources in our view of the node's state.
-class ClusterTaskManager : public ClusterTaskManagerInterface, public syncing::Reporter {
+class ClusterTaskManager : public ClusterTaskManagerInterface {
  public:
   /// \param self_node_id: ID of local node.
   /// \param cluster_resource_scheduler: The resource scheduler which contains
@@ -131,22 +131,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface, public syncing::R
                       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
                   const std::string &scheduling_failure_message = "") override;
 
-  std::optional<syncing::RaySyncMessage> Snapshot(uint64_t current_version) const {
-    // if (version_ <= current_version) {
-    //   return std::nullopt;
-    // }
-    static uint64_t version = 0;
-    syncing::RaySyncMessage msg;
-    rpc::ResourcesData resource_data;
-    FillResourceUsage(resource_data);
-    msg.set_version(++version);
-    msg.set_component_id(syncing::RayComponentId::SCHEDULER);
-    msg.set_message_type(syncing::RaySyncMessageType::AGGREGATE);
-    std::string serialized_msg;
-    RAY_CHECK(resource_data.SerializeToString(&serialized_msg));
-    msg.set_sync_message(std::move(serialized_msg));
-    return std::make_optional(std::move(msg));
-  }
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///
   /// \param[out] reply: Output parameter. `infeasible_tasks` is the only field filled.

@@ -38,7 +38,7 @@ namespace ray {
 /// it also supports creating a new resource or delete an existing resource.
 /// Whenever the resouce changes, it notifies the subscriber of the change.
 /// This class is not thread safe.
-class LocalResourceManager : public syncing::Reporter {
+class LocalResourceManager {
  public:
   LocalResourceManager(
       int64_t local_node_id, StringIdMap &resource_name_to_id,
@@ -48,23 +48,9 @@ class LocalResourceManager : public syncing::Reporter {
       std::function<void(const NodeResources &)> resource_change_subscriber);
 
   int64_t GetNodeId() const { return local_node_id_; }
-
-  std::optional<syncing::RaySyncMessage> Snapshot(uint64_t current_version) const {
-    if (version_ <= current_version) {
-      return std::nullopt;
-    }
-    syncing::RaySyncMessage msg;
-    rpc::ResourcesData resource_data;
-    FillResourceUsage(resource_data);
-    msg.set_version(version_);
-    msg.set_component_id(syncing::RayComponentId::RESOURCE_MANAGER);
-    msg.set_message_type(syncing::RaySyncMessageType::BROADCAST);
-    std::string serialized_msg;
-    RAY_CHECK(resource_data.SerializeToString(&serialized_msg));
-    msg.set_sync_message(std::move(serialized_msg));
-    return std::make_optional(std::move(msg));
+  uint64_t Version() const {
+    return version_;
   }
-
   /// Add a local resource that is available.
   ///
   /// \param resource_name: Resource which we want to update.
@@ -305,7 +291,7 @@ class LocalResourceManager : public syncing::Reporter {
 
   // Specify custom resources that consists of unit-size instances.
   std::unordered_set<int64_t> custom_unit_instance_resources_{};
-  uint64_t version_ = 0;
+  uint64_t version_ = 1;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);
