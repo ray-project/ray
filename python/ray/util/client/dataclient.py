@@ -103,18 +103,18 @@ def chunk_put(req: ray_client_pb2.DataRequest):
     materialized every chunk of a large object, we would effectively double
     the amount of memory needed to handle the put.
     """
-    total_size = len(req.put.bytes)
+    total_size = len(req.put.data)
     total_chunks = math.ceil(total_size / OBJECT_TRANSFER_CHUNK_SIZE)
     for chunk_id in range(0, total_chunks):
         start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
         end = min(total_size, (chunk_id + 1) * OBJECT_TRANSFER_CHUNK_SIZE)
-        put_chunk = ray_client_pb2.PutRequest(
-            data=req.put.bytes[start:end],
+        chunk = ray_client_pb2.PutRequest(
+            data=req.put.data[start:end],
             chunk_id=chunk_id,
             total_chunks=total_chunks,
             total_size=total_size,
         )
-        yield DataRequest(req_id=req.req_id, put=put_chunk)
+        yield DataRequest(req_id=req.req_id, put=chunk)
 
 
 class DataClient:
@@ -196,8 +196,9 @@ class DataClient:
                     self.outstanding_requests[req_id] = (req, callback)
                     if callback is not None:
                         self.asyncio_waiting_data[req_id] = callback
-            if req.WhichOne("type") == "put":
-                yield from chunk_put(req.put)
+            if req.WhichOneof("type") == "put":
+                print("HERE")
+                yield from chunk_put(req)
             else:
                 yield req
 
