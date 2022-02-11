@@ -1,15 +1,17 @@
 import os
 import sys
+import platform
 import pytest
 import tempfile
 import time
 import random
 from collections import defaultdict
+import queue
 import math
 
 import ray
 from ray._private.test_utils import SignalActor
-from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue as Queue
+from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue
 
 
 def teardown_function(function):
@@ -370,6 +372,7 @@ def test_starmap(pool):
 
 
 def test_callbacks(pool_4_processes, pool_4_processes_python_multiprocessing_lib):
+    Queue = JoinableQueue if platform.system() == "Windows" else queue.Queue
     callback_queue = Queue()
 
     def callback(result):
