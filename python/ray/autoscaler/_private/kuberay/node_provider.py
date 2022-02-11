@@ -142,7 +142,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             + path
         )
 
-    def _get(self, path: str) -> Dict[str, Any]:
+    def get(self, path: str) -> Dict[str, Any]:
         """Wrapper for REST GET of resource with proper headers."""
         result = requests.get(self._url(path), headers=self.headers, verify=self.verify)
         assert result.status_code == 200
@@ -180,7 +180,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             {"ray.io/cluster": self.cluster_name, "ray.io/group": group_name}
         )
         while True:
-            pods = self._get(
+            pods = self.get(
                 "pods?labelSelector=" + requests.utils.quote(label_filters)
             )
             logger.info(
@@ -204,7 +204,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         """Creates a number of nodes within the namespace."""
         with self._lock:
             url = "rayclusters/{}".format(self.cluster_name)
-            raycluster = self._get(url)
+            raycluster = self.get(url)
             group_name = tags["ray-user-node-type"]
             group_index, group_spec = self._get_worker_group(raycluster, group_name)
             path = f"/spec/workerGroupSpecs/{group_index}/replicas"
@@ -222,12 +222,12 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
 
     def internal_ip(self, node_id: str) -> str:
         """Get internal IP of a node (= Kubernetes pod)."""
-        data = self._get("pods/{}".format(node_id))
+        data = self.get("pods/{}".format(node_id))
         return data["status"].get("podIP", "IP not yet assigned")
 
     def node_tags(self, node_id: str) -> Dict[str, str]:
         """Get tags of a node (= Kubernetes pod)."""
-        data = self._get("pods/{}".format(node_id))
+        data = self.get("pods/{}".format(node_id))
         return make_node_tags(data["metadata"]["labels"], status_tag(data))
 
     def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
@@ -237,7 +237,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
                 "ray.io/cluster": self.cluster_name,
             }
         )
-        data = self._get("pods?labelSelector=" + requests.utils.quote(label_filters))
+        data = self.get("pods?labelSelector=" + requests.utils.quote(label_filters))
         result = []
         for pod in data["items"]:
             labels = pod["metadata"]["labels"]
@@ -259,7 +259,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             # optimizing this code to batch the requests to the API server.
             groups = {}
             label_filters = to_label_selector({"ray.io/cluster": self.cluster_name})
-            pods = self._get(
+            pods = self.get(
                 "pods?labelSelector=" + requests.utils.quote(label_filters)
             )
             for pod in pods["items"]:
@@ -269,7 +269,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
                     ).append(pod["metadata"]["name"])
 
             url = "rayclusters/{}".format(self.cluster_name)
-            raycluster = self._get(url)
+            raycluster = self.get(url)
             for group_name, nodes in groups.items():
                 group_index, group_spec = self._get_worker_group(raycluster, group_name)
                 prefix = f"/spec/workerGroupSpecs/{group_index}"
