@@ -74,11 +74,9 @@ Status InMemoryStoreClient::AsyncGetAll(
   absl::MutexLock lock(&(table->mutex_));
   auto result = std::unordered_map<std::string, std::string>();
   result.insert(table->records_.begin(), table->records_.end());
-  if (callback != nullptr) {
-    main_io_service_.post(
-        [result = std::move(result), callback]() mutable { callback(std::move(result)); },
-        "GcsInMemoryStore.GetAll");
-  }
+  main_io_service_.post(
+      [result = std::move(result), callback]() mutable { callback(std::move(result)); },
+      "GcsInMemoryStore.GetAll");
   return Status::OK();
 }
 
@@ -186,11 +184,9 @@ Status InMemoryStoreClient::AsyncGetByIndex(
       }
     }
   }
-  if (callback != nullptr) {
-    main_io_service_.post(
-        [result = std::move(result), callback]() mutable { callback(std::move(result)); },
-        "GcsInMemoryStore.GetByIndex");
-  }
+  main_io_service_.post(
+      [result = std::move(result), callback]() mutable { callback(std::move(result)); },
+      "GcsInMemoryStore.GetByIndex");
 
   return Status::OK();
 }

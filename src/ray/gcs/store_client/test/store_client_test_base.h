@@ -70,6 +70,7 @@ class StoreClientTestBase : public ::testing::Test {
       RAY_CHECK_OK(store_client_->AsyncPut(table_name_, elem.first.Binary(),
                                            elem.second.SerializeAsString(),
                                            put_calllback));
+      // Make sure no-op callback is handled well
       RAY_CHECK_OK(store_client_->AsyncPut(table_name_, elem.first.Binary(),
                                            elem.second.SerializeAsString(), nullptr));
     }
@@ -85,6 +86,7 @@ class StoreClientTestBase : public ::testing::Test {
       ++pending_count_;
       RAY_CHECK_OK(
           store_client_->AsyncDelete(table_name_, elem.first.Binary(), delete_calllback));
+      // Make sure no-op callback is handled well
       RAY_CHECK_OK(store_client_->AsyncDelete(table_name_, elem.first.Binary(), nullptr));
     }
     WaitPendingDone();
@@ -133,6 +135,7 @@ class StoreClientTestBase : public ::testing::Test {
       RAY_CHECK_OK(store_client_->AsyncPutWithIndex(
           table_name_, elem.first.Binary(), key_to_index_[elem.first].Hex(),
           elem.second.SerializeAsString(), put_calllback));
+      // Make sure no-op callback is handled well
       RAY_CHECK_OK(store_client_->AsyncPutWithIndex(
           table_name_, elem.first.Binary(), key_to_index_[elem.first].Hex(),
           elem.second.SerializeAsString(), nullptr));
@@ -167,6 +170,7 @@ class StoreClientTestBase : public ::testing::Test {
       ++pending_count_;
       RAY_CHECK_OK(store_client_->AsyncDeleteByIndex(table_name_, elem.first.Hex(),
                                                      delete_calllback));
+      // Make sure no-op callback is handled well
       RAY_CHECK_OK(
           store_client_->AsyncDeleteByIndex(table_name_, elem.first.Hex(), nullptr));
     }
@@ -206,6 +210,7 @@ class StoreClientTestBase : public ::testing::Test {
       keys.push_back(elem.first.Binary());
     }
     RAY_CHECK_OK(store_client_->AsyncBatchDelete(table_name_, keys, delete_calllback));
+    // Make sure no-op callback is handled well
     RAY_CHECK_OK(store_client_->AsyncBatchDelete(table_name_, keys, nullptr));
     WaitPendingDone();
   }
@@ -220,6 +225,7 @@ class StoreClientTestBase : public ::testing::Test {
       RAY_CHECK_OK(store_client_->AsyncDeleteWithIndex(table_name_, elem.first.Binary(),
                                                        key_to_index_[elem.first].Hex(),
                                                        delete_calllback));
+      // Make sure no-op callback is handled well
       RAY_CHECK_OK(store_client_->AsyncDeleteWithIndex(
           table_name_, elem.first.Binary(), key_to_index_[elem.first].Hex(), nullptr));
     }
@@ -240,6 +246,7 @@ class StoreClientTestBase : public ::testing::Test {
     }
     RAY_CHECK_OK(store_client_->AsyncBatchDeleteWithIndex(table_name_, keys, index_keys,
                                                           delete_calllback));
+    // Make sure no-op callback is handled well
     RAY_CHECK_OK(
         store_client_->AsyncBatchDeleteWithIndex(table_name_, keys, index_keys, nullptr));
     WaitPendingDone();
