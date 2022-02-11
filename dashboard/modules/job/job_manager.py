@@ -15,6 +15,7 @@ import ray
 from ray.exceptions import RuntimeEnvSetupError
 import ray.ray_constants as ray_constants
 from ray.actor import ActorHandle
+from ray.job_submission import JobStatus, JobStatusInfo
 from ray.dashboard.modules.job.common import (
     JobData,
     JobStatus,

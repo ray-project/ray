@@ -16,8 +16,8 @@ from ray.experimental.internal_kv import (
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray._private.runtime_env.validation import ParsedRuntimeEnv
+from ray.job_submission import JobStatusInfo
 from ray.dashboard.modules.job.common import (
-    JobStatusInfo,
     JobStatusStorageClient,
     JOB_ID_METADATA_KEY,
 )

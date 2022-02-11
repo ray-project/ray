@@ -9,14 +9,12 @@ from copy import copy
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.deployment_state import ReplicaState, DeploymentStateManager
 from ray.serve.common import (
     DeploymentInfo,
-    str,
+    DeploymentStatusInfo,
     EndpointTag,
     EndpointInfo,
-    GoalId,
     NodeId,
     RunningReplicaInfo,
 )
@@ -87,7 +85,6 @@ class ServeController:
 
         self.long_poll_host = LongPollHost()
 
-        self.goal_manager = AsyncGoalManager()
         self.http_state = HTTPState(controller_name, detached, http_config)
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
         # Fetch all running actors in current cluster as source of current
@@ -98,7 +95,6 @@ class ServeController:
             detached,
             self.kv_store,
             self.long_poll_host,
-            self.goal_manager,
             all_current_actor_names,
         )
 
@@ -122,12 +118,6 @@ class ServeController:
         self.deployment_state_manager._deployment_states[
             deployment_name
         ]._stop_one_running_replica_for_testing()
-
-    async def wait_for_goal(self, goal_id: GoalId) -> Optional[Exception]:
-        return await self.goal_manager.wait_for_goal(goal_id)
-
-    async def _num_pending_goals(self) -> int:
-        return self.goal_manager.num_pending_goals()
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
         """Proxy long pull client's listen request.
@@ -191,9 +181,7 @@ class ServeController:
             new_deployment_info = copy(deployment_info)
             new_deployment_info.deployment_config = new_deployment_config
 
-            goal_id, updating = self.deployment_state_manager.deploy(
-                deployment_name, new_deployment_info
-            )
+            self.deployment_state_manager.deploy(deployment_name, new_deployment_info)
 
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
@@ -285,14 +273,12 @@ class ServeController:
                 )
         return http_config.root_url
 
-    async def shutdown(self) -> List[GoalId]:
+    async def shutdown(self):
         """Shuts down the serve instance completely."""
         async with self.write_lock:
-            goal_ids = self.deployment_state_manager.shutdown()
+            self.deployment_state_manager.shutdown()
             self.endpoint_state.shutdown()
             self.http_state.shutdown()
-
-            return goal_ids
 
     def deploy(
         self,
@@ -303,7 +289,7 @@ class ServeController:
         prev_version: Optional[str],
         route_prefix: Optional[str],
         deployer_job_id: "ray._raylet.JobID",
-    ) -> Tuple[Optional[GoalId], bool]:
+    ) -> bool:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
@@ -350,17 +336,15 @@ class ServeController:
         # the only change was num_replicas, the start_time_ms is refreshed.
         # Is this the desired behaviour?
 
-        goal_id, updating = self.deployment_state_manager.deploy(name, deployment_info)
+        updating = self.deployment_state_manager.deploy(name, deployment_info)
 
         if route_prefix is not None:
             endpoint_info = EndpointInfo(route=route_prefix)
             self.endpoint_state.update_endpoint(name, endpoint_info)
 
-        return goal_id, updating
+        return updating
 
-    def deploy_group(
-        self, deployment_args_list: List[Dict]
-    ) -> List[Tuple[Optional[GoalId], bool]]:
+    def deploy_group(self, deployment_args_list: List[Dict]) -> List[bool]:
         """
         Takes in a list of dictionaries that contain keyword arguments for the
         controller's deploy() function. Calls deploy on all the argument
@@ -368,13 +352,9 @@ class ServeController:
         group of deployments.
         """
 
-        update_goals: List[Tuple[Optional[GoalId], bool]] = []
-        for deployment_args in deployment_args_list:
-            update_goals.append(self.deploy(**deployment_args))
+        return [self.deploy(**args) for args in deployment_args_list]
 
-        return update_goals
-
-    def delete_deployment(self, name: str) -> Optional[GoalId]:
+    def delete_deployment(self, name: str):
         self.endpoint_state.delete_endpoint(name)
         return self.deployment_state_manager.delete_deployment(name)
 
@@ -424,3 +404,6 @@ class ServeController:
                 include_deleted=include_deleted
             )
         }
+
+    def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
+        return self.deployment_state_manager.get_deployment_statuses()

@@ -15,7 +15,6 @@ from ray._private.runtime_env.conda import (
     _resolve_install_from_source_ray_extras,
     get_uri as get_conda_uri,
 )
-from ray._private.runtime_env.pip import RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP
 
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
 
@@ -148,20 +147,7 @@ def _rewrite_pip_list_ray_libraries(pip_list: List[str]) -> List[str]:
         if package_name == "ray":
             libraries = requirement.extras  # e.g. ("serve", "tune")
             if libraries == ():
-                # Ray alone was specified (e.g. "ray" or "ray>1.4"). Remove it.
-                if os.environ.get(RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP) != "1":
-                    logger.warning(
-                        "Ray was specified in the `pip` field of the "
-                        f"`runtime_env`: '{specifier}'. This is not needed; "
-                        "Ray is already installed on the cluster, so that Ray"
-                        "installation will be used. To prevent Ray version "
-                        f"incompatibility issues, '{specifier}' has been "
-                        "deleted from the `pip` field. To disable this "
-                        "deletion, set the environment variable "
-                        f"{RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP} to 1."
-                    )
-                else:
-                    result.append(specifier)
+                result.append(specifier)
             else:
                 # Replace the library with its dependencies.
                 extras = _resolve_install_from_source_ray_extras()
@@ -184,10 +170,6 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     The returned parsed value will be a list of pip packages. If a Ray library
     (e.g. "ray[serve]") is specified, it will be deleted and replaced by its
     dependencies (e.g. "uvicorn", "requests").
-
-    If the base Ray package (e.g. "ray>1.4" or "ray") is specified in the
-    input, it will be removed, unless the environment variable
-    RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP is set to 1.
     """
     assert pip is not None
 
