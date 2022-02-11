@@ -2296,7 +2296,7 @@ def test_split_hints(ray_start_regular_shared):
         """
         num_blocks = len(block_node_ids)
         ds = ray.data.range(num_blocks, parallelism=num_blocks)
-        blocks = ds._plan.execute().get_blocks()
+        blocks = ds.get_internal_block_refs()
         assert len(block_node_ids) == len(blocks)
         actors = [Actor.remote() for i in range(len(actor_node_ids))]
         with patch("ray.experimental.get_object_locations") as location_mock:
@@ -2319,7 +2319,7 @@ def test_split_hints(ray_start_regular_shared):
                 assert len(datasets) == len(actors)
                 for i in range(len(actors)):
                     assert {blocks[j] for j in expected_split_result[i]} == set(
-                        datasets[i]._blocks.get_blocks()
+                        datasets[i].get_internal_block_refs()
                     )
 
     assert_split_assignment(

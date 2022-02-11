@@ -890,12 +890,15 @@ class Dataset(Generic[T]):
         return equalize(
             [
                 Dataset(
-                    BlockList(
-                        allocation_per_actor[actor],
-                        [metadata_mapping[b] for b in allocation_per_actor[actor]],
+                    ExecutionPlan(
+                        BlockList(
+                            allocation_per_actor[actor],
+                            [metadata_mapping[b] for b in allocation_per_actor[actor]],
+                        ),
+                        stats,
                     ),
                     self._epoch,
-                    stats,
+                    self._lazy,
                 )
                 for actor in locality_hints
             ],
