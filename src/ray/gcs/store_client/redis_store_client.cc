@@ -317,7 +317,7 @@ std::string RedisStoreClient::GetKeyFromRedisKey(const std::string &redis_key,
 }
 
 Status RedisStoreClient::MGetValues(
-    std::shared_ptr<RedisClient> redis_client, std::string table_name,
+    std::shared_ptr<RedisClient> redis_client, const std::string &table_name,
     const std::vector<std::string> &keys,
     const MapCallback<std::string, std::string> &callback) {
   // The `MGET` command for each shard.
@@ -354,7 +354,7 @@ Status RedisStoreClient::MGetValues(
 }
 
 RedisStoreClient::RedisScanner::RedisScanner(std::shared_ptr<RedisClient> redis_client,
-                                             std::string table_name)
+                                             const std::string &table_name)
     : table_name_(std::move(table_name)), redis_client_(std::move(redis_client)) {
   for (size_t index = 0; index < redis_client_->GetShardContexts().size(); ++index) {
     shard_to_cursor_[index] = 0;
@@ -362,7 +362,8 @@ RedisStoreClient::RedisScanner::RedisScanner(std::shared_ptr<RedisClient> redis_
 }
 
 Status RedisStoreClient::RedisScanner::ScanKeysAndValues(
-    std::string match_pattern, const MapCallback<std::string, std::string> &callback) {
+    const std::string &match_pattern,
+    const MapCallback<std::string, std::string> &callback) {
   auto on_done = [this, callback](const Status &status,
                                   const std::vector<std::string> &result) {
     if (result.empty()) {
@@ -375,7 +376,7 @@ Status RedisStoreClient::RedisScanner::ScanKeysAndValues(
 }
 
 Status RedisStoreClient::RedisScanner::ScanKeys(
-    std::string match_pattern, const MultiItemCallback<std::string> &callback) {
+    const std::string &match_pattern, const MultiItemCallback<std::string> &callback) {
   auto on_done = [this, callback](const Status &status) {
     std::vector<std::string> result;
     result.insert(result.begin(), keys_.begin(), keys_.end());
@@ -385,7 +386,7 @@ Status RedisStoreClient::RedisScanner::ScanKeys(
   return Status::OK();
 }
 
-void RedisStoreClient::RedisScanner::Scan(std::string match_pattern,
+void RedisStoreClient::RedisScanner::Scan(const std::string &match_pattern,
                                           const StatusCallback &callback) {
   // This lock guards the iterator over shard_to_cursor_ because the callbacks
   // can remove items from the shard_to_cursor_ map. If performance is a concern,
@@ -420,7 +421,7 @@ void RedisStoreClient::RedisScanner::Scan(std::string match_pattern,
 }
 
 void RedisStoreClient::RedisScanner::OnScanCallback(
-    std::string match_pattern, size_t shard_index,
+    const std::string &match_pattern, size_t shard_index,
     const std::shared_ptr<CallbackReply> &reply, const StatusCallback &callback) {
   RAY_CHECK(reply);
   std::vector<std::string> scan_result;
