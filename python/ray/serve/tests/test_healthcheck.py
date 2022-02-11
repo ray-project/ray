@@ -79,6 +79,7 @@ def test_no_user_defined_method(serve_instance, use_class):
     actor = ray.get(h.remote())
     ray.kill(actor)
 
+    # This would time out if we wait for multiple health check failures.
     wait_for_condition(check_new_actor_started, handle=h, original_actors=actor)
 
 
@@ -178,12 +179,12 @@ def test_consecutive_failures(serve_instance):
             self._should_fail = False
 
         def check_health(self):
-            if self.should_fail:
+            if self._should_fail:
                 ray.get(counter.inc.remote())
                 raise Exception("intended to fail")
 
         def set_should_fail(self):
-            self.should_fail = True
+            self._should_fail = True
             return self._actor_id
 
         def __call__(self, *args):

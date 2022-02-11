@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import ray
 from ray import ObjectRef
 from ray.actor import ActorHandle
-from ray.exceptions import RayError
+from ray.exceptions import RayActorError, RayError
 from ray.serve.common import (
     DeploymentInfo,
     DeploymentStatus,
@@ -117,7 +117,7 @@ class ActorReplicaWrapper:
         self._healthy: bool = True
         self._health_check_period_s: float = 0.0
         self._health_check_timeout_s: float = 0.0
-        self._health_check_ref: ObjectRef = None
+        self._health_check_ref: Optional[ObjectRef] = None
         self._last_health_check_time: float = 0.0
         self._consecutive_health_check_failures = 0
         # NOTE: storing these is necessary to keep the actor and PG alive in
@@ -360,60 +360,97 @@ class ActorReplicaWrapper:
 
         return stopped
 
-    def _start_health_check(self):
-        self._last_health_check_time = time.time()
-        self._health_check_ref = self._actor_handle.check_health.remote()
+    def _check_active_health_check(self) -> Tuple[Optional[bool], bool]:
+        """TODO
 
-    def check_health(self) -> bool:
-        """Check if the actor is healthy."""
+        Resets self._health_check_ref.
+
+        Returns if health check failed & if actor crashed.
+        """
         if self._health_check_ref is None:
-            self._consecutive_health_check_failures = 0
-            self._start_health_check()
+            # There is no outstanding health check.
+            return None, False
 
         health_check_succeeded: Optional[bool] = None
+        replica_actor_crashed: bool = False
         ready, pending = ray.wait([self._health_check_ref], timeout=0)
         if len(ready) == 1:
             # Object ref is ready, ray.get it to check for exceptions.
             try:
                 ray.get(self._health_check_ref)
-
-                # Health check succeeded. Kick off another and reset the timer
-                # if it's been long enough since the last health check. Add
-                # some randomness to avoid synchronizing across all replicas.
+                # Health check succeeded without exception.
                 health_check_succeeded = True
-                time_since_last = time.time() - self._last_health_check_time
-                randomized_period = self._health_check_period_s * random.uniform(
-                    0.9, 1.1
-                )
-                if time_since_last > randomized_period:
-                    self._start_health_check()
-            except RayError as e:
-                logger.info(
-                    f"Health check for replica {self._replica_tag} " f"failed: {e}"
-                )
+                self._health_check_ref = None
+            except RayActorError:
+                # Health check failed due to actor crashing.
+                logger.info(f"Actor for replica {self._replica_tag} crashed.")
                 health_check_succeeded = False
-                self._start_health_check()
+                self._health_check_ref = None
+                replica_actor_crashed = True
+            except RayError as e:
+                # Health check failed due to application-level exception.
+                logger.info(f"Health check for replica {self._replica_tag} failed: {e}")
+                health_check_succeeded = False
+                self._health_check_ref = None
         elif time.time() - self._last_health_check_time > self._health_check_timeout_s:
+            # Health check hasn't returned and the timeout is up, consider it failed.
             logger.info(
                 "Didn't receive health check response for replica "
                 f"{self._replica_tag} after "
                 f"{self._health_check_timeout_s}s, marking it unhealthy."
             )
             health_check_succeeded = False
-            self._start_health_check()
+            self._health_check_ref = None
         else:
+            # Health check hasn't returned and the timeout isn't up yet.
             health_check_succeeded = None
 
+        return health_check_succeeded, replica_actor_crashed
+
+    def _should_start_new_health_check(self) -> bool:
+        """TODO"""
+        if self._health_check_ref is not None:
+            # There's already an active health check.
+            return False
+
+        # If there's no active health check, kick off another and reset
+        # the timier if it's been long enough since the last health
+        # check. Add some randomness to avoid synchronizing across all
+        # replicas.
+        time_since_last = time.time() - self._last_health_check_time
+        randomized_period = self._health_check_period_s * random.uniform(0.9, 1.1)
+        return time_since_last > randomized_period
+
+    def check_health(self) -> bool:
+        """Check if the actor is healthy.
+
+        self._healthy should *only* be modified in this method.
+        """
+        (
+            health_check_succeeded,
+            replica_actor_crashed,
+        ) = self._check_active_health_check()
         if health_check_succeeded is None:
             # No info; don't update replica health.
+            logger.debug("No health info.")
             pass
         elif health_check_succeeded:
+            # Health check succeeded. Reset the consecutive failure counter
+            # and mark the replica healthy.
             self._consecutive_health_check_failures = 0
             self._healthy = True
+            logger.debug("Replica marked healthy.")
         else:
+            # Health check failed. If it has failed more than N times in a row,
+            # mark the replica unhealthy.
             self._consecutive_health_check_failures += 1
-            # Replica still healthy until we fail N times in a row.
-            if (
+            if replica_actor_crashed:
+                logger.info(
+                    f"Actor for replica {self._replica_tag} crashed, marking "
+                    "it unhealthy immediately."
+                )
+                self._healthy = False
+            elif (
                 self._consecutive_health_check_failures
                 >= REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
             ):
@@ -423,6 +460,13 @@ class ActorReplicaWrapper:
                     "times in a row, marking it unhealthy."
                 )
                 self._healthy = False
+
+        if self._should_start_new_health_check():
+            logger.debug("Starting new health check.")
+            self._last_health_check_time = time.time()
+            self._health_check_ref = self._actor_handle.check_health.remote()
+        else:
+            logger.debug("Not starting new health check yet.")
 
         return self._healthy
 
