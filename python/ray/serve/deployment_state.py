@@ -382,7 +382,6 @@ class ActorReplicaWrapper:
               before the timeout).
             - ACTOR_CRASHED if the underlying actor crashed.
         """
-        response = HealthCheckResponse.NONE
         if self._health_check_ref is None:
             # There is no outstanding health check.
             response = HealthCheckResponse.NONE
