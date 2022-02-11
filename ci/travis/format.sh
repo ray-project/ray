@@ -338,10 +338,8 @@ fi
 # There's a import ray above it.
 
 PYTHON_EXECUTABLE=${PYTHON_EXECUTABLE:-python}
-echo "$PYTHON_EXECUTABLE"
 
-#$PYTHON_EXECUTABLE
-python3 ci/travis/check_import_order.py . -s ci -s python/ray/thirdparty_files -s python/build -s lib
+$PYTHON_EXECUTABLE ci/travis/check_import_order.py . -s ci -s python/ray/thirdparty_files -s python/build -s lib
 
 if ! git diff --quiet &>/dev/null; then
     echo 'Reformatted changed files. Please review and stage the changes.'
