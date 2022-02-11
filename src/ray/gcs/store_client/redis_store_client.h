@@ -75,18 +75,18 @@ class RedisStoreClient : public StoreClient {
   class RedisScanner {
    public:
     explicit RedisScanner(std::shared_ptr<RedisClient> redis_client,
-                          std::string table_name);
+                          const std::string &table_name);
 
-    Status ScanKeysAndValues(std::string match_pattern,
+    Status ScanKeysAndValues(const std::string &match_pattern,
                              const MapCallback<std::string, std::string> &callback);
 
-    Status ScanKeys(std::string match_pattern,
+    Status ScanKeys(const std::string &match_pattern,
                     const MultiItemCallback<std::string> &callback);
 
    private:
-    void Scan(std::string match_pattern, const StatusCallback &callback);
+    void Scan(const std::string &match_pattern, const StatusCallback &callback);
 
-    void OnScanCallback(std::string match_pattern, size_t shard_index,
+    void OnScanCallback(const std::string &match_pattern, size_t shard_index,
                         const std::shared_ptr<CallbackReply> &reply,
                         const StatusCallback &callback);
 
@@ -143,7 +143,8 @@ class RedisStoreClient : public StoreClient {
                                         const std::string &index_key);
 
   static Status MGetValues(std::shared_ptr<RedisClient> redis_client,
-                           std::string table_name, const std::vector<std::string> &keys,
+                           const std::string &table_name,
+                           const std::vector<std::string> &keys,
                            const MapCallback<std::string, std::string> &callback);
 
   std::shared_ptr<RedisClient> redis_client_;
