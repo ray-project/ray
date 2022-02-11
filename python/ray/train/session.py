@@ -243,7 +243,7 @@ def _warn_session_misuse(fn_name: str):
         fn_name (str): The name of the function to warn about.
     """
 
-    if log_once(SESSION_MISUSE_LOG_ONCE_KEY):
+    if log_once(f"{SESSION_MISUSE_LOG_ONCE_KEY}-{fn_name}"):
         warnings.warn(
             f"`train.{fn_name}()` is meant to only be "
             f"called "

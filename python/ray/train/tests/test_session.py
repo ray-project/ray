@@ -29,13 +29,6 @@ def session():
     shutdown_session()
 
 
-@pytest.fixture(scope="function")
-def reset_session_log_once():
-    yield
-    # Reset the log_once for this key.
-    ray.util.debug.reset_log_once(SESSION_MISUSE_LOG_ONCE_KEY)
-
-
 def test_init_fail(session):
     with pytest.raises(ValueError):
         init_session(lambda: 1, 0)
@@ -243,10 +236,17 @@ def test_locking():
     shutdown_session()
 
 
+def reset_log_once_with_str(str_to_append=None):
+    key = SESSION_MISUSE_LOG_ONCE_KEY
+    if str_to_append:
+        key += f"-{str_to_append}"
+    ray.util.debug.reset_log_once(key)
+
+
 @pytest.mark.parametrize(
     "fn", [load_checkpoint, save_checkpoint, report, get_dataset_shard]
 )
-def test_warn(reset_session_log_once, fn):
+def test_warn(fn):
     """Checks if calling train functions outside of session raises warning."""
 
     with pytest.warns(UserWarning) as record:
@@ -254,18 +254,22 @@ def test_warn(reset_session_log_once, fn):
 
     assert fn.__name__ in record[0].message.args[0]
 
+    reset_log_once_with_str(fn.__name__)
+
 
 def test_warn_once():
-    """Checks if session misuse warning is only shown once."""
+    """Checks if session misuse warning is only shown once per function."""
 
     with pytest.warns(UserWarning) as record:
         assert not load_checkpoint()
+        assert not load_checkpoint()
         assert not save_checkpoint(x=2)
         assert not report(x=2)
+        assert not report(x=3)
         assert not get_dataset_shard()
 
     # Should only warn once.
-    assert len(record) == 1
+    assert len(record) == 4
 
 
 if __name__ == "__main__":
