@@ -4,7 +4,7 @@ This document help Ray Java developers release Ray Java.
 Note that we assume you release it on your local laptop.
 
 ## 1. Install GPG
-**If you have isntalled GPG, you can skip this step.**  
+**If you have installed GPG, you can skip this step.**  
 
 Install gpg software on your laptop. https://gpgtools.org/  
 Create your own key pair of GPG.  
@@ -26,7 +26,6 @@ git checkout $TRAVIS_COMMIT
 sh java/build-jar-multiplatform.sh multiplatform
 export GPG_SKIP=false
 cd java && mvn versions:set -DnewVersion=x.y.z && cd -
-cd streaming/java && mvn versions:set -DnewVersion=x.y.z && cd -
 sh java/build-jar-multiplatform.sh deploy_jars
 ```
 
@@ -40,7 +39,6 @@ git checkout $TRAVIS_COMMIT
 sh java/build-jar-multiplatform.sh multiplatform
 export GPG_SKIP=false
 cd java && mvn versions:set -DnewVersion=1.4.0 && cd -
-cd streaming/java && mvn versions:set -DnewVersion=1.4.0 && cd -
 sh java/build-jar-multiplatform.sh deploy_jars
 ```
 
