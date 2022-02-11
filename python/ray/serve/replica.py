@@ -5,6 +5,7 @@ import inspect
 from typing import Any, Callable, Optional, Tuple, Dict
 import time
 import aiorwlock
+from importlib import import_module
 
 import starlette.responses
 
@@ -26,18 +27,31 @@ from ray.serve.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
 )
 from ray.serve.version import DeploymentVersion
-from ray.serve.utils import wrap_to_ray_error
+from ray.serve.utils import wrap_to_ray_error, parse_import_path
 
 logger = _get_logger()
 
 
-def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
+def create_replica_wrapper(
+    name: str, import_path: str = None, serialized_deployment_def: bytes = None
+):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
     provided class and the RayServeReplica class.
     """
-    serialized_deployment_def = serialized_deployment_def
+
+    if (import_path is None) and (serialized_deployment_def is None):
+        raise ValueError(
+            "Either the import_name or the serialized_deployment_def must "
+            "be specified, but both were unspecified."
+        )
+    elif (import_path is not None) and (serialized_deployment_def is not None):
+        raise ValueError(
+            "Only one of either the import_name or the "
+            "serialized_deployment_def must be specified, but both were "
+            "specified."
+        )
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
@@ -50,9 +64,16 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
             deployment_config_proto_bytes: bytes,
             version: DeploymentVersion,
             controller_name: str,
+            controller_namespace: str,
             detached: bool,
         ):
-            deployment_def = cloudpickle.loads(serialized_deployment_def)
+
+            if import_path is not None:
+                module_name, attr_name = parse_import_path(import_path)
+                deployment_def = getattr(import_module(module_name), attr_name)
+            else:
+                deployment_def = cloudpickle.loads(serialized_deployment_def)
+
             deployment_config = DeploymentConfig.from_proto_bytes(
                 deployment_config_proto_bytes
             )
@@ -64,19 +85,23 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
             else:
                 assert False, (
                     "deployment_def must be function, class, or "
-                    "corresponding import path."
+                    "corresponding import path. Instead, it's type was "
+                    f"{type(deployment_def)}."
                 )
 
             # Set the controller name so that serve.connect() in the user's
             # code will connect to the instance that this deployment is running
             # in.
             ray.serve.api._set_internal_replica_context(
-                deployment_name, replica_tag, controller_name, servable_object=None
+                deployment_name,
+                replica_tag,
+                controller_name,
+                controller_namespace,
+                servable_object=None,
             )
 
             assert controller_name, "Must provide a valid controller_name"
 
-            controller_namespace = ray.serve.api._get_controller_namespace(detached)
             controller_handle = ray.get_actor(
                 controller_name, namespace=controller_namespace
             )
@@ -102,6 +127,7 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
                     deployment_name,
                     replica_tag,
                     controller_name,
+                    controller_namespace,
                     servable_object=_callable,
                 )
 
