@@ -23,6 +23,7 @@ from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.stats import DatasetStats
+from ray.data.impl.plan import ExecutionPlan
 from ray.data.aggregate import AggregateFn, Count, Sum, Min, Max, Mean, Std
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import PARALLELIZE_META_FETCH_THRESHOLD
@@ -235,7 +236,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     ds = Dataset(
         ExecutionPlan(block_list, DatasetStats.TODO()),
         0,
-        DatasetStats(stages={}, parent=None),
+        False,
     )
 
     splits = ds.split(num_splits, equal=True)

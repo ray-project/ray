@@ -797,9 +797,12 @@ def from_arrow_refs(
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = [get_metadata.remote(t) for t in tables]
     return Dataset(
-        BlockList(tables, ray.get(metadata)),
+        ExecutionPlan(
+            BlockList(tables, ray.get(metadata)),
+            DatasetStats(stages={"from_arrow_refs": metadata}, parent=None),
+        ),
         0,
-        DatasetStats(stages={"from_arrow_refs": metadata}, parent=None),
+        False,
     )
 
 

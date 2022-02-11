@@ -780,9 +780,14 @@ class Dataset(Generic[T]):
             return equalize(
                 [
                     Dataset(
-                        BlockList(list(blocks), [metadata_mapping[b] for b in blocks]),
+                        ExecutionPlan(
+                            BlockList(
+                                list(blocks), [metadata_mapping[b] for b in blocks]
+                            ),
+                            stats,
+                        ),
                         self._epoch,
-                        stats,
+                        self._lazy,
                     )
                     for blocks in np.array_split(block_refs, n)
                     if not equal or len(blocks) > 0
@@ -963,7 +968,7 @@ class Dataset(Generic[T]):
 
         datasets = [self] + list(other)
         for ds in datasets:
-            bl = ds._blocks
+            bl = ds._plan.execute()
             if isinstance(bl, LazyBlockList):
                 calls.extend(bl._calls)
                 metadata.extend(bl._metadata)
@@ -991,11 +996,15 @@ class Dataset(Generic[T]):
                 )
                 _epoch_warned = True
         dataset_stats = DatasetStats(
-            stages={"union": []}, parent=[d._stats for d in datasets]
+            stages={"union": []}, parent=[d._plan.stats() for d in datasets]
         )
         dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
-            LazyBlockList(calls, metadata, block_partitions), max_epoch, dataset_stats
+            ExecutionPlan(
+                LazyBlockList(calls, metadata, block_partitions), dataset_stats
+            ),
+            max_epoch,
+            self._lazy,
         )
 
     def groupby(self, key: KeyFn) -> "GroupedDataset[T]":
