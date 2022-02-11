@@ -98,8 +98,10 @@ class ChunkCollector:
 def chunk_put(req: ray_client_pb2.DataRequest):
     """
     Chunks a put request. Doing this lazily is important for large objects,
-    since attempting to fill the queue immediately which all chunks will
-    double the amount of memory needed to handle the request.
+    since taking slices of bytes objects does a copy, and gRPC will error
+    if you attempt to pass in a memory view. This means if we immediately
+    materialized every chunk of a large object, we would effectively double
+    the amount of memory needed to handle the put.
     """
     total_size = len(req.put.bytes)
     total_chunks = math.ceil(total_size / OBJECT_TRANSFER_CHUNK_SIZE)
@@ -424,6 +426,7 @@ class DataClient:
     def _blocking_send(
         self, req: ray_client_pb2.DataRequest
     ) -> ray_client_pb2.DataResponse:
+        self.request_queue.put((req, None))
         with self.lock:
             self._check_shutdown()
 

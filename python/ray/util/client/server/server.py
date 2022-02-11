@@ -15,6 +15,7 @@ from typing import Dict
 from typing import Set
 from typing import Optional
 from typing import Callable
+from typing import Iterator
 from ray import cloudpickle
 from ray.job_config import JobConfig
 import ray
@@ -469,13 +470,16 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             )
 
     def PutObject(
-        self, request: ray_client_pb2.PutRequest, context=None
+        self, request_iterator: Iterator[ray_client_pb2.PutRequest], context=None
     ) -> ray_client_pb2.PutResponse:
         """gRPC entrypoint for unary PutObject"""
-        return self._put_object(request, "", context)
+        return self._put_object(request_iterator, "", context)
 
     def _put_object(
-        self, request: ray_client_pb2.PutRequest, client_id: str, context=None
+        self,
+        request_iterator: Iterator[ray_client_pb2.PutRequest],
+        client_id: str,
+        context=None,
     ):
         """Put an object in the cluster with ray.put() via gRPC.
 
@@ -485,8 +489,22 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
               delete this reference.
             context: gRPC context.
         """
+        data = bytearray()
         try:
-            obj = loads_from_client(request.data, self)
+            last_seen_chunk = -1
+            for chunk in request_iterator:
+                client_ref_id = chunk.client_ref_id
+                if chunk.chunk_id <= last_seen_chunk:
+                    # We've already seen this chunk, ignore and continue
+                    continue
+                assert (
+                    chunk.chunk_id == last_seen_chunk + 1
+                ), "Chunk received out of order"
+                data.extend(chunk.data)
+                if chunk.chunk_id == chunk.total_chunks - 1:
+                    # All chunks received
+                    break
+            obj = loads_from_client(data, self)
             with disable_client_hook():
                 objectref = ray.put(obj)
         except Exception as e:
@@ -496,10 +514,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             )
 
         self.object_refs[client_id][objectref.binary()] = objectref
-        if len(request.client_ref_id) > 0:
-            self.client_side_ref_map[client_id][
-                request.client_ref_id
-            ] = objectref.binary()
+        if len(client_ref_id) > 0:
+            self.client_side_ref_map[client_id][client_ref_id] = objectref.binary()
         logger.debug("put: %s" % objectref)
         return ray_client_pb2.PutResponse(id=objectref.binary(), valid=True)
 

@@ -168,7 +168,9 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         get_resp = self.basic_service._get_object(req.get, client_id)
                     resp = ray_client_pb2.DataResponse(get=get_resp)
                 elif req_type == "put":
-                    put_resp = self.basic_service._put_object(req.put, client_id)
+                    put_queue = Queue()
+                    put_queue.put(req.put)
+                    put_resp = self.basic_service._put_object(put_queue, client_id)
                     resp = ray_client_pb2.DataResponse(put=put_resp)
                 elif req_type == "release":
                     released = []
