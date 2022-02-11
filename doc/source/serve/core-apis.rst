@@ -49,7 +49,7 @@ To serve multiple deployments defined by the same class, use the ``name`` option
 .. code-block:: python
 
   MyFirstDeployment.options(name="hello_service").deploy("Hello!")
-  MyFirstDeployment.options(name="hi_service").deploy("Hi!)
+  MyFirstDeployment.options(name="hi_service").deploy("Hi!")
 
 You can also list all available deployments and dynamically get references to them:
 
@@ -288,7 +288,7 @@ is set.  In particular, it's also called when new replicas are created in the
 future if scale up your deployment later.  The `reconfigure` method is also  called
 each time `user_config` is updated.
 
-Dependency Management
+Handling Dependencies
 =====================
 
 Ray Serve supports serving deployments with different (possibly conflicting)

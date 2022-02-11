@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Driver script for testing RLlib's client/server setup.
+# Run as follows:
+# $ test_policy_client_server_setup.sh [inference-mode: local|remote] [env: cartpole|cartpole-dummy-2-episodes|unity3d]
+
 rm -f last_checkpoint.out
 
 if [ "$1" == "local" ]; then
@@ -8,14 +12,22 @@ else
   inference_mode=remote
 fi
 
+# CartPole client/server setup.
 if [ "$2" == "cartpole" ]; then
   server_script=cartpole_server.py
   client_script=cartpole_client.py
   stop_criterion="--stop-reward=150.0"
-else
+# Unity3D dummy setup.
+elif [ "$2" == "unity3d" ]; then
   server_script=unity3d_server.py
   client_script=unity3d_dummy_client.py
   stop_criterion="--num-episodes=10"
+# CartPole dummy test using 2 simultaneous episodes on the client.
+# One episode has training_enabled=False (its data should NOT arrive at server).
+else
+  server_script=cartpole_server.py
+  client_script=dummy_client_with_two_episodes.py
+  stop_criterion="--dummy-arg=dummy"  # no stop criterion: client script terminates either way
 fi
 
 pkill -f $server_script
@@ -58,6 +70,6 @@ client2_pid=$!
 # x reward (CartPole) or n episodes (dummy Unity3D).
 # Then stop everything.
 sleep 2
-python $basedir/$client_script $stop_criterion --inference-mode=$inference_mode --port=9901
+python $basedir/$client_script --inference-mode=$inference_mode --port=9901 "$stop_criterion"
 
 kill $server_pid $client1_pid $client2_pid || true

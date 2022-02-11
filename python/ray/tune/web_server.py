@@ -16,8 +16,10 @@ try:
     import requests  # `requests` is not part of stdlib.
 except ImportError:
     requests = None
-    logger.exception("Couldn't import `requests` library. "
-                     "Be sure to install it on the client side.")
+    logger.exception(
+        "Couldn't import `requests` library. "
+        "Be sure to install it on the client side."
+    )
 
 
 class TuneClient:
@@ -43,7 +45,8 @@ class TuneClient:
     def get_trial(self, trial_id, timeout=None):
         """Returns trial information by trial_id."""
         response = requests.get(
-            urljoin(self._path, "trials/{}".format(trial_id)), timeout=timeout)
+            urljoin(self._path, "trials/{}".format(trial_id)), timeout=timeout
+        )
         return self._deserialize(response)
 
     def add_trial(self, name, specification):
@@ -54,8 +57,7 @@ class TuneClient:
 
     def stop_trial(self, trial_id):
         """Requests to stop trial by trial_id."""
-        response = requests.put(
-            urljoin(self._path, "trials/{}".format(trial_id)))
+        response = requests.put(urljoin(self._path, "trials/{}".format(trial_id)))
         return self._deserialize(response)
 
     def stop_experiment(self):
@@ -72,10 +74,8 @@ class TuneClient:
         return self._port_forward
 
     def _load_trial_info(self, trial_info):
-        trial_info["config"] = cloudpickle.loads(
-            hex_to_binary(trial_info["config"]))
-        trial_info["result"] = cloudpickle.loads(
-            hex_to_binary(trial_info["result"]))
+        trial_info["config"] = cloudpickle.loads(hex_to_binary(trial_info["config"]))
+        trial_info["result"] = cloudpickle.loads(hex_to_binary(trial_info["result"]))
 
     def _deserialize(self, response):
         parsed = response.json()
@@ -171,11 +171,9 @@ def RunnerHandler(runner):
             content_len = int(self.headers.get("Content-Length"), 0)
             raw_body = self.rfile.read(content_len)
             parsed_input = json.loads(raw_body.decode())
-            resource = self._add_trials(parsed_input["name"],
-                                        parsed_input["spec"])
+            resource = self._add_trials(parsed_input["name"], parsed_input["spec"])
 
-            headers = [("Content-type", "application/json"), ("Location",
-                                                              "/trials/")]
+            headers = [("Content-type", "application/json"), ("Location", "/trials/")]
             self._do_header(response_code=response_code, headers=headers)
             self.wfile.write(json.dumps(resource).encode())
 
@@ -190,7 +188,7 @@ def RunnerHandler(runner):
                 "trainable_name": trial.trainable_name,
                 "config": binary_to_hex(cloudpickle.dumps(trial.config)),
                 "status": trial.status,
-                "result": binary_to_hex(cloudpickle.dumps(result))
+                "result": binary_to_hex(cloudpickle.dumps(result)),
             }
             return info_dict
 

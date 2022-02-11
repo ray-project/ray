@@ -1,3 +1,5 @@
+.. include:: we_are_hiring.rst
+
 .. _cluster-commands:
 
 Cluster Launcher Commands
@@ -155,6 +157,7 @@ run ``ray attach --help``.
     # Attach to tmux session on cluster (creates a new one if none available)
     $ ray attach cluster.yaml --tmux
 
+.. _ray-rsync:
 
 Synchronizing files from the cluster (``ray rsync-up/down``)
 ------------------------------------------------------------
@@ -174,7 +177,9 @@ Monitoring cluster status (``ray dashboard/status``)
 
 The Ray also comes with an online dashboard. The dashboard is accessible via
 HTTP on the head node (by default it listens on ``localhost:8265``). You can
-also use the built-in ``ray dashboard`` to do this automatically.
+also use the built-in ``ray dashboard`` to set up port forwarding
+automatically, making the remote dashboard viewable in your local browser at
+``localhost:8265``.
 
 .. code-block:: shell
 

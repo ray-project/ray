@@ -185,7 +185,7 @@ on 100s of CPUs/nodes thus parallelizing and speeding up learning.
 your ``gym.Envs`` via the ``num_envs_per_worker`` config. Environment workers can
 then batch and thus significantly speedup the action computing forward pass.
 On top of that, RLlib offers the ``remote_worker_envs`` config to create
-`single environments (within a vectorized one) as ray Actors <https://github.com/ray-project/ray/blob/master/rllib/examples/remote_vector_env_with_custom_api.py>`_,
+`single environments (within a vectorized one) as ray Actors <https://github.com/ray-project/ray/blob/master/rllib/examples/remote_base_env_with_custom_api.py>`_,
 thus parallelizing even the env stepping process.
 
 | **Multi-agent RL** (MARL): Convert your (custom) ``gym.Envs`` into a multi-agent one

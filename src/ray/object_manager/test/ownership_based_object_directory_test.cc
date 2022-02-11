@@ -28,6 +28,9 @@
 
 namespace ray {
 
+using ::testing::_;
+using ::testing::Return;
+
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   void UpdateObjectLocationBatch(
@@ -160,6 +163,13 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
     auto dummy_info = CreateNewObjectInfo(owner_id);
     obod_.ReportObjectAdded(dummy_info.object_id, current_node_id, dummy_info);
     RAY_LOG(INFO) << "First batch sent.";
+  }
+
+  void HandleMessage(const rpc::WorkerObjectLocationsPubMessage &location_info,
+                     const ObjectID &object_id, bool location_lookup_failed = false) {
+    // Mock for receiving a message from the pubsub layer.
+    obod_.ObjectLocationSubscriptionCallback(location_info, object_id,
+                                             location_lookup_failed);
   }
 
   int64_t max_batch_size = 20;
@@ -373,6 +383,69 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestOwnerFailed) {
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch(ray::Status::Invalid("")));
   // Requests are not sent anymore.
   ASSERT_EQ(NumBatchRequestSent(), 2);
+  // Make sure metadata is cleaned up properly.
+  AssertNoLeak();
+}
+
+TEST_F(OwnershipBasedObjectDirectoryTest, TestNotifyOnUpdate) {
+  UniqueID callback_id = UniqueID::FromRandom();
+  ObjectID obj_id = ObjectID::FromRandom();
+  int num_callbacks = 0;
+  EXPECT_CALL(*subscriber_, Subscribe(_, _, _, _, _, _, _)).WillOnce(Return(true));
+  ASSERT_TRUE(
+      obod_
+          .SubscribeObjectLocations(
+              callback_id, obj_id, rpc::Address(),
+              [&](const ObjectID &object_id, const std::unordered_set<NodeID> &client_ids,
+                  const std::string &spilled_url, const NodeID &spilled_node_id,
+                  bool pending_creation, size_t object_size) { num_callbacks++; })
+          .ok());
+  ASSERT_EQ(num_callbacks, 0);
+
+  // Object pending, no other metadata. This is the same as the initial state,
+  // so no callbacks triggered.
+  rpc::WorkerObjectLocationsPubMessage location_info;
+  location_info.set_pending_creation(true);
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 0);
+
+  // Setting object size triggers callback once.
+  location_info.set_object_size(100);
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 1);
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 1);
+
+  // Adding object location triggers callback once.
+  location_info.add_node_ids(NodeID::FromRandom().Binary());
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 2);
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 2);
+
+  // Removing object location triggers callback once.
+  location_info.mutable_node_ids()->Clear();
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 3);
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 3);
+
+  // Adding spilled location triggers callback once.
+  location_info.set_spilled_url("1234");
+  location_info.set_spilled_node_id(NodeID::FromRandom().Binary());
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 4);
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 4);
+
+  // Setting pending creation back to false (happens during reconstruction)
+  // triggers callback.
+  location_info.set_pending_creation(false);
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 5);
+  HandleMessage(location_info, obj_id);
+  ASSERT_EQ(num_callbacks, 5);
+
   // Make sure metadata is cleaned up properly.
   AssertNoLeak();
 }

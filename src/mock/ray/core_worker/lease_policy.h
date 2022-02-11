@@ -39,8 +39,8 @@ namespace core {
 
 class MockLeasePolicyInterface : public LeasePolicyInterface {
  public:
-  MOCK_METHOD(rpc::Address, GetBestNodeForTask, (const TaskSpecification &spec),
-              (override));
+  MOCK_METHOD((std::pair<rpc::Address, bool>), GetBestNodeForTask,
+              (const TaskSpecification &spec), (override));
 };
 
 }  // namespace core

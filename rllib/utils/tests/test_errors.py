@@ -8,8 +8,7 @@ from ray.rllib.utils.test_utils import framework_iterator
 
 
 class TestErrors(unittest.TestCase):
-    """Tests various failure-modes, making sure we produce meaningful errmsgs.
-    """
+    """Tests various failure-modes, making sure we produce meaningful errmsgs."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -37,8 +36,7 @@ class TestErrors(unittest.TestCase):
             )
 
     def test_bad_envs(self):
-        """Tests different "bad env" errors.
-        """
+        """Tests different "bad env" errors."""
         config = pg.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0
 
@@ -82,4 +80,5 @@ class TestErrors(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

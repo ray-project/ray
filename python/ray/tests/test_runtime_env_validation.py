@@ -7,11 +7,15 @@ from ray import job_config
 import yaml
 
 from ray._private.runtime_env.validation import (
-    parse_and_validate_excludes, parse_and_validate_working_dir,
-    parse_and_validate_conda, parse_and_validate_pip,
-    parse_and_validate_env_vars, parse_and_validate_py_modules,
-    ParsedRuntimeEnv, override_task_or_actor_runtime_env, _decode_plugin_uri,
-    _encode_plugin_uri)
+    parse_and_validate_excludes,
+    parse_and_validate_working_dir,
+    parse_and_validate_conda,
+    parse_and_validate_pip,
+    parse_and_validate_env_vars,
+    parse_and_validate_py_modules,
+    ParsedRuntimeEnv,
+)
+from ray._private.runtime_env.plugin import decode_plugin_uri, encode_plugin_uri
 
 CONDA_DICT = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
 
@@ -49,13 +53,13 @@ def test_key_with_value_none():
 
 
 def test_encode_plugin_uri():
-    assert _encode_plugin_uri("plugin", "uri") == "plugin|uri"
+    assert encode_plugin_uri("plugin", "uri") == "plugin|uri"
 
 
 def test_decode_plugin_uri():
     with pytest.raises(ValueError):
-        _decode_plugin_uri("no_vertical_bar_separator")
-    assert _decode_plugin_uri("plugin|uri") == ("plugin", "uri")
+        decode_plugin_uri("no_vertical_bar_separator")
+    assert decode_plugin_uri("plugin|uri") == ("plugin", "uri")
 
 
 class TestValidateWorkingDir:
@@ -69,18 +73,20 @@ class TestValidateWorkingDir:
 
     def test_validate_remote_invalid_extensions(self):
         for uri in [
-                "https://some_domain.com/path/file", "s3://bucket/file",
-                "gs://bucket/file"
+            "https://some_domain.com/path/file",
+            "s3://bucket/file",
+            "gs://bucket/file",
         ]:
             with pytest.raises(
-                    ValueError,
-                    match="Only .zip files supported for remote URIs."):
+                ValueError, match="Only .zip files supported for remote URIs."
+            ):
                 parse_and_validate_working_dir(uri)
 
     def test_validate_remote_valid_input(self):
         for uri in [
-                "https://some_domain.com/path/file.zip",
-                "s3://bucket/file.zip", "gs://bucket/file.zip"
+            "https://some_domain.com/path/file.zip",
+            "s3://bucket/file.zip",
+            "gs://bucket/file.zip",
         ]:
             working_dir = parse_and_validate_working_dir(uri)
             assert working_dir == uri
@@ -101,18 +107,20 @@ class TestValidatePyModules:
 
     def test_validate_remote_invalid_extension(self):
         uris = [
-            "https://some_domain.com/path/file", "s3://bucket/file",
-            "gs://bucket/file"
+            "https://some_domain.com/path/file",
+            "s3://bucket/file",
+            "gs://bucket/file",
         ]
         with pytest.raises(
-                ValueError,
-                match="Only .zip files supported for remote URIs."):
+            ValueError, match="Only .zip files supported for remote URIs."
+        ):
             parse_and_validate_py_modules(uris)
 
     def test_validate_remote_valid_input(self):
         uris = [
-            "https://some_domain.com/path/file.zip", "s3://bucket/file.zip",
-            "gs://bucket/file.zip"
+            "https://some_domain.com/path/file.zip",
+            "s3://bucket/file.zip",
+            "gs://bucket/file.zip",
         ]
         py_modules = parse_and_validate_py_modules(uris)
         assert py_modules == uris
@@ -137,7 +145,8 @@ class TestValidateExcludes:
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="Conda option not supported on Windows.")
+    sys.platform == "win32", reason="Conda option not supported on Windows."
+)
 class TestValidateConda:
     def test_validate_conda_invalid_types(self):
         with pytest.raises(TypeError):
@@ -177,7 +186,8 @@ class TestValidateConda:
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="Pip option not supported on Windows.")
+    sys.platform == "win32", reason="Pip option not supported on Windows."
+)
 class TestValidatePip:
     def test_validate_pip_invalid_types(self):
         with pytest.raises(TypeError):
@@ -204,6 +214,18 @@ class TestValidatePip:
         result = parse_and_validate_pip(PIP_LIST)
         assert result == PIP_LIST
 
+    def test_validate_ray(self):
+        result = parse_and_validate_pip(["pkg1", "ray", "pkg2"])
+        assert result == ["pkg1", "ray", "pkg2"]
+
+    def test_replace_ray_libraries_with_dependencies(self):
+        result = parse_and_validate_pip(["pkg1", "ray[serve, tune]", "pkg2"])
+        assert "pkg1" in result
+        assert "pkg2" in result
+        assert "fastapi" in result  # from ray[serve]
+        assert "pandas" in result  # from ray[tune]
+        assert not any("ray" in specifier for specifier in result)
+
 
 class TestValidateEnvVars:
     def test_type_validation(self):
@@ -220,23 +242,16 @@ class TestParsedRuntimeEnv:
         assert ParsedRuntimeEnv({}) == {}
 
     @pytest.mark.skipif(
-        sys.platform == "win32", reason="Pip option not supported on Windows.")
+        sys.platform == "win32", reason="Pip option not supported on Windows."
+    )
     def test_serialization(self):
-        env1 = ParsedRuntimeEnv({
-            "pip": ["requests"],
-            "env_vars": {
-                "hi1": "hi1",
-                "hi2": "hi2"
-            }
-        })
+        env1 = ParsedRuntimeEnv(
+            {"pip": ["requests"], "env_vars": {"hi1": "hi1", "hi2": "hi2"}}
+        )
 
-        env2 = ParsedRuntimeEnv({
-            "env_vars": {
-                "hi2": "hi2",
-                "hi1": "hi1"
-            },
-            "pip": ["requests"]
-        })
+        env2 = ParsedRuntimeEnv(
+            {"env_vars": {"hi2": "hi2", "hi1": "hi1"}, "pip": ["requests"]}
+        )
 
         assert env1 == env2
 
@@ -257,16 +272,19 @@ class TestParsedRuntimeEnv:
 
     @pytest.mark.skipif(
         sys.platform == "win32",
-        reason="Conda and pip options not supported on Windows.")
+        reason="Conda and pip options not supported on Windows.",
+    )
     def test_ray_commit_injection(self):
         # Should not be injected if no pip and conda.
         result = ParsedRuntimeEnv({"env_vars": {"hi": "hi"}})
         assert "_ray_commit" not in result
 
         # Should be injected if pip or conda present.
-        result = ParsedRuntimeEnv({
-            "pip": ["requests"],
-        })
+        result = ParsedRuntimeEnv(
+            {
+                "pip": ["requests"],
+            }
+        )
         assert "_ray_commit" in result
 
         result = ParsedRuntimeEnv({"conda": "env_name"})
@@ -292,61 +310,6 @@ class TestParsedRuntimeEnv:
         assert not result["_inject_current_ray"]
 
         del os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"]
-
-
-class TestOverrideRuntimeEnvs:
-    def test_override_env_vars(self):
-        # (child, parent, expected)
-        TEST_CASES = [
-            ({}, {}, {}),
-            (None, None, None),
-            ({"a": "b"}, {}, {"a": "b"}),
-            ({"a": "b"}, None, {"a": "b"}),
-            ({}, {"a": "b"}, {"a": "b"}),
-            (None, {"a": "b"}, {"a": "b"}),
-            ({"a": "b"}, {"a": "d"}, {"a": "b"}),
-            ({"a": "b"}, {"c": "d"}, {"a": "b", "c": "d"}),
-            ({"a": "b"}, {"a": "e", "c": "d"}, {"a": "b", "c": "d"})
-        ]  # yapf: disable
-
-        for idx, (child, parent, expected) in enumerate(TEST_CASES):
-            child = {"env_vars": child} if child is not None else {}
-            parent = {"env_vars": parent} if parent is not None else {}
-            expected = {"env_vars": expected} if expected is not None else {}
-            assert override_task_or_actor_runtime_env(
-                child, parent) == expected, f"TEST_INDEX:{idx}"
-
-    def test_working_dir_inherit(self):
-        child_env = {}
-        parent_env = {"working_dir": "uri://abc"}
-        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
-        assert result_env == {"working_dir": "uri://abc"}
-
-        # The dicts passed in should not be mutated.
-        assert child_env == {}
-        assert parent_env == {"working_dir": "uri://abc"}
-
-    def test_working_dir_override(self):
-        child_env = {"working_dir": "uri://abc"}
-        parent_env = {"working_dir": "uri://def"}
-        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
-        assert result_env == {"working_dir": "uri://abc"}
-
-        # The dicts passed in should not be mutated.
-        assert child_env == {"working_dir": "uri://abc"}
-        assert parent_env == {"working_dir": "uri://def"}
-
-    def test_inherit_conda(self):
-        child_env = {"uris": ["a"]}
-        parent_env = {"conda": "my-env-name", "uris": ["a", "b"]}
-        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
-        assert result_env == {"uris": ["a"], "conda": "my-env-name"}
-
-    def test_inherit_pip(self):
-        child_env = {"uris": ["a"]}
-        parent_env = {"pip": ["pkg-name"], "uris": ["a", "b"]}
-        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
-        assert result_env == {"uris": ["a"], "pip": ["pkg-name"]}
 
 
 class TestParseJobConfig:

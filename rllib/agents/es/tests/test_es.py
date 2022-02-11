@@ -2,8 +2,7 @@ import unittest
 
 import ray
 import ray.rllib.agents.es as es
-from ray.rllib.utils.test_utils import check_compute_single_action, \
-    framework_iterator
+from ray.rllib.utils.test_utils import check_compute_single_action, framework_iterator
 
 
 class TestES(unittest.TestCase):
@@ -18,7 +17,8 @@ class TestES(unittest.TestCase):
         config["num_workers"] = 1
         config["episodes_per_batch"] = 10
         config["train_batch_size"] = 100
-        # Test eval workers ("normal" Trainer eval WorkerSet).
+        # Test eval workers ("normal" WorkerSet, unlike ES' list of
+        # RolloutWorkers used for collecting train batches).
         config["evaluation_interval"] = 1
         config["evaluation_num_workers"] = 2
 
@@ -40,4 +40,5 @@ class TestES(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

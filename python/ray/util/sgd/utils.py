@@ -1,8 +1,7 @@
 import collections
-from contextlib import closing, contextmanager
+from contextlib import contextmanager
 import logging
 import numpy as np
-import socket
 import time
 
 import ray
@@ -148,13 +147,6 @@ class TimerCollection:
         return aggregates
 
 
-def find_free_port():
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(("", 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
-
-
 class AverageMeter:
     """Utility for computing and storing the average and most recent value.
 
@@ -250,7 +242,7 @@ def check_for_failure(remote_values):
 
 def override(interface_class):
     def overrider(method):
-        assert (method.__name__ in dir(interface_class))
+        assert method.__name__ in dir(interface_class)
         return method
 
     return overrider

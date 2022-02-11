@@ -1,4 +1,4 @@
-base_image: "anyscale/ray-ml:pinned-nightly-py37"
+base_image: "anyscale/ray-ml:nightly-py37-gpu"
 env_vars: {}
 
 python:
@@ -6,8 +6,6 @@ python:
   conda_packages: []
 
 post_build_cmds:
-  - pip uninstall -y numpy ray || true
-  - sudo rm -rf /home/ray/anaconda3/lib/python3.7/site-packages/numpy
-  - pip3 install numpy tqdm || true
-  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install tqdm || true
+  - pip3 uninstall ray -y && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
