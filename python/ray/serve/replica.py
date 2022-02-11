@@ -299,7 +299,7 @@ class RayServeReplica:
                 )
             )
 
-    def check_health(self):
+    async def check_health(self):
         await self.user_health_check()
 
     def _get_handle_request_stats(self) -> Optional[Dict[str, int]]:
