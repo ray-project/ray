@@ -225,6 +225,7 @@ void GcsResourceManager::HandleReportResourceUsage(
 void GcsResourceManager::HandleGetAllResourceUsage(
     const rpc::GetAllResourceUsageRequest &request, rpc::GetAllResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "DBG: HandleGetAllResourceUsage";
   if (!node_resource_usages_.empty()) {
     auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
     absl::flat_hash_map<ResourceSet, rpc::ResourceDemand> aggregate_load;
