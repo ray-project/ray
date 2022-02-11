@@ -27,8 +27,8 @@ class ReservoirBuffer(ReplayBuffer):
             capacity: Max number of timesteps to store in the FIFO
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
-            storage_unit: Either 'sequences' or 'timesteps'. Specifies how
-                experiences are stored.
+            storage_unit (str): Either 'timesteps', 'sequences' or
+            'episodes'. Specifies how experiences are stored.
         """
         ReplayBuffer.__init__(self, capacity, storage_unit)
         self._num_add_calls = 0
@@ -63,6 +63,12 @@ class ReservoirBuffer(ReplayBuffer):
                 assert batch.count > 0, batch
                 warn_replay_capacity(item=batch,
                                      num_items=self.capacity / batch.count)
+
+    @ExperimentalAPI
+    @override(ReplayBuffer)
+    def sample(self, num_items: int, **kwargs) -> Optional[SampleBatchType]:
+        """Samples `num_items` timesteps from this buffer."""
+        raise NotImplementedError
 
     @ExperimentalAPI
     @override(ReplayBuffer)

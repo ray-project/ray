@@ -17,6 +17,12 @@ from ray.rllib.utils.typing import SampleBatchType
 
 @ExperimentalAPI
 class PrioritizedReplayBuffer(ReplayBuffer):
+    """This buffer implements Prioritized Experience Replay
+
+    The algorithm has been described by Tom Schaul et. al. in "Prioritized
+    Experience Replay". See https://arxiv.org/pdf/1511.05952.pdf for
+    the full paper.
+    """
     @ExperimentalAPI
     def __init__(
         self,
@@ -30,8 +36,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             capacity: Max number of timesteps to store in the FIFO
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
-            storage_unit: Either 'sequences' or 'timesteps'. Specifies how
-                experiences are stored.
+            storage_unit (str): Either 'timesteps', 'sequences' or
+                'episodes'. Specifies how experiences are stored.
             alpha: How much prioritization is used
                 (0.0=no prioritization, 1.0=full prioritization).
         """

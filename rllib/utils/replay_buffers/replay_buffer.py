@@ -3,6 +3,8 @@ import platform
 from typing import Any, Dict, List, Optional
 import numpy as np
 import random
+from enum import Enum
+from ray.util.debug import log_once
 
 # Import ray before psutil will make sure we use psutil's bundled version
 import ray  # noqa F401
@@ -17,28 +19,58 @@ from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
 logger = logging.getLogger(__name__)
 
 
+def warn_buffer_mode_changed(size_one: int, size_two: int) -> None:
+    """Warn if the buffer changes mode to timestep sampling mode."""
+    if log_once("buffer_mode"):
+        msg = (
+            "Reservoir buffer has changed mode from sampling complete batches "
+            "to combining batches. This happened because a batch of size {} "
+            "was added, after a batch of size {} was added and results in "
+            "slower sampling.").format(size_one, size_two
+                                       )
+
+        logger.info(msg)
+
+
+@ExperimentalAPI
+class BufferMode(Enum):
+    """Distinguishes sampling from diffrently- and equally sized batches."""
+    SAMPLE_COMPLETE_BATCHES = 0
+    COMBINE_BATCHES = 1
+
+
+@ExperimentalAPI
+class StorageUnit(Enum):
+    TIMESTEPS = 0
+    SEQUENCES = 1
+    EPISODES = 2
+
+
 @ExperimentalAPI
 class ReplayBuffer:
-    def __init__(self, capacity: int = 10000, storage_unit: str =
-    "timesteps", **kwargs):
+    def __init__(self, capacity: int = 10000,
+                 storage_unit: str ="timesteps", **kwargs):
         """Initializes a ReplayBuffer instance.
 
         Args:
             capacity: Max number of timesteps to store in the FIFO
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
-            storage_unit: Either 'sequences' or 'timesteps'. Specifies how
-                experiences are stored.
+            storage_unit (str): Either 'timesteps', 'sequences' or
+                'episodes'. Specifies how experiences are stored.
             **kwargs: Forward compatibility kwargs.
         """
 
-        if storage_unit == "timesteps":
-            self._store_as_sequences = False
-        elif storage_unit == "sequences":
-            self._store_as_sequences = True
+        if storage_unit == "timesteps" or StorageUnit.TIMESTEPS:
+            self._storage_unit = StorageUnit.TIMESTEPS
+        elif storage_unit == "sequences" or StorageUnit.SEQUENCES:
+            self._storage_unit = StorageUnit.SEQUENCES
+        elif storage_unit == "episodes" or StorageUnit.EPISODES:
+            self._storage_unit = StorageUnit.EPISODES
         else:
             raise ValueError(
-                "storage_unit must be either 'sequences' or 'timestamps'"
+                "storage_unit must be either 'timesteps', 'sequences' or "
+                "'episodes'."
             )
 
         # The actual storage (list of SampleBatches).
@@ -66,6 +98,9 @@ class ReplayBuffer:
         self._evicted_hit_stats = WindowStat("evicted_hit", 1000)
         self._est_size_bytes = 0
 
+        self.batch_size = None
+        self.mode = BufferMode.SAMPLE_COMPLETE_BATCHES
+
     def __len__(self) -> int:
         """Returns the number of items currently stored in this buffer."""
         return len(self._storage)
@@ -85,11 +120,39 @@ class ReplayBuffer:
         self._num_timesteps_added += batch.count
         self._num_timesteps_added_wrap += batch.count
 
+        if self._storage_unit == StorageUnit.TIMESTEPS:
+            self._add_one_item(batch)
+        elif self._storage_unit == StorageUnit.SEQUENCES:
+            timestep_count = 0
+            for seq_len in batch.get(SampleBatch.SEQ_LENS):
+                start_seq = timestep_count
+                end_seq = timestep_count + seq_len
+                self._add_one_item(batch[start_seq:end_seq])
+                timestep_count = end_seq
+        elif self._storage_unit == StorageUnit.EPISODES:
+            for eps in batch.split_by_episode():
+                if eps.get(SampleBatch.T)[0] == 0 and \
+                        eps.get(SampleBatch.DONES)[-1] is True:
+                    # Only add full episodes to the buffer
+                    self._add_one_item(eps)
+                else:
+                    raise ValueError("This buffer uses episodes as a "
+                                     "storage unit and thus allows only full "
+                                     "episodes to be added to it.")
+
+    @ExperimentalAPI
+    def _add_one_item(self, item: SampleBatchType):
+        if self.batch_size is None:
+            self.batch_size = item.count
+        elif self.batch_size != item.count:
+            warn_buffer_mode_changed(self.batch_size, item.count)
+            self.mode = BufferMode.COMBINE_BATCHES
+
         if self._next_idx >= len(self._storage):
-            self._storage.append(batch)
-            self._est_size_bytes += batch.size_bytes()
+            self._storage.append(item)
+            self._est_size_bytes += item.size_bytes()
         else:
-            self._storage[self._next_idx] = batch
+            self._storage[self._next_idx] = item
 
         # Wrap around storage as a circular buffer once we hit capacity.
         if self._num_timesteps_added_wrap >= self.capacity:
@@ -106,11 +169,10 @@ class ReplayBuffer:
 
     @ExperimentalAPI
     def sample(self, num_items: int, **kwargs) -> Optional[SampleBatchType]:
-        """Samples a batch of size `num_items` from this buffer.
+        """Samples `num_items` timesteps or sequences from this buffer.
 
         If less than `num_items` records are in this buffer, some samples in
-        the results may be repeated to fulfil the batch size (`num_items`)
-        request.
+        the results may be repeated to fulfil the request.
 
         Args:
             num_items: Number of items to sample from this buffer.
@@ -123,11 +185,17 @@ class ReplayBuffer:
         if len(self) == 0:
             return None
 
-        idxes = [random.randint(0, len(self) - 1) for _ in range(num_items)]
-        sample = self._encode_sample(idxes)
-        # Update our timesteps counters.
-        self._num_timesteps_sampled += len(sample)
-        return sample
+        if self.mode == BufferMode.SAMPLE_COMPLETE_BATCHES:
+            idxes = [random.randint(0, len(self) - 1) for _ in
+                     range(num_items)]
+            sample = self._encode_sample(idxes)
+            # Update our timesteps counters.
+            self._num_timesteps_sampled += len(sample)
+            return sample
+        else:
+            NotImplementedError("Sampling from a replay buffer with "
+                                "batches of different sizes is not yet "
+                                "permitted.")
 
     @ExperimentalAPI
     def stats(self, debug: bool = False) -> dict:
@@ -182,7 +250,11 @@ class ReplayBuffer:
         self._est_size_bytes = state["est_size_bytes"]
 
     def _encode_sample(self, idxes: List[int]) -> SampleBatchType:
-        out = SampleBatch.concat_samples([self._storage[i] for i in idxes])
+        samples = [self._storage[i] for i in idxes]
+        if samples:
+            out = SampleBatch.concat_samples(samples)
+        else:
+            out = SampleBatch()
         out.decompress_if_needed()
         return out
 

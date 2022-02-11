@@ -45,6 +45,8 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         Args:
             num_shards: The number of buffer shards that exist in total
                 (including this one).
+            storage_unit: Either 'timesteps', 'sequences' or
+                'episodes'. Specifies how experiences are stored.
             learning_starts: Number of timesteps after which a call to
                 `replay()` will yield samples (before that, `replay()` will
                 return None).
@@ -119,12 +121,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         self.update_priorities_timer = TimerStat()
         self._num_added = 0
 
-        # TODO(artur): Double check if this global variable is needed when adding unit tests.
-        # Make externally accessible for testing.
-        global _local_replay_buffer
-        _local_replay_buffer = self
-        # If set, return this instead of the usual data for testing.
-        self._fake_batch = None
 
     @staticmethod
     def get_instance_for_testing():
@@ -145,7 +141,8 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         """Adds a batch to the appropriate policy's replay buffer.
 
         Turns the batch into a MultiAgentBatch of the DEFAULT_POLICY_ID if
-        it is not a MultiAgentBatch. Subsequently adds the batch to
+        it is not a MultiAgentBatch. Subsequently adds the individual policy
+        batches to the storage.
 
         Args:
             batch (SampleBatchType): The batch to be added.
@@ -163,6 +160,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 for s in batch.timeslices(self.replay_sequence_length):
                     self.replay_buffers[_ALL_POLICIES].add(s, weight=None)
             else:
+                assert type(batch) == MultiAgentBatch
                 for policy_id, sample_batch in batch.policy_batches.items():
                     self._add_to_policy_buffer(policy_id, sample_batch)
         self._num_added += batch.count
@@ -195,13 +193,11 @@ class MultiAgentReplayBuffer(ReplayBuffer):
     @override(ReplayBuffer)
     def sample(self, num_items: int, policy_id: Optional[PolicyID] = None) \
         -> Optional[SampleBatchType]:
-        """Samples a batch of size `num_items` from a policy's buffer
+        """Samples `num_items` batches from a policy's buffer
 
-        If this buffer was given a fake batch, return it, otherwise
-        return a MultiAgentBatch with samples. If less than `num_items`
-        records are in the policy's buffer, some samples in
-        the results may be repeated to fulfil the batch size (`num_items`)
-        request.
+        If less than `num_items` records are in the policy's buffer,
+        some samples in the results may be repeated to fulfil the batch size
+        `num_items` request.
 
         Args:
             num_items: Number of items to sample from a policy's buffer.

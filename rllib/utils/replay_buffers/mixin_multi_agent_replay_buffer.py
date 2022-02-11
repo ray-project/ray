@@ -1,5 +1,6 @@
 import collections
 import random
+import numpy as np
 from typing import Optional, Dict, Any
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, \
@@ -72,8 +73,8 @@ class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
 
         Args:
             capacity: Number of batches to store in total.
-            storage_unit (str): Either 'sequences' or 'timesteps'. Specifies
-                how experiences are stored.
+            storage_unit (str): Either 'timesteps', 'sequences' or
+            'episodes'. Specifies how experiences are stored.
             num_shards: The number of buffer shards that exist in total
                 (including this one).
             learning_starts: Number of timesteps after which a call to
@@ -111,7 +112,7 @@ class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
                 plus one old one (1:1), a ratio of 0.66 means always return
                 the newest sample plus 2 old (replayed) ones (1:2), etc...
         """
-        if not 0 < replay_ratio < 1:
+        if not 0 <= replay_ratio <= 1:
             raise ValueError("Replay ratio must be within [0, 1]")
 
         MultiAgentReplayBuffer.__init__(self,
@@ -130,10 +131,6 @@ class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
                                         )
 
         self.replay_ratio = replay_ratio
-        self.replay_proportion = None
-        if self.replay_ratio != 1.0:
-            self.replay_proportion = self.replay_ratio / (
-                1.0 - self.replay_ratio)
 
         # Last added batch(es).
         self.last_added_batches = collections.defaultdict(list)
@@ -181,6 +178,9 @@ class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
         records are in this buffer, some samples in
         the results may be repeated to fulfil the batch size (`num_items`)
         request.
+        Concatenates old samples to new ones according to
+        self.replay_ratio. If not enough new samples are available, mixes in
+        less old samples to retain self.replay_ratio on average.
 
         Args:
             num_items: Number of items to sample from this buffer.
@@ -190,16 +190,32 @@ class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
         Returns:
             Concatenated batch of items.
         """
-        if self._fake_batch:
-            if not isinstance(self._fake_batch, MultiAgentBatch):
-                self._fake_batch = SampleBatch(
-                    self._fake_batch).as_multi_agent()
-            return self._fake_batch
 
         def mix_batches(_policy_id):
-            _buffer = self.replay_buffers[policy_id]
-            output_batches = self.last_added_batches[_policy_id]
-            self.last_added_batches[_policy_id] = []
+            """Mixes old with new samples.
+
+            Tries to mix according to self.replay_ratio on average.
+            If not enough new samples are available, mixes in less old samples
+            to retain self.replay_ratio on average.
+            """
+            def round_up_or_down(value, ratio):
+                """Returns an integer averaging to value*ratio."""
+                product = value * ratio
+                ceil_prob = product % 1
+                if random.uniform(0, 1) < ceil_prob:
+                    return int(np.ceil(product))
+                else:
+                    return int(np.floor(product))
+
+            max_num_new = round_up_or_down(num_items, 1 - self.replay_ratio)
+            # if num_samples * self.replay_ratio is not not round,
+            # we need one more sample with a probability of
+            # (num_items*self.replay_ratio)%1
+
+            _buffer = self.replay_buffers[_policy_id]
+            output_batches = self.last_added_batches[_policy_id][:max_num_new]
+            self.last_added_batches[_policy_id] = self.last_added_batches[
+                                                      _policy_id][max_num_new:]
 
             # No replay desired
             if self.replay_ratio == 0.0:
@@ -209,13 +225,20 @@ class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
                 return _buffer.sample(num_items,
                                       beta=self.prioritized_replay_beta)
 
-            # Replay ratio = old / [old + new]
-            # Replay proportion: old / new
-            num_new = len(output_batches)
-            replay_proportion = self.replay_proportion
-            while random.random() < num_new * replay_proportion:
-                replay_proportion -= 1
-                output_batches.append(_buffer.sample(num_items))
+            if np.isclose(max_num_new, num_items * (1 - self.replay_ratio)):
+                # The optimal case, we can mix in a round number of old
+                # samples on average
+                num_old = num_items - max_num_new
+            else:
+                num_new = len(output_batches)
+                # We never want to return more elements than num_items
+                num_old = min(num_items - max_num_new,
+                              round_up_or_down(num_new,
+                                               self.replay_ratio
+                                               / (1 - self.replay_ratio)))
+
+            output_batches.append(_buffer.sample(num_old,
+                                                 self.prioritized_replay_beta))
             return SampleBatch.concat_samples(output_batches)
 
         def check_buffer_is_ready(_policy_id):
