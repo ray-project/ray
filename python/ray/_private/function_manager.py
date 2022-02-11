@@ -1,5 +1,6 @@
 import dis
 import hashlib
+import os
 import importlib
 import inspect
 import json
@@ -405,8 +406,11 @@ class FunctionActorManager:
                 warning_message = (
                     "This worker was asked to execute a "
                     "function that it does not have "
-                    "registered ({}). You may have to restart "
-                    "Ray.".format(function_descriptor)
+                    f"registered ({function_descriptor}, "
+                    f"node={self._worker.node_ip_address}, "
+                    f"worker_id={self._worker.worker_id.hex()}, "
+                    f"pid={os.getpid()}). You may have to restart "
+                    "Ray."
                 )
                 if not warning_sent:
                     ray._private.utils.push_error_to_driver(
