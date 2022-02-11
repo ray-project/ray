@@ -2683,8 +2683,10 @@ Dict[str, List[str]]]): The names of the columns
 
     def _divide(self, block_idx: int) -> ("Dataset[T]", "Dataset[T]"):
         left, right = self._plan.execute().divide(block_idx)
-        l_ds = Dataset(ExecutionPlan(left, self.stats()), self._epoch, self._lazy)
-        r_ds = Dataset(ExecutionPlan(right, self.stats()), self._epoch, self._lazy)
+        l_ds = Dataset(ExecutionPlan(left, self._plan.stats()), self._epoch, self._lazy)
+        r_ds = Dataset(
+            ExecutionPlan(right, self._plan.stats()), self._epoch, self._lazy
+        )
         return l_ds, r_ds
 
     def _dataset_format(self) -> str:
