@@ -599,7 +599,6 @@ def cloned_virtualenv():
             "--no-periodic-update",
             "--no-download",
         ],
-        workspace="/home/admin/anything/test_virtualenv/",
     )
     yield venv
     venv.teardown()
