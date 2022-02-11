@@ -653,10 +653,11 @@ def test_cpu_instruction(shutdown_only):
     class ResourceActor():
         def check_resource(self, res):
             cpu_info = get_cpu_info()
-            return res in cpu_info["flags"]
+            return res in cpu_info[ray_constants.CPU_INSTRUCTION_SETS_FLAGS]
 
     driver_cpu_info = get_cpu_info()
-    required_cpu_instruction_str = os.getenv("EXTEND_CPU_INSTRUCTIONS", "")
+    required_cpu_instruction_str = \
+        os.getenv(ray_constants.CPU_INSTRUCTION_SETS_ENV, "")
     required_instruction_set = \
         [x.strip() for x in required_cpu_instruction_str.split(",")]
     logging.info(driver_cpu_info)
@@ -674,7 +675,8 @@ def test_cpu_instruction(shutdown_only):
             actor = ResourceActor.remote()
             result = actor.check_resource.remote(required_ins)
             assert not ray.get(result)
-    del os.environ["CPU_INSTRUCTION_SET"]
+    del os.environ[ray_constants.CPU_INSTRUCTION_SETS_ENV]
+    del os.environ[ray_constants.CPU_INSTRUCTION_SETS]
 
 
 if __name__ == "__main__":
