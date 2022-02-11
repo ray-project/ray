@@ -18,7 +18,7 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray._private.runtime_env.validation import ParsedRuntimeEnv
 from ray.job_submission import JobStatusInfo
 from ray.dashboard.modules.job.common import (
-    JobStatusStorageClient,
+    JobDataStorageClient,
     JOB_ID_METADATA_KEY,
 )
 
@@ -35,7 +35,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         self._gcs_actor_info_stub = None
         self._dashboard_head = dashboard_head
         assert _internal_kv_initialized()
-        self._job_status_client = JobStatusStorageClient()
+        self._job_data_client = JobDataStorageClient()
         # For offloading CPU intensive work.
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(
             max_workers=2, thread_name_prefix="api_head"
@@ -98,7 +98,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         # If a job submission ID has been added to a job, the status is
         # guaranteed to be returned.
         job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
-        return self._job_status_client.get_status(job_submission_id)
+        return self._job_data_client.get_status(job_submission_id)
 
     async def get_job_info(self):
         """Return info for each job.  Here a job is a Ray driver."""
@@ -134,7 +134,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         jobs = {}
 
-        for job_id, job_data in self._job_status_client.get_all_jobs().items():
+        for job_submission_id, job_data in self._job_data_client.get_all_jobs().items():
             if job_data is not None:
                 status_info = job_data.status_info
                 entry = {
@@ -148,7 +148,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                     "metadata": job_data.metadata,
                     "runtime_env": job_data.runtime_env,
                 }
-                jobs[job_id] = entry
+                jobs[job_submission_id] = entry
         return jobs
 
     async def get_actor_info(self):

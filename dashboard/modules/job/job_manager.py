@@ -18,7 +18,7 @@ from ray.actor import ActorHandle
 from ray.job_submission import JobStatus, JobStatusInfo
 from ray.dashboard.modules.job.common import (
     JobData,
-    JobStatusStorageClient,
+    JobDataStorageClient,
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
 )
@@ -104,7 +104,7 @@ class JobSupervisor:
 
     def __init__(self, job_id: str, entrypoint: str, user_metadata: Dict[str, str]):
         self._job_id = job_id
-        self._status_client = JobStatusStorageClient()
+        self._data_client = JobDataStorageClient()
         self._log_client = JobLogStorageClient()
         self._runtime_env = ray.get_runtime_context().runtime_env
         self._entrypoint = entrypoint
@@ -191,7 +191,7 @@ class JobSupervisor:
             variables.
         3) Handle concurrent events of driver execution and
         """
-        curr_status = self._status_client.get_status(self._job_id)
+        curr_status = self._data_client.get_status(self._job_id)
         assert (
             curr_status.status == JobStatus.PENDING
         ), "Run should only be called once."
@@ -200,7 +200,7 @@ class JobSupervisor:
             # Block in PENDING state until start signal received.
             await _start_signal_actor.wait.remote()
 
-        self._status_client.put_status(self._job_id, JobStatusInfo(JobStatus.RUNNING))
+        self._data_client.put_status(self._job_id, JobStatusInfo(JobStatus.RUNNING))
 
         try:
             # Set JobConfig for the child process (runtime_env, metadata).
@@ -238,7 +238,7 @@ class JobSupervisor:
                 polling_task.cancel()
                 # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
                 child_process.kill()
-                self._status_client.put_status(self._job_id, JobStatus.STOPPED)
+                self._data_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
                 # at the same time
@@ -246,7 +246,7 @@ class JobSupervisor:
                 [child_process_task] = finished
                 return_code = child_process_task.result()
                 if return_code == 0:
-                    self._status_client.put_status(self._job_id, JobStatus.SUCCEEDED)
+                    self._data_client.put_status(self._job_id, JobStatus.SUCCEEDED)
                 else:
                     log_tail = self._log_client.get_last_n_log_lines(self._job_id)
                     if log_tail is not None and log_tail != "":
@@ -256,7 +256,7 @@ class JobSupervisor:
                         )
                     else:
                         message = None
-                    self._status_client.put_status(
+                    self._data_client.put_status(
                         self._job_id,
                         JobStatusInfo(status=JobStatus.FAILED, message=message),
                     )
@@ -288,7 +288,7 @@ class JobManager:
     JOB_MONITOR_LOOP_PERIOD_S = 1
 
     def __init__(self):
-        self._status_client = JobStatusStorageClient()
+        self._data_client = JobDataStorageClient()
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
 
@@ -300,7 +300,7 @@ class JobManager:
         For each job, we will spawn a coroutine to monitor it.
         Each will be added to self._running_jobs and reconciled.
         """
-        all_jobs = self._status_client.get_all_jobs()
+        all_jobs = self._data_client.get_all_jobs()
         for job_id, job_data in all_jobs.items():
             if not job_data.status_info.status.is_terminal():
                 create_task(self._monitor_job(job_id))
@@ -325,7 +325,7 @@ class JobManager:
 
             if job_supervisor is None:
                 logger.error(f"Failed to get job supervisor for job {job_id}.")
-                self._status_client.put_status(
+                self._data_client.put_status(
                     job_id,
                     JobStatusInfo(
                         status=JobStatus.FAILED,
@@ -342,13 +342,13 @@ class JobManager:
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
                 is_alive = False
-                if self._status_client.get_status(job_id).status.is_terminal():
+                if self._data_client.get_status(job_id).status.is_terminal():
                     # If the job is already in a terminal state, then the actor
                     # exiting is expected.
                     pass
                 elif isinstance(e, RuntimeEnvSetupError):
                     logger.info(f"Failed to set up runtime_env for job {job_id}.")
-                    self._status_client.put_status(
+                    self._data_client.put_status(
                         job_id,
                         JobStatusInfo(
                             status=JobStatus.FAILED,
@@ -359,7 +359,7 @@ class JobManager:
                     logger.warning(
                         f"Job supervisor for job {job_id} failed unexpectedly: {e}."
                     )
-                    self._status_client.put_status(
+                    self._data_client.put_status(
                         job_id,
                         JobStatusInfo(
                             status=JobStatus.FAILED,
@@ -437,7 +437,7 @@ class JobManager:
         """
         if job_id is None:
             job_id = generate_job_id()
-        elif self._status_client.get_status(job_id) is not None:
+        elif self._data_client.get_status(job_id) is not None:
             raise RuntimeError(f"Job {job_id} already exists.")
 
         logger.info(f"Starting job with job_id: {job_id}")
@@ -447,7 +447,7 @@ class JobManager:
             metadata=metadata,
             runtime_env=runtime_env,
         )
-        self._status_client.put_data(job_id, job_data)
+        self._data_client.put_data(job_id, job_data)
 
         # Wait for the actor to start up asynchronously so this call always
         # returns immediately and we can catch errors with the actor starting
@@ -470,7 +470,7 @@ class JobManager:
             # requiring a client to poll.
             create_task(self._monitor_job(job_id, job_supervisor=supervisor))
         except Exception as e:
-            self._status_client.put_status(
+            self._data_client.put_status(
                 job_id,
                 JobStatusInfo(
                     status=JobStatus.FAILED,
@@ -496,7 +496,7 @@ class JobManager:
 
     def get_job_status(self, job_id: str) -> Optional[JobStatus]:
         """Get latest status of a job."""
-        return self._status_client.get_status(job_id)
+        return self._data_client.get_status(job_id)
 
     def get_job_logs(self, job_id: str) -> str:
         """Get all logs produced by a job."""

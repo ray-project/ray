@@ -3,6 +3,7 @@ from enum import Enum
 import time
 from typing import Any, Dict, Optional, Tuple, Union
 import pickle
+import logging
 
 from ray import ray_constants
 from ray.experimental.internal_kv import (
@@ -20,6 +21,8 @@ JOB_NAME_METADATA_KEY = "job_name"
 
 # Version 0 -> 1: Added log streaming and changed behavior of job logs cli.
 CURRENT_VERSION = "1"
+
+logger = logging.getLogger(__name__)
 
 
 class JobStatus(str, Enum):
@@ -68,9 +71,9 @@ class JobData:
     namespace: Optional[str] = None
 
 
-class JobStatusStorageClient:
+class JobDataStorageClient:
     """
-    Handles formatting of status storage key given job id.
+    Interface to put and get job data from the Internal KV store.
     """
 
     JOB_DATA_KEY_PREFIX = "_ray_internal_job_data_"
@@ -87,10 +90,17 @@ class JobStatusStorageClient:
         )
 
     def get_data(self, job_id: str) -> Optional[JobData]:
+        logger.error("CALLED GET DATA " + str(job_id))
+        logger.error(
+            "KV LIST FROM GET DATA: "
+            + str(_internal_kv_list("", namespace=ray_constants.KV_NAMESPACE_JOB))
+        )
+        # raise ValueError
         pickled_data = _internal_kv_get(
             self.JOB_DATA_KEY.format(job_id=job_id),
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
+        logger.error("PICKLED DATA: " + str(pickled_data))
         if pickled_data is None:
             return None
         else:
@@ -114,7 +124,6 @@ class JobStatusStorageClient:
                 and old_data.status_info.status.is_terminal()
             ):
                 assert False, "Attempted to change job status from a terminal state."
-            # NOTE(architkulkarni): dataclass.replace calls __post_init__.
             new_data = replace(old_data, status_info=status_info)
         else:
             new_data = JobData(status_info=status_info)
@@ -135,6 +144,12 @@ class JobStatusStorageClient:
         raw_job_ids_with_prefixes = _internal_kv_list(
             self.JOB_DATA_KEY_PREFIX, namespace=ray_constants.KV_NAMESPACE_JOB
         )
+        print("ALL JOB IDS:  ", raw_job_ids_with_prefixes)
+        logger.error("ALL JOB IDS: " + str(raw_job_ids_with_prefixes))
+        logger.error(
+            "ALL INTERNAL KV: "
+            + str(_internal_kv_list("", namespace=ray_constants.KV_NAMESPACE_JOB))
+        )
         job_ids_with_prefixes = [
             job_id.decode() for job_id in raw_job_ids_with_prefixes
         ]
@@ -142,7 +157,7 @@ class JobStatusStorageClient:
         for job_id_with_prefix in job_ids_with_prefixes:
             assert job_id_with_prefix.startswith(
                 self.JOB_DATA_KEY_PREFIX
-            ), "Unexpected format for internal_kv key for job submission"
+            ), "Unexpected format for internal_kv key for Job submission"
             job_ids.append(job_id_with_prefix[len(self.JOB_DATA_KEY_PREFIX) :])
         return {job_id: self.get_data(job_id) for job_id in job_ids}
 
