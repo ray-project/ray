@@ -641,6 +641,7 @@ def _get_session(method_name: str):
         # Get the session for this worker.
         return get_session()
     except ValueError:
+        # Session is not initialized yet.
         raise TrainBackendError(
             f"`{method_name}` has been called "
             "before `start_training`. Please call "
