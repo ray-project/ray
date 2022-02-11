@@ -129,7 +129,8 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
 };
 
 template <typename T>
-class NodeSyncContext : public T, public std::enable_shared_from_this<NodeSyncContext<T>> {
+class NodeSyncContext : public T,
+                        public std::enable_shared_from_this<NodeSyncContext<T>> {
  public:
   using T::StartRead;
   using T::StartWrite;
@@ -180,7 +181,7 @@ class NodeSyncContext : public T, public std::enable_shared_from_this<NodeSyncCo
       auto _this = this->shared_from_this();
       io_context_.dispatch(
           [_this] {
-            if(_this->finished_) {
+            if (_this->finished_) {
               return;
             }
 
@@ -203,12 +204,14 @@ class NodeSyncContext : public T, public std::enable_shared_from_this<NodeSyncCo
   void OnWriteDone(bool ok) override {
     if (ok) {
       auto _this = this->shared_from_this();
-      io_context_.dispatch([_this] {
-        if(_this->finished_) {
-          return;
-        }
-        _this->SendNextMessage();
-      }, "RaySyncWrite");
+      io_context_.dispatch(
+          [_this] {
+            if (_this->finished_) {
+              return;
+            }
+            _this->SendNextMessage();
+          },
+          "RaySyncWrite");
     } else {
       HandleFailure();
     }
@@ -220,7 +223,6 @@ class NodeSyncContext : public T, public std::enable_shared_from_this<NodeSyncCo
     consumed_messages_ = 0;
     arena_.Reset();
     out_message_ = google::protobuf::Arena::CreateMessage<RaySyncMessages>(&arena_);
-
 
     if (out_buffer_.empty()) {
       sending_ = false;
@@ -251,7 +253,7 @@ class NodeSyncContext : public T, public std::enable_shared_from_this<NodeSyncCo
   }
 
   void HandleFailure() {
-    if(finished_) {
+    if (finished_) {
       return;
     }
     finished_ = true;

@@ -89,7 +89,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler, public syncing::
     rpc::ResourcesData resources;
     resources.ParseFromString(message.sync_message());
     NodeID node_id = NodeID::FromBinary(resources.node_id());
-    RAY_LOG(INFO) << "DBG: MSG RECEIVED: " << node_id.Hex() << " " << message.component_id();
+    RAY_LOG(INFO) << "DBG: MSG RECEIVED: " << node_id.Hex() << " "
+                  << message.component_id();
     if (message.component_id() == syncing::RayComponentId::SCHEDULER) {
       if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
         UpdateNodeNormalTaskResources(node_id, resources);

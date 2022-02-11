@@ -63,8 +63,8 @@ class RemoteNodes : public Receiver {
     int state = *reinterpret_cast<const int *>(msg.sync_message().data());
     auto iter = infos_.find(msg.node_id());
     if (iter == infos_.end() || iter->second.second < version) {
-      RAY_LOG(INFO) << "Update node " << ray::NodeID::FromBinary(msg.node_id()).Hex() << " to (" << state
-                    << ", v:" << version << ")";
+      RAY_LOG(INFO) << "Update node " << ray::NodeID::FromBinary(msg.node_id()).Hex()
+                    << " to (" << state << ", v:" << version << ")";
       infos_[msg.node_id()] = std::make_pair(state, version);
     }
   }
