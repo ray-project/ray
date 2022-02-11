@@ -218,10 +218,12 @@ class RayServeReplica:
         self.rwlock = aiorwlock.RWLock()
 
         user_health_check = getattr(_callable, HEALTH_CHECK_METHOD, None)
-        if callable(user_health_check):
-            self.user_health_check = sync_to_async(user_health_check)
-        else:
-            self.user_health_check = lambda: None
+        if not callable(user_health_check):
+
+            def user_health_check(self):
+                pass
+
+        self.user_health_check = sync_to_async(user_health_check)
 
         self.num_ongoing_requests = 0
 
