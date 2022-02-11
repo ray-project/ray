@@ -21,6 +21,7 @@ from ray.train.checkpoint import (
     CheckpointStrategy,
     TuneCheckpointManager,
     CheckpointManager,
+    load_checkpoint_from_path,
 )
 from ray.train.constants import (
     TUNE_INSTALLED,
@@ -466,8 +467,8 @@ class Trainer:
         Default behavior is to return the most recent checkpoint.
 
         Returns ``None`` if ``run()`` has not been called or if
-        ``train.checkpoint()`` has not been called from ``train_func`` within
-        the most recent call to ``run``.
+        ``train.save_checkpoint()`` has not been called from ``train_func``
+        within the most recent call to ``run``.
         """
         return self.checkpoint_manager.best_checkpoint_path
 
@@ -481,6 +482,25 @@ class Trainer:
         ``train.checkpoint()`` has not been called from ``train_func``.
         """
         return self.checkpoint_manager.latest_checkpoint
+
+    @property
+    def best_checkpoint(self) -> Optional[Dict]:
+        """The best saved checkpoint.
+
+        Returns ``None`` if ``run()`` has not been called or if
+        ``train.save_checkpoint()`` has not been called from ``train_func``
+        within the most recent call to ``run``.
+        """
+        best_checkpoint_path = self.best_checkpoint_path
+        if best_checkpoint_path is None:
+            return None
+        else:
+            return load_checkpoint_from_path(best_checkpoint_path)
+
+    @staticmethod
+    def load_checkpoint(path: Path) -> Dict:
+        """Convenince method to load a checkpoint from path."""
+        return load_checkpoint_from_path(path)
 
     def shutdown(self):
         """Shuts down the training execution service."""

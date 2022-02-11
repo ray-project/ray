@@ -373,6 +373,7 @@ def test_checkpoint(ray_start_2_cpus):
     trainer = Trainer(config, num_workers=2)
     trainer.start()
     trainer.run(train_func)
+    assert trainer.latest_checkpoint == trainer.best_checkpoint
     checkpoint = trainer.latest_checkpoint
 
     assert checkpoint is not None
@@ -388,6 +389,7 @@ def test_checkpoint(ray_start_2_cpus):
         return 1
 
     trainer.run(train_func_checkpoint, checkpoint=checkpoint)
+    assert trainer.latest_checkpoint == trainer.best_checkpoint
     checkpoint = trainer.latest_checkpoint
 
     assert checkpoint is not None
@@ -496,6 +498,7 @@ def test_persisted_checkpoint(ray_start_2_cpus, logdir):
     assert trainer.best_checkpoint_path.is_file()
     assert trainer.best_checkpoint_path.name == f"checkpoint_{2:06d}"
     assert trainer.best_checkpoint_path.parent.name == "checkpoints"
+    assert trainer.best_checkpoint == trainer.latest_checkpoint
     latest_checkpoint = trainer.latest_checkpoint
 
     def validate():
@@ -529,6 +532,8 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
     assert trainer.latest_checkpoint_dir.is_dir()
     assert trainer.best_checkpoint_path.is_file()
     assert trainer.best_checkpoint_path.name == f"checkpoint_{1:06d}"
+    assert trainer.latest_checkpoint == {"loss": 5}
+    assert trainer.best_checkpoint == {"loss": 3}
 
     checkpoint_dir = trainer.latest_checkpoint_dir
     file_names = [f.name for f in checkpoint_dir.iterdir()]
