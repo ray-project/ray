@@ -444,7 +444,7 @@ class Node:
                 x.strip() for x in required_cpu_instruction_sets_str.split(",")
             ]
             if len(required_cpu_instruction_sets) > 0 \
-                and platform.system() != ray_constants.WINDOWS_SYSTEM:
+                    and platform.system() != ray_constants.WINDOWS_SYSTEM:
                 from cpuinfo import get_cpu_info
                 cpu_info = get_cpu_info()
                 env_resources.update({
