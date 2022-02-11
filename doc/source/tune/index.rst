@@ -26,7 +26,7 @@ Tune integrates with a wide range of hyperparameter optimization tools, like
 
     To run this example, install the following: ``pip install "ray[tune]"``.
 
-    In this quick-start example you _minimize_ a simple function of the form ``f(x) = a**2 + b``, our `objective` function.
+    In this quick-start example you `minimize` a simple function of the form ``f(x) = a**2 + b``, our `objective` function.
     The closer ``a`` is to zero and the smaller ``b`` is, the smaller the total value of ``f(x)``.
     We will define a so-called `search space` for  ``a`` and ``b`` and let Ray Tune explore the space for good values.
 
