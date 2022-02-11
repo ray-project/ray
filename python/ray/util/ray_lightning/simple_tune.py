@@ -8,7 +8,7 @@ from torchvision import transforms
 import pytorch_lightning as pl
 
 from ray.util.ray_lightning import RayPlugin
-from ray.util.ray_lightning.tune import TuneReportCallback, get_tune_ddp_resources
+from ray.util.ray_lightning.tune import TuneReportCallback, get_tune_resources
 
 num_cpus_per_actor = 1
 num_workers = 1
@@ -70,7 +70,7 @@ def main():
         num_samples=1,
         metric="loss",
         mode="min",
-        resources_per_trial=get_tune_ddp_resources(
+        resources_per_trial=get_tune_resources(
             num_workers=num_workers, cpus_per_worker=num_cpus_per_actor
         ),
     )
