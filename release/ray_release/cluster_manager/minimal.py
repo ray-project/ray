@@ -231,14 +231,21 @@ class MinimalClusterManager(ClusterManager):
     def build_configs(self, timeout: float = 30.0):
         try:
             self.create_cluster_compute()
+        except AssertionError as e:
+            # If already exists, ignore
+            logger.warning(e)
         except ClusterComputeCreateError as e:
             raise e
         except Exception as e:
             raise ClusterComputeCreateError(
                 f"Unexpected cluster compute build error: {e}"
             ) from e
+
         try:
             self.create_cluster_env()
+        except AssertionError as e:
+            # If already exists, ignore
+            logger.warning(e)
         except ClusterEnvCreateError as e:
             raise e
         except Exception as e:
@@ -248,6 +255,9 @@ class MinimalClusterManager(ClusterManager):
 
         try:
             self.build_cluster_env(timeout=timeout)
+        except AssertionError as e:
+            # If already exists, ignore
+            logger.warning(e)
         except (ClusterEnvBuildError, ClusterEnvBuildTimeout) as e:
             raise e
         except Exception as e:

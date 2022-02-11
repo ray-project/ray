@@ -62,6 +62,12 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
     help="Cluster ID of existing cluster to be re-used.",
 )
 @click.option(
+    "--cluster-env-id",
+    default=None,
+    type=str,
+    help="Cluster env ID of existing cluster env to be re-used.",
+)
+@click.option(
     "--no-terminate",
     default=False,
     type=bool,
@@ -75,6 +81,7 @@ def main(
     report: bool = False,
     ray_wheels: Optional[str] = None,
     cluster_id: Optional[str] = None,
+    cluster_env_id: Optional[str] = None,
     no_terminate: bool = False,
 ):
     test_collection_file = test_collection_file or os.path.join(
@@ -117,6 +124,7 @@ def main(
         ray_wheels_url=ray_wheels_url,
         reporters=reporters,
         cluster_id=cluster_id,
+        cluster_env_id=cluster_env_id,
         no_terminate=no_terminate,
     )
 

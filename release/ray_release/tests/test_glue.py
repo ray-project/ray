@@ -2,7 +2,7 @@ import os
 import shutil
 import tempfile
 import unittest
-from typing import Type, Callable, Optional
+from typing import Type, Callable
 from unittest.mock import patch
 
 from ray_release.alerts.handle import result_to_handle_map
@@ -225,15 +225,13 @@ class GlueTest(unittest.TestCase):
 
         self.mock_alert_return = None
 
-    def _run(self, result: Result, reporter: Optional[Reporter] = None):
-        reporters = [reporter] if reporter else None
-
+    def _run(self, result: Result, **kwargs):
         run_release_test(
             test=self.test,
             anyscale_project=self.anyscale_project,
             result=result,
             ray_wheels_url=self.ray_wheels_url,
-            reporters=reporters,
+            **kwargs
         )
 
     def testInvalidClusterEnv(self):
@@ -314,8 +312,22 @@ class GlueTest(unittest.TestCase):
         self.assertEqual(result.return_code, ExitCode.LOCAL_ENV_SETUP_ERROR.value)
 
     def testInvalidClusterIdOverride(self):
-        # get_cluster_name() fails
-        pass
+        result = Result()
+
+        self._succeed_until("driver_setup")
+
+        self.sdk.returns["get_cluster_environment"] = None
+
+        with self.assertRaises(ClusterEnvCreateError):
+            self._run(result, cluster_env_id="existing")
+
+        self.sdk.returns["get_cluster_environment"] = APIDict(
+            result=APIDict(config_json={"overridden": True})
+        )
+
+        with self.assertRaises(Exception) as cm:  # Fail somewhere else
+            self._run(result, cluster_env_id="existing")
+            self.assertNotIsInstance(cm.exception, ClusterEnvCreateError)
 
     def testBuildConfigFailsClusterCompute(self):
         result = Result()
@@ -512,7 +524,7 @@ class GlueTest(unittest.TestCase):
                 raise RuntimeError
 
         with self.assertLogs(logger, "ERROR") as cm:
-            self._run(result, reporter=FailReporter())
+            self._run(result, reporters=[FailReporter()])
             self.assertTrue(any("Error reporting results" in o for o in cm.output))
 
         self.assertEqual(result.return_code, ExitCode.SUCCESS.value)

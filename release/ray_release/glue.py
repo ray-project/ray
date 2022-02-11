@@ -3,7 +3,7 @@ import time
 from typing import Optional, List
 
 from ray_release.alerts.handle import handle_result
-from ray_release.anyscale_util import get_cluster_name
+from ray_release.anyscale_util import get_cluster_name, get_cluster_env
 from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.client_runner import ClientRunner
@@ -29,6 +29,7 @@ from ray_release.exception import (
     TestCommandError,
     TestCommandTimeout,
     LocalEnvSetupError,
+    ClusterEnvCreateError,
 )
 from ray_release.file_manager.remote_task import RemoteTaskFileManager
 from ray_release.file_manager.session_controller import SessionControllerFileManager
@@ -66,6 +67,7 @@ def run_release_test(
     reporters: Optional[List[Reporter]] = None,
     smoke_test: bool = False,
     cluster_id: Optional[str] = None,
+    cluster_env_id: Optional[str] = None,
     no_terminate: bool = False,
 ) -> Result:
     validate_test(test)
@@ -109,6 +111,15 @@ def run_release_test(
         cluster_env = load_test_cluster_env(test, ray_wheels_url=ray_wheels_url)
         cluster_compute = load_test_cluster_compute(test)
 
+        if cluster_env_id:
+            try:
+                cluster_env = get_cluster_env(cluster_env_id, sdk=cluster_manager.sdk)
+            except Exception as e:
+                raise ClusterEnvCreateError(
+                    f"Could not get existing overridden cluster environment "
+                    f"{cluster_env_id}: {e}"
+                ) from e
+
         cluster_manager.set_cluster_env(cluster_env)
         cluster_manager.set_cluster_compute(cluster_compute)
 
@@ -129,6 +140,10 @@ def run_release_test(
             cluster_manager.cluster_name = get_cluster_name(cluster_id)
         else:
             build_timeout = test["run"].get("build_timeout", DEFAULT_BUILD_TIMEOUT)
+
+            if cluster_env_id:
+                cluster_manager.cluster_env_id = cluster_env_id
+
             cluster_manager.build_configs(timeout=build_timeout)
 
             cluster_timeout = test["run"].get(

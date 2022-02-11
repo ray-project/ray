@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Dict
 
 from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
@@ -46,3 +46,10 @@ def get_cluster_name(cluster_id: str, sdk: Optional[AnyscaleSDK] = None) -> str:
 
     result = sdk.get_cluster(cluster_id)
     return result.result.name
+
+
+def get_cluster_env(cluster_env_id: str, sdk: Optional[AnyscaleSDK] = None) -> Dict:
+    sdk = sdk or get_anyscale_sdk()
+
+    result = sdk.get_cluster_environment(cluster_env_id)
+    return result.result.config_json
