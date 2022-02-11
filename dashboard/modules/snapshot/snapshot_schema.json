@@ -71,6 +71,40 @@
                 }
               }
             },
+            "job_submission": {
+              "type": "object",
+              "patternProperties": {
+                "[0-9a-f]*": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": ["string", "null"]
+                    },
+                    "status_message": {
+                      "type": ["string", "null"]
+                    },
+                    "startTime": {
+                      "type": "integer"
+                    },
+                    "endTime": {
+                      "type": ["integer", "null"]
+                    },
+                    "namespace": {
+                      "type": ["string", "null"]
+                    },
+                    "metadata": {
+                      "type": "object"
+                    },
+                    "runtimeEnv": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ]
+                }
+              }
+            },
             "actors": {
               "type": "object",
               "patternProperties": {

@@ -134,22 +134,16 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         jobs = {}
 
-        runtime_env = {}  # TODO
-        start_time = None  # TODO
-        end_time = None  # TODO
-        metadata = None  # TODO
-        namespace = None  # TODO
-
-        for job_id, status in self._job_status_client.get_all_jobs().items():
+        for job_id, job_data in self._job_status_client.get_all_jobs().items():
+            status_info = job_data.status_info
             entry = {
-                "job_id": job_id,
-                "status": None if status is None else status.status,
-                "status_message": None if status is None else status.message,
-                "namespace": namespace,
-                "metadata": metadata,
-                "runtime_env": runtime_env,
-                "start_time": start_time,
-                "end_time": end_time,
+                "status": None if status_info is None else status_info.status,
+                "status_message": None if status_info is None else status_info.message,
+                "start_time": job_data.start_time,
+                "end_time": job_data.end_time,
+                "namespace": job_data.namespace,
+                "metadata": job_data.metadata,
+                "runtime_env": job_data.runtime_env,
             }
             jobs[job_id] = entry
 

@@ -3,6 +3,7 @@ from asyncio.tasks import FIRST_COMPLETED
 import os
 import json
 import logging
+import time
 import traceback
 import random
 import subprocess
@@ -15,6 +16,7 @@ from ray.exceptions import RuntimeEnvSetupError
 import ray.ray_constants as ray_constants
 from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
+    JobData,
     JobStatus,
     JobStatusInfo,
     JobStatusStorageClient,
@@ -300,8 +302,8 @@ class JobManager:
         Each will be added to self._running_jobs and reconciled.
         """
         all_jobs = self._status_client.get_all_jobs()
-        for job_id, status_info in all_jobs.items():
-            if not status_info.status.is_terminal():
+        for job_id, job_data in all_jobs.items():
+            if not job_data.status_info.status.is_terminal():
                 create_task(self._monitor_job(job_id))
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
@@ -440,7 +442,13 @@ class JobManager:
             raise RuntimeError(f"Job {job_id} already exists.")
 
         logger.info(f"Starting job with job_id: {job_id}")
-        self._status_client.put_status(job_id, JobStatus.PENDING)
+        job_data = JobData(
+            JobStatusInfo(JobStatus.PENDING),
+            start_time=int(time.time()),
+            metadata=metadata,
+            runtime_env=runtime_env,
+        )
+        self._status_client.put_data(job_id, job_data)
 
         # Wait for the actor to start up asynchronously so this call always
         # returns immediately and we can catch errors with the actor starting

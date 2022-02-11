@@ -1,5 +1,6 @@
 from dataclasses import dataclass, replace
 from enum import Enum
+import time
 from typing import Any, Dict, Optional, Tuple, Union
 import pickle
 
@@ -60,6 +61,8 @@ class JobStatusInfo:
 @dataclass
 class JobData:
     status_info: JobStatusInfo
+    start_time: int
+    end_time: int = None
     metadata: Optional[Dict[str, str]] = None
     runtime_env: Optional[Dict[str, Any]] = None
     namespace: Optional[str] = None
@@ -94,7 +97,7 @@ class JobStatusStorageClient:
             return pickle.loads(pickled_data)
 
     def put_status(self, job_id: str, status: Union[JobStatus, JobStatusInfo]):
-        """Put or update job status without modifying other the data for this job."""
+        """Put or update job status.  Sets end_time to current time if status is terminal."""
 
         if isinstance(status, JobStatus):
             status_info = JobStatusInfo(status=status)
@@ -106,10 +109,18 @@ class JobStatusStorageClient:
         old_data = self.get_data(job_id)
 
         if old_data is not None:
+            if (
+                status_info.status != old_data.status_info.status
+                and old_data.status_info.status.is_terminal()
+            ):
+                assert False, "Attempted to change job status from a terminal state."
             # NOTE(architkulkarni): dataclass.replace calls __post_init__.
             new_data = replace(old_data, status_info=status_info)
         else:
             new_data = JobData(status_info=status_info)
+
+        if status_info.status.is_terminal():
+            new_data.end_time = int(time.time())
 
         self.put_data(job_id, new_data)
 
@@ -120,10 +131,10 @@ class JobStatusStorageClient:
         else:
             return job_data.status_info
 
-    def get_all_jobs(self) -> Dict[str, JobStatusInfo]:
+    def get_all_jobs(self) -> Dict[str, JobData]:
         raw_job_ids = _internal_kv_list(self.JOB_DATA_KEY_PREFIX)
         job_ids = [job_id.decode() for job_id in raw_job_ids]
-        return {job_id: self.get_status(job_id) for job_id in job_ids}
+        return {job_id: self.get_data(job_id) for job_id in job_ids}
 
 
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
