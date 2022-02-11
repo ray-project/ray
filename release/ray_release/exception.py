@@ -41,6 +41,10 @@ class ClusterManagerError(ReleaseTestError):
     exit_code = ExitCode.CLUSTER_RESOURCE_ERROR
 
 
+class ClusterEnvCreateError(ClusterManagerError):
+    exit_code = ExitCode.CLUSTER_RESOURCE_ERROR
+
+
 class ClusterEnvBuildError(ClusterManagerError):
     exit_code = ExitCode.CLUSTER_ENV_BUILD_ERROR
 
@@ -49,7 +53,7 @@ class ClusterEnvBuildTimeout(ClusterManagerError):
     exit_code = ExitCode.CLUSTER_ENV_BUILD_TIMEOUT
 
 
-class ClusterComputeBuildError(ClusterManagerError):
+class ClusterComputeCreateError(ClusterManagerError):
     exit_code = ExitCode.CLUSTER_RESOURCE_ERROR
 
 
@@ -58,7 +62,7 @@ class ClusterCreationError(ClusterManagerError):
 
 
 class ClusterStartupError(ClusterManagerError):
-    exit_code = ExitCode.CLUSTER_RESOURCE_ERROR
+    exit_code = ExitCode.CLUSTER_STARTUP_ERROR
 
 
 class ClusterStartupTimeout(ClusterManagerError):

@@ -3,7 +3,8 @@ import time
 from ray_release.exception import (
     ClusterEnvBuildError,
     ClusterEnvBuildTimeout,
-    ClusterComputeBuildError,
+    ClusterEnvCreateError,
+    ClusterComputeCreateError,
 )
 from ray_release.logger import logger
 from ray_release.cluster_manager.cluster_manager import ClusterManager
@@ -74,7 +75,7 @@ class MinimalClusterManager(ClusterManager):
                         time.sleep(10)
                         return self.create_cluster_env(_repeat=False)
 
-                    raise ClusterEnvBuildError("Could not create cluster env.") from e
+                    raise ClusterEnvCreateError("Could not create cluster env.") from e
 
                 logger.info(f"Cluster env created with ID {self.cluster_env_id}")
 
@@ -217,7 +218,7 @@ class MinimalClusterManager(ClusterManager):
                         time.sleep(10)
                         return self.create_cluster_compute(_repeat=False)
 
-                    raise ClusterComputeBuildError(
+                    raise ClusterComputeCreateError(
                         "Could not create cluster compute"
                     ) from e
 
@@ -230,16 +231,24 @@ class MinimalClusterManager(ClusterManager):
     def build_configs(self, timeout: float = 30.0):
         try:
             self.create_cluster_compute()
-        except ClusterComputeBuildError as e:
+        except ClusterComputeCreateError as e:
             raise e
         except Exception as e:
-            raise ClusterComputeBuildError(
+            raise ClusterComputeCreateError(
                 f"Unexpected cluster compute build error: {e}"
             ) from e
         try:
             self.create_cluster_env()
+        except ClusterEnvCreateError as e:
+            raise e
+        except Exception as e:
+            raise ClusterEnvCreateError(
+                f"Unexpected cluster env create error: {e}"
+            ) from e
+
+        try:
             self.build_cluster_env(timeout=timeout)
-        except ClusterEnvBuildError as e:
+        except (ClusterEnvBuildError, ClusterEnvBuildTimeout) as e:
             raise e
         except Exception as e:
             raise ClusterEnvBuildError(

@@ -12,7 +12,13 @@ from ray_release.config import Test
 from ray_release.exception import (
     ReleaseTestConfigError,
     LocalEnvSetupError,
-    ClusterComputeBuildError,
+    ClusterComputeCreateError,
+    ClusterEnvBuildError,
+    ClusterEnvBuildTimeout,
+    ClusterEnvCreateError,
+    ClusterCreationError,
+    ClusterStartupError,
+    ClusterStartupTimeout,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.glue import (
@@ -121,6 +127,14 @@ class EndToEndTest(unittest.TestCase):
     def tearDown(self) -> None:
         shutil.rmtree(self.tempdir)
 
+    def _run(self, result: Result):
+        run_release_test(
+            test=self.test,
+            anyscale_project=self.anyscale_project,
+            result=result,
+            ray_wheels_url=self.ray_wheels_url,
+        )
+
     def testConfigInvalid(self):
         # Missing keys
         # Unknown command runner
@@ -134,45 +148,25 @@ class EndToEndTest(unittest.TestCase):
             "ray_release.glue.load_test_cluster_env",
             _fail_on_call(ReleaseTestConfigError),
         ), self.assertRaises(ReleaseTestConfigError):
-            run_release_test(
-                test=self.test,
-                anyscale_project=self.anyscale_project,
-                result=result,
-                ray_wheels_url=self.ray_wheels_url,
-            )
+            self._run(result)
         self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
 
         # Fails because file not found
         os.unlink(os.path.join(self.tempdir, "cluster_env.yaml"))
         with self.assertRaisesRegex(ReleaseTestConfigError, "Path not found"):
-            run_release_test(
-                test=self.test,
-                anyscale_project=self.anyscale_project,
-                result=result,
-                ray_wheels_url=self.ray_wheels_url,
-            )
+            self._run(result)
         self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
 
         # Fails because invalid jinja template
         self.writeClusterEnv("{{ INVALID")
         with self.assertRaisesRegex(ReleaseTestConfigError, "yaml template"):
-            run_release_test(
-                test=self.test,
-                anyscale_project=self.anyscale_project,
-                result=result,
-                ray_wheels_url=self.ray_wheels_url,
-            )
+            self._run(result)
         self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
 
         # Fails because invalid json
         self.writeClusterEnv("{'test': true, 'fail}")
         with self.assertRaisesRegex(ReleaseTestConfigError, "quoted scalar"):
-            run_release_test(
-                test=self.test,
-                anyscale_project=self.anyscale_project,
-                result=result,
-                ray_wheels_url=self.ray_wheels_url,
-            )
+            self._run(result)
         self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
 
     def testInvalidClusterCompute(self):
@@ -182,45 +176,25 @@ class EndToEndTest(unittest.TestCase):
             "ray_release.glue.load_test_cluster_compute",
             _fail_on_call(ReleaseTestConfigError),
         ), self.assertRaises(ReleaseTestConfigError):
-            run_release_test(
-                test=self.test,
-                anyscale_project=self.anyscale_project,
-                result=result,
-                ray_wheels_url=self.ray_wheels_url,
-            )
+            self._run(result)
         self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
 
         # Fails because file not found
         os.unlink(os.path.join(self.tempdir, "cluster_compute.yaml"))
         with self.assertRaisesRegex(ReleaseTestConfigError, "Path not found"):
-            run_release_test(
-                test=self.test,
-                anyscale_project=self.anyscale_project,
-                result=result,
-                ray_wheels_url=self.ray_wheels_url,
-            )
+            self._run(result)
         self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
 
         # Fails because invalid jinja template
         self.writeClusterCompute("{{ INVALID")
         with self.assertRaisesRegex(ReleaseTestConfigError, "yaml template"):
-            run_release_test(
-                test=self.test,
-                anyscale_project=self.anyscale_project,
-                result=result,
-                ray_wheels_url=self.ray_wheels_url,
-            )
+            self._run(result)
         self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
 
         # Fails because invalid json
         self.writeClusterCompute("{'test': true, 'fail}")
         with self.assertRaisesRegex(ReleaseTestConfigError, "quoted scalar"):
-            run_release_test(
-                test=self.test,
-                anyscale_project=self.anyscale_project,
-                result=result,
-                ray_wheels_url=self.ray_wheels_url,
-            )
+            self._run(result)
 
         self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
 
@@ -231,12 +205,7 @@ class EndToEndTest(unittest.TestCase):
             LocalEnvSetupError
         )
         with self.assertRaises(LocalEnvSetupError):
-            run_release_test(
-                test=self.test,
-                anyscale_project=self.anyscale_project,
-                result=result,
-                ray_wheels_url=self.ray_wheels_url,
-            )
+            self._run(result)
         self.assertEqual(result.return_code, ExitCode.LOCAL_ENV_SETUP_ERROR.value)
 
     def testInvalidClusterIdOverride(self):
@@ -246,40 +215,93 @@ class EndToEndTest(unittest.TestCase):
     def testBuildConfigFailsClusterCompute(self):
         result = Result()
 
+        # These commands should succeed
         self.command_runner_return["prepare_local_env"] = None
 
         # Fails because API response faulty
-        with self.assertRaisesRegex(ClusterComputeBuildError, "Unexpected"):
-            run_release_test(
-                test=self.test,
-                anyscale_project=self.anyscale_project,
-                result=result,
-                ray_wheels_url=self.ray_wheels_url,
-            )
+        with self.assertRaisesRegex(ClusterComputeCreateError, "Unexpected"):
+            self._run(result)
         self.assertEqual(result.return_code, ExitCode.CLUSTER_RESOURCE_ERROR.value)
 
+        # Fails for random cluster compute reason
         self.cluster_manager_return["create_cluster_compute"] = _fail_on_call(
-            ClusterComputeBuildError, "Known"
+            ClusterComputeCreateError, "Known"
         )
-        with self.assertRaisesRegex(ClusterComputeBuildError, "Known"):
-            run_release_test(
-                test=self.test,
-                anyscale_project=self.anyscale_project,
-                result=result,
-                ray_wheels_url=self.ray_wheels_url,
-            )
+        with self.assertRaisesRegex(ClusterComputeCreateError, "Known"):
+            self._run(result)
         self.assertEqual(result.return_code, ExitCode.CLUSTER_RESOURCE_ERROR.value)
 
     def testBuildConfigFailsClusterEnv(self):
-        # Create cluster env fails
-        # Build cluster env fails
-        pass
+        result = Result()
+
+        # These commands should succeed
+        self.command_runner_return["prepare_local_env"] = None
+        self.cluster_manager_return["cluster_compute_id"] = "valid"
+        self.cluster_manager_return["create_cluster_compute"] = None
+
+        # Fails because API response faulty
+        with self.assertRaisesRegex(ClusterEnvCreateError, "Unexpected"):
+            self._run(result)
+        self.assertEqual(result.return_code, ExitCode.CLUSTER_RESOURCE_ERROR.value)
+
+        # Fails for random cluster env create reason
+        self.cluster_manager_return["create_cluster_env"] = _fail_on_call(
+            ClusterEnvCreateError, "Known"
+        )
+        with self.assertRaisesRegex(ClusterEnvCreateError, "Known"):
+            self._run(result)
+        self.assertEqual(result.return_code, ExitCode.CLUSTER_RESOURCE_ERROR.value)
+
+        # Now, succeed creation but fail on cluster env build
+        self.cluster_manager_return["cluster_env_id"] = "valid"
+        self.cluster_manager_return["create_cluster_env"] = None
+        self.cluster_manager_return["build_cluster_env"] = _fail_on_call(
+            ClusterEnvBuildError
+        )
+        with self.assertRaises(ClusterEnvBuildError):
+            self._run(result)
+        self.assertEqual(result.return_code, ExitCode.CLUSTER_ENV_BUILD_ERROR.value)
+
+        # Now, fail on cluster env timeout
+        self.cluster_manager_return["build_cluster_env"] = _fail_on_call(
+            ClusterEnvBuildTimeout
+        )
+        with self.assertRaises(ClusterEnvBuildTimeout):
+            self._run(result)
+        self.assertEqual(result.return_code, ExitCode.CLUSTER_ENV_BUILD_TIMEOUT.value)
 
     def testStartClusterFails(self):
-        pass
+        result = Result()
 
-    def testStartClusterTimeout(self):
-        pass
+        # These commands should succeed
+        self.command_runner_return["prepare_local_env"] = None
+        self.cluster_manager_return["cluster_compute_id"] = "valid"
+        self.cluster_manager_return["create_cluster_compute"] = None
+        self.cluster_manager_return["cluster_env_id"] = "valid"
+        self.cluster_manager_return["create_cluster_env"] = None
+        self.cluster_manager_return["cluster_env_build_id"] = "valid"
+        self.cluster_manager_return["build_cluster_env"] = None
+
+        # Fails because API response faulty
+        with self.assertRaises(ClusterCreationError):
+            self._run(result)
+        self.assertEqual(result.return_code, ExitCode.CLUSTER_RESOURCE_ERROR.value)
+
+        # Fail for random cluster startup reason
+        self.cluster_manager_return["start_cluster"] = _fail_on_call(
+            ClusterStartupError
+        )
+        with self.assertRaises(ClusterStartupError):
+            self._run(result)
+        self.assertEqual(result.return_code, ExitCode.CLUSTER_STARTUP_ERROR.value)
+
+        # Fail for cluster startup timeout
+        self.cluster_manager_return["start_cluster"] = _fail_on_call(
+            ClusterStartupTimeout
+        )
+        with self.assertRaises(ClusterStartupTimeout):
+            self._run(result)
+        self.assertEqual(result.return_code, ExitCode.CLUSTER_STARTUP_TIMEOUT.value)
 
     def testPrepareRemoteEnvFails(self):
         pass
