@@ -1,11 +1,6 @@
-import math
 import os
-import random
-import requests
 import shutil
-import time
 
-from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -17,22 +12,10 @@ from pytest_lazyfixture import lazy_fixture
 import ray
 
 from ray.tests.conftest import *  # noqa
-from ray.data.dataset import Dataset, _sliding_window
 from ray.data.datasource import DummyOutputDatasource
-from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
-from ray.data.impl.block_list import BlockList
-from ray.data.impl.stats import DatasetStats
-from ray.data.aggregate import AggregateFn, Count, Sum, Min, Max, Mean, Std
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import PARALLELIZE_META_FETCH_THRESHOLD
-from ray.data.extensions.tensor_extension import (
-    TensorArray,
-    TensorDtype,
-    ArrowTensorType,
-    ArrowTensorArray,
-)
-import ray.data.tests.util as util
 from ray.data.tests.conftest import *  # noqa
 
 
@@ -41,7 +24,6 @@ def maybe_pipeline(ds, enabled):
         return ds.window(blocks_per_window=1)
     else:
         return ds
-
 
 
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
