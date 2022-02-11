@@ -113,7 +113,7 @@ def test_failed_job_status(
     start_time_s = int(time.time())
     client = JobSubmissionClient(address)
     runtime_env = {"env_vars": {"RAY_TEST_456": "456"}}
-    metadata = {"789": "789"}
+    metadata = {"ray_test_789": "789"}
     job_id = client.submit_job(
         entrypoint=entrypoint_cmd, metadata=metadata, runtime_env=runtime_env
     )
