@@ -45,8 +45,9 @@ steps:
 
 - label: ":windows: Post-wheel-build Tests"
   commands:
-      - *prelude_commands
+    - *prelude_commands
     - export WINDOWS_WHEELS="1"
     - . ./ci/travis/ci.sh init
     - . ./ci/travis/ci.sh build
-    - . ./ci/travis/ci.sh test_post_wheel_build    
+    - . ./ci/travis/ci.sh test_post_wheel_build
+  
