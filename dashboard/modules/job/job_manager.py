@@ -18,8 +18,6 @@ from ray.actor import ActorHandle
 from ray.job_submission import JobStatus, JobStatusInfo
 from ray.dashboard.modules.job.common import (
     JobData,
-    JobStatus,
-    JobStatusInfo,
     JobStatusStorageClient,
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,

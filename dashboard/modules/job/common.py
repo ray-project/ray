@@ -97,7 +97,7 @@ class JobStatusStorageClient:
             return pickle.loads(pickled_data)
 
     def put_status(self, job_id: str, status: Union[JobStatus, JobStatusInfo]):
-        """Put or update job status.  Sets end_time to current time if status is terminal."""
+        """Puts or updates job status.  Sets end_time if status is terminal."""
 
         if isinstance(status, JobStatus):
             status_info = JobStatusInfo(status=status)
