@@ -71,7 +71,7 @@
                 }
               }
             },
-            "job_submission": {
+            "jobSubmission": {
               "type": "object",
               "patternProperties": {
                 "[0-9a-f]*": {
@@ -100,7 +100,8 @@
                     }
                   },
                   "required": [
-                    "status"
+                    "status",
+                    "startTime"
                   ]
                 }
               }
@@ -255,6 +256,7 @@
             "rayVersion",
             "rayCommit",
             "jobs",
+            "jobSubmission",
             "actors",
             "sessionName"
           ]
