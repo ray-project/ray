@@ -3,7 +3,6 @@ from enum import Enum
 import time
 from typing import Any, Dict, Optional, Tuple, Union
 import pickle
-import logging
 
 from ray import ray_constants
 from ray.experimental.internal_kv import (
@@ -21,8 +20,6 @@ JOB_NAME_METADATA_KEY = "job_name"
 
 # Version 0 -> 1: Added log streaming and changed behavior of job logs cli.
 CURRENT_VERSION = "1"
-
-logger = logging.getLogger(__name__)
 
 
 class JobStatus(str, Enum):
@@ -90,17 +87,11 @@ class JobDataStorageClient:
         )
 
     def get_data(self, job_id: str) -> Optional[JobData]:
-        logger.error("CALLED GET DATA " + str(job_id))
-        logger.error(
-            "KV LIST FROM GET DATA: "
-            + str(_internal_kv_list("", namespace=ray_constants.KV_NAMESPACE_JOB))
-        )
         # raise ValueError
         pickled_data = _internal_kv_get(
             self.JOB_DATA_KEY.format(job_id=job_id),
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
-        logger.error("PICKLED DATA: " + str(pickled_data))
         if pickled_data is None:
             return None
         else:
@@ -143,12 +134,6 @@ class JobDataStorageClient:
     def get_all_jobs(self) -> Dict[str, JobData]:
         raw_job_ids_with_prefixes = _internal_kv_list(
             self.JOB_DATA_KEY_PREFIX, namespace=ray_constants.KV_NAMESPACE_JOB
-        )
-        print("ALL JOB IDS:  ", raw_job_ids_with_prefixes)
-        logger.error("ALL JOB IDS: " + str(raw_job_ids_with_prefixes))
-        logger.error(
-            "ALL INTERNAL KV: "
-            + str(_internal_kv_list("", namespace=ray_constants.KV_NAMESPACE_JOB))
         )
         job_ids_with_prefixes = [
             job_id.decode() for job_id in raw_job_ids_with_prefixes
