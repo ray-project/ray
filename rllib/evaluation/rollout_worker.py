@@ -490,7 +490,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         if self.env is not None:
             # Validate environment (general validation function).
-            check_env(env_creator(copy.deepcopy(self.env_context)))
+            check_env(self.env)
             # Custom validation function given.
             if validate_env is not None:
                 validate_env(self.env, self.env_context)

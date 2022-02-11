@@ -87,6 +87,7 @@ class TestDDPG(unittest.TestCase):
         # Test against all frameworks.
         for _ in framework_iterator(core_config):
             config = core_config.copy()
+            config["seed"] = 42
             # Default OUNoise setup.
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             # Setting explore=False should always return the same action.
@@ -142,6 +143,7 @@ class TestDDPG(unittest.TestCase):
         """Tests DDPG loss function results across all frameworks."""
         config = ddpg.DEFAULT_CONFIG.copy()
         # Run locally.
+        config["seed"] = 42
         config["num_workers"] = 0
         config["learning_starts"] = 0
         config["twin_q"] = True
