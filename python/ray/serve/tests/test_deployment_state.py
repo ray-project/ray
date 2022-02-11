@@ -1607,12 +1607,14 @@ def test_health_check(mock_deployment_state):
         total=2,
         by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STOPPING, 1)],
     )
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UNHEALTHY
 
     replica = deployment_state._replicas.get(states=[ReplicaState.STOPPING])[0]
     replica._actor.set_done_stopping()
 
     deployment_state.update()
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UNHEALTHY
 
     deployment_state.update()
     check_counts(
@@ -1623,9 +1625,138 @@ def test_health_check(mock_deployment_state):
 
     replica = deployment_state._replicas.get(states=[ReplicaState.STARTING])[0]
     replica._actor.set_ready()
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UNHEALTHY
 
     deployment_state.update()
     check_counts(deployment_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+
+
+def test_update_while_unhealthy(mock_deployment_state):
+    deployment_state, timer = mock_deployment_state
+
+    b_info_1, b_version_1 = deployment_info(num_replicas=2, version="1")
+    updating = deployment_state.deploy(b_info_1)
+    assert updating
+
+    deployment_state.update()
+    check_counts(deployment_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+
+    for replica in deployment_state._replicas.get():
+        replica._actor.set_ready()
+        # Health check shouldn't be called until it's ready.
+        assert not replica._actor.health_check_called
+
+    # Check that the new replicas have started.
+    deployment_state.update()
+    check_counts(deployment_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    deployment_state.update()
+    for replica in deployment_state._replicas.get():
+        # Health check shouldn't be called until it's ready.
+        assert replica._actor.health_check_called
+
+    # Mark one replica unhealthy. It should be stopped.
+    deployment_state._replicas.get()[0]._actor.set_unhealthy()
+    deployment_state.update()
+    check_counts(
+        deployment_state,
+        total=2,
+        by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STOPPING, 1)],
+    )
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UNHEALTHY
+
+    replica = deployment_state._replicas.get(states=[ReplicaState.STOPPING])[0]
+    replica._actor.set_done_stopping()
+
+    deployment_state.update()
+    check_counts(deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UNHEALTHY
+
+    # Now deploy a new version (e.g., a rollback). This should update the status
+    # to UPDATING and then it should eventually become healthy.
+    b_info_2, b_version_2 = deployment_info(num_replicas=2, version="2")
+    updating = deployment_state.deploy(b_info_2)
+    assert updating
+
+    deployment_state.update()
+    check_counts(
+        deployment_state,
+        version=b_version_1,
+        total=1,
+        by_state=[(ReplicaState.RUNNING, 1)],
+    )
+    check_counts(
+        deployment_state,
+        version=b_version_2,
+        total=1,
+        by_state=[(ReplicaState.STARTING, 1)],
+    )
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+
+    # Mark new version replica as ready.
+    replica = deployment_state._replicas.get(states=[ReplicaState.STARTING])[0]
+    replica._actor.set_ready()
+
+    # Should still be UPDATING, then old replica starts to get torn down.
+    deployment_state.update()
+    check_counts(
+        deployment_state,
+        version=b_version_1,
+        total=1,
+        by_state=[(ReplicaState.RUNNING, 1)],
+    )
+    check_counts(
+        deployment_state,
+        version=b_version_2,
+        total=1,
+        by_state=[(ReplicaState.RUNNING, 1)],
+    )
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+
+    deployment_state.update()
+    check_counts(
+        deployment_state,
+        version=b_version_1,
+        total=1,
+        by_state=[(ReplicaState.STOPPING, 1)],
+    )
+    check_counts(
+        deployment_state,
+        version=b_version_2,
+        total=1,
+        by_state=[(ReplicaState.RUNNING, 1)],
+    )
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+
+    replica = deployment_state._replicas.get(states=[ReplicaState.STOPPING])[0]
+    replica._actor.set_done_stopping()
+
+    deployment_state.update()
+    check_counts(deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+
+    deployment_state.update()
+    check_counts(
+        deployment_state,
+        total=2,
+        by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STARTING, 1)],
+    )
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+
+    replica = deployment_state._replicas.get(states=[ReplicaState.STARTING])[0]
+    replica._actor.set_ready()
+
+    deployment_state.update()
+    check_counts(
+        deployment_state,
+        version=b_version_2,
+        total=2,
+        by_state=[(ReplicaState.RUNNING, 2)],
+    )
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
 def _constructor_failure_loop_two_replica(deployment_state, num_loops):
