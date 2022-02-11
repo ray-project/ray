@@ -178,7 +178,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     V2 = V1.options(func_or_class=V2, version="2")
     V2.deploy(_blocking=False)
     with pytest.raises(TimeoutError):
-        client._wait_for_deployment_running(V2.name, timeout_s=0.1)
+        client._wait_for_deployment_healthy(V2.name, timeout_s=0.1)
     responses3, blocking3 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
 
     ray.kill(serve.api._global_client._controller, no_restart=False)
@@ -191,7 +191,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
 
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.
-    client._wait_for_deployment_running(V2.name)
+    client._wait_for_deployment_healthy(V2.name)
     make_nonblocking_calls({"2": 2}, num_returns=2)
 
 
