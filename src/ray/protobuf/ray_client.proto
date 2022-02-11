@@ -302,8 +302,9 @@ service RayletDriver {
   }
   rpc PrepRuntimeEnv(PrepRuntimeEnvRequest) returns (PrepRuntimeEnvResponse) {
   }
-  rpc PutObject(stream PutRequest) returns (PutResponse) {}
   rpc GetObject(GetRequest) returns (stream GetResponse) {}
+  rpc PutObject(PutRequest) returns (PutResponse) {
+  }
   rpc WaitObject(WaitRequest) returns (WaitResponse) {
   }
   rpc Schedule(ClientTask) returns (ClientTaskTicket) {

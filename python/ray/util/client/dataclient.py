@@ -109,6 +109,7 @@ def chunk_put(req: ray_client_pb2.DataRequest):
         start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
         end = min(total_size, (chunk_id + 1) * OBJECT_TRANSFER_CHUNK_SIZE)
         chunk = ray_client_pb2.PutRequest(
+            client_ref_id=req.put.client_ref_id,
             data=req.put.data[start:end],
             chunk_id=chunk_id,
             total_chunks=total_chunks,
@@ -197,7 +198,6 @@ class DataClient:
                     if callback is not None:
                         self.asyncio_waiting_data[req_id] = callback
             if req.WhichOneof("type") == "put":
-                print("HERE")
                 yield from chunk_put(req)
             else:
                 yield req
