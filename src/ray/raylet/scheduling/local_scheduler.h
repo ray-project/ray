@@ -394,8 +394,8 @@ class LocalScheduler {
 
   mutable InternalStats internal_stats_;
   friend class SchedulerResourceReporter;
-  friend class LocalSchedulerTest;
-  FRIEND_TEST(LocalSchedulerTest, FeasibleToNonFeasible);
+  friend class ClusterTaskManagerTest;
+  FRIEND_TEST(ClusterTaskManagerTest, FeasibleToNonFeasible);
 };
 }  // namespace raylet
 }  // namespace ray
