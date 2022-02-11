@@ -64,9 +64,9 @@ Status InMemoryStoreClient::AsyncGetAll(
     const MapCallback<std::string, std::string> &callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
-  std::unordered_map<std::string, std::string> result;
-  result.insert(table->records_.begin(), table->records_.end());
-  main_io_service_.post([result, callback]() { callback(result); },
+  auto result = std::make_shared<std::unordered_map<std::string, std::string>>();
+  result->insert(table->records_.begin(), table->records_.end());
+  main_io_service_.post([result, callback]() { callback(std::move(*result)); },
                         "GcsInMemoryStore.GetAll");
   return Status::OK();
 }
@@ -169,16 +169,16 @@ Status InMemoryStoreClient::AsyncGetByIndex(
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   auto iter = table->index_keys_.find(index_key);
-  std::unordered_map<std::string, std::string> result;
+  auto result = std::make_shared<std::unordered_map<std::string, std::string>>();
   if (iter != table->index_keys_.end()) {
     for (auto &key : iter->second) {
       auto kv_iter = table->records_.find(key);
       if (kv_iter != table->records_.end()) {
-        result[kv_iter->first] = kv_iter->second;
+        (*result)[kv_iter->first] = kv_iter->second;
       }
     }
   }
-  main_io_service_.post([result, callback]() { callback(result); },
+  main_io_service_.post([result, callback]() { callback(std::move(*result)); },
                         "GcsInMemoryStore.GetByIndex");
 
   return Status::OK();
