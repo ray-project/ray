@@ -270,7 +270,6 @@ def test_spread_scheduling_overrides_locality_aware_scheduling(ray_start_cluster
         _system_config={
             "worker_lease_timeout_milliseconds": 0,
             "max_direct_call_object_size": 0,
-            "locality_aware_leasing_enabled": True,
         },
     )
     ray.init(address=cluster.address)
