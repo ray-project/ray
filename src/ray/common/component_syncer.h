@@ -25,9 +25,8 @@ static constexpr size_t kComponentArraySize =
     static_cast<size_t>(ray::rpc::syncer::RayComponentId_ARRAYSIZE);
 
 struct Reporter {
-  virtual std::optional<RaySyncMessage> Snapshot(
-      uint64_t current_version,
-      RayComponentId component_id) const = 0;
+  virtual std::optional<RaySyncMessage> Snapshot(uint64_t current_version,
+                                                 RayComponentId component_id) const = 0;
   virtual ~Reporter() {}
 };
 
@@ -83,8 +82,9 @@ class RaySyncer {
 
     auto &current_message = cluster_view_[message.node_id()][message.component_id()];
     if (current_message && current_message->version() >= message.version()) {
-      RAY_LOG(DEBUG) << "DBG: Sync: " << "Skip this message: " << current_message->version()
-                    << " " << message.version();
+      RAY_LOG(DEBUG) << "DBG: Sync: "
+                     << "Skip this message: " << current_message->version() << " "
+                     << message.version();
       // We've already got the newer messages. Skip this.
       return;
     }
@@ -225,7 +225,7 @@ class NodeSyncContext : public T,
 
  protected:
   void SendNextMessage() {
-    while(consumed_messages_ > 0) {
+    while (consumed_messages_ > 0) {
       out_buffer_.pop_front();
       --consumed_messages_;
     }

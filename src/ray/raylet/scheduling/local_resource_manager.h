@@ -48,9 +48,7 @@ class LocalResourceManager {
       std::function<void(const NodeResources &)> resource_change_subscriber);
 
   int64_t GetNodeId() const { return local_node_id_; }
-  uint64_t Version() const {
-    return version_;
-  }
+  uint64_t Version() const { return version_; }
   /// Add a local resource that is available.
   ///
   /// \param resource_name: Resource which we want to update.

@@ -139,7 +139,9 @@ class HeartbeatSender {
   uint64_t last_heartbeat_at_ms_;
 };
 
-class NodeManager : public rpc::NodeManagerServiceHandler, public syncing::Receiver, public syncing::Reporter {
+class NodeManager : public rpc::NodeManagerServiceHandler,
+                    public syncing::Receiver,
+                    public syncing::Reporter {
  public:
   /// Create a node manager.
   ///
@@ -214,9 +216,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler, public syncing::Recei
   }
 
   std::optional<syncing::RaySyncMessage> Snapshot(
-      uint64_t current_version,
-      syncing::RayComponentId component_id) const {
-    if(component_id == syncing::RayComponentId::SCHEDULER) {
+      uint64_t current_version, syncing::RayComponentId component_id) const {
+    if (component_id == syncing::RayComponentId::SCHEDULER) {
       static uint64_t version = 0;
       syncing::RaySyncMessage msg;
       rpc::ResourcesData resource_data;
@@ -233,9 +234,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler, public syncing::Recei
       msg.set_sync_message(std::move(serialized_msg));
       return std::make_optional(std::move(msg));
     } else {
-      auto& local = cluster_resource_scheduler_->GetLocalResourceManager();
+      auto &local = cluster_resource_scheduler_->GetLocalResourceManager();
       RAY_LOG(DEBUG) << "DBG: ResourceReporting: LocalVersion:" << local.Version()
-                    << " SyncVersion:" << current_version;
+                     << " SyncVersion:" << current_version;
 
       if (local.Version() <= current_version) {
         return std::nullopt;
