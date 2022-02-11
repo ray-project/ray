@@ -17,12 +17,18 @@ class ExecutionPlan:
         self._in_stats = stats
         self._out_stats = None
         self._stages = []
-        stats.dataset_uuid = uuid.uuid4().hex
+        self._dataset_uuid = uuid.uuid4().hex
+        if not stats.dataset_uuid:
+            stats.dataset_uuid = self._dataset_uuid
 
     def with_stage(self, stage: "Stage"):
-        copy = ExecutionPlan(self._in_blocks, self._in_stats)
-        copy._stages = self._stages.copy()
-        copy._stages.append(stage)
+        if self._out_blocks:
+            copy = ExecutionPlan(self._out_blocks, self._out_stats)
+            copy._stages = [stage]
+        else:
+            copy = ExecutionPlan(self._in_blocks, self._in_stats)
+            copy._stages = self._stages.copy()
+            copy._stages.append(stage)
         return copy
 
     def initial_num_blocks(self) -> int:
@@ -82,6 +88,7 @@ class ExecutionPlan:
                 stats.dataset_uuid = uuid.uuid4().hex
             self._out_blocks = blocks
             self._out_stats = stats
+            self._out_stats.dataset_uuid = self._dataset_uuid
         return self._out_blocks
 
     def clear(self) -> None:
