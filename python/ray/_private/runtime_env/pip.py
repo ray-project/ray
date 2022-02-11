@@ -141,6 +141,8 @@ class PipProcessor:
             # https://github.com/edwardgeorge/virtualenv-clone
             # virtualenv-clone Usage:
             # virtualenv-clone /path/to/existing/venv /path/to/cloned/ven
+            # or
+            # python -m clonevirtualenv /path/to/existing/venv /path/to/cloned/ven
             create_venv_cmd = [
                 python,
                 "-m",
@@ -149,7 +151,7 @@ class PipProcessor:
                 virtualenv_path,
             ]
             logger.info(
-                "Colning virtualenv %s to %s", current_python_dir, virtualenv_path
+                "Cloning virtualenv %s to %s", current_python_dir, virtualenv_path
             )
         else:
             # virtualenv options:
@@ -181,7 +183,7 @@ class PipProcessor:
                 virtualenv_path,
             ]
             logger.info(
-                "Creating virtualenv at %s," " current python dir %s",
+                "Creating virtualenv at %s, current python dir %s",
                 virtualenv_path,
                 current_python_dir,
             )

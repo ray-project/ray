@@ -11,7 +11,6 @@ import json
 import time
 from pathlib import Path
 from unittest import mock
-from pytest_virtualenv import VirtualEnv
 
 import ray
 import ray.ray_constants as ray_constants
@@ -588,6 +587,9 @@ def runtime_env_disable_URI_cache():
 # Note: Can't use in virtualenv, this must be noted when testing locally.
 @pytest.fixture(scope="function")
 def cloned_virtualenv():
+    # Lazy import pytest_virtualenv,
+    # aviod import `pytest_virtualenv` in test case `Minimal install`
+    from pytest_virtualenv import VirtualEnv
 
     if PipProcessor._is_in_virtualenv():
         raise RuntimeError("Forbid the use of this fixture in virtualenv")

@@ -92,7 +92,7 @@ class TestGC:
 
 
 @pytest.mark.skipif(
-    "IN_VIRTUALENV" in os.environ or (os.environ.get("CI") and sys.platform != "linux"),
+    "IN_VIRTUALENV" in os.environ or sys.platform != "linux",
     reason="Requires PR wheels built in CI, so only run on linux CI machines.",
 )
 def test_run_in_virtualenv(cloned_virtualenv):
