@@ -3,7 +3,7 @@ import time
 from typing import Optional, List
 
 from ray_release.alerts.handle import handle_result
-from ray_release.anyscale_util import get_cluster_name, get_cluster_env
+from ray_release.anyscale_util import get_cluster_name
 from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.client_runner import ClientRunner
@@ -113,14 +113,22 @@ def run_release_test(
 
         if cluster_env_id:
             try:
-                cluster_env = get_cluster_env(cluster_env_id, sdk=cluster_manager.sdk)
+                cluster_manager.cluster_env_id = cluster_env_id
+                cluster_manager.build_cluster_env()
+                cluster_manager.fetch_build_info()
+                logger.info(
+                    "Using overridden cluster environment with ID "
+                    f"{cluster_env_id} and build ID "
+                    f"{cluster_manager.cluster_env_build_id}"
+                )
             except Exception as e:
                 raise ClusterEnvCreateError(
                     f"Could not get existing overridden cluster environment "
                     f"{cluster_env_id}: {e}"
                 ) from e
+        else:
+            cluster_manager.set_cluster_env(cluster_env)
 
-        cluster_manager.set_cluster_env(cluster_env)
         cluster_manager.set_cluster_compute(cluster_compute)
 
         driver_setup_script = test.get("driver_setup", None)

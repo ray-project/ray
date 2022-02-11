@@ -158,6 +158,12 @@ class MinimalClusterManager(ClusterManager):
 
         self.cluster_env_build_id = build_id
 
+    def fetch_build_info(self):
+        assert self.cluster_env_build_id
+
+        result = self.sdk.get_cluster_environment_build(self.cluster_env_build_id)
+        self.cluster_env = result.result.config_json
+
     def create_cluster_compute(self, _repeat: bool = True):
         assert self.cluster_compute_id is None
 
@@ -233,7 +239,7 @@ class MinimalClusterManager(ClusterManager):
             self.create_cluster_compute()
         except AssertionError as e:
             # If already exists, ignore
-            logger.warning(e)
+            logger.warning(str(e))
         except ClusterComputeCreateError as e:
             raise e
         except Exception as e:
@@ -245,7 +251,7 @@ class MinimalClusterManager(ClusterManager):
             self.create_cluster_env()
         except AssertionError as e:
             # If already exists, ignore
-            logger.warning(e)
+            logger.warning(str(e))
         except ClusterEnvCreateError as e:
             raise e
         except Exception as e:
@@ -257,7 +263,7 @@ class MinimalClusterManager(ClusterManager):
             self.build_cluster_env(timeout=timeout)
         except AssertionError as e:
             # If already exists, ignore
-            logger.warning(e)
+            logger.warning(str(e))
         except (ClusterEnvBuildError, ClusterEnvBuildTimeout) as e:
             raise e
         except Exception as e:
