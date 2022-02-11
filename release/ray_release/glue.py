@@ -28,12 +28,14 @@ from ray_release.exception import (
     PrepareCommandTimeout,
     TestCommandError,
     TestCommandTimeout,
+    LocalEnvSetupError,
 )
 from ray_release.file_manager.remote_task import RemoteTaskFileManager
 from ray_release.file_manager.session_controller import SessionControllerFileManager
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, handle_exception
+from ray_release.util import run_bash_script
 
 type_str_to_command_runner = {
     "command": SDKRunner,
@@ -110,7 +112,14 @@ def run_release_test(
         cluster_manager.set_cluster_env(cluster_env)
         cluster_manager.set_cluster_compute(cluster_compute)
 
-        # Run driver_setup command, install local dependencies
+        driver_setup_script = test.get("driver_setup", None)
+        if driver_setup_script:
+            try:
+                run_bash_script(driver_setup_script)
+            except Exception as e:
+                raise LocalEnvSetupError(f"Driver setup script failed: {e}") from e
+
+        # Install local dependencies
         command_runner.prepare_local_env(ray_wheels_url)
 
         # Start session

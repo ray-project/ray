@@ -86,6 +86,12 @@ class GlueTest(unittest.TestCase):
         self.writeClusterEnv("{'env': true}")
         self.writeClusterCompute("{'compute': true}")
 
+        with open(os.path.join(self.tempdir, "driver_fail.sh"), "wt") as f:
+            f.write("exit 1\n")
+
+        with open(os.path.join(self.tempdir, "driver_succeed.sh"), "wt") as f:
+            f.write("exit 0\n")
+
         this_sdk = self.sdk
         this_tempdir = self.tempdir
 
@@ -147,6 +153,7 @@ class GlueTest(unittest.TestCase):
                 cluster_env="cluster_env.yaml", cluster_compute="cluster_compute.yaml"
             ),
             alert="unit_test_alerter",
+            driver_setup="driver_fail.sh",
         )
         self.anyscale_project = "prj_unit12345678"
         self.ray_wheels_url = "http://mock.wheels/"
@@ -157,7 +164,13 @@ class GlueTest(unittest.TestCase):
     def _succeed_until(self, until: str):
         # These commands should succeed
         self.command_runner_return["prepare_local_env"] = None
+
         if until == "local_env":
+            return
+
+        self.test["driver_setup"] = "driver_succeed.sh"
+
+        if until == "driver_setup":
             return
 
         self.cluster_manager_return["cluster_compute_id"] = "valid"
@@ -291,12 +304,23 @@ class GlueTest(unittest.TestCase):
             self._run(result)
         self.assertEqual(result.return_code, ExitCode.LOCAL_ENV_SETUP_ERROR.value)
 
+    def testDriverSetupFails(self):
+        result = Result()
+
+        self._succeed_until("local_env")
+
+        with self.assertRaises(LocalEnvSetupError):
+            self._run(result)
+        self.assertEqual(result.return_code, ExitCode.LOCAL_ENV_SETUP_ERROR.value)
+
     def testInvalidClusterIdOverride(self):
         # get_cluster_name() fails
         pass
 
     def testBuildConfigFailsClusterCompute(self):
         result = Result()
+
+        self._succeed_until("driver_setup")
 
         # These commands should succeed
         self.command_runner_return["prepare_local_env"] = None

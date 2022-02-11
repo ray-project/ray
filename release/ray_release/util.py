@@ -2,6 +2,7 @@ import collections
 import hashlib
 import json
 import os
+import subprocess
 import threading
 import time
 from typing import Callable, Dict, Any
@@ -129,3 +130,7 @@ def exponential_backoff_retry(f, retry_exceptions, initial_retry_delay_s, max_re
             )
             time.sleep(retry_delay_s)
             retry_delay_s *= 2
+
+
+def run_bash_script(bash_script: str):
+    subprocess.run(f"bash {bash_script}", shell=True, check=True)

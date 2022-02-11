@@ -3,6 +3,8 @@
   group: XGBoost
   working_dir: xgboost_tests
 
+  driver_setup: driv.sh
+
   legacy:
     test_name: train_small
     test_suite: xgboost_tests
