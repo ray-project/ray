@@ -77,7 +77,7 @@ def test_run(ray_start_2_cpus):
 
 
 def test_failure():
-    """Tests that backend frameworks are not imported."""
+    """Tests that backend frameworks and non-critical libraries are not imported."""
     with pytest.raises(ModuleNotFoundError):
         import torch  # noqa: F401
 
@@ -86,6 +86,9 @@ def test_failure():
 
     with pytest.raises(ModuleNotFoundError):
         import horovod  # noqa: F401
+
+    with pytest.raises(ModuleNotFoundError):
+        from ray import tune  # noqa: F401
 
 
 if __name__ == "__main__":
