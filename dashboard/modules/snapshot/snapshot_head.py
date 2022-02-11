@@ -101,7 +101,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         return self._job_status_client.get_status(job_submission_id)
 
     async def get_job_info(self):
-        """Legacy Jobs info.  Here a Job is a Ray Driver (a ray.init() connection)."""
+        """Return info for each job.  Here a job is a Ray driver."""
         request = gcs_service_pb2.GetAllJobInfoRequest()
         reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=5)
 
@@ -130,23 +130,25 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         return jobs
 
     async def get_job_submission_info(self):
-        """Info for Jobs.  Here a Job can have 0, 1, or several Ray drivers."""
+        """Info for Ray job submission.  Here a job can have 0 or many drivers."""
 
         jobs = {}
 
         for job_id, job_data in self._job_status_client.get_all_jobs().items():
-            status_info = job_data.status_info
-            entry = {
-                "status": None if status_info is None else status_info.status,
-                "status_message": None if status_info is None else status_info.message,
-                "start_time": job_data.start_time,
-                "end_time": job_data.end_time,
-                "namespace": job_data.namespace,
-                "metadata": job_data.metadata,
-                "runtime_env": job_data.runtime_env,
-            }
-            jobs[job_id] = entry
-
+            if job_data is not None:
+                status_info = job_data.status_info
+                entry = {
+                    "status": None if status_info is None else status_info.status,
+                    "status_message": None
+                    if status_info is None
+                    else status_info.message,
+                    "start_time": job_data.start_time,
+                    "end_time": job_data.end_time,
+                    "namespace": job_data.namespace,
+                    "metadata": job_data.metadata,
+                    "runtime_env": job_data.runtime_env,
+                }
+                jobs[job_id] = entry
         return jobs
 
     async def get_actor_info(self):

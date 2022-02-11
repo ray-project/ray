@@ -73,8 +73,8 @@ class JobStatusStorageClient:
     Handles formatting of status storage key given job id.
     """
 
-    JOB_DATA_KEY_PREFIX = "_ray_internal_job_data"
-    JOB_DATA_KEY = f"{JOB_DATA_KEY_PREFIX}_{{job_id}}"
+    JOB_DATA_KEY_PREFIX = "_ray_internal_job_data_"
+    JOB_DATA_KEY = f"{JOB_DATA_KEY_PREFIX}{{job_id}}"
 
     def __init__(self):
         assert _internal_kv_initialized()
@@ -132,8 +132,18 @@ class JobStatusStorageClient:
             return job_data.status_info
 
     def get_all_jobs(self) -> Dict[str, JobData]:
-        raw_job_ids = _internal_kv_list(self.JOB_DATA_KEY_PREFIX)
-        job_ids = [job_id.decode() for job_id in raw_job_ids]
+        raw_job_ids_with_prefixes = _internal_kv_list(
+            self.JOB_DATA_KEY_PREFIX, namespace=ray_constants.KV_NAMESPACE_JOB
+        )
+        job_ids_with_prefixes = [
+            job_id.decode() for job_id in raw_job_ids_with_prefixes
+        ]
+        job_ids = []
+        for job_id_with_prefix in job_ids_with_prefixes:
+            assert job_id_with_prefix.startswith(
+                self.JOB_DATA_KEY_PREFIX
+            ), "Unexpected format for internal_kv key for job submission"
+            job_ids.append(job_id_with_prefix[len(self.JOB_DATA_KEY_PREFIX) :])
         return {job_id: self.get_data(job_id) for job_id in job_ids}
 
 
