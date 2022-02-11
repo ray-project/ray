@@ -22,7 +22,7 @@ from ray.train.constants import (
     HOSTNAME,
     DATE,
     RESULT_FETCH_TIMEOUT,
-    SESSION_MISUSE_LOG_ONCE_KEY
+    SESSION_MISUSE_LOG_ONCE_KEY,
 )
 from ray.train.utils import PropagatingThread, RayDataset
 from ray.util import PublicAPI, log_once
@@ -244,10 +244,12 @@ def _warn_session_misuse(fn_name: str):
     """
 
     if log_once(SESSION_MISUSE_LOG_ONCE_KEY):
-        warnings.warn(f"`train.{fn_name}()` is meant to only be "
-                      f"called "
-                      "inside a training function that is executed by "
-                      "`Trainer.run`. Returning None.")
+        warnings.warn(
+            f"`train.{fn_name}()` is meant to only be "
+            f"called "
+            "inside a training function that is executed by "
+            "`Trainer.run`. Returning None."
+        )
 
 
 def init_session(*args, **kwargs) -> None:

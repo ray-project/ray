@@ -264,7 +264,8 @@ def load_checkpoint_warn(reset_session_log_once):
 
 
 @pytest.mark.parametrize(
-    "fn", [load_checkpoint, save_checkpoint, report, get_dataset_shard])
+    "fn", [load_checkpoint, save_checkpoint, report, get_dataset_shard]
+)
 def test_warn(reset_session_log_once, fn):
     """Checks if calling train functions outside of session raises warning."""
 
