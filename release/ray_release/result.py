@@ -22,6 +22,9 @@ class Result:
 class ExitCode(enum.Enum):
     # If you change these, also change the `retry` section
     # in `build_pipeline.py` and the `reason()` function in `run_e2e.sh`
+    SUCCESS = 0  # Do not set/return this manually
+    UNCAUGHT = 1  # Do not set/return this manually
+
     UNSPECIFIED = 2
     UNKNOWN = 3
 
@@ -56,7 +59,7 @@ def handle_exception(e: Exception) -> Tuple[ExitCode, str, Optional[int]]:
         exit_code = e.exit_code
         # Legacy reporting
         if 1 <= exit_code.value < 10:
-            error_type = "unknown error"
+            error_type = "runtime_error"
             runtime = None
         elif 10 <= exit_code.value < 20:
             error_type = "infra_error"
@@ -68,10 +71,10 @@ def handle_exception(e: Exception) -> Tuple[ExitCode, str, Optional[int]]:
             error_type = "timeout"
             runtime = 0
         elif 40 <= exit_code.value < 50:
-            error_type = "runtime_error"
+            error_type = "error"
             runtime = 0
         else:
-            error_type = "unknown timeout"
+            error_type = "error"
             runtime = 0
     else:
         exit_code = ExitCode.UNKNOWN

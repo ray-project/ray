@@ -60,6 +60,16 @@ class CommandRunner(abc.ABC):
         """Run command."""
         raise NotImplementedError
 
+    def run_prepare_command(
+        self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
+    ):
+        """Run prepare command.
+
+        Command runners may choose to run this differently than the
+        test command.
+        """
+        return self.run_command(command, env, timeout)
+
     def get_last_logs(self):
         raise NotImplementedError
 

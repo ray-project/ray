@@ -109,11 +109,11 @@ class TestCommandError(CommandError):
     exit_code = ExitCode.COMMAND_ERROR
 
 
-class LogsError(CommandError):
+class ResultsError(CommandError):
     pass
 
 
-class ResultsError(CommandError):
+class LogsError(CommandError):
     pass
 
 

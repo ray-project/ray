@@ -2,9 +2,10 @@ import os
 import shutil
 import tempfile
 import unittest
-from typing import Type, Callable
+from typing import Type, Callable, Optional
 from unittest.mock import patch
 
+from ray_release.alerts.handle import result_to_handle_map
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.command_runner.command_runner import CommandRunner
@@ -19,6 +20,16 @@ from ray_release.exception import (
     ClusterCreationError,
     ClusterStartupError,
     ClusterStartupTimeout,
+    RemoteEnvSetupError,
+    CommandError,
+    PrepareCommandError,
+    CommandTimeout,
+    PrepareCommandTimeout,
+    TestCommandError,
+    TestCommandTimeout,
+    ResultsError,
+    LogsError,
+    ResultsAlert,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.glue import (
@@ -27,6 +38,8 @@ from ray_release.glue import (
     command_runner_to_cluster_manager,
     command_runner_to_file_manager,
 )
+from ray_release.logger import logger
+from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, ExitCode
 from ray_release.tests.utils import MockSDK, APIDict
 
@@ -52,7 +65,7 @@ class MockReturn:
         return object.__getattribute__(self, item)
 
 
-class EndToEndTest(unittest.TestCase):
+class GlueTest(unittest.TestCase):
     def writeClusterEnv(self, content: str):
         with open(os.path.join(self.tempdir, "cluster_env.yaml"), "wt") as fp:
             fp.write(content)
@@ -109,17 +122,25 @@ class EndToEndTest(unittest.TestCase):
                 super(MockFileManager, self).__init__(cluster_manager)
                 self.return_dict = this_file_manager_return
 
+        self.mock_alert_return = None
+
+        def mock_alerter(test: Test, result: Result):
+            return self.mock_alert_return
+
+        result_to_handle_map["unit_test_alerter"] = mock_alerter
+
         type_str_to_command_runner["unit_test"] = MockCommandRunner
         command_runner_to_cluster_manager[MockCommandRunner] = MockClusterManager
         command_runner_to_file_manager[MockCommandRunner] = MockFileManager
 
         self.test = Test(
             name="unit_test_end_to_end",
-            run=dict(type="unit_test"),
+            run=dict(type="unit_test", prepare="prepare_cmd", script="test_cmd"),
             working_dir=self.tempdir,
             cluster=dict(
                 cluster_env="cluster_env.yaml", cluster_compute="cluster_compute.yaml"
             ),
+            alert="unit_test_alerter",
         )
         self.anyscale_project = "prj_unit12345678"
         self.ray_wheels_url = "http://mock.wheels/"
@@ -127,18 +148,69 @@ class EndToEndTest(unittest.TestCase):
     def tearDown(self) -> None:
         shutil.rmtree(self.tempdir)
 
-    def _run(self, result: Result):
+    def _succeed_until(self, until: str):
+        # These commands should succeed
+        self.command_runner_return["prepare_local_env"] = None
+        if until == "local_env":
+            return
+
+        self.cluster_manager_return["cluster_compute_id"] = "valid"
+        self.cluster_manager_return["create_cluster_compute"] = None
+
+        if until == "cluster_compute":
+            return
+
+        self.cluster_manager_return["cluster_env_id"] = "valid"
+        self.cluster_manager_return["create_cluster_env"] = None
+        self.cluster_manager_return["cluster_env_build_id"] = "valid"
+        self.cluster_manager_return["build_cluster_env"] = None
+
+        if until == "cluster_env":
+            return
+
+        self.cluster_manager_return["cluster_id"] = "valid"
+        self.cluster_manager_return["start_cluster"] = None
+
+        if until == "cluster_start":
+            return
+
+        self.command_runner_return["prepare_remote_env"] = None
+
+        if until == "remote_env":
+            return
+
+        self.command_runner_return["run_prepare_command"] = None
+
+        if until == "prepare_command":
+            return
+
+        self.command_runner_return["run_command"] = None
+
+        if until == "test_command":
+            return
+
+        self.command_runner_return["fetch_results"] = {"time_taken": 50}
+
+        if until == "fetch_results":
+            return
+
+        self.command_runner_return["get_last_logs"] = "Lorem ipsum"
+
+        if until == "get_last_logs":
+            return
+
+        self.mock_alert_return = None
+
+    def _run(self, result: Result, reporter: Optional[Reporter] = None):
+        reporters = [reporter] if reporter else None
+
         run_release_test(
             test=self.test,
             anyscale_project=self.anyscale_project,
             result=result,
             ray_wheels_url=self.ray_wheels_url,
+            reporters=reporters,
         )
-
-    def testConfigInvalid(self):
-        # Missing keys
-        # Unknown command runner
-        pass
 
     def testInvalidClusterEnv(self):
         result = Result()
@@ -234,10 +306,7 @@ class EndToEndTest(unittest.TestCase):
     def testBuildConfigFailsClusterEnv(self):
         result = Result()
 
-        # These commands should succeed
-        self.command_runner_return["prepare_local_env"] = None
-        self.cluster_manager_return["cluster_compute_id"] = "valid"
-        self.cluster_manager_return["create_cluster_compute"] = None
+        self._succeed_until("cluster_compute")
 
         # Fails because API response faulty
         with self.assertRaisesRegex(ClusterEnvCreateError, "Unexpected"):
@@ -273,14 +342,7 @@ class EndToEndTest(unittest.TestCase):
     def testStartClusterFails(self):
         result = Result()
 
-        # These commands should succeed
-        self.command_runner_return["prepare_local_env"] = None
-        self.cluster_manager_return["cluster_compute_id"] = "valid"
-        self.cluster_manager_return["create_cluster_compute"] = None
-        self.cluster_manager_return["cluster_env_id"] = "valid"
-        self.cluster_manager_return["create_cluster_env"] = None
-        self.cluster_manager_return["cluster_env_build_id"] = "valid"
-        self.cluster_manager_return["build_cluster_env"] = None
+        self._succeed_until("cluster_env")
 
         # Fails because API response faulty
         with self.assertRaises(ClusterCreationError):
@@ -304,48 +366,106 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(result.return_code, ExitCode.CLUSTER_STARTUP_TIMEOUT.value)
 
     def testPrepareRemoteEnvFails(self):
-        pass
+        result = Result()
+
+        self._succeed_until("cluster_start")
+
+        self.command_runner_return["prepare_remote_env"] = _fail_on_call(
+            RemoteEnvSetupError
+        )
+        with self.assertRaises(RemoteEnvSetupError):
+            self._run(result)
+        self.assertEqual(result.return_code, ExitCode.REMOTE_ENV_SETUP_ERROR.value)
 
     def testPrepareCommandFails(self):
-        pass
+        result = Result()
 
-    def testPrepareCommandTimeout(self):
-        pass
+        self._succeed_until("remote_env")
+
+        # Prepare command fails
+        self.command_runner_return["run_prepare_command"] = _fail_on_call(CommandError)
+        with self.assertRaises(PrepareCommandError):
+            self._run(result)
+        self.assertEqual(result.return_code, ExitCode.PREPARE_ERROR.value)
+
+        # Prepare command times out
+        self.command_runner_return["run_prepare_command"] = _fail_on_call(
+            CommandTimeout
+        )
+        with self.assertRaises(PrepareCommandTimeout):
+            self._run(result)
+        # Special case: Prepare commands are usually waiting for nodes
+        # (this may change in the future!)
+        self.assertEqual(result.return_code, ExitCode.CLUSTER_WAIT_TIMEOUT.value)
 
     def testTestCommandFails(self):
-        pass
+        result = Result()
 
-    def testTestCommandTimeout(self):
-        pass
+        self._succeed_until("prepare_command")
+
+        # Test command fails
+        self.command_runner_return["run_command"] = _fail_on_call(CommandError)
+        with self.assertRaises(TestCommandError):
+            self._run(result)
+        self.assertEqual(result.return_code, ExitCode.COMMAND_ERROR.value)
+
+        # Test command times out
+        self.command_runner_return["run_command"] = _fail_on_call(CommandTimeout)
+        with self.assertRaises(TestCommandTimeout):
+            self._run(result)
+        self.assertEqual(result.return_code, ExitCode.COMMAND_TIMEOUT.value)
 
     def testFetchResultFails(self):
-        pass
+        result = Result()
+
+        self._succeed_until("test_command")
+
+        self.command_runner_return["fetch_results"] = _fail_on_call(ResultsError)
+        with self.assertLogs(logger, "ERROR") as cm:
+            self._run(result)
+            self.assertTrue(any("Could not fetch results" in o for o in cm.output))
+        self.assertEqual(result.return_code, ExitCode.SUCCESS.value)
+        self.assertEqual(result.status, "finished")
 
     def testLastLogsFails(self):
-        pass
+        result = Result()
+
+        self._succeed_until("fetch_results")
+
+        self.command_runner_return["get_last_logs"] = _fail_on_call(LogsError)
+
+        with self.assertLogs(logger, "ERROR") as cm:
+            self._run(result)
+            self.assertTrue(any("Error fetching logs" in o for o in cm.output))
+        self.assertEqual(result.return_code, ExitCode.SUCCESS.value)
+        self.assertEqual(result.status, "finished")
+        self.assertIn("No logs", result.last_logs)
 
     def testAlertFails(self):
-        pass
+        result = Result()
+
+        self._succeed_until("get_last_logs")
+
+        self.mock_alert_return = "Alert raised"
+
+        with self.assertRaises(ResultsAlert):
+            self._run(result)
+
+        self.assertEqual(result.return_code, ExitCode.COMMAND_ALERT.value)
+        self.assertEqual(result.status, "error")
 
     def testReportFails(self):
-        pass
+        result = Result()
 
-    def testSuccessCaseOne(self):
-        # New cluster compute
-        # New cluster env
-        # New cluster build
-        # No smoke test
-        pass
+        self._succeed_until("complete")
 
-    def testSuccessCaseTwo(self):
-        # Existing cluster compute
-        # Existing cluster env
-        # New cluster build
-        # Smoke test
-        pass
+        class FailReporter(Reporter):
+            def report_result(self, test: Test, result: Result):
+                raise RuntimeError
 
-    def testSuccessCaseThree(self):
-        # Existing cluster compute
-        # Existing cluster env
-        # Existing cluster build
-        pass
+        with self.assertLogs(logger, "ERROR") as cm:
+            self._run(result, reporter=FailReporter())
+            self.assertTrue(any("Error reporting results" in o for o in cm.output))
+
+        self.assertEqual(result.return_code, ExitCode.SUCCESS.value)
+        self.assertEqual(result.status, "finished")

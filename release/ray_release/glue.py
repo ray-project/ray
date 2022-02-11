@@ -19,7 +19,16 @@ from ray_release.config import (
     RELEASE_PACKAGE_DIR,
     validate_test,
 )
-from ray_release.exception import ReleaseTestConfigError, ReleaseTestSetupError
+from ray_release.exception import (
+    ReleaseTestConfigError,
+    ReleaseTestSetupError,
+    CommandError,
+    PrepareCommandError,
+    CommandTimeout,
+    PrepareCommandTimeout,
+    TestCommandError,
+    TestCommandTimeout,
+)
 from ray_release.file_manager.remote_task import RemoteTaskFileManager
 from ray_release.file_manager.session_controller import SessionControllerFileManager
 from ray_release.logger import logger
@@ -133,7 +142,12 @@ def run_release_test(
         prepare_cmd = test["run"].get("prepare", None)
         if prepare_cmd:
             prepare_timeout = test["run"].get("prepare_timeout", command_timeout)
-            command_runner.run_command(prepare_cmd, timeout=prepare_timeout)
+            try:
+                command_runner.run_prepare_command(prepare_cmd, timeout=prepare_timeout)
+            except CommandError as e:
+                raise PrepareCommandError(e)
+            except CommandTimeout as e:
+                raise PrepareCommandTimeout(e)
 
         command = test["run"]["script"]
         command_env = {}
@@ -142,14 +156,25 @@ def run_release_test(
             command = f"{command} --smoke-test"
             command_env["IS_SMOKE_TEST"] = "1"
 
-        command_runner.run_command(command, env=command_env, timeout=command_timeout)
+        try:
+            command_runner.run_command(
+                command, env=command_env, timeout=command_timeout
+            )
+        except CommandError as e:
+            raise TestCommandError(e)
+        except CommandTimeout as e:
+            raise TestCommandTimeout(e)
 
-        command_results = command_runner.fetch_results()
+        try:
+            command_results = command_runner.fetch_results()
+        except Exception as e:
+            logger.error(f"Could not fetch results for test command: {e}")
+            command_results = {}
 
         # Postprocess result:
         if "last_update" in command_results:
-            command_results["last_update_diff"] = (
-                time.time() - command_results["last_update"]
+            command_results["last_update_diff"] = time.time() - command_results.get(
+                "last_update", 0.0
             )
         if smoke_test:
             command_results["smoke_test"] = True
