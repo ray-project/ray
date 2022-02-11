@@ -538,6 +538,7 @@ class Dataset(Generic[T]):
         seed: Optional[int] = None,
         num_blocks: Optional[int] = None,
         _spread_resource_prefix: Optional[str] = None,
+        _move: bool = False,
     ) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
 
@@ -562,11 +563,16 @@ class Dataset(Generic[T]):
             The shuffled dataset.
         """
 
-        def do_shuffle(blocks, clear_input_blocks: bool):
-            # TODO: implement clear_input_blocks
-            num_blocks = blocks.executed_num_blocks()  # Blocking.
+        def do_shuffle(block_list, clear_input_blocks: bool):
+            num_blocks = block_list.executed_num_blocks()  # Blocking.
             if num_blocks == 0:
-                return blocks
+                return block_list, {}
+            # TODO: implement clear_input_blocks instead.
+            if _move:
+                blocks = block_list.copy()
+                block_list.clear()
+            else:
+                blocks = block_list
             new_blocks, stage_info = simple_shuffle(
                 blocks,
                 num_blocks,
@@ -1377,7 +1383,7 @@ class Dataset(Generic[T]):
             # TODO: implement clear_input_blocks
             # Handle empty dataset.
             if blocks.initial_num_blocks() == 0:
-                return blocks
+                return blocks, {}
             if isinstance(key, list):
                 if not key:
                     raise ValueError("`key` must be a list of non-zero length")

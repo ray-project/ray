@@ -1830,7 +1830,7 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.get_blocks_with_metadata():
+    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
     if fs is None:
         shutil.rmtree(path)
@@ -2250,24 +2250,24 @@ def test_split(ray_start_regular_shared):
     assert ds._block_num_rows() == [2] * 10
 
     datasets = ds.split(5)
-    assert [2] * 5 == [dataset._blocks.initial_num_blocks() for dataset in datasets]
+    assert [2] * 5 == [dataset._plan.execute().initial_num_blocks() for dataset in datasets]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(3)
-    assert [4, 3, 3] == [dataset._blocks.initial_num_blocks() for dataset in datasets]
+    assert [4, 3, 3] == [dataset._plan.execute().initial_num_blocks() for dataset in datasets]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(1)
-    assert [10] == [dataset._blocks.initial_num_blocks() for dataset in datasets]
+    assert [10] == [dataset._plan.execute().initial_num_blocks() for dataset in datasets]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(10)
-    assert [1] * 10 == [dataset._blocks.initial_num_blocks() for dataset in datasets]
+    assert [1] * 10 == [dataset._plan.execute().initial_num_blocks() for dataset in datasets]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(11)
     assert [1] * 10 + [0] == [
-        dataset._blocks.initial_num_blocks() for dataset in datasets
+        dataset._plan.execute().initial_num_blocks() for dataset in datasets
     ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
@@ -2834,7 +2834,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.get_blocks_with_metadata():
+    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     if fs is None:
@@ -2851,7 +2851,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.get_blocks_with_metadata():
+    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
@@ -3093,7 +3093,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.get_blocks_with_metadata():
+    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Two blocks.
@@ -3105,7 +3105,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.get_blocks_with_metadata():
+    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
@@ -3597,7 +3597,7 @@ def test_groupby_simple(ray_start_regular_shared):
         )
     )
     assert agg_ds.count() == 0
-    assert agg_ds == ds
+    assert agg_ds.take() == ds.take()
     agg_ds = ray.data.range(10).filter(lambda r: r > 10).groupby(lambda r: r).count()
     assert agg_ds.count() == 0
 
@@ -3855,7 +3855,7 @@ def test_sort_simple(ray_start_regular_shared):
     ds = ray.data.from_items([])
     s1 = ds.sort()
     assert s1.count() == 0
-    assert s1 == ds
+    assert s1.take() == ds.take()
     ds = ray.data.range(10).filter(lambda r: r > 10).sort()
     assert ds.count() == 0
 
@@ -3926,7 +3926,7 @@ def test_random_shuffle(shutdown_only, pipelined):
     ds = ray.data.from_items([])
     r1 = ds.random_shuffle()
     assert r1.count() == 0
-    assert r1 == ds
+    assert r1.take() == ds.take()
 
 
 def test_random_shuffle_spread(ray_start_cluster):
