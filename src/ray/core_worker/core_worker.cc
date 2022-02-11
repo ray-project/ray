@@ -2913,7 +2913,9 @@ void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
                                rpc::LocalGCReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
   if (options_.gc_collect != nullptr) {
+    RAY_LOG(INFO) << "dbg HandleLocalGC start " << GetWorkerID();
     options_.gc_collect();
+    RAY_LOG(INFO) << "dbg HandleLocalGC end " << GetWorkerID();
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     send_reply_callback(Status::NotImplemented("GC callback not defined"), nullptr,

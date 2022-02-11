@@ -870,7 +870,10 @@ cdef CRayStatus check_signals() nogil:
 cdef void gc_collect() nogil:
     with gil:
         start = time.perf_counter()
+        debug = gc.get_debug()
+        gc.set_debug(gc.DEBUG_LEAK)
         num_freed = gc.collect()
+        gc.set_debug(debug)
         end = time.perf_counter()
         if num_freed > 0:
             logger.debug(
