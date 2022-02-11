@@ -15,7 +15,7 @@ from ray.actor import ActorHandle
 from ray._private.async_compat import sync_to_async
 
 from ray.serve.autoscaling_metrics import start_metrics_pusher
-from ray.serve.common import str, ReplicaTag
+from ray.serve.common import ReplicaTag
 from ray.serve.config import DeploymentConfig
 from ray.serve.http_util import ASGIHTTPSender
 from ray.serve.utils import parse_request_item, _get_logger
@@ -23,6 +23,7 @@ from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
+    HEALTH_CHECK_METHOD,
     RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
 )
@@ -122,6 +123,7 @@ def create_replica_wrapper(
                     # method (required for FastAPI).
                     _callable = deployment_def.__new__(deployment_def)
                     await sync_to_async(_callable.__init__)(*init_args, **init_kwargs)
+
                 # Setting the context again to update the servable_object.
                 ray.serve.api._set_internal_replica_context(
                     deployment_name,
@@ -147,9 +149,6 @@ def create_replica_wrapper(
             # or, alternatively, create an async get_replica() method?
             self.replica = None
             self._initialize_replica = initialize_replica
-
-            # asyncio.Event used to signal that the replica is shutting down.
-            self.shutdown_event = asyncio.Event()
 
         @ray.method(num_returns=2)
         async def handle_request(
@@ -190,12 +189,11 @@ def create_replica_wrapper(
             return self.replica.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):
-            self.shutdown_event.set()
             if self.replica is not None:
                 return await self.replica.prepare_for_shutdown()
 
-        async def run_forever(self):
-            await self.shutdown_event.wait()
+        async def check_health(self):
+            await self.replica.check_health()
 
     RayServeWrappedReplica.__name__ = name
     return RayServeWrappedReplica
@@ -223,6 +221,14 @@ class RayServeReplica:
         self.user_config = user_config
         self.version = version
         self.rwlock = aiorwlock.RWLock()
+
+        user_health_check = getattr(_callable, HEALTH_CHECK_METHOD, None)
+        if not callable(user_health_check):
+
+            def user_health_check():
+                pass
+
+        self.user_health_check = sync_to_async(user_health_check)
 
         self.num_ongoing_requests = 0
 
@@ -299,6 +305,9 @@ class RayServeReplica:
                     f"replica={self.replica_tag}"
                 )
             )
+
+    async def check_health(self):
+        await self.user_health_check()
 
     def _get_handle_request_stats(self) -> Optional[Dict[str, int]]:
         actor_stats = ray.runtime_context.get_runtime_context()._get_actor_call_stats()

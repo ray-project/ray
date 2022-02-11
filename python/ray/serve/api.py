@@ -648,7 +648,6 @@ def start(
         )
 
         _check_http_and_checkpoint_options(client, http_options, _checkpoint_path)
-
         return client
     except RayServeException:
         pass
@@ -1090,6 +1089,8 @@ class Deployment:
         _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
         _graceful_shutdown_wait_loop_s: Optional[float] = None,
         _graceful_shutdown_timeout_s: Optional[float] = None,
+        _health_check_period_s: Optional[float] = None,
+        _health_check_timeout_s: Optional[float] = None,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -1134,6 +1135,12 @@ class Deployment:
 
         if _graceful_shutdown_timeout_s is not None:
             new_config.graceful_shutdown_timeout_s = _graceful_shutdown_timeout_s
+
+        if _health_check_period_s is not None:
+            new_config.health_check_period_s = _health_check_period_s
+
+        if _health_check_timeout_s is not None:
+            new_config.health_check_timeout_s = _health_check_timeout_s
 
         return Deployment(
             func_or_class,
@@ -1193,6 +1200,8 @@ def deployment(
     _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
     _graceful_shutdown_wait_loop_s: Optional[float] = None,
     _graceful_shutdown_timeout_s: Optional[float] = None,
+    _health_check_period_s: Optional[float] = None,
+    _health_check_timeout_s: Optional[float] = None,
 ) -> Callable[[Callable], Deployment]:
     pass
 
@@ -1213,6 +1222,8 @@ def deployment(
     _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
     _graceful_shutdown_wait_loop_s: Optional[float] = None,
     _graceful_shutdown_timeout_s: Optional[float] = None,
+    _health_check_period_s: Optional[float] = None,
+    _health_check_timeout_s: Optional[float] = None,
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
@@ -1295,6 +1306,12 @@ def deployment(
 
     if _graceful_shutdown_timeout_s is not None:
         config.graceful_shutdown_timeout_s = _graceful_shutdown_timeout_s
+
+    if _health_check_period_s is not None:
+        config.health_check_period_s = _health_check_period_s
+
+    if _health_check_timeout_s is not None:
+        config.health_check_timeout_s = _health_check_timeout_s
 
     def decorator(_func_or_class):
         return Deployment(
