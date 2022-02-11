@@ -124,6 +124,7 @@ class OneToOneStage(Stage):
         blocks = compute.apply(
             self.block_fn, self.ray_remote_args, blocks, clear_input_blocks
         )
+        assert isinstance(blocks, BlockList), blocks
         return blocks, {}
 
 
@@ -140,4 +141,6 @@ class AllToAllStage(Stage):
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
     ) -> Tuple[BlockList, dict]:
-        return self.fn(blocks, clear_input_blocks)
+        blocks, stage_info = self.fn(blocks, clear_input_blocks)
+        assert isinstance(blocks, BlockList), blocks
+        return blocks, stage_info

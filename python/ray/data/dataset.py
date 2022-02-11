@@ -472,7 +472,8 @@ class Dataset(Generic[T]):
             return Dataset(plan, self._epoch, self._lazy)
 
         def do_fast(blocks, clear_input_blocks: bool):
-            # TODO: implement clear_input_blocks
+            # TODO: this won't work in lazy mode since it references `self`.
+            # TODO: implement clear_input_blocks.
             # Compute the (n-1) indices needed for an equal split of the data.
             count = self.count()
             indices = []
@@ -526,7 +527,7 @@ class Dataset(Generic[T]):
                 new_blocks += empty_blocks
                 new_metadata += empty_metadata
 
-            return BlockList(new_blocks, new_metadata)
+            return BlockList(new_blocks, new_metadata), {}
 
         plan = self._plan.with_stage(AllToAllStage("repartition", num_blocks, do_fast))
         return Dataset(plan, self._epoch, self._lazy)
@@ -2582,11 +2583,6 @@ Dict[str, List[str]]]): The names of the columns
         return self._plan.execute().get_blocks()
 
     @DeveloperAPI
-    def lazy(self) -> "Dataset[T]":
-        self._lazy = True
-        return self
-
-    @DeveloperAPI
     def fully_executed(self) -> "Dataset[T]":
         """Force full evaluation of the blocks of this dataset.
 
@@ -2602,6 +2598,11 @@ Dict[str, List[str]]]): The names of the columns
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
         return self._plan.stats().summary_string()
+
+    def _experimental_lazy(self) -> "Dataset[T]":
+        """Enable lazy evaluation (experimental)."""
+        self._lazy = True
+        return self
 
     def _split(
         self, index: int, return_right_half: bool
@@ -2643,7 +2644,8 @@ Dict[str, List[str]]]): The names of the columns
 
         left = Dataset(
             ExecutionPlan(
-                BlockList(left_blocks, left_metadata), self.stats().child_TODO("split")
+                BlockList(left_blocks, left_metadata),
+                self._plan.stats().child_TODO("split"),
             ),
             self._epoch,
             self._lazy,
@@ -2652,7 +2654,7 @@ Dict[str, List[str]]]): The names of the columns
             right = Dataset(
                 ExecutionPlan(
                     BlockList(right_blocks, right_metadata),
-                    self.stats().child_TODO("split"),
+                    self._plan.stats().child_TODO("split"),
                 ),
                 self._epoch,
                 self._lazy,
