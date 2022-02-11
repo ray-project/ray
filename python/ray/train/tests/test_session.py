@@ -6,6 +6,7 @@ import ray
 from ray.train.session import init_session, shutdown_session, \
     get_session, world_rank, local_rank, report, save_checkpoint, \
     TrainingResultType, load_checkpoint, get_dataset_shard, world_size
+from ray.train.constants import TRAIN_SESSION_MISUSE_LOG_ONCE_KEY
 
 
 @pytest.fixture(scope="function")
@@ -18,6 +19,13 @@ def session():
     shutdown_session()
 
 
+@pytest.fixture(scope="function")
+def reset_session_log_once():
+    yield
+    # Reset the log_once for this key.
+    ray.util.debug.reset_log_once(TRAIN_SESSION_MISUSE_LOG_ONCE_KEY)
+
+
 def test_init_fail(session):
     with pytest.raises(ValueError):
         init_session(lambda: 1, 0)
@@ -25,7 +33,7 @@ def test_init_fail(session):
 
 def test_shutdown(session):
     shutdown_session()
-    assert not get_session
+    assert not get_session()
 
 
 def test_world_rank(session):
@@ -79,9 +87,6 @@ def test_report():
     assert session.get_next().data["loss"] == 0
     assert session.get_next().data["loss"] == 1
     shutdown_session()
-
-    # Should not raise error outside of session.
-    report(loss=2)
 
 
 def test_report_fail():
@@ -148,9 +153,6 @@ def test_checkpoint():
     validate_nonzero()
     session.finish()
     shutdown_session()
-
-    # Should not raise error outside of session.
-    save_checkpoint(epoch=2)
 
 
 def test_encode_data():
@@ -233,6 +235,50 @@ def test_locking():
     with pytest.raises(KeyboardInterrupt):
         session.finish()
     shutdown_session()
+
+
+def load_save_checkpoint_warn(reset_session_log_once):
+    """Checks if calling train functions outside of session raises warning."""
+
+    with pytest.warns(UserWarning) as record:
+        assert not load_checkpoint()
+
+    # Should only warn once.
+    assert "save_checkpoint" in record[0].message.args[0]
+
+
+def load_checkpoint_warn(reset_session_log_once):
+    """Checks if calling train functions outside of session raises warning."""
+
+    with pytest.warns(UserWarning) as record:
+        assert not load_checkpoint()
+
+    # Should only warn once.
+    assert "load_checkpoint" in record[0].message.args[0]
+
+
+@pytest.mark.parametrize(
+    "fn", [load_checkpoint, save_checkpoint, report, get_dataset_shard])
+def test_warn(reset_session_log_once, fn):
+    """Checks if calling train functions outside of session raises warning."""
+
+    with pytest.warns(UserWarning) as record:
+        fn()
+
+    assert fn.__name__ in record[0].message.args[0]
+
+
+def test_warn_once():
+    """Checks if session misuse warning is only shown once."""
+
+    with pytest.warns(UserWarning) as record:
+        assert not load_checkpoint()
+        assert not save_checkpoint(x=2)
+        assert not report(x=2)
+        assert not get_dataset_shard()
+
+    # Should only warn once.
+    assert len(record) == 1
 
 
 if __name__ == "__main__":

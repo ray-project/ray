@@ -13,9 +13,10 @@ import warnings
 import ray
 from ray.train.constants import (
     DETAILED_AUTOFILLED_KEYS, TIME_THIS_ITER_S, PID, TIMESTAMP, TIME_TOTAL_S,
-    NODE_IP, TRAINING_ITERATION, HOSTNAME, DATE, RESULT_FETCH_TIMEOUT)
+    NODE_IP, TRAINING_ITERATION, HOSTNAME, DATE, RESULT_FETCH_TIMEOUT,
+    TRAIN_SESSION_MISUSE_LOG_ONCE_KEY)
 from ray.train.utils import PropagatingThread, RayDataset
-from ray.util import PublicAPI
+from ray.util import PublicAPI, log_once
 
 
 class TrainingResultType(Enum):
@@ -226,6 +227,20 @@ class Session:
 _session = None
 
 
+def _warn_session_misuse(fn_name: str):
+    """Logs warning message on provided fn being used outside of session.
+
+    Args:
+        fn_name (str): The name of the function to warn about.
+    """
+
+    if log_once(TRAIN_SESSION_MISUSE_LOG_ONCE_KEY):
+        warnings.warn(f"`train.{fn_name}()` is meant to only be "
+                      f"called "
+                      "inside a training function that is executed by "
+                      "`Trainer.run`. Returning None.")
+
+
 def init_session(*args, **kwargs) -> None:
     global _session
     if _session:
@@ -234,7 +249,7 @@ def init_session(*args, **kwargs) -> None:
     _session = Session(*args, **kwargs)
 
 
-def get_session() -> Session:
+def get_session() -> Optional[Session]:
     global _session
     return _session
 
@@ -285,9 +300,7 @@ def get_dataset_shard(
     """
     session = get_session()
     if session is None:
-        warnings.warn("`train.get_dataset_shard()` is meant to only be called "
-                      "inside a training function that is executed by "
-                      "`Trainer.run`.")
+        _warn_session_misuse(get_dataset_shard.__name__)
         return
     shard = session.dataset_shard
     if shard is None:
@@ -331,9 +344,7 @@ def report(**kwargs) -> None:
     """
     session = get_session()
     if session is None:
-        warnings.warn("`train.report()` is meant to only be called "
-                      "inside a training function that is executed by "
-                      "`Trainer.run`.")
+        _warn_session_misuse(report.__name__)
         return
     session.report(**kwargs)
 
@@ -420,9 +431,7 @@ def load_checkpoint() -> Optional[Dict]:
     """
     session = get_session()
     if session is None:
-        warnings.warn("`train.load_checkpoint()` is meant to only be called "
-                      "inside a training function that is executed by "
-                      "`Trainer.run`.")
+        _warn_session_misuse(load_checkpoint.__name__)
         return
     return session.loaded_checkpoint
 
@@ -451,9 +460,7 @@ def save_checkpoint(**kwargs) -> None:
     """
     session = get_session()
     if session is None:
-        warnings.warn("`train.save_checkpoint()` is meant to only be called "
-                      "inside a training function that is executed by "
-                      "`Trainer.run`.")
+        _warn_session_misuse(save_checkpoint.__name__)
         return
     session.checkpoint(**kwargs)
 
