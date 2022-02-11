@@ -319,7 +319,7 @@ class ActorReplicaWrapper:
         replica_ready = self._check_obj_ref_ready(self._ready_obj_ref)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
-        if not replica_ready == 0:
+        if not replica_ready:
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
         else:
             try:
