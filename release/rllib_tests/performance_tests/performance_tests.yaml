@@ -166,3 +166,5 @@ a3c-pongdeterministic-v4:
                 [32, [3, 3], 2],
                 [32, [3, 3], 2],
             ]
+        # TODO(jungong) : flip to True after we have collected some data.
+        _disable_execution_plan_api: false
