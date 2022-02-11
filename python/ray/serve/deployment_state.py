@@ -1268,11 +1268,13 @@ class DeploymentState:
                 )
                 replica.stop(graceful=False)
                 self._replicas.add(ReplicaState.STOPPING, replica)
-                # Deployment enters "UNHEALTHY" status until the replica is
+                # If this is a replica of the target version, the deployment
+                # enters the "UNHEALTHY" status until the replica is
                 # recovered or a new deploy happens.
-                self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
-                    DeploymentStatus.UNHEALTHY
-                )
+                if replica.version == self._target_version:
+                    self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
+                        DeploymentStatus.UNHEALTHY
+                    )
 
         slow_start_replicas = []
         slow_start, starting_to_running = self._check_startup_replicas(
