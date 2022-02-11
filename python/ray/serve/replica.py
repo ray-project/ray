@@ -225,7 +225,7 @@ class RayServeReplica:
         user_health_check = getattr(_callable, HEALTH_CHECK_METHOD, None)
         if not callable(user_health_check):
 
-            def user_health_check(self):
+            def user_health_check():
                 pass
 
         self.user_health_check = sync_to_async(user_health_check)
