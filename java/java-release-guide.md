@@ -3,7 +3,7 @@
 This document help Ray Java developers release Ray Java.  
 Note that we assume you release it on your local laptop.
 
-## 1. Install GPG
+## 1. Installing GPG
 **If you have installed GPG, you can skip this step.**  
 
 Install gpg software on your laptop. https://gpgtools.org/  
@@ -42,7 +42,7 @@ cd java && mvn versions:set -DnewVersion=1.4.0 && cd -
 sh java/build-jar-multiplatform.sh deploy_jars
 ```
 
-## 3. Close and Release it
+## 3. Closing and Releasing it
 
 Login to the [SONATYPE](https://oss.sonatype.org/) website and there are 2 buttons you should click:  
 - First click the `Close` button. It’ll validate your releasing jars.  
