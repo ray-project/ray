@@ -1,0 +1,220 @@
+# This is adapted from https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.complete.yaml
+# It is a general RayCluster that has most fields in it for maximum flexibility in the Ray/Kuberay integration MVP.
+apiVersion: ray.io/v1alpha1
+kind: RayCluster
+metadata:
+  labels:
+    controller-tools.k8s.io: "1.0"
+    # An unique identifier for the head node and workers of this cluster.
+  name: raycluster-complete
+spec:
+  rayVersion: '1.9.2'
+  enableInTreeAutoscaling: false
+  ######################headGroupSpecs#################################
+  # head group template and specs, (perhaps 'group' is not needed in the name)
+  headGroupSpec:
+    # Kubernetes Service Type, valid values are 'ClusterIP', 'NodePort' and 'LoadBalancer'
+    serviceType: ClusterIP
+    # the pod replicas in this group typed head (assuming there could be more than 1 in the future)
+    replicas: 1
+    # logical group name, for this called head-group, also can be functional
+    # pod type head or worker
+    # rayNodeType: head # Not needed since it is under the headgroup
+    # the following params are used to complete the ray start: ray start --head --block --redis-port=6379 ...
+    rayStartParams:
+      port: '6379'
+      object-manager-port: '9999'
+      node-manager-port: '9998'
+      object-store-memory: '100000000'
+      redis-password: '5241590000000000'
+      dashboard-host: '0.0.0.0'
+      num-cpus: '1' # can be auto-completed from the limits
+      node-ip-address: $MY_POD_IP # auto-completed as the head pod IP
+      block: 'true'
+    #pod template
+    template:
+      metadata:
+        labels:
+          # custom labels. NOTE: do not define custom labels start with `raycluster.`, they may be used in controller.
+          # Refer to https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+          rayCluster: raycluster-sample # will be injected if missing
+          rayNodeType: head # will be injected if missing, must be head or worker
+          groupName: headgroup # will be injected if missing
+        # annotations for pod
+        annotations:
+          key: value
+      spec:
+        # This is needed to give the autoscaler side car permissions to query and update
+        # definitions in the Kubernetes API server (see kuberay-autoscaler.yaml)
+        serviceAccountName: autoscaler-sa
+        containers:
+        # The Ray head pod
+        - name: ray-head
+          image: rayproject/ray:latest
+          imagePullPolicy: Always
+          env:
+          - name: CPU_REQUEST
+            valueFrom:
+              resourceFieldRef:
+                containerName: ray-head
+                resource: requests.cpu
+          - name: CPU_LIMITS
+            valueFrom:
+              resourceFieldRef:
+                containerName: ray-head
+                resource: limits.cpu
+          - name: MEMORY_LIMITS
+            valueFrom:
+              resourceFieldRef:
+                containerName: ray-head
+                resource: limits.memory
+          - name: MEMORY_REQUESTS
+            valueFrom:
+              resourceFieldRef:
+                containerName: ray-head
+                resource: requests.memory
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          ports:
+          - containerPort: 6379
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","ray stop"]
+          resources:
+            limits:
+              cpu: "1"
+              memory: "1G"
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+          volumeMounts:
+            - mountPath: /tmp/ray
+              name: ray-logs
+        # The Ray autoscaler sidecar to the head pod
+        - name: autoscaler
+          image: rayproject/kuberay-autoscaler
+          imagePullPolicy: Always
+          command: ["/bin/sh"]
+          args: ["-c", "$HOME/anaconda3/bin/python /home/ray/run_autoscaler_with_retries.py --redis-password 5241590000000000"]
+          resources:
+            limits:
+              cpu: 500m
+              memory: 1024Mi
+            requests:
+              cpu: 250m
+              memory: 512Mi
+          volumeMounts:
+            - mountPath: /autoscaler/
+              name: autoscaler-config
+            - mountPath: /tmp/ray
+              name: ray-logs
+        volumes:
+        # You set volumes at the Pod level, then mount them into containers inside that Pod
+        - name: autoscaler-config
+          configMap:
+            name: autoscaler-config
+            items:
+            - key: ray_bootstrap_config.yaml
+              path: ray_bootstrap_config.yaml
+        - name: ray-logs
+          emptyDir: {}
+  workerGroupSpecs:
+  # the pod replicas in this group typed worker
+  - replicas: 1
+    minReplicas: 1
+    maxReplicas: 300
+    # logical group name, for this called small-group, also can be functional
+    groupName: small-group
+    # if worker pods need to be added, we can simply increment the replicas
+    # if worker pods need to be removed, we decrement the replicas, and populate the podsToDelete list
+    # the operator will remove pods from the list until the number of replicas is satisfied
+    # when a pod is confirmed to be deleted, its name will be removed from the list below
+    #scaleStrategy:
+    #  workersToDelete:
+    #  - raycluster-complete-worker-small-group-bdtwh
+    #  - raycluster-complete-worker-small-group-hv457
+    #  - raycluster-complete-worker-small-group-k8tj7 
+    # the following params are used to complete the ray start: ray start --block --node-ip-address= ...
+    rayStartParams:
+      redis-password: '5241590000000000'
+      node-ip-address: $MY_POD_IP
+      block: 'true'
+    #pod template
+    template:
+      metadata:
+        labels:
+          key: value
+        # annotations for pod
+        annotations:
+          key: value
+      spec:
+        initContainers:
+        # the env var $RAY_IP is set by the operator if missing, with the value of the head service name
+        - name: init-myservice
+          image: busybox:1.28
+          command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]   
+        containers:
+        - name: machine-learning # must consist of lower case alphanumeric characters or '-', and must start and end with an alphanumeric character (e.g. 'my-name',  or '123-abc'
+          image: rayproject/ray
+          # environment variables to set in the container.Optional.
+          # Refer to https://kubernetes.io/docs/tasks/inject-data-application/define-environment-variable-container/
+          env:
+          - name:  RAY_DISABLE_DOCKER_CPU_WARNING
+            value: "1"
+          - name: TYPE
+            value: "worker"
+          - name: CPU_REQUEST
+            valueFrom:
+              resourceFieldRef:
+                containerName: machine-learning
+                resource: requests.cpu
+          - name: CPU_LIMITS
+            valueFrom:
+              resourceFieldRef:
+                containerName: machine-learning
+                resource: limits.cpu
+          - name: MEMORY_LIMITS
+            valueFrom:
+              resourceFieldRef:
+                containerName: machine-learning
+                resource: limits.memory
+          - name: MEMORY_REQUESTS
+            valueFrom:
+              resourceFieldRef:
+                containerName: machine-learning
+                resource: requests.memory
+          - name: MY_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          ports:
+          - containerPort: 80
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","ray stop"]
+          # use volumeMounts.Optional.
+          # Refer to https://kubernetes.io/docs/concepts/storage/volumes/
+          volumeMounts:
+            - mountPath: /var/log
+              name: log-volume
+          resources:
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+            requests:
+              cpu: "500m"
+              memory: "256Mi"
+        # use volumes
+        # Refer to https://kubernetes.io/docs/concepts/storage/volumes/
+        volumes:
+          - name: log-volume
+            emptyDir: {}
+######################status#################################

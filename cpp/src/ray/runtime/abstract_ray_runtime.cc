@@ -116,7 +116,7 @@ std::vector<bool> AbstractRayRuntime::Wait(const std::vector<std::string> &ids,
 }
 
 std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
-    std::vector<ray::internal::TaskArg> &args) {
+    std::vector<ray::internal::TaskArg> &args, bool cross_lang) {
   std::vector<std::unique_ptr<::ray::TaskArg>> ray_args;
   for (auto &arg : args) {
     std::unique_ptr<::ray::TaskArg> ray_arg = nullptr;
@@ -124,8 +124,15 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
       auto &buffer = *arg.buf;
       auto memory_buffer = std::make_shared<ray::LocalMemoryBuffer>(
           reinterpret_cast<uint8_t *>(buffer.data()), buffer.size(), true);
+      std::shared_ptr<Buffer> metadata = nullptr;
+      if (cross_lang) {
+        auto meta_str = arg.meta_str;
+        metadata = std::make_shared<ray::LocalMemoryBuffer>(
+            reinterpret_cast<uint8_t *>(const_cast<char *>(meta_str.data())),
+            meta_str.size(), true);
+      }
       ray_arg = absl::make_unique<ray::TaskArgByValue>(std::make_shared<ray::RayObject>(
-          memory_buffer, nullptr, std::vector<rpc::ObjectReference>()));
+          memory_buffer, metadata, std::vector<rpc::ObjectReference>()));
     } else {
       RAY_CHECK(arg.id);
       auto id = ObjectID::FromBinary(*arg.id);
@@ -151,7 +158,8 @@ InvocationSpec BuildInvocationSpec1(TaskType task_type,
   invocation_spec.task_type = task_type;
   invocation_spec.remote_function_holder = remote_function_holder;
   invocation_spec.actor_id = actor;
-  invocation_spec.args = TransformArgs(args);
+  invocation_spec.args =
+      TransformArgs(args, remote_function_holder.lang_type != LangType::CPP);
   return invocation_spec;
 }
 
@@ -175,8 +183,22 @@ std::string AbstractRayRuntime::CreateActor(
 std::string AbstractRayRuntime::CallActor(
     const RemoteFunctionHolder &remote_function_holder, const std::string &actor,
     std::vector<ray::internal::TaskArg> &args, const CallOptions &call_options) {
-  auto invocation_spec = BuildInvocationSpec1(
-      TaskType::ACTOR_TASK, remote_function_holder, args, ActorID::FromBinary(actor));
+  InvocationSpec invocation_spec{};
+  if (remote_function_holder.lang_type == LangType::PYTHON) {
+    const auto native_actor_handle = CoreWorkerProcess::GetCoreWorker().GetActorHandle(
+        ray::ActorID::FromBinary(actor));
+    auto function_descriptor = native_actor_handle->ActorCreationTaskFunctionDescriptor();
+    auto typed_descriptor = function_descriptor->As<PythonFunctionDescriptor>();
+    RemoteFunctionHolder func_holder = remote_function_holder;
+    func_holder.module_name = typed_descriptor->ModuleName();
+    func_holder.class_name = typed_descriptor->ClassName();
+    invocation_spec = BuildInvocationSpec1(TaskType::ACTOR_TASK, func_holder, args,
+                                           ActorID::FromBinary(actor));
+  } else {
+    invocation_spec = BuildInvocationSpec1(TaskType::ACTOR_TASK, remote_function_holder,
+                                           args, ActorID::FromBinary(actor));
+  }
+
   return task_submitter_->SubmitActorTask(invocation_spec, call_options).Binary();
 }
 

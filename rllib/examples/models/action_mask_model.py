@@ -20,33 +20,36 @@ class ActionMaskModel(TFModelV2):
     exercise to the reader.
     """
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name, **kwargs):
+    def __init__(
+        self, obs_space, action_space, num_outputs, model_config, name, **kwargs
+    ):
 
         orig_space = getattr(obs_space, "original_space", obs_space)
-        assert isinstance(orig_space, Dict) and \
-               "action_mask" in orig_space.spaces and \
-               "observations" in orig_space.spaces
+        assert (
+            isinstance(orig_space, Dict)
+            and "action_mask" in orig_space.spaces
+            and "observations" in orig_space.spaces
+        )
 
-        super().__init__(obs_space, action_space, num_outputs, model_config,
-                         name)
+        super().__init__(obs_space, action_space, num_outputs, model_config, name)
 
         self.internal_model = FullyConnectedNetwork(
-            orig_space["observations"], action_space, num_outputs,
-            model_config, name + "_internal")
+            orig_space["observations"],
+            action_space,
+            num_outputs,
+            model_config,
+            name + "_internal",
+        )
 
         # disable action masking --> will likely lead to invalid actions
-        self.no_masking = model_config["custom_model_config"].get(
-            "no_masking", False)
+        self.no_masking = model_config["custom_model_config"].get("no_masking", False)
 
     def forward(self, input_dict, state, seq_lens):
         # Extract the available actions tensor from the observation.
         action_mask = input_dict["obs"]["action_mask"]
 
         # Compute the unmasked logits.
-        logits, _ = self.internal_model({
-            "obs": input_dict["obs"]["observations"]
-        })
+        logits, _ = self.internal_model({"obs": input_dict["obs"]["observations"]})
 
         # If action masking is disabled, directly return unmasked logits
         if self.no_masking:
@@ -67,26 +70,33 @@ class TorchActionMaskModel(TorchModelV2, nn.Module):
     """PyTorch version of above ActionMaskingModel."""
 
     def __init__(
-            self,
-            obs_space,
+        self,
+        obs_space,
+        action_space,
+        num_outputs,
+        model_config,
+        name,
+        **kwargs,
+    ):
+        orig_space = getattr(obs_space, "original_space", obs_space)
+        assert (
+            isinstance(orig_space, Dict)
+            and "action_mask" in orig_space.spaces
+            and "observations" in orig_space.spaces
+        )
+
+        TorchModelV2.__init__(
+            self, obs_space, action_space, num_outputs, model_config, name, **kwargs
+        )
+        nn.Module.__init__(self)
+
+        self.internal_model = TorchFC(
+            orig_space["observations"],
             action_space,
             num_outputs,
             model_config,
-            name,
-            **kwargs,
-    ):
-        orig_space = getattr(obs_space, "original_space", obs_space)
-        assert isinstance(orig_space, Dict) and \
-               "action_mask" in orig_space.spaces and \
-               "observations" in orig_space.spaces
-
-        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
-                              model_config, name, **kwargs)
-        nn.Module.__init__(self)
-
-        self.internal_model = TorchFC(orig_space["observations"], action_space,
-                                      num_outputs, model_config,
-                                      name + "_internal")
+            name + "_internal",
+        )
 
         # disable action masking --> will likely lead to invalid actions
         self.no_masking = False
@@ -98,9 +108,7 @@ class TorchActionMaskModel(TorchModelV2, nn.Module):
         action_mask = input_dict["obs"]["action_mask"]
 
         # Compute the unmasked logits.
-        logits, _ = self.internal_model({
-            "obs": input_dict["obs"]["observations"]
-        })
+        logits, _ = self.internal_model({"obs": input_dict["obs"]["observations"]})
 
         # If action masking is disabled, directly return unmasked logits
         if self.no_masking:

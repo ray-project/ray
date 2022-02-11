@@ -9,10 +9,11 @@ from torch.nn.parallel import DistributedDataParallel
 
 import ray
 from ray import tune
-from ray.tune.examples.mnist_pytorch import (train, test, get_data_loaders,
-                                             ConvNet)
-from ray.tune.integration.torch import (DistributedTrainableCreator,
-                                        distributed_checkpoint_dir)
+from ray.tune.examples.mnist_pytorch import train, test, get_data_loaders, ConvNet
+from ray.tune.integration.torch import (
+    DistributedTrainableCreator,
+    distributed_checkpoint_dir,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,14 +50,16 @@ def run_ddp_tune(num_workers, num_gpus_per_worker, workers_per_node=None):
         train_mnist,
         num_workers=num_workers,
         num_gpus_per_worker=num_gpus_per_worker,
-        num_workers_per_host=workers_per_node)
+        num_workers_per_host=workers_per_node,
+    )
 
     analysis = tune.run(
         trainable_cls,
         num_samples=4,
         stop={"training_iteration": 10},
         metric="mean_accuracy",
-        mode="max")
+        mode="max",
+    )
 
     print("Best hyperparameters found were: ", analysis.best_config)
 
@@ -68,28 +71,32 @@ if __name__ == "__main__":
         "-n",
         type=int,
         default=2,
-        help="Sets number of workers for training.")
+        help="Sets number of workers for training.",
+    )
     parser.add_argument(
         "--num-gpus-per-worker",
         type=int,
         default=0,
-        help="Sets number of gpus each worker uses.")
+        help="Sets number of gpus each worker uses.",
+    )
     parser.add_argument(
         "--cluster",
         action="store_true",
         default=False,
-        help="enables multi-node tuning")
+        help="enables multi-node tuning",
+    )
     parser.add_argument(
         "--workers-per-node",
         type=int,
-        help="Forces workers to be colocated on machines if set.")
+        help="Forces workers to be colocated on machines if set.",
+    )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using " "Ray Client.",
+    )
 
     args = parser.parse_args()
 
@@ -105,4 +112,5 @@ if __name__ == "__main__":
     run_ddp_tune(
         num_workers=args.num_workers,
         num_gpus_per_worker=args.num_gpus_per_worker,
-        workers_per_node=args.workers_per_node)
+        workers_per_node=args.workers_per_node,
+    )

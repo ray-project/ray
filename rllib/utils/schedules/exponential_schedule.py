@@ -15,11 +15,13 @@ class ExponentialSchedule(Schedule):
     always returns `final_p`.
     """
 
-    def __init__(self,
-                 schedule_timesteps: int,
-                 framework: Optional[str] = None,
-                 initial_p: float = 1.0,
-                 decay_rate: float = 0.1):
+    def __init__(
+        self,
+        schedule_timesteps: int,
+        framework: Optional[str] = None,
+        initial_p: float = 1.0,
+        decay_rate: float = 0.1,
+    ):
         """Initializes a ExponentialSchedule instance.
 
         Args:
@@ -41,9 +43,7 @@ class ExponentialSchedule(Schedule):
 
     @override(Schedule)
     def _value(self, t: TensorType) -> TensorType:
-        """Returns the result of: initial_p * decay_rate ** (`t`/t_max).
-        """
+        """Returns the result of: initial_p * decay_rate ** (`t`/t_max)."""
         if self.framework == "torch" and torch and isinstance(t, torch.Tensor):
             t = t.float()
-        return self.initial_p * \
-            self.decay_rate ** (t / self.schedule_timesteps)
+        return self.initial_p * self.decay_rate ** (t / self.schedule_timesteps)

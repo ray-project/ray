@@ -20,8 +20,7 @@ RayDataset = Union["Dataset", "DatasetPipeline"]
 logger = logging.getLogger(__name__)
 
 
-def check_for_failure(
-        remote_values: List[ObjectRef]) -> Tuple[bool, List[int]]:
+def check_for_failure(remote_values: List[ObjectRef]) -> Tuple[bool, List[int]]:
     """Check for actor failure when retrieving the remote values.
 
     Args:
@@ -111,6 +110,5 @@ class Singleton(abc.ABCMeta):
 
     def __call__(cls, *args, **kwargs):
         if cls not in cls._instances:
-            cls._instances[cls] = super(Singleton, cls).__call__(
-                *args, **kwargs)
+            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
