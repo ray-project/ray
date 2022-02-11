@@ -218,6 +218,7 @@ class ActorReplicaWrapper:
             deployment_info.deployment_config.to_proto_bytes(),
             version,
             self._controller_name,
+            self._controller_namespace,
             self._detached,
         )
 
