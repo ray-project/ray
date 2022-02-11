@@ -14,6 +14,8 @@ chmod +x kubectl
 mv ./kubectl /usr/bin/kubectl
 kubectl version --client
 
+# https://github.com/kubernetes-sigs/kind/issues/273#issuecomment-622180144
+export KIND_EXPERIMENTAL_DOCKER_NETWORK=dind-network
 time kind create cluster --wait 120s --config ./ci/travis/kind.config.yaml
 kubectl cluster-info --context kind-kind
 kubectl get nodes
