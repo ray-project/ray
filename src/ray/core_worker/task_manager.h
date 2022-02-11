@@ -20,6 +20,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -46,6 +47,8 @@ class TaskFinisherInterface {
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
       const std::vector<ObjectID> &contained_ids) = 0;
+
+  virtual void MarkDependenciesResolved(const TaskID &task_id) = 0;
 
   virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
 
@@ -230,6 +233,19 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     return total_lineage_footprint_bytes_;
   }
 
+  /// Record that the given task's dependencies have been created and the task
+  /// can now be scheduled for execution.
+  ///
+  /// \param[in] task_id The task that is now scheduled.
+  void MarkDependenciesResolved(const TaskID &task_id) override;
+
+  /// Add debug information about the current task status for the ObjectRefs
+  /// included in the given stats.
+  ///
+  /// \param[out] stats Will be populated with objects' current task status, if
+  /// any.
+  void AddTaskStatusInfo(rpc::CoreWorkerStats *stats) const;
+
  private:
   struct TaskEntry {
     TaskEntry(const TaskSpecification &spec_arg, int num_retries_left_arg,
@@ -239,6 +255,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         reconstructable_return_ids.insert(spec.ReturnId(i));
       }
     }
+
+    bool IsPending() const { return status != rpc::TaskStatus::FINISHED; }
+
     /// The task spec. This is pinned as long as the following are true:
     /// - The task is still pending execution. This means that the task may
     /// fail and so it may be retried in the future.
@@ -256,10 +275,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     int num_retries_left;
     // Number of times this task successfully completed execution so far.
     int num_successful_executions = 0;
-    // Whether this task is currently pending execution. This is used to pin
-    // the task entry if the task is still pending but all of its return IDs
-    // are out of scope.
-    bool pending = true;
+    // The task's current execution status.
+    rpc::TaskStatus status = rpc::TaskStatus::WAITING_FOR_DEPENDENCIES;
     // Objects returned by this task that are reconstructable. This is set
     // initially to the task's return objects, since if the task fails, these
     // objects may be reconstructed by resubmitting the task. Once the task

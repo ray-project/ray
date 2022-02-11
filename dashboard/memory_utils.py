@@ -99,6 +99,9 @@ class MemoryTableEntry:
         self.node_address = node_address
 
         # object info
+        self.task_status = object_ref.get("taskStatus", "?")
+        if self.task_status == "NIL":
+            self.task_status = "-"
         self.object_size = int(object_ref.get("objectSize", -1))
         self.call_site = object_ref.get("callSite", "<Unknown>")
         self.object_ref = ray.ObjectRef(
@@ -177,6 +180,7 @@ class MemoryTableEntry:
             "object_size": self.object_size,
             "reference_type": self.reference_type,
             "call_site": self.call_site,
+            "task_status": self.task_status,
             "local_ref_count": self.local_ref_count,
             "pinned_in_memory": self.pinned_in_memory,
             "submitted_task_ref_count": self.submitted_task_ref_count,
@@ -385,6 +389,8 @@ def memory_summary(
     # Fetch core memory worker stats, store as a dictionary
     core_worker_stats = []
     for raylet in state.node_table():
+        if not raylet["Alive"]:
+            continue
         stats = node_stats_to_dict(
             node_stats(raylet["NodeManagerAddress"], raylet["NodeManagerPort"])
         )
@@ -407,7 +413,7 @@ def memory_summary(
         "Mem Used by Objects",
         "Local References",
         "Pinned",
-        "Pending Tasks",
+        "Used by task",
         "Captured in Objects",
         "Actor Handles",
     ]
@@ -418,15 +424,16 @@ def memory_summary(
         "PID",
         "Type",
         "Call Site",
+        "Status",
         "Size",
         "Reference Type",
         "Object Ref",
     ]
     object_ref_string = "{:<13} | {:<8} | {:<7} | {:<9} \
-| {:<8} | {:<14} | {:<10}\n"
+| {:<9} | {:<8} | {:<14} | {:<10}\n"
 
     if size > line_wrap_threshold and line_wrap:
-        object_ref_string = "{:<15}  {:<5}  {:<6}  {:<22}  {:<6}  {:<18}  \
+        object_ref_string = "{:<15}  {:<5}  {:<6}  {:<22}  {:<14}  {:<6}  {:<18}  \
 {:<56}\n"
 
     mem += f"Grouping by {group_by}...\
@@ -469,7 +476,14 @@ entries per group...\n\n\n"
                         entry["call_site"][i : i + call_site_length]
                         for i in range(0, len(entry["call_site"]), call_site_length)
                     ]
-                num_lines = len(entry["call_site"])
+
+                task_status_length = 12
+                entry["task_status"] = [
+                    entry["task_status"][i : i + task_status_length]
+                    for i in range(0, len(entry["task_status"]), task_status_length)
+                ]
+                num_lines = max(len(entry["call_site"]), len(entry["task_status"]))
+
             else:
                 mem += "\n"
             object_ref_values = [
@@ -477,6 +491,7 @@ entries per group...\n\n\n"
                 entry["pid"],
                 entry["type"],
                 entry["call_site"],
+                entry["task_status"],
                 entry["object_size"],
                 entry["reference_type"],
                 entry["object_ref"],

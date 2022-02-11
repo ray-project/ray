@@ -477,6 +477,25 @@ message ViewData {
   repeated Measure measures = 2;
 }
 
+enum TaskStatus {
+  // We don't have a status for this task because we are not the owner or the
+  // task metadata has already been deleted.
+  NIL = 0;
+  // The task is waiting for its dependencies to be created.
+  WAITING_FOR_DEPENDENCIES = 1;
+  // All dependencies have been created and the task is scheduled to execute.
+  SCHEDULED = 2;
+  // The task finished successfully.
+  FINISHED = 3;
+  // The task finished previously but is now being scheduled again because its
+  // outputs need to be reconstructed. It is waiting for its dependencies to be
+  // created again.
+  RECONSTRUCTING_AND_WAITING_FOR_DEPENDENCIES = 4;
+  // The task finished previously but is now being scheduled again because its
+  // outputs need to be reconstructed.
+  RECONSTRUCTION_SCHEDULED = 5;
+}
+
 // Debug info for a referenced object.
 message ObjectRefInfo {
   // Object id that is referenced.
@@ -493,6 +512,8 @@ message ObjectRefInfo {
   repeated bytes contained_in_owned = 6;
   // True if this object is pinned in memory by the current process.
   bool pinned_in_memory = 7;
+  // Status of the task that creates this object.
+  TaskStatus task_status = 8;
 }
 
 // Details about the allocation of a given resource. Some resources
