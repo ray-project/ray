@@ -101,10 +101,12 @@ class Dataset(Generic[T]):
     TensorFlow / PyTorch.
 
     Dataset supports parallel transformations such as .map(), .map_batches(),
-    and simple repartition, but currently not aggregations and joins.
+    and simple repartition, but currently not joins.
     """
 
-    def __init__(self, blocks: BlockList, epoch: int, stats: DatasetStats):
+    def __init__(
+        self, blocks: BlockList, epoch: int, stats: DatasetStats, name: str = ""
+    ):
         """Construct a Dataset (internal API).
 
         The constructor is not part of the Dataset API. Use the ``ray.data.*``
@@ -114,6 +116,7 @@ class Dataset(Generic[T]):
         self._uuid = uuid4().hex
         self._epoch = epoch
         self._stats = stats
+        self._name = name
         self._stats.dataset_uuid = self._uuid
         assert isinstance(self._blocks, BlockList), self._blocks
 
@@ -557,9 +560,15 @@ class Dataset(Generic[T]):
             num_blocks,
             random_shuffle=True,
             random_seed=seed,
+            name=self._get_name(),
             _spread_resource_prefix=_spread_resource_prefix,
         )
-        return Dataset(new_blocks, self._epoch, stats.build_multistage(stage_info))
+        return Dataset(
+            new_blocks,
+            self._epoch,
+            stats.build_multistage(stage_info),
+            name=f"{self._get_name()}|random_shuffle",
+        )
 
     def split(
         self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
@@ -2468,12 +2477,14 @@ Dict[str, List[str]]]): The names of the columns
         class Iterator:
             def __init__(self, ds: "Dataset[T]"):
                 self._ds = ds
+                self._ds_name = ds._get_name()
                 self._i = 0
 
             def __next__(self) -> "Dataset[T]":
                 if times and self._i >= times:
                     raise StopIteration
                 self._ds._set_epoch(self._i)
+                self._ds._set_name(f"{self._ds_name}|repeat_epoch_{self._i}")
                 self._i += 1
                 return lambda: self._ds.force_reads()
 
@@ -2799,6 +2810,12 @@ Dict[str, List[str]]]): The names of the columns
 
     def _set_epoch(self, epoch: int) -> None:
         self._epoch = epoch
+
+    def _get_name(self) -> str:
+        return self._name
+
+    def _set_name(self, name: str) -> None:
+        self._name = name
 
 
 def _get_num_rows(block: Block) -> int:

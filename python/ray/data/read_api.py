@@ -106,7 +106,7 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
 
 
 @PublicAPI(stability="beta")
-def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
+def range(n: int, *, parallelism: int = 200, dataset_name: str = "") -> Dataset[int]:
     """Create a dataset from a range of integers [0..n).
 
     Examples:
@@ -121,7 +121,11 @@ def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
         Dataset holding the integers.
     """
     return read_datasource(
-        RangeDatasource(), parallelism=parallelism, n=n, block_format="list"
+        RangeDatasource(),
+        parallelism=parallelism,
+        n=n,
+        block_format="list",
+        dataset_name=dataset_name,
     )
 
 
@@ -186,6 +190,7 @@ def read_datasource(
     *,
     parallelism: int = 200,
     ray_remote_args: Dict[str, Any] = None,
+    dataset_name: str = "",
     _spread_resource_prefix: Optional[str] = None,
     **read_args,
 ) -> Dataset[T]:
@@ -196,6 +201,7 @@ def read_datasource(
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the available partitioning of the datasource.
         read_args: Additional kwargs to pass to the datasource impl.
+        dataset_name: The name of the generated dataset.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
 
     Returns:
@@ -267,7 +273,8 @@ def read_datasource(
     for i, task in enumerate(read_tasks):
         calls.append(
             lambda i=i, task=task, resources=next(resource_iter): remote_read.options(
-                **ray_remote_args, resources=resources
+                **{"name": f"[{dataset_name}]:remote_read_{i}", **ray_remote_args},
+                resources=resources,
             ).remote(i, task, stats_actor)
         )
         metadata.append(task.get_metadata())
@@ -287,6 +294,7 @@ def read_datasource(
             stats_actor=stats_actor,
             stats_uuid=stats_uuid,
         ),
+        name=dataset_name,
     )
 
 
@@ -297,6 +305,7 @@ def read_parquet(
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
     parallelism: int = 200,
+    dataset_name: str = "",
     ray_remote_args: Dict[str, Any] = None,
     _tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     **arrow_parquet_args,
@@ -363,6 +372,7 @@ def read_parquet(
         paths=paths,
         filesystem=filesystem,
         columns=columns,
+        dataset_name=dataset_name,
         ray_remote_args=ray_remote_args,
         **arrow_parquet_args,
     )
