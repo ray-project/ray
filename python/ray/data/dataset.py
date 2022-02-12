@@ -1857,6 +1857,9 @@ class Dataset(Generic[T]):
         Returns:
             A local iterator over the entire dataset.
         """
+        # During row-based ops, we also choose a batch format that lines up with the
+        # current dataset format in order to eliminate unnecessary copies and type
+        # conversions.
         dataset_format = self._dataset_format()
         batch_format = (
             "pyarrow"
