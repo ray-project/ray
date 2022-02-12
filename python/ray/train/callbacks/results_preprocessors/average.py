@@ -25,10 +25,12 @@ class AverageResultsPreprocessor(ResultsPreprocessor):
         np.int64,
     )
 
-    def __init__(self, metrics_to_average: Dict = {}):
-        self.metrics_to_average = metrics_to_average
+    def __init__(self, metrics_to_average: Dict = None):
+        self.metrics_to_average = (
+            {} if metrics_to_average is None else metrics_to_average
+        )
 
-    def preprocess(self, results: List[Dict] = []) -> List[Dict]:
+    def preprocess(self, results: List[Dict] = None) -> List[Dict]:
         """Average results before sending them to callbacks.
 
         Args:
@@ -38,6 +40,7 @@ class AverageResultsPreprocessor(ResultsPreprocessor):
         Returns:
             A updated list of results.
         """
+        results = [] if results is None else results
         if len(results) == 0 or len(self.metrics_to_average) == 0:
             return results
 

@@ -157,8 +157,6 @@ class Trainer:
         # Incremental unique run ID.
         self._run_id = 0
 
-        self._aggregated_metrics = None
-
         self.logdir = self.create_logdir(logdir)
 
         # Setup executor.
@@ -317,6 +315,7 @@ class Trainer:
 
         # TODO(matt): Set default callbacks.
         callbacks = [] if callbacks is None else callbacks
+        preprocessors = [] if preprocessors is None else preprocessors
         finished_with_errors = False
 
         for callback in callbacks:
