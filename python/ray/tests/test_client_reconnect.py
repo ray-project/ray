@@ -392,6 +392,30 @@ def test_disconnects_during_large_async_get():
         assert result.shape == (1024, 1024, 128)
 
 
+def test_disconnect_during_large_put():
+    """
+    Disconnect during a large (multi-chunk) put.
+    """
+    i = 0
+    started = False
+
+    def fail_halfway(_):
+        # Inject an error halfway through the object transfer
+        nonlocal i, started
+        if not started:
+            return
+        i += 1
+        if i == 8:
+            raise RuntimeError
+
+    with start_middleman_server(on_task_response=fail_halfway):
+        started = True
+        objref = ray.put(np.random.random((1024, 1024, 128)))
+        result = ray.get(objref)
+        assert i > 8  # Check that the failure was inject
+        assert result.shape == (1024, 1024, 128)
+
+
 def test_valid_actor_state():
     """
     Repeatedly inject errors in the middle of mutating actor calls. Check
