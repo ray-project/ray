@@ -1,13 +1,19 @@
-from ray.data.block import Block
-from ray.data.impl.block_list import BlockList
-from ray.data.impl.compute import get_compute
-from ray.data.impl.stats import DatasetStats
-
 from typing import Callable, Tuple, Optional, Union, Iterable, TYPE_CHECKING
 import uuid
 
 if TYPE_CHECKING:
     import pyarrow
+
+import ray
+from ray.data.block import Block
+from ray.data.impl.block_list import BlockList
+from ray.data.impl.compute import get_compute
+from ray.data.impl.stats import DatasetStats
+from ray.data.impl.lazy_block_list import LazyBlockList
+
+OPTIMIZE_FUSE_READS = True
+OPTIMIZE_FUSE_STAGES = True
+OPTIMIZE_FUSE_SHUFFLE = True
 
 
 class ExecutionPlan:
@@ -76,7 +82,12 @@ class ExecutionPlan:
         # 2. task fusion of OneToOne to AlltoAll
         # 3. clear input blocks
         if self._out_blocks is None:
-            self._fuse_compatible_stages()
+            if OPTIMIZE_FUSE_READS:
+                self._rewrite_read_stages()
+            if OPTIMIZE_FUSE_STAGES:
+                self._fuse_one_to_one_stages()
+            if OPTIMIZE_FUSE_SHUFFLE:
+                self._fuse_all_to_all_stages()
             blocks = self._in_blocks
             stats = self._in_stats
             for stage in self._stages:
@@ -92,7 +103,27 @@ class ExecutionPlan:
             self._out_stats.dataset_uuid = self._dataset_uuid
         return self._out_blocks
 
-    def _fuse_compatible_stages(self) -> None:
+    def _rewrite_read_stages(self) -> None:
+        """Rewrites read stages into one-to-one stages."""
+        if self._stages and isinstance(self._in_blocks, LazyBlockList):
+            blocks = []
+            metadata = []
+            for i, read_task in enumerate(self._in_blocks._read_tasks):
+                blocks.append(ray.put([read_task]))
+                metadata.append(self._in_blocks._metadata[i])
+            self._in_blocks = BlockList(blocks, metadata)
+            self._in_stats = DatasetStats(stages={}, parent=None)
+
+            def block_fn(block: Block) -> Iterable[Block]:
+                [read_task] = block
+                for tmp1 in read_task._read_fn():
+                    yield tmp1
+
+            # TODO: use num_cpus=1 by default for read and pass in remote args?
+            self._stages.insert(0, OneToOneStage("read", block_fn, None, {}))
+
+    def _fuse_one_to_one_stages(self) -> None:
+        """Fuses compatible one-to-one stages."""
         optimized_stages = []
         prev_stage = None
         for stage in self._stages:
@@ -107,6 +138,10 @@ class ExecutionPlan:
             optimized_stages.append(prev_stage)
             prev_stage = None
         self._stages = optimized_stages
+
+    def _fuse_all_to_all_stages(self) -> None:
+        """Fuses compatible one-to-one to all-to-all stages."""
+        pass  # TODO
 
     def clear(self) -> None:
         self._out_blocks = None
@@ -155,7 +190,7 @@ class OneToOneStage(Stage):
         if other.ray_remote_args != self.ray_remote_args:
             return False
         return True
-    
+
     def fuse(self, other: Stage):
         name = self.name + "->" + other.name
         fn1 = self.block_fn
@@ -163,7 +198,7 @@ class OneToOneStage(Stage):
 
         def block_fn(block: Block) -> Iterable[Block]:
             for tmp1 in fn1(block):
-                for tmp2 in fn2(block):
+                for tmp2 in fn2(tmp1):
                     yield tmp2
 
         return OneToOneStage(name, block_fn, self.compute, self.ray_remote_args)
