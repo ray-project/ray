@@ -412,7 +412,7 @@ def test_disconnect_during_large_put():
         started = True
         objref = ray.put(np.random.random((1024, 1024, 128)))
         result = ray.get(objref)
-        assert i > 8  # Check that the failure was inject
+        assert i > 8  # Check that the failure was injected
         assert result.shape == (1024, 1024, 128)
 
 

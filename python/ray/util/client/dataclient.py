@@ -103,6 +103,19 @@ def chunk_put(req: ray_client_pb2.DataRequest):
     the amount of memory needed to handle the put.
     """
     total_size = len(req.put.data)
+    if total_size >= OBJECT_TRANSFER_WARNING_SIZE and log_once(
+        "client_object_put_size_warning"
+    ):
+        size_gb = total_size / 2 ** 30
+        warnings.warn(
+            "Ray Client is attempting to send a "
+            f"{size_gb:.2f} GiB object over the network, which may "
+            "be slow. Consider serializing the object and using a remote "
+            "URI to transfer via S3 or Google Cloud Storage instead. "
+            "Documentation for doing this can be found here: "
+            "https://docs.ray.io/en/latest/handling-dependencies.html#remote-uris",
+            UserWarning,
+        )
     total_chunks = math.ceil(total_size / OBJECT_TRANSFER_CHUNK_SIZE)
     for chunk_id in range(0, total_chunks):
         start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
