@@ -127,7 +127,6 @@ class MiddlemanRayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             context.set_details(e.details())
             raise
         if self.on_response:
-            # GetObject streams response, handle on_response separately
             self.on_response(response)
         return response
 
@@ -321,34 +320,27 @@ def test_disconnect_during_get():
         disconnect_thread.join()
 
 
-def test_disconnects_during_large_get():
+def test_disconnect_during_large_put():
     """
-    Disconnect repeatedly during a large (multi-chunk) get.
+    Disconnect during a large (multi-chunk) put.
     """
     i = 0
     started = False
 
-    def fail_every_three(_):
-        # Inject an error every third time this method is called
+    def fail_halfway(_):
+        # Inject an error halfway through the object transfer
         nonlocal i, started
         if not started:
             return
         i += 1
-        if i % 3 == 0:
+        if i == 8:
             raise RuntimeError
 
-    @ray.remote
-    def large_result():
-        # 1024x1024x128 float64 matrix (1024 MiB). With 64MiB chunk size,
-        # it will take at least 16 chunks to transfer this object. Since
-        # the failure is injected every 3 chunks, this transfer can only
-        # work if the chunked get request retries at the last received chunk
-        # (instead of starting from the beginning each retry)
-        return np.random.random((1024, 1024, 128))
-
-    with start_middleman_server(on_task_response=fail_every_three):
+    with start_middleman_server(on_task_response=fail_halfway):
         started = True
-        result = ray.get(large_result.remote())
+        objref = ray.put(np.random.random((1024, 1024, 128)))
+        result = ray.get(objref)
+        assert i > 8  # Check that the failure was injected
         assert result.shape == (1024, 1024, 128)
 
 

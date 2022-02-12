@@ -618,5 +618,45 @@ async def test_bootstrap_address(job_manager, monkeypatch):
     assert "SUCCESS!" in job_manager.get_job_logs(job_id)
 
 
+@pytest.mark.asyncio
+async def test_job_runs_with_no_resources_available(job_manager):
+    script_path = _driver_script_path("consume_one_cpu.py")
+
+    hang_signal_actor = SignalActor.remote()
+
+    @ray.remote(num_cpus=ray.available_resources()["CPU"])
+    def consume_all_cpus():
+        ray.get(hang_signal_actor.wait.remote())
+
+    # Start a hanging task that consumes all CPUs.
+    hanging_ref = consume_all_cpus.remote()
+
+    try:
+        # Check that the job starts up properly even with no CPUs available.
+        # The job won't exit until it has a CPU available because it waits for
+        # a task.
+        job_id = job_manager.submit_job(entrypoint=f"python {script_path}")
+        await async_wait_for_condition(
+            check_job_running, job_manager=job_manager, job_id=job_id
+        )
+        await async_wait_for_condition(
+            lambda: "Hanging..." in job_manager.get_job_logs(job_id)
+        )
+
+        # Signal the hanging task to exit and release its CPUs.
+        ray.get(hang_signal_actor.send.remote())
+
+        # Check the job succeeds now that resources are available.
+        await async_wait_for_condition(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id
+        )
+        await async_wait_for_condition(
+            lambda: "Success!" in job_manager.get_job_logs(job_id)
+        )
+    finally:
+        # Just in case the test fails.
+        ray.cancel(hanging_ref)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

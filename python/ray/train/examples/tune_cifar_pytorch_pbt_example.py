@@ -18,7 +18,8 @@ from ray.util.sgd.torch.resnet import ResNet18
 
 
 def train_epoch(dataloader, model, loss_fn, optimizer):
-    size = len(dataloader.dataset)
+    size = len(dataloader.dataset) // train.world_size()
+    model.train()
     for batch, (X, y) in enumerate(dataloader):
         # Compute prediction error
         pred = model(X)
@@ -35,7 +36,7 @@ def train_epoch(dataloader, model, loss_fn, optimizer):
 
 
 def validate_epoch(dataloader, model, loss_fn):
-    size = len(dataloader.dataset)
+    size = len(dataloader.dataset) // train.world_size()
     num_batches = len(dataloader)
     model.eval()
     test_loss, correct = 0, 0
@@ -95,8 +96,10 @@ def train_func(config):
         train_dataset = Subset(train_dataset, list(range(64)))
         validation_dataset = Subset(validation_dataset, list(range(64)))
 
-    train_loader = DataLoader(train_dataset, batch_size=config["batch_size"])
-    validation_loader = DataLoader(validation_dataset, batch_size=config["batch_size"])
+    worker_batch_size = config["batch_size"] // train.world_size()
+
+    train_loader = DataLoader(train_dataset, batch_size=worker_batch_size)
+    validation_loader = DataLoader(validation_dataset, batch_size=worker_batch_size)
 
     train_loader = train.torch.prepare_data_loader(train_loader)
     validation_loader = train.torch.prepare_data_loader(validation_loader)
