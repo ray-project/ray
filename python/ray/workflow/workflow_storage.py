@@ -57,8 +57,7 @@ DUPLICATE_NAME_COUNTER = "duplicate_name_counter"
 
 # TODO: Get rid of this and use asyncio.run instead once we don't support py36
 def asyncio_run(coro):
-    loop = asyncio.get_event_loop()
-    return loop.run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 @dataclass
@@ -786,7 +785,7 @@ def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:
 def _load_object_ref(paths: List[str], wf_storage: WorkflowStorage) -> ObjectRef:
     @ray.remote(num_cpus=0)
     def load_ref(paths: List[str], wf_storage: WorkflowStorage):
-        return asyncio.get_event_loop().run_until_complete(wf_storage._get(paths))
+        return asyncio.run(wf_storage._get(paths))
 
     return load_ref.remote(paths, wf_storage)
 

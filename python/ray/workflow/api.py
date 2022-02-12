@@ -354,16 +354,14 @@ def wait_for_event(
     @step
     def get_message(event_listener_type: EventListenerType, *args, **kwargs) -> Event:
         event_listener = event_listener_type()
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(event_listener.poll_for_event(*args, **kwargs))
+        return asyncio.run(event_listener.poll_for_event(*args, **kwargs))
 
     @step
     def message_committed(
         event_listener_type: EventListenerType, event: Event
     ) -> Event:
         event_listener = event_listener_type()
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(event_listener.event_checkpointed(event))
+        asyncio.run(event_listener.event_checkpointed(event))
         return event
 
     return message_committed.step(
