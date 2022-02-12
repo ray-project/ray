@@ -75,7 +75,7 @@ def read_and_validate_release_test_collection(config_file: str) -> List[Test]:
     return test_config
 
 
-def validate_release_test_collection(test_collection: List[Dict[str, Any]]):
+def validate_release_test_collection(test_collection: List[Test]):
     errors = []
     for test in test_collection:
         errors += validate_test(test)

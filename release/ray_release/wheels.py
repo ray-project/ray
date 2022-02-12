@@ -22,7 +22,7 @@ DEFAULT_GIT_PACKAGE = "ray"
 
 REPO_URL_TPL = "https://github.com/{owner}/{package}.git"
 INIT_URL_TPL = (
-    "https://raw.githubusercontent.com/" "{fork}/{commit}/python/ray/__init__.py"
+    "https://raw.githubusercontent.com/{fork}/{commit}/python/ray/__init__.py"
 )
 
 DEFAULT_REPO = REPO_URL_TPL.format(owner=DEFAULT_GIT_OWNER, package=DEFAULT_GIT_PACKAGE)
