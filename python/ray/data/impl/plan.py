@@ -3,7 +3,7 @@ from ray.data.impl.block_list import BlockList
 from ray.data.impl.compute import get_compute
 from ray.data.impl.stats import DatasetStats
 
-from typing import Callable, Tuple, Optional, Union, TYPE_CHECKING
+from typing import Callable, Tuple, Optional, Union, Iterable, TYPE_CHECKING
 import uuid
 
 if TYPE_CHECKING:
@@ -76,6 +76,7 @@ class ExecutionPlan:
         # 2. task fusion of OneToOne to AlltoAll
         # 3. clear input blocks
         if self._out_blocks is None:
+            self._fuse_compatible_stages()
             blocks = self._in_blocks
             stats = self._in_stats
             for stage in self._stages:
@@ -90,6 +91,22 @@ class ExecutionPlan:
             self._out_stats = stats
             self._out_stats.dataset_uuid = self._dataset_uuid
         return self._out_blocks
+
+    def _fuse_compatible_stages(self) -> None:
+        optimized_stages = []
+        prev_stage = None
+        for stage in self._stages:
+            if prev_stage is None:
+                prev_stage = stage
+            elif prev_stage.can_fuse(stage):
+                prev_stage = prev_stage.fuse(stage)
+            else:
+                optimized_stages.append(prev_stage)
+                prev_stage = stage
+        if prev_stage:
+            optimized_stages.append(prev_stage)
+            prev_stage = None
+        self._stages = optimized_stages
 
     def clear(self) -> None:
         self._out_blocks = None
@@ -110,6 +127,12 @@ class Stage:
     ) -> Tuple[BlockList, dict]:
         raise NotImplementedError
 
+    def can_fuse(self, other: "Stage"):
+        raise NotImplementedError
+
+    def fuse(self, other: "Stage"):
+        raise NotImplementedError
+
 
 class OneToOneStage(Stage):
     def __init__(
@@ -123,6 +146,27 @@ class OneToOneStage(Stage):
         self.block_fn = block_fn
         self.compute = compute
         self.ray_remote_args = ray_remote_args
+
+    def can_fuse(self, other: Stage):
+        if not isinstance(other, OneToOneStage):
+            return False
+        if other.compute != self.compute:
+            return False
+        if other.ray_remote_args != self.ray_remote_args:
+            return False
+        return True
+    
+    def fuse(self, other: Stage):
+        name = self.name + "->" + other.name
+        fn1 = self.block_fn
+        fn2 = other.block_fn
+
+        def block_fn(block: Block) -> Iterable[Block]:
+            for tmp1 in fn1(block):
+                for tmp2 in fn2(block):
+                    yield tmp2
+
+        return OneToOneStage(name, block_fn, self.compute, self.ray_remote_args)
 
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
@@ -144,6 +188,9 @@ class AllToAllStage(Stage):
     ):
         super().__init__(name, num_blocks)
         self.fn = fn
+
+    def can_fuse(self, other: Stage):
+        return False
 
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
