@@ -567,7 +567,7 @@ def test_load_checkpoint_from_path(ray_start_2_cpus, tmpdir):
     trainer.start()
     trainer.run(train_func_checkpoint, checkpoint_strategy=checkpoint_strategy)
 
-    assert trainer.best_checkpoint["loss"] == 7
+    assert trainer.best_checkpoint["loss"] == 3
     assert (
         Trainer.load_checkpoint_from_path(trainer.best_checkpoint_path)
         == trainer.best_checkpoint
