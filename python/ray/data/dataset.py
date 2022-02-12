@@ -2484,7 +2484,6 @@ Dict[str, List[str]]]): The names of the columns
                 if times and self._i >= times:
                     raise StopIteration
                 self._ds._set_epoch(self._i)
-                self._ds._set_name(f"{self._ds_name}|repeat_epoch_{self._i}")
                 self._i += 1
                 return lambda: self._ds.force_reads()
 
