@@ -201,6 +201,7 @@ class ActorPool(ComputeStrategy):
             for block in results:
                 new_blocks.append(block)
                 new_metadata.append(metadata_mapping[block])
+            new_metadata = ray.get(new_metadata)
         return BlockList(new_blocks, new_metadata)
 
 
