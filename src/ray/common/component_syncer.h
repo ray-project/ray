@@ -197,8 +197,8 @@ class NodeSyncContext : public T,
                 node_versions[message.component_id()] = message.version();
               }
               RAY_LOG(DEBUG) << "DBG: Read: " << NodeID::FromBinary(message.node_id())
-                            << " version: " << message.version()
-                            << " component: " << message.component_id();
+                             << " version: " << message.version()
+                             << " component: " << message.component_id();
             }
             _this->instance_.Update(std::move(_this->in_message_));
             _this->in_message_.Clear();
@@ -233,10 +233,9 @@ class NodeSyncContext : public T,
       --consumed_messages_;
     }
 
-
     if (out_buffer_.empty()) {
       RAY_LOG(DEBUG) << "DBG: Stop sending since no more messages";
-      if(out_message_ != nullptr) {
+      if (out_message_ != nullptr) {
         out_message_ = nullptr;
         // Flush
         write_opts_.clear_corked();
@@ -317,11 +316,9 @@ struct SyncServerReactor : public NodeSyncContext<ServerBidiReactor> {
 
   void OnDone() override {
     finished_ = true;
-    io_context_.dispatch(
-        [instance = &instance_, node_id = node_id_]() {
-          instance->DisconnectFrom(node_id);
-        },
-        "SyncServerReactor.OnDone");
+    io_context_.dispatch([instance = &instance_,
+                          node_id = node_id_]() { instance->DisconnectFrom(node_id); },
+                         "SyncServerReactor.OnDone");
   }
 };
 
@@ -340,7 +337,10 @@ struct SyncClientReactor : public NodeSyncContext<ClientBidiReactor> {
       HandleFailure();
     }
   }
-  ~SyncClientReactor() { delete rpc_context_; rpc_context_ = nullptr; }
+  ~SyncClientReactor() {
+    delete rpc_context_;
+    rpc_context_ = nullptr;
+  }
   void OnDone(const grpc::Status &status) override {
     finished_ = true;
     RAY_LOG(INFO) << "NodeId: " << NodeID::FromBinary(GetNodeId()).Hex()

@@ -13,7 +13,9 @@
 // limitations under the License.
 
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
+
 #include <google/protobuf/util/json_util.h>
+
 #include <boost/algorithm/string.hpp>
 
 #include "ray/common/grpc_util.h"

@@ -86,56 +86,59 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler, public syncing::
   const absl::flat_hash_map<NodeID, SchedulingResources> &GetClusterResources() const;
 
   void Update(std::shared_ptr<syncing::RaySyncMessage> message) override {
-    main_io_service_.post([this, message](){
-      rpc::ResourcesData resources;
-      resources.ParseFromString(message->sync_message());
-      resources.set_node_id(message->node_id());
+    main_io_service_.post(
+        [this, message]() {
+          rpc::ResourcesData resources;
+          resources.ParseFromString(message->sync_message());
+          resources.set_node_id(message->node_id());
 
-      NodeID node_id = NodeID::FromBinary(message->node_id());
-      RAY_LOG(DEBUG) << "DBG: MSG RECEIVED: " << node_id.Hex() << " "
-                     << message->component_id();
-      if (message->component_id() == syncing::RayComponentId::SCHEDULER) {
-        if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-          UpdateNodeNormalTaskResources(node_id, resources);
-        } else {
-          if (node_resource_usages_.count(node_id) == 0 ||
-              resources.resources_available_changed()) {
-            const auto &resource_changed = MapFromProtobuf(resources.resources_available());
-            SetAvailableResources(node_id, ResourceSet(resource_changed));
+          NodeID node_id = NodeID::FromBinary(message->node_id());
+          RAY_LOG(DEBUG) << "DBG: MSG RECEIVED: " << node_id.Hex() << " "
+                         << message->component_id();
+          if (message->component_id() == syncing::RayComponentId::SCHEDULER) {
+            if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+              UpdateNodeNormalTaskResources(node_id, resources);
+            } else {
+              if (node_resource_usages_.count(node_id) == 0 ||
+                  resources.resources_available_changed()) {
+                const auto &resource_changed =
+                    MapFromProtobuf(resources.resources_available());
+                SetAvailableResources(node_id, ResourceSet(resource_changed));
+              }
+            }
           }
-        }
-      }
 
-      auto iter = node_resource_usages_.find(node_id);
-      if (iter == node_resource_usages_.end()) {
-        auto resources_data = std::make_shared<rpc::ResourcesData>();
-        resources_data->CopyFrom(resources);
-        node_resource_usages_[node_id] = *resources_data;
-        return;
-      }
+          auto iter = node_resource_usages_.find(node_id);
+          if (iter == node_resource_usages_.end()) {
+            auto resources_data = std::make_shared<rpc::ResourcesData>();
+            resources_data->CopyFrom(resources);
+            node_resource_usages_[node_id] = *resources_data;
+            return;
+          }
 
-      if (message->component_id() == syncing::RayComponentId::RESOURCE_MANAGER) {
-        if (resources.resources_total_size() > 0) {
-          (*iter->second.mutable_resources_total()) = resources.resources_total();
-        }
-        if (resources.resources_available_changed()) {
-          (*iter->second.mutable_resources_available()) = resources.resources_available();
-        }
-      } else {
-        if (resources.resource_load_changed()) {
-          (*iter->second.mutable_resource_load()) = resources.resource_load();
-        }
-        if (resources.resources_normal_task_changed()) {
-          (*iter->second.mutable_resources_normal_task()) =
-              resources.resources_normal_task();
-        }
-        (*iter->second.mutable_resource_load_by_shape()) =
-            resources.resource_load_by_shape();
-        iter->second.set_cluster_full_of_actors_detected(
-            resources.cluster_full_of_actors_detected());
-      }
-    },
-      "UP");
+          if (message->component_id() == syncing::RayComponentId::RESOURCE_MANAGER) {
+            if (resources.resources_total_size() > 0) {
+              (*iter->second.mutable_resources_total()) = resources.resources_total();
+            }
+            if (resources.resources_available_changed()) {
+              (*iter->second.mutable_resources_available()) =
+                  resources.resources_available();
+            }
+          } else {
+            if (resources.resource_load_changed()) {
+              (*iter->second.mutable_resource_load()) = resources.resource_load();
+            }
+            if (resources.resources_normal_task_changed()) {
+              (*iter->second.mutable_resources_normal_task()) =
+                  resources.resources_normal_task();
+            }
+            (*iter->second.mutable_resource_load_by_shape()) =
+                resources.resource_load_by_shape();
+            iter->second.set_cluster_full_of_actors_detected(
+                resources.cluster_full_of_actors_detected());
+          }
+        },
+        "UP");
   }
 
   /// Handle a node registration.

@@ -974,8 +974,7 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
 
 void NodeManager::UpdateResourceUsage(const NodeID &node_id,
                                       const rpc::ResourcesData &resource_data) {
-  RAY_LOG(DEBUG)
-      << "[UpdateResourceUsage]: Updating: " << node_id;
+  RAY_LOG(DEBUG) << "[UpdateResourceUsage]: Updating: " << node_id;
 
   if (!cluster_resource_scheduler_->GetClusterResourceManager().UpdateNode(
           node_id.Binary(), resource_data)) {

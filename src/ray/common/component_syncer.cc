@@ -42,11 +42,12 @@ SyncServerReactor *RaySyncer::ConnectFrom(grpc::CallbackServerContext *context) 
   auto reactor = std::make_shared<SyncServerReactor>(*this, this->io_context_, context);
   reactor->Init();
   RAY_LOG(INFO) << "Adding node: " << NodeID::FromBinary(reactor->GetNodeId()).Hex();
-  io_context_.dispatch([this, reactor] (){
-    auto [iter, added] = followers_.emplace(reactor->GetNodeId(), reactor);
-    RAY_CHECK(added);
-  },
-    "ConnectFrom");
+  io_context_.dispatch(
+      [this, reactor]() {
+        auto [iter, added] = followers_.emplace(reactor->GetNodeId(), reactor);
+        RAY_CHECK(added);
+      },
+      "ConnectFrom");
   return reactor.get();
 }
 
@@ -68,8 +69,8 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {
     if (message->node_id() != GetNodeId()) {
       if (receivers_[message->component_id()]) {
         RAY_LOG(DEBUG) << "DBG: BroadcastMessage: UpdateLocalInfo: "
-                      << NodeID::FromBinary(message->node_id())
-                      << " ComponentID: " << message->component_id();
+                       << NodeID::FromBinary(message->node_id())
+                       << " ComponentID: " << message->component_id();
 
         receivers_[message->component_id()]->Update(message);
       }
