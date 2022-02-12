@@ -249,6 +249,7 @@ class RolloutWorker(ParallelIteratorWorker):
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         policy=None,
         monitor_path=None,
+        disable_env_checking=False,
     ):
         """Initializes a RolloutWorker instance.
 
@@ -363,6 +364,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 Env is created on this RolloutWorker.
             policy: Obsoleted arg. Use `policy_spec` instead.
             monitor_path: Obsoleted arg. Use `record_env` instead.
+            disable_env_checking: If True, disables the env checking module that
+                validates the properties of the passed environment.
         """
 
         # Deprecated args.
@@ -490,8 +493,10 @@ class RolloutWorker(ParallelIteratorWorker):
 
         if self.env is not None:
             # Validate environment (general validation function).
-            check_env(self.env)
-            # Custom validation function given.
+            if not disable_env_checking:
+                check_env(self.env)
+            # Custom validation function given, typically a function attribute of the
+            # algorithm trainer.
             if validate_env is not None:
                 validate_env(self.env, self.env_context)
             # We can't auto-wrap a BaseEnv.

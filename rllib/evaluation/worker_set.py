@@ -591,6 +591,7 @@ class WorkerSet:
             fake_sampler=config["fake_sampler"],
             extra_python_environs=extra_python_environs,
             spaces=spaces,
+            disable_env_checking=config["disable_env_checking"],
         )
 
         return worker
