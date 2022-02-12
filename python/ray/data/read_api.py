@@ -285,7 +285,7 @@ def read_datasource(
         block_list.ensure_schema_for_first_block()
 
     stats = DatasetStats(
-        stages={"read": metadata},
+        stages=[("read", metadata)],
         parent=None,
         stats_actor=stats_actor,
         stats_uuid=stats_uuid,

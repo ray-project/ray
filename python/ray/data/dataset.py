@@ -462,12 +462,14 @@ class Dataset(Generic[T]):
 
         if shuffle:
 
-            def do_shuffle(blocks, clear_input_blocks: bool):
+            def do_shuffle(blocks, clear_input_blocks: bool, block_udf):
                 # TODO: implement clear_input_blocks
-                return simple_shuffle(blocks, num_blocks)
+                return simple_shuffle(blocks, block_udf, num_blocks)
 
             plan = self._plan.with_stage(
-                AllToAllStage("repartition", num_blocks, do_shuffle)
+                AllToAllStage(
+                    "repartition", num_blocks, do_shuffle, supports_block_udf=True
+                )
             )
             return Dataset(plan, self._epoch, self._lazy)
 
@@ -563,7 +565,7 @@ class Dataset(Generic[T]):
             The shuffled dataset.
         """
 
-        def do_shuffle(block_list, clear_input_blocks: bool):
+        def do_shuffle(block_list, clear_input_blocks: bool, block_udf):
             num_blocks = block_list.executed_num_blocks()  # Blocking.
             if num_blocks == 0:
                 return block_list, {}
@@ -575,6 +577,7 @@ class Dataset(Generic[T]):
                 blocks = block_list
             new_blocks, stage_info = simple_shuffle(
                 blocks,
+                block_udf,
                 num_blocks,
                 random_shuffle=True,
                 random_seed=seed,
@@ -583,7 +586,9 @@ class Dataset(Generic[T]):
             return new_blocks, stage_info
 
         plan = self._plan.with_stage(
-            AllToAllStage("random_shuffle", num_blocks, do_shuffle)
+            AllToAllStage(
+                "random_shuffle", num_blocks, do_shuffle, supports_block_udf=True
+            )
         )
         return Dataset(plan, self._epoch, self._lazy)
 

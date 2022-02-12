@@ -11,8 +11,8 @@ from ray.data.impl.compute import get_compute
 from ray.data.impl.stats import DatasetStats
 from ray.data.impl.lazy_block_list import LazyBlockList
 
-OPTIMIZE_FUSE_READS = True
-OPTIMIZE_FUSE_STAGES = True
+OPTIMIZE_FUSE = True
+OPTIMIZE_FUSE_READ = False
 OPTIMIZE_FUSE_SHUFFLE = True
 
 
@@ -82,12 +82,10 @@ class ExecutionPlan:
         # 2. task fusion of OneToOne to AlltoAll
         # 3. clear input blocks
         if self._out_blocks is None:
-            if OPTIMIZE_FUSE_READS:
-                self._rewrite_read_stages()
-            if OPTIMIZE_FUSE_STAGES:
+            if OPTIMIZE_FUSE:
+                if OPTIMIZE_FUSE_READ:
+                    self._rewrite_read_stages()
                 self._fuse_one_to_one_stages()
-            if OPTIMIZE_FUSE_SHUFFLE:
-                self._fuse_all_to_all_stages()
             blocks = self._in_blocks
             stats = self._in_stats
             for stage in self._stages:
@@ -129,8 +127,8 @@ class ExecutionPlan:
         for stage in self._stages:
             if prev_stage is None:
                 prev_stage = stage
-            elif prev_stage.can_fuse(stage):
-                prev_stage = prev_stage.fuse(stage)
+            elif stage.can_fuse(prev_stage):
+                prev_stage = stage.fuse(prev_stage)
             else:
                 optimized_stages.append(prev_stage)
                 prev_stage = stage
@@ -139,7 +137,7 @@ class ExecutionPlan:
             prev_stage = None
         self._stages = optimized_stages
 
-    def _fuse_all_to_all_stages(self) -> None:
+    def _fuse_shuffle_stages(self) -> None:
         """Fuses compatible one-to-one to all-to-all stages."""
         pass  # TODO
 
@@ -179,22 +177,22 @@ class OneToOneStage(Stage):
     ):
         super().__init__(name, None)
         self.block_fn = block_fn
-        self.compute = compute
+        self.compute = compute or "tasks"
         self.ray_remote_args = ray_remote_args
 
-    def can_fuse(self, other: Stage):
-        if not isinstance(other, OneToOneStage):
+    def can_fuse(self, prev: Stage):
+        if not isinstance(prev, OneToOneStage):
             return False
-        if other.compute != self.compute:
+        if prev.compute != self.compute:
             return False
-        if other.ray_remote_args != self.ray_remote_args:
+        if prev.ray_remote_args != self.ray_remote_args:
             return False
         return True
 
-    def fuse(self, other: Stage):
-        name = self.name + "->" + other.name
-        fn1 = self.block_fn
-        fn2 = other.block_fn
+    def fuse(self, prev: Stage):
+        name = prev.name + "->" + self.name
+        fn1 = prev.block_fn
+        fn2 = self.block_fn
 
         def block_fn(block: Block) -> Iterable[Block]:
             for tmp1 in fn1(block):
@@ -220,16 +218,35 @@ class AllToAllStage(Stage):
         name: str,
         num_blocks: Optional[int],
         fn: Callable[[BlockList, bool], Tuple[BlockList, dict]],
+        supports_block_udf: bool = False,
+        block_udf=None,
     ):
         super().__init__(name, num_blocks)
         self.fn = fn
+        self.supports_block_udf = supports_block_udf
+        self.block_udf = block_udf
 
-    def can_fuse(self, other: Stage):
-        return False
+    def can_fuse(self, prev: Stage):
+        if not OPTIMIZE_FUSE_SHUFFLE:
+            return False
+        if not self.supports_block_udf:
+            return False
+        if not isinstance(prev, OneToOneStage):
+            return False
+        if prev.compute != "tasks":
+            return False
+        if prev.ray_remote_args != {}:
+            return False
+        return True
+
+    def fuse(self, prev: Stage):
+        assert self.supports_block_udf
+        name = prev.name + "->" + self.name
+        return AllToAllStage(name, self.num_blocks, self.fn, True, prev.block_fn)
 
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
     ) -> Tuple[BlockList, dict]:
-        blocks, stage_info = self.fn(blocks, clear_input_blocks)
+        blocks, stage_info = self.fn(blocks, clear_input_blocks, self.block_udf)
         assert isinstance(blocks, BlockList), blocks
         return blocks, stage_info
