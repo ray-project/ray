@@ -5,7 +5,7 @@ from typing import Optional, Dict, Tuple
 
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.logger import logger
-from ray_release.wheels import DEFAULT_REPO, DEFAULT_BRANCH
+from ray_release.wheels import DEFAULT_BRANCH
 
 
 class Frequency(enum.Enum):
@@ -60,17 +60,6 @@ def get_buildkite_prompt_value(key: str) -> Optional[str]:
     return value
 
 
-def get_default_settings() -> Dict:
-    settings = {
-        "frequency": Frequency.ANY,
-        "test_name_filter": None,
-        "ray_wheels": None,
-        "ray_test_repo": DEFAULT_REPO,
-        "ray_test_branch": DEFAULT_BRANCH,
-    }
-    return settings
-
-
 def get_pipeline_settings() -> Dict:
     """Get pipeline settings.
 
@@ -79,6 +68,17 @@ def get_pipeline_settings() -> Dict:
     settings = get_default_settings()
     settings = update_settings_from_environment(settings)
     settings = update_settings_from_buildkite(settings)
+    return settings
+
+
+def get_default_settings() -> Dict:
+    settings = {
+        "frequency": Frequency.ANY,
+        "test_name_filter": None,
+        "ray_wheels": None,
+        "ray_test_repo": None,
+        "ray_test_branch": None,
+    }
     return settings
 
 
