@@ -93,12 +93,39 @@ mod test {
     //     try_shutdown();
     // }
 
+    // #[test]
+    // fn test_append_string_async() {
+    //     try_init();
+    //     {
+    //         // Remote async with more than one thread requires
+    //         let handle = new_string_threadsafe.remote_async(String::from("Hello"));
+    //
+    //         // let obj_ref_0 = append_stateless.remote(String::from("Hello"), String::from(" World"));
+    //         // let obj_0 = get(&obj_ref_0);
+    //         // println!("{:?}", obj_0);
+    //         let now = std::time::Instant::now();
+    //         // Next step: define tasks with closures etc...
+    //         let mut obj_refs: Vec<_> = (0..10)
+    //             .map(|i| append_threadsafe.remote(&handle, format!(" World X {}", i)))
+    //             .collect();
+    //
+    //         obj_refs.iter().for_each(|obj_ref| {
+    //             let obj = get(&obj_ref);
+    //             println!("{:?} {:?}", obj, now.elapsed().as_millis());
+    //         });
+    //
+    //         let obj = get(&append_threadsafe.remote(&handle, format!(" World X {}", "MAX")));
+    //         println!("{:?} {:?}", obj, now.elapsed().as_millis());
+    //     }
+    //     try_shutdown();
+    // }
+
     #[test]
-    fn test_append_string_async() {
+    fn test_append_string_tokio() {
         try_init();
         {
             // Remote async with more than one thread requires
-            let handle = new_string_threadsafe.remote_async(String::from("Hello"));
+            let handle = new_string_tokio.remote_async(String::from("Hello"));
 
             // let obj_ref_0 = append_stateless.remote(String::from("Hello"), String::from(" World"));
             // let obj_0 = get(&obj_ref_0);
@@ -106,7 +133,7 @@ mod test {
             let now = std::time::Instant::now();
             // Next step: define tasks with closures etc...
             let mut obj_refs: Vec<_> = (0..10)
-                .map(|i| append_threadsafe.remote(&handle, format!(" World X {}", i)))
+                .map(|i| append_tokio.remote(&handle, format!(" World X {}", i)))
                 .collect();
 
             obj_refs.iter().for_each(|obj_ref| {
@@ -114,7 +141,7 @@ mod test {
                 println!("{:?} {:?}", obj, now.elapsed().as_millis());
             });
 
-            let obj = get(&append_threadsafe.remote(&handle, format!(" World X {}", "MAX")));
+            let obj = get(&append_tokio.remote(&handle, format!(" World X {}", "MAX")));
             println!("{:?} {:?}", obj, now.elapsed().as_millis());
         }
         try_shutdown();

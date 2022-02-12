@@ -7,7 +7,8 @@ pub use lazy_static::lazy_static;
 use core::pin::Pin;
 pub use ctor::ctor;
 pub use rmp_serde;
-pub use uniffi::ffi::RustBuffer;
+use uniffi::ffi::RustBuffer;
+pub use async_ffi::{FfiFuture, FutureExt};
 
 pub use ray_rs_sys::ray;
 pub use ray_rs_sys::*;
@@ -30,9 +31,10 @@ use std::{
 
 use libloading::{Library, Symbol};
 
-type InvokerFunction = extern "C" fn(RustBuffer) -> RustBuffer;
-type ActorMethod = extern "C" fn(*mut std::os::raw::c_void, RustBuffer) -> RustBuffer;
-type ActorCreation = extern "C" fn(RustBuffer) -> *mut std::os::raw::c_void;
+type InvokerFunction = extern "C" fn(RayRustBuffer) -> RayRustBuffer;
+type ActorMethod = extern "C" fn(ActorPtr, RayRustBuffer) -> RayRustBuffer;
+type AsyncActorMethod = extern "C" fn(ActorPtr, RayRustBuffer) -> FfiFuture<RayRustBuffer>;
+type ActorCreation = extern "C" fn(RayRustBuffer) -> *mut std::os::raw::c_void;
 
 #[macro_export]
 macro_rules! ray_info {
@@ -65,7 +67,7 @@ lazy_static::lazy_static! {
     static ref GLOBAL_ACTOR_METHODS_MAP: Mutex<HashMap<CString, Symbol<'static, ActorMethod>>> = {
         Mutex::new(HashMap::new())
     };
-    static ref GLOBAL_ASYNC_ACTOR_METHODS_MAP: Mutex<HashMap<CString, Symbol<'static, ActorMethod>>> = {
+    static ref GLOBAL_ASYNC_ACTOR_METHODS_MAP: Mutex<HashMap<CString, Symbol<'static, AsyncActorMethod>>> = {
         Mutex::new(HashMap::new())
     };
     static ref GLOBAL_ACTOR_CREATION_MAP: Mutex<HashMap<CString, Symbol<'static, ActorCreation>>> = {
@@ -189,33 +191,50 @@ fn load_function_ptrs_from_library(lib: &Library) {
         GLOBAL_ACTOR_METHOD_NAMES_SET,
         ActorMethod
     );
+    load_names_to_ptrs!(
+        lib,
+        GLOBAL_ASYNC_ACTOR_METHODS_MAP,
+        GLOBAL_ASYNC_ACTOR_METHOD_NAMES_SET,
+        AsyncActorMethod
+    );
 }
 
+// TODO: change this to return `Result`
 fn resolve_fn<F>(
     fn_name: &CString,
     fn_str: &str,
     fn_map: &Mutex<HashMap<CString, Symbol<'static, F>>>,
-) -> Symbol<'static, F> {
+) -> Option<Symbol<'static, F>> {
     use std::collections::hash_map::Entry;
 
     let mut map = fn_map.lock().unwrap();
 
-    map.entry(fn_name.clone()).or_insert_with(|| {
+    let mut maybe_symbol_ref = map.get(fn_name).cloned();
+    if let None = maybe_symbol_ref {
         for lib in LIBRARIES.lock().unwrap().iter() {
             let ret = unsafe { lib.get::<F>(fn_str.as_bytes()).ok() };
             if let Some(symbol) = ret {
                 ray_info!("Loaded function {} as {:?}", fn_str, symbol);
                 let static_symbol =
                     unsafe { std::mem::transmute::<Symbol<_>, Symbol<'static, F>>(symbol) };
-                return static_symbol;
+                 maybe_symbol_ref = Some(static_symbol);
+                 break;
             }
         }
+    }
+    if let None = maybe_symbol_ref {
         ray_info!(
             "{}",
             format!("Could not find symbol for fn of name {}", fn_str)
         );
-        panic!();
-    }).clone()
+    }
+    maybe_symbol_ref
+}
+
+pub extern "C" fn ffi_fn() -> FfiFuture<()> {
+    async {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }.into_ffi()
 }
 // This function accepts an async function description.
 // It resolves
@@ -241,8 +260,9 @@ fn handle_async_startup() {
             let (tx, rx) = std::sync::mpsc::channel::<(TaskData, Arc<FiberEvent>)>();
             *guard = Some(tx);
             std::thread::spawn(move || {
+                // Future: plug-and-play with async-rs etc
                 let rt = tokio::runtime::Builder::new_multi_thread()
-                    .worker_threads(4)
+                    .worker_threads(1)
                     .enable_all()
                     .build()
                     .unwrap();
@@ -251,14 +271,16 @@ fn handle_async_startup() {
                     let (task_data, notifier) = rx.recv().expect("did not receive");
                     rt.spawn(
                         async move {
-                            rust_worker_execute(
-                                task_data.actor_ptr,
-                                task_data.task_type_int,
-                                task_data.ray_function_info,
-                                task_data.args,
-                                task_data.args_len,
-                                task_data.return_values
-                            );
+                            ffi_fn().await;
+                            rust_worker_execute_async_internal(task_data).await;
+                            // rust_worker_execute(
+                            //     task_data.actor_ptr,
+                            //     task_data.task_type_int,
+                            //     task_data.ray_function_info,
+                            //     task_data.args,
+                            //     task_data.args_len,
+                            //     task_data.return_values,
+                            // );
                             notifier.notify_ready();
                         }
                     );
@@ -294,6 +316,29 @@ struct TaskData {
 
 unsafe impl Send for TaskData {}
 unsafe impl Sync for TaskData {}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct ActorPtr {
+    pub ptr: *mut std::os::raw::c_void,
+}
+
+unsafe impl Send for ActorPtr {}
+unsafe impl Sync for ActorPtr {}
+
+pub struct RayRustBuffer(RustBuffer);
+
+impl RayRustBuffer {
+    pub fn from_vec(v: Vec<u8>) -> Self {
+        Self(RustBuffer::from_vec(v))
+    }
+    pub fn destroy_into_vec(self) -> Vec<u8> {
+        self.0.destroy_into_vec()
+    }
+}
+
+unsafe impl Send for RayRustBuffer {}
+unsafe impl Sync for RayRustBuffer {}
 
 #[cfg(feature = "async")]
 pub extern "C" fn rust_worker_execute_async(
@@ -333,7 +378,7 @@ pub extern "C" fn rust_worker_execute_async(
 }
 
 
-// TODO (jon-chuang): One should replace RustBuffer with RaySlice...
+// TODO (jon-chuang): One should replace RayRustBuffer with RaySlice...
 // TODO (jon-chuang): Try to move unsafe into ray_rs_sys
 // Replace all size_t with u64?
 fn prepare_inputs(
@@ -341,7 +386,7 @@ fn prepare_inputs(
     ray_function_info: RaySlice,
     args: *const *const DataValue,
     args_len: u64
-) -> (RustBuffer, ManuallyDrop<CString>, ray::TaskType) {
+) -> (RayRustBuffer, ManuallyDrop<CString>, ray::TaskType) {
     let args_slice = unsafe { std::slice::from_raw_parts(args, args_len as usize) };
 
     let mut arg_ptrs = Vec::<u64>::new();
@@ -355,7 +400,7 @@ fn prepare_inputs(
         }
     }
 
-    let args_buffer = RustBuffer::from_vec(rmp_serde::to_vec(&(&arg_ptrs, &arg_sizes)).unwrap());
+    let args_buffer = RayRustBuffer::from_vec(rmp_serde::to_vec(&(&arg_ptrs, &arg_sizes)).unwrap());
     // Since the string data was passed from the outer invocation context,
     // it will be destructed by that context with a lifetime that outlives this function body.
     let fn_name = std::mem::ManuallyDrop::new(unsafe {
@@ -374,29 +419,28 @@ fn prepare_inputs(
     (args_buffer, fn_name, task_type)
 }
 
-async extern "C" fn rust_worker_execute_async_internal(
-    actor_ptr: *mut *mut std::os::raw::c_void,
-    task_type_int: i32,
-    ray_function_info: RaySlice,
-    args: *const *const DataValue,
-    args_len: u64,
-    return_values: RaySlice,
-) {
-    let (args_buffer, fn_name, task_type) = prepare_inputs(task_type_int, ray_function_info, args, args_len);
+async fn rust_worker_execute_async_internal(task_data: TaskData) {
+    let (args_buffer, fn_name, task_type) = prepare_inputs(
+        task_data.task_type_int,
+        task_data.ray_function_info,
+        task_data.args,
+        task_data.args_len
+    );
     // Better error handling...?
     let fn_str = fn_name.to_str().unwrap();
 
     if task_type == ray::TaskType::ACTOR_CREATION_TASK {
-        let a_ptr = resolve_fn(&fn_name, fn_str, &GLOBAL_ACTOR_CREATION_MAP)(args_buffer);
+        // TODO: handle the resolve failure properly...
+        let a_ptr = resolve_fn(&fn_name, fn_str, &GLOBAL_ACTOR_CREATION_MAP).unwrap()(args_buffer);
         ray_info!("Actor Created @ address {:p} by {}", a_ptr, fn_str);
         // TODO: this needs to be wrapped with a thread-safe lock managed from the c_worker side
-        // i.e. c_worker_ReassignActorPtr(old, new); Then we can also get rid of **void
+        // i.e. c_worker_AssignActorPtr(old, new); Then we can also get rid of **void
         unsafe {
-            *actor_ptr = a_ptr;
+            *task_data.actor_ptr = a_ptr;
         }
     } else {
         let ret = if task_type == ray::TaskType::NORMAL_TASK {
-            let ret = resolve_fn(&fn_name, fn_str, &GLOBAL_FUNCTION_MAP)(args_buffer);
+            let ret = resolve_fn(&fn_name, fn_str, &GLOBAL_FUNCTION_MAP).unwrap()(args_buffer);
             ray_info!("Executed: {}", fn_str);
             ret
         } else if task_type == ray::TaskType::ACTOR_TASK {
@@ -404,9 +448,18 @@ async extern "C" fn rust_worker_execute_async_internal(
             //
             // Also, we may want the runtimes to be able to move the actor ptr...
             // now that is a different story...
-            let a_ptr = unsafe { *actor_ptr };
-            let ret = resolve_fn(&fn_name, fn_str, &GLOBAL_ACTOR_METHODS_MAP)(a_ptr, args_buffer);
-            ray_info!("Executed {} on actor at {:p}", fn_str, a_ptr);
+            // and we do indeed need **void to be passed to the user-side fn. But do
+            // we really want that?
+            //
+            // So we may also want a "get actor ptr instead...".
+            let a_ptr = ActorPtr { ptr: unsafe { *task_data.actor_ptr } };
+
+            let ret = if fn_str.starts_with("ray_rust_async_") {
+                resolve_fn(&fn_name, fn_str, &GLOBAL_ASYNC_ACTOR_METHODS_MAP).unwrap()(a_ptr, args_buffer).await
+            } else {
+                resolve_fn(&fn_name, fn_str, &GLOBAL_ACTOR_METHODS_MAP).unwrap()(a_ptr, args_buffer)
+            };
+            ray_info!("Executed {} on actor at {:?}", fn_str, a_ptr);
             ret
         } else {
             ray_info!("Invalid task type");
@@ -417,8 +470,8 @@ async extern "C" fn rust_worker_execute_async_internal(
 
         unsafe {
             let ret_slice = std::slice::from_raw_parts_mut(
-                return_values.data as *mut *const DataValue,
-                return_values.len as usize,
+                task_data.return_values.data as *mut *const DataValue,
+                task_data.return_values.len as usize,
             );
             ret_slice[0] = c_worker_AllocateDataValue(
                 ret_owned.as_ptr(),
@@ -439,25 +492,23 @@ pub extern "C" fn rust_worker_execute(
     return_values: RaySlice,
 ) {
     let (args_buffer, fn_name, task_type) = prepare_inputs(task_type_int, ray_function_info, args, args_len);
-    // Better error handling...?
     let fn_str = fn_name.to_str().unwrap();
 
     if task_type == ray::TaskType::ACTOR_CREATION_TASK {
-        let a_ptr = resolve_fn(&fn_name, fn_str, &*GLOBAL_ACTOR_CREATION_MAP)(args_buffer);
+        let a_ptr = resolve_fn(&fn_name, fn_str, &*GLOBAL_ACTOR_CREATION_MAP).unwrap()(args_buffer);
         ray_info!("Actor Created @ address {:p} by {}", a_ptr, fn_str);
         unsafe {
             *actor_ptr = a_ptr;
         }
     } else {
         let ret = if task_type == ray::TaskType::NORMAL_TASK {
-            let ret = resolve_fn(&fn_name, fn_str, &*GLOBAL_FUNCTION_MAP)(args_buffer);
+            let ret = resolve_fn(&fn_name, fn_str, &*GLOBAL_FUNCTION_MAP).unwrap()(args_buffer);
             ray_info!("Executed: {}", fn_str);
             ret
         } else if task_type == ray::TaskType::ACTOR_TASK {
-            // This will result in a sigsegv if the actor has not been initialized
-            let a_ptr = unsafe { *actor_ptr };
-            let ret = resolve_fn(&fn_name, fn_str, &*GLOBAL_ACTOR_METHODS_MAP)(a_ptr, args_buffer);
-            ray_info!("Executed {} on actor at {:p}", fn_str, a_ptr);
+            let a_ptr = ActorPtr { ptr: unsafe { *actor_ptr } };
+            let ret = resolve_fn(&fn_name, fn_str, &*GLOBAL_ACTOR_METHODS_MAP).unwrap()(a_ptr, args_buffer);
+            ray_info!("Executed {} on actor at {:?}", fn_str, a_ptr);
             ret
         } else {
             ray_info!("Invalid task type");

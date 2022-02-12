@@ -532,7 +532,7 @@ RAY_EXPORT int c_worker_SubmitTask(int task_type, /*optional*/ const char *actor
   for (size_t i = 0; i < return_refs.size(); i++) {
     char *result = (char *)malloc(object_id_size);
     memcpy(result, (char *)return_refs[i].object_id().data(), object_id_size);
-    RAY_LOG(DEBUG) << "return object id:" << result;
+    RAY_LOG(DEBUG) << "return object id:" << return_refs[i].object_id();
     return_object_ids[i] = result;
   }
   return 0;

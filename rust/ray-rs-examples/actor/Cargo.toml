@@ -10,6 +10,7 @@ publish = true
 # ray-rs = "0.0.0"
 ray-rs = { path="../../ray-rs", features = ["async"] }
 serde = "1.0.132"
+tokio = { version="1.16.1", features = ["sync", "time"] }
 
 [build-dependencies]
 rustc_version = "0.4.0"
