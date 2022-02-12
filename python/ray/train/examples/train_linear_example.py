@@ -5,8 +5,8 @@ import torch
 import torch.nn as nn
 import ray.train as train
 from ray.train import Trainer
-from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
-from ray.train.constants import TIME_THIS_ITER_S
+from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback, PrintCallback
+from ray.train.callbacks.results_preprocessors.average import AverageResultsPreprocessor
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -45,10 +45,11 @@ def validate_epoch(dataloader, model, loss_fn):
             pred = model(X)
             loss += loss_fn(pred, y).item()
     loss /= num_batches
-    import copy
 
-    model_copy = copy.deepcopy(model)
-    result = {"model": model_copy.cpu().state_dict(), "loss": loss}
+    result = {
+        "loss": loss,
+        "batch_size": num_batches,
+    }
     return result
 
 
@@ -86,18 +87,6 @@ def train_func(config):
     return results
 
 
-def average_validation_loss(intermediate_results):
-    worker_results = [worker_result["loss"] for worker_result in intermediate_results]
-    return np.mean(worker_results)
-
-
-def average_iter_time(intermediate_results):
-    worker_results = [
-        worker_result[TIME_THIS_ITER_S] for worker_result in intermediate_results
-    ]
-    return np.mean(worker_results)
-
-
 def train_linear(num_workers=2, use_gpu=False, epochs=3):
     trainer = Trainer(backend="torch", num_workers=num_workers, use_gpu=use_gpu)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
@@ -105,13 +94,12 @@ def train_linear(num_workers=2, use_gpu=False, epochs=3):
     results = trainer.run(
         train_func,
         config,
-        callbacks=[JsonLoggerCallback(), TBXLoggerCallback()],
-        aggregate_funcs=[average_validation_loss, average_iter_time],
+        preprocessors=[AverageResultsPreprocessor({"loss": "batch_size"})],
+        callbacks=[JsonLoggerCallback(), TBXLoggerCallback(), PrintCallback()],
     )
     trainer.shutdown()
 
     print(results)
-    print(trainer.aggregated_metrics)
     return results
 
 

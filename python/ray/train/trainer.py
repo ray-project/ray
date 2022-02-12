@@ -1,5 +1,4 @@
 from datetime import datetime
-import collections
 import inspect
 import logging
 import os
@@ -16,6 +15,7 @@ from ray.train.backend import (
     TrainingWorkerError,
 )
 from ray.train.callbacks.callback import TrainingCallback
+from ray.train.callbacks.results_preprocessors import ResultsPreprocessor
 from ray.train.session import TrainingResultType
 from ray.train.utils import RayDataset
 from ray.train.checkpoint import (
@@ -268,11 +268,11 @@ class Trainer:
         self,
         train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
         config: Optional[Dict[str, Any]] = None,
+        preprocessors: Optional[List[ResultsPreprocessor]] = None,
         callbacks: Optional[List[TrainingCallback]] = None,
         dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
         checkpoint: Optional[Union[Dict, str, Path]] = None,
         checkpoint_strategy: Optional[CheckpointStrategy] = None,
-        aggregate_funcs: Optional[Union[Dict, List]] = None,
     ) -> List[T]:
         """Runs a training function in a distributed manner.
 
@@ -281,6 +281,9 @@ class Trainer:
                 This can either take in no arguments or a ``config`` dict.
             config (Optional[Dict]): Configurations to pass into
                 ``train_func``. If None then an empty Dict will be created.
+            preprocessors (Optional[List[ResultsPreprocessor]]): A list of
+                Preprocessors which will be called before results passed to
+                callbacks. Currently there are NO default Callbacks.
             callbacks (Optional[List[TrainingCallback]]): A list of Callbacks
                 which will be executed during training. If this is not set,
                 currently there are NO default Callbacks.
@@ -302,9 +305,6 @@ class Trainer:
                 ``None`` then no checkpoint will be loaded.
             checkpoint_strategy (Optional[CheckpointStrategy]): The
                 configurations for saving checkpoints.
-            aggregate_funcs (Optional[Union[Dict, List]]): The methods
-                used to aggregate intermediate results returned
-                by `train.report()` on each worker.
 
         Returns:
             A list of results from the training function. Each value in the
@@ -337,19 +337,11 @@ class Trainer:
                 checkpoint_strategy=checkpoint_strategy,
                 run_dir=self.latest_run_dir,
             )
-            aggregated_results = collections.defaultdict(list)
-            if aggregate_funcs is None or len(aggregate_funcs) == 0:
-                aggregate_funcs = {}
-            elif isinstance(aggregate_funcs, list):
-                aggregate_funcs = {e.__name__: e for e in aggregate_funcs}
-
             for intermediate_result in iterator:
-                for aggregate_name, func in aggregate_funcs.items():
-                    aggregated_results[aggregate_name].append(func(intermediate_result))
+                for preprocessor in preprocessors:
+                    intermediate_result = preprocessor.preprocess(intermediate_result)
                 for callback in callbacks:
                     callback.process_results(intermediate_result)
-
-            self._aggregated_metrics = aggregated_results
 
             assert iterator.is_finished()
             return iterator.get_final_results()
@@ -498,15 +490,6 @@ class Trainer:
         ``train.checkpoint()`` has not been called from ``train_func``.
         """
         return self.checkpoint_manager.latest_checkpoint
-
-    @property
-    def aggregated_metrics(self) -> Optional[Dict]:
-        """A ``Dict`` of aggregated metrics across all workers.
-
-        Returns ``None`` if ``run()`` has not been called or an empty
-        ``Dict`` if ``train.report()`` has not been called from ``train_func``.
-        """
-        return self._aggregated_metrics
 
     def shutdown(self):
         """Shuts down the training execution service."""
