@@ -13,7 +13,7 @@
 // limitations under the License.
 
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
-
+#include <google/protobuf/util/json_util.h>
 #include <boost/algorithm/string.hpp>
 
 #include "ray/common/grpc_util.h"
@@ -54,7 +54,9 @@ bool ClusterResourceManager::UpdateNode(const std::string &node_id_string,
   if (!nodes_.contains(node_id)) {
     return false;
   }
-
+  std::string json_debug;
+  google::protobuf::util::MessageToJsonString(resource_data, &json_debug);
+  RAY_LOG(DEBUG) << "DEBUGGGGGG: " << json_debug;
   auto resources_total = MapFromProtobuf(resource_data.resources_total());
   auto resources_available = MapFromProtobuf(resource_data.resources_available());
   NodeResources node_resources = ResourceMapToNodeResources(

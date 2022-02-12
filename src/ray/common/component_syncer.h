@@ -196,6 +196,9 @@ class NodeSyncContext : public T,
               if (node_versions[message.component_id()] < message.version()) {
                 node_versions[message.component_id()] = message.version();
               }
+              RAY_LOG(DEBUG) << "DBG: Read: " << NodeID::FromBinary(message.node_id())
+                            << " version: " << message.version()
+                            << " component: " << message.component_id();
             }
             _this->instance_.Update(std::move(_this->in_message_));
             _this->in_message_.Clear();
@@ -306,7 +309,11 @@ struct SyncServerReactor : public NodeSyncContext<ServerBidiReactor> {
 
   void OnDone() override {
     finished_ = true;
-    instance_.DisconnectFrom(node_id_);
+    io_context_.dispatch(
+        [instance = &instance_, node_id = node_id_]() {
+          instance->DisconnectFrom(node_id);
+        },
+        "SyncServerReactor.OnDone");
   }
 };
 
@@ -325,7 +332,7 @@ struct SyncClientReactor : public NodeSyncContext<ClientBidiReactor> {
       HandleFailure();
     }
   }
-
+  ~SyncClientReactor() { delete rpc_context_; rpc_context_ = nullptr; }
   void OnDone(const grpc::Status &status) override {
     finished_ = true;
     RAY_LOG(INFO) << "NodeId: " << NodeID::FromBinary(GetNodeId()).Hex()

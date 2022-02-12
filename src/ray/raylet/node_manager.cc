@@ -407,14 +407,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
       });
   worker_pool_.SetAgentManager(agent_manager_);
-  if (RayConfig::instance().syncer_reporting()) {
-    RAY_LOG(INFO) << "Init syncer";
-    syncer_ = std::make_unique<syncing::RaySyncer>(self_node_id_.Binary(), io_service);
-    auto channel = gcs_client_->NewChannel();
-    syncer_->ConnectTo(ray::rpc::syncer::RaySyncer::NewStub(channel));
-    syncer_->Register(syncing::RayComponentId::RESOURCE_MANAGER, this, nullptr);
-    syncer_->Register(syncing::RayComponentId::SCHEDULER, this, nullptr, 2000);
-  }
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -529,6 +521,15 @@ ray::Status NodeManager::RegisterGcs() {
         },
         event_stats_print_interval_ms,
         "NodeManager.deadline_timer.print_event_loop_stats");
+  }
+
+  if (RayConfig::instance().syncer_reporting()) {
+    RAY_LOG(INFO) << "Init syncer";
+    syncer_ = std::make_unique<syncing::RaySyncer>(self_node_id_.Binary(), io_service_);
+    auto channel = gcs_client_->NewChannel();
+    syncer_->ConnectTo(ray::rpc::syncer::RaySyncer::NewStub(channel));
+    syncer_->Register(syncing::RayComponentId::RESOURCE_MANAGER, this, this);
+    syncer_->Register(syncing::RayComponentId::SCHEDULER, this, nullptr, 2000);
   }
 
   return ray::Status::OK();
@@ -973,6 +974,9 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
 
 void NodeManager::UpdateResourceUsage(const NodeID &node_id,
                                       const rpc::ResourcesData &resource_data) {
+  RAY_LOG(DEBUG)
+      << "[UpdateResourceUsage]: Updating: " << node_id;
+
   if (!cluster_resource_scheduler_->GetClusterResourceManager().UpdateNode(
           node_id.Binary(), resource_data)) {
     RAY_LOG(INFO)

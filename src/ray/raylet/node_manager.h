@@ -212,6 +212,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
     rpc::ResourcesData data;
     data.ParseFromString(message.sync_message());
     NodeID node_id = NodeID::FromBinary(data.node_id());
+
     UpdateResourceUsage(node_id, data);
   }
 
@@ -234,14 +235,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       msg.set_sync_message(std::move(serialized_msg));
       return std::make_optional(std::move(msg));
     } else {
-      static uint64_t version2 = 0;
       auto &local = cluster_resource_scheduler_->GetLocalResourceManager();
-      // RAY_LOG(DEBUG) << "DBG: ResourceReporting: LocalVersion:" << local.Version()
-      //                << " SyncVersion:" << current_version;
+      RAY_LOG(DEBUG) << "DBG: ResourceReporting: LocalVersion:" << local.Version()
+                     << " SyncVersion:" << current_version;
 
-      // if (local.Version() <= current_version) {
-      //   return std::nullopt;
-      // }
+      if (local.Version() <= current_version) {
+        return std::nullopt;
+      }
 
       syncing::RaySyncMessage msg;
       rpc::ResourcesData resource_data;
@@ -250,7 +250,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       resource_data.set_node_manager_address(initial_config_.node_manager_address);
 
       msg.set_node_id(self_node_id_.Binary());
-      msg.set_version(++version2);
+      msg.set_version(local.Version());
       msg.set_component_id(syncing::RayComponentId::RESOURCE_MANAGER);
       msg.set_message_type(syncing::RaySyncMessageType::BROADCAST);
       std::string serialized_msg;
