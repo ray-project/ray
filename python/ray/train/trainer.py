@@ -501,7 +501,7 @@ class Trainer:
             return load_checkpoint_from_path(best_checkpoint_path)
 
     @staticmethod
-    def load_checkpoint(checkpoint_file_path: Union[str, Path]) -> Dict:
+    def load_checkpoint_from_path(checkpoint_file_path: Union[str, Path]) -> Dict:
         """Convenience method to load a checkpoint from path.
 
         An error will be raised if the provided path does not exist.

@@ -534,8 +534,8 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
     assert trainer.latest_checkpoint_dir.is_dir()
     assert trainer.best_checkpoint_path.is_file()
     assert trainer.best_checkpoint_path.name == f"checkpoint_{1:06d}"
-    assert trainer.latest_checkpoint == {"loss": 5}
-    assert trainer.best_checkpoint == {"loss": 3}
+    assert trainer.latest_checkpoint["loss"] == 5
+    assert trainer.best_checkpoint["loss"] == 3
 
     checkpoint_dir = trainer.latest_checkpoint_dir
     file_names = [f.name for f in checkpoint_dir.iterdir()]
@@ -550,6 +550,28 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
         assert checkpoint["loss"] == 3
 
     trainer.run(validate, checkpoint=trainer.best_checkpoint_path)
+
+
+def test_load_checkpoint_from_path(ray_start_2_cpus, tmpdir):
+    config = TestConfig()
+
+    checkpoint_strategy = CheckpointStrategy(
+        checkpoint_score_attribute="loss", checkpoint_score_order="min"
+    )
+
+    def train_func_checkpoint():
+        train.save_checkpoint(loss=3)
+        train.save_checkpoint(loss=7)
+
+    trainer = Trainer(config, num_workers=2, logdir=tmpdir)
+    trainer.start()
+    trainer.run(train_func_checkpoint, checkpoint_strategy=checkpoint_strategy)
+
+    assert trainer.best_checkpoint["loss"] == 7
+    assert (
+        Trainer.load_checkpoint_from_path(trainer.best_checkpoint_path)
+        == trainer.best_checkpoint
+    )
 
 
 def test_persisted_checkpoint_strategy_failure(ray_start_2_cpus):
