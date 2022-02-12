@@ -21,6 +21,7 @@ from ray.train.checkpoint import (
     CheckpointStrategy,
     TuneCheckpointManager,
     CheckpointManager,
+    load_checkpoint_from_path,
 )
 from ray.train.constants import (
     TUNE_INSTALLED,
@@ -466,8 +467,8 @@ class Trainer:
         Default behavior is to return the most recent checkpoint.
 
         Returns ``None`` if ``run()`` has not been called or if
-        ``train.checkpoint()`` has not been called from ``train_func`` within
-        the most recent call to ``run``.
+        ``train.save_checkpoint()`` has not been called from ``train_func``
+        within the most recent call to ``run``.
         """
         return self.checkpoint_manager.best_checkpoint_path
 
@@ -481,6 +482,37 @@ class Trainer:
         ``train.checkpoint()`` has not been called from ``train_func``.
         """
         return self.checkpoint_manager.latest_checkpoint
+
+    @property
+    def best_checkpoint(self) -> Optional[Dict]:
+        """Best saved checkpoint from the latest run.
+
+        "Best" is defined by the input ``CheckpointStrategy``.
+        Default behavior is to return the most recent checkpoint.
+
+        Returns ``None`` if ``run()`` has not been called or if
+        ``train.save_checkpoint()`` has not been called from ``train_func``
+        within the most recent call to ``run``.
+        """
+        best_checkpoint_path = self.best_checkpoint_path
+        if best_checkpoint_path is None:
+            return None
+        else:
+            return load_checkpoint_from_path(best_checkpoint_path)
+
+    @staticmethod
+    def load_checkpoint_from_path(checkpoint_file_path: Union[str, Path]) -> Dict:
+        """Convenience method to load a checkpoint from path.
+
+        An error will be raised if the provided path does not exist.
+
+        Args:
+            checkpoint_file_path (Union[str, Path]): The path to the checkpoint
+                to load. If the checkpoint saved in this path has not been
+                created by Ray Train, there is no guarantee that it can be
+                loaded in successfully.
+        """
+        return load_checkpoint_from_path(checkpoint_file_path)
 
     def shutdown(self):
         """Shuts down the training execution service."""
