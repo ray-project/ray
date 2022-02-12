@@ -24,7 +24,7 @@ One frequent problem when running on a cluster is that Ray expects these "depend
 
 To address this problem, you can (1) prepare your dependencies on the cluster in advance using the Ray cluster launcher, or (2) use Ray's :ref:`runtime environments<runtime-environments>` to install them on the fly.
 
-For production usage or non-changing environments, we recommend using the first approach and installing your dependencies into a container image.
+For production usage or non-changing environments, we recommend installing your dependencies into a container image and specifying the image using the Cluster launcher.
 For dynamic environments (e.g. for development and experimentation), we recommend using runtime environments.
 
 
@@ -51,7 +51,8 @@ The first way to set up dependencies is to is to prepare a single environment ac
 
 - You can build all your files and dependencies into a container image and specify this in your your :ref:`Cluster YAML Configuration<cluster-config>`.
 
-- You can also install packages using ``setup_commands`` in the Ray Cluster configuration file (:ref:`reference<cluster-configuration-setup-commands>`).
+- You can also install packages using ``setup_commands`` in the Ray Cluster configuration file (:ref:`reference<cluster-configuration-setup-commands>`); these commands will be run as each node joins the cluster.  
+  Note that for production settings, it is recommended to build any necessary packages into a container image instead.
 
 - You can push local files to the cluster using ``ray rsync_up`` (:ref:`reference<ray-rsync>`).
 
