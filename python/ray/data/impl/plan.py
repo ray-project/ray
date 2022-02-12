@@ -12,7 +12,7 @@ from ray.data.impl.stats import DatasetStats
 from ray.data.impl.lazy_block_list import LazyBlockList
 
 OPTIMIZE_FUSE = True
-OPTIMIZE_FUSE_READ = False
+OPTIMIZE_FUSE_READ = True
 OPTIMIZE_FUSE_SHUFFLE = True
 
 
