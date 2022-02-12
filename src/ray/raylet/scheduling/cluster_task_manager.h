@@ -35,20 +35,15 @@
 namespace ray {
 namespace raylet {
 
-/// Manages the queuing and dispatching of tasks. The logic is as follows:
+/// Schedules a task onto one node of the cluster. The logic is as follows:
 /// 1. Queue tasks for scheduling.
 /// 2. Pick a node on the cluster which has the available resources to run a
 ///    task.
 ///     * Step 2 should occur any time the state of the cluster is
 ///       changed, or a new task is queued.
-/// 3. If a task has unresolved dependencies, set it aside to wait for
-///    dependencies to be resolved.
-/// 4. When a task is ready to be dispatched, ensure that the local node is
-///    still capable of running the task, then dispatch it.
-///     * Step 4 should be run any time there is a new task to dispatch *or*
-///       there is a new worker which can dispatch the tasks.
-/// 5. When a worker finishes executing its task(s), the requester will return
-///    it and we should release the resources in our view of the node's state.
+/// 3. For tasks that's infeasable, put them into infeasible queue and reports
+///    it to gcs, where the auto scaler will be notified and start new node
+///    to accommodate the requirement.
 class ClusterTaskManager : public ClusterTaskManagerInterface {
  public:
   /// \param self_node_id: ID of local node.

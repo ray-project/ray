@@ -32,20 +32,27 @@
 namespace ray {
 namespace raylet {
 
-/// Manages the queuing and dispatching of tasks. The logic is as follows:
-/// 1. Queue tasks for scheduling.
-/// 2. Pick a node on the cluster which has the available resources to run a
-///    task.
-///     * Step 2 should occur any time the state of the cluster is
-///       changed, or a new task is queued.
-/// 3. If a task has unresolved dependencies, set it aside to wait for
-///    dependencies to be resolved.
-/// 4. When a task is ready to be dispatched, ensure that the local node is
-///    still capable of running the task, then dispatch it.
-///     * Step 4 should be run any time there is a new task to dispatch *or*
-///       there is a new worker which can dispatch the tasks.
+/// Manages the lifetime of a task on the local node. It receives request from
+/// cluster_task_manager (the distributed scheduler) and does the following
+/// steps:
+/// 1. Pulling task dependencies, add the task into to_dispatch queue.
+/// 2. Once task's dependencies are all pulled locally, the task becomes ready
+///    to dispatch.
+/// 3. For all tasks that are dispatch-ready, we schedule them by acquiring
+///    local resources (including pinning the objects in memory and deduct
+///    cpu/gpu and other resources from local reosource manager), and start
+///    an worker.
+/// 4. If task failed to acquire resources in step 3, we will try to
+///    spill it to an different remote node.
 /// 5. When a worker finishes executing its task(s), the requester will return
 ///    it and we should release the resources in our view of the node's state.
+/// 6. If a task has been waiting for arguments for too long, it will also be
+///    spilled back to a different node.
+///
+/// TODO(scv119): ideally, the local scheduler shouldn't be responsible for spilling,
+/// as it should return the request to the distributed scheduler if
+/// resource accusition failed, or a task has arguments pending resolution for too long
+/// time.
 class LocalScheduler {
  public:
   /// \param self_node_id: ID of local node.
