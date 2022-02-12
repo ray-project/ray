@@ -71,7 +71,7 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<RaySyncMessage> message) {
                       << NodeID::FromBinary(message->node_id())
                       << " ComponentID: " << message->component_id();
 
-        receivers_[message->component_id()]->Update(*message);
+        receivers_[message->component_id()]->Update(message);
       }
     }
   }

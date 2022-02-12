@@ -23,7 +23,8 @@ namespace gcs {
 GcsResourceManager::GcsResourceManager(
     instrumented_io_context &main_io_service, std::shared_ptr<GcsPublisher> gcs_publisher,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage, bool redis_broadcast_enabled)
-    : periodical_runner_(main_io_service),
+    : main_io_service_(main_io_service),
+      periodical_runner_(main_io_service),
       gcs_publisher_(gcs_publisher),
       gcs_table_storage_(gcs_table_storage),
       redis_broadcast_enabled_(redis_broadcast_enabled),

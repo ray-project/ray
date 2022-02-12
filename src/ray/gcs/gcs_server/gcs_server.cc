@@ -203,13 +203,18 @@ void GcsServer::InitSyncing() {
   if (RayConfig::instance().syncer_reporting()) {
     node_id_ = NodeID::FromRandom();
     RAY_LOG(INFO) << "Enable syncer module";
-    syncer_ = std::make_unique<ray::syncing::RaySyncer>(node_id_.Binary(), main_service_);
+    syncer_ = std::make_unique<ray::syncing::RaySyncer>(node_id_.Binary(), syncer_io_context_);
     syncer_service_ = std::make_unique<ray::syncing::RaySyncerService>(*syncer_);
     rpc_server_.RegisterService(*syncer_service_);
     syncer_->Register(syncing::RayComponentId::RESOURCE_MANAGER, nullptr,
                       gcs_resource_manager_.get());
     syncer_->Register(syncing::RayComponentId::SCHEDULER, nullptr,
                       gcs_resource_manager_.get());
+    syncer_thread_ = std::make_unique<std::thread>(
+        [this](){
+          boost::asio::io_service::work work(this->syncer_io_context_);
+          this->syncer_io_context_.run();
+        });
   }
 }
 

@@ -59,14 +59,14 @@ class LocalNode : public Reporter {
 class RemoteNodes : public Receiver {
  public:
   RemoteNodes() {}
-  void Update(const ray::rpc::syncer::RaySyncMessage &msg) override {
-    int version = msg.version();
-    int state = *reinterpret_cast<const int *>(msg.sync_message().data());
-    auto iter = infos_.find(msg.node_id());
+  void Update(std::shared_ptr<ray::rpc::syncer::RaySyncMessage> msg) override {
+    int version = msg->version();
+    int state = *reinterpret_cast<const int *>(msg->sync_message().data());
+    auto iter = infos_.find(msg->node_id());
     if (iter == infos_.end() || iter->second.second < version) {
-      RAY_LOG(INFO) << "Update node " << ray::NodeID::FromBinary(msg.node_id()).Hex()
+      RAY_LOG(INFO) << "Update node " << ray::NodeID::FromBinary(msg->node_id()).Hex()
                     << " to (" << state << ", v:" << version << ")";
-      infos_[msg.node_id()] = std::make_pair(state, version);
+      infos_[msg->node_id()] = std::make_pair(state, version);
     }
   }
 
@@ -97,6 +97,7 @@ int main(int argc, char *argv[]) {
     service = std::make_unique<RaySyncerService>(syncer);
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
     builder.AddChannelArgument(GRPC_ARG_MAX_CONCURRENT_STREAMS, 2000);
+    builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
     builder.AddChannelArgument(GRPC_ARG_HTTP2_WRITE_BUFFER_SIZE, 256 * 1024);
     builder.RegisterService(service.get());
     builder.AddCompletionQueue();

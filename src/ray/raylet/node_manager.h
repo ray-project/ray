@@ -208,9 +208,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Stop this node manager.
   void Stop();
 
-  void Update(const syncing::RaySyncMessage &message) override {
+  void Update(std::shared_ptr<syncing::RaySyncMessage> message) override {
     rpc::ResourcesData data;
-    data.ParseFromString(message.sync_message());
+    data.ParseFromString(message->sync_message());
     NodeID node_id = NodeID::FromBinary(data.node_id());
 
     UpdateResourceUsage(node_id, data);

@@ -247,6 +247,9 @@ class GcsServer {
   /// Syncing related components.
   std::unique_ptr<ray::syncing::RaySyncer> syncer_;
   std::unique_ptr<ray::syncing::RaySyncerService> syncer_service_;
+  std::unique_ptr<std::thread> syncer_thread_;
+  instrumented_io_context syncer_io_context_;
+
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;

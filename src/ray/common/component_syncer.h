@@ -31,7 +31,7 @@ struct Reporter {
 };
 
 struct Receiver {
-  virtual void Update(const RaySyncMessage &message) = 0;
+  virtual void Update(std::shared_ptr<RaySyncMessage> message) = 0;
   virtual ~Receiver() {}
 };
 
@@ -52,7 +52,7 @@ class RaySyncer {
 
   // Register a component
   void Register(RayComponentId component_id, const Reporter *reporter, Receiver *receiver,
-                int64_t publish_ms = 100) {
+                int64_t publish_ms = 10) {
     reporters_[component_id] = reporter;
     receivers_[component_id] = receiver;
     if (reporter != nullptr) {
@@ -148,7 +148,7 @@ class NodeSyncContext : public T,
         rpc_context_(rpc_context),
         io_context_(io_context),
         instance_(syncer) {
-    // write_opts_.set_corked();
+    write_opts_.set_corked();
   }
 
   void Init() {
@@ -233,13 +233,21 @@ class NodeSyncContext : public T,
       --consumed_messages_;
     }
 
-    arena_.Reset();
-    out_message_ = google::protobuf::Arena::CreateMessage<RaySyncMessages>(&arena_);
 
     if (out_buffer_.empty()) {
       RAY_LOG(DEBUG) << "DBG: Stop sending since no more messages";
-      sending_ = false;
+      if(out_message_ != nullptr) {
+        out_message_ = nullptr;
+        // Flush
+        write_opts_.clear_corked();
+        StartWrite(out_message_, write_opts_);
+      } else {
+        write_opts_.set_corked();
+        sending_ = false;
+      }
     } else {
+      arena_.Reset();
+      out_message_ = google::protobuf::Arena::CreateMessage<RaySyncMessages>(&arena_);
       absl::flat_hash_set<std::string> inserted;
       for (auto iter = out_buffer_.rbegin(); iter != out_buffer_.rend(); ++iter) {
         if (inserted.find((*iter)->node_id()) != inserted.end()) {
