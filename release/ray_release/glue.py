@@ -31,6 +31,7 @@ from ray_release.exception import (
     LocalEnvSetupError,
     ClusterEnvCreateError,
 )
+from ray_release.file_manager.job_file_manager import JobFileManager
 from ray_release.file_manager.remote_task import RemoteTaskFileManager
 from ray_release.file_manager.session_controller import SessionControllerFileManager
 from ray_release.logger import logger
@@ -49,6 +50,12 @@ command_runner_to_cluster_manager = {
     SDKRunner: FullClusterManager,
     ClientRunner: FullClusterManager,
     JobRunner: MinimalClusterManager,
+}
+
+file_manager_str_to_file_manager = {
+    "sdk": SessionControllerFileManager,
+    "client": RemoteTaskFileManager,
+    "job": JobFileManager,
 }
 
 command_runner_to_file_manager = {
@@ -92,10 +99,23 @@ def run_release_test(
 
     command_runner_cls = type_str_to_command_runner.get(run_type)
     if not command_runner_cls:
-        raise ReleaseTestConfigError(f"Unknown command runner type: {run_type}")
+        raise ReleaseTestConfigError(
+            f"Unknown command runner type: {run_type}. Must be one of "
+            f"{list(type_str_to_command_runner.keys())}"
+        )
 
     cluster_manager_cls = command_runner_to_cluster_manager[command_runner_cls]
-    file_manager_cls = command_runner_to_file_manager[command_runner_cls]
+
+    file_manager_str = test["run"].get("file_manager", None)
+    if file_manager_str:
+        if file_manager_str not in file_manager_str_to_file_manager:
+            raise ReleaseTestConfigError(
+                f"Unknown file manager: {file_manager_str}. Must be one of "
+                f"{list(file_manager_str_to_file_manager.keys())}"
+            )
+        file_manager_cls = file_manager_str_to_file_manager[file_manager_str]
+    else:
+        file_manager_cls = command_runner_to_file_manager[command_runner_cls]
 
     # Instantiate managers and command runner
     try:

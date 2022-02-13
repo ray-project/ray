@@ -11,8 +11,12 @@ import click
 from ray_release.buildkite.filter import filter_tests
 from ray_release.buildkite.settings import get_pipeline_settings
 from ray_release.buildkite.step import get_step
-from ray_release.config import read_and_validate_release_test_collection
+from ray_release.config import (
+    read_and_validate_release_test_collection,
+    DEFAULT_WHEEL_WAIT_TIMEOUT,
+)
 from ray_release.exception import ReleaseTestCLIError
+from ray_release.wheels import find_and_wait_for_ray_wheels_url
 
 
 @click.command()
@@ -66,9 +70,15 @@ def main(test_collection_file: Optional[str] = None):
         test_collection, frequency=frequency, test_name_filter=test_name_filter
     )
 
+    # Wait for wheels here so we hafve them ready before we kick off
+    # the other workers
+    ray_wheels_url = find_and_wait_for_ray_wheels_url(
+        ray_wheels, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT
+    )
+
     steps = []
     for test, smoke_test in filtered_tests:
-        step = get_step(test, smoke_test=smoke_test, ray_wheels=ray_wheels, env=env)
+        step = get_step(test, smoke_test=smoke_test, ray_wheels=ray_wheels_url, env=env)
         steps.append(step)
 
     json.dump(steps, sys.stdout)

@@ -85,6 +85,18 @@ class RemoteEnvSetupError(EnvironmentSetupError):
     exit_code = ExitCode.REMOTE_ENV_SETUP_ERROR
 
 
+class FileManagerError(ReleaseTestError):
+    pass
+
+
+class FileUploadError(FileManagerError):
+    pass
+
+
+class FileDownloadError(FileManagerError):
+    pass
+
+
 class ClusterNodesWaitTimeout(ReleaseTestError):
     exit_code = ExitCode.CLUSTER_WAIT_TIMEOUT
 

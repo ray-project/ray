@@ -92,7 +92,7 @@ class ClientRunner(CommandRunner):
             logger.info(
                 f"Waiting for nodes to come up: "
                 f"{len(ray.nodes())}/{num_nodes} "
-                f"({time_elapsed} seconds, timeout: {timeout} seconds)."
+                f"({time_elapsed:.2f} seconds, timeout: {timeout} seconds)."
             )
 
         def _error_fn():
@@ -145,11 +145,13 @@ class ClientRunner(CommandRunner):
             text=True,
         )
         proc.stdout.reconfigure(line_buffering=True)
+        sys.stdout.reconfigure(line_buffering=True)
         logs = ""
         for line in proc.stdout:
             logs += line
             sys.stdout.write(line)
         proc.wait()
+        sys.stdout.reconfigure(line_buffering=False)
         time_taken = time.monotonic() - start_time
         self.last_logs = logs
         return time_taken

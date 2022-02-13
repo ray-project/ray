@@ -5,6 +5,7 @@ from anyscale.authenticate import AuthenticationBlock
 
 from ray_release.logger import logger
 
+RELEASE_AWS_BUCKET = os.getenv("RELEASE_AWS_BUCKET", "ray-release-automation-results")
 RELEASE_AWS_DB_NAME = os.getenv("RELEASE_AWS_DB_NAME", "ray_ci")
 RELEASE_AWS_DB_TABLE = os.getenv("RELEASE_AWS_DB_TABLE", "release_test_result")
 

@@ -117,4 +117,4 @@ class FullClusterManager(MinimalClusterManager):
                 result = self.sdk.get_cluster(self.cluster_id)
 
     def get_cluster_address(self) -> str:
-        return f"anyscale://{self.cluster_name}"
+        return f"anyscale://{self.project_name}/{self.cluster_name}"
