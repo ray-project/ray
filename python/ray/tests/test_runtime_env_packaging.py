@@ -47,7 +47,9 @@ def random_dir(tmp_path):
 
 @pytest.fixture
 def random_zip_file_without_top_level_dir(random_dir):
-    make_archive(random_dir / ARCHIVE_NAME[: ARCHIVE_NAME.rfind(".")], "zip", random_dir)
+    make_archive(
+        random_dir / ARCHIVE_NAME[: ARCHIVE_NAME.rfind(".")], "zip", random_dir
+    )
     yield str(random_dir / ARCHIVE_NAME)
 
 
@@ -203,7 +205,7 @@ class TestUnzipPackage:
         else:
             dcmp = dircmp(
                 os.path.join(tmp_subdir, TOP_LEVEL_DIR_NAME),
-                os.path.join(tmp_path, TOP_LEVEL_DIR_NAME)
+                os.path.join(tmp_path, TOP_LEVEL_DIR_NAME),
             )
         assert len(dcmp.left_only) == 0
         assert len(dcmp.right_only) == 0
@@ -232,7 +234,10 @@ class TestUnzipPackage:
         )
 
     def test_unzip_with_matching_subdirectory_names(
-        self, remove_top_level_directory, unlink_zip, tmp_path,
+        self,
+        remove_top_level_directory,
+        unlink_zip,
+        tmp_path,
     ):
         path = tmp_path
         top_level_dir = path / TOP_LEVEL_DIR_NAME
@@ -271,62 +276,62 @@ class TestUnzipPackage:
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_travel(tmp_path):
-        dir_paths = set()
-        file_paths = set()
-        item_num = 0
-        excludes = []
-        root = tmp_path / "test"
+    dir_paths = set()
+    file_paths = set()
+    item_num = 0
+    excludes = []
+    root = tmp_path / "test"
 
-        def construct(path, excluded=False, depth=0):
-            nonlocal item_num
-            path.mkdir(parents=True)
+    def construct(path, excluded=False, depth=0):
+        nonlocal item_num
+        path.mkdir(parents=True)
+        if not excluded:
+            dir_paths.add(str(path))
+        if depth > 8:
+            return
+        if item_num > 500:
+            return
+        dir_num = random.randint(0, 10)
+        file_num = random.randint(0, 10)
+        for _ in range(dir_num):
+            uid = str(uuid.uuid4()).split("-")[0]
+            dir_path = path / uid
+            exclud_sub = random.randint(0, 5) == 0
+            if not excluded and exclud_sub:
+                excludes.append(str(dir_path.relative_to(root)))
             if not excluded:
-                dir_paths.add(str(path))
-            if depth > 8:
-                return
-            if item_num > 500:
-                return
-            dir_num = random.randint(0, 10)
-            file_num = random.randint(0, 10)
-            for _ in range(dir_num):
-                uid = str(uuid.uuid4()).split("-")[0]
-                dir_path = path / uid
-                exclud_sub = random.randint(0, 5) == 0
-                if not excluded and exclud_sub:
-                    excludes.append(str(dir_path.relative_to(root)))
-                if not excluded:
-                    construct(dir_path, exclud_sub or excluded, depth + 1)
-                item_num += 1
-            if item_num > 1000:
-                return
+                construct(dir_path, exclud_sub or excluded, depth + 1)
+            item_num += 1
+        if item_num > 1000:
+            return
 
-            for _ in range(file_num):
-                uid = str(uuid.uuid4()).split("-")[0]
-                v = random.randint(0, 1000)
-                with (path / uid).open("w") as f:
-                    f.write(str(v))
-                if not excluded:
-                    if random.randint(0, 5) == 0:
-                        excludes.append(str((path / uid).relative_to(root)))
-                    else:
-                        file_paths.add((str(path / uid), str(v)))
-                item_num += 1
+        for _ in range(file_num):
+            uid = str(uuid.uuid4()).split("-")[0]
+            v = random.randint(0, 1000)
+            with (path / uid).open("w") as f:
+                f.write(str(v))
+            if not excluded:
+                if random.randint(0, 5) == 0:
+                    excludes.append(str((path / uid).relative_to(root)))
+                else:
+                    file_paths.add((str(path / uid), str(v)))
+            item_num += 1
 
-        construct(root)
-        exclude_spec = _get_excludes(root, excludes)
-        visited_dir_paths = set()
-        visited_file_paths = set()
+    construct(root)
+    exclude_spec = _get_excludes(root, excludes)
+    visited_dir_paths = set()
+    visited_file_paths = set()
 
-        def handler(path):
-            if path.is_dir():
-                visited_dir_paths.add(str(path))
-            else:
-                with open(path) as f:
-                    visited_file_paths.add((str(path), f.read()))
+    def handler(path):
+        if path.is_dir():
+            visited_dir_paths.add(str(path))
+        else:
+            with open(path) as f:
+                visited_file_paths.add((str(path), f.read()))
 
-        _dir_travel(root, [exclude_spec], handler)
-        assert file_paths == visited_file_paths
-        assert dir_paths == visited_dir_paths
+    _dir_travel(root, [exclude_spec], handler)
+    assert file_paths == visited_file_paths
+    assert dir_paths == visited_dir_paths
 
 
 @pytest.mark.parametrize(
