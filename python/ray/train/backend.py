@@ -637,10 +637,9 @@ class InactiveWorkerGroup:
 
 
 def _get_session(method_name: str):
-    try:
-        # Get the session for this worker.
-        return get_session()
-    except ValueError:
+    # Get the session for this worker.
+    session = get_session()
+    if not session:
         # Session is not initialized yet.
         raise TrainBackendError(
             f"`{method_name}` has been called "
@@ -648,3 +647,4 @@ def _get_session(method_name: str):
             "`start_training` before "
             f"`{method_name}`."
         )
+    return session
