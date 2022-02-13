@@ -79,10 +79,10 @@ lazy_static::lazy_static! {
 
 #[cfg(feature = "async")]
 lazy_static! {
-    static ref ASYNC_RUNTIME_SENDER: Mutex<Option<tokio::sync::mpsc::UnboundedSender<(TaskData, Arc<FiberEvent>)>>> = Mutex::new(None);
+    static ref ASYNC_RUNTIME_SENDER: Mutex<Option<std::sync::mpsc::Sender<(TaskData, Arc<FiberEvent>)>>> = Mutex::new(None);
 
-    // pub static ref TOKIO_HANDLE: std::sync::Mutex<Option<TokioHandle>> =
-    //     std::sync::Mutex::new(None);
+    pub static ref TOKIO_HANDLE: std::sync::RwLock<Option<TokioHandle>> =
+        std::sync::RwLock::new(None);
 }
 
 // Prints each argument on a separate line
@@ -261,40 +261,42 @@ fn handle_async_startup() {
         //
         // Idea: get rid of
         None => {
-            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(TaskData, Arc<FiberEvent>)>();
+            let (tx, rx) = std::sync::mpsc::channel::<(TaskData, Arc<FiberEvent>)>();
             *guard = Some(tx);
-            // Future: plug-and-play with async-rs etc
-            let rt = //tokio::runtime::Builder::new_current_thread()
-                tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(1)
-                .enable_all()
-                .build()
-                .unwrap();
+            std::thread::spawn(move || {
+                // Future: plug-and-play with async-rs etc
+                let rt = //tokio::runtime::Builder::new_current_thread()
+                    tokio::runtime::Builder::new_multi_thread()
+                    .worker_threads(1)
+                    .enable_all()
+                    .build()
+                    .unwrap();
 
-            let handle = Box::new(rt.handle().clone());
-            let handle_ptr = Box::into_raw(handle) as *const std::os::raw::c_void;
+                let handle = Box::new(rt.handle().clone());
+                let handle_ptr = Box::into_raw(handle) as *const std::os::raw::c_void;
 
-            for lib in LIBRARIES.read().unwrap().iter() {
-                // TODO maybe also perform error handling for invocation
-                let ret = unsafe {
-                    lib.get::<extern "C" fn(h: *const std::os::raw::c_void)>(
-                        "ray_rs_async_ffi__enter_tokio_handle_via_callback".as_bytes()
-                    ).ok()
-                };
-                if let Some(symbol) = ret {
-                    ray_info!("Registering Handle to shared lib's tokio thread_local Handle");
-                    symbol(handle_ptr);
+                for lib in LIBRARIES.read().unwrap().iter() {
+                    // TODO maybe also perform error handling for invocation
+                    let ret = unsafe {
+                        lib.get::<extern "C" fn(*const std::os::raw::c_void)>(
+                            "ray_rs_async_ffi__enter_tokio_handle_via_callback".as_bytes()
+                        ).ok()
+                    };
+                    if let Some(symbol) = ret {
+                        ray_info!("Registering Handle to shared lib's tokio thread_local Handle");
+                        symbol(handle_ptr);
+                    }
                 }
-            }
-            ray_info!("looping!");
-            rt.spawn(async move {
-                loop {
-                    let (task_data, notifier) = rx.recv().await.expect("did not receive");
-                    tokio::spawn(async move {
-                        rust_worker_execute_async_internal(task_data).await;
-                        notifier.notify_ready();
-                    });
-                }
+                ray_info!("Looping");
+                // rt.spawn(async move {
+                    loop {
+                        let (task_data, notifier) = rx.recv().expect("did not receive");
+                        rt.spawn(async move {
+                            rust_worker_execute_async_internal(task_data).await;
+                            notifier.notify_ready();
+                        });
+                    }
+                // });
             });
         },
         _ => (),

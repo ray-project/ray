@@ -11,19 +11,14 @@ use paste::paste;
 #[macro_export]
 macro_rules! enter_tokio_handle {
     () => {
-        lazy_static! {
-            pub static ref TOKIO_HANDLE: std::sync::RwLock<Option<tokio::runtime::Handle>> =
-                std::sync::RwLock::new(None);
-        }
-
         #[no_mangle]
         pub extern "C" fn ray_rs_async_ffi__enter_tokio_handle_via_callback(
             h: *const std::os::raw::c_void,
         ) {
             // This is not quite ffi safe?
-            // It requires that tokio::runtime::Handle has same ABI across main and shared libs
+            // It requires that TokioHandle has same ABI across main and shared libs
             let mut guard = TOKIO_HANDLE.write().unwrap();
-            *guard = Some(unsafe { &*(h as *const tokio::runtime::Handle) }.clone());
+            *guard = Some(unsafe { &*(h as *const TokioHandle) }.clone());
         }
     };
 }
@@ -347,7 +342,7 @@ macro_rules! remote_async_actor_internal {
     ($lit_n:literal, $name:ident ($arg0:ident: $argty0:ty $(,$arg:ident: $argty:ty)*) -> $ret:ty $body:block) => {
         paste! {
             async fn [<ray_rust_private__ $name>]($arg0: $argty0 $(,$arg: $argty)*) -> $ret {
-                let maybe_h: Option<tokio::runtime::Handle> = TOKIO_HANDLE.read().unwrap().clone();
+                let maybe_h: Option<TokioHandle> = TOKIO_HANDLE.read().unwrap().clone();
                 if let Some(h) = maybe_h {
                     ray_info!(
                         "entering handle {:?} from thread (name: {:?}, id: {:?})",
