@@ -24,6 +24,15 @@ MIN = "min"
 logger = logging.getLogger(__name__)
 
 
+def load_checkpoint_from_path(checkpoint_to_load: Union[str, Path]) -> Dict:
+    """Utility function to load a checkpoint Dict from a path."""
+    checkpoint_path = Path(checkpoint_to_load).expanduser()
+    if not checkpoint_path.exists():
+        raise ValueError(f"Checkpoint path {checkpoint_path} does not exist.")
+    with checkpoint_path.open("rb") as f:
+        return cloudpickle.load(f)
+
+
 @PublicAPI(stability="beta")
 @dataclass
 class CheckpointStrategy:
@@ -169,13 +178,7 @@ class CheckpointManager:
             return checkpoint_to_load
         else:
             # Load checkpoint from path.
-            checkpoint_path = Path(checkpoint_to_load).expanduser()
-            if not checkpoint_path.exists():
-                raise ValueError(
-                    f"Checkpoint path {checkpoint_path} " f"does not exist."
-                )
-            with checkpoint_path.open("rb") as f:
-                return cloudpickle.load(f)
+            return load_checkpoint_from_path(checkpoint_to_load)
 
     def write_checkpoint(self, checkpoint: Dict):
         """Writes checkpoint to disk."""

@@ -60,3 +60,7 @@ TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV = "TRAIN_PLACEMENT_GROUP_TIMEOUT_S"
 # Integer value which if set will change the placement group strategy from
 # PACK to SPREAD. 1 for True, 0 for False.
 TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
+
+# The key used to identify whether we have already warned about ray.train
+# functions being used outside of the session
+SESSION_MISUSE_LOG_ONCE_KEY = "train_warn_session_misuse"
