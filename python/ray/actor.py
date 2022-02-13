@@ -1099,6 +1099,9 @@ class ActorHandle:
                 setattr(self, method_name, method)
 
     def __del__(self):
+        logger.info(
+            f"dbg Actor destructor."
+        )
         # Mark that this actor handle has gone out of scope. Once all actor
         # handles are out of scope, the actor will exit.
         if ray.worker:

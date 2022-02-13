@@ -4,6 +4,7 @@ import importlib
 import inspect
 import json
 import logging
+import os
 import sys
 import time
 from typing import Optional
@@ -403,12 +404,13 @@ class FunctionActorManager:
                     break
             if time.time() - start_time > timeout:
                 warning_message = (
-                    "This worker was asked to execute a "
-                    "function that it does not have "
-                    "registered. You may have to restart "
-                    "Ray."
+                    f"This worker (node={self._worker.node_ip_address} "
+                    f"worker_id={self._worker.worker_id.hex()} "
+                    f"PID={os.getpid()}) was asked to execute a function that "
+                    "it has not imported. You may have to restart Ray."
                 )
                 if not warning_sent:
+                    print(warning_message, flush=True)
                     ray._private.utils.push_error_to_driver(
                         self._worker,
                         ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,

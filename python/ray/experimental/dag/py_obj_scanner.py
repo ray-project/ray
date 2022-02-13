@@ -1,4 +1,5 @@
 import ray
+import logging
 
 import uuid
 import io
@@ -70,4 +71,7 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler):
         return res
 
     def __del__(self):
+        logging.info(
+            f"dbg _PyObjScanner destructor."
+        )
         del _PyObjScanner._instances[self._uuid]
