@@ -127,18 +127,15 @@ mod test {
             // Remote async with more than one thread requires
             let handle = new_string_tokio.remote_async(String::from("Hello"));
 
-            // let obj_ref_0 = append_stateless.remote(String::from("Hello"), String::from(" World"));
-            // let obj_0 = get(&obj_ref_0);
-            // println!("{:?}", obj_0);
             let now = std::time::Instant::now();
             // Next step: define tasks with closures etc...
-            let mut obj_refs: Vec<_> = (0..10)
+            let mut obj_refs: Vec<_> = (0..10_000)
                 .map(|i| append_tokio.remote(&handle, format!(" World X {}", i)))
                 .collect();
 
             obj_refs.iter().for_each(|obj_ref| {
                 let obj = get(&obj_ref);
-                println!("{:?} {:?}", obj, now.elapsed().as_millis());
+                // println!("{:?} {:?}", obj, now.elapsed().as_millis());
             });
 
             let obj = get(&append_tokio.remote(&handle, format!(" World X {}", "MAX")));

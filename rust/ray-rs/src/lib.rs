@@ -18,6 +18,8 @@ pub use remote_functions::*;
 
 pub use std::ffi::CString;
 
+pub use tokio::runtime::Handle as TokioHandle;
+
 use std::{
     clone::Clone,
     collections::{HashMap, HashSet},
@@ -26,7 +28,7 @@ use std::{
     mem::ManuallyDrop,
     ops::{Deref, Drop},
     os::raw::c_char,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
 };
 
 use libloading::{Library, Symbol};
@@ -44,41 +46,45 @@ macro_rules! ray_info {
 }
 
 lazy_static::lazy_static! {
-    static ref LIBRARIES: Mutex<Vec<Library>> = {
-        Mutex::new(Vec::new())
+    static ref LIBRARIES: RwLock<Vec<Library>> = {
+        RwLock::new(Vec::new())
     };
 
-    pub static ref GLOBAL_FUNCTION_NAMES_SET: Mutex<HashSet<CString>> = {
-        Mutex::new(HashSet::new())
+    pub static ref GLOBAL_FUNCTION_NAMES_SET: RwLock<HashSet<CString>> = {
+        RwLock::new(HashSet::new())
     };
-    pub static ref GLOBAL_ACTOR_METHOD_NAMES_SET: Mutex<HashSet<CString>> = {
-        Mutex::new(HashSet::new())
+    pub static ref GLOBAL_ACTOR_METHOD_NAMES_SET: RwLock<HashSet<CString>> = {
+        RwLock::new(HashSet::new())
     };
-    pub static ref GLOBAL_ASYNC_ACTOR_METHOD_NAMES_SET: Mutex<HashSet<CString>> = {
-        Mutex::new(HashSet::new())
+    pub static ref GLOBAL_ASYNC_ACTOR_METHOD_NAMES_SET: RwLock<HashSet<CString>> = {
+        RwLock::new(HashSet::new())
     };
-    pub static ref GLOBAL_ACTOR_CREATION_NAMES_SET: Mutex<HashSet<CString>> = {
-        Mutex::new(HashSet::new())
+    pub static ref GLOBAL_ACTOR_CREATION_NAMES_SET: RwLock<HashSet<CString>> = {
+        RwLock::new(HashSet::new())
     };
 
-    static ref GLOBAL_FUNCTION_MAP: Mutex<HashMap<CString, Symbol<'static, InvokerFunction>>> = {
-        Mutex::new(HashMap::new())
+    static ref GLOBAL_FUNCTION_MAP: RwLock<HashMap<CString, Symbol<'static, InvokerFunction>>> = {
+        RwLock::new(HashMap::new())
     };
-    static ref GLOBAL_ACTOR_METHODS_MAP: Mutex<HashMap<CString, Symbol<'static, ActorMethod>>> = {
-        Mutex::new(HashMap::new())
+    static ref GLOBAL_ACTOR_METHODS_MAP: RwLock<HashMap<CString, Symbol<'static, ActorMethod>>> = {
+        RwLock::new(HashMap::new())
     };
-    static ref GLOBAL_ASYNC_ACTOR_METHODS_MAP: Mutex<HashMap<CString, Symbol<'static, AsyncActorMethod>>> = {
-        Mutex::new(HashMap::new())
+    static ref GLOBAL_ASYNC_ACTOR_METHODS_MAP: RwLock<HashMap<CString, Symbol<'static, AsyncActorMethod>>> = {
+        RwLock::new(HashMap::new())
     };
-    static ref GLOBAL_ACTOR_CREATION_MAP: Mutex<HashMap<CString, Symbol<'static, ActorCreation>>> = {
-        Mutex::new(HashMap::new())
+    static ref GLOBAL_ACTOR_CREATION_MAP: RwLock<HashMap<CString, Symbol<'static, ActorCreation>>> = {
+        RwLock::new(HashMap::new())
     };
 }
 
 #[cfg(feature = "async")]
-lazy_static::lazy_static! {
-    static ref ASYNC_RUNTIME_SENDER: Mutex<Option<std::sync::mpsc::Sender<(TaskData, Arc<FiberEvent>)>>> = Mutex::new(None);
+lazy_static! {
+    static ref ASYNC_RUNTIME_SENDER: Mutex<Option<tokio::sync::mpsc::UnboundedSender<(TaskData, Arc<FiberEvent>)>>> = Mutex::new(None);
+
+    // pub static ref TOKIO_HANDLE: std::sync::Mutex<Option<TokioHandle>> =
+    //     std::sync::Mutex::new(None);
 }
+
 // Prints each argument on a separate line
 //
 // TODO: implement non-raw version
@@ -144,7 +150,7 @@ impl<T> Drop for ObjectRefInner<T> {
 // Below, we are doing the incredibly unsafe "std::mem::transmute"
 // to have the lifetimes of the symbols loaded be static
 pub fn load_libraries_from_paths(paths: &Vec<&str>) {
-    let mut libs = LIBRARIES.lock().unwrap();
+    let mut libs = LIBRARIES.write().unwrap();
     for path in paths {
         match unsafe { Library::new(path).ok() } {
             Some(lib) => {
@@ -158,8 +164,8 @@ pub fn load_libraries_from_paths(paths: &Vec<&str>) {
 
 macro_rules! load_names_to_ptrs {
     ($lib:ident, $map:ident, $names:ident, $sig:ty) => {
-        let mut map = $map.lock().unwrap();
-        for fn_name in $names.lock().unwrap().iter() {
+        let mut map = $map.write().unwrap();
+        for fn_name in $names.read().unwrap().iter() {
             let fn_str = fn_name.to_str().unwrap();
             let ret = unsafe { $lib.get::<$sig>(fn_str.as_bytes()).ok() };
             if let Some(symbol) = ret {
@@ -203,22 +209,20 @@ fn load_function_ptrs_from_library(lib: &Library) {
 fn resolve_fn<F>(
     fn_name: &CString,
     fn_str: &str,
-    fn_map: &Mutex<HashMap<CString, Symbol<'static, F>>>,
+    fn_map: &RwLock<HashMap<CString, Symbol<'static, F>>>,
 ) -> Option<Symbol<'static, F>> {
     use std::collections::hash_map::Entry;
 
-    let mut map = fn_map.lock().unwrap();
-
-    let mut maybe_symbol_ref = map.get(fn_name).cloned();
+    let mut maybe_symbol_ref = fn_map.read().unwrap().get(fn_name).cloned();
     if let None = maybe_symbol_ref {
-        for lib in LIBRARIES.lock().unwrap().iter() {
+        for lib in LIBRARIES.read().unwrap().iter() {
             let ret = unsafe { lib.get::<F>(fn_str.as_bytes()).ok() };
             if let Some(symbol) = ret {
                 ray_info!("Loaded function {} as {:?}", fn_str, symbol);
-                let static_symbol =
-                    unsafe { std::mem::transmute::<Symbol<_>, Symbol<'static, F>>(symbol) };
-                 maybe_symbol_ref = Some(static_symbol);
-                 break;
+                let static_symbol = unsafe { std::mem::transmute::<Symbol<_>, Symbol<'static, F>>(symbol) };
+                fn_map.write().unwrap().insert(fn_name.clone(), static_symbol.clone());
+                maybe_symbol_ref = Some(static_symbol);
+                break;
             }
         }
     }
@@ -230,12 +234,6 @@ fn resolve_fn<F>(
     }
     maybe_symbol_ref
 }
-
-pub extern "C" fn ffi_fn() -> FfiFuture<()> {
-    async {
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    }.into_ffi()
-}
 // This function accepts an async function description.
 // It resolves
 // async handle_async_task()
@@ -243,6 +241,10 @@ pub extern "C" fn ffi_fn() -> FfiFuture<()> {
 // This function initializes the async runtime (Tokio for now)
 //
 // We probably want an Option<tx> instead.
+
+
+// Refactor this to perform rt.spawn (to multi-threaded)
+// in the boost.asio fiber/thread
 #[cfg(feature = "async")]
 fn handle_async_startup() {
     let mut guard = ASYNC_RUNTIME_SENDER.lock().unwrap();
@@ -256,34 +258,42 @@ fn handle_async_startup() {
         //
         // Tokio futures need to be Send anyway... Except if you are using
         // tokio::task::LocalSet??
+        //
+        // Idea: get rid of
         None => {
-            let (tx, rx) = std::sync::mpsc::channel::<(TaskData, Arc<FiberEvent>)>();
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(TaskData, Arc<FiberEvent>)>();
             *guard = Some(tx);
-            std::thread::spawn(move || {
-                // Future: plug-and-play with async-rs etc
-                let rt = tokio::runtime::Builder::new_multi_thread()
-                    .worker_threads(1)
-                    .enable_all()
-                    .build()
-                    .unwrap();
+            // Future: plug-and-play with async-rs etc
+            let rt = //tokio::runtime::Builder::new_current_thread()
+                tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
+                .enable_all()
+                .build()
+                .unwrap();
 
+            let handle = Box::new(rt.handle().clone());
+            let handle_ptr = Box::into_raw(handle) as *const std::os::raw::c_void;
+
+            for lib in LIBRARIES.read().unwrap().iter() {
+                // TODO maybe also perform error handling for invocation
+                let ret = unsafe {
+                    lib.get::<extern "C" fn(h: *const std::os::raw::c_void)>(
+                        "ray_rs_async_ffi__enter_tokio_handle_via_callback".as_bytes()
+                    ).ok()
+                };
+                if let Some(symbol) = ret {
+                    ray_info!("Registering Handle to shared lib's tokio thread_local Handle");
+                    symbol(handle_ptr);
+                }
+            }
+            ray_info!("looping!");
+            rt.spawn(async move {
                 loop {
-                    let (task_data, notifier) = rx.recv().expect("did not receive");
-                    rt.spawn(
-                        async move {
-                            ffi_fn().await;
-                            rust_worker_execute_async_internal(task_data).await;
-                            // rust_worker_execute(
-                            //     task_data.actor_ptr,
-                            //     task_data.task_type_int,
-                            //     task_data.ray_function_info,
-                            //     task_data.args,
-                            //     task_data.args_len,
-                            //     task_data.return_values,
-                            // );
-                            notifier.notify_ready();
-                        }
-                    );
+                    let (task_data, notifier) = rx.recv().await.expect("did not receive");
+                    tokio::spawn(async move {
+                        rust_worker_execute_async_internal(task_data).await;
+                        notifier.notify_ready();
+                    });
                 }
             });
         },

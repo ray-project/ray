@@ -7,6 +7,27 @@ use paste::paste;
 //
 // ray::task!(add_two_vecs);
 
+#[cfg(feature = "async")]
+#[macro_export]
+macro_rules! enter_tokio_handle {
+    () => {
+        lazy_static! {
+            pub static ref TOKIO_HANDLE: std::sync::RwLock<Option<tokio::runtime::Handle>> =
+                std::sync::RwLock::new(None);
+        }
+
+        #[no_mangle]
+        pub extern "C" fn ray_rs_async_ffi__enter_tokio_handle_via_callback(
+            h: *const std::os::raw::c_void,
+        ) {
+            // This is not quite ffi safe?
+            // It requires that tokio::runtime::Handle has same ABI across main and shared libs
+            let mut guard = TOKIO_HANDLE.write().unwrap();
+            *guard = Some(unsafe { &*(h as *const tokio::runtime::Handle) }.clone());
+        }
+    };
+}
+
 // Idea: add a macro that
 macro_rules! impl_ray_function {
     ([$n:literal], $($arg:ident: $argp:ident [$argty:ty]),*) => {
@@ -256,7 +277,7 @@ macro_rules! remote_internal {
             // Run this function before main
             #[ctor]
             fn [<register_function_name _ray_rust_ffi__ $name>]() {
-                let mut guard = GLOBAL_FUNCTION_NAMES_SET.lock().unwrap();
+                let mut guard = GLOBAL_FUNCTION_NAMES_SET.write().unwrap();
                 guard.insert(
                     CString::new(stringify!([<ray_rust_ffi__ $name>])).unwrap()
                 );
@@ -308,7 +329,7 @@ macro_rules! remote_create_actor_internal {
             // Run this function before main
             #[ctor]
             fn [<register_function_name_ ray_rust_create_actor__ $name>]() {
-                let mut guard = GLOBAL_ACTOR_CREATION_NAMES_SET.lock().unwrap();
+                let mut guard = GLOBAL_ACTOR_CREATION_NAMES_SET.write().unwrap();
                 guard.insert(
                     CString::new(stringify!([<ray_rust_create_actor__ $name>])).unwrap()
                 );
@@ -326,7 +347,19 @@ macro_rules! remote_async_actor_internal {
     ($lit_n:literal, $name:ident ($arg0:ident: $argty0:ty $(,$arg:ident: $argty:ty)*) -> $ret:ty $body:block) => {
         paste! {
             async fn [<ray_rust_private__ $name>]($arg0: $argty0 $(,$arg: $argty)*) -> $ret {
-                $body
+                let maybe_h: Option<tokio::runtime::Handle> = TOKIO_HANDLE.read().unwrap().clone();
+                if let Some(h) = maybe_h {
+                    ray_info!(
+                        "entering handle {:?} from thread (name: {:?}, id: {:?})",
+                        h,
+                        std::thread::current().name(),
+                        std::thread::current().id()
+                    );
+                    let g_ = h.enter();
+                    $body
+                } else {
+                    $body
+                }
             }
 
             #[no_mangle]
@@ -350,7 +383,7 @@ macro_rules! remote_async_actor_internal {
                         actor_ref = unsafe { &mut *(actor_ptr.ptr as *mut _) };
                     }
 
-                    ray_info!("Actor Value: {:?}", actor_ref);
+                    // ray_info!("Actor Value: {:?}", actor_ref);
 
                     let ret: $ret = [<ray_rust_private__ $name>](actor_ref, $($arg,)*).await;
                     let result = rmp_serde::to_vec(&ret).unwrap();
@@ -375,7 +408,7 @@ macro_rules! remote_async_actor_internal {
             // Run this function before main
             #[ctor]
             fn [<register_function_name_ ray_rust_async_actor_method__ $name>]() {
-                let mut guard = GLOBAL_ASYNC_ACTOR_METHOD_NAMES_SET.lock().unwrap();
+                let mut guard = GLOBAL_ASYNC_ACTOR_METHOD_NAMES_SET.write().unwrap();
                 guard.insert(
                     CString::new(stringify!([<ray_rust_async_actor_method__ $name>])).unwrap()
                 );
@@ -433,7 +466,7 @@ macro_rules! remote_actor_internal {
             // Run this function before main
             #[ctor]
             fn [<register_function_name_ ray_rust_actor_method__ $name>]() {
-                let mut guard = GLOBAL_ACTOR_METHOD_NAMES_SET.lock().unwrap();
+                let mut guard = GLOBAL_ACTOR_METHOD_NAMES_SET.write().unwrap();
                 guard.insert(
                     CString::new(stringify!([<ray_rust_actor_method__ $name>])).unwrap()
                 );
