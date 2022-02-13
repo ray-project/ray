@@ -1860,14 +1860,19 @@ class Dataset(Generic[T]):
         # During row-based ops, we also choose a batch format that lines up with the
         # current dataset format in order to eliminate unnecessary copies and type
         # conversions.
-        dataset_format = self._dataset_format()
-        batch_format = (
-            "pyarrow"
-            if dataset_format == "arrow"
-            else "pandas"
-            if dataset_format == "pandas"
-            else "native"
-        )
+        try:
+            dataset_format = self._dataset_format()
+        except ValueError:
+            # Dataset is empty or cleared, so fall back to "native".
+            batch_format = "native"
+        else:
+            batch_format = (
+                "pyarrow"
+                if dataset_format == "arrow"
+                else "pandas"
+                if dataset_format == "pandas"
+                else "native"
+            )
         for batch in self.iter_batches(
             prefetch_blocks=prefetch_blocks, batch_format=batch_format
         ):
