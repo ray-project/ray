@@ -148,9 +148,7 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             vf_loss = torch.pow(
                 value_fn_out - train_batch[Postprocessing.VALUE_TARGETS], 2.0
             )
-            vf_loss_clipped = torch.clamp(
-                vf_loss, -self.config["vf_clip_param"], self.config["vf_clip_param"]
-            )
+            vf_loss_clipped = torch.clamp(vf_loss, 0, self.config["vf_clip_param"])
             mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
         # Ignore the value function.
         else:
