@@ -67,6 +67,9 @@ class ParquetDatasource(FileBasedDatasource):
             paths = paths[0]
 
         dataset_kwargs = reader_args.pop("dataset_kwargs", {})
+        filters = dataset_kwargs.get("filters", [])
+        filter_expression = pq._filters_to_expression(filters)
+
         pq_ds = pq.ParquetDataset(
             paths, **dataset_kwargs, filesystem=filesystem, use_legacy_dataset=False
         )
@@ -106,6 +109,7 @@ class ParquetDatasource(FileBasedDatasource):
                     columns=columns,
                     schema=schema,
                     batch_size=PARQUET_READER_ROW_BATCH_SIZE,
+                    filter=filter_expression,
                     **reader_args,
                 )
                 for batch in batches:
