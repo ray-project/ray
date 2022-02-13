@@ -1,12 +1,11 @@
-extern crate bindgen;
-
+use rustc_version::{version_meta, Channel};
 use std::env;
 use std::path::PathBuf;
+use std::process::Command;
 
+// It is the job of the downstream user binary to ensure that the linking is to the Ray Rust libraries
+// are included in their rustc flags or via a build script like this one.
 fn main() {
-    // Tell cargo to invalidate the built crate whenever the wrapper changes
-    use std::process::Command;
-    println!("cargo:rerun-if-changed=includes/c_worker.h");
     let out = Command::new("ray")
         .arg("rust")
         .arg("--show-library-path")
@@ -28,14 +27,13 @@ fn main() {
     println!("cargo:rustc-link-lib=core_worker_library_c");
     println!("cargo:rustc-link-search={}", link_dir);
 
-    let bindings = bindgen::Builder::default()
-        .header("includes/c_worker.h")
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
-        .generate()
-        .expect("Unable to generate bindings");
+    // println!(
+    //     "cargo:rustc-env=LD_LIBRARY_PATH={}:LD_LIBRARY_PATH",
+    //     link_dir
+    // );
 
-    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    bindings
-        .write_to_file(out_path.join("ray_rs_sys_bindgen.rs"))
-        .expect("Couldn't write bindings!");
+    let is_nightly = version_meta().expect("nightly check failed").channel == Channel::Nightly;
+    if is_nightly {
+        println!("cargo:rustc-cfg=nightly");
+    }
 }

@@ -1,0 +1,15 @@
+[package]
+name = "ray-rs-worker"
+version = "0.0.0"
+authors = ["Jonathan Chuang"]
+license = "Apache-2.0"
+edition = "2018"
+publish = true
+
+[dependencies]
+# ray-rs = "0.0.0"
+ray-rs = { path = "../ray-rs", features = ["async"] }
+ray-rs-sys = { path = "../ray-rs-sys" }
+
+[build-dependencies]
+rustc_version = "0.4.0"
