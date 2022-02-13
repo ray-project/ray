@@ -58,19 +58,38 @@ class AverageResultsPreprocessor(ResultsPreprocessor):
                     "Please make sure that it is saved using `train.report()`."
                 )
                 continue
+            elif not all(
+                isinstance(result.get(metrics, np.nan), self.VALID_SUMMARY_TYPES)
+                for result in results
+            ):
+                logger.warning(
+                    f"`{metrics}` value type is not valid, so it is ignored. "
+                    f"Make sure that its type is one of {self.VALID_SUMMARY_TYPES}."
+                )
+                continue
 
             metrics_from_workers = np.array(
                 [result.get(metrics, np.nan) for result in results]
             )
-            if weight:
+
+            if weight in reported_metrics and all(
+                isinstance(result.get(weight, np.nan), self.VALID_SUMMARY_TYPES)
+                for result in results
+            ):
                 weights_from_workers = np.array(
                     [result.get(weight, np.nan) for result in results]
                 )
             else:
+                if weight not in reported_metrics:
+                    message = f"Averaging weight `{weight}` is not reported in `train.report()`. "
+                else:
+                    message = (
+                        f"Averaging weight `{weight}` value type is not valid. "
+                        f"Make sure that its type is one of {self.VALID_SUMMARY_TYPES}. "
+                    )
+
                 # if no weight is provided, equal weight will be used.
-                logger.warning(
-                    f"No weight is provided for `{metrics}`. Use equal weight instead."
-                )
+                logger.warning(message + "Use equal weight instead.")
                 weights_from_workers = np.array([1] * len(metrics_from_workers))
 
             average_metrics["_average_" + metrics] = np.nanmean(
