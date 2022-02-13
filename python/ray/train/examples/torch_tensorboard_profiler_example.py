@@ -8,10 +8,8 @@ import ray
 import ray.train as train
 from ray.train import Trainer
 from ray.train.callbacks import TBXLoggerCallback
-from ray.train.callbacks.profile import (
-    TorchTensorboardProfilerCallback,
-    TorchWorkerProfiler,
-)
+from ray.train.callbacks.profile import TorchTensorboardProfilerCallback
+from ray.train.torch import TorchWorkerProfiler
 
 
 def train_func():

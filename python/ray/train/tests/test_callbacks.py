@@ -268,7 +268,7 @@ def test_torch_tensorboard_profiler_callback(ray_start_4_cpus, tmp_path):
     num_epochs = 2
 
     def train_func():
-        from ray.train.callbacks.profile import TorchWorkerProfiler
+        from ray.train.torch import TorchWorkerProfiler
         from torch.profiler import profile, record_function, schedule
 
         twp = TorchWorkerProfiler()

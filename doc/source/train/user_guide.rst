@@ -935,7 +935,7 @@ the disk that from which your script was executed from.
 
 .. code-block:: bash
 
-    from ray.train.callbacks.profile import TorchWorkerProfiler
+    from ray.train.torch import TorchWorkerProfiler
 
     def train_func():
         twp = TorchWorkerProfiler()
