@@ -210,7 +210,7 @@ class DatasetStats:
                 out += p.summary_string(already_printed)
                 out += "\n"
         first = True
-        for stage_name, metadata in sorted(self.stages.items()):
+        for stage_name, metadata in self.stages.items():
             stage_uuid = self.dataset_uuid + stage_name
             if first:
                 first = False
