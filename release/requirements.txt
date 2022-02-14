@@ -4,6 +4,7 @@ click
 anyscale>0.5.0
 slackclient
 boto3
+jinja2
 PyGithub
 pydantic
 pyyaml

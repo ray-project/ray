@@ -1,3 +1,4 @@
+anyscale
 click
 boto3
 jinja2
