@@ -78,12 +78,12 @@ class ChunkCollector:
         elif chunk_id > self.last_seen_chunk + 1:
             # A chunk was skipped. This shouldn't happen in practice since
             # grpc guarantees that chunks will arrive in order.
-            self.callback(
-                RuntimeError(
-                    f"Received chunk {chunk_id} when we expected "
-                    f"{self.last_seen_chunk + 1} for request {response.req_id}"
-                )
+            msg = (
+                f"Received chunk {chunk_id} when we expected "
+                f"{self.last_seen_chunk + 1} for request {response.req_id}"
             )
+            logger.warning(msg)
+            self.callback(RuntimeError(msg))
             return True
         else:
             # We received a chunk that've already seen before. Ignore, since
