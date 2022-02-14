@@ -130,7 +130,9 @@ def range(n: int, *, parallelism: int = 200, _dataset_name: str = "") -> Dataset
 
 
 @PublicAPI(stability="beta")
-def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
+def range_arrow(
+    n: int, *, parallelism: int = 200, _dataset_name: str = ""
+) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from a range of integers [0..n).
 
     Examples:
@@ -149,7 +151,11 @@ def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
         Dataset holding the integers as Arrow records.
     """
     return read_datasource(
-        RangeDatasource(), parallelism=parallelism, n=n, block_format="arrow"
+        RangeDatasource(),
+        parallelism=parallelism,
+        n=n,
+        block_format="arrow",
+        _dataset_name=_dataset_name,
     )
 
 

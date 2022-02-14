@@ -2477,15 +2477,19 @@ Dict[str, List[str]]]): The names of the columns
         class Iterator:
             def __init__(self, ds: "Dataset[T]"):
                 self._ds = ds
-                self._ds_name = ds._get_name()
                 self._i = 0
 
             def __next__(self) -> "Dataset[T]":
                 if times and self._i >= times:
                     raise StopIteration
-                self._ds._set_epoch(self._i)
+                res = Dataset(
+                    self._ds._blocks,
+                    self._i,
+                    self._ds._stats.child_repeat(),
+                    name=f"{self._ds._get_name()}|repeat_{self._i}",
+                )
                 self._i += 1
-                return lambda: self._ds.force_reads()
+                return lambda: res.force_reads()
 
         class Iterable:
             def __init__(self, ds: "Dataset[T]"):
