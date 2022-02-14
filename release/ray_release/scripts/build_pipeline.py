@@ -16,7 +16,7 @@ from ray_release.config import (
     DEFAULT_WHEEL_WAIT_TIMEOUT,
 )
 from ray_release.exception import ReleaseTestCLIError
-from ray_release.logger import logger, add_handlers
+from ray_release.logger import logger
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
 
 
@@ -28,9 +28,6 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
     help="File containing test configurations",
 )
 def main(test_collection_file: Optional[str] = None):
-    if "BUILDKITE" in os.environ:
-        add_handlers(logger)
-
     settings = get_pipeline_settings()
 
     repo = settings["ray_test_repo"]
