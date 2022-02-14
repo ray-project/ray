@@ -8,7 +8,7 @@ reason() {
   # Keep in sync with e2e.py ExitCode enum
   if [ "$1" -eq 0 ]; then
     REASON="success"
-  elif [ "$1" -gt 1 ] && [ "$1" -le 10 ]; then
+  elif [ "$1" -ge 1 ] && [ "$1" -le 10 ]; then
     REASON="runtime error"
   elif [ "$1" -gt 10 ] && [ "$1" -le 20 ]; then
     REASON="infra error"
@@ -61,6 +61,10 @@ if [ -z "${NO_CLONE}" ]; then
   TMPDIR=$(mktemp -d -t release-XXXXXXXXXX)
   git clone --depth 1 -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" "${TMPDIR}"
   pushd "${TMPDIR}/release" || true
+fi
+
+if [ -z "${NO_INSTALL}" ]; then
+  pip install -e .
 fi
 
 RETRY_NUM=0
