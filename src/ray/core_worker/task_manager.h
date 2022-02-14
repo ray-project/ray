@@ -79,15 +79,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               std::shared_ptr<ReferenceCounter> reference_counter,
               PutInLocalPlasmaCallback put_in_local_plasma_callback,
               RetryTaskCallback retry_task_callback,
-              const std::function<bool(const NodeID &node_id)> &check_node_alive,
-              ReconstructObjectCallback reconstruct_object_callback,
               PushErrorCallback push_error_callback, int64_t max_lineage_bytes)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(put_in_local_plasma_callback),
         retry_task_callback_(retry_task_callback),
-        check_node_alive_(check_node_alive),
-        reconstruct_object_callback_(reconstruct_object_callback),
         push_error_callback_(push_error_callback),
         max_lineage_bytes_(max_lineage_bytes) {
     reference_counter_->SetReleaseLineageCallback(
@@ -321,17 +317,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;
-
-  /// Called to check whether a raylet is still alive. This is used when
-  /// processing a worker's reply to check whether the node that the worker
-  /// was on is still alive. If the node is down, the plasma objects returned by the task
-  /// are marked as failed.
-  const std::function<bool(const NodeID &node_id)> check_node_alive_;
-  /// Called when processing a worker's reply if the node that the worker was
-  /// on died. This should be called to attempt to recover a plasma object
-  /// returned by the task (or store an error if the object is not
-  /// recoverable).
-  const ReconstructObjectCallback reconstruct_object_callback_;
 
   // Called to push an error to the relevant driver.
   const PushErrorCallback push_error_callback_;

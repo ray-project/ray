@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 from collections import defaultdict
 from dataclasses import dataclass
 import json
@@ -264,7 +265,9 @@ class RuntimeEnvAgent(
                 except Exception as e:
                     err_msg = f"Failed to create runtime env {serialized_env}."
                     self._logger.exception(err_msg)
-                    error_message = f"{err_msg}\n{str(e)}"
+                    error_message = "".join(
+                        traceback.format_exception(type(e), e, e.__traceback__)
+                    )
                     await asyncio.sleep(
                         runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
                     )
