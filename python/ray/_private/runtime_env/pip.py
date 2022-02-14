@@ -29,11 +29,25 @@ def _install_pip_list_to_dir(
         target_dir: str,
         logger: Optional[logging.Logger] = default_logger):
     try_to_create_directory(target_dir)
-    exit_code, output = exec_cmd_stream_to_logger(
-        ["pip", "install", f"--target={target_dir}"] + pip_list, logger)
-    if exit_code != 0:
-        shutil.rmtree(target_dir)
-        raise RuntimeError(f"Failed to install pip requirements:\n{output}")
+    try:
+        pip_requirements_file = os.path.join(target_dir, "requirements.txt")
+        with open(pip_requirements_file, "w") as file:
+            for line in pip_list:
+                file.write(line + "\n")
+        exit_code, output = exec_cmd_stream_to_logger(
+            [
+                "pip", "install", f"--target={target_dir}", "-r",
+                pip_requirements_file
+            ],
+            logger,
+        )
+        if exit_code != 0:
+            shutil.rmtree(target_dir)
+            raise RuntimeError(
+                f"Failed to install pip requirements:\n{output}")
+    finally:
+        if os.path.exists(pip_requirements_file):
+            os.remove(pip_requirements_file)
 
 
 def get_uri(runtime_env: Dict) -> Optional[str]:
