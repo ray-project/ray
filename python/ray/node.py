@@ -470,25 +470,33 @@ class Node:
 
         if not self._resource_spec:
             env_resources = {}
-            required_cpu_instruction_sets_str = \
-                os.getenv(
-                    ray_constants.CPU_INSTRUCTION_SETS_ENV,
-                    ray_constants.CPU_INSTRUCTION_SETS)
+            required_cpu_instruction_sets_str = os.getenv(
+                ray_constants.CPU_INSTRUCTION_SETS_ENV,
+                ray_constants.CPU_INSTRUCTION_SETS,
+            )
             required_cpu_instruction_sets = [
                 x.strip() for x in required_cpu_instruction_sets_str.split(",")
             ]
-            if len(required_cpu_instruction_sets) > 0 \
-                    and platform.system() != ray_constants.WINDOWS_SYSTEM:
+            if (
+                len(required_cpu_instruction_sets) > 0
+                and platform.system() != ray_constants.WINDOWS_SYSTEM
+            ):
                 from cpuinfo import get_cpu_info
+
                 cpu_info = get_cpu_info()
-                env_resources.update({
-                    required_ins:
-                    ray_constants.DEFAULT_CPU_INSTRUCTION_SET_RESOURCE_NUMBER
-                    for required_ins in
-                    set(required_cpu_instruction_sets) & set(
-                        cpu_info.get(ray_constants.CPU_INSTRUCTION_SETS_FLAGS,
-                                     []))
-                })
+                env_resources.update(
+                    {
+                        required_ins:
+                            ray_constants
+                            .DEFAULT_CPU_INSTRUCTION_SET_RESOURCE_NUMBER
+                        for required_ins in set(
+                            required_cpu_instruction_sets)
+                        & set(
+                            cpu_info.get(
+                                ray_constants.CPU_INSTRUCTION_SETS_FLAGS, [])
+                        )
+                    }
+                )
             env_string = os.getenv(
                 ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
             if env_string:
