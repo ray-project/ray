@@ -45,8 +45,7 @@ class TorchDistributionWrapper(ActionDistribution):
 
     @override(ActionDistribution)
     def sample(self) -> TensorType:
-        with torch.autocast(device_type="cpu"):
-            self.last_sample = self.dist.sample()
+        self.last_sample = self.dist.sample()
         return self.last_sample
 
     @override(ActionDistribution)

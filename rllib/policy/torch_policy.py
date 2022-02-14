@@ -266,6 +266,7 @@ class TorchPolicy(Policy):
         else:
             self._loss = None
         self._optimizers = force_list(self.optimizer())
+        self._grad_scalers = torch.cuda.amp.GradScaler()
         # Store, which params (by index within the model's list of
         # parameters) should be updated per optimizer.
         # Maps optimizer idx to set or param indices.
@@ -659,6 +660,8 @@ class TorchPolicy(Policy):
                         p.grad = torch.from_numpy(g).to(self.device)
 
             self._optimizers[0].step()
+            # self._grad_scaler.step(self._optimizers[0])
+            self._grad_scaler.update()
 
     @DeveloperAPI
     def get_tower_stats(self, stats_name: str) -> List[TensorStructType]:
@@ -916,14 +919,18 @@ class TorchPolicy(Policy):
 
         if self.action_sampler_fn:
             action_dist = dist_inputs = None
-            actions, logp, state_out = self.action_sampler_fn(
-                self,
-                self.model,
-                input_dict,
-                state_batches,
-                explore=explore,
-                timestep=timestep,
-            )
+            with torch.autocast(
+                dtype=torch.bfloat16,
+                device_type="cuda" if input_dict["obs"].is_cuda else "cpu",
+            ):
+                actions, logp, state_out = self.action_sampler_fn(
+                    self,
+                    self.model,
+                    input_dict,
+                    state_batches,
+                    explore=explore,
+                    timestep=timestep,
+                )
         else:
             # Call the exploration before_compute_actions hook.
             self.exploration.before_compute_actions(explore=explore, timestep=timestep)
@@ -979,9 +986,13 @@ class TorchPolicy(Policy):
             action_dist = dist_class(dist_inputs, self.model)
 
             # Get the exploration action from the forward results.
-            actions, logp = self.exploration.get_exploration_action(
-                action_distribution=action_dist, timestep=timestep, explore=explore
-            )
+            with torch.autocast(
+                dtype=torch.bfloat16,
+                device_type="cuda" if dist_inputs.is_cuda else "cpu",
+            ):
+                actions, logp = self.exploration.get_exploration_action(
+                    action_distribution=action_dist, timestep=timestep, explore=explore
+                )
 
         input_dict[SampleBatch.ACTIONS] = actions
 
@@ -1065,6 +1076,7 @@ class TorchPolicy(Policy):
                             if param_idx in param_indices and param.grad is not None:
                                 param.grad.data.zero_()
                         # Recompute gradients of loss over all variables.
+                        # self._grad_scaler.scale(loss_out[opt_idx]).backward(retain_graph=True)
                         loss_out[opt_idx].backward(retain_graph=True)
                         grad_info.update(
                             self.extra_grad_process(opt, loss_out[opt_idx])

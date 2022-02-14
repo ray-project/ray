@@ -143,7 +143,10 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
     ) -> (TensorType, List[TensorType]):
         obs = input_dict["obs_flat"].float()
         # TODO: use the correct type for CUDA
-        with torch.autocast(dtype=torch.bfloat16, device_type="cpu"):
+        with torch.autocast(
+            dtype=torch.bfloat16,
+            device_type="cuda" if input_dict["obs"].is_cuda else "cpu",
+        ):
             self._last_flat_in = obs.reshape(obs.shape[0], -1)
             self._features = self._hidden_layers(self._last_flat_in)
             logits = self._logits(self._features) if self._logits else self._features
