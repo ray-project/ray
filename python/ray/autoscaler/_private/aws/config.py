@@ -675,7 +675,11 @@ def _get_or_create_vpc_security_groups(conf, node_types):
 
 
 def _get_vpc_id_or_die(ec2, subnet_id: str):
-    return _get_subnets_or_die(ec2, (subnet_id,))[0].vpc_id
+    subnets = _get_subnets_or_die(ec2, (subnet_id,))
+    cli_logger.doassert(
+        len(subnets) == 1, f"Expected 1 subnet with ID `{subnet_id}` but found {len(subnets)}"
+    )
+    return subnets[0].vpc_id
 
 
 @lru_cache()
