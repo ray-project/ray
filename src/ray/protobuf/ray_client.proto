@@ -105,7 +105,7 @@ message PutRequest {
   int32 chunk_id = 3;
   // Total number of chunks
   int32 total_chunks = 4;
-  // Total size in bytes of the data being retrieved
+  // Total size in bytes of the data being put
   int64 total_size = 5;
 }
 

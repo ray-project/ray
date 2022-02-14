@@ -453,7 +453,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         """Put an object in the cluster with ray.put() via gRPC.
 
         Args:
-            data: Pickled data.
+            data: Pickled data. Can either be bytearray if this is called
+              from the dataservicer, or bytes if called from PutObject.
             client_ref_id: The id associated with this object on the client.
             client_id: The client who owns this data, for tracking when to
               delete this reference.

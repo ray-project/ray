@@ -41,6 +41,7 @@ def chunk_put(req: ray_client_pb2.DataRequest):
     on the client to handle the put.
     """
     total_size = len(req.put.data)
+    assert total_size > 0, "Cannot chunk object with missing data"
     if total_size >= OBJECT_TRANSFER_WARNING_SIZE and log_once(
         "client_object_put_size_warning"
     ):
