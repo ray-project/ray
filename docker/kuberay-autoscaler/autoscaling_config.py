@@ -45,8 +45,7 @@ def generate_autoscaling_config() -> dict:
 
     # Get the KubeRay node provider by instantiating it (on first call) or retrieving it
     # from cache (subsequent calls).
-    # The autoscaler also accesses the single node provider instance using
-    # `_get_node_provider`.
+    # The autoscaler accesses the single node provider instance in the same way.
     provider = _get_node_provider(
         provider_config=provider_config, cluster_name=_RAY_CLUSTER_NAME, use_cache=True
     )
