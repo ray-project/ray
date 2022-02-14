@@ -23,6 +23,18 @@ MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
 STORAGE_ACTOR_NAME = "StorageManagementActor"
 
 
+def asyncio_run(coro):
+    # The event loop will only be set in main thread by default
+    # to make sure it's working when workflow is running in
+    # other thread, need to setup the event loop if it's not there.
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
+
+
 def get_module(f):
     return f.__module__ if hasattr(f, "__module__") else "__anonymous_module__"
 
