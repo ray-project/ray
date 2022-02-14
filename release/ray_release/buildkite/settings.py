@@ -92,6 +92,9 @@ def update_settings_from_environment(settings: Dict) -> Dict:
     if "RAY_TEST_REPO" in os.environ:
         settings["ray_test_repo"] = os.environ["RAY_TEST_REPO"]
         settings["ray_test_branch"] = os.environ.get("RAY_TEST_BRANCH", DEFAULT_BRANCH)
+    elif "BUILDKITE_BRANCH" in os.environ:
+        settings["ray_test_repo"] = os.environ["BUILDKITE_REPO"]
+        settings["ray_test_branch"] = os.environ["BUILDKITE_BRANCH"]
 
     if "RAY_WHEELS" in os.environ:
         settings["ray_wheels"] = os.environ["RAY_WHEELS"]

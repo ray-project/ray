@@ -79,7 +79,7 @@ def main(test_collection_file: Optional[str] = None):
     filtered_tests = filter_tests(
         test_collection, frequency=frequency, test_name_filter=test_name_filter
     )
-    logger.info(f"Found {len(filtered_tests)} to run.")
+    logger.info(f"Found {len(filtered_tests)} tests to run.")
     if len(filtered_tests) == 0:
         raise ReleaseTestCLIError(
             "Empty test collection. The selected frequency or filter did "
