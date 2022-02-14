@@ -396,7 +396,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id
                  << " actor counter " << actor_counter << " seq no "
                  << request->sequence_number() << " num queued " << num_queued;
-  if (num_queued >= next_queueing_warn_threshold_ && !skip_queue) {
+  if (num_queued >= next_queueing_warn_threshold_) {
     // TODO(ekl) add more debug info about the actor name, etc.
     warn_excess_queueing_(actor_id, num_queued);
     next_queueing_warn_threshold_ *= 2;
