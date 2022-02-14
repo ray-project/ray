@@ -1,5 +1,6 @@
 import itertools
 import math
+from collections import OrderedDict
 from typing import TypeVar, List, Optional, Dict, Any, Tuple, Union
 
 import numpy as np
@@ -93,10 +94,12 @@ def simple_shuffle(
     new_metadata = ray.get(list(new_metadata))
     reduce_bar.close()
 
-    stats = {
-        "map": shuffle_map_metadata,
-        "reduce": new_metadata,
-    }
+    stats = OrderedDict(
+        [
+            ("map", shuffle_map_metadata),
+            ("reduce", new_metadata),
+        ]
+    )
 
     return BlockList(list(new_blocks), list(new_metadata)), stats
 

@@ -1,5 +1,6 @@
 from contextlib import contextmanager
-from typing import List, Optional, Dict, Set, Tuple, Union
+from typing import List, Optional, Set, Tuple, Union
+from collections import OrderedDict
 import time
 import collections
 import numpy as np
@@ -52,10 +53,12 @@ class _DatasetStatsBuilder:
         self.start_time = time.perf_counter()
 
     def build_multistage(
-        self, stages: Dict[str, List[BlockMetadata]]
+        self, stages: OrderedDict[str, List[BlockMetadata]]
     ) -> "DatasetStats":
         stats = DatasetStats(
-            stages={self.stage_name + "_" + k: v for k, v in stages.items()},
+            stages=OrderedDict(
+                [(self.stage_name + "_" + k, v) for k, v in stages.items()]
+            ),
             parent=self.parent,
         )
         stats.time_total_s = time.perf_counter() - self.start_time
@@ -63,7 +66,8 @@ class _DatasetStatsBuilder:
 
     def build(self, final_blocks: BlockList) -> "DatasetStats":
         stats = DatasetStats(
-            stages={self.stage_name: final_blocks.get_metadata()}, parent=self.parent
+            stages=OrderedDict({self.stage_name: final_blocks.get_metadata()}),
+            parent=self.parent,
         )
         stats.time_total_s = time.perf_counter() - self.start_time
         return stats
@@ -134,7 +138,7 @@ class DatasetStats:
     def __init__(
         self,
         *,
-        stages: Dict[str, List[BlockMetadata]],
+        stages: OrderedDict[str, List[BlockMetadata]],
         parent: Union[Optional["DatasetStats"], List["DatasetStats"]],
         stats_actor=None,
         stats_uuid=None
@@ -152,7 +156,8 @@ class DatasetStats:
                 from the stats actor.
         """
 
-        self.stages: Dict[str, List[BlockMetadata]] = stages
+        assert isinstance(stages, OrderedDict)
+        self.stages: OrderedDict[str, List[BlockMetadata]] = stages
         self.parents: List["DatasetStats"] = []
         if parent:
             if isinstance(parent, list):
@@ -180,12 +185,12 @@ class DatasetStats:
 
     def child_TODO(self, name: str) -> "DatasetStats":
         """Placeholder for child ops not yet instrumented."""
-        return DatasetStats(stages={name + "_TODO": []}, parent=self)
+        return DatasetStats(stages=OrderedDict({name + "_TODO": []}), parent=self)
 
     @staticmethod
     def TODO():
         """Placeholder for ops not yet instrumented."""
-        return DatasetStats(stages={"TODO": []}, parent=None)
+        return DatasetStats(stages=OrderedDict({"TODO": []}), parent=None)
 
     def summary_string(self, already_printed: Set[str] = None) -> str:
         """Return a human-readable summary of this Dataset's stats."""
