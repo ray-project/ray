@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import List, Optional, Set, Tuple, Union
+from typing import List, Optional, Set, Dict, Tuple, Union
 from collections import OrderedDict
 import time
 import collections
@@ -53,7 +53,7 @@ class _DatasetStatsBuilder:
         self.start_time = time.perf_counter()
 
     def build_multistage(
-        self, stages: OrderedDict[str, List[BlockMetadata]]
+        self, stages: Dict[str, List[BlockMetadata]]
     ) -> "DatasetStats":
         stats = DatasetStats(
             stages=OrderedDict(
@@ -138,7 +138,7 @@ class DatasetStats:
     def __init__(
         self,
         *,
-        stages: OrderedDict[str, List[BlockMetadata]],
+        stages: Dict[str, List[BlockMetadata]],
         parent: Union[Optional["DatasetStats"], List["DatasetStats"]],
         stats_actor=None,
         stats_uuid=None
@@ -157,7 +157,7 @@ class DatasetStats:
         """
 
         assert isinstance(stages, OrderedDict)
-        self.stages: OrderedDict[str, List[BlockMetadata]] = stages
+        self.stages: Dict[str, List[BlockMetadata]] = stages
         self.parents: List["DatasetStats"] = []
         if parent:
             if isinstance(parent, list):
