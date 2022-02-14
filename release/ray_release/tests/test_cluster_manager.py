@@ -8,11 +8,14 @@ from uuid import uuid4
 from freezegun import freeze_time
 
 from ray_release.exception import (
-    AppConfigBuildFailure,
     ClusterCreationError,
     ClusterStartupError,
     ClusterStartupTimeout,
     ClusterStartupFailed,
+    ClusterEnvBuildError,
+    ClusterEnvBuildTimeout,
+    ClusterComputeCreateError,
+    ClusterEnvCreateError,
 )
 from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.cluster_manager.minimal import MinimalClusterManager
@@ -20,7 +23,6 @@ from ray_release.tests.utils import (
     UNIT_TEST_PROJECT_ID,
     UNIT_TEST_CLOUD_ID,
     APIDict,
-    UnitTestError,
     fail_always,
     fail_once,
     MockSDK,
@@ -83,22 +85,26 @@ class MinimalSessionManagerTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self.sdk = MockSDK()
+        self.sdk.returns["get_project"] = APIDict(
+            result=APIDict(name="release_unit_tests")
+        )
 
         self.cluster_env = TEST_CLUSTER_ENV
         self.cluster_compute = TEST_CLUSTER_COMPUTE
 
-        self.session_manager = self.cls(
+        self.cluster_manager = self.cls(
             project_id=UNIT_TEST_PROJECT_ID,
             sdk=self.sdk,
             test_name=f"unit_test__{self.__class__.__name__}",
         )
+        self.sdk.reset()
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeExisting(self):
         # Find existing compute and succeed
-        self.session_manager.set_cluster_compute(self.cluster_compute)
-        self.assertTrue(self.session_manager.cluster_compute_name)
-        self.assertFalse(self.session_manager.cluster_compute_id)
+        self.cluster_manager.set_cluster_compute(self.cluster_compute)
+        self.assertTrue(self.cluster_manager.cluster_compute_name)
+        self.assertFalse(self.cluster_manager.cluster_compute_id)
 
         self.sdk.returns["search_cluster_computes"] = APIDict(
             metadata=APIDict(
@@ -109,20 +115,20 @@ class MinimalSessionManagerTest(unittest.TestCase):
                     name="no_match",
                     id="wrong",
                 ),
-                APIDict(name=self.session_manager.cluster_compute_name, id="correct"),
+                APIDict(name=self.cluster_manager.cluster_compute_name, id="correct"),
             ],
         )
-        self.session_manager.create_cluster_compute()
-        self.assertEqual(self.session_manager.cluster_compute_id, "correct")
+        self.cluster_manager.create_cluster_compute()
+        self.assertEqual(self.cluster_manager.cluster_compute_id, "correct")
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 1)
         self.assertEqual(len(self.sdk.call_counter), 1)
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeCreateFailFail(self):
         # No existing compute, create new, but fail both times
-        self.session_manager.set_cluster_compute(self.cluster_compute)
-        self.assertTrue(self.session_manager.cluster_compute_name)
-        self.assertFalse(self.session_manager.cluster_compute_id)
+        self.cluster_manager.set_cluster_compute(self.cluster_compute)
+        self.assertTrue(self.cluster_manager.cluster_compute_name)
+        self.assertFalse(self.cluster_manager.cluster_compute_id)
 
         self.sdk.returns["search_cluster_computes"] = APIDict(
             metadata=APIDict(
@@ -136,10 +142,10 @@ class MinimalSessionManagerTest(unittest.TestCase):
             ],
         )
         self.sdk.returns["create_cluster_compute"] = fail_always
-        with self.assertRaises(UnitTestError):
-            self.session_manager.create_cluster_compute()
+        with self.assertRaises(ClusterComputeCreateError):
+            self.cluster_manager.create_cluster_compute()
         # No cluster ID found or created
-        self.assertFalse(self.session_manager.cluster_compute_id)
+        self.assertFalse(self.cluster_manager.cluster_compute_id)
         # Both APIs were called twice (retry after fail)
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 2)
         self.assertEqual(self.sdk.call_counter["create_cluster_compute"], 2)
@@ -148,9 +154,9 @@ class MinimalSessionManagerTest(unittest.TestCase):
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeCreateFailSucceed(self):
         # No existing compute, create new, fail once, succeed afterwards
-        self.session_manager.set_cluster_compute(self.cluster_compute)
-        self.assertTrue(self.session_manager.cluster_compute_name)
-        self.assertFalse(self.session_manager.cluster_compute_id)
+        self.cluster_manager.set_cluster_compute(self.cluster_compute)
+        self.assertTrue(self.cluster_manager.cluster_compute_name)
+        self.assertFalse(self.cluster_manager.cluster_compute_id)
 
         self.sdk.returns["search_cluster_computes"] = APIDict(
             metadata=APIDict(
@@ -170,9 +176,9 @@ class MinimalSessionManagerTest(unittest.TestCase):
                 )
             )
         )
-        self.session_manager.create_cluster_compute()
+        self.cluster_manager.create_cluster_compute()
         # Both APIs were called twice (retry after fail)
-        self.assertEqual(self.session_manager.cluster_compute_id, "correct")
+        self.assertEqual(self.cluster_manager.cluster_compute_id, "correct")
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 2)
         self.assertEqual(self.sdk.call_counter["create_cluster_compute"], 2)
         self.assertEqual(len(self.sdk.call_counter), 2)
@@ -180,9 +186,9 @@ class MinimalSessionManagerTest(unittest.TestCase):
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeCreateSucceed(self):
         # No existing compute, create new, and succeed
-        self.session_manager.set_cluster_compute(self.cluster_compute)
-        self.assertTrue(self.session_manager.cluster_compute_name)
-        self.assertFalse(self.session_manager.cluster_compute_id)
+        self.cluster_manager.set_cluster_compute(self.cluster_compute)
+        self.assertTrue(self.cluster_manager.cluster_compute_name)
+        self.assertFalse(self.cluster_manager.cluster_compute_id)
 
         self.sdk.returns["search_cluster_computes"] = APIDict(
             metadata=APIDict(
@@ -200,9 +206,9 @@ class MinimalSessionManagerTest(unittest.TestCase):
                 id="correct",
             )
         )
-        self.session_manager.create_cluster_compute()
+        self.cluster_manager.create_cluster_compute()
         # Both APIs were called twice (retry after fail)
-        self.assertEqual(self.session_manager.cluster_compute_id, "correct")
+        self.assertEqual(self.cluster_manager.cluster_compute_id, "correct")
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 1)
         self.assertEqual(self.sdk.call_counter["create_cluster_compute"], 1)
         self.assertEqual(len(self.sdk.call_counter), 2)
@@ -210,9 +216,9 @@ class MinimalSessionManagerTest(unittest.TestCase):
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterEnvExisting(self):
         # Find existing env and succeed
-        self.session_manager.set_cluster_env(self.cluster_env)
-        self.assertTrue(self.session_manager.cluster_env_name)
-        self.assertFalse(self.session_manager.cluster_env_id)
+        self.cluster_manager.set_cluster_env(self.cluster_env)
+        self.assertTrue(self.cluster_manager.cluster_env_name)
+        self.assertFalse(self.cluster_manager.cluster_env_id)
 
         self.sdk.returns["search_cluster_environments"] = APIDict(
             metadata=APIDict(
@@ -223,20 +229,20 @@ class MinimalSessionManagerTest(unittest.TestCase):
                     name="no_match",
                     id="wrong",
                 ),
-                APIDict(name=self.session_manager.cluster_env_name, id="correct"),
+                APIDict(name=self.cluster_manager.cluster_env_name, id="correct"),
             ],
         )
-        self.session_manager.create_cluster_env()
-        self.assertEqual(self.session_manager.cluster_env_id, "correct")
+        self.cluster_manager.create_cluster_env()
+        self.assertEqual(self.cluster_manager.cluster_env_id, "correct")
         self.assertEqual(self.sdk.call_counter["search_cluster_environments"], 1)
         self.assertEqual(len(self.sdk.call_counter), 1)
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterEnvFailFail(self):
         # No existing compute, create new, but fail both times
-        self.session_manager.set_cluster_env(self.cluster_env)
-        self.assertTrue(self.session_manager.cluster_env_name)
-        self.assertFalse(self.session_manager.cluster_env_id)
+        self.cluster_manager.set_cluster_env(self.cluster_env)
+        self.assertTrue(self.cluster_manager.cluster_env_name)
+        self.assertFalse(self.cluster_manager.cluster_env_id)
 
         self.sdk.returns["search_cluster_environments"] = APIDict(
             metadata=APIDict(
@@ -250,10 +256,10 @@ class MinimalSessionManagerTest(unittest.TestCase):
             ],
         )
         self.sdk.returns["create_cluster_environment"] = fail_always
-        with self.assertRaises(UnitTestError):
-            self.session_manager.create_cluster_env()
+        with self.assertRaises(ClusterEnvCreateError):
+            self.cluster_manager.create_cluster_env()
         # No cluster ID found or created
-        self.assertFalse(self.session_manager.cluster_env_id)
+        self.assertFalse(self.cluster_manager.cluster_env_id)
         # Both APIs were called twice (retry after fail)
         self.assertEqual(self.sdk.call_counter["search_cluster_environments"], 2)
         self.assertEqual(self.sdk.call_counter["create_cluster_environment"], 2)
@@ -262,11 +268,11 @@ class MinimalSessionManagerTest(unittest.TestCase):
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterEnvFailSucceed(self):
         # No existing compute, create new, fail once, succeed afterwards
-        self.session_manager.set_cluster_env(self.cluster_env)
-        self.assertTrue(self.session_manager.cluster_env_name)
-        self.assertFalse(self.session_manager.cluster_env_id)
+        self.cluster_manager.set_cluster_env(self.cluster_env)
+        self.assertTrue(self.cluster_manager.cluster_env_name)
+        self.assertFalse(self.cluster_manager.cluster_env_id)
 
-        self.session_manager.cluster_env_id = None
+        self.cluster_manager.cluster_env_id = None
         self.sdk.reset()
         self.sdk.returns["search_cluster_environments"] = APIDict(
             metadata=APIDict(
@@ -286,9 +292,9 @@ class MinimalSessionManagerTest(unittest.TestCase):
                 )
             )
         )
-        self.session_manager.create_cluster_env()
+        self.cluster_manager.create_cluster_env()
         # Both APIs were called twice (retry after fail)
-        self.assertEqual(self.session_manager.cluster_env_id, "correct")
+        self.assertEqual(self.cluster_manager.cluster_env_id, "correct")
         self.assertEqual(self.sdk.call_counter["search_cluster_environments"], 2)
         self.assertEqual(self.sdk.call_counter["create_cluster_environment"], 2)
         self.assertEqual(len(self.sdk.call_counter), 2)
@@ -296,9 +302,9 @@ class MinimalSessionManagerTest(unittest.TestCase):
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterEnvSucceed(self):
         # No existing compute, create new, and succeed
-        self.session_manager.set_cluster_env(self.cluster_env)
-        self.assertTrue(self.session_manager.cluster_env_name)
-        self.assertFalse(self.session_manager.cluster_env_id)
+        self.cluster_manager.set_cluster_env(self.cluster_env)
+        self.assertTrue(self.cluster_manager.cluster_env_name)
+        self.assertFalse(self.cluster_manager.cluster_env_id)
 
         self.sdk.returns["search_cluster_environments"] = APIDict(
             metadata=APIDict(
@@ -316,30 +322,30 @@ class MinimalSessionManagerTest(unittest.TestCase):
                 id="correct",
             )
         )
-        self.session_manager.create_cluster_env()
+        self.cluster_manager.create_cluster_env()
         # Both APIs were called twice (retry after fail)
-        self.assertEqual(self.session_manager.cluster_env_id, "correct")
+        self.assertEqual(self.cluster_manager.cluster_env_id, "correct")
         self.assertEqual(self.sdk.call_counter["search_cluster_environments"], 1)
         self.assertEqual(self.sdk.call_counter["create_cluster_environment"], 1)
         self.assertEqual(len(self.sdk.call_counter), 2)
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testBuildClusterEnvNotFound(self):
-        self.session_manager.set_cluster_env(self.cluster_env)
-        self.session_manager.cluster_env_id = "correct"
+        self.cluster_manager.set_cluster_env(self.cluster_env)
+        self.cluster_manager.cluster_env_id = "correct"
 
         # Environment build not found
         self.sdk.returns["list_cluster_environment_builds"] = APIDict(results=[])
-        with self.assertRaisesRegex(AppConfigBuildFailure, "No build found"):
-            self.session_manager.build_cluster_env(timeout=600)
+        with self.assertRaisesRegex(ClusterEnvBuildError, "No build found"):
+            self.cluster_manager.build_cluster_env(timeout=600)
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testBuildClusterEnvPreBuildFailed(self):
-        self.session_manager.set_cluster_env(self.cluster_env)
-        self.session_manager.cluster_env_id = "correct"
+        self.cluster_manager.set_cluster_env(self.cluster_env)
+        self.cluster_manager.cluster_env_id = "correct"
 
         # Build failed on first lookup
-        self.session_manager.cluster_env_build_id = None
+        self.cluster_manager.cluster_env_build_id = None
         self.sdk.reset()
         self.sdk.returns["list_cluster_environment_builds"] = APIDict(
             results=[
@@ -350,18 +356,18 @@ class MinimalSessionManagerTest(unittest.TestCase):
                 )
             ]
         )
-        with self.assertRaisesRegex(AppConfigBuildFailure, "App config build failed"):
-            self.session_manager.build_cluster_env(timeout=600)
-        self.assertFalse(self.session_manager.cluster_env_build_id)
+        with self.assertRaisesRegex(ClusterEnvBuildError, "Cluster env build failed"):
+            self.cluster_manager.build_cluster_env(timeout=600)
+        self.assertFalse(self.cluster_manager.cluster_env_build_id)
         self.assertEqual(self.sdk.call_counter["list_cluster_environment_builds"], 1)
         self.assertEqual(len(self.sdk.call_counter), 1)
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testBuildClusterEnvPreBuildSucceeded(self):
-        self.session_manager.set_cluster_env(self.cluster_env)
-        self.session_manager.cluster_env_id = "correct"
+        self.cluster_manager.set_cluster_env(self.cluster_env)
+        self.cluster_manager.cluster_env_id = "correct"
         # (Second) build succeeded
-        self.session_manager.cluster_env_build_id = None
+        self.cluster_manager.cluster_env_build_id = None
         self.sdk.reset()
         self.sdk.returns["list_cluster_environment_builds"] = APIDict(
             results=[
@@ -377,19 +383,19 @@ class MinimalSessionManagerTest(unittest.TestCase):
                 ),
             ]
         )
-        self.session_manager.build_cluster_env(timeout=600)
-        self.assertTrue(self.session_manager.cluster_env_build_id)
-        self.assertEqual(self.session_manager.cluster_env_build_id, "build_succeeded")
+        self.cluster_manager.build_cluster_env(timeout=600)
+        self.assertTrue(self.cluster_manager.cluster_env_build_id)
+        self.assertEqual(self.cluster_manager.cluster_env_build_id, "build_succeeded")
         self.assertEqual(self.sdk.call_counter["list_cluster_environment_builds"], 1)
         self.assertEqual(len(self.sdk.call_counter), 1)
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testBuildClusterBuildFails(self):
-        self.session_manager.set_cluster_env(self.cluster_env)
-        self.session_manager.cluster_env_id = "correct"
+        self.cluster_manager.set_cluster_env(self.cluster_env)
+        self.cluster_manager.cluster_env_id = "correct"
 
         # Build, but fails after 300 seconds
-        self.session_manager.cluster_env_build_id = None
+        self.cluster_manager.cluster_env_build_id = None
         self.sdk.reset()
         self.sdk.returns["list_cluster_environment_builds"] = APIDict(
             results=[
@@ -406,7 +412,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
             ]
         )
         with freeze_time() as frozen_time, self.assertRaisesRegex(
-            AppConfigBuildFailure, "Cluster env build failed"
+            ClusterEnvBuildError, "Cluster env build failed"
         ):
             self.sdk.returns["get_build"] = _DelayedResponse(
                 lambda: frozen_time.tick(delta=10),
@@ -414,20 +420,20 @@ class MinimalSessionManagerTest(unittest.TestCase):
                 before=APIDict(result=APIDict(status="in_progress")),
                 after=APIDict(result=APIDict(status="failed")),
             )
-            self.session_manager.build_cluster_env(timeout=600)
+            self.cluster_manager.build_cluster_env(timeout=600)
 
-        self.assertFalse(self.session_manager.cluster_env_build_id)
+        self.assertFalse(self.cluster_manager.cluster_env_build_id)
         self.assertEqual(self.sdk.call_counter["list_cluster_environment_builds"], 1)
         self.assertGreaterEqual(self.sdk.call_counter["get_build"], 9)
         self.assertEqual(len(self.sdk.call_counter), 2)
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testBuildClusterEnvBuildTimeout(self):
-        self.session_manager.set_cluster_env(self.cluster_env)
-        self.session_manager.cluster_env_id = "correct"
+        self.cluster_manager.set_cluster_env(self.cluster_env)
+        self.cluster_manager.cluster_env_id = "correct"
 
         # Build, but timeout after 100 seconds
-        self.session_manager.cluster_env_build_id = None
+        self.cluster_manager.cluster_env_build_id = None
         self.sdk.reset()
         self.sdk.returns["list_cluster_environment_builds"] = APIDict(
             results=[
@@ -444,7 +450,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
             ]
         )
         with freeze_time() as frozen_time, self.assertRaisesRegex(
-            AppConfigBuildFailure, "Time out when building cluster env"
+            ClusterEnvBuildTimeout, "Time out when building cluster env"
         ):
             self.sdk.returns["get_build"] = _DelayedResponse(
                 lambda: frozen_time.tick(delta=10),
@@ -452,19 +458,19 @@ class MinimalSessionManagerTest(unittest.TestCase):
                 before=APIDict(result=APIDict(status="in_progress")),
                 after=APIDict(result=APIDict(status="succeeded")),
             )
-            self.session_manager.build_cluster_env(timeout=100)
+            self.cluster_manager.build_cluster_env(timeout=100)
 
-        self.assertFalse(self.session_manager.cluster_env_build_id)
+        self.assertFalse(self.cluster_manager.cluster_env_build_id)
         self.assertEqual(self.sdk.call_counter["list_cluster_environment_builds"], 1)
         self.assertGreaterEqual(self.sdk.call_counter["get_build"], 9)
         self.assertEqual(len(self.sdk.call_counter), 2)
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testBuildClusterBuildSucceed(self):
-        self.session_manager.set_cluster_env(self.cluster_env)
-        self.session_manager.cluster_env_id = "correct"
+        self.cluster_manager.set_cluster_env(self.cluster_env)
+        self.cluster_manager.cluster_env_id = "correct"
         # Build, succeed after 300 seconds
-        self.session_manager.cluster_env_build_id = None
+        self.cluster_manager.cluster_env_build_id = None
         self.sdk.reset()
         self.sdk.returns["list_cluster_environment_builds"] = APIDict(
             results=[
@@ -487,9 +493,9 @@ class MinimalSessionManagerTest(unittest.TestCase):
                 before=APIDict(result=APIDict(status="in_progress")),
                 after=APIDict(result=APIDict(status="succeeded")),
             )
-            self.session_manager.build_cluster_env(timeout=600)
+            self.cluster_manager.build_cluster_env(timeout=600)
 
-        self.assertTrue(self.session_manager.cluster_env_build_id)
+        self.assertTrue(self.cluster_manager.cluster_env_build_id)
         self.assertEqual(self.sdk.call_counter["list_cluster_environment_builds"], 1)
         self.assertGreaterEqual(self.sdk.call_counter["get_build"], 9)
         self.assertEqual(len(self.sdk.call_counter), 2)
@@ -499,28 +505,28 @@ class FullSessionManagerTest(MinimalSessionManagerTest):
     cls = FullClusterManager
 
     def testSessionStartCreationError(self):
-        self.session_manager.cluster_env_id = "correct"
-        self.session_manager.cluster_compute_id = "correct"
+        self.cluster_manager.cluster_env_id = "correct"
+        self.cluster_manager.cluster_compute_id = "correct"
 
         self.sdk.returns["create_cluster"] = _fail
 
         with self.assertRaises(ClusterCreationError):
-            self.session_manager.start_cluster()
+            self.cluster_manager.start_cluster()
 
     def testSessionStartStartupError(self):
-        self.session_manager.cluster_env_id = "correct"
-        self.session_manager.cluster_compute_id = "correct"
+        self.cluster_manager.cluster_env_id = "correct"
+        self.cluster_manager.cluster_compute_id = "correct"
 
         self.sdk.returns["create_cluster"] = APIDict(result=APIDict(id="success"))
         self.sdk.returns["start_cluster"] = _fail
 
         with self.assertRaises(ClusterStartupError):
-            self.session_manager.start_cluster()
+            self.cluster_manager.start_cluster()
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testSessionStartStartupTimeout(self):
-        self.session_manager.cluster_env_id = "correct"
-        self.session_manager.cluster_compute_id = "correct"
+        self.cluster_manager.cluster_env_id = "correct"
+        self.cluster_manager.cluster_compute_id = "correct"
 
         self.sdk.returns["create_cluster"] = APIDict(result=APIDict(id="success"))
         self.sdk.returns["start_cluster"] = APIDict(
@@ -536,12 +542,12 @@ class FullSessionManagerTest(MinimalSessionManagerTest):
             )
 
             # Timeout before startup finishes
-            self.session_manager.start_cluster(timeout=200)
+            self.cluster_manager.start_cluster(timeout=200)
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testSessionStartStartupFailed(self):
-        self.session_manager.cluster_env_id = "correct"
-        self.session_manager.cluster_compute_id = "correct"
+        self.cluster_manager.cluster_env_id = "correct"
+        self.cluster_manager.cluster_compute_id = "correct"
 
         self.sdk.returns["create_cluster"] = APIDict(result=APIDict(id="success"))
         self.sdk.returns["start_cluster"] = APIDict(
@@ -562,12 +568,12 @@ class FullSessionManagerTest(MinimalSessionManagerTest):
             )
 
             # Timeout is long enough
-            self.session_manager.start_cluster(timeout=400)
+            self.cluster_manager.start_cluster(timeout=400)
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testSessionStartStartupSuccess(self):
-        self.session_manager.cluster_env_id = "correct"
-        self.session_manager.cluster_compute_id = "correct"
+        self.cluster_manager.cluster_env_id = "correct"
+        self.cluster_manager.cluster_compute_id = "correct"
 
         self.sdk.returns["create_cluster"] = APIDict(result=APIDict(id="success"))
         self.sdk.returns["start_cluster"] = APIDict(
@@ -586,7 +592,7 @@ class FullSessionManagerTest(MinimalSessionManagerTest):
             self.sdk.returns["get_cluster"] = APIDict(result=APIDict(state="Running"))
 
             # Timeout is long enough
-            self.session_manager.start_cluster(timeout=400)
+            self.cluster_manager.start_cluster(timeout=400)
 
 
 @unittest.skipUnless(
