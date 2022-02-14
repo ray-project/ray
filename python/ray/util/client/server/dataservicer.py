@@ -137,7 +137,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         )
         # stopped event, useful for signals that the server is shut down
         self.stopped = Event()
-        # Helper for collecting chunks from PutObject calls
+        # Helper for collecting chunks from PutObject calls. Assumes that
+        # that put requests from different objects aren't interleaved.
         self.chunk_collector = ChunkCollector()
 
     def Datapath(self, request_iterator, context):
