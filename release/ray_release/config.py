@@ -161,7 +161,7 @@ def load_test_cluster_env(test: Test, ray_wheels_url: str) -> Optional[Dict]:
     )
     env = get_test_environment()
 
-    commit = env.get("commit", None)
+    commit = env.get("RAY_COMMIT", None)
     env["RAY_WHEELS_SANITY_CHECK"] = get_wheels_sanity_check(commit)
     env["RAY_WHEELS"] = ray_wheels_url
 
