@@ -22,9 +22,10 @@ Your Ray application may have dependencies that exist outside of your Ray script
 
 One frequent problem when running on a cluster is that Ray expects these "dependencies" to exist on each Ray node. If these are not present, you may run into issues such as ``ModuleNotFoundError``, ``FileNotFoundError`` and so on.
 
+To address this problem, you can (1) prepare your dependencies on the cluster in advance using the Ray cluster launcher, or (2) use Ray's :ref:`runtime environments<runtime-environments>` to install them on the fly.
 
-
-To address this problem, you can use Ray's **runtime environments**.
+For production usage or non-changing environments, we recommend installing your dependencies into a container image and specifying the image using the Cluster launcher.
+For dynamic environments (e.g. for development and experimentation), we recommend using runtime environments.
 
 
 Concepts
@@ -43,22 +44,33 @@ Concepts
 - **Job**.  A period of execution between connecting to a cluster with ``ray.init()`` and disconnecting by calling ``ray.shutdown()`` or exiting the Ray script.
 
 
-.. Alternatively, you can prepare your Ray cluster's environment when your cluster nodes start up, and modify it later from the command line.
-.. Packages can be installed using ``setup_commands`` in the Ray Cluster configuration file (:ref:`docs<cluster-configuration-setup-commands>`) and files can be pushed to the cluster using ``ray rsync_up`` (:ref:`docs<ray-rsync>`).
+Preparing an environment using the Ray Cluster launcher
+-------------------------------------------------------
 
+The first way to set up dependencies is to is to prepare a single environment across the cluster before starting the Ray runtime.  
+
+- You can build all your files and dependencies into a container image and specify this in your your :ref:`Cluster YAML Configuration<cluster-config>`.
+
+- You can also install packages using ``setup_commands`` in the Ray Cluster configuration file (:ref:`reference<cluster-configuration-setup-commands>`); these commands will be run as each node joins the cluster.  
+  Note that for production settings, it is recommended to build any necessary packages into a container image instead.
+
+- You can push local files to the cluster using ``ray rsync_up`` (:ref:`reference<ray-rsync>`).
 
 .. _runtime-environments:
 
-Runtime Environments
+Runtime environments
 --------------------
 
 .. note::
 
     This feature requires a full installation of Ray using ``pip install "ray[default]"``. This feature is available starting with Ray 1.4.0 and is currently only supported on macOS and Linux.
 
+The second way to set up dependencies is to install them dynamically while Ray is running.  
+
 A **runtime environment** describes the dependencies your Ray application needs to run, including :ref:`files, packages, environment variables, and more <runtime-environments-api-ref>`.  It is installed dynamically on the cluster at runtime.
 
-Runtime environments let you transition your Ray application from running on your local machine to running on a remote cluster, without any manual environment setup.
+Runtime environments can be used on top of the prepared cluster environment from the first approach.
+Runtime environments also allow you to set dependencies per-task, per-actor, and per-job on a long-running Ray cluster.
 
 ..
   TODO(architkulkarni): run working_dir doc example in CI
@@ -70,7 +82,7 @@ Runtime environments let you transition your Ray application from running on you
 
     runtime_env = {"working_dir": "/data/my_files", "pip": ["requests", "pendulum==2.1.2"]}
 
-    # To transition from a local single-node cluster to a remote cluster,
+    # To run on a remote cluster instead of a local single-node cluster,
     # simply change to ray.init("ray://123.456.7.8:10001", runtime_env=...)
     ray.init(runtime_env=runtime_env)
 
@@ -79,12 +91,14 @@ Runtime environments let you transition your Ray application from running on you
       open("my_datafile.txt").read()
       return requests.get("https://www.ray.io")
 
+Here's another example of a runtime environment:
+
 .. literalinclude:: /ray-core/_examples/doc_code/runtime_env_example.py
    :language: python
    :start-after: __runtime_env_conda_def_start__
    :end-before: __runtime_env_conda_def_end__
 
-Jump to the :ref:`API Reference<runtime-environments-api-ref>`.
+For more examples, jump to the :ref:`API Reference<runtime-environments-api-ref>`.
 
 
 There are two primary scopes for which you can specify a runtime environment:
@@ -297,7 +311,7 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
 - ``pip`` (List[str] | str): Either a list of pip `requirements specifiers <https://pip.pypa.io/en/stable/cli/pip_install/#requirement-specifiers>`_, or a string containing the path to a pip
   `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file.
-  This will be installed in the Ray workers at runtime.
+  This will be installed in the Ray workers at runtime.  Packages in the preinstalled cluster environment will still be available.
   To use a library like Ray Serve or Ray Tune, you will need to include ``"ray[serve]"`` or ``"ray[tune]"`` here.
 
   - Example: ``["requests==1.0.0", "aiohttp", "ray[serve]"]``
@@ -318,7 +332,8 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
   - Example: ``"pytorch_p36"``
 
-- ``env_vars`` (Dict[str, str]): Environment variables to set.
+- ``env_vars`` (Dict[str, str]): Environment variables to set.  Environment variables already set on the cluster will still be visible to the Ray workers; so there is
+  no need to include ``os.environ`` or similar in the ``env_vars`` field.
 
   - Example: ``{"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}``
 
