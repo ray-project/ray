@@ -486,8 +486,7 @@ class Node:
                 cpu_info = get_cpu_info()
                 env_resources.update(
                     {
-                        required_ins:
-                            ray_constants.DEFAULT_CPU_INSTRUCTION_SET_RESOURCE_NUMBER
+                        required_ins: ray_constants.DEFAULT_CPU_INSTRUCTION_SET_RESOURCE_NUMBER  # noqa: E501
                         for required_ins in set(required_cpu_instruction_sets)
                         & set(
                             cpu_info.get(ray_constants.CPU_INSTRUCTION_SETS_FLAGS, [])
