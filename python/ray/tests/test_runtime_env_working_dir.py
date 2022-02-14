@@ -50,7 +50,7 @@ def test_create_delete_size_equal(tmpdir, ray_start_regular):
 
     manager = WorkingDirManager(tmpdir)
 
-    created_size_bytes = manager.create(uri, {}, RuntimeEnvContext())
+    created_size_bytes = await manager.create(uri, {}, RuntimeEnvContext())
     deleted_size_bytes = manager.delete_uri(uri)
     assert created_size_bytes == deleted_size_bytes
 
