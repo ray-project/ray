@@ -8,11 +8,11 @@ publish = true
 
 [dependencies]
 # ray-rs = "0.0.0"
-ray-rs = { path="../../ray-rs", features = ["async"] }
+ray-rs = { path = "../../ray-rs", features = ["async"] }
 serde = "1.0.132"
-tokio = { version="1.16.1", features = ["rt", "rt-multi-thread", "time", "sync", "net"] }
-#path = "../../../../tokio/tokio",
-
+tokio = { version = "1.16.1", features = ["rt", "rt-multi-thread", "time"] }
+#path = "../../../../tokio/tokio",version="1.16.1",
+tokio-time-sleep = { path = "./tokio-time-sleep" }
 
 [build-dependencies]
 rustc_version = "0.4.0"

@@ -79,7 +79,7 @@ lazy_static::lazy_static! {
 
 #[cfg(feature = "async")]
 lazy_static! {
-    static ref ASYNC_RUNTIME_SENDER: Mutex<Option<std::sync::mpsc::Sender<(TaskData, Arc<FiberEvent>)>>> = Mutex::new(None);
+    static ref ASYNC_RUNTIME_SENDER: Mutex<Option<tokio::sync::mpsc::UnboundedSender<(TaskData, Arc<FiberEvent>)>>> = Mutex::new(None);
 
     pub static ref TOKIO_HANDLE: std::sync::RwLock<Option<TokioHandle>> =
         std::sync::RwLock::new(None);
@@ -261,13 +261,14 @@ fn handle_async_startup() {
         //
         // Idea: get rid of
         None => {
-            let (tx, rx) = std::sync::mpsc::channel::<(TaskData, Arc<FiberEvent>)>();
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(TaskData, Arc<FiberEvent>)>();
             *guard = Some(tx);
             std::thread::spawn(move || {
                 // Future: plug-and-play with async-rs etc
-                let rt = //tokio::runtime::Builder::new_current_thread()
-                    tokio::runtime::Builder::new_multi_thread()
-                    .worker_threads(1)
+                let rt =
+                    tokio::runtime::Builder::new_current_thread()
+                    // tokio::runtime::Builder::new_multi_thread()
+                    // .worker_threads(1)
                     .enable_all()
                     .build()
                     .unwrap();
@@ -288,15 +289,16 @@ fn handle_async_startup() {
                     }
                 }
                 ray_info!("Looping");
-                // rt.spawn(async move {
+                rt.block_on(async move {
                     loop {
-                        let (task_data, notifier) = rx.recv().expect("did not receive");
-                        rt.spawn(async move {
+                        let (task_data, notifier) = rx.recv().await.expect("did not receive");
+                        tokio::spawn(async move {
+                            // tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                             rust_worker_execute_async_internal(task_data).await;
                             notifier.notify_ready();
                         });
                     }
-                // });
+                });
             });
         },
         _ => (),

@@ -20,6 +20,13 @@ macro_rules! enter_tokio_handle {
             let mut guard = TOKIO_HANDLE.write().unwrap();
             *guard = Some(unsafe { &*(h as *const TokioHandle) }.clone());
         }
+
+        #[no_mangle]
+        pub extern "C" fn ray_rs_async_ffi__enter_handle(h: *const std::os::raw::c_void) {
+            // This is not quite ffi safe?
+            // It requires that TokioHandle has same ABI across main and shared libs
+            let guard = std::mem::ManuallyDrop::new(unsafe { &*(h as *const TokioHandle) }.enter());
+        }
     };
 }
 
