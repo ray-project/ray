@@ -54,7 +54,7 @@ def get_step(
     step["env"].update(env)
     step["label"] = (
         f"{test['name']} "
-        f"({get_test_env_var('RAY_BRANCH')}:{get_test_env_var('RAY_COMMIT')}"
+        f"({get_test_env_var('RAY_COMMIT') or get_test_env_var('RAY_BRANCH')}"
     )
 
     return step

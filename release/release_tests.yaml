@@ -1,33 +1,183 @@
 - name: xgboost_train_small
-
   group: XGBoost
   working_dir: xgboost_tests
-
   legacy:
     test_name: train_small
     test_suite: xgboost_tests
-
-
   frequency: nightly
   team: ml
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small.yaml
     autosuspend_mins: 10
-
   run:
-    type: sdk_command
-    # type: client
-    file_manager: job
-    timeout: 60
+    timeout: 600
+    script: python workloads/train_small.py
     wait_for_nodes:
       num_nodes: 4
       timeout: 600
-    prepare: echo test
-    script: python workloads/train_small.py
-
-    build_timeout: 300
-
-
-  alert: long_running_tests
+    type: client
+  alert: xgboost_tests
+- name: xgboost_train_moderate
+  group: XGBoost
+  working_dir: xgboost_tests
+  legacy:
+    test_name: train_moderate
+    test_suite: xgboost_tests
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_moderate.yaml
+  run:
+    timeout: 600
+    script: python workloads/train_moderate.py
+    wait_for_nodes:
+      num_nodes: 32
+      timeout: 600
+    type: sdk_command
+    file_manager: job
+  alert: xgboost_tests
+- name: xgboost_train_gpu
+  group: XGBoost
+  working_dir: xgboost_tests
+  legacy:
+    test_name: train_gpu
+    test_suite: xgboost_tests
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: app_config_gpu.yaml
+    cluster_compute: tpl_gpu_small.yaml
+  run:
+    timeout: 600
+    script: python workloads/train_gpu.py
+    wait_for_nodes:
+      num_nodes: 5
+      timeout: 600
+    type: sdk_command
+    file_manager: job
+  alert: xgboost_tests
+- name: xgboost_distributed_api_test
+  group: XGBoost
+  working_dir: xgboost_tests
+  legacy:
+    test_name: distributed_api_test
+    test_suite: xgboost_tests
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_small.yaml
+  run:
+    timeout: 600
+    script: python workloads/distributed_api_test.py
+    results: ''
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+    type: sdk_command
+    file_manager: job
+  alert: xgboost_tests
+- name: xgboost_ft_small_elastic
+  group: XGBoost
+  working_dir: xgboost_tests
+  legacy:
+    test_name: ft_small_elastic
+    test_suite: xgboost_tests
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_small.yaml
+  run:
+    timeout: 900
+    script: python workloads/ft_small_elastic.py
+    results: ''
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+    type: sdk_command
+    file_manager: job
+  alert: xgboost_tests
+- name: xgboost_ft_small_non_elastic
+  group: XGBoost
+  working_dir: xgboost_tests
+  legacy:
+    test_name: ft_small_non_elastic
+    test_suite: xgboost_tests
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_small.yaml
+  run:
+    timeout: 900
+    script: python workloads/ft_small_non_elastic.py
+    results: ''
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+    type: sdk_command
+    file_manager: job
+  alert: xgboost_tests
+- name: xgboost_tune_small
+  group: XGBoost
+  working_dir: xgboost_tests
+  legacy:
+    test_name: tune_small
+    test_suite: xgboost_tests
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_small.yaml
+  run:
+    timeout: 600
+    script: python workloads/tune_small.py
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+    type: sdk_command
+    file_manager: job
+  alert: xgboost_tests
+- name: xgboost_tune_32x4
+  group: XGBoost
+  working_dir: xgboost_tests
+  legacy:
+    test_name: tune_32x4
+    test_suite: xgboost_tests
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_moderate.yaml
+  run:
+    timeout: 900
+    script: python workloads/tune_32x4.py
+    wait_for_nodes:
+      num_nodes: 32
+      timeout: 600
+    type: sdk_command
+    file_manager: job
+  alert: xgboost_tests
+- name: xgboost_tune_4x32
+  group: XGBoost
+  working_dir: xgboost_tests
+  legacy:
+    test_name: tune_4x32
+    test_suite: xgboost_tests
+  frequency: nightly
+  team: ml
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_cpu_moderate.yaml
+  run:
+    timeout: 900
+    script: python workloads/tune_4x32.py
+    wait_for_nodes:
+      num_nodes: 32
+      timeout: 600
+    type: sdk_command
+    file_manager: job
+  alert: xgboost_tests
