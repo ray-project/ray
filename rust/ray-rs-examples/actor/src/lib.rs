@@ -65,8 +65,6 @@ pub fn append_threadsafe(s: &mut Mutex<String>, tail: String) -> String {
 
 use tokio::sync::Mutex as AsyncMutex;
 
-enter_tokio_handle!();
-
 remote_create_actor! {
 pub fn new_string_tokio(s: String) -> AsyncMutex<String> {
     AsyncMutex::new(s)

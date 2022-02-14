@@ -7,29 +7,6 @@ use paste::paste;
 //
 // ray::task!(add_two_vecs);
 
-#[cfg(feature = "async")]
-#[macro_export]
-macro_rules! enter_tokio_handle {
-    () => {
-        #[no_mangle]
-        pub extern "C" fn ray_rs_async_ffi__enter_tokio_handle_via_callback(
-            h: *const std::os::raw::c_void,
-        ) {
-            // This is not quite ffi safe?
-            // It requires that TokioHandle has same ABI across main and shared libs
-            let mut guard = TOKIO_HANDLE.write().unwrap();
-            *guard = Some(unsafe { &*(h as *const TokioHandle) }.clone());
-        }
-
-        #[no_mangle]
-        pub extern "C" fn ray_rs_async_ffi__enter_handle(h: *const std::os::raw::c_void) {
-            // This is not quite ffi safe?
-            // It requires that TokioHandle has same ABI across main and shared libs
-            let guard = std::mem::ManuallyDrop::new(unsafe { &*(h as *const TokioHandle) }.enter());
-        }
-    };
-}
-
 // Idea: add a macro that
 macro_rules! impl_ray_function {
     ([$n:literal], $($arg:ident: $argp:ident [$argty:ty]),*) => {
@@ -349,19 +326,7 @@ macro_rules! remote_async_actor_internal {
     ($lit_n:literal, $name:ident ($arg0:ident: $argty0:ty $(,$arg:ident: $argty:ty)*) -> $ret:ty $body:block) => {
         paste! {
             async fn [<ray_rust_private__ $name>]($arg0: $argty0 $(,$arg: $argty)*) -> $ret {
-                let maybe_h: Option<TokioHandle> = TOKIO_HANDLE.read().unwrap().clone();
-                if let Some(h) = maybe_h {
-                    ray_info!(
-                        "entering handle {:?} from thread (name: {:?}, id: {:?})",
-                        h,
-                        std::thread::current().name(),
-                        std::thread::current().id()
-                    );
-                    let g_ = h.enter();
                     $body
-                } else {
-                    $body
-                }
             }
 
             #[no_mangle]
