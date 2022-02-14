@@ -39,12 +39,13 @@ class ConvergenceTest(unittest.TestCase):
                 metric="loss", top=top, patience=patience),
             search_alg=searcher,
             config=space,
-            num_samples=100,  # Number of iterations
+            num_samples=max(100, patience),  # Number of iterations
             resources_per_trial=resources_per_trial,
             raise_on_failed_trial=False,
             fail_fast=True,
             reuse_actors=True,
-            verbose=1)
+            verbose=1,
+        )
         print(f"Num trials: {len(analysis.trials)}. "
               f"Best result: {analysis.best_config['x']}")
 
@@ -80,7 +81,7 @@ class ConvergenceTest(unittest.TestCase):
 
         np.random.seed(0)
         searcher = BlendSearch()
-        analysis = self._testConvergence(searcher, patience=100)
+        analysis = self._testConvergence(searcher, patience=200)
 
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-2)
 
@@ -89,7 +90,7 @@ class ConvergenceTest(unittest.TestCase):
 
         np.random.seed(0)
         searcher = CFO()
-        analysis = self._testConvergence(searcher, patience=100)
+        analysis = self._testConvergence(searcher, patience=200)
 
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-2)
 
@@ -171,4 +172,5 @@ class ConvergenceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))
