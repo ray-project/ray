@@ -2,6 +2,7 @@
     actions. """
 
 from matplotlib import pyplot as plt
+import numpy as np
 import os
 import pandas as pd
 import time
@@ -16,9 +17,32 @@ if __name__ == "__main__":
     config = {
         "env": ParametricItemRecoEnv,
         "env_config": {
-            "num_candidates": 500,
+            "config": {
+                "num_users": 50,
+                "num_items": 1000,
+                "num_candidates": 50,
+                "slate_size": 1,
+                "feature_dim": 16,
+            },
         },
     }
+
+    # Run n episodes as random baseline.
+    env = ParametricItemRecoEnv(config=config["env_config"]["config"])
+    obs = env.reset()
+    num_episodes = 0
+    episode_reward = 0.0
+    episode_rewards = []
+    while num_episodes < 200:
+        action = env.action_space.sample()
+        obs, reward, done, _ = env.step(action)
+        episode_reward += reward
+        if done:
+            episode_rewards.append(episode_reward)
+            episode_reward = 0.0
+            obs = env.reset()
+            num_episodes += 1
+    print(f"Avg reward={np.mean(episode_rewards)}")
 
     # Actual training_iterations will be 10 * timesteps_per_iteration
     # (100 by default) = 2,000
@@ -52,3 +76,4 @@ if __name__ == "__main__":
     plt.title("Episode reward mean")
     plt.xlabel("Training steps")
     plt.show()
+    time.sleep(120)

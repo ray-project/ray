@@ -35,6 +35,10 @@ class ParametricItemRecoEnv(gym.Env):
         self.num_candidates = self.config["num_candidates"]
         self.seed = self.config["seed"]
 
+        self.slate_q = config.get("slate_q", False)
+        self.user_key = config.get("user_key", "user")
+        self.item_key = config.get("item_key", "item" if not self.slate_q else "doc")
+
         assert (
             self.num_candidates <= self.num_items
         ), "Size of candidate pool should be less than total no. of items"
@@ -47,6 +51,7 @@ class ParametricItemRecoEnv(gym.Env):
 
         self.current_user_id = 0
         self.item_pool = None
+        self.item_pool_dict = None  # For SlateQ only.
         self.item_pool_ids = None
         self.total_regret = 0
 
@@ -73,26 +78,33 @@ class ParametricItemRecoEnv(gym.Env):
             np.arange(self.num_items), self.num_candidates, replace=False
         )
         self.item_pool = self.item_embeddings[self.item_pool_ids].astype(np.float32)
+        if self.slate_q:
+            self.item_pool_dict = {str(i): self.item_embeddings[id].astype(np.float32) for i, id in enumerate(self.item_pool_ids)}
 
     @staticmethod
     def _gen_normalized_embeddings(size, dim):
         embeddings = np.random.rand(size, dim)
-        embeddings /= np.linalg.norm(embeddings, axis=1, keepdims=True).astype(
-            np.float32
-        )
-        return embeddings
+        embeddings /= np.linalg.norm(embeddings, axis=1, keepdims=True)
+        return embeddings.astype(np.float32)
 
     def _def_action_space(self):
-        if self.slate_size == 1:
+        if self.slate_size == 1 and not self.slate_q:
             return spaces.Discrete(self.num_candidates)
         else:
             return spaces.MultiDiscrete([self.num_candidates] * self.slate_size)
 
     def _def_observation_space(self):
         # Embeddings for each item in the candidate pool
-        item_obs_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(self.num_candidates, self.feature_dim)
-        )
+        if self.slate_q:
+            item_obs_space = spaces.Dict({
+                str(i): spaces.Box(
+                    low=-np.inf, high=np.inf, shape=(self.feature_dim,)
+                ) for i in range(self.num_candidates)
+            })
+        else:
+            item_obs_space = spaces.Box(
+                low=-np.inf, high=np.inf, shape=(self.num_candidates, self.feature_dim)
+            )
 
         # Can be useful for collaborative filtering based agents
         item_ids_obs_space = spaces.MultiDiscrete(
@@ -100,22 +112,32 @@ class ParametricItemRecoEnv(gym.Env):
         )
 
         # Can be either binary (clicks) or continuous feedback (watch time)
-        resp_space = spaces.Box(low=-1, high=1, shape=(self.slate_size,))
+        if self.slate_q:
+            resp_space = spaces.Tuple([spaces.Dict({
+                "click": spaces.Discrete(2)
+            }) for _ in range(self.slate_size)])
+        else:
+            resp_space = spaces.Box(low=-1, high=1, shape=(self.slate_size,))
 
-        if self.num_users == 1:
+        if self.num_users == 1 and not self.slate_q:
             return spaces.Dict(
                 {
-                    "item": item_obs_space,
+                    self.item_key: item_obs_space,
                     "item_id": item_ids_obs_space,
                     "response": resp_space,
                 }
             )
         else:
-            user_obs_space = spaces.Discrete(self.num_users)
+            if self.slate_q:
+                user_obs_space = spaces.Box(
+                    low=-np.inf, high=np.inf, shape=(self.feature_dim,)
+                )
+            else:
+                user_obs_space = spaces.Discrete(self.num_users)
             return spaces.Dict(
                 {
-                    "user": user_obs_space,
-                    "item": item_obs_space,
+                    self.user_key: user_obs_space,
+                    self.item_key: item_obs_space,
                     "item_id": item_ids_obs_space,
                     "response": resp_space,
                 }
@@ -129,7 +151,7 @@ class ParametricItemRecoEnv(gym.Env):
 
         if self.slate_size == 1:
             scores = self.item_pool.dot(self.user_embeddings[self.current_user_id])
-            reward = scores[action]
+            reward = scores[action[0] if self.slate_q else action]
             regret = np.max(scores) - reward
             self.total_regret += regret
 
@@ -139,12 +161,12 @@ class ParametricItemRecoEnv(gym.Env):
             self._gen_item_pool()
 
             obs = {
-                "item": self.item_pool.astype(np.float32),
+                self.item_key: self.item_pool_dict if self.slate_q else self.item_pool,
                 "item_id": self.item_pool_ids,
-                "response": [reward],
+                "response": [reward] if not self.slate_q else tuple([{"click": 1}])
             }
-            if self.num_users > 1:
-                obs["user"] = self.current_user_id
+            if self.num_users > 1 or self.slate_q:
+                obs[self.user_key] = self.current_user_id if not self.slate_q else self.user_embeddings[self.current_user_id]
             return obs, reward, True, info
         else:
             # TODO(saurabh3949):Handle slate recommendation using a click model
@@ -154,12 +176,12 @@ class ParametricItemRecoEnv(gym.Env):
         self._sample_user()
         self._gen_item_pool()
         obs = {
-            "item": self.item_pool,
+            self.item_key: self.item_pool_dict if self.slate_q else self.item_pool,
             "item_id": self.item_pool_ids,
-            "response": [0] * self.slate_size,
+            "response": [0] * self.slate_size if not self.slate_q else tuple([{"click": 0} for _ in range(self.slate_size)])
         }
-        if self.num_users > 1:
-            obs["user"] = self.current_user_id
+        if self.num_users > 1 or self.slate_q:
+            obs[self.user_key] = self.current_user_id if not self.slate_q else self.user_embeddings[self.current_user_id]
         return obs
 
     def render(self, mode="human"):

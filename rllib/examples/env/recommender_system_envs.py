@@ -103,8 +103,8 @@ class RecommSys001(gym.Env):
             p=softmax(np.array(user_doc_overlaps) * 10.0),  # TODO explain why *x -> lower temperature of distribution
         )
 
-        # Reward is the overlap, if clicked. 0.0 if nothing clicked.
-        reward = 0.0
+        # Reward is the overlap, if clicked. -1.0 if nothing clicked.
+        reward = -1.0
 
         # If anything clicked, deduct from the current user's time budget and compute
         # reward.
@@ -160,26 +160,26 @@ def get_smart_action(obs):
 
 if __name__ == "__main__":
     env = RecommSys001(
-        num_categories=2,
-        num_docs_to_select_from=10,
-        slate_size=1,
-        num_docs_in_db=100,
-        num_users_in_db=100,
+        num_categories=5,
+        num_docs_to_select_from=50,
+        slate_size=2,
+        num_docs_in_db=1000,
+        num_users_in_db=1000,
     )
     obs = env.reset()
     num_episodes = 0
     episode_rewards = []
     episode_reward = 0.0
 
-    while num_episodes < 100:
+    while num_episodes < 200:
         #action = get_smart_action(obs)
         action = env.action_space.sample()
         obs, reward, done, _ = env.step(action)
 
         episode_reward += reward
         if done:
-            print(f"episode reward = {episode_reward}")
-            env.reset()
+            #print(f"episode reward = {episode_reward}")
+            obs = env.reset()
             num_episodes += 1
             episode_rewards.append(episode_reward)
             episode_reward = 0.0

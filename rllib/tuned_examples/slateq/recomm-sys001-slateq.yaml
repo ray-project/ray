@@ -14,20 +14,22 @@ recomm-sys001-slateq:
         env_config:
               # Number of different categories a doc can have and a user can
               # have a preference for.
-              num_categories: 2
+              num_categories: 5
               # Number of docs to choose (a slate) from each timestep.
-              num_docs_to_select_from: 10
+              num_docs_to_select_from: 50
               # Slate size.
-              slate_size: 1
+              slate_size: 2
               # Re-sample docs each timesteps.
-              num_docs_in_db: 100
+              num_docs_in_db: 1000
               # Re-sample user each episode.
-              num_users_in_db: 100
+              num_users_in_db: 1000
               # User time budget (determines lengths of episodes).
               user_time_budget: 60.0
 
+        grad_clip: 2.0
+
         # Larger networks seem to help (large obs/action spaces).
-        hiddens: [256, 256]
+        hiddens: [512, 512]
 
         # Larger batch sizes seem to help (more stability, even with higher lr).
         train_batch_size: 32

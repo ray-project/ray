@@ -23,27 +23,30 @@ long-term-satisfaction-recsim-env-slateq:
                 num_candidates: 50
                 # How many documents to recommend (out of `num_candidates`) each
                 # timestep?
-                slate_size: 3
+                slate_size: 2
                 # Should the action space be purely Discrete? Useful for algos that
                 # don't support MultiDiscrete (e.g. DQN).
                 # SlateQ handles MultiDiscrete action spaces.
                 convert_to_discrete_action_space: false
                 seed: 42
 
+        exploration_config:
+            temperature: 0.7
+
         hiddens: [256, 256]
 
         num_workers: 0
         num_gpus: 0
 
-        lr_choice_model: 0.00001
-        lr_q_model:      0.00003
+        lr_choice_model: 0.002
+        lr_q_model:      0.001
 
         target_network_update_freq: 800
         tau: 1.0
 
         # Evaluation settings.
         evaluation_interval: 1
-        evaluation_num_workers: 6
-        evaluation_duration: 500
+        evaluation_num_workers: 4
+        evaluation_duration: 200
         evaluation_duration_unit: episodes
         evaluation_parallel_to_training: true
