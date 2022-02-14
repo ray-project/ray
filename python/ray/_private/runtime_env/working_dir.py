@@ -109,7 +109,7 @@ class WorkingDirManager:
             return working_dir_uri
         return None
 
-    def create(
+    async def create(
         self,
         uri: str,
         runtime_env: dict,
