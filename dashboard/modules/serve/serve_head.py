@@ -1,10 +1,9 @@
 import aiohttp.web
 from aiohttp.web import Request, Response
-import logging
-from typing import Any, Optional
 import json
+import logging
+from typing import Optional
 
-import ray
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as optional_utils
 
