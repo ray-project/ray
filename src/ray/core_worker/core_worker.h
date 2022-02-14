@@ -815,6 +815,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
 
+  /// Run the background_service_ event loop. This should be called in a background
+  /// thread.
+  void RunBackgroundService();
+
   /// (WORKER mode only) Exit the worker. This is the entrypoint used to shutdown a
   /// worker.
   void Exit(rpc::WorkerExitType exit_type,
@@ -1029,6 +1033,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Shared core worker client pool.
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
+  /// Event loop to execute background tasks. No thread should wait on the result of
+  /// work submitted to this event loop.
+  /// In particular with Python workers, this loop may run callbacks requiring GIL.
+  /// If a Python process holding GIL while waiting for result from this loop, deadlock
+  /// can happen.
+  instrumented_io_context background_service_;
+
+  /// Keeps the callback_service_ alive.
+  boost::asio::io_service::work background_work_;
+
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
 
@@ -1058,6 +1072,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Thread that runs a boost::asio service to process IO events.
   std::thread io_thread_;
+
+  // Thread that runs a boost::asio service to process background work.
+  std::thread background_thread_;
 
   // Keeps track of object ID reference counts.
   std::shared_ptr<ReferenceCounter> reference_counter_;
