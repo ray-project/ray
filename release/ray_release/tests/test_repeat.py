@@ -62,7 +62,7 @@ class WheelsFinderTest(unittest.TestCase):
         self.assertEquals(
             self._run(
                 ExitCode.RAY_WHEELS_TIMEOUT,
-                ExitCode.RAY_WHEELS_TIMEOUT,
+                ExitCode.CLUSTER_ENV_BUILD_TIMEOUT,
                 ExitCode.SUCCESS,
             ),
             ExitCode.SUCCESS.value,
@@ -71,8 +71,8 @@ class WheelsFinderTest(unittest.TestCase):
 
         self.assertEquals(
             self._run(
-                ExitCode.RAY_WHEELS_TIMEOUT,
-                ExitCode.RAY_WHEELS_TIMEOUT,
+                ExitCode.CLUSTER_STARTUP_TIMEOUT,
+                ExitCode.CLUSTER_WAIT_TIMEOUT,
                 ExitCode.RAY_WHEELS_TIMEOUT,
             ),
             ExitCode.RAY_WHEELS_TIMEOUT.value,

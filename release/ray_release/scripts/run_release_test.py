@@ -11,7 +11,7 @@ from ray_release.config import (
     as_smoke_test,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
 )
-from ray_release.exception import ReleaseTestCLIError
+from ray_release.exception import ReleaseTestCLIError, ReleaseTestError
 from ray_release.glue import run_release_test
 from ray_release.logger import logger
 from ray_release.reporter.legacy_rds import LegacyRDSReporter
@@ -117,16 +117,19 @@ def main(
     if report:
         reporters.append(LegacyRDSReporter())
 
-    result = run_release_test(
-        test,
-        anyscale_project=anyscale_project,
-        result=result,
-        ray_wheels_url=ray_wheels_url,
-        reporters=reporters,
-        cluster_id=cluster_id,
-        cluster_env_id=cluster_env_id,
-        no_terminate=no_terminate,
-    )
+    try:
+        result = run_release_test(
+            test,
+            anyscale_project=anyscale_project,
+            result=result,
+            ray_wheels_url=ray_wheels_url,
+            reporters=reporters,
+            cluster_id=cluster_id,
+            cluster_env_id=cluster_env_id,
+            no_terminate=no_terminate,
+        )
+    except ReleaseTestError as e:
+        logger.exception(e)
 
     logger.info(
         f"Release test pipeline for test {test['name']} completed. "
