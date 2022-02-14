@@ -22,6 +22,7 @@ from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.pandas_block import PandasRow
 from ray.data.impl.stats import DatasetStats
+from ray.data.impl.plan import ExecutionPlan
 from ray.data.aggregate import AggregateFn, Count, Sum, Min, Max, Mean, Std
 from ray.data.extensions.tensor_extension import (
     TensorArray,
@@ -229,7 +230,11 @@ def _test_equal_split_balanced(block_sizes, num_splits):
         metadata.append(BlockAccessor.for_block(block).get_metadata(None, None))
         total_rows += block_size
     block_list = BlockList(blocks, metadata)
-    ds = Dataset(block_list, 0, DatasetStats(stages={}, parent=None))
+    ds = Dataset(
+        ExecutionPlan(block_list, DatasetStats.TODO()),
+        0,
+        False,
+    )
 
     splits = ds.split(num_splits, equal=True)
     split_counts = [split.count() for split in splits]
@@ -1029,17 +1034,17 @@ def test_schema(ray_start_regular_shared):
 
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=20)
-    assert ds._blocks._num_computed() == 1
+    assert ds._plan.execute()._num_computed() == 1
     assert ds.take(10) == list(range(10))
-    assert ds._blocks._num_computed() == 2
+    assert ds._plan.execute()._num_computed() == 2
     assert ds.take(20) == list(range(20))
-    assert ds._blocks._num_computed() == 4
+    assert ds._plan.execute()._num_computed() == 4
     assert ds.take(30) == list(range(30))
-    assert ds._blocks._num_computed() == 8
+    assert ds._plan.execute()._num_computed() == 8
     assert ds.take(50) == list(range(50))
-    assert ds._blocks._num_computed() == 16
+    assert ds._plan.execute()._num_computed() == 16
     assert ds.take(100) == list(range(100))
-    assert ds._blocks._num_computed() == 20
+    assert ds._plan.execute()._num_computed() == 20
 
 
 def test_limit(ray_start_regular_shared):
@@ -1458,7 +1463,7 @@ def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(32, parallelism=8)
     expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
     for _, expected in zip(ds.iter_batches(), expected_num_blocks):
-        assert ds._blocks._num_computed() == expected
+        assert ds._plan.execute()._num_computed() == expected
 
 
 def test_add_column(ray_start_regular_shared):
@@ -1604,24 +1609,32 @@ def test_split(ray_start_regular_shared):
     assert ds._block_num_rows() == [2] * 10
 
     datasets = ds.split(5)
-    assert [2] * 5 == [dataset._blocks.initial_num_blocks() for dataset in datasets]
+    assert [2] * 5 == [
+        dataset._plan.execute().initial_num_blocks() for dataset in datasets
+    ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(3)
-    assert [4, 3, 3] == [dataset._blocks.initial_num_blocks() for dataset in datasets]
+    assert [4, 3, 3] == [
+        dataset._plan.execute().initial_num_blocks() for dataset in datasets
+    ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(1)
-    assert [10] == [dataset._blocks.initial_num_blocks() for dataset in datasets]
+    assert [10] == [
+        dataset._plan.execute().initial_num_blocks() for dataset in datasets
+    ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(10)
-    assert [1] * 10 == [dataset._blocks.initial_num_blocks() for dataset in datasets]
+    assert [1] * 10 == [
+        dataset._plan.execute().initial_num_blocks() for dataset in datasets
+    ]
     assert 190 == sum([dataset.sum() for dataset in datasets])
 
     datasets = ds.split(11)
     assert [1] * 10 + [0] == [
-        dataset._blocks.initial_num_blocks() for dataset in datasets
+        dataset._plan.execute().initial_num_blocks() for dataset in datasets
     ]
     assert 190 == sum([dataset.sum() or 0 for dataset in datasets])
 
@@ -1650,7 +1663,7 @@ def test_split_hints(ray_start_regular_shared):
         """
         num_blocks = len(block_node_ids)
         ds = ray.data.range(num_blocks, parallelism=num_blocks)
-        blocks = ds._blocks.get_blocks()
+        blocks = ds.get_internal_block_refs()
         assert len(block_node_ids) == len(blocks)
         actors = [Actor.remote() for i in range(len(actor_node_ids))]
         with patch("ray.experimental.get_object_locations") as location_mock:
@@ -1673,7 +1686,7 @@ def test_split_hints(ray_start_regular_shared):
                 assert len(datasets) == len(actors)
                 for i in range(len(actors)):
                     assert {blocks[j] for j in expected_split_result[i]} == set(
-                        datasets[i]._blocks.get_blocks()
+                        datasets[i].get_internal_block_refs()
                     )
 
     assert_split_assignment(
@@ -2646,7 +2659,7 @@ def test_groupby_simple(ray_start_regular_shared):
         )
     )
     assert agg_ds.count() == 0
-    assert agg_ds == ds
+    assert agg_ds.take() == ds.take()
     agg_ds = ray.data.range(10).filter(lambda r: r > 10).groupby(lambda r: r).count()
     assert agg_ds.count() == 0
 
@@ -3104,7 +3117,7 @@ def test_sort_simple(ray_start_regular_shared):
     ds = ray.data.from_items([])
     s1 = ds.sort()
     assert s1.count() == 0
-    assert s1 == ds
+    assert s1.take() == ds.take()
     ds = ray.data.range(10).filter(lambda r: r > 10).sort()
     assert ds.count() == 0
 
@@ -3175,7 +3188,7 @@ def test_random_shuffle(shutdown_only, pipelined):
     ds = ray.data.from_items([])
     r1 = ds.random_shuffle()
     assert r1.count() == 0
-    assert r1 == ds
+    assert r1.take() == ds.take()
 
 
 def test_random_shuffle_spread(ray_start_cluster):
@@ -3345,7 +3358,11 @@ def test_sort_arrow_with_empty_blocks(ray_start_regular):
     # Test empty dataset.
     ds = ray.data.range_arrow(10).filter(lambda r: r["value"] > 10)
     assert (
-        len(ray.data.impl.sort.sample_boundaries(ds._blocks.get_blocks(), "value", 3))
+        len(
+            ray.data.impl.sort.sample_boundaries(
+                ds._plan.execute().get_blocks(), "value", 3
+            )
+        )
         == 2
     )
     assert ds.sort("value").count() == 0
