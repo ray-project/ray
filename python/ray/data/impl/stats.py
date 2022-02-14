@@ -56,7 +56,7 @@ class _DatasetStatsBuilder:
         self, stages: Dict[str, List[BlockMetadata]]
     ) -> "DatasetStats":
         stage_infos = OrderedDict()
-        for i, (k, v) in enumerate(stages):
+        for i, (k, v) in enumerate(stages.items()):
             if i == 0:
                 stage_infos[self.stage_name + "_" + k] = v
             else:
