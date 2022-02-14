@@ -37,9 +37,15 @@ class ChunkCollector:
     """
 
     def __init__(self, callback: ResponseCallable, request: ray_client_pb2.DataRequest):
+        # Bytearray containing data received so far
         self.data = bytearray()
+        # The callback that will be called once all data is received
         self.callback = callback
+        # The id of the last chunk we've received, or -1 if haven't seen any yet
         self.last_seen_chunk = -1
+        # The GetRequest that initiated the transfer. start_chunk_id will be
+        # updated as chunks are received to avoid re-requesting chunks that
+        # we've already received.
         self.request = request
 
     def __call__(self, response: Union[ray_client_pb2.DataResponse, Exception]) -> bool:
@@ -79,6 +85,13 @@ class ChunkCollector:
                 )
             )
             return True
+        else:
+            # We received a chunk that've already seen before. Ignore, since
+            # it should already be appended to self.data.
+            logger.debug(
+                f"Received a repeated chunk {chunk_id} "
+                f"from request {response.req_id}."
+            )
 
         if get_resp.chunk_id == get_resp.total_chunks - 1:
             self.callback(self.data)

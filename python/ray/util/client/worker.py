@@ -328,6 +328,10 @@ class Worker:
                 for chunk in self.server.GetObject(req, *args, **kwargs):
                     if chunk.chunk_id <= last_seen_chunk:
                         # Ignore repeat chunks
+                        logger.debug(
+                            f"Received a repeated chunk {chunk.chunk_id} "
+                            f"from request {req.req_id}."
+                        )
                         continue
                     if last_seen_chunk + 1 != chunk.chunk_id:
                         raise RuntimeError(

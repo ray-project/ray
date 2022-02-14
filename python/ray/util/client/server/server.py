@@ -386,6 +386,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                     try:
                         serialized = dumps_from_server(result, client_id, self)
                         total_size = len(serialized)
+                        assert total_size > 0, "Serialized object cannot be zero bytes"
                         total_chunks = math.ceil(
                             total_size / OBJECT_TRANSFER_CHUNK_SIZE
                         )
@@ -457,6 +458,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             return
         serialized = dumps_from_server(items, client_id, self)
         total_size = len(serialized)
+        assert total_size > 0, "Serialized object cannot be zero bytes"
         total_chunks = math.ceil(total_size / OBJECT_TRANSFER_CHUNK_SIZE)
         for chunk_id in range(request.start_chunk_id, total_chunks):
             start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
