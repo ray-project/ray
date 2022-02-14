@@ -391,8 +391,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   const auto actor_id = task_spec.ActorId();
   const auto actor_counter = task_spec.ActorCounter();
   const auto task_skipped = task_spec.GetMessage().skip_execution();
-  const auto num_queued =
-      request->sequence_number() - queue.rpc_client->ClientProcessedUpToSeqno();
+  const auto num_queued = queue.inflight_task_callbacks.size();
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id
                  << " actor counter " << actor_counter << " seq no "
                  << request->sequence_number() << " num queued " << num_queued;

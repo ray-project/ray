@@ -190,7 +190,7 @@ TEST_P(DirectActorSubmitterTest, TestQueueingWarning) {
   for (int i = 0; i < 7500; i++) {
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
     ASSERT_TRUE(CheckSubmitTask(task));
-    worker_client_->acked_seqno = i;
+    ASSERT_TRUE(worker_client_->ReplyPushTask());
   }
   ASSERT_EQ(last_queue_warning_, 0);
 
