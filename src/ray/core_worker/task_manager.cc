@@ -116,7 +116,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
 
     if (!it->second.IsPending()) {
       resubmit = true;
-      it->second.status = rpc::TaskStatus::RECONSTRUCTING_AND_WAITING_FOR_DEPENDENCIES;
+      it->second.status = rpc::TaskStatus::WAITING_FOR_DEPENDENCIES;
       num_pending_tasks_++;
 
       // The task is pending again, so it's no longer counted as lineage. If
@@ -603,15 +603,14 @@ void TaskManager::AddTaskStatusInfo(rpc::CoreWorkerStats *stats) const {
   absl::MutexLock lock(&mu_);
   for (int64_t i = 0; i < stats->object_refs_size(); i++) {
     auto ref = stats->mutable_object_refs(i);
-    if (ref->task_status() == rpc::TaskStatus::NIL) {
-      const auto obj_id = ObjectID::FromBinary(ref->object_id());
-      const auto task_id = obj_id.TaskId();
-      const auto it = submissible_tasks_.find(task_id);
-      if (it == submissible_tasks_.end()) {
-        continue;
-      }
-      ref->set_task_status(it->second.status);
+    const auto obj_id = ObjectID::FromBinary(ref->object_id());
+    const auto task_id = obj_id.TaskId();
+    const auto it = submissible_tasks_.find(task_id);
+    if (it == submissible_tasks_.end()) {
+      continue;
     }
+    ref->set_task_status(it->second.status);
+    ref->set_attempt_number(it->second.spec.AttemptNumber());
   }
 }
 
@@ -621,9 +620,6 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   RAY_CHECK(it != submissible_tasks_.end());
   if (it->second.status == rpc::TaskStatus::WAITING_FOR_DEPENDENCIES) {
     it->second.status = rpc::TaskStatus::SCHEDULED;
-  } else if (it->second.status ==
-             rpc::TaskStatus::RECONSTRUCTING_AND_WAITING_FOR_DEPENDENCIES) {
-    it->second.status = rpc::TaskStatus::RECONSTRUCTION_SCHEDULED;
   }
 }
 

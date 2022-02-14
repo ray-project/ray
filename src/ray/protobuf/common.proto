@@ -487,13 +487,6 @@ enum TaskStatus {
   SCHEDULED = 2;
   // The task finished successfully.
   FINISHED = 3;
-  // The task finished previously but is now being scheduled again because its
-  // outputs need to be reconstructed. It is waiting for its dependencies to be
-  // created again.
-  RECONSTRUCTING_AND_WAITING_FOR_DEPENDENCIES = 4;
-  // The task finished previously but is now being scheduled again because its
-  // outputs need to be reconstructed.
-  RECONSTRUCTION_SCHEDULED = 5;
 }
 
 // Debug info for a referenced object.
@@ -514,6 +507,9 @@ message ObjectRefInfo {
   bool pinned_in_memory = 7;
   // Status of the task that creates this object.
   TaskStatus task_status = 8;
+  // A count of the number of times this task has been attempted so far. 0
+  // means this is the first execution.
+  uint64 attempt_number = 9;
 }
 
 // Details about the allocation of a given resource. Some resources

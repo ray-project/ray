@@ -102,6 +102,9 @@ class MemoryTableEntry:
         self.task_status = object_ref.get("taskStatus", "?")
         if self.task_status == "NIL":
             self.task_status = "-"
+        self.attempt_number = int(object_ref.get("attemptNumber", 0))
+        if self.attempt_number > 0:
+            self.task_status = f"Attempt #{self.attempt_number + 1}: {self.task_status}"
         self.object_size = int(object_ref.get("objectSize", -1))
         self.call_site = object_ref.get("callSite", "<Unknown>")
         self.object_ref = ray.ObjectRef(
@@ -391,9 +394,12 @@ def memory_summary(
     for raylet in state.node_table():
         if not raylet["Alive"]:
             continue
-        stats = node_stats_to_dict(
-            node_stats(raylet["NodeManagerAddress"], raylet["NodeManagerPort"])
-        )
+        try:
+            stats = node_stats_to_dict(
+                node_stats(raylet["NodeManagerAddress"], raylet["NodeManagerPort"])
+            )
+        except RuntimeError:
+            continue
         core_worker_stats.extend(stats["coreWorkersStats"])
         assert type(stats) is dict and "coreWorkersStats" in stats
 

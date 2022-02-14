@@ -17,6 +17,11 @@ from ray.internal.internal_api import memory_summary
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
+# Task status.
+WAITING_FOR_DEPENDENCIES = "WAITING_FOR_DEPENDENCIES"
+SCHEDULED = "SCHEDULED"
+FINISHED = "FINISHED"
+
 
 def test_cached_object(ray_start_cluster):
     config = {
@@ -1027,6 +1032,7 @@ def test_memory_util(ray_start_cluster):
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0,
+        resources={"head": 1},
         _system_config=config,
         enable_object_reconstruction=True,
     )
@@ -1050,19 +1056,33 @@ def test_memory_util(ray_start_cluster):
 
     def stats():
         info = memory_summary(cluster.address, line_wrap=False)
+        info = info.split("\n")
+        reconstructing_waiting = [
+            line
+            for line in info
+            if "Attempt #2" in line and WAITING_FOR_DEPENDENCIES in line
+        ]
+        reconstructing_scheduled = [
+            line for line in info if "Attempt #2" in line and SCHEDULED in line
+        ]
+        reconstructing_finished = [
+            line for line in info if "Attempt #2" in line and FINISHED in line
+        ]
         return (
-            info.count("RECONSTRUCTING_AND_WAITING_FOR_DEPENDENCIES"),
-            info.count("RECONSTRUCTION_SCHEDULED"),
+            len(reconstructing_waiting),
+            len(reconstructing_scheduled),
+            len(reconstructing_finished),
         )
 
-    sema = Semaphore.remote()
+    sema = Semaphore.options(resources={"head": 1}).remote(value=0)
     obj = large_object.options(resources={"node1": 1}).remote(sema)
     x = dependent_task.options(resources={"node1": 1}).remote(obj, sema)
     ref = dependent_task.options(resources={"node1": 1}).remote(x, sema)
     ray.get(sema.release.remote())
     ray.get(sema.release.remote())
+    ray.get(sema.release.remote())
     ray.get(ref)
-    wait_for_condition(lambda: stats() == (0, 0))
+    wait_for_condition(lambda: stats() == (0, 0, 0))
     del ref
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
@@ -1071,13 +1091,13 @@ def test_memory_util(ray_start_cluster):
     )
 
     ref = dependent_task.remote(x, sema)
-    wait_for_condition(lambda: stats() == (1, 1))
+    wait_for_condition(lambda: stats() == (1, 1, 0))
     ray.get(sema.release.remote())
-    wait_for_condition(lambda: stats() == (0, 1))
+    wait_for_condition(lambda: stats() == (0, 1, 1))
     ray.get(sema.release.remote())
     ray.get(sema.release.remote())
     ray.get(ref)
-    wait_for_condition(lambda: stats() == (0, 0))
+    wait_for_condition(lambda: stats() == (0, 0, 2))
 
 
 if __name__ == "__main__":
