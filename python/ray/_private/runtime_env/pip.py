@@ -286,7 +286,7 @@ class PipManager:
 
         return local_dir_size
 
-    def create(
+    async def create(
         self,
         uri: str,
         runtime_env: RuntimeEnv,

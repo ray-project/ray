@@ -17,7 +17,10 @@ from ray.tests.conftest import *  # noqa
 from ray.data.dataset import Dataset, _sliding_window
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
+from ray.data.row import TableRow
+from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_list import BlockList
+from ray.data.impl.pandas_block import PandasRow
 from ray.data.impl.stats import DatasetStats
 from ray.data.impl.plan import ExecutionPlan
 from ray.data.aggregate import AggregateFn, Count, Sum, Min, Max, Mean, Std
@@ -488,6 +491,108 @@ def test_tensor_array_block_slice():
     table2 = block_accessor.slice(a, b, False)
     np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(), one_arr[a:b, :, :])
     check_for_copy(table, table2, a, b, is_copy=False)
+
+
+@pytest.mark.parametrize(
+    "test_data,a,b",
+    [
+        ([[False, True], [True, False], [True, True], [False, False]], 1, 3),
+        ([[False, True], [True, False], [True, True], [False, False]], 0, 1),
+        (
+            [
+                [False, True],
+                [True, False],
+                [True, True],
+                [False, False],
+                [True, False],
+                [False, False],
+                [False, True],
+                [True, True],
+                [False, False],
+                [True, True],
+                [False, True],
+                [True, False],
+            ],
+            3,
+            6,
+        ),
+        (
+            [
+                [False, True],
+                [True, False],
+                [True, True],
+                [False, False],
+                [True, False],
+                [False, False],
+                [False, True],
+                [True, True],
+                [False, False],
+                [True, True],
+                [False, True],
+                [True, False],
+            ],
+            7,
+            11,
+        ),
+        (
+            [
+                [False, True],
+                [True, False],
+                [True, True],
+                [False, False],
+                [True, False],
+                [False, False],
+                [False, True],
+                [True, True],
+                [False, False],
+                [True, True],
+                [False, True],
+                [True, False],
+            ],
+            9,
+            12,
+        ),
+    ],
+)
+@pytest.mark.parametrize("init_with_pandas", [True, False])
+def test_tensor_array_boolean_slice_pandas_roundtrip(init_with_pandas, test_data, a, b):
+    n = len(test_data)
+    test_arr = np.array(test_data)
+    df = pd.DataFrame({"one": TensorArray(test_arr), "two": ["a"] * n})
+    if init_with_pandas:
+        table = pa.Table.from_pandas(df)
+    else:
+        pa_dtype = pa.bool_()
+        flat = [w for v in test_data for w in v]
+        data_array = pa.array(flat, pa_dtype)
+        inner_len = len(test_data[0])
+        offsets = list(range(0, len(flat) + 1, inner_len))
+        offset_buffer = pa.py_buffer(np.int32(offsets))
+        storage = pa.Array.from_buffers(
+            pa.list_(pa_dtype),
+            len(test_data),
+            [None, offset_buffer],
+            children=[data_array],
+        )
+        t_arr = pa.ExtensionArray.from_storage(
+            ArrowTensorType((inner_len,), pa.bool_()), storage
+        )
+        table = pa.table({"one": t_arr, "two": ["a"] * n})
+    block_accessor = BlockAccessor.for_block(table)
+
+    # Test without copy.
+    table2 = block_accessor.slice(a, b, False)
+    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(), test_arr[a:b, :])
+    pd.testing.assert_frame_equal(
+        table2.to_pandas().reset_index(drop=True), df[a:b].reset_index(drop=True)
+    )
+
+    # Test with copy.
+    table2 = block_accessor.slice(a, b, True)
+    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(), test_arr[a:b, :])
+    pd.testing.assert_frame_equal(
+        table2.to_pandas().reset_index(drop=True), df[a:b].reset_index(drop=True)
+    )
 
 
 def test_arrow_tensor_array_getitem(ray_start_regular_shared):
@@ -1132,6 +1237,52 @@ def test_sliding_window():
     windows = list(_sliding_window(arr, 15))
     assert len(windows) == 1
     assert list(windows[0]) == arr
+
+
+def test_iter_rows(ray_start_regular_shared):
+    # Test simple rows.
+    n = 10
+    ds = ray.data.range(n)
+    for row, k in zip(ds.iter_rows(), range(n)):
+        assert row == k
+
+    # Test tabular rows.
+    t1 = pa.Table.from_pydict({"one": [1, 2, 3], "two": [2, 3, 4]})
+    t2 = pa.Table.from_pydict({"one": [4, 5, 6], "two": [5, 6, 7]})
+    t3 = pa.Table.from_pydict({"one": [7, 8, 9], "two": [8, 9, 10]})
+    t4 = pa.Table.from_pydict({"one": [10, 11, 12], "two": [11, 12, 13]})
+    ts = [t1, t2, t3, t4]
+    t = pa.concat_tables(ts)
+    ds = ray.data.from_arrow(ts)
+
+    def to_pylist(table):
+        pydict = table.to_pydict()
+        names = table.schema.names
+        pylist = [
+            {column: pydict[column][row] for column in names}
+            for row in range(table.num_rows)
+        ]
+        return pylist
+
+    # Default ArrowRows.
+    for row, t_row in zip(ds.iter_rows(), to_pylist(t)):
+        assert isinstance(row, TableRow)
+        assert isinstance(row, ArrowRow)
+        assert row == t_row
+
+    # PandasRows after conversion.
+    pandas_ds = ds.map_batches(lambda x: x, batch_format="pandas")
+    df = t.to_pandas()
+    for row, (index, df_row) in zip(pandas_ds.iter_rows(), df.iterrows()):
+        assert isinstance(row, TableRow)
+        assert isinstance(row, PandasRow)
+        assert row == df_row.to_dict()
+
+    # Prefetch.
+    for row, t_row in zip(ds.iter_rows(prefetch_blocks=1), to_pylist(t)):
+        assert isinstance(row, TableRow)
+        assert isinstance(row, ArrowRow)
+        assert row == t_row
 
 
 def test_iter_batches_basic(ray_start_regular_shared):
