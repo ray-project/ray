@@ -193,7 +193,7 @@ void SchedulerResourceReporter::FillPendingActorInfo(
   for (const auto &shapes_it : infeasible_tasks_) {
     auto &work_queue = shapes_it.second;
     for (const auto &work_it : work_queue) {
-      RayTask task = work_it->task;
+      const RayTask &task = work_it->task;
       if (task.GetTaskSpecification().IsActorCreationTask()) {
         if (num_reported++ > kMaxPendingActorsToReport) {
           break;  // Protect the raylet from reporting too much data.
@@ -208,11 +208,12 @@ void SchedulerResourceReporter::FillPendingActorInfo(
   for (const auto &shapes_it : boost::join(tasks_to_dispatch_, tasks_to_schedule_)) {
     auto &work_queue = shapes_it.second;
     for (const auto &work_it : work_queue) {
-      RayTask task = work_it->task;
+      const RayTask &task = work_it->task;
       if (task.GetTaskSpecification().IsActorCreationTask()) {
         if (num_reported++ > kMaxPendingActorsToReport) {
           break;  // Protect the raylet from reporting too much data.
         }
+        // TODO(scv119): we should report pending tasks instead.
         auto ready_task = reply->add_infeasible_tasks();
         ready_task->CopyFrom(task.GetTaskSpecification().GetMessage());
       }
