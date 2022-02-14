@@ -10,7 +10,7 @@ publish = true
 # ray-rs = "0.0.0"
 ray-rs = { path = "../../ray-rs", features = ["async"] }
 serde = "1.0.132"
-tokio = { version = "1.16.1", features = ["rt", "rt-multi-thread", "time"] }
+tokio = { path = "../../../../tokio/tokio", features = ["rt", "rt-multi-thread", "sync", "time"] }
 #path = "../../../../tokio/tokio",version="1.16.1",
 tokio-time-sleep = { path = "./tokio-time-sleep" }
 

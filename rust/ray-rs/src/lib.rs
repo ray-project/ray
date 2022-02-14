@@ -104,7 +104,7 @@ pub extern "C" fn ray_rust_async__tokio_store_handle(h: *mut std::os::raw::c_voi
 #[no_mangle]
 pub extern "C" fn ray_rust_async__tokio_on_thread_start() {
     eprintln!("Here 1");
-    // Spin until the handle is instantiated
+    // Spin until the handle is initiated
     for i in 0..1000 {
         if let Some(handle) = &*TOKIO_HANDLE.read().unwrap() {
             eprintln!("Here 2 {}", i);
@@ -334,9 +334,9 @@ fn handle_async_startup() {
                 let (on_start, on_stop) = get_tokio_handle_callbacks();
 
                 let rt =
-                    // tokio::runtime::Builder::new_current_thread()
-                    tokio::runtime::Builder::new_multi_thread()
-                    .worker_threads(1)
+                    tokio::runtime::Builder::new_current_thread()
+                    // tokio::runtime::Builder::new_multi_thread()
+                    // .worker_threads(1)
                     .enable_all()
                     .on_thread_start(move || {
                         for c in on_start.iter() {
