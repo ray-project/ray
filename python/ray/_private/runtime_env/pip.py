@@ -144,7 +144,7 @@ class PipProcessor:
             # or
             # python -m clonevirtualenv /path/to/existing/venv /path/to/cloned/ven
             clonevirtualenv = os.path.join(
-                os.path.dirname(__file__), "clonevirtualenv.py"
+                os.path.dirname(__file__), "_clonevirtualenv.py"
             )
             create_venv_cmd = [
                 python,
