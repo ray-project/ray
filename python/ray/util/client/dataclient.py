@@ -33,6 +33,9 @@ class ChunkCollector:
     calls the underlying callback when the object is fully received, or if an
     exception while retrieving the object occurs.
 
+    This is not used in synchronous gets (synchronous gets interact with the
+    raylet servicer directly, not through the datapath).
+
     __call__ returns true once the underlying call back has been called.
     """
 
