@@ -128,14 +128,14 @@ def wait_for_url(url, timeout: float = 300.0) -> str:
             )
             next_status += 30
 
-        # Sleep 1 sec before next check.
-        time.sleep(1)
+        # Sleep 15 sec before next check.
+        time.sleep(15)
     logger.info(f"URL is now available: {url}")
     return url
 
 
 def find_and_wait_for_ray_wheels_url(
-    ray_wheels: Optional[str] = None, timeout: float = 300.0
+    ray_wheels: Optional[str] = None, timeout: float = 3600.0
 ) -> str:
     ray_wheels_url = find_ray_wheels_url(ray_wheels)
     logger.info(f"Using Ray wheels URL: {ray_wheels_url}")
