@@ -109,6 +109,7 @@ def wait_for_url(url, timeout: float = 300.0) -> str:
     start_time = time.monotonic()
     timeout_at = start_time + timeout
     next_status = start_time + 30
+    logger.info(f"Waiting up to {timeout} seconds until URL is available " f"({url})")
     while not url_exists(url):
         now = time.monotonic()
         if now >= timeout_at:
@@ -125,6 +126,7 @@ def wait_for_url(url, timeout: float = 300.0) -> str:
 
         # Sleep 1 sec before next check.
         time.sleep(1)
+    logger.info(f"URL is now available: {url}")
     return url
 
 
@@ -132,6 +134,7 @@ def find_and_wait_for_ray_wheels_url(
     ray_wheels: Optional[str] = None, timeout: float = 300.0
 ) -> str:
     ray_wheels_url = find_ray_wheels_url(ray_wheels)
+    logger.info(f"Using Ray wheels URL: {ray_wheels_url}")
     return wait_for_url(ray_wheels_url, timeout=timeout)
 
 
