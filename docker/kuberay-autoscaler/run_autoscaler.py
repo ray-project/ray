@@ -61,7 +61,7 @@ if __name__ == "__main__":
     Monitor(
         address=f"{head_ip}:6379",
         redis_password=args.redis_password,
-        # The `autoscaling_config` arg can be a dict or a `Callable: () -> dict.`
+        # The `autoscaling_config` arg can be a dict or a `Callable: () -> dict`.
         # In this case, it's a callable.
         autoscaling_config=generate_autoscaling_config,
         monitor_ip=head_ip,
