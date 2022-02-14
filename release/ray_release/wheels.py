@@ -55,7 +55,9 @@ def get_ray_version(repo_url: str, commit: str) -> str:
     )
 
 
-def get_latest_commits(repo_url: str, branch: str = "master") -> List[str]:
+def get_latest_commits(
+    repo_url: str, branch: str = "master", ref: Optional[str] = None
+) -> List[str]:
     cur = os.getcwd()
     with tempfile.TemporaryDirectory() as tmpdir:
         os.chdir(tmpdir)
@@ -80,6 +82,8 @@ def get_latest_commits(repo_url: str, branch: str = "master") -> List[str]:
         ]
 
         subprocess.check_output(clone_cmd)
+        if ref:
+            subprocess.check_output(["git", "checkout", ref])
         commits = (
             subprocess.check_output(log_cmd).decode(sys.stdout.encoding).split("\n")
         )
@@ -149,8 +153,15 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
                 "Hint: You can use `-ray-wheels master` to fetch "
                 "the latest available master wheels."
             )
+
         branch = os.environ.get("BUILDKITE_BRANCH", DEFAULT_BRANCH)
         repo_url = os.environ.get("BUILDKITE_REPO", DEFAULT_REPO)
+
+        if not re.match(r"\b([a-f0-9]{40})\b", commit):
+            # commit is symbolic, like HEAD
+            latest_commits = get_latest_commits(repo_url, branch, ref=commit)
+            commit = latest_commits[0]
+
         ray_version = get_ray_version(repo_url, commit)
 
         set_test_env_var("RAY_COMMIT", commit)

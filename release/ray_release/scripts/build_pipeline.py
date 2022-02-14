@@ -16,6 +16,7 @@ from ray_release.config import (
     DEFAULT_WHEEL_WAIT_TIMEOUT,
 )
 from ray_release.exception import ReleaseTestCLIError
+from ray_release.logger import logger
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
 
 
@@ -66,6 +67,15 @@ def main(test_collection_file: Optional[str] = None):
     test_name_filter = settings["test_name_filter"]
     ray_wheels = settings["ray_wheels"]
 
+    logger.info(
+        f"Found the following buildkite pipelein settings:\n\n"
+        f"  frequency =        {settings['frequency']}\n"
+        f"  test_name_filter = {settings['test_name_filter']}\n"
+        f"  ray_wheels =       {settings['ray_wheels']}\n"
+        f"  ray_test_repo =    {settings['frequency']}\n"
+        f"  ray_test_branch =  {settings['frequency']}\n"
+    )
+
     filtered_tests = filter_tests(
         test_collection, frequency=frequency, test_name_filter=test_name_filter
     )
@@ -90,8 +100,8 @@ def main(test_collection_file: Optional[str] = None):
         group_step = {"group": group, "steps": group_steps}
         steps.append(group_step)
 
-    json.dump(steps, sys.stdout)
-    sys.stdout.flush()
+    steps_str = json.dumps(steps)
+    print(steps_str)
 
 
 if __name__ == "__main__":
