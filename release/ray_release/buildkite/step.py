@@ -21,8 +21,12 @@ DEFAULT_STEP_TEMPLATE = {
                 "image": "rayproject/ray",
                 "propagate-environment": True,
                 "volumes": [
-                    "/tmp/ray_release_test_artifacts:" "/tmp/ray_release_test_artifacts"
+                    "/var/lib/buildkite/builds:/var/lib/buildkite/builds",
+                    "/usr/local/bin/buildkite-agent:/usr/local/bin/buildkite-agent",
+                    "/tmp/ray_release_test_artifacts:"
+                    "/tmp/ray_release_test_artifacts",
                 ],
+                "environment": ["BUILDKITE_BUILD_PATH=/var/lib/buildkite/builds"],
             }
         }
     ],
@@ -40,7 +44,7 @@ def get_step(
 
     step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
-    cmd = f"./release/run_e2e.sh \"{test['name']}\" --report"
+    cmd = f"./release/run_release_test.sh \"{test['name']}\" --report"
     if smoke_test:
         cmd += " --smoke-test"
 
