@@ -72,8 +72,8 @@ def main(test_collection_file: Optional[str] = None):
         f"  frequency =        {settings['frequency']}\n"
         f"  test_name_filter = {settings['test_name_filter']}\n"
         f"  ray_wheels =       {settings['ray_wheels']}\n"
-        f"  ray_test_repo =    {settings['frequency']}\n"
-        f"  ray_test_branch =  {settings['frequency']}\n"
+        f"  ray_test_repo =    {settings['ray_test_repo']}\n"
+        f"  ray_test_branch =  {settings['ray_test_branch']}\n"
     )
 
     filtered_tests = filter_tests(
