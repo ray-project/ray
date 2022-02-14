@@ -33,7 +33,7 @@ spec:
       num-cpus: '1' # can be auto-completed from the limits
       # Use `resources` to optionally specify custom resource annotations for the Ray node.
       # The value of `resources` is a string-integer mapping.
-      # Currently, it must be provider in the unfortunate format demonstrated below.
+      # Currently, it must be provided in the unfortunate format demonstrated below.
       resources: '"{\"Custom1\": 1, \"Custom2\": 5}"'
     #pod template
     template:
@@ -99,7 +99,7 @@ spec:
               name: ray-logs
         # The Ray autoscaler sidecar to the head pod
         - name: autoscaler
-          image: gekho/kuberay-autoscaler
+          image: rayproject/kuberay-autoscaler
           imagePullPolicy: Always
           command: ["/bin/sh"]
           args: ["-c", "$HOME/anaconda3/bin/python /home/ray/run_autoscaler_with_retries.py --redis-password 5241590000000000"]
