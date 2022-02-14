@@ -5,7 +5,6 @@ import logging
 import queue
 import threading
 import warnings
-
 import grpc
 
 from collections import OrderedDict
