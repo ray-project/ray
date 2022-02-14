@@ -337,6 +337,7 @@ def test_run_off_main_thread(workflow_start_regular):
     @workflow.step
     def fake_data(num: int):
         return [i for i in range(num)]
+
     succ = False
     # Start new thread here ⚠️
     def run():
@@ -344,7 +345,9 @@ def test_run_off_main_thread(workflow_start_regular):
         # Setup the workflow.
         data = fake_data.step(10)
         assert data.run(workflow_id="run") == list(range(10))
+
     import threading
+
     t = threading.Thread(target=run)
     t.start()
     t.join()

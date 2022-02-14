@@ -1,4 +1,6 @@
 import base64
+import asyncio
+
 from ray import cloudpickle
 from collections import deque
 from enum import Enum, unique
