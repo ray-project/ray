@@ -12,6 +12,7 @@ from ray_release.exception import (
     RayWheelsUnspecifiedError,
     RayWheelsNotFoundError,
     RayWheelsTimeoutError,
+    ReleaseTestSetupError,
 )
 from ray_release.logger import logger
 from ray_release.util import url_exists
@@ -34,11 +35,16 @@ def get_ray_version(repo_url: str, commit: str) -> str:
 
     init_url = INIT_URL_TPL.format(fork=fork, commit=commit)
 
-    for line in urllib.request.urlopen(init_url):
-        line = line.decode("utf-8")
-        if line.startswith("__version__"):
-            version = line.split(" = ")[1].strip('"\r\n ')
-            return version
+    try:
+        for line in urllib.request.urlopen(init_url):
+            line = line.decode("utf-8")
+            if line.startswith("__version__"):
+                version = line.split(" = ")[1].strip('"\r\n ')
+                return version
+    except Exception as e:
+        raise ReleaseTestSetupError(
+            f"Couldn't load version info from branch URL: {init_url}"
+        ) from e
 
     raise RayWheelsNotFoundError(
         f"Unable to parse Ray version information for repo {repo_url} "
