@@ -53,11 +53,13 @@ def split_ray_repo_str(repo_str: str) -> Tuple[str, str]:
 
 def get_buildkite_prompt_value(key: str) -> Optional[str]:
     try:
-        value = subprocess.check_output(f"buildkite-agent meta-data get {key}")
+        value = subprocess.check_output(
+            ["/usr/local/bin/buildkite-agent", "metda-data", "get", key]
+        )
     except Exception as e:
         logger.warning(f"Could not fetch metadata for {key}: {e}")
         return None
-    logger.info(f"Got Buildkite prompt value for {key}: {value}")
+    logger.debug(f"Got Buildkite prompt value for {key}: {value}")
     return value
 
 

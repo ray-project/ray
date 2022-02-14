@@ -68,7 +68,7 @@ def main(test_collection_file: Optional[str] = None):
     ray_wheels = settings["ray_wheels"]
 
     logger.info(
-        f"Found the following buildkite pipelein settings:\n\n"
+        f"Found the following buildkite pipeline settings:\n\n"
         f"  frequency =        {settings['frequency']}\n"
         f"  test_name_filter = {settings['test_name_filter']}\n"
         f"  ray_wheels =       {settings['ray_wheels']}\n"
