@@ -1,5 +1,6 @@
 import re
-from typing import List, Optional, Tuple
+from collections import defaultdict
+from typing import List, Optional, Tuple, Dict
 
 from ray_release.buildkite.settings import Frequency, get_frequency
 from ray_release.config import Test
@@ -26,3 +27,13 @@ def filter_tests(
             if smoke_frequency == frequency:
                 tests_to_run.append((test, True))
     return tests_to_run
+
+
+def group_tests(
+    test_collection_filtered: List[Tuple[Test, bool]]
+) -> Dict[str, List[Tuple[Test, bool]]]:
+    groups = defaultdict(list)
+    for test, smoke in test_collection_filtered:
+        group = test.get("group", "Ungrouped release tests")
+        groups[group].append((test, smoke))
+    return groups

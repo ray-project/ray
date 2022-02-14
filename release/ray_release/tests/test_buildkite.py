@@ -3,7 +3,7 @@ import unittest
 from typing import Dict
 from unittest.mock import patch
 
-from ray_release.buildkite.filter import filter_tests
+from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import (
     split_ray_repo_str,
     get_default_settings,
@@ -203,3 +203,20 @@ class BuildkiteSettingsTest(unittest.TestCase):
         self.assertSequenceEqual(
             filtered, [("test_1", False), ("test_2", True), ("test_3", False)]
         )
+
+    def testGroupTests(self):
+        tests = [
+            (Test(name="x1", group="x"), False),
+            (Test(name="x2", group="x"), False),
+            (Test(name="y1", group="y"), False),
+            (Test(name="ungrouped"), False),
+            (Test(name="x3", group="x"), False),
+        ]
+
+        grouped = group_tests(tests)
+        self.assertEqual(len(grouped), 3)  # Three groups
+        self.assertEqual(len(grouped["x"]), 3)
+        self.assertSequenceEqual(
+            [t["name"] for t, _ in grouped["x"]], ["x1", "x2", "x3"]
+        )
+        self.assertEqual(len(grouped["y"]), 1)

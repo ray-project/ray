@@ -8,7 +8,7 @@ from typing import Optional
 
 import click
 
-from ray_release.buildkite.filter import filter_tests
+from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
 from ray_release.buildkite.step import get_step
 from ray_release.config import (
@@ -69,6 +69,7 @@ def main(test_collection_file: Optional[str] = None):
     filtered_tests = filter_tests(
         test_collection, frequency=frequency, test_name_filter=test_name_filter
     )
+    grouped_tests = group_tests(filtered_tests)
 
     # Wait for wheels here so we hafve them ready before we kick off
     # the other workers
@@ -77,9 +78,17 @@ def main(test_collection_file: Optional[str] = None):
     )
 
     steps = []
-    for test, smoke_test in filtered_tests:
-        step = get_step(test, smoke_test=smoke_test, ray_wheels=ray_wheels_url, env=env)
-        steps.append(step)
+    for group in sorted(grouped_tests):
+        tests = grouped_tests[group]
+        group_steps = []
+        for test, smoke_test in tests:
+            step = get_step(
+                test, smoke_test=smoke_test, ray_wheels=ray_wheels_url, env=env
+            )
+            group_steps.append(step)
+
+        group_step = {"group": group, "steps": group_steps}
+        steps.append(group_step)
 
     json.dump(steps, sys.stdout)
     sys.stdout.flush()
