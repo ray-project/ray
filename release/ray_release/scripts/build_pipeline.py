@@ -79,6 +79,12 @@ def main(test_collection_file: Optional[str] = None):
     filtered_tests = filter_tests(
         test_collection, frequency=frequency, test_name_filter=test_name_filter
     )
+    logger.info(f"Found {len(filtered_tests)} to run.")
+    if len(filtered_tests) == 0:
+        raise ReleaseTestCLIError(
+            "Empty test collection. The selected frequency or filter did "
+            "not return any tests to run. Adjust your filters."
+        )
     grouped_tests = group_tests(filtered_tests)
 
     # Wait for wheels here so we hafve them ready before we kick off
@@ -86,6 +92,7 @@ def main(test_collection_file: Optional[str] = None):
     ray_wheels_url = find_and_wait_for_ray_wheels_url(
         ray_wheels, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT
     )
+    logger.info(f"Starting pipeline for Ray wheel: {ray_wheels_url}")
 
     steps = []
     for group in sorted(grouped_tests):
