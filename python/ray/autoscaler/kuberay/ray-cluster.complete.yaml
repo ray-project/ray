@@ -28,9 +28,13 @@ spec:
       object-store-memory: '100000000'
       redis-password: '5241590000000000'
       dashboard-host: '0.0.0.0'
-      num-cpus: '1' # can be auto-completed from the limits
       node-ip-address: $MY_POD_IP # auto-completed as the head pod IP
       block: 'true'
+      num-cpus: '1' # can be auto-completed from the limits
+      # Use `resources` to optionally specify custom resource annotations for the Ray node.
+      # The value of `resources` is a string-integer mapping.
+      # Currently, it must be provider in the unfortunate format demonstrated below.
+      resources: '"{\"Custom1\": 1, \"Custom2\": 5}"'
     #pod template
     template:
       metadata:
@@ -95,7 +99,7 @@ spec:
               name: ray-logs
         # The Ray autoscaler sidecar to the head pod
         - name: autoscaler
-          image: rayproject/kuberay-autoscaler
+          image: gekho/kuberay-autoscaler
           imagePullPolicy: Always
           command: ["/bin/sh"]
           args: ["-c", "$HOME/anaconda3/bin/python /home/ray/run_autoscaler_with_retries.py --redis-password 5241590000000000"]
