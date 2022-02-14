@@ -6,6 +6,9 @@ from ray_release.logger import logger
 from ray_release.util import get_anyscale_sdk
 
 
+LAST_LOGS_LENGTH = 10
+
+
 def find_cloud_by_name(
     cloud_name: str, sdk: Optional[AnyscaleSDK] = None
 ) -> Optional[str]:

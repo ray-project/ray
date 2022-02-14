@@ -5,15 +5,19 @@ import sys
 import tempfile
 import threading
 import time
+from collections import deque
 from typing import Optional, Dict, Any
 
 import ray
+from ray_release.anyscale_util import LAST_LOGS_LENGTH
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (
     ResultsError,
     LocalEnvSetupError,
     ClusterNodesWaitTimeout,
+    CommandTimeout,
+    ClusterStartupError,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.logger import logger
@@ -101,9 +105,14 @@ class ClientRunner(CommandRunner):
                 f"{timeout} seconds."
             )
 
-        run_with_timeout(
-            _wait, timeout=timeout, status_fn=_status_fn, error_fn=_error_fn
-        )
+        try:
+            run_with_timeout(
+                _wait, timeout=timeout, status_fn=_status_fn, error_fn=_error_fn
+            )
+        except ClusterNodesWaitTimeout as e:
+            raise e
+        except Exception as e:
+            raise ClusterStartupError(f"Exception when waiting for nodes: {e}") from e
 
     def get_last_logs(self) -> Optional[str]:
         return self.last_logs
@@ -132,8 +141,17 @@ class ClientRunner(CommandRunner):
                 **env,
                 "RAY_ADDRESS": self.cluster_manager.get_cluster_address(),
                 "RAY_JOB_NAME": "test_job",
+                "PYTHONUNBUFFERED": "1",
             }
         )
+
+        def _kill_after(proc: subprocess.Popen, timeout: int = 30):
+            timeout_at = time.monotonic() + timeout
+            while time.monotonic() < timeout_at:
+                if proc.poll() is not None:
+                    return
+                time.sleep(1)
+            proc.terminate()
 
         start_time = time.monotonic()
         proc = subprocess.Popen(
@@ -144,14 +162,26 @@ class ClientRunner(CommandRunner):
             shell=True,
             text=True,
         )
+
+        kill_thread = threading.Thread(target=_kill_after, args=(proc, timeout))
+        kill_thread.start()
+
         proc.stdout.reconfigure(line_buffering=True)
         sys.stdout.reconfigure(line_buffering=True)
-        logs = ""
+        logs = deque(maxlen=LAST_LOGS_LENGTH)
         for line in proc.stdout:
-            logs += line
+            logs.append(line)
             sys.stdout.write(line)
         proc.wait()
         sys.stdout.reconfigure(line_buffering=False)
         time_taken = time.monotonic() - start_time
-        self.last_logs = logs
+        self.last_logs = "\n".join(logs)
+
+        return_code = proc.poll()
+        if return_code == -15 or return_code == 15:
+            # Process has been terminated
+            raise CommandTimeout(f"Cluster command timed out after {timeout} seconds.")
+
+        logger.warning(f"WE GOT RETURN CODE {return_code} AFTER {time_taken}")
+
         return time_taken

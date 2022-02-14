@@ -17,10 +17,10 @@
     autosuspend_mins: 10
 
   run:
-    # type: sdk_command
-    type: client
-    # file_manager: job
-    timeout: 600
+    type: sdk_command
+    # type: client
+    file_manager: job
+    timeout: 60
     wait_for_nodes:
       num_nodes: 4
       timeout: 40

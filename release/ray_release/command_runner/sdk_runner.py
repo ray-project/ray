@@ -5,6 +5,7 @@ import time
 from typing import Optional, Dict, Any
 
 from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
+from ray_release.anyscale_util import LAST_LOGS_LENGTH
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.command_runner.command_runner import CommandRunner
@@ -148,7 +149,7 @@ class SDKRunner(CommandRunner):
             "/api/v2/session_commands/{session_command_id}/execution_logs",
             "GET",
             path_params={"session_command_id": scd_id},
-            query_params={"start_line": -10, "end_line": 0},
+            query_params={"start_line": -LAST_LOGS_LENGTH, "end_line": 0},
             header_params={},
             response_type=object,
             _host="https://console.anyscale.com",
