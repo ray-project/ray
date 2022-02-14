@@ -15,6 +15,7 @@ from typing import (
     Tuple,
 )
 from uuid import uuid4
+from collections import OrderedDict
 
 if TYPE_CHECKING:
     import pyarrow
@@ -1010,7 +1011,8 @@ class Dataset(Generic[T]):
                 )
                 _epoch_warned = True
         dataset_stats = DatasetStats(
-            stages={"union": []}, parent=[d._plan.stats() for d in datasets]
+            stages=OrderedDict({"union": []}),
+            parent=[d._plan.stats() for d in datasets],
         )
         dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
