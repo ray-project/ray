@@ -63,6 +63,7 @@ from ray.data.datasource.file_based_datasource import (
     _wrap_s3_filesystem_workaround,
     _unwrap_s3_filesystem_workaround,
 )
+from ray.data.row import TableRow
 from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
@@ -74,7 +75,6 @@ from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
-from ray.data.impl.table_block import TableRow
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 
 # An output type of iter_batches() determined by the batch_format parameter.
@@ -1867,8 +1867,12 @@ class Dataset(Generic[T]):
         finally:
             progress.close()
 
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[T]:
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
         """Return a local row iterator over the dataset.
+
+        If the dataset is a tabular dataset (Arrow/Pandas blocks), dict-like mappings
+        :py:class:`~ray.data.row.TableRow` are yielded for each row by the iterator.
+        If the dataset is not tabular, the raw row is yielded.
 
         Examples:
             >>> for i in ray.data.range(1000000).iter_rows():
@@ -1883,8 +1887,24 @@ class Dataset(Generic[T]):
         Returns:
             A local iterator over the entire dataset.
         """
+        # During row-based ops, we also choose a batch format that lines up with the
+        # current dataset format in order to eliminate unnecessary copies and type
+        # conversions.
+        try:
+            dataset_format = self._dataset_format()
+        except ValueError:
+            # Dataset is empty or cleared, so fall back to "native".
+            batch_format = "native"
+        else:
+            batch_format = (
+                "pyarrow"
+                if dataset_format == "arrow"
+                else "pandas"
+                if dataset_format == "pandas"
+                else "native"
+            )
         for batch in self.iter_batches(
-            prefetch_blocks=prefetch_blocks, batch_format="native"
+            prefetch_blocks=prefetch_blocks, batch_format=batch_format
         ):
             batch = BlockAccessor.for_block(batch)
             for row in batch.iter_rows():
