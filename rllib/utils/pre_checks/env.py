@@ -334,64 +334,78 @@ def _check_reward(reward, base_env=False, agent_ids=None):
     if base_env:
         for _, multi_agent_dict in reward.items():
             for agent_id, rew in multi_agent_dict.items():
-                assert (
+                if not (
                     np.isreal(rew) and not isinstance(rew, bool) and np.isscalar(rew)
-                ), (
-                    "Your step function must return rewards that are"
-                    f" integer or float. reward: {rew}. Instead it was a "
-                    f"{type(reward)}"
-                )
-                assert agent_id in agent_ids or agent_id == "__all__", (
-                    f"Your reward dictionary must have agent ids that belong to the "
-                    f"environment. Agent_ids recieved from env.get_agent_ids() are: "
-                    f"{agent_ids}"
-                )
-    else:
-        assert (
-            np.isreal(reward) and not isinstance(reward, bool) and np.isscalar(reward)
-        ), (
+                ):
+                    error = (
+                        "Your step function must return rewards that are"
+                        f" integer or float. reward: {rew}. Instead it was a "
+                        f"{type(reward)}"
+                    )
+                    raise ValueError(error)
+                if not (agent_id in agent_ids or agent_id == "__all__"):
+                    error = (
+                        f"Your reward dictionary must have agent ids that belong to the "
+                        f"environment. Agent_ids recieved from env.get_agent_ids() are: "
+                        f"{agent_ids}"
+                    )
+                    raise ValueError(error)
+    elif not (
+        np.isreal(reward) and not isinstance(reward, bool) and np.isscalar(reward)
+    ):
+        error = (
             "Your step function must return a reward that is integer or float. "
             "Instead it was a {}".format(type(reward))
         )
+        raise ValueError(error)
 
 
 def _check_done(done, base_env=False, agent_ids=None):
     if base_env:
         for _, multi_agent_dict in done.items():
             for agent_id, done_ in multi_agent_dict.items():
-                assert isinstance(done_, (bool, np.bool, np.bool_)), (
-                    "Your step function must return dones that are boolean. But "
-                    f"instead was a {type(done)}"
-                )
-                assert agent_id in agent_ids or agent_id == "__all__", (
-                    f"Your dones dictionary must have agent ids that belong to the "
-                    f"environment. Agent_ids recieved from env.get_agent_ids() are: "
-                    f"{agent_ids}"
-                )
-    else:
-        assert isinstance(done, (bool, np.bool, np.bool_)), (
+                if not isinstance(done_, (bool, np.bool, np.bool_)):
+                    raise ValueError(
+                        "Your step function must return dones that are boolean. But "
+                        f"instead was a {type(done)}"
+                    )
+                if not (agent_id in agent_ids or agent_id == "__all__"):
+                    error = (
+                        f"Your dones dictionary must have agent ids that belong to the "
+                        f"environment. Agent_ids recieved from env.get_agent_ids() are: "
+                        f"{agent_ids}"
+                    )
+                    raise ValueError(error)
+    elif not isinstance(done, (bool, np.bool, np.bool_)):
+        error = (
             "Your step function must return a done that is a boolean. But instead "
             f"was a {type(done)}"
         )
+        raise ValueError(error)
 
 
 def _check_info(info, base_env=False, agent_ids=None):
     if base_env:
         for _, multi_agent_dict in info.items():
             for agent_id, inf in multi_agent_dict.items():
-                assert isinstance(inf, dict), (
-                    "Your step function must return infos that are a dict. "
-                    f"element: {inf}"
-                )
-                assert agent_id in agent_ids or agent_id == "__all__", (
-                    f"Your dones dictionary must have agent ids that belong to the "
-                    f"environment. Agent_ids recieved from env.get_agent_ids() are: "
-                    f"{agent_ids}"
-                )
-    else:
-        assert isinstance(
-            info, dict
-        ), "Your step function must return a info that is a dict."
+                if not isinstance(inf, dict):
+                    raise ValueError(
+                        "Your step function must return infos that are a dict. "
+                        f"instead was a {type(inf)}: element: {inf}"
+                    )
+                if not (agent_id in agent_ids or agent_id == "__all__"):
+                    error = (
+                        f"Your dones dictionary must have agent ids that belong to the "
+                        f"environment. Agent_ids recieved from env.get_agent_ids() are: "
+                        f"{agent_ids}"
+                    )
+                    raise ValueError(error)
+    elif not isinstance(info, dict):
+        error = (
+            "Your step function must return a info that "
+            f"is a dict. element type: {type(info)}. element: {info}"
+        )
+        raise ValueError(error)
 
 
 def _not_contained_error(func_name, _type):

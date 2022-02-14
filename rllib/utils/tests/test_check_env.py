@@ -76,21 +76,21 @@ class TestGymCheckEnv(unittest.TestCase):
         step = MagicMock(return_value=(1, "Not a valid reward", True, {}))
         env.step = step
         error = "Your step function must return a reward that is integer or " "float."
-        with pytest.raises(AssertionError, match=error):
+        with pytest.raises(ValueError, match=error):
             check_env(env)
 
         # check step that returns a non bool fails
         step = MagicMock(return_value=(1, float(5), "not a valid done signal", {}))
         env.step = step
         error = "Your step function must return a done that is a boolean."
-        with pytest.raises(AssertionError, match=error):
+        with pytest.raises(ValueError, match=error):
             check_env(env)
 
         # check step that returns a non dict fails
         step = MagicMock(return_value=(1, float(5), True, "not a valid env info"))
         env.step = step
         error = "Your step function must return a info that is a dict."
-        with pytest.raises(AssertionError, match=error):
+        with pytest.raises(ValueError, match=error):
             check_env(env)
         del env
 
@@ -157,13 +157,13 @@ class TestCheckMultiAgentEnv(unittest.TestCase):
         step = MagicMock(return_value=(sampled_obs, {0: "Not a reward"}, {0: True}, {}))
         env.step = step
         with pytest.raises(
-            AssertionError, match="Your step function must return rewards"
+            ValueError, match="Your step function must return rewards"
         ):
             check_env(env)
         step = MagicMock(return_value=(sampled_obs, {0: 5}, {0: "Not a bool"}, {}))
         env.step = step
         with pytest.raises(
-            AssertionError, match="Your step function must return dones"
+            ValueError, match="Your step function must return dones"
         ):
             check_env(env)
 
@@ -172,7 +172,7 @@ class TestCheckMultiAgentEnv(unittest.TestCase):
         )
         env.step = step
         with pytest.raises(
-            AssertionError, match="Your step function must return infos"
+            ValueError, match="Your step function must return infos"
         ):
             check_env(env)
 
@@ -325,14 +325,14 @@ class TestCheckBaseEnv:
         poll = MagicMock(return_value=(good_obs, bad_reward, good_done, good_info, {}))
         env.poll = poll
         with pytest.raises(
-            AssertionError, match="Your step function must return rewards that are"
+            ValueError, match="Your step function must return rewards that are"
         ):
             check_env(env)
         bad_done = {0: {0: "not_done", 1: False}}
         poll = MagicMock(return_value=(good_obs, good_reward, bad_done, good_info, {}))
         env.poll = poll
         with pytest.raises(
-            AssertionError,
+            ValueError,
             match="Your step function must return dones that are boolean.",
         ):
             check_env(env)
@@ -340,7 +340,7 @@ class TestCheckBaseEnv:
         poll = MagicMock(return_value=(good_obs, good_reward, good_done, bad_info, {}))
         env.poll = poll
         with pytest.raises(
-            AssertionError,
+            ValueError,
             match="Your step function must return infos that are a dict.",
         ):
             check_env(env)

@@ -464,6 +464,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.last_batch: Optional[SampleBatchType] = None
         self.global_vars: Optional[dict] = None
         self.fake_sampler: bool = fake_sampler
+        self._disable_env_checking: bool = disable_env_checking
 
         # Update the global seed for numpy/random/tf-eager/torch if we are not
         # the local worker, otherwise, this was already done in the Trainer
@@ -493,7 +494,16 @@ class RolloutWorker(ParallelIteratorWorker):
 
         if self.env is not None:
             # Validate environment (general validation function).
-            if not disable_env_checking:
+            if not self._disable_env_checking:
+                logger.warning(
+                    "We've added a module for checking environments that "
+                    "are used in experiments. It will cause your "
+                    "environment to fail if your environment is not set up"
+                    "correctly. You can disable check env by setting "
+                    "`disable_env_checking` to True in your experiment config "
+                    "dictionary. You can run the environment checking module "
+                    "standalone by calling ray.rllib.utils.check_env(env)."
+                )
                 check_env(self.env)
             # Custom validation function given, typically a function attribute of the
             # algorithm trainer.
@@ -1730,7 +1740,17 @@ class RolloutWorker(ParallelIteratorWorker):
             # Create the sub-env.
             env = env_creator(env_ctx)
             # Validate first.
-            check_env(env)
+            if not self._disable_env_checking:
+                logger.warning(
+                    "We've added a module for checking environments that "
+                    "are used in experiments. It will cause your "
+                    "environment to fail if your environment is not set up"
+                    "correctly. You can disable check env by setting "
+                    "`disable_env_checking` to True in your experiment config "
+                    "dictionary. You can run the environment checking module "
+                    "standalone by calling ray.rllib.utils.check_env(env)."
+                )
+                check_env(env)
             # Custom validation function given by user.
             if validate_env is not None:
                 validate_env(env, env_ctx)
