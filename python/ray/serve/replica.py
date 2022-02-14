@@ -44,7 +44,7 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
         async def __init__(self, deployment_name, replica_tag, init_args,
                            init_kwargs, deployment_config_proto_bytes: bytes,
                            version: DeploymentVersion, controller_name: str,
-                           detached: bool):
+                           controller_namespace: str, detached: bool):
             deployment_def = cloudpickle.loads(serialized_deployment_def)
             deployment_config = DeploymentConfig.from_proto_bytes(
                 deployment_config_proto_bytes)
@@ -64,12 +64,11 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
                 deployment_name,
                 replica_tag,
                 controller_name,
+                controller_namespace,
                 servable_object=None)
 
             assert controller_name, "Must provide a valid controller_name"
 
-            controller_namespace = ray.serve.api._get_controller_namespace(
-                detached)
             controller_handle = ray.get_actor(
                 controller_name, namespace=controller_namespace)
 
@@ -95,6 +94,7 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
                     deployment_name,
                     replica_tag,
                     controller_name,
+                    controller_namespace,
                     servable_object=_callable)
 
                 self.replica = RayServeReplica(

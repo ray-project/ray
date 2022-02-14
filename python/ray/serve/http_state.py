@@ -102,6 +102,7 @@ class HTTPState:
                 proxy = HTTPProxyActor.options(
                     num_cpus=self._config.num_cpus,
                     name=name,
+                    namespace=self._controller_namespace,
                     lifetime="detached" if self._detached else None,
                     max_concurrency=ASYNC_CONCURRENCY,
                     max_restarts=-1,

@@ -71,6 +71,7 @@ class ReplicaContext:
     deployment: str
     replica_tag: ReplicaTag
     _internal_controller_name: str
+    _internal_controller_namespace: str
     servable_object: Callable
 
 
@@ -78,11 +79,13 @@ def _set_internal_replica_context(
         deployment: str,
         replica_tag: ReplicaTag,
         controller_name: str,
+        controller_namespace: str,
         servable_object: Callable,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        deployment, replica_tag, controller_name, servable_object)
+        deployment, replica_tag, controller_name, controller_namespace,
+        servable_object)
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -542,7 +545,7 @@ def _connect() -> Client:
         controller_namespace = _get_controller_namespace(detached=True)
     else:
         controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
-        controller_namespace = _get_controller_namespace(detached=False)
+        controller_namespace = _INTERNAL_REPLICA_CONTEXT._internal_controller_namespace
 
     # Try to get serve controller if it exists
     try:
