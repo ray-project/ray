@@ -396,6 +396,8 @@ class GlueTest(unittest.TestCase):
             self._run(result)
         self.assertEqual(result.return_code, ExitCode.CLUSTER_RESOURCE_ERROR.value)
 
+        self.cluster_manager_return["cluster_id"] = "valid"
+
         # Fail for random cluster startup reason
         self.cluster_manager_return["start_cluster"] = _fail_on_call(
             ClusterStartupError
@@ -404,6 +406,9 @@ class GlueTest(unittest.TestCase):
             self._run(result)
         self.assertEqual(result.return_code, ExitCode.CLUSTER_STARTUP_ERROR.value)
 
+        # Ensure cluster was terminated
+        self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
+
         # Fail for cluster startup timeout
         self.cluster_manager_return["start_cluster"] = _fail_on_call(
             ClusterStartupTimeout
@@ -411,6 +416,9 @@ class GlueTest(unittest.TestCase):
         with self.assertRaises(ClusterStartupTimeout):
             self._run(result)
         self.assertEqual(result.return_code, ExitCode.CLUSTER_STARTUP_TIMEOUT.value)
+
+        # Ensure cluster was terminated
+        self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
 
     def testPrepareRemoteEnvFails(self):
         result = Result()
@@ -424,6 +432,9 @@ class GlueTest(unittest.TestCase):
             self._run(result)
         self.assertEqual(result.return_code, ExitCode.REMOTE_ENV_SETUP_ERROR.value)
 
+        # Ensure cluster was terminated
+        self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
+
     def testWaitForNodesFails(self):
         result = Result()
 
@@ -436,6 +447,9 @@ class GlueTest(unittest.TestCase):
         with self.assertRaises(ClusterNodesWaitTimeout):
             self._run(result)
         self.assertEqual(result.return_code, ExitCode.CLUSTER_WAIT_TIMEOUT.value)
+
+        # Ensure cluster was terminated
+        self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
 
     def testPrepareCommandFails(self):
         result = Result()
@@ -458,6 +472,9 @@ class GlueTest(unittest.TestCase):
         # (this may change in the future!)
         self.assertEqual(result.return_code, ExitCode.CLUSTER_WAIT_TIMEOUT.value)
 
+        # Ensure cluster was terminated
+        self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
+
     def testTestCommandFails(self):
         result = Result()
 
@@ -475,6 +492,9 @@ class GlueTest(unittest.TestCase):
             self._run(result)
         self.assertEqual(result.return_code, ExitCode.COMMAND_TIMEOUT.value)
 
+        # Ensure cluster was terminated
+        self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
+
     def testFetchResultFails(self):
         result = Result()
 
@@ -486,6 +506,9 @@ class GlueTest(unittest.TestCase):
             self.assertTrue(any("Could not fetch results" in o for o in cm.output))
         self.assertEqual(result.return_code, ExitCode.SUCCESS.value)
         self.assertEqual(result.status, "finished")
+
+        # Ensure cluster was terminated
+        self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
 
     def testLastLogsFails(self):
         result = Result()
@@ -501,6 +524,9 @@ class GlueTest(unittest.TestCase):
         self.assertEqual(result.status, "finished")
         self.assertIn("No logs", result.last_logs)
 
+        # Ensure cluster was terminated
+        self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
+
     def testAlertFails(self):
         result = Result()
 
@@ -513,6 +539,9 @@ class GlueTest(unittest.TestCase):
 
         self.assertEqual(result.return_code, ExitCode.COMMAND_ALERT.value)
         self.assertEqual(result.status, "error")
+
+        # Ensure cluster was terminated
+        self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
 
     def testReportFails(self):
         result = Result()
@@ -529,3 +558,6 @@ class GlueTest(unittest.TestCase):
 
         self.assertEqual(result.return_code, ExitCode.SUCCESS.value)
         self.assertEqual(result.status, "finished")
+
+        # Ensure cluster was terminated
+        self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
