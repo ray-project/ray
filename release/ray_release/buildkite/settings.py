@@ -57,6 +57,7 @@ def get_buildkite_prompt_value(key: str) -> Optional[str]:
     except Exception as e:
         logger.warning(f"Could not fetch metadata for {key}: {e}")
         return None
+    logger.info(f"Got buildkite prompt value for {key}: {value}")
     return value
 
 
