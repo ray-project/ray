@@ -66,13 +66,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ReferenceCounter(const rpc::WorkerAddress &rpc_address,
                    pubsub::PublisherInterface *object_info_publisher,
                    pubsub::SubscriberInterface *object_info_subscriber,
+                   const std::function<bool(const NodeID &node_id)> &check_node_alive,
                    bool lineage_pinning_enabled = false,
                    rpc::ClientFactoryFn client_factory = nullptr)
       : rpc_address_(rpc_address),
         lineage_pinning_enabled_(lineage_pinning_enabled),
         borrower_pool_(client_factory),
         object_info_publisher_(object_info_publisher),
-        object_info_subscriber_(object_info_subscriber) {}
+        object_info_subscriber_(object_info_subscriber),
+        check_node_alive_(check_node_alive) {}
 
   ~ReferenceCounter() {}
 
@@ -346,14 +348,18 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                      NodeID *pinned_at, bool *spilled) const
       LOCKS_EXCLUDED(mutex_);
 
-  /// Get and reset the objects that were pinned on the given node.  This
-  /// method should be called upon a node failure, to determine which plasma
-  /// objects were lost. If a deletion callback was set for a lost object, it
-  /// will be invoked and reset.
+  /// Get and reset the objects that were pinned or spilled on the given node.
+  /// This method should be called upon a node failure, to trigger
+  /// reconstruction for any lost objects that are still in scope.
+  ///
+  /// If a deletion callback was set for a lost object, it will be invoked and
+  /// reset.
   ///
   /// \param[in] node_id The node whose object store has been removed.
   /// \return The set of objects that were pinned on the given node.
-  std::vector<ObjectID> ResetObjectsOnRemovedNode(const NodeID &raylet_id);
+  void ResetObjectsOnRemovedNode(const NodeID &raylet_id);
+
+  std::vector<ObjectID> FlushObjectsToRecover();
 
   /// Whether we have a reference to a particular ObjectID.
   ///
@@ -427,10 +433,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] spilled_url The URL to which the object has been spilled.
   /// \param[in] spilled_node_id The ID of the node on which the object was spilled.
   /// \param[in] size The size of the object.
-  /// \param[in] release Whether to release the reference.
-  /// \return True if the reference exists, false otherwise.
+  /// \return True if the reference exists and is in scope, false otherwise.
   bool HandleObjectSpilled(const ObjectID &object_id, const std::string spilled_url,
-                           const NodeID &spilled_node_id, int64_t size, bool release);
+                           const NodeID &spilled_node_id, int64_t size);
 
   /// Get locality data for object. This is used by the leasing policy to implement
   /// locality-aware leasing.
@@ -879,6 +884,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// object's place in the queue.
   absl::flat_hash_map<ObjectID, std::list<ObjectID>::iterator>
       reconstructable_owned_objects_index_ GUARDED_BY(mutex_);
+
+  /// Called to check whether a raylet is still alive. This is used when adding
+  /// the primary or spilled location of an object. If the node is dead, then
+  /// the object will be added to the buffer objects to recover.
+  const std::function<bool(const NodeID &node_id)> check_node_alive_;
+
+  /// A buffer of the objects whose primary or spilled locations have been lost
+  /// due to node failure. These objects are still in scope and need to be
+  /// recovered.
+  std::vector<ObjectID> objects_to_recover_ GUARDED_BY(mutex_);
 };
 
 }  // namespace core

@@ -1,12 +1,8 @@
 import aiohttp.web
 from aiohttp.web import Request, Response
-import dataclasses
-from functools import wraps
 import logging
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 import json
-import traceback
-from dataclasses import dataclass
 
 import ray
 import ray.dashboard.utils as dashboard_utils
@@ -50,7 +46,9 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
                 text=f"Deployment {name} does not exist.",
                 status=aiohttp.web.HTTPNotFound.status_code,
             )
-        return Response(text=json.dumps(str(deployment)), content_type="application/json")
+        return Response(
+            text=json.dumps(str(deployment)), content_type="application/json"
+        )
 
     @routes.delete("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
