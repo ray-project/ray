@@ -184,6 +184,8 @@ Stage N map_batches: N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 
+Stage N repeat: Z/N blocks executed in T
+
 Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -200,7 +202,11 @@ Dataset iterator time breakdown:
 
 == Pipeline Window N ==
 Stage Z read: [execution cached]
+
 Stage N map_batches: [execution cached]
+
+Stage N repeat: Z/N blocks executed in T
+
 Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -217,7 +223,11 @@ Dataset iterator time breakdown:
 
 == Pipeline Window N ==
 Stage Z read: [execution cached]
+
 Stage N map_batches: [execution cached]
+
+Stage N repeat: Z/N blocks executed in T
+
 Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -263,6 +273,8 @@ Stage Z read: N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 
+Stage N repeat: Z/N blocks executed in T
+
 Dataset iterator time breakdown:
 * In ray.wait(): T
 * In ray.get(): T
@@ -271,12 +283,9 @@ Dataset iterator time breakdown:
 * Total time: T
 
 == Pipeline Window N ==
-Stage Z read: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
+Stage Z read: [execution cached]
+
+Stage N repeat: Z/N blocks executed in T
 
 Dataset iterator time breakdown:
 * In ray.wait(): T
@@ -297,4 +306,4 @@ Dataset iterator time breakdown:
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vv", __file__]))

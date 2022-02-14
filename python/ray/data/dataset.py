@@ -181,7 +181,12 @@ class Dataset(Generic[T]):
 
         compute = get_compute(compute)
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
-        return Dataset(blocks, self._epoch, stats_builder.build(blocks))
+        return Dataset(
+            blocks,
+            self._epoch,
+            stats_builder.build(blocks),
+            name=f"{self._get_name()}|map",
+        )
 
     def map_batches(
         self,
@@ -291,7 +296,12 @@ class Dataset(Generic[T]):
 
         compute = get_compute(compute)
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
-        return Dataset(blocks, self._epoch, stats_builder.build(blocks))
+        return Dataset(
+            blocks,
+            self._epoch,
+            stats_builder.build(blocks),
+            name=f"{self._get_name()}|map_batches",
+        )
 
     def add_column(
         self,
@@ -368,7 +378,7 @@ class Dataset(Generic[T]):
 
         fn = cache_wrapper(fn)
         context = DatasetContext.get_current()
-        stats_builder = self._stats.child_builder("map")
+        stats_builder = self._stats.child_builder("flat_map")
 
         def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
@@ -385,7 +395,12 @@ class Dataset(Generic[T]):
 
         compute = get_compute(compute)
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
-        return Dataset(blocks, self._epoch, stats_builder.build(blocks))
+        return Dataset(
+            blocks,
+            self._epoch,
+            stats_builder.build(blocks),
+            name=f"{self._get_name()}|flat_map",
+        )
 
     def filter(
         self,
@@ -428,7 +443,12 @@ class Dataset(Generic[T]):
 
         compute = get_compute(compute)
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
-        return Dataset(blocks, self._epoch, stats_builder.build(blocks))
+        return Dataset(
+            blocks,
+            self._epoch,
+            stats_builder.build(blocks),
+            name=f"{self._get_name()}|filter",
+        )
 
     def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset[T]":
         """Repartition the dataset into exactly this number of blocks.
@@ -457,8 +477,15 @@ class Dataset(Generic[T]):
 
         stats = self._stats.child_builder("repartition")
         if shuffle:
-            new_blocks, stage_info = simple_shuffle(self._blocks, num_blocks)
-            return Dataset(new_blocks, self._epoch, stats.build_multistage(stage_info))
+            new_blocks, stage_info = simple_shuffle(
+                self._blocks, num_blocks, dataset_name=self._get_name()
+            )
+            return Dataset(
+                new_blocks,
+                self._epoch,
+                stats.build_multistage(stage_info),
+                name=f"{self._get_name()}|repartition",
+            )
 
         # Compute the (n-1) indices needed for an equal split of the data.
         stage_info = {}
@@ -516,7 +543,12 @@ class Dataset(Generic[T]):
             new_metadata += empty_metadata
 
         blocks = BlockList(new_blocks, new_metadata)
-        return Dataset(blocks, self._epoch, stats.build(blocks))
+        return Dataset(
+            blocks,
+            self._epoch,
+            stats.build(blocks),
+            name=f"{self._get_name()}|repartition",
+        )
 
     def random_shuffle(
         self,
@@ -560,7 +592,7 @@ class Dataset(Generic[T]):
             num_blocks,
             random_shuffle=True,
             random_seed=seed,
-            name=self._get_name(),
+            dataset_name=self._get_name(),
             _spread_resource_prefix=_spread_resource_prefix,
         )
         return Dataset(
@@ -1388,7 +1420,12 @@ class Dataset(Generic[T]):
             _validate_key_fn(self, key)
         stats_builder = self._stats.child_builder("sort")
         blocks, stage_info = sort_impl(self._blocks, key, descending)
-        return Dataset(blocks, self._epoch, stats_builder.build_multistage(stage_info))
+        return Dataset(
+            blocks,
+            self._epoch,
+            stats_builder.build_multistage(stage_info),
+            name=f"{self._get_name()}|sort",
+        )
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
@@ -2811,14 +2848,8 @@ Dict[str, List[str]]]): The names of the columns
     def _get_epoch(self) -> int:
         return self._epoch
 
-    def _set_epoch(self, epoch: int) -> None:
-        self._epoch = epoch
-
     def _get_name(self) -> str:
         return self._name
-
-    def _set_name(self, name: str) -> None:
-        self._name = name
 
 
 def _get_num_rows(block: Block) -> int:

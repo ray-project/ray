@@ -23,7 +23,7 @@ def simple_shuffle(
     random_seed: Optional[int] = None,
     map_ray_remote_args: Optional[Dict[str, Any]] = None,
     reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
-    name: str = "",
+    dataset_name: str = "",
     _spread_resource_prefix: Optional[str] = None,
 ) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
     input_blocks = input_blocks.get_blocks()
@@ -53,7 +53,7 @@ def simple_shuffle(
 
     shuffle_map_out = [
         shuffle_map.options(
-            **{"name": f"[{name}]:shuffle_map_{i}", **map_ray_remote_args},
+            **{"name": f"[{dataset_name}]:shuffle_map_{i}", **map_ray_remote_args},
             num_returns=1 + output_num_blocks,
             resources=next(map_resource_iter),
         ).remote(block, i, output_num_blocks, random_shuffle, random_seed)
@@ -80,7 +80,10 @@ def simple_shuffle(
     reduce_bar = ProgressBar("Shuffle Reduce", position=0, total=output_num_blocks)
     shuffle_reduce_out = [
         shuffle_reduce.options(
-            **{"name": f"[{name}]:shuffle_reduce_{j}", **reduce_ray_remote_args},
+            **{
+                "name": f"[{dataset_name}]:shuffle_reduce_{j}",
+                **reduce_ray_remote_args,
+            },
             num_returns=2,
             resources=next(reduce_resource_iter),
         ).remote(*[shuffle_map_out[i][j] for i in range(input_num_blocks)])
