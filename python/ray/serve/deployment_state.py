@@ -56,7 +56,7 @@ class ReplicaStartupStatus(Enum):
 class ReplicaHealthCheckResponse(Enum):
     NONE = 1
     SUCCEEDED = 2
-    FAILED = 3
+    APP_FAILURE = 3
     ACTOR_CRASHED = 4
 
 
@@ -395,7 +395,7 @@ class ActorReplicaWrapper:
                 response = ReplicaHealthCheckResponse.SUCCEEDED
             except RayActorError:
                 # Health check failed due to actor crashing.
-                logger.info(f"Actor for replica {self._replica_tag} crashed.")
+                # logger.info(f"Actor for replica {self._replica_tag} crashed.")
                 response = ReplicaHealthCheckResponse.ACTOR_CRASHED
             except RayError as e:
                 # Health check failed due to application-level exception.
@@ -413,7 +413,7 @@ class ActorReplicaWrapper:
             # Health check hasn't returned and the timeout isn't up yet.
             response = ReplicaHealthCheckResponse.NONE
 
-        if response != ReplicaHealthCheckResponse.NONE:
+        if response is not ReplicaHealthCheckResponse.NONE:
             self._health_check_ref = None
 
         return response
@@ -452,15 +452,15 @@ class ActorReplicaWrapper:
             3) Kicking off a new health check if needed.
         """
         response: ReplicaHealthCheckResponse = self._check_active_health_check()
-        if response == ReplicaHealthCheckResponse.NONE:
+        if response is ReplicaHealthCheckResponse.NONE:
             # No info; don't update replica health.
             pass
-        elif response == ReplicaHealthCheckResponse.SUCCEEDED:
+        elif response is ReplicaHealthCheckResponse.SUCCEEDED:
             # Health check succeeded. Reset the consecutive failure counter
             # and mark the replica healthy.
             self._consecutive_health_check_failures = 0
             self._healthy = True
-        elif response == ReplicaHealthCheckResponse.APP_FAILURE:
+        elif response is ReplicaHealthCheckResponse.APP_FAILURE:
             # Health check failed. If it has failed more than N times in a row,
             # mark the replica unhealthy.
             self._consecutive_health_check_failures += 1
@@ -474,13 +474,15 @@ class ActorReplicaWrapper:
                     "times in a row, marking it unhealthy."
                 )
                 self._healthy = False
-        elif response == ReplicaHealthCheckResponse.ACTOR_CRASHED:
+        elif response is ReplicaHealthCheckResponse.ACTOR_CRASHED:
             # Actor crashed, mark the replica unhealthy immediately.
             logger.info(
                 f"Actor for replica {self._replica_tag} crashed, marking "
                 "it unhealthy immediately."
             )
             self._healthy = False
+        else:
+            assert False, f"Unknown response type: {response}."
 
         if self._should_start_new_health_check():
             self._last_health_check_time = time.time()
@@ -642,7 +644,7 @@ class DeploymentReplica(VersionedReplica):
         return False
 
     def check_health(self) -> bool:
-        """Check if the replica is still alive.
+        """Check if the replica is healthy.
 
         Returns `True` if the replica is healthy, else `False`.
         """
