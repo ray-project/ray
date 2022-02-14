@@ -433,10 +433,23 @@ def test_runtime_env_log_msg(
         assert "runtime_env" not in sources
 
 
-def test_get_current_runtime_env(shutdown_only):
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25553"],
+    indirect=True,
+)
+@pytest.mark.parametrize("use_client", [False, True])
+def test_get_current_runtime_env(call_ray_start, use_client):
     job_runtime_env = {"env_vars": {"a": "b"}}
-    ray.init(runtime_env=job_runtime_env)
+
+    if not use_client:
+        address = call_ray_start
+        ray.init(address, runtime_env=job_runtime_env)
+    else:
+        ray.init("ray://localhost:25553", runtime_env=job_runtime_env)
+
     current_runtime_env = ray.runtime_env.get_current_runtime_env()
+    assert type(current_runtime_env) is dict
     assert current_runtime_env == job_runtime_env
 
     @ray.remote
