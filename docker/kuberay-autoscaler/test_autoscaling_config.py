@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from typing import Optional
 from unittest.mock import DEFAULT, Mock, patch
@@ -10,45 +9,45 @@ from autoscaling_config import generate_autoscaling_config
 
 
 def _get_basic_ray_cr() -> dict:
-    """Returns the example Ray CR included in the Ray documentation.
-    """
+    """Returns the example Ray CR included in the Ray documentation."""
     cr_path = str(
-        Path(__file__).resolve().parents[2] /
-        "python" / "ray" / "autoscaler" / "kuberay" / "ray-cluster.complete.yaml"
+        Path(__file__).resolve().parents[2]
+        / "python"
+        / "ray"
+        / "autoscaler"
+        / "kuberay"
+        / "ray-cluster.complete.yaml"
     )
-    return yaml.safe_load(
-        open(cr_path).read()
-    )
+    return yaml.safe_load(open(cr_path).read())
 
 
 def _get_basic_autoscaling_config() -> dict:
-    """The expected autoscaling derived from the example Ray CR.
-    """
+    """The expected autoscaling derived from the example Ray CR."""
     return {
         "cluster_name": "test-cluster-name",
         "provider": {
-          "disable_launch_config_check": True,
-          "disable_node_updaters": True,
-          "namespace": "test-namespace",
-          "type": "kuberay",
+            "disable_launch_config_check": True,
+            "disable_node_updaters": True,
+            "namespace": "test-namespace",
+            "type": "kuberay",
         },
         "available_node_types": {
-          "head-group": {
-            "max_workers": 0,
-            "min_workers": 0,
-            "node_config": {},
-            "resources": {
-              "CPU": 1,
-              "Custom1": 1,
-              "Custom2": 5,
-            }
-          },
-          "small-group": {
-            "max_workers": 300,
-            "min_workers": 1,
-            "node_config": {},
-            "resources": {"CPU": 1}
-          }
+            "head-group": {
+                "max_workers": 0,
+                "min_workers": 0,
+                "node_config": {},
+                "resources": {
+                    "CPU": 1,
+                    "Custom1": 1,
+                    "Custom2": 5,
+                },
+            },
+            "small-group": {
+                "max_workers": 300,
+                "min_workers": 1,
+                "node_config": {},
+                "resources": {"CPU": 1},
+            },
         },
         "auth": {},
         "cluster_synced_files": [],
@@ -76,20 +75,22 @@ def _get_ray_cr_no_cpu_error() -> dict:
     cr = _get_basic_ray_cr()
     # Verify that the num-cpus rayStartParam is not present for the worker type.
     assert "num-cpus" not in cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]
-    del cr["spec"]["workerGroupSpecs"][0]["template"]["spec"][
-        "containers"][0]["resources"]["limits"]["cpu"]
+    del cr["spec"]["workerGroupSpecs"][0]["template"]["spec"]["containers"][0][
+        "resources"
+    ]["limits"]["cpu"]
     return cr
 
 
 def _get_no_cpu_error() -> str:
-    return ("Autoscaler failed to detect `CPU` resources for group small-group."
-            "\nSet the `--num-cpus` rayStartParam and/or "
-            "the CPU resource limit for the Ray container.")
+    return (
+        "Autoscaler failed to detect `CPU` resources for group small-group."
+        "\nSet the `--num-cpus` rayStartParam and/or "
+        "the CPU resource limit for the Ray container."
+    )
 
 
 def _get_ray_cr_memory_and_gpu() -> dict:
-    """CR with memory and gpu rayStartParams.
-    """
+    """CR with memory and gpu rayStartParams."""
     cr = _get_basic_ray_cr()
     cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["memory"] = "300000000"
     cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["num_gpus"] = "1"
@@ -97,8 +98,7 @@ def _get_ray_cr_memory_and_gpu() -> dict:
 
 
 def _get_autoscaling_config_memory_and_gpu() -> dict:
-    """Autoscaling config with memory and gpu annotations.
-    """
+    """Autoscaling config with memory and gpu annotations."""
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["small-group"]["resources"]["memory"] = 300000000
     config["available_node_types"]["small-group"]["resources"]["GPU"] = 1
@@ -110,14 +110,14 @@ def _get_ray_cr_missing_gpu_arg() -> dict:
     Should result in a warning that Ray doesn't see the GPUs.
     """
     cr = _get_basic_ray_cr()
-    cr["spec"]["workerGroupSpecs"][0]["template"]["spec"]["containers"][0][
-        "resources"]["limits"]["nvidia.com/gpu"] = 1
+    cr["spec"]["workerGroupSpecs"][0]["template"]["spec"]["containers"][0]["resources"][
+        "limits"
+    ]["nvidia.com/gpu"] = 1
     return cr
 
 
 def _get_gpu_complaint() -> str:
-    """The logger warning generated when processing the above CR.
-    """
+    """The logger warning generated when processing the above CR."""
     return (
         "Detected GPUs in container resources for group small-group."
         "To ensure Ray and the autoscaler are aware of the GPUs,"
@@ -125,21 +125,60 @@ def _get_gpu_complaint() -> str:
     )
 
 
-PARAM_ARGS="ray_cr_in,expected_config_out,expected_error,expected_error_message,expected_log_warning"
-TEST_DATA=[
-    pytest.param(_get_basic_ray_cr(), _get_basic_autoscaling_config(), None, None, None, id="basic"),
-    pytest.param(_get_ray_cr_no_cpu_error(), None, ValueError, _get_no_cpu_error(), None, id="no-cpu-error"),
-    pytest.param(_get_ray_cr_memory_and_gpu(), _get_autoscaling_config_memory_and_gpu(), None, None, None, id="memory-and-gpu"),
-    pytest.param(_get_ray_cr_missing_gpu_arg(), _get_basic_autoscaling_config(), None, None, _get_gpu_complaint(), id="gpu-complaint"),
+PARAM_ARGS = ",".join(
+    [
+        "ray_cr_in",
+        "expected_config_out",
+        "expected_error",
+        "expected_error_message",
+        "expected_log_warning",
+    ]
+)
+
+TEST_DATA = [
+    pytest.param(
+        _get_basic_ray_cr(),
+        _get_basic_autoscaling_config(),
+        None,
+        None,
+        None,
+        id="basic",
+    ),
+    pytest.param(
+        _get_ray_cr_no_cpu_error(),
+        None,
+        ValueError,
+        _get_no_cpu_error(),
+        None,
+        id="no-cpu-error",
+    ),
+    pytest.param(
+        _get_ray_cr_memory_and_gpu(),
+        _get_autoscaling_config_memory_and_gpu(),
+        None,
+        None,
+        None,
+        id="memory-and-gpu",
+    ),
+    pytest.param(
+        _get_ray_cr_missing_gpu_arg(),
+        _get_basic_autoscaling_config(),
+        None,
+        None,
+        _get_gpu_complaint(),
+        id="gpu-complaint",
+    ),
 ]
 
 
 @pytest.mark.parametrize(PARAM_ARGS, TEST_DATA)
-def test_autoscaling_config(ray_cr_in: dict,
-                            expected_config_out: Optional[dict],
-                            expected_error: Optional[Exception],
-                            expected_error_message: Optional[str],
-                            expected_log_warning: Optional[str]):
+def test_autoscaling_config(
+    ray_cr_in: dict,
+    expected_config_out: Optional[dict],
+    expected_error: Optional[Exception],
+    expected_error_message: Optional[str],
+    expected_log_warning: Optional[str],
+):
     with patch.multiple(
         "autoscaling_config",
         logger=DEFAULT,
@@ -151,7 +190,7 @@ def test_autoscaling_config(ray_cr_in: dict,
             )
         ),
         _RAY_CLUSTER_NAME="test-cluster-name",
-        _RAY_CLUSTER_NAMESPACE="test-namespace"
+        _RAY_CLUSTER_NAMESPACE="test-namespace",
     ) as mock_values:
         if expected_error:
             with pytest.raises(expected_error, match=expected_error_message):

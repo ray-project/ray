@@ -180,9 +180,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             {"ray.io/cluster": self.cluster_name, "ray.io/group": group_name}
         )
         while True:
-            pods = self.get(
-                "pods?labelSelector=" + requests.utils.quote(label_filters)
-            )
+            pods = self.get("pods?labelSelector=" + requests.utils.quote(label_filters))
             logger.info(
                 "Currently have {} replicas of group {}, requested {}.".format(
                     len(pods["items"]), group_name, replicas
@@ -259,9 +257,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             # optimizing this code to batch the requests to the API server.
             groups = {}
             label_filters = to_label_selector({"ray.io/cluster": self.cluster_name})
-            pods = self.get(
-                "pods?labelSelector=" + requests.utils.quote(label_filters)
-            )
+            pods = self.get("pods?labelSelector=" + requests.utils.quote(label_filters))
             for pod in pods["items"]:
                 if pod["metadata"]["name"] in node_ids:
                     groups.setdefault(
