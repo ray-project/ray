@@ -28,7 +28,8 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
     help="File containing test configurations",
 )
 def main(test_collection_file: Optional[str] = None):
-    add_handlers(logger)
+    if "BUILDKITE" in os.environ:
+        add_handlers(logger)
 
     settings = get_pipeline_settings()
 
