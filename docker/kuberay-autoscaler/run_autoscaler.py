@@ -11,8 +11,6 @@ import yaml
 
 from autoscaling_config import generate_autoscaling_config
 
-AUTOSCALING_CONFIG_PATH = "/autoscaler/ray_bootstrap_config.yaml"
-
 
 def setup_logging() -> None:
     """Log to autoscaler log file
