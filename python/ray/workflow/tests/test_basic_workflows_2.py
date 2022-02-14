@@ -339,6 +339,7 @@ def test_run_off_main_thread(workflow_start_regular):
         return [i for i in range(num)]
 
     succ = False
+
     # Start new thread here ⚠️
     def run():
         global succ
