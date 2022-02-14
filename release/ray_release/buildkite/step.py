@@ -52,9 +52,11 @@ def get_step(
 
     step["command"] = cmd
     step["env"].update(env)
-    step["label"] = (
-        f"{test['name']} "
-        f"({get_test_env_var('RAY_COMMIT') or get_test_env_var('RAY_BRANCH')}"
-    )
+
+    commit = get_test_env_var("RAY_COMMIT")
+    branch = get_test_env_var("RAY_BRANCH")
+    label = commit[:7] if commit else branch
+
+    step["label"] = f"{test['name']} ({label}"
 
     return step
