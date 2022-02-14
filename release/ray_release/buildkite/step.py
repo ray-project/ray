@@ -1,8 +1,7 @@
 import copy
 from typing import Optional, Dict
 
-from ray_release.config import Test
-
+from ray_release.config import Test, get_test_env_var
 
 DEFAULT_STEP_TEMPLATE = {
     "env": {
@@ -53,5 +52,9 @@ def get_step(
 
     step["command"] = cmd
     step["env"].update(env)
+    step["label"] = (
+        f"{test['name']} "
+        f"({get_test_env_var('RAY_BRANCH')}:{get_test_env_var('RAY_COMMIT')}"
+    )
 
     return step
