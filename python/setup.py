@@ -280,7 +280,6 @@ if setup_spec.type == SetupType.RAY:
         "aiosignal",
         "frozenlist",
         "virtualenv",  # For pip runtime env.
-        "virtualenv-clone",  # For clone virtualenv from an existing virtualenv.
     ]
 
 

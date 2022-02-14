@@ -102,12 +102,14 @@ def test_run_in_virtualenv(cloned_virtualenv):
     # make sure cloned_virtualenv.run will run in virtualenv.
     cloned_virtualenv.run(
         f"{python_exe_path} -c 'from ray._private.runtime_env.pip import PipProcessor;"
-        "assert PipProcessor._is_in_virtualenv()'"
+        "assert PipProcessor._is_in_virtualenv()'",
+        capture=True,
     )
 
     # Run current test case in virtualenv again.
-    # If the command exit code is not zero, this case will be failed.
-    cloned_virtualenv.run(f"IN_VIRTUALENV=1 python -m pytest {__file__}")
+    # If the command exit code is not zero, this will raise an `Exception`
+    # which construct by this pytest-cmd's stderr
+    cloned_virtualenv.run(f"IN_VIRTUALENV=1 python -m pytest {__file__}", capture=True)
 
 
 if __name__ == "__main__":
