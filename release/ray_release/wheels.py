@@ -33,6 +33,9 @@ def get_ray_version(repo_url: str, commit: str) -> str:
     assert "https://github.com/" in repo_url
     _, fork = repo_url.split("https://github.com/", maxsplit=2)
 
+    if fork.endswith(".git"):
+        fork = fork[:-4]
+
     init_url = INIT_URL_TPL.format(fork=fork, commit=commit)
 
     try:
