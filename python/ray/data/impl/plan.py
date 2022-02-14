@@ -1,4 +1,5 @@
 from typing import Callable, Tuple, Optional, Union, Iterable, TYPE_CHECKING
+from collections import OrderedDict
 import uuid
 
 if TYPE_CHECKING:
@@ -110,7 +111,7 @@ class ExecutionPlan:
                 blocks.append(ray.put([read_task]))
                 metadata.append(self._in_blocks._metadata[i])
             self._in_blocks = BlockList(blocks, metadata)
-            self._in_stats = DatasetStats(stages={}, parent=None)
+            self._in_stats = DatasetStats(stages=OrderedDict(), parent=None)
 
             def block_fn(block: Block) -> Iterable[Block]:
                 [read_task] = block
