@@ -6,6 +6,11 @@ import sys
 
 import yaml
 
+# If you update or reorganize the periodic tests, please ensure the
+# relevant portions of the Ray release instructions (go/release-ray)
+# (in particular, running periodic tests and collecting release logs)
+# are up to date.  If you need access, please contact @zhe-thoughts.
+
 # Env variables:
 
 # RAY_REPO          Repo to use for finding the wheel

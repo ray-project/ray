@@ -961,7 +961,9 @@ class RolloutWorker(ParallelIteratorWorker):
 
     @DeveloperAPI
     def compute_gradients(
-        self, samples: SampleBatchType
+        self,
+        samples: SampleBatchType,
+        single_agent: bool = None,
     ) -> Tuple[ModelGradients, dict]:
         """Returns a gradient computed w.r.t the specified samples.
 
@@ -988,32 +990,41 @@ class RolloutWorker(ParallelIteratorWorker):
         """
         if log_once("compute_gradients"):
             logger.info("Compute gradients on:\n\n{}\n".format(summarize(samples)))
-        # MultiAgentBatch -> Calculate gradients for all policies.
-        if isinstance(samples, MultiAgentBatch):
-            grad_out, info_out = {}, {}
-            if self.policy_config.get("framework") == "tf":
-                for pid, batch in samples.policy_batches.items():
-                    if not self.is_policy_to_train(pid, samples):
-                        continue
-                    policy = self.policy_map[pid]
-                    builder = TFRunBuilder(policy.get_session(), "compute_gradients")
-                    grad_out[pid], info_out[pid] = policy._build_compute_gradients(
-                        builder, batch
-                    )
-                grad_out = {k: builder.get(v) for k, v in grad_out.items()}
-                info_out = {k: builder.get(v) for k, v in info_out.items()}
-            else:
-                for pid, batch in samples.policy_batches.items():
-                    if not self.is_policy_to_train(pid, samples):
-                        continue
-                    grad_out[pid], info_out[pid] = self.policy_map[
-                        pid
-                    ].compute_gradients(batch)
-        # SampleBatch -> Calculate gradients for the default policy.
-        else:
+
+        # Backward compatiblity for A2C: Single-agent only (ComputeGradients execution
+        # op must not return multi-agent dict b/c of A2C's `.batch()` in the execution
+        # plan; this would "batch" over the "default_policy" keys instead of the data).
+        if single_agent is True:
+            # SampleBatch -> Calculate gradients for the default policy.
             grad_out, info_out = self.policy_map[DEFAULT_POLICY_ID].compute_gradients(
                 samples
             )
+            info_out["batch_count"] = samples.count
+            return grad_out, info_out
+
+        # Treat everything as is multi-agent.
+        samples = samples.as_multi_agent()
+
+        # Calculate gradients for all policies.
+        grad_out, info_out = {}, {}
+        if self.policy_config.get("framework") == "tf":
+            for pid, batch in samples.policy_batches.items():
+                if not self.is_policy_to_train(pid, samples):
+                    continue
+                policy = self.policy_map[pid]
+                builder = TFRunBuilder(policy.get_session(), "compute_gradients")
+                grad_out[pid], info_out[pid] = policy._build_compute_gradients(
+                    builder, batch
+                )
+            grad_out = {k: builder.get(v) for k, v in grad_out.items()}
+            info_out = {k: builder.get(v) for k, v in info_out.items()}
+        else:
+            for pid, batch in samples.policy_batches.items():
+                if not self.is_policy_to_train(pid, samples):
+                    continue
+                grad_out[pid], info_out[pid] = self.policy_map[pid].compute_gradients(
+                    batch
+                )
 
         info_out["batch_count"] = samples.count
         if log_once("grad_out"):

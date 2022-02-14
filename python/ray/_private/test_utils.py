@@ -1177,8 +1177,10 @@ def get_and_run_node_killer(
 def chdir(d: str):
     old_dir = os.getcwd()
     os.chdir(d)
-    yield
-    os.chdir(old_dir)
+    try:
+        yield
+    finally:
+        os.chdir(old_dir)
 
 
 def test_get_directory_size_bytes():
