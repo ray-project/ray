@@ -98,57 +98,11 @@ def _validate_consistent_output(
 #     pass
 
 
-# def test_multi_classes(serve_instance):
-#     """
-#     Test a multiple class methods can all be used as entrypoints in a dag.
-#     """
-
-#     @ray.remote
-#     class Model1:
-#         def __init__(self, weight: int):
-#             self.weight = weight
-
-#         def forward(self, input: int):
-#             return self.weight * input
-
-#     @ray.remote
-#     class Model2:
-#         def __init__(self, weight: int):
-#             self.weight = weight
-
-#         def forward(self, input: int):
-#             return self.weight + input
-
-#     @ray.remote
-#     class Combine:
-#         def __init__(self, m1: "RayHandleLike", m2: "RayHandleLike"):
-#             self.m1 = m1
-#             self.m2 = m2
-
-#         def __call__(self, req):
-#             r1_ref = self.m1.forward.remote(req)
-#             r2_ref = self.m2.forward.remote(req)
-#             return sum(ray.get([r1_ref, r2_ref]))
-
-#     m1 = Model1._bind(2)
-#     m2 = Model2._bind(3)
-#     combine = Combine._bind(m1, m2)
-#     dag = combine.__call__._bind(InputNode())
-
-#     print(dag)
-#     deployments = generate_deployments_from_ray_dag(dag)
-#     assert len(deployments) == 3
-#     for deployment in deployments:
-#         deployment.deploy()
-
-#     _validate_consistent_output(deployments[2], dag, "Combine", input=1, output=6)
-
-
-def test_multiple_class_method_entrypoints_func_output(serve_instance):
-    """This test is doing the same computation as "test_multi_classes" above,
-    but DAG is built in different order where input directly fed to models,
-    and we bind their outputs to a simple combine function.
+def test_multi_classes(serve_instance):
     """
+    Test a multiple class methods can all be used as entrypoints in a dag.
+    """
+
     @ray.remote
     class Model1:
         def __init__(self, weight: int):
@@ -166,25 +120,71 @@ def test_multiple_class_method_entrypoints_func_output(serve_instance):
             return self.weight + input
 
     @ray.remote
-    def combine(m1_output, m2_output):
-        return m1_output + m2_output
+    class Combine:
+        def __init__(self, m1: "RayHandleLike", m2: "RayHandleLike"):
+            self.m1 = m1
+            self.m2 = m2
+
+        def __call__(self, req):
+            r1_ref = self.m1.forward.remote(req)
+            r2_ref = self.m2.forward.remote(req)
+            return sum(ray.get([r1_ref, r2_ref]))
 
     m1 = Model1._bind(2)
     m2 = Model2._bind(3)
-
-    m1_output = m1.forward._bind(InputNode())
-    m2_output = m2.forward._bind(InputNode())
-
-    dag = combine._bind(m1_output, m2_output)
+    combine = Combine._bind(m1, m2)
+    dag = combine.__call__._bind(InputNode())
     print(dag)
-    deployments = generate_deployments_from_ray_dag(dag)
-    import ipdb
-    ipdb.set_trace()
+
+    serve_dag_root, deployments = generate_deployments_from_ray_dag(dag)
     assert len(deployments) == 3
     for deployment in deployments:
         deployment.deploy()
 
-    _validate_consistent_output(deployments[0], dag, "dag_runner", input=1, output=6)
+    _validate_consistent_output(deployments[2], dag, "Combine", input=1, output=6)
+
+
+# def test_multiple_class_method_entrypoints_func_output(serve_instance):
+#     """This test is doing the same computation as "test_multi_classes" above,
+#     but DAG is built in different order where input directly fed to models,
+#     and we bind their outputs to a simple combine function.
+#     """
+#     @ray.remote
+#     class Model1:
+#         def __init__(self, weight: int):
+#             self.weight = weight
+
+#         def forward(self, input: int):
+#             return self.weight * input
+
+#     @ray.remote
+#     class Model2:
+#         def __init__(self, weight: int):
+#             self.weight = weight
+
+#         def forward(self, input: int):
+#             return self.weight + input
+
+#     @ray.remote
+#     def combine(m1_output, m2_output):
+#         return m1_output + m2_output
+
+#     m1 = Model1._bind(2)
+#     m2 = Model2._bind(3)
+
+#     m1_output = m1.forward._bind(InputNode())
+#     m2_output = m2.forward._bind(InputNode())
+
+#     dag = combine._bind(m1_output, m2_output)
+#     print(dag)
+#     deployments = generate_deployments_from_ray_dag(dag)
+#     # import ipdb
+#     # ipdb.set_trace()
+#     assert len(deployments) == 3
+#     for deployment in deployments:
+#         deployment.deploy()
+
+#     _validate_consistent_output(deployments[0], dag, "dag_runner", input=1, output=6)
 
 
 def test_simple_function(serve_instance):

@@ -64,13 +64,6 @@ class DeploymentNode(DAGNode):
             *self._bound_args, **self._bound_kwargs
         )
 
-    # def __getattr__(self, method_name: str):
-    #     # Raise an error if the method is invalid.
-    #     getattr(self._body, method_name)
-    #     return DeploymentMethodNode(
-    #         self._body, self._deployment_name, method_name
-    #     )
-
 
 class DeploymentMethodNode(DAGNode):
     """Represents a deployment method invocation in a Ray function DAG."""
@@ -133,9 +126,8 @@ def generate_deployments_from_ray_dag(ray_dag_root: DAGNode):
     """
 
     deployments = []
-    ray_dag_node = ray_dag_root
     # TODO: (jiaodong) make DAG manipulation methods not private
-    # transformed_dag_root = ray_dag_root._apply_recursive(
+    # dag_root_copy = ray_dag_root._apply_recursive(
     #     lambda node: node._copy(
     #         node.get_args(),
     #         node.get_kwargs(),
@@ -163,11 +155,19 @@ def generate_deployments_from_ray_dag(ray_dag_root: DAGNode):
             if ray_actor_options.get("max_pending_calls") == -1:
                 del ray_actor_options["max_pending_calls"]
 
+            args = dag_node.get_args()
+            init_args = []
+            for arg in args:
+                if isinstance(arg, DeploymentNode):
+                    init_args.append(arg._deployment_handle)
+                else:
+                    init_args.append(arg)
+            # Deployment class cannot bind with DeploymentNode
             new_deployment = Deployment(
-                dag_node._body,  #
+                dag_node._body,
                 deployment_name,
                 DeploymentConfig(),
-                init_args=dag_node.get_args(),
+                init_args=tuple(init_args), # replace DeploymentNode with handle
                 init_kwargs=dag_node.get_kwargs(),
                 ray_actor_options=ray_actor_options,
                 _internal=True,
@@ -202,21 +202,8 @@ def generate_deployments_from_ray_dag(ray_dag_root: DAGNode):
 
             return dag_node
 
-    new_dag_root = ray_dag_node._apply_recursive(
+    serve_dag_root = ray_dag_root._apply_recursive(
         lambda node: convert_to_deployments(node)
     )
 
-    return ray_dag_node, new_dag_root, deployments
-
-    # 1) ray .options() and serve.deployment options translation
-    # 2) We need python dag builder to reconstruct states in remote env
-    # get Deployment from dag_builder_fn + index
-    # DAGRunner wrapper
-    # 3) Generate the entrypoint deployment as "driver"
-    # run dag runner once, then just execute the transformed DAG
-    # 4) Generate YAML
-    # 5) FastAPI and HTTP stories
-    # one possibility to use wrapper adaptor
-    # 6) ClassNode, ClassMethodNode, we want to invoke method only but have no
-    #       actual instance of ClassNode yet, currently it's eager and we want a
-    #       placeholder for this.
+    return serve_dag_root, deployments
