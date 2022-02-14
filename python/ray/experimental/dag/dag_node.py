@@ -245,6 +245,8 @@ class DAGNode:
             body_line = f"{self._method_name}()"
         elif isinstance(self, ray_dag.InputNode):
             body_line = "__InputNode__"
+        else:
+            body_line = str(self._body)
 
         args_line = get_args_lines(self._bound_args)
         kwargs_line = get_kwargs_lines(self._bound_kwargs)
@@ -270,4 +272,4 @@ class DAGNode:
         Use ``.to_json()`` and ``.from_json()`` to convert DAGNodes to a
         serializable form.
         """
-        raise ValueError("DAGNode cannot be serialized.")
+        raise ValueError(f"DAGNode cannot be serialized. DAGNode: {str(self)}")

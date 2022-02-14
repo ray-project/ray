@@ -124,21 +124,7 @@ class ClassMethodNode(DAGNode):
             method_options,
             other_args_to_resolve=other_args_to_resolve,
         )
-        # TODO: (jiaodong) revisit constraints on dag INPUT before moving out
-        # of experimental folder
-        has_input_node = self._contain_input_node()
-        if has_input_node:
-            if (
-                len(self.get_args()) != 1
-                or not isinstance(self.get_args()[0], InputNode)
-                or self.get_kwargs() != {}
-            ):
-                raise ValueError(
-                    "InputNode marks the entrypoint of user request to the "
-                    "DAG, please ensure InputNode is the only input to a "
-                    "ClassMethodNode, and NOT used in conjunction with, or "
-                    "nested within other args or kwargs."
-                )
+
 
     def _copy_impl(
         self,
