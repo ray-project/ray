@@ -123,7 +123,7 @@ class PyModulesManager:
     def get_uris(self, runtime_env: dict) -> Optional[List[str]]:
         return runtime_env.py_modules()
 
-    def create(
+    async def create(
         self,
         uri: str,
         runtime_env: RuntimeEnv,
