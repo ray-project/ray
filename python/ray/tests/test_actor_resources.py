@@ -654,23 +654,19 @@ def test_cpu_instruction(shutdown_only):
             return res in cpu_info[ray_constants.CPU_INSTRUCTION_SETS_FLAGS]
 
     driver_cpu_info = get_cpu_info()
-    required_cpu_instruction_str = os.getenv(
-        ray_constants.CPU_INSTRUCTION_SETS_ENV, "")
+    required_cpu_instruction_str = os.getenv(ray_constants.CPU_INSTRUCTION_SETS_ENV, "")
     required_instruction_set = [
         x.strip() for x in required_cpu_instruction_str.split(",")
     ]
     logging.info(driver_cpu_info)
     for required_ins in required_instruction_set:
-        if required_ins in \
-        driver_cpu_info[ray_constants.CPU_INSTRUCTION_SETS_FLAGS]:
+        if required_ins in driver_cpu_info[ray_constants.CPU_INSTRUCTION_SETS_FLAGS]:
             logging.info(f"This actor has {required_ins} instruction set.")
-            actor = \
-                ResourceActor.options(resources={required_ins: 1.0}).remote()
+            actor = ResourceActor.options(resources={required_ins: 1.0}).remote()
             result = actor.check_resource.remote(required_ins)
             assert ray.get(result)
         else:
-            logging.info(
-                f"This actor does't have {required_ins} instruction set.")
+            logging.info(f"This actor does't have {required_ins} instruction set.")
             actor = ResourceActor.remote()
             result = actor.check_resource.remote(required_ins)
             assert not ray.get(result)
