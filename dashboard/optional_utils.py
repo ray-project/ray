@@ -25,7 +25,7 @@ except AttributeError:
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
-from ray.dashboard.optional_deps import (aiohttp, hdrs, PathLike, RouteDef)
+from ray.dashboard.optional_deps import aiohttp, hdrs, PathLike, RouteDef
 from ray.dashboard.utils import to_google_style, CustomEncoder
 
 logger = logging.getLogger(__name__)
@@ -68,12 +68,15 @@ class ClassMethodRouteTable:
         def _wrapper(handler):
             if path in cls._bind_map[method]:
                 bind_info = cls._bind_map[method][path]
-                raise Exception(f"Duplicated route path: {path}, "
-                                f"previous one registered at "
-                                f"{bind_info.filename}:{bind_info.lineno}")
+                raise Exception(
+                    f"Duplicated route path: {path}, "
+                    f"previous one registered at "
+                    f"{bind_info.filename}:{bind_info.lineno}"
+                )
 
-            bind_info = cls._BindInfo(handler.__code__.co_filename,
-                                      handler.__code__.co_firstlineno, None)
+            bind_info = cls._BindInfo(
+                handler.__code__.co_filename, handler.__code__.co_firstlineno, None
+            )
 
             @functools.wraps(handler)
             async def _handler_route(*args) -> aiohttp.web.Response:
@@ -86,8 +89,7 @@ class ClassMethodRouteTable:
                     return await handler(bind_info.instance, req)
                 except Exception:
                     logger.exception("Handle %s %s failed.", method, path)
-                    return rest_response(
-                        success=False, message=traceback.format_exc())
+                    return rest_response(success=False, message=traceback.format_exc())
 
             cls._bind_map[method][path] = bind_info
             _handler_route.__route_method__ = method
@@ -132,18 +134,19 @@ class ClassMethodRouteTable:
     def bind(cls, instance):
         def predicate(o):
             if inspect.ismethod(o):
-                return hasattr(o, "__route_method__") and hasattr(
-                    o, "__route_path__")
+                return hasattr(o, "__route_method__") and hasattr(o, "__route_path__")
             return False
 
         handler_routes = inspect.getmembers(instance, predicate)
         for _, h in handler_routes:
             cls._bind_map[h.__func__.__route_method__][
-                h.__func__.__route_path__].instance = instance
+                h.__func__.__route_path__
+            ].instance = instance
 
 
-def rest_response(success, message, convert_google_style=True,
-                  **kwargs) -> aiohttp.web.Response:
+def rest_response(
+    success, message, convert_google_style=True, **kwargs
+) -> aiohttp.web.Response:
     # In the dev context we allow a dev server running on a
     # different port to consume the API, meaning we need to allow
     # cross-origin access
@@ -155,24 +158,24 @@ def rest_response(success, message, convert_google_style=True,
         {
             "result": success,
             "msg": message,
-            "data": to_google_style(kwargs) if convert_google_style else kwargs
+            "data": to_google_style(kwargs) if convert_google_style else kwargs,
         },
         dumps=functools.partial(json.dumps, cls=CustomEncoder),
-        headers=headers)
+        headers=headers,
+    )
 
 
 # The cache value type used by aiohttp_cache.
-_AiohttpCacheValue = namedtuple("AiohttpCacheValue",
-                                ["data", "expiration", "task"])
+_AiohttpCacheValue = namedtuple("AiohttpCacheValue", ["data", "expiration", "task"])
 # The methods with no request body used by aiohttp_cache.
 _AIOHTTP_CACHE_NOBODY_METHODS = {hdrs.METH_GET, hdrs.METH_DELETE}
 
 
 def aiohttp_cache(
-        ttl_seconds=dashboard_consts.AIOHTTP_CACHE_TTL_SECONDS,
-        maxsize=dashboard_consts.AIOHTTP_CACHE_MAX_SIZE,
-        enable=not env_bool(
-            dashboard_consts.AIOHTTP_CACHE_DISABLE_ENVIRONMENT_KEY, False)):
+    ttl_seconds=dashboard_consts.AIOHTTP_CACHE_TTL_SECONDS,
+    maxsize=dashboard_consts.AIOHTTP_CACHE_MAX_SIZE,
+    enable=not env_bool(dashboard_consts.AIOHTTP_CACHE_DISABLE_ENVIRONMENT_KEY, False),
+):
     assert maxsize > 0
     cache = collections.OrderedDict()
 
@@ -195,8 +198,7 @@ def aiohttp_cache(
                 value = cache.get(key)
                 if value is not None:
                     cache.move_to_end(key)
-                    if (not value.task.done()
-                            or value.expiration >= time.time()):
+                    if not value.task.done() or value.expiration >= time.time():
                         # Update task not done or the data is not expired.
                         return aiohttp.web.Response(**value.data)
 
@@ -205,15 +207,16 @@ def aiohttp_cache(
                         response = task.result()
                     except Exception:
                         response = rest_response(
-                            success=False, message=traceback.format_exc())
+                            success=False, message=traceback.format_exc()
+                        )
                     data = {
                         "status": response.status,
                         "headers": dict(response.headers),
                         "body": response.body,
                     }
-                    cache[key] = _AiohttpCacheValue(data,
-                                                    time.time() + ttl_seconds,
-                                                    task)
+                    cache[key] = _AiohttpCacheValue(
+                        data, time.time() + ttl_seconds, task
+                    )
                     cache.move_to_end(key)
                     if len(cache) > maxsize:
                         cache.popitem(last=False)

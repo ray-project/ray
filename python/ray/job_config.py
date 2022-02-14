@@ -20,23 +20,25 @@ class JobConfig:
         default_actor_lifetime (str): The default value of actor lifetime.
     """
 
-    def __init__(self,
-                 num_java_workers_per_process=1,
-                 jvm_options=None,
-                 code_search_path=None,
-                 runtime_env=None,
-                 client_job=False,
-                 metadata=None,
-                 ray_namespace=None,
-                 default_actor_lifetime="non_detached"):
+    def __init__(
+        self,
+        num_java_workers_per_process=1,
+        jvm_options=None,
+        code_search_path=None,
+        runtime_env=None,
+        client_job=False,
+        metadata=None,
+        ray_namespace=None,
+        default_actor_lifetime="non_detached",
+    ):
         self.num_java_workers_per_process = num_java_workers_per_process
         self.jvm_options = jvm_options or []
         self.code_search_path = code_search_path or []
         # It's difficult to find the error that caused by the
         # code_search_path is a string. So we assert here.
-        assert isinstance(self.code_search_path, (list, tuple)), \
-            f"The type of code search path is incorrect: " \
-            f"{type(code_search_path)}"
+        assert isinstance(self.code_search_path, (list, tuple)), (
+            f"The type of code search path is incorrect: " f"{type(code_search_path)}"
+        )
         self.client_job = client_job
         self.metadata = metadata or {}
         self.ray_namespace = ray_namespace
@@ -50,9 +52,9 @@ class JobConfig:
         """Serialize the struct into protobuf string"""
         return self.get_proto_job_config().SerializeToString()
 
-    def set_runtime_env(self,
-                        runtime_env: Optional[Dict[str, Any]],
-                        validate: bool = False) -> None:
+    def set_runtime_env(
+        self, runtime_env: Optional[Dict[str, Any]], validate: bool = False
+    ) -> None:
         """Modify the runtime_env of the JobConfig.
 
         We don't validate the runtime_env by default here because it may go
@@ -71,11 +73,11 @@ class JobConfig:
 
     def set_default_actor_lifetime(self, default_actor_lifetime: str) -> None:
         if default_actor_lifetime == "detached":
-            self._default_actor_lifetime = \
-                gcs_utils.JobConfig.ActorLifetime.DETACHED
+            self._default_actor_lifetime = gcs_utils.JobConfig.ActorLifetime.DETACHED
         elif default_actor_lifetime == "non_detached":
-            self._default_actor_lifetime = \
+            self._default_actor_lifetime = (
                 gcs_utils.JobConfig.ActorLifetime.NON_DETACHED
+            )
         else:
             raise ValueError(
                 "Default actor lifetime must be one of `detached`, `non_detached`"
@@ -86,6 +88,7 @@ class JobConfig:
         # all over the place so this causes circular imports. We should remove
         # this dependency and pass in a validated runtime_env instead.
         from ray._private.runtime_env.validation import ParsedRuntimeEnv
+
         eager_install = self.runtime_env.get("eager_install", True)
         if not isinstance(eager_install, bool):
             raise TypeError("eager_install must be a boolean.")
@@ -107,8 +110,7 @@ class JobConfig:
 
             parsed_env, eager_install = self._validate_runtime_env()
             pb.runtime_env_info.uris[:] = parsed_env.get_uris()
-            pb.runtime_env_info.serialized_runtime_env = \
-                parsed_env.serialize()
+            pb.runtime_env_info.serialized_runtime_env = parsed_env.serialize()
             pb.runtime_env_info.runtime_env_eager_install = eager_install
 
             if self._default_actor_lifetime is not None:
@@ -119,8 +121,7 @@ class JobConfig:
 
     def runtime_env_has_uris(self):
         """Whether there are uris in runtime env or not"""
-        return self._validate_runtime_env()[
-            0].get_proto_runtime_env().has_uris()
+        return self._validate_runtime_env()[0].get_proto_runtime_env().has_uris()
 
     def get_serialized_runtime_env(self) -> str:
         """Return the JSON-serialized parsed runtime env dict"""
@@ -133,10 +134,12 @@ class JobConfig:
         """
         return cls(
             num_java_workers_per_process=job_config_json.get(
-                "num_java_workers_per_process", 1),
+                "num_java_workers_per_process", 1
+            ),
             jvm_options=job_config_json.get("jvm_options", None),
             code_search_path=job_config_json.get("code_search_path", None),
             runtime_env=job_config_json.get("runtime_env", None),
             client_job=job_config_json.get("client_job", False),
             metadata=job_config_json.get("metadata", None),
-            ray_namespace=job_config_json.get("ray_namespace", None))
+            ray_namespace=job_config_json.get("ray_namespace", None),
+        )

@@ -17,8 +17,7 @@ class TestBandits(unittest.TestCase):
         ray.shutdown()
 
     def test_bandit_lin_ts_compilation(self):
-        """Test whether a BanditLinTSTrainer can be built on all frameworks.
-        """
+        """Test whether a BanditLinTSTrainer can be built on all frameworks."""
         config = {
             # Use a simple bandit friendly env.
             "env": SimpleContextualBandit,
@@ -37,8 +36,7 @@ class TestBandits(unittest.TestCase):
             self.assertTrue(results["episode_reward_mean"] == 10.0)
 
     def test_bandit_lin_ucb_compilation(self):
-        """Test whether a BanditLinUCBTrainer can be built on all frameworks.
-        """
+        """Test whether a BanditLinUCBTrainer can be built on all frameworks."""
         config = {
             # Use a simple bandit friendly env.
             "env": SimpleContextualBandit,
@@ -65,32 +63,34 @@ class TestBandits(unittest.TestCase):
         def try_import_lints():
             from ray.rllib.contrib.bandits.agents.lin_ts import LinTS  # noqa
 
-        self.assertRaisesRegex(DeprecationWarning, "has been deprecated. Use",
-                               try_import_lints)
+        self.assertRaisesRegex(
+            DeprecationWarning, "has been deprecated. Use", try_import_lints
+        )
 
         def try_import_linucb():
-            from ray.rllib.contrib.bandits.agents.lin_ucb import \
-                LinUCB  # noqa
+            from ray.rllib.contrib.bandits.agents.lin_ucb import LinUCB  # noqa
 
-        self.assertRaisesRegex(DeprecationWarning, "has been deprecated. Use",
-                               try_import_linucb)
+        self.assertRaisesRegex(
+            DeprecationWarning, "has been deprecated. Use", try_import_linucb
+        )
 
         def try_import_anything():
-            from ray.rllib.contrib.bandits.some_crazy_module import \
-                SomeCrazyClass  # noqa
+            from ray.rllib.contrib.bandits.some_crazy_module import (  # noqa: F401
+                SomeCrazyClass,
+            )
 
-        self.assertRaisesRegex(DeprecationWarning, "has been deprecated. Use",
-                               try_import_anything)
+        self.assertRaisesRegex(
+            DeprecationWarning, "has been deprecated. Use", try_import_anything
+        )
 
         # Assert that tune also raises an error.
-        self.assertRaises(ray.tune.error.TuneError,
-                          lambda: tune.run("contrib/LinTS"))
+        self.assertRaises(ray.tune.error.TuneError, lambda: tune.run("contrib/LinTS"))
 
-        self.assertRaises(ray.tune.error.TuneError,
-                          lambda: tune.run("contrib/LinUCB"))
+        self.assertRaises(ray.tune.error.TuneError, lambda: tune.run("contrib/LinUCB"))
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

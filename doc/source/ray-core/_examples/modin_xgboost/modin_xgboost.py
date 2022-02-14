@@ -62,31 +62,34 @@ import ray
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--address", type=str, default="auto", help="The address to use for Ray.")
+    "--address", type=str, default="auto", help="The address to use for Ray."
+)
 parser.add_argument(
     "--smoke-test",
     action="store_true",
-    help="Read a smaller dataset for quick testing purposes.")
+    help="Read a smaller dataset for quick testing purposes.",
+)
 parser.add_argument(
-    "--num-actors",
-    type=int,
-    default=4,
-    help="Sets number of actors for training.")
+    "--num-actors", type=int, default=4, help="Sets number of actors for training."
+)
 parser.add_argument(
     "--cpus-per-actor",
     type=int,
     default=8,
-    help="The number of CPUs per actor for training.")
+    help="The number of CPUs per actor for training.",
+)
 parser.add_argument(
     "--num-actors-inference",
     type=int,
     default=16,
-    help="Sets number of actors for inference.")
+    help="Sets number of actors for inference.",
+)
 parser.add_argument(
     "--cpus-per-actor-inference",
     type=int,
     default=2,
-    help="The number of CPUs per actor for inference.")
+    help="The number of CPUs per actor for inference.",
+)
 # Ignore -f from ipykernel_launcher
 args, _ = parser.parse_known_args()
 
@@ -119,12 +122,13 @@ if not ray.is_initialized():
 LABEL_COLUMN = "label"
 if smoke_test:
     # Test dataset with only 10,000 records.
-    FILE_URL = "https://ray-ci-higgs.s3.us-west-2.amazonaws.com/simpleHIGGS" \
-                ".csv"
+    FILE_URL = "https://ray-ci-higgs.s3.us-west-2.amazonaws.com/simpleHIGGS" ".csv"
 else:
     # Full dataset. This may take a couple of minutes to load.
-    FILE_URL = "https://archive.ics.uci.edu/ml/machine-learning-databases" \
-                "/00280/HIGGS.csv.gz"
+    FILE_URL = (
+        "https://archive.ics.uci.edu/ml/machine-learning-databases"
+        "/00280/HIGGS.csv.gz"
+    )
 
 colnames = [LABEL_COLUMN] + ["feature-%02d" % i for i in range(1, 29)]
 
@@ -182,7 +186,8 @@ def train_xgboost(config, train_df, test_df, target_column, ray_params):
         evals_result=evals_result,
         verbose_eval=False,
         num_boost_round=100,
-        ray_params=ray_params)
+        ray_params=ray_params,
+    )
 
     train_end_time = time.time()
     train_duration = train_end_time - train_start_time
@@ -190,8 +195,7 @@ def train_xgboost(config, train_df, test_df, target_column, ray_params):
 
     model_path = "model.xgb"
     bst.save_model(model_path)
-    print("Final validation error: {:.4f}".format(
-        evals_result["eval"]["error"][-1]))
+    print("Final validation error: {:.4f}".format(evals_result["eval"]["error"][-1]))
 
     return bst, evals_result
 
@@ -208,8 +212,12 @@ config = {
 }
 
 bst, evals_result = train_xgboost(
-    config, df_train, df_validation, LABEL_COLUMN,
-    RayParams(cpus_per_actor=cpus_per_actor, num_actors=num_actors))
+    config,
+    df_train,
+    df_validation,
+    LABEL_COLUMN,
+    RayParams(cpus_per_actor=cpus_per_actor, num_actors=num_actors),
+)
 print(f"Results: {evals_result}")
 
 ###############################################################################
@@ -227,7 +235,8 @@ results = predict(
     bst,
     inference_df,
     ray_params=RayParams(
-        cpus_per_actor=cpus_per_actor_inference,
-        num_actors=num_actors_inference))
+        cpus_per_actor=cpus_per_actor_inference, num_actors=num_actors_inference
+    ),
+)
 
 print(results)

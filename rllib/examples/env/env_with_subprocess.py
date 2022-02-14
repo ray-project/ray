@@ -20,8 +20,7 @@ class EnvWithSubprocess(gym.Env):
         self.action_space = Discrete(2)
         self.observation_space = Discrete(2)
         # Subprocess that should be cleaned up.
-        self.subproc = subprocess.Popen(
-            self.UNIQUE_CMD.split(" "), shell=False)
+        self.subproc = subprocess.Popen(self.UNIQUE_CMD.split(" "), shell=False)
         self.config = config
         # Exit handler should be called.
         atexit.register(lambda: self.subproc.kill())

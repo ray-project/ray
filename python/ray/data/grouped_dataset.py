@@ -4,14 +4,12 @@ import ray
 from ray.util.annotations import PublicAPI
 from ray.data.dataset import Dataset
 from ray.data.impl import sort
-from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, \
-    Mean, Std
+from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, Mean, Std
 from ray.data.block import BlockExecStats, KeyFn
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.block import Block, BlockAccessor, BlockMetadata, \
-    T, U, KeyType
+from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, KeyType
 
 
 @PublicAPI(stability="beta")
@@ -75,19 +73,24 @@ class GroupedDataset(Generic[T]):
             boundaries = []
         else:
             boundaries = sort.sample_boundaries(
-                blocks, [(self._key, "ascending")]
-                if isinstance(self._key, str) else self._key, num_reducers)
+                blocks,
+                [(self._key, "ascending")] if isinstance(self._key, str) else self._key,
+                num_reducers,
+            )
 
         partition_and_combine_block = cached_remote_fn(
-            _partition_and_combine_block).options(num_returns=num_reducers + 1)
+            _partition_and_combine_block
+        ).options(num_returns=num_reducers + 1)
         aggregate_combined_blocks = cached_remote_fn(
-            _aggregate_combined_blocks, num_returns=2)
+            _aggregate_combined_blocks, num_returns=2
+        )
 
         map_results = np.empty((num_mappers, num_reducers), dtype=object)
         map_meta = []
         for i, block in enumerate(blocks):
             results = partition_and_combine_block.remote(
-                block, boundaries, self._key, aggs)
+                block, boundaries, self._key, aggs
+            )
             map_results[i, :] = results[:-1]
             map_meta.append(results[-1])
         map_bar = ProgressBar("GroupBy Map", len(map_results))
@@ -99,7 +102,8 @@ class GroupedDataset(Generic[T]):
         metadata = []
         for j in range(num_reducers):
             block, meta = aggregate_combined_blocks.remote(
-                num_reducers, self._key, aggs, *map_results[:, j].tolist())
+                num_reducers, self._key, aggs, *map_results[:, j].tolist()
+            )
             blocks.append(block)
             metadata.append(meta)
         reduce_bar = ProgressBar("GroupBy Reduce", len(blocks))
@@ -109,11 +113,19 @@ class GroupedDataset(Generic[T]):
         metadata = ray.get(metadata)
         stage_info["reduce"] = metadata
         return Dataset(
-            BlockList(blocks, metadata), self._dataset._epoch,
-            stats.build_multistage(stage_info))
+            BlockList(blocks, metadata),
+            self._dataset._epoch,
+            stats.build_multistage(stage_info),
+        )
 
-    def _aggregate_on(self, agg_cls: type, on: Union[KeyFn, List[KeyFn]],
-                      *args, **kwargs):
+    def _aggregate_on(
+        self,
+        agg_cls: type,
+        on: Union[KeyFn, List[KeyFn]],
+        ignore_nulls: bool,
+        *args,
+        **kwargs
+    ):
         """Helper for aggregating on a particular subset of the dataset.
 
         This validates the `on` argument, and converts a list of column names
@@ -122,7 +134,8 @@ class GroupedDataset(Generic[T]):
         aggregation on the entire row for a simple Dataset.
         """
         aggs = self._dataset._build_multicolumn_aggs(
-            agg_cls, on, *args, skip_cols=self._key, **kwargs)
+            agg_cls, on, ignore_nulls, *args, skip_cols=self._key, **kwargs
+        )
         return self.aggregate(*aggs)
 
     def count(self) -> Dataset[U]:
@@ -144,7 +157,9 @@ class GroupedDataset(Generic[T]):
         """
         return self.aggregate(Count())
 
-    def sum(self, on: Union[KeyFn, List[KeyFn]] = None) -> Dataset[U]:
+    def sum(
+        self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
+    ) -> Dataset[U]:
         """Compute grouped sum aggregation.
 
         This is a blocking operation.
@@ -171,6 +186,11 @@ class GroupedDataset(Generic[T]):
                 - For an Arrow dataset: it can be a column name or a list
                   thereof, and the default is to do a column-wise sum of all
                   columns.
+            ignore_nulls: Whether to ignore null values. If ``True``, null
+                values will be ignored when computing the sum; if ``False``,
+                if a null value is encountered, the output will be null.
+                We consider np.nan, None, and pd.NaT to be null values.
+                Default is ``True``.
 
         Returns:
             The sum result.
@@ -195,9 +215,11 @@ class GroupedDataset(Generic[T]):
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Sum, on)
+        return self._aggregate_on(Sum, on, ignore_nulls)
 
-    def min(self, on: Union[KeyFn, List[KeyFn]] = None) -> Dataset[U]:
+    def min(
+        self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
+    ) -> Dataset[U]:
         """Compute grouped min aggregation.
 
         This is a blocking operation.
@@ -224,6 +246,11 @@ class GroupedDataset(Generic[T]):
                 - For an Arrow dataset: it can be a column name or a list
                   thereof, and the default is to do a column-wise min of all
                   columns.
+            ignore_nulls: Whether to ignore null values. If ``True``, null
+                values will be ignored when computing the min; if ``False``,
+                if a null value is encountered, the output will be null.
+                We consider np.nan, None, and pd.NaT to be null values.
+                Default is ``True``.
 
         Returns:
             The min result.
@@ -248,9 +275,11 @@ class GroupedDataset(Generic[T]):
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Min, on)
+        return self._aggregate_on(Min, on, ignore_nulls)
 
-    def max(self, on: Union[KeyFn, List[KeyFn]] = None) -> Dataset[U]:
+    def max(
+        self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
+    ) -> Dataset[U]:
         """Compute grouped max aggregation.
 
         This is a blocking operation.
@@ -277,6 +306,11 @@ class GroupedDataset(Generic[T]):
                 - For an Arrow dataset: it can be a column name or a list
                   thereof, and the default is to do a column-wise max of all
                   columns.
+            ignore_nulls: Whether to ignore null values. If ``True``, null
+                values will be ignored when computing the max; if ``False``,
+                if a null value is encountered, the output will be null.
+                We consider np.nan, None, and pd.NaT to be null values.
+                Default is ``True``.
 
         Returns:
             The max result.
@@ -301,9 +335,11 @@ class GroupedDataset(Generic[T]):
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Max, on)
+        return self._aggregate_on(Max, on, ignore_nulls)
 
-    def mean(self, on: Union[KeyFn, List[KeyFn]] = None) -> Dataset[U]:
+    def mean(
+        self, on: Union[KeyFn, List[KeyFn]] = None, ignore_nulls: bool = True
+    ) -> Dataset[U]:
         """Compute grouped mean aggregation.
 
         This is a blocking operation.
@@ -330,6 +366,11 @@ class GroupedDataset(Generic[T]):
                 - For an Arrow dataset: it can be a column name or a list
                   thereof, and the default is to do a column-wise mean of all
                   columns.
+            ignore_nulls: Whether to ignore null values. If ``True``, null
+                values will be ignored when computing the mean; if ``False``,
+                if a null value is encountered, the output will be null.
+                We consider np.nan, None, and pd.NaT to be null values.
+                Default is ``True``.
 
         Returns:
             The mean result.
@@ -355,10 +396,14 @@ class GroupedDataset(Generic[T]):
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Mean, on)
+        return self._aggregate_on(Mean, on, ignore_nulls)
 
-    def std(self, on: Union[KeyFn, List[KeyFn]] = None,
-            ddof: int = 1) -> Dataset[U]:
+    def std(
+        self,
+        on: Union[KeyFn, List[KeyFn]] = None,
+        ddof: int = 1,
+        ignore_nulls: bool = True,
+    ) -> Dataset[U]:
         """Compute grouped standard deviation aggregation.
 
         This is a blocking operation.
@@ -395,6 +440,11 @@ class GroupedDataset(Generic[T]):
                   columns.
             ddof: Delta Degrees of Freedom. The divisor used in calculations
                 is ``N - ddof``, where ``N`` represents the number of elements.
+            ignore_nulls: Whether to ignore null values. If ``True``, null
+                values will be ignored when computing the std; if ``False``,
+                if a null value is encountered, the output will be null.
+                We consider np.nan, None, and pd.NaT to be null values.
+                Default is ``True``.
 
         Returns:
             The standard deviation result.
@@ -419,29 +469,33 @@ class GroupedDataset(Generic[T]):
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Std, on, ddof=ddof)
+        return self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
 
 
 def _partition_and_combine_block(
-        block: Block[T], boundaries: List[KeyType], key: KeyFn,
-        aggs: Tuple[AggregateFn]) -> List[Union[Block, BlockMetadata]]:
+    block: Block[T], boundaries: List[KeyType], key: KeyFn, aggs: Tuple[AggregateFn]
+) -> List[Union[Block, BlockMetadata]]:
     """Partition the block and combine rows with the same key."""
     stats = BlockExecStats.builder()
     if key is None:
         partitions = [block]
     else:
         partitions = BlockAccessor.for_block(block).sort_and_partition(
-            boundaries, [(key, "ascending")] if isinstance(key, str) else key,
-            descending=False)
+            boundaries,
+            [(key, "ascending")] if isinstance(key, str) else key,
+            descending=False,
+        )
     parts = [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]
     meta = BlockAccessor.for_block(block).get_metadata(
-        input_files=None, exec_stats=stats.build())
+        input_files=None, exec_stats=stats.build()
+    )
     return parts + [meta]
 
 
 def _aggregate_combined_blocks(
-        num_reducers: int, key: KeyFn, aggs: Tuple[AggregateFn],
-        *blocks: Tuple[Block, ...]) -> Tuple[Block[U], BlockMetadata]:
+    num_reducers: int, key: KeyFn, aggs: Tuple[AggregateFn], *blocks: Tuple[Block, ...]
+) -> Tuple[Block[U], BlockMetadata]:
     """Aggregate sorted and partially combined blocks."""
     return BlockAccessor.for_block(blocks[0]).aggregate_combined_blocks(
-        list(blocks), key, aggs)
+        list(blocks), key, aggs
+    )

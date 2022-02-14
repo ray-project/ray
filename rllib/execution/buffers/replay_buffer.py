@@ -11,8 +11,11 @@ from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.util.debug import log_once
-from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE, \
-    deprecation_warning
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType
 
@@ -29,10 +32,13 @@ def warn_replay_capacity(*, item: SampleBatchType, num_items: int) -> None:
         psutil_mem = psutil.virtual_memory()
         total_gb = psutil_mem.total / 1e9
         mem_size = num_items * item_size / 1e9
-        msg = ("Estimated max memory usage for replay buffer is {} GB "
-               "({} batches of size {}, {} bytes each), "
-               "available system memory is {} GB".format(
-                   mem_size, num_items, item.count, item_size, total_gb))
+        msg = (
+            "Estimated max memory usage for replay buffer is {} GB "
+            "({} batches of size {}, {} bytes each), "
+            "available system memory is {} GB".format(
+                mem_size, num_items, item.count, item_size, total_gb
+            )
+        )
         if mem_size > total_gb:
             raise ValueError(msg)
         elif mem_size > 0.2 * total_gb:
@@ -49,9 +55,7 @@ def warn_replay_buffer_size(*, item: SampleBatchType, num_items: int) -> None:
 @DeveloperAPI
 class ReplayBuffer:
     @DeveloperAPI
-    def __init__(self,
-                 capacity: int = 10000,
-                 size: Optional[int] = DEPRECATED_VALUE):
+    def __init__(self, capacity: int = 10000, size: Optional[int] = DEPRECATED_VALUE):
         """Initializes a ReplayBuffer instance.
 
         Args:
@@ -62,7 +66,8 @@ class ReplayBuffer:
         # Deprecated args.
         if size != DEPRECATED_VALUE:
             deprecation_warning(
-                "ReplayBuffer(size)", "ReplayBuffer(capacity)", error=False)
+                "ReplayBuffer(size)", "ReplayBuffer(capacity)", error=False
+            )
             capacity = size
 
         # The actual storage (list of SampleBatches).
@@ -217,10 +222,12 @@ class ReplayBuffer:
 @DeveloperAPI
 class PrioritizedReplayBuffer(ReplayBuffer):
     @DeveloperAPI
-    def __init__(self,
-                 capacity: int = 10000,
-                 alpha: float = 1.0,
-                 size: Optional[int] = DEPRECATED_VALUE):
+    def __init__(
+        self,
+        capacity: int = 10000,
+        alpha: float = 1.0,
+        size: Optional[int] = DEPRECATED_VALUE,
+    ):
         """Initializes a PrioritizedReplayBuffer instance.
 
         Args:
@@ -257,8 +264,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         super(PrioritizedReplayBuffer, self).add(item, weight)
         if weight is None:
             weight = self._max_priority
-        self._it_sum[idx] = weight**self._alpha
-        self._it_min[idx] = weight**self._alpha
+        self._it_sum[idx] = weight ** self._alpha
+        self._it_min[idx] = weight ** self._alpha
 
     def _sample_proportional(self, num_items: int) -> List[int]:
         res = []
@@ -299,16 +306,18 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         weights = []
         batch_indexes = []
         p_min = self._it_min.min() / self._it_sum.sum()
-        max_weight = (p_min * len(self))**(-beta)
+        max_weight = (p_min * len(self)) ** (-beta)
 
         for idx in idxes:
             p_sample = self._it_sum[idx] / self._it_sum.sum()
-            weight = (p_sample * len(self))**(-beta)
+            weight = (p_sample * len(self)) ** (-beta)
             count = self._storage[idx].count
             # If zero-padded, count will not be the actual batch size of the
             # data.
-            if isinstance(self._storage[idx], SampleBatch) and \
-                    self._storage[idx].zero_padded:
+            if (
+                isinstance(self._storage[idx], SampleBatch)
+                and self._storage[idx].zero_padded
+            ):
                 actual_size = self._storage[idx].max_seq_len
             else:
                 actual_size = count
@@ -325,8 +334,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         return batch
 
     @DeveloperAPI
-    def update_priorities(self, idxes: List[int],
-                          priorities: List[float]) -> None:
+    def update_priorities(self, idxes: List[int], priorities: List[float]) -> None:
         """Update priorities of sampled transitions.
 
         Sets priority of transition at index idxes[i] in buffer
@@ -339,17 +347,19 @@ class PrioritizedReplayBuffer(ReplayBuffer):
                 variable `idxes`.
         """
         # Making sure we don't pass in e.g. a torch tensor.
-        assert isinstance(idxes, (list, np.ndarray)), \
-            "ERROR: `idxes` is not a list or np.ndarray, but " \
-            "{}!".format(type(idxes).__name__)
+        assert isinstance(
+            idxes, (list, np.ndarray)
+        ), "ERROR: `idxes` is not a list or np.ndarray, but " "{}!".format(
+            type(idxes).__name__
+        )
         assert len(idxes) == len(priorities)
         for idx, priority in zip(idxes, priorities):
             assert priority > 0
             assert 0 <= idx < len(self._storage)
-            delta = priority**self._alpha - self._it_sum[idx]
+            delta = priority ** self._alpha - self._it_sum[idx]
             self._prio_change_stats.push(delta)
-            self._it_sum[idx] = priority**self._alpha
-            self._it_min[idx] = priority**self._alpha
+            self._it_sum[idx] = priority ** self._alpha
+            self._it_min[idx] = priority ** self._alpha
 
             self._max_priority = max(self._max_priority, priority)
 
@@ -381,11 +391,13 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         # Get parent state.
         state = super().get_state()
         # Add prio weights.
-        state.update({
-            "sum_segment_tree": self._it_sum.get_state(),
-            "min_segment_tree": self._it_min.get_state(),
-            "max_priority": self._max_priority,
-        })
+        state.update(
+            {
+                "sum_segment_tree": self._it_sum.get_state(),
+                "min_segment_tree": self._it_min.get_state(),
+                "max_priority": self._max_priority,
+            }
+        )
         return state
 
     @DeveloperAPI

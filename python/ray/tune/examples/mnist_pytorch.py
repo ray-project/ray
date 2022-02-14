@@ -65,8 +65,8 @@ def test(model, data_loader, device=None):
 
 def get_data_loaders():
     mnist_transforms = transforms.Compose(
-        [transforms.ToTensor(),
-         transforms.Normalize((0.1307, ), (0.3081, ))])
+        [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+    )
 
     # We add FileLock here because multiple workers will want to
     # download data, and this may cause overwrites since
@@ -74,20 +74,18 @@ def get_data_loaders():
     with FileLock(os.path.expanduser("~/data.lock")):
         train_loader = torch.utils.data.DataLoader(
             datasets.MNIST(
-                "~/data",
-                train=True,
-                download=True,
-                transform=mnist_transforms),
+                "~/data", train=True, download=True, transform=mnist_transforms
+            ),
             batch_size=64,
-            shuffle=True)
+            shuffle=True,
+        )
         test_loader = torch.utils.data.DataLoader(
             datasets.MNIST(
-                "~/data",
-                train=False,
-                download=True,
-                transform=mnist_transforms),
+                "~/data", train=False, download=True, transform=mnist_transforms
+            ),
             batch_size=64,
-            shuffle=True)
+            shuffle=True,
+        )
     return train_loader, test_loader
 
 
@@ -98,7 +96,8 @@ def train_mnist(config):
     model = ConvNet().to(device)
 
     optimizer = optim.SGD(
-        model.parameters(), lr=config["lr"], momentum=config["momentum"])
+        model.parameters(), lr=config["lr"], momentum=config["momentum"]
+    )
 
     while True:
         train(model, optimizer, train_loader, device)
@@ -110,22 +109,22 @@ def train_mnist(config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PyTorch MNIST Example")
     parser.add_argument(
-        "--cuda",
-        action="store_true",
-        default=False,
-        help="Enables GPU training")
+        "--cuda", action="store_true", default=False, help="Enables GPU training"
+    )
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     parser.add_argument(
         "--ray-address",
-        help="Address of Ray cluster for seamless distributed execution.")
+        help="Address of Ray cluster for seamless distributed execution.",
+    )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using " "Ray Client.",
+    )
     args, _ = parser.parse_known_args()
 
     if args.server_address:
@@ -146,16 +145,14 @@ if __name__ == "__main__":
         scheduler=sched,
         stop={
             "mean_accuracy": 0.98,
-            "training_iteration": 5 if args.smoke_test else 100
+            "training_iteration": 5 if args.smoke_test else 100,
         },
-        resources_per_trial={
-            "cpu": 2,
-            "gpu": int(args.cuda)  # set this for GPUs
-        },
+        resources_per_trial={"cpu": 2, "gpu": int(args.cuda)},  # set this for GPUs
         num_samples=1 if args.smoke_test else 50,
         config={
             "lr": tune.loguniform(1e-4, 1e-2),
             "momentum": tune.uniform(0.1, 0.9),
-        })
+        },
+    )
 
     print("Best config is:", analysis.best_config)

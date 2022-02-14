@@ -14,20 +14,23 @@ class MyActor:
         self.counter = Counter(
             "num_requests",
             description="Number of requests processed by the actor.",
-            tag_keys=("actor_name", ))
+            tag_keys=("actor_name",),
+        )
         self.counter.set_default_tags({"actor_name": name})
 
         self.gauge = Gauge(
             "curr_count",
             description="Current count held by the actor. Goes up and down.",
-            tag_keys=("actor_name", ))
+            tag_keys=("actor_name",),
+        )
         self.gauge.set_default_tags({"actor_name": name})
 
         self.histogram = Histogram(
             "request_latency",
             description="Latencies of requests in ms.",
             boundaries=[0.1, 1],
-            tag_keys=("actor_name", ))
+            tag_keys=("actor_name",),
+        )
         self.histogram.set_default_tags({"actor_name": name})
 
     def process_request(self, num):

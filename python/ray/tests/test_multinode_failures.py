@@ -22,8 +22,8 @@ def ray_start_workers_separate_multinode(request):
     cluster = Cluster()
     for _ in range(num_nodes):
         cluster.add_node(
-            num_cpus=num_initial_workers,
-            resources={"custom": num_initial_workers})
+            num_cpus=num_initial_workers, resources={"custom": num_initial_workers}
+        )
     ray.init(address=cluster.address)
 
     yield num_nodes, num_initial_workers
@@ -34,7 +34,7 @@ def ray_start_workers_separate_multinode(request):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_worker_failed(ray_start_workers_separate_multinode):
-    num_nodes, num_initial_workers = (ray_start_workers_separate_multinode)
+    num_nodes, num_initial_workers = ray_start_workers_separate_multinode
 
     block_worker = Semaphore.remote(0)
     block_driver = Semaphore.remote(0)
@@ -79,8 +79,7 @@ def test_worker_failed(ray_start_workers_separate_multinode):
     for object_ref in object_refs:
         try:
             ray.get(object_ref)
-        except (ray.exceptions.RayTaskError,
-                ray.exceptions.WorkerCrashedError):
+        except (ray.exceptions.RayTaskError, ray.exceptions.WorkerCrashedError):
             pass
 
 
@@ -141,25 +140,38 @@ def check_components_alive(cluster, component_type, check_component_alive):
         if check_component_alive:
             assert process.poll() is None
         else:
-            print("waiting for " + component_type + " with PID " +
-                  str(process.pid) + "to terminate")
+            print(
+                "waiting for "
+                + component_type
+                + " with PID "
+                + str(process.pid)
+                + "to terminate"
+            )
             process.wait()
-            print("done waiting for " + component_type + " with PID " +
-                  str(process.pid) + "to terminate")
+            print(
+                "done waiting for "
+                + component_type
+                + " with PID "
+                + str(process.pid)
+                + "to terminate"
+            )
             assert not process.poll() is None
 
 
 @pytest.mark.parametrize(
     "ray_start_cluster",
-    [{
-        "num_cpus": 8,
-        "num_nodes": 4,
-        "_system_config": {
-            # Raylet codepath is not stable with a shorter timeout.
-            "num_heartbeats_timeout": 10
-        },
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 8,
+            "num_nodes": 4,
+            "_system_config": {
+                # Raylet codepath is not stable with a shorter timeout.
+                "num_heartbeats_timeout": 10
+            },
+        }
+    ],
+    indirect=True,
+)
 def test_raylet_failed(ray_start_cluster):
     cluster = ray_start_cluster
     # Kill all raylets on worker nodes.
@@ -168,4 +180,5 @@ def test_raylet_failed(ray_start_cluster):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

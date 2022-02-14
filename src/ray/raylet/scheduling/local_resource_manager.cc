@@ -94,16 +94,7 @@ void LocalResourceManager::AddLocalResourceInstances(
 }
 
 void LocalResourceManager::DeleteLocalResource(const std::string &resource_name) {
-  int idx = -1;
-  if (resource_name == ray::kCPU_ResourceLabel) {
-    idx = (int)CPU;
-  } else if (resource_name == ray::kGPU_ResourceLabel) {
-    idx = (int)GPU;
-  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
-    idx = (int)OBJECT_STORE_MEM;
-  } else if (resource_name == ray::kMemory_ResourceLabel) {
-    idx = (int)MEM;
-  };
+  int idx = GetPredefinedResourceIndex(resource_name);
   if (idx != -1) {
     for (auto &total : local_resources_.predefined_resources[idx].total) {
       total = 0;
@@ -124,16 +115,7 @@ void LocalResourceManager::DeleteLocalResource(const std::string &resource_name)
 }
 
 bool LocalResourceManager::IsAvailableResourceEmpty(const std::string &resource_name) {
-  int idx = -1;
-  if (resource_name == ray::kCPU_ResourceLabel) {
-    idx = (int)CPU;
-  } else if (resource_name == ray::kGPU_ResourceLabel) {
-    idx = (int)GPU;
-  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
-    idx = (int)OBJECT_STORE_MEM;
-  } else if (resource_name == ray::kMemory_ResourceLabel) {
-    idx = (int)MEM;
-  };
+  int idx = GetPredefinedResourceIndex(resource_name);
 
   if (idx != -1) {
     return FixedPoint::Sum(local_resources_.predefined_resources[idx].available) <= 0;
@@ -505,7 +487,25 @@ NodeResources ToNodeResources(const NodeResourceInstances &instance) {
 
 }  // namespace
 
+void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
+  // Update local object store usage and report to other raylets.
+  if (get_used_object_store_memory_ == nullptr) {
+    return;
+  }
+
+  auto &capacity = local_resources_.predefined_resources[OBJECT_STORE_MEM];
+  RAY_CHECK_EQ(capacity.total.size(), 1u);
+
+  const double used = get_used_object_store_memory_();
+  const double total = capacity.total[0].Double();
+  capacity.available[0] = FixedPoint(total >= used ? total - used : 0.0);
+
+  OnResourceChanged();
+}
+
 void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data) {
+  UpdateAvailableObjectStoreMemResource();
+
   NodeResources resources = ToNodeResources(local_resources_);
 
   // Initialize if last report resources is empty.
@@ -513,15 +513,6 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
     NodeResources node_resources =
         ResourceMapToNodeResources(resource_name_to_id_, {{}}, {{}});
     last_report_resources_.reset(new NodeResources(node_resources));
-  }
-
-  // Automatically report object store usage.
-  // XXX: this MUTATES the resources field, which is needed since we are storing
-  // it in last_report_resources_.
-  if (get_used_object_store_memory_ != nullptr) {
-    auto &capacity = resources.predefined_resources[OBJECT_STORE_MEM];
-    double used = get_used_object_store_memory_();
-    capacity.available = FixedPoint(capacity.total.Double() - used);
   }
 
   for (int i = 0; i < PredefinedResources_MAX; i++) {
@@ -661,16 +652,7 @@ void LocalResourceManager::ResetLastReportResourceUsage(
 }
 
 bool LocalResourceManager::ResourcesExist(const std::string &resource_name) {
-  int idx = -1;
-  if (resource_name == ray::kCPU_ResourceLabel) {
-    idx = (int)CPU;
-  } else if (resource_name == ray::kGPU_ResourceLabel) {
-    idx = (int)GPU;
-  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
-    idx = (int)OBJECT_STORE_MEM;
-  } else if (resource_name == ray::kMemory_ResourceLabel) {
-    idx = (int)MEM;
-  };
+  int idx = GetPredefinedResourceIndex(resource_name);
   if (idx != -1) {
     // Return true directly for predefined resources as we always initialize this kind of
     // resources at the beginning.
@@ -680,6 +662,20 @@ bool LocalResourceManager::ResourcesExist(const std::string &resource_name) {
     const auto &it = local_resources_.custom_resources.find(resource_id);
     return it != local_resources_.custom_resources.end();
   }
+}
+
+int GetPredefinedResourceIndex(const std::string &resource_name) {
+  int idx = -1;
+  if (resource_name == ray::kCPU_ResourceLabel) {
+    idx = (int)ray::CPU;
+  } else if (resource_name == ray::kGPU_ResourceLabel) {
+    idx = (int)ray::GPU;
+  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
+    idx = (int)ray::OBJECT_STORE_MEM;
+  } else if (resource_name == ray::kMemory_ResourceLabel) {
+    idx = (int)ray::MEM;
+  };
+  return idx;
 }
 
 }  // namespace ray

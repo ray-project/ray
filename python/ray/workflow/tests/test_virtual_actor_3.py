@@ -97,10 +97,13 @@ class UserAccount:
 
 @pytest.mark.parametrize(
     "workflow_start_regular",
-    [{
-        "num_cpus": 4,  # increase CPUs to add pressure
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 4,  # increase CPUs to add pressure
+        }
+    ],
+    indirect=True,
+)
 def test_writer_actor_pressure_test(workflow_start_regular):
     inventory_actor = InventoryPrice.get_or_create("inventory")
     ray.get(inventory_actor.ready())
@@ -122,4 +125,5 @@ def test_writer_actor_pressure_test(workflow_start_regular):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

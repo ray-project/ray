@@ -10,8 +10,12 @@ from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER
-from ray.rllib.utils.typing import LocalOptimizer, SpaceStruct, TensorType, \
-    TensorStructType
+from ray.rllib.utils.typing import (
+    LocalOptimizer,
+    SpaceStruct,
+    TensorType,
+    TensorStructType,
+)
 
 if TYPE_CHECKING:
     from ray.rllib.policy.torch_policy import TorchPolicy
@@ -24,8 +28,9 @@ FLOAT_MIN = -3.4e38
 FLOAT_MAX = 3.4e38
 
 
-def apply_grad_clipping(policy: "TorchPolicy", optimizer: LocalOptimizer,
-                        loss: TensorType) -> Dict[str, TensorType]:
+def apply_grad_clipping(
+    policy: "TorchPolicy", optimizer: LocalOptimizer, loss: TensorType
+) -> Dict[str, TensorType]:
     """Applies gradient clipping to already computed grads inside `optimizer`.
 
     Args:
@@ -42,11 +47,11 @@ def apply_grad_clipping(policy: "TorchPolicy", optimizer: LocalOptimizer,
         for param_group in optimizer.param_groups:
             # Make sure we only pass params with grad != None into torch
             # clip_grad_norm_. Would fail otherwise.
-            params = list(
-                filter(lambda p: p.grad is not None, param_group["params"]))
+            params = list(filter(lambda p: p.grad is not None, param_group["params"]))
             if params:
                 grad_gnorm = nn.utils.clip_grad_norm_(
-                    params, policy.config["grad_clip"])
+                    params, policy.config["grad_clip"]
+                )
                 if isinstance(grad_gnorm, torch.Tensor):
                     grad_gnorm = grad_gnorm.cpu().numpy()
                 info["grad_gnorm"] = grad_gnorm
@@ -54,13 +59,13 @@ def apply_grad_clipping(policy: "TorchPolicy", optimizer: LocalOptimizer,
 
 
 @Deprecated(
-    old="ray.rllib.utils.torch_utils.atanh",
-    new="torch.math.atanh",
-    error=False)
+    old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=False
+)
 def atanh(x: TensorType) -> TensorType:
     """Atanh function for PyTorch."""
     return 0.5 * torch.log(
-        (1 + x).clamp(min=SMALL_NUMBER) / (1 - x).clamp(min=SMALL_NUMBER))
+        (1 + x).clamp(min=SMALL_NUMBER) / (1 - x).clamp(min=SMALL_NUMBER)
+    )
 
 
 def concat_multi_gpu_td_errors(policy: "TorchPolicy") -> Dict[str, TensorType]:
@@ -77,10 +82,11 @@ def concat_multi_gpu_td_errors(policy: "TorchPolicy") -> Dict[str, TensorType]:
     """
     td_error = torch.cat(
         [
-            t.tower_stats.get("td_error", torch.tensor([0.0])).to(
-                policy.device) for t in policy.model_gpu_towers
+            t.tower_stats.get("td_error", torch.tensor([0.0])).to(policy.device)
+            for t in policy.model_gpu_towers
         ],
-        dim=0)
+        dim=0,
+    )
     policy.td_error = td_error
     return {
         "td_error": td_error,
@@ -105,8 +111,11 @@ def convert_to_non_torch_type(stats: TensorStructType) -> TensorStructType:
     # The mapping function used to numpyize torch Tensors.
     def mapping(item):
         if isinstance(item, torch.Tensor):
-            return item.cpu().item() if len(item.size()) == 0 else \
-                item.detach().cpu().numpy()
+            return (
+                item.cpu().item()
+                if len(item.size()) == 0
+                else item.detach().cpu().numpy()
+            )
         else:
             return item
 
@@ -132,8 +141,8 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
         # Special handling of "Repeated" values.
         elif isinstance(item, RepeatedValues):
             return RepeatedValues(
-                tree.map_structure(mapping, item.values), item.lengths,
-                item.max_len)
+                tree.map_structure(mapping, item.values), item.lengths, item.max_len
+            )
         # Numpy arrays.
         if isinstance(item, np.ndarray):
             # Object type (e.g. info dicts in train batch): leave as-is.
@@ -177,9 +186,11 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     return torch.max(min_, 1 - (diff_var / y_var))[0]
 
 
-def flatten_inputs_to_1d_tensor(inputs: TensorStructType,
-                                spaces_struct: Optional[SpaceStruct] = None,
-                                time_axis: bool = False) -> TensorType:
+def flatten_inputs_to_1d_tensor(
+    inputs: TensorStructType,
+    spaces_struct: Optional[SpaceStruct] = None,
+    time_axis: bool = False,
+) -> TensorType:
     """Flattens arbitrary input structs according to the given spaces struct.
 
     Returns a single 1D tensor resulting from the different input
@@ -229,8 +240,11 @@ def flatten_inputs_to_1d_tensor(inputs: TensorStructType,
     """
 
     flat_inputs = tree.flatten(inputs)
-    flat_spaces = tree.flatten(spaces_struct) if spaces_struct is not None \
+    flat_spaces = (
+        tree.flatten(spaces_struct)
+        if spaces_struct is not None
         else [None] * len(flat_inputs)
+    )
 
     B = None
     T = None
@@ -281,9 +295,7 @@ def global_norm(tensors: List[TensorType]) -> TensorType:
         The global L2 norm over the given tensor list.
     """
     # List of single tensors' L2 norms: SQRT(SUM(xi^2)) over all xi in tensor.
-    single_l2s = [
-        torch.pow(torch.sum(torch.pow(t, 2.0)), 0.5) for t in tensors
-    ]
+    single_l2s = [torch.pow(torch.sum(torch.pow(t, 2.0)), 0.5) for t in tensors]
     # Compute global norm from all single tensors' L2 norms.
     return torch.pow(sum(torch.pow(l2, 2.0) for l2 in single_l2s), 0.5)
 
@@ -307,7 +319,9 @@ def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
     """
     return torch.where(
         torch.abs(x) < delta,
-        torch.pow(x, 2.0) * 0.5, delta * (torch.abs(x) - 0.5 * delta))
+        torch.pow(x, 2.0) * 0.5,
+        delta * (torch.abs(x) - 0.5 * delta),
+    )
 
 
 def l2_loss(x: TensorType) -> TensorType:
@@ -324,8 +338,9 @@ def l2_loss(x: TensorType) -> TensorType:
     return 0.5 * torch.sum(torch.pow(x, 2.0))
 
 
-def minimize_and_clip(optimizer: "torch.optim.Optimizer",
-                      clip_val: float = 10.0) -> None:
+def minimize_and_clip(
+    optimizer: "torch.optim.Optimizer", clip_val: float = 10.0
+) -> None:
     """Clips grads found in `optimizer.param_groups` to given value in place.
 
     Ensures the norm of the gradients for each variable is clipped to
@@ -383,13 +398,13 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
                 nn.functional.one_hot(x[:, i].long(), n)
                 for i, n in enumerate(space.nvec)
             ],
-            dim=-1)
+            dim=-1,
+        )
     else:
         raise ValueError("Unsupported space for `one_hot`: {}".format(space))
 
 
-def reduce_mean_ignore_inf(x: TensorType,
-                           axis: Optional[int] = None) -> TensorType:
+def reduce_mean_ignore_inf(x: TensorType, axis: Optional[int] = None) -> TensorType:
     """Same as torch.mean() but ignores -inf values.
 
     Args:
@@ -405,10 +420,10 @@ def reduce_mean_ignore_inf(x: TensorType,
 
 
 def sequence_mask(
-        lengths: TensorType,
-        maxlen: Optional[int] = None,
-        dtype=None,
-        time_major: bool = False,
+    lengths: TensorType,
+    maxlen: Optional[int] = None,
+    dtype=None,
+    time_major: bool = False,
 ) -> TensorType:
     """Offers same behavior as tf.sequence_mask for torch.
 
@@ -431,8 +446,10 @@ def sequence_mask(
     if maxlen is None:
         maxlen = int(lengths.max())
 
-    mask = ~(torch.ones(
-        (len(lengths), maxlen)).to(lengths.device).cumsum(dim=1).t() > lengths)
+    mask = ~(
+        torch.ones((len(lengths), maxlen)).to(lengths.device).cumsum(dim=1).t()
+        > lengths
+    )
     # Time major transformation.
     if not time_major:
         mask = mask.t()
@@ -463,8 +480,8 @@ def set_torch_seed(seed: Optional[int] = None) -> None:
 
 
 def softmax_cross_entropy_with_logits(
-        logits: TensorType,
-        labels: TensorType,
+    logits: TensorType,
+    labels: TensorType,
 ) -> TensorType:
     """Same behavior as tf.nn.softmax_cross_entropy_with_logits.
 

@@ -8,13 +8,20 @@ import uuid
 import ray
 from ray.workflow import workflow_context
 from ray.workflow import workflow_storage
-from ray.workflow.common import (Workflow, WorkflowStatus, WorkflowMetaData,
-                                 StepType, WorkflowNotFoundError)
+from ray.workflow.common import (
+    Workflow,
+    WorkflowStatus,
+    WorkflowMetaData,
+    StepType,
+    WorkflowNotFoundError,
+)
 from ray.workflow.step_executor import commit_step
 from ray.workflow.storage import get_global_storage
-from ray.workflow.workflow_access import (flatten_workflow_output,
-                                          get_or_create_management_actor,
-                                          get_management_actor)
+from ray.workflow.workflow_access import (
+    flatten_workflow_output,
+    get_or_create_management_actor,
+    get_management_actor,
+)
 
 if TYPE_CHECKING:
     from ray.workflow.step_executor import WorkflowExecutionResult
@@ -22,11 +29,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def run(entry_workflow: Workflow,
-        workflow_id: Optional[str] = None,
-        metadata: Optional[Dict] = None) -> ray.ObjectRef:
-    """Run a workflow asynchronously.
-    """
+def run(
+    entry_workflow: Workflow,
+    workflow_id: Optional[str] = None,
+    metadata: Optional[Dict] = None,
+) -> ray.ObjectRef:
+    """Run a workflow asynchronously."""
     if metadata is not None:
         if not isinstance(metadata, dict):
             raise ValueError("metadata must be a dict.")
@@ -34,9 +42,10 @@ def run(entry_workflow: Workflow,
             try:
                 json.dumps(v)
             except TypeError as e:
-                raise ValueError("metadata values must be JSON serializable, "
-                                 "however '{}' has a value whose {}.".format(
-                                     k, e))
+                raise ValueError(
+                    "metadata values must be JSON serializable, "
+                    "however '{}' has a value whose {}.".format(k, e)
+                )
     metadata = metadata or {}
 
     store = get_global_storage()
@@ -46,11 +55,12 @@ def run(entry_workflow: Workflow,
         workflow_id = f"{str(uuid.uuid4())}.{time.time():.9f}"
     step_type = entry_workflow.data.step_options.step_type
 
-    logger.info(f"Workflow job created. [id=\"{workflow_id}\", storage_url="
-                f"\"{store.storage_url}\"]. Type: {step_type}.")
+    logger.info(
+        f'Workflow job created. [id="{workflow_id}", storage_url='
+        f'"{store.storage_url}"]. Type: {step_type}.'
+    )
 
-    with workflow_context.workflow_step_context(workflow_id,
-                                                store.storage_url):
+    with workflow_context.workflow_step_context(workflow_id, store.storage_url):
         # checkpoint the workflow
         ws = workflow_storage.get_workflow_storage(workflow_id)
         ws.save_workflow_user_metadata(metadata)
@@ -63,7 +73,7 @@ def run(entry_workflow: Workflow,
 
         # "Is growing" means we could adding steps to the (top-level)
         # workflow to grow the workflow dynamically at runtime.
-        is_growing = (step_type not in (StepType.FUNCTION, StepType.WAIT))
+        is_growing = step_type not in (StepType.FUNCTION, StepType.WAIT)
 
         # We only commit for
         #  - virtual actor tasks: it's dynamic tasks, so we always add
@@ -78,30 +88,30 @@ def run(entry_workflow: Workflow,
         # result. Otherwise if the actor removes the reference of the
         # workflow output, the caller may fail to resolve the result.
         result: "WorkflowExecutionResult" = ray.get(
-            workflow_manager.run_or_resume.remote(workflow_id,
-                                                  ignore_existing))
+            workflow_manager.run_or_resume.remote(workflow_id, ignore_existing)
+        )
         if not is_growing:
-            return flatten_workflow_output(workflow_id,
-                                           result.persisted_output)
+            return flatten_workflow_output(workflow_id, result.persisted_output)
         else:
             return flatten_workflow_output(workflow_id, result.volatile_output)
 
 
 # TODO(suquark): support recovery with ObjectRef inputs.
 def resume(workflow_id: str) -> ray.ObjectRef:
-    """Resume a workflow asynchronously. See "api.resume()" for details.
-    """
+    """Resume a workflow asynchronously. See "api.resume()" for details."""
     storage = get_global_storage()
-    logger.info(f"Resuming workflow [id=\"{workflow_id}\", storage_url="
-                f"\"{storage.storage_url}\"].")
+    logger.info(
+        f'Resuming workflow [id="{workflow_id}", storage_url='
+        f'"{storage.storage_url}"].'
+    )
     workflow_manager = get_or_create_management_actor()
     # NOTE: It is important to 'ray.get' the returned output. This
     # ensures caller of 'run()' holds the reference to the workflow
     # result. Otherwise if the actor removes the reference of the
     # workflow output, the caller may fail to resolve the result.
     result: "WorkflowExecutionResult" = ray.get(
-        workflow_manager.run_or_resume.remote(
-            workflow_id, ignore_existing=False))
+        workflow_manager.run_or_resume.remote(workflow_id, ignore_existing=False)
+    )
     logger.info(f"Workflow job {workflow_id} resumed.")
     return flatten_workflow_output(workflow_id, result.persisted_output)
 
@@ -117,7 +127,8 @@ def get_output(workflow_id: str, name: Optional[str]) -> ray.ObjectRef:
         raise ValueError(
             "Failed to connect to the workflow management "
             "actor. The workflow could have already failed. You can use "
-            "workflow.resume() to resume the workflow.") from e
+            "workflow.resume() to resume the workflow."
+        ) from e
     output = ray.get(workflow_manager.get_output.remote(workflow_id, name))
     return flatten_workflow_output(workflow_id, output)
 
@@ -134,8 +145,7 @@ def cancel(workflow_id: str) -> None:
 def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
     try:
         workflow_manager = get_management_actor()
-        running = ray.get(
-            workflow_manager.is_workflow_running.remote(workflow_id))
+        running = ray.get(workflow_manager.is_workflow_running.remote(workflow_id))
     except Exception:
         running = False
     if running:
@@ -160,8 +170,7 @@ def get_metadata(workflow_id: str, name: Optional[str]) -> Dict[str, Any]:
         return store.load_step_metadata(name)
 
 
-def list_all(status_filter: Set[WorkflowStatus]
-             ) -> List[Tuple[str, WorkflowStatus]]:
+def list_all(status_filter: Set[WorkflowStatus]) -> List[Tuple[str, WorkflowStatus]]:
     try:
         workflow_manager = get_management_actor()
     except ValueError:
@@ -199,7 +208,8 @@ def resume_all(with_failed: bool) -> List[Tuple[str, ray.ObjectRef]]:
     async def _resume_one(wid: str) -> Tuple[str, Optional[ray.ObjectRef]]:
         try:
             result: "WorkflowExecutionResult" = (
-                await workflow_manager.run_or_resume.remote(wid))
+                await workflow_manager.run_or_resume.remote(wid)
+            )
             obj = flatten_workflow_output(wid, result.persisted_output)
             return wid, obj
         except Exception:
@@ -207,5 +217,6 @@ def resume_all(with_failed: bool) -> List[Tuple[str, ray.ObjectRef]]:
             return (wid, None)
 
     ret = workflow_storage.asyncio_run(
-        asyncio.gather(*[_resume_one(wid) for (wid, _) in all_failed]))
+        asyncio.gather(*[_resume_one(wid) for (wid, _) in all_failed])
+    )
     return [(wid, obj) for (wid, obj) in ret if obj is not None]

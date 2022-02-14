@@ -18,17 +18,13 @@ class LastInfoCallback(DefaultCallbacks):
         self.tc = unittest.TestCase()
         self.step = 0
 
-    def on_episode_start(self, worker, base_env, policies, episode, env_index,
-                         **kwargs):
+    def on_episode_start(
+        self, worker, base_env, policies, episode, env_index, **kwargs
+    ):
         self.step = 0
         self._check_last_values(episode)
 
-    def on_episode_step(self,
-                        worker,
-                        base_env,
-                        episode,
-                        env_index=None,
-                        **kwargs):
+    def on_episode_step(self, worker, base_env, episode, env_index=None, **kwargs):
         self.step += 1
         self._check_last_values(episode)
 
@@ -37,20 +33,14 @@ class LastInfoCallback(DefaultCallbacks):
 
     def _check_last_values(self, episode):
         last_obs = {
-            k: np.where(v)[0].item()
-            for k, v in episode._agent_to_last_obs.items()
+            k: np.where(v)[0].item() for k, v in episode._agent_to_last_obs.items()
         }
         last_info = episode._agent_to_last_info
         last_done = episode._agent_to_last_done
         last_action = episode._agent_to_last_action
-        last_reward = {
-            k: v[-1]
-            for k, v in episode._agent_reward_history.items()
-        }
+        last_reward = {k: v[-1] for k, v in episode._agent_reward_history.items()}
         if self.step == 0:
-            for last in [
-                    last_obs, last_info, last_done, last_action, last_reward
-            ]:
+            for last in [last_obs, last_info, last_done, last_action, last_reward]:
                 self.tc.assertEqual(last, {})
         else:
             for agent in last_obs.keys():
@@ -61,23 +51,23 @@ class LastInfoCallback(DefaultCallbacks):
                 if self.step == 1:
                     self.tc.assertEqual(last_action[agent], 0)
                 else:
-                    self.tc.assertEqual(last_action[agent],
-                                        self.step + index - 1)
-                self.tc.assertEqual(last_info[agent]["timestep"],
-                                    self.step + index)
+                    self.tc.assertEqual(last_action[agent], self.step + index - 1)
+                self.tc.assertEqual(last_info[agent]["timestep"], self.step + index)
 
 
 class EchoPolicy(Policy):
     @override(Policy)
-    def compute_actions(self,
-                        obs_batch,
-                        state_batches=None,
-                        prev_action_batch=None,
-                        prev_reward_batch=None,
-                        episodes=None,
-                        explore=None,
-                        timestep=None,
-                        **kwargs):
+    def compute_actions(
+        self,
+        obs_batch,
+        state_batches=None,
+        prev_action_batch=None,
+        prev_reward_batch=None,
+        episodes=None,
+        explore=None,
+        timestep=None,
+        **kwargs
+    ):
         return obs_batch.argmax(axis=1), [], {}
 
 
@@ -120,7 +110,8 @@ class TestEpisodeLastValues(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv3(NUM_STEPS),
             policy_spec=EchoPolicy,
-            callbacks=LastInfoCallback)
+            callbacks=LastInfoCallback,
+        )
         ev.sample()
 
     def test_multiagent_env(self):
@@ -128,16 +119,22 @@ class TestEpisodeLastValues(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: EpisodeEnv(NUM_STEPS, NUM_AGENTS),
             policy_spec={
-                str(agent_id): (EchoPolicy, temp_env.observation_space,
-                                temp_env.action_space, {})
+                str(agent_id): (
+                    EchoPolicy,
+                    temp_env.observation_space,
+                    temp_env.action_space,
+                    {},
+                )
                 for agent_id in range(NUM_AGENTS)
             },
             policy_mapping_fn=lambda aid, eps, **kwargs: str(aid),
-            callbacks=LastInfoCallback)
+            callbacks=LastInfoCallback,
+        )
         ev.sample()
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -48,7 +48,8 @@ class GroupAgentsWrapper(MultiAgentEnv):
             for agent_id in agent_ids:
                 if agent_id in self.agent_id_to_group:
                     raise ValueError(
-                        "Agent id {} is in multiple groups".format(agent_id))
+                        "Agent id {} is in multiple groups".format(agent_id)
+                    )
                 self.agent_id_to_group[agent_id] = group_id
         if obs_space is not None:
             self.observation_space = obs_space
@@ -74,12 +75,11 @@ class GroupAgentsWrapper(MultiAgentEnv):
 
         # Apply grouping transforms to the env outputs
         obs = self._group_items(obs)
-        rewards = self._group_items(
-            rewards, agg_fn=lambda gvals: list(gvals.values()))
-        dones = self._group_items(
-            dones, agg_fn=lambda gvals: all(gvals.values()))
+        rewards = self._group_items(rewards, agg_fn=lambda gvals: list(gvals.values()))
+        dones = self._group_items(dones, agg_fn=lambda gvals: all(gvals.values()))
         infos = self._group_items(
-            infos, agg_fn=lambda gvals: {GROUP_INFO: list(gvals.values())})
+            infos, agg_fn=lambda gvals: {GROUP_INFO: list(gvals.values())}
+        )
 
         # Aggregate rewards, but preserve the original values in infos
         for agent_id, rew in rewards.items():
@@ -95,8 +95,11 @@ class GroupAgentsWrapper(MultiAgentEnv):
         out = {}
         for agent_id, value in items.items():
             if agent_id in self.groups:
-                assert len(value) == len(self.groups[agent_id]), \
-                    (agent_id, value, self.groups)
+                assert len(value) == len(self.groups[agent_id]), (
+                    agent_id,
+                    value,
+                    self.groups,
+                )
                 for a, v in zip(self.groups[agent_id], value):
                     out[a] = v
             else:
@@ -117,7 +120,9 @@ class GroupAgentsWrapper(MultiAgentEnv):
                     else:
                         raise ValueError(
                             "Missing member of group {}: {}: {}".format(
-                                group_id, a, items))
+                                group_id, a, items
+                            )
+                        )
                 grouped_items[group_id] = agg_fn(group_out)
             else:
                 grouped_items[agent_id] = item

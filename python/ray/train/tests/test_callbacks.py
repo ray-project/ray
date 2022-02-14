@@ -11,18 +11,18 @@ import ray
 import ray.train as train
 from ray.train import Trainer
 from ray.train.backend import BackendConfig, Backend
-from ray.train.callbacks import (JsonLoggerCallback, PrintCallback,
-                                 TBXLoggerCallback)
-from ray.train.callbacks.logging import MLflowLoggerCallback, \
-    TrainCallbackLogdirManager
-from ray.train.constants import (TRAINING_ITERATION, DETAILED_AUTOFILLED_KEYS,
-                                 BASIC_AUTOFILLED_KEYS,
-                                 ENABLE_DETAILED_AUTOFILLED_METRICS_ENV)
+from ray.train.callbacks import JsonLoggerCallback, PrintCallback, TBXLoggerCallback
+from ray.train.callbacks.logging import MLflowLoggerCallback, TrainCallbackLogdirManager
+from ray.train.constants import (
+    TRAINING_ITERATION,
+    DETAILED_AUTOFILLED_KEYS,
+    BASIC_AUTOFILLED_KEYS,
+    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
+)
 from ray.train.worker_group import WorkerGroup
 
 try:
-    from tensorflow.python.summary.summary_iterator \
-        import summary_iterator
+    from tensorflow.python.summary.summary_iterator import summary_iterator
 except ImportError:
     summary_iterator = None
 
@@ -45,8 +45,7 @@ class TestBackend(Backend):
     def on_start(self, worker_group: WorkerGroup, backend_config: TestConfig):
         pass
 
-    def on_shutdown(self, worker_group: WorkerGroup,
-                    backend_config: TestConfig):
+    def on_shutdown(self, worker_group: WorkerGroup, backend_config: TestConfig):
         pass
 
 
@@ -105,8 +104,9 @@ def test_train_callback_logdir_manager(tmp_path, input):
 @pytest.mark.parametrize("workers_to_log", [0, None, [0, 1]])
 @pytest.mark.parametrize("detailed", [False, True])
 @pytest.mark.parametrize("filename", [None, "my_own_filename.json"])
-def test_json(monkeypatch, ray_start_4_cpus, tmp_path, workers_to_log,
-              detailed, filename):
+def test_json(
+    monkeypatch, ray_start_4_cpus, tmp_path, workers_to_log, detailed, filename
+):
     if detailed:
         monkeypatch.setenv(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, "1")
 
@@ -131,14 +131,12 @@ def test_json(monkeypatch, ray_start_4_cpus, tmp_path, workers_to_log,
         # if None, use default value
         callback = JsonLoggerCallback(workers_to_log=workers_to_log)
     else:
-        callback = JsonLoggerCallback(
-            filename=filename, workers_to_log=workers_to_log)
+        callback = JsonLoggerCallback(filename=filename, workers_to_log=workers_to_log)
     trainer = Trainer(config, num_workers=num_workers, logdir=str(tmp_path))
     trainer.start()
     trainer.run(train_func, callbacks=[callback])
     if filename is None:
-        assert str(
-            callback.log_path.name) == JsonLoggerCallback._default_filename
+        assert str(callback.log_path.name) == JsonLoggerCallback._default_filename
     else:
         assert str(callback.log_path.name) == filename
 
@@ -149,21 +147,29 @@ def test_json(monkeypatch, ray_start_4_cpus, tmp_path, workers_to_log,
     assert len(log[0]) == num_workers_to_log
     assert all(len(element) == len(log[0]) for element in log)
     assert all(
-        all(worker["index"] == worker[TRAINING_ITERATION] - 1
-            for worker in element) for element in log)
+        all(worker["index"] == worker[TRAINING_ITERATION] - 1 for worker in element)
+        for element in log
+    )
     assert all(
-        all(
-            all(key in worker for key in BASIC_AUTOFILLED_KEYS)
-            for worker in element) for element in log)
+        all(all(key in worker for key in BASIC_AUTOFILLED_KEYS) for worker in element)
+        for element in log
+    )
     if detailed:
         assert all(
             all(
                 all(key in worker for key in DETAILED_AUTOFILLED_KEYS)
-                for worker in element) for element in log)
+                for worker in element
+            )
+            for element in log
+        )
     else:
         assert all(
-            all(not any(key in worker for key in DETAILED_AUTOFILLED_KEYS)
-                for worker in element) for element in log)
+            all(
+                not any(key in worker for key in DETAILED_AUTOFILLED_KEYS)
+                for worker in element
+            )
+            for element in log
+        )
 
 
 def _validate_tbx_result(events_dir):
@@ -189,8 +195,7 @@ def test_TBX(ray_start_4_cpus, tmp_path):
     def train_func():
         train.report(episode_reward_mean=4)
         train.report(episode_reward_mean=5)
-        train.report(
-            episode_reward_mean=6, score=[1, 2, 3], hello={"world": 1})
+        train.report(episode_reward_mean=6, score=[1, 2, 3], hello={"world": 1})
         return 1
 
     callback = TBXLoggerCallback(temp_dir)
@@ -215,16 +220,14 @@ def test_mlflow(ray_start_4_cpus, tmp_path):
         train.report(episode_reward_mean=6)
         return 1
 
-    callback = MLflowLoggerCallback(
-        experiment_name="test_exp", logdir=temp_dir)
+    callback = MLflowLoggerCallback(experiment_name="test_exp", logdir=temp_dir)
     trainer = Trainer(config, num_workers=num_workers)
     trainer.start()
     trainer.run(train_func, config=params, callbacks=[callback])
 
     from mlflow.tracking import MlflowClient
 
-    client = MlflowClient(
-        tracking_uri=callback.mlflow_util._mlflow.get_tracking_uri())
+    client = MlflowClient(tracking_uri=callback.mlflow_util._mlflow.get_tracking_uri())
 
     all_runs = callback.mlflow_util._mlflow.search_runs(experiment_ids=["0"])
     assert len(all_runs) == 1
@@ -234,13 +237,16 @@ def test_mlflow(ray_start_4_cpus, tmp_path):
     run = client.get_run(run_id)
 
     assert run.data.params == params
-    assert "episode_reward_mean" in run.data.metrics and \
-           run.data.metrics["episode_reward_mean"] == 6.0
-    assert TRAINING_ITERATION in run.data.metrics and \
-           run.data.metrics[TRAINING_ITERATION] == 3.0
+    assert (
+        "episode_reward_mean" in run.data.metrics
+        and run.data.metrics["episode_reward_mean"] == 6.0
+    )
+    assert (
+        TRAINING_ITERATION in run.data.metrics
+        and run.data.metrics[TRAINING_ITERATION] == 3.0
+    )
 
-    metric_history = client.get_metric_history(
-        run_id=run_id, key="episode_reward_mean")
+    metric_history = client.get_metric_history(run_id=run_id, key="episode_reward_mean")
 
     assert len(metric_history) == 3
     iterations = [metric.step for metric in metric_history]

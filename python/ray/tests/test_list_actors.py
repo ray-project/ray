@@ -34,10 +34,7 @@ def test_list_named_actors_basic(ray_start_regular):
     wait_for_condition(lambda: not ray.util.list_named_actors())
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }], indirect=True)
+@pytest.mark.parametrize("ray_start_regular", [{"local_mode": True}], indirect=True)
 def test_list_named_actors_basic_local_mode(ray_start_regular):
     @ray.remote
     class A:
@@ -105,7 +102,9 @@ a = A.options(name="sad").remote()
 assert len(ray.util.list_named_actors()) == 2
 assert "hi" in ray.util.list_named_actors()
 assert "sad" in ray.util.list_named_actors()
-""".format(address)
+""".format(
+        address
+    )
 
     run_string_as_driver(driver_script)
 
@@ -131,15 +130,16 @@ assert len(ray.util.list_named_actors()) == 1
 assert ray.util.list_named_actors() == ["hi"]
 assert ray.util.list_named_actors(all_namespaces=True) == \
     [dict(name="hi", namespace="test")]
-""".format(address)
+""".format(
+        address
+    )
 
     run_string_as_driver(driver_script_1)
 
     assert not ray.util.list_named_actors()
-    assert ray.util.list_named_actors(all_namespaces=True) == [{
-        "name": "hi",
-        "namespace": "test"
-    }]
+    assert ray.util.list_named_actors(all_namespaces=True) == [
+        {"name": "hi", "namespace": "test"}
+    ]
 
     driver_script_2 = """
 import ray
@@ -150,7 +150,9 @@ assert ray.util.list_named_actors(all_namespaces=True) == \
     [dict(name="hi", namespace="test")]
 ray.kill(ray.get_actor("hi"), no_restart=True)
 assert not ray.util.list_named_actors()
-""".format(address)
+""".format(
+        address
+    )
 
     run_string_as_driver(driver_script_2)
     assert not ray.util.list_named_actors()

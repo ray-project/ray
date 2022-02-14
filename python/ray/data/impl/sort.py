@@ -35,8 +35,9 @@ T = TypeVar("T")
 SortKeyT = Union[None, List[Tuple[str, str]], Callable[[T], Any]]
 
 
-def sample_boundaries(blocks: List[ObjectRef[Block]], key: SortKeyT,
-                      num_reducers: int) -> List[T]:
+def sample_boundaries(
+    blocks: List[ObjectRef[Block]], key: SortKeyT, num_reducers: int
+) -> List[T]:
     """
     Return (num_reducers - 1) items in ascending order from the blocks that
     partition the domain into ranges with approximately equally many elements.
@@ -49,9 +50,7 @@ def sample_boundaries(blocks: List[ObjectRef[Block]], key: SortKeyT,
 
     sample_block = cached_remote_fn(_sample_block)
 
-    sample_results = [
-        sample_block.remote(block, n_samples, key) for block in blocks
-    ]
+    sample_results = [sample_block.remote(block, n_samples, key) for block in blocks]
     sample_bar = ProgressBar("Sort Sample", len(sample_results))
     sample_bar.block_until_complete(sample_results)
     sample_bar.close()
@@ -75,8 +74,9 @@ def sample_boundaries(blocks: List[ObjectRef[Block]], key: SortKeyT,
     return ret[1:]
 
 
-def sort_impl(blocks: BlockList, key: SortKeyT,
-              descending: bool = False) -> Tuple[BlockList, dict]:
+def sort_impl(
+    blocks: BlockList, key: SortKeyT, descending: bool = False
+) -> Tuple[BlockList, dict]:
     stage_info = {}
     blocks = blocks.get_blocks()
     if len(blocks) == 0:
@@ -94,8 +94,7 @@ def sort_impl(blocks: BlockList, key: SortKeyT,
     if descending:
         boundaries.reverse()
 
-    sort_block = cached_remote_fn(_sort_block).options(
-        num_returns=num_reducers + 1)
+    sort_block = cached_remote_fn(_sort_block).options(num_returns=num_reducers + 1)
     merge_sorted_blocks = cached_remote_fn(_merge_sorted_blocks, num_returns=2)
 
     map_results = np.empty((num_mappers, num_reducers), dtype=object)
@@ -111,8 +110,7 @@ def sort_impl(blocks: BlockList, key: SortKeyT,
 
     reduce_results = []
     for j in range(num_reducers):
-        ret = merge_sorted_blocks.remote(key, descending,
-                                         *map_results[:, j].tolist())
+        ret = merge_sorted_blocks.remote(key, descending, *map_results[:, j].tolist())
         reduce_results.append(ret)
     merge_bar = ProgressBar("Sort Merge", len(reduce_results))
     merge_bar.block_until_complete([ret[0] for ret in reduce_results])
@@ -130,14 +128,16 @@ def _sample_block(block: Block[T], n_samples: int, key: SortKeyT) -> Block[T]:
 
 def _sort_block(block, boundaries, key, descending):
     stats = BlockExecStats.builder()
-    out = BlockAccessor.for_block(block).sort_and_partition(
-        boundaries, key, descending)
+    out = BlockAccessor.for_block(block).sort_and_partition(boundaries, key, descending)
     meta = BlockAccessor.for_block(block).get_metadata(
-        input_files=None, exec_stats=stats.build())
+        input_files=None, exec_stats=stats.build()
+    )
     return out + [meta]
 
 
-def _merge_sorted_blocks(key, descending, *blocks: List[Block[T]]
-                         ) -> Tuple[Block[T], BlockMetadata]:
+def _merge_sorted_blocks(
+    key, descending, *blocks: List[Block[T]]
+) -> Tuple[Block[T], BlockMetadata]:
     return BlockAccessor.for_block(blocks[0]).merge_sorted_blocks(
-        list(blocks), key, descending)
+        list(blocks), key, descending
+    )

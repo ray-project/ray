@@ -82,27 +82,27 @@ class HyperBandScheduler(FIFOScheduler):
 
     _supports_buffered_results = False
 
-    def __init__(self,
-                 time_attr: str = "training_iteration",
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None,
-                 max_t: int = 81,
-                 reduction_factor: float = 3,
-                 stop_last_trials: bool = True):
+    def __init__(
+        self,
+        time_attr: str = "training_iteration",
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        max_t: int = 81,
+        reduction_factor: float = 3,
+        stop_last_trials: bool = True,
+    ):
         assert max_t > 0, "Max (time_attr) not valid!"
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
 
         FIFOScheduler.__init__(self)
         self._eta = reduction_factor
-        self._s_max_1 = int(
-            np.round(np.log(max_t) / np.log(reduction_factor))) + 1
+        self._s_max_1 = int(np.round(np.log(max_t) / np.log(reduction_factor))) + 1
         self._max_t_attr = max_t
         # bracket max trials
-        self._get_n0 = lambda s: int(
-            np.ceil(self._s_max_1 / (s + 1) * self._eta**s))
+        self._get_n0 = lambda s: int(np.ceil(self._s_max_1 / (s + 1) * self._eta ** s))
         # bracket initial iterations
-        self._get_r0 = lambda s: int((max_t * self._eta**(-s)))
+        self._get_r0 = lambda s: int((max_t * self._eta ** (-s)))
         self._hyperbands = [[]]  # list of hyperband iterations
         self._trial_info = {}  # Stores Trial -> Bracket, Band Iteration
 
@@ -114,14 +114,13 @@ class HyperBandScheduler(FIFOScheduler):
         self._metric_op = None
 
         if self._mode == "max":
-            self._metric_op = 1.
+            self._metric_op = 1.0
         elif self._mode == "min":
-            self._metric_op = -1.
+            self._metric_op = -1.0
         self._time_attr = time_attr
         self._stop_last_trials = stop_last_trials
 
-    def set_search_properties(self, metric: Optional[str],
-                              mode: Optional[str]) -> bool:
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str]) -> bool:
         if self._metric and metric:
             return False
         if self._mode and mode:
@@ -133,9 +132,9 @@ class HyperBandScheduler(FIFOScheduler):
             self._mode = mode
 
         if self._mode == "max":
-            self._metric_op = 1.
+            self._metric_op = 1.0
         elif self._mode == "min":
-            self._metric_op = -1.
+            self._metric_op = -1.0
 
         if self._metric is None and self._mode:
             # If only a mode was passed, use anonymous metric
@@ -143,8 +142,7 @@ class HyperBandScheduler(FIFOScheduler):
 
         return True
 
-    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",
-                     trial: Trial):
+    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
         """Adds new trial.
 
         On a new trial add, if current bracket is not filled,
@@ -156,8 +154,10 @@ class HyperBandScheduler(FIFOScheduler):
                 "{} has been instantiated without a valid `metric` ({}) or "
                 "`mode` ({}) parameter. Either pass these parameters when "
                 "instantiating the scheduler, or pass them as parameters "
-                "to `tune.run()`".format(self.__class__.__name__, self._metric,
-                                         self._mode))
+                "to `tune.run()`".format(
+                    self.__class__.__name__, self._metric, self._mode
+                )
+            )
 
         cur_bracket = self._state["bracket"]
         cur_band = self._hyperbands[self._state["band_idx"]]
@@ -193,7 +193,8 @@ class HyperBandScheduler(FIFOScheduler):
             max_t_attr=self._max_t_attr,
             eta=self._eta,
             s=s,
-            stop_last_trials=self._stop_last_trials)
+            stop_last_trials=self._stop_last_trials,
+        )
 
     def _cur_band_filled(self) -> bool:
         """Checks if the current band is filled.
@@ -203,8 +204,9 @@ class HyperBandScheduler(FIFOScheduler):
         cur_band = self._hyperbands[self._state["band_idx"]]
         return len(cur_band) == self._s_max_1
 
-    def on_trial_result(self, trial_runner: "trial_runner.TrialRunner",
-                        trial: Trial, result: Dict):
+    def on_trial_result(
+        self, trial_runner: "trial_runner.TrialRunner", trial: Trial, result: Dict
+    ):
         """If bracket is finished, all trials will be stopped.
 
         If a given trial finishes and bracket iteration is not done,
@@ -221,12 +223,15 @@ class HyperBandScheduler(FIFOScheduler):
             return TrialScheduler.CONTINUE
 
         action = self._process_bracket(trial_runner, bracket)
-        logger.debug(f"{action} for {trial} on "
-                     f"{self._time_attr}={result.get(self._time_attr)}")
+        logger.debug(
+            f"{action} for {trial} on "
+            f"{self._time_attr}={result.get(self._time_attr)}"
+        )
         return action
 
-    def _process_bracket(self, trial_runner: "trial_runner.TrialRunner",
-                         bracket: "Bracket") -> str:
+    def _process_bracket(
+        self, trial_runner: "trial_runner.TrialRunner", bracket: "Bracket"
+    ) -> str:
         """This is called whenever a trial makes progress.
 
         When all live trials in the bracket have no more iterations left,
@@ -241,8 +246,7 @@ class HyperBandScheduler(FIFOScheduler):
                 bracket.cleanup_full(trial_runner)
                 return TrialScheduler.STOP
 
-            good, bad = bracket.successive_halving(self._metric,
-                                                   self._metric_op)
+            good, bad = bracket.successive_halving(self._metric, self._metric_op)
             # kill bad trials
             self._num_stopped += len(bad)
             for t in bad:
@@ -252,14 +256,16 @@ class HyperBandScheduler(FIFOScheduler):
                     bracket.cleanup_trial(t)
                     action = TrialScheduler.STOP
                 else:
-                    raise TuneError(f"Trial with unexpected bad status "
-                                    f"encountered: {t.status}")
+                    raise TuneError(
+                        f"Trial with unexpected bad status " f"encountered: {t.status}"
+                    )
 
             # ready the good trials - if trial is too far ahead, don't continue
             for t in good:
                 if t.status not in [Trial.PAUSED, Trial.RUNNING]:
-                    raise TuneError(f"Trial with unexpected good status "
-                                    f"encountered: {t.status}")
+                    raise TuneError(
+                        f"Trial with unexpected good status " f"encountered: {t.status}"
+                    )
                 if bracket.continue_trial(t):
                     if t.status == Trial.PAUSED:
                         t.status = Trial.PENDING
@@ -267,8 +273,7 @@ class HyperBandScheduler(FIFOScheduler):
                         action = TrialScheduler.CONTINUE
         return action
 
-    def on_trial_remove(self, trial_runner: "trial_runner.TrialRunner",
-                        trial: Trial):
+    def on_trial_remove(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
         """Notification when trial terminates.
 
         Trial info is removed from bracket. Triggers halving if bracket is
@@ -278,18 +283,19 @@ class HyperBandScheduler(FIFOScheduler):
         if not bracket.finished():
             self._process_bracket(trial_runner, bracket)
 
-    def on_trial_complete(self, trial_runner: "trial_runner.TrialRunner",
-                          trial: Trial, result: Dict):
+    def on_trial_complete(
+        self, trial_runner: "trial_runner.TrialRunner", trial: Trial, result: Dict
+    ):
         """Cleans up trial info from bracket if trial completed early."""
         self.on_trial_remove(trial_runner, trial)
 
-    def on_trial_error(self, trial_runner: "trial_runner.TrialRunner",
-                       trial: Trial):
+    def on_trial_error(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
         """Cleans up trial info from bracket if trial errored early."""
         self.on_trial_remove(trial_runner, trial)
 
     def choose_trial_to_run(
-            self, trial_runner: "trial_runner.TrialRunner") -> Optional[Trial]:
+        self, trial_runner: "trial_runner.TrialRunner"
+    ) -> Optional[Trial]:
         """Fair scheduling within iteration by completion percentage.
 
         List of trials not used since all trials are tracked as state
@@ -301,11 +307,12 @@ class HyperBandScheduler(FIFOScheduler):
             # band will have None entries if no resources
             # are to be allocated to that bracket.
             scrubbed = [b for b in hyperband if b is not None]
-            for bracket in sorted(
-                    scrubbed, key=lambda b: b.completion_percentage()):
+            for bracket in sorted(scrubbed, key=lambda b: b.completion_percentage()):
                 for trial in bracket.current_trials():
-                    if (trial.status == Trial.PENDING and trial_runner.
-                            trial_executor.has_resources_for_trial(trial)):
+                    if (
+                        trial.status == Trial.PENDING
+                        and trial_runner.trial_executor.has_resources_for_trial(trial)
+                    ):
                         return trial
         return None
 
@@ -328,7 +335,8 @@ class HyperBandScheduler(FIFOScheduler):
         """
         out = "Using HyperBand: "
         out += "num_stopped={} total_brackets={}".format(
-            self._num_stopped, sum(len(band) for band in self._hyperbands))
+            self._num_stopped, sum(len(band) for band in self._hyperbands)
+        )
         for i, band in enumerate(self._hyperbands):
             out += "\nRound #{}:".format(i)
             for bracket in band:
@@ -339,7 +347,7 @@ class HyperBandScheduler(FIFOScheduler):
     def state(self) -> Dict[str, int]:
         return {
             "num_brackets": sum(len(band) for band in self._hyperbands),
-            "num_stopped": self._num_stopped
+            "num_stopped": self._num_stopped,
         }
 
 
@@ -350,14 +358,16 @@ class Bracket:
     Also keeps track of progress to ensure good scheduling.
     """
 
-    def __init__(self,
-                 time_attr: str,
-                 max_trials: int,
-                 init_t_attr: int,
-                 max_t_attr: int,
-                 eta: float,
-                 s: int,
-                 stop_last_trials: bool = True):
+    def __init__(
+        self,
+        time_attr: str,
+        max_trials: int,
+        init_t_attr: int,
+        max_t_attr: int,
+        eta: float,
+        s: int,
+        stop_last_trials: bool = True,
+    ):
         self._live_trials = {}  # maps trial -> current result
         self._all_trials = []
         self._time_attr = time_attr  # attribute to
@@ -389,7 +399,8 @@ class Bracket:
         TODO(rliaw): also check that `t.iterations == self._r`"""
         return all(
             self._get_result_time(result) >= self._cumul_r
-            for result in self._live_trials.values())
+            for result in self._live_trials.values()
+        )
 
     def finished(self) -> bool:
         if not self.stop_last_trials:
@@ -415,8 +426,9 @@ class Bracket:
 
         return len(self._live_trials) == self._n
 
-    def successive_halving(self, metric: str, metric_op: float
-                           ) -> Tuple[List[Trial], List[Trial]]:
+    def successive_halving(
+        self, metric: str, metric_op: float
+    ) -> Tuple[List[Trial], List[Trial]]:
         if self._halves == 0 and not self.stop_last_trials:
             return self._live_trials, []
         assert self._halves > 0
@@ -428,10 +440,10 @@ class Bracket:
         self._r = int(min(self._r, self._max_t_attr - self._cumul_r))
         self._cumul_r = self._r
         sorted_trials = sorted(
-            self._live_trials,
-            key=lambda t: metric_op * self._live_trials[t][metric])
+            self._live_trials, key=lambda t: metric_op * self._live_trials[t][metric]
+        )
 
-        good, bad = sorted_trials[-self._n:], sorted_trials[:-self._n]
+        good, bad = sorted_trials[-self._n :], sorted_trials[: -self._n]
         return good, bad
 
     def update_trial_stats(self, trial: Trial, result: Dict):
@@ -448,9 +460,10 @@ class Bracket:
 
         delta = observed_time - last_observed
         if delta <= 0:
-            logger.info("Restoring from a previous point in time. "
-                        "Previous={}; Now={}".format(last_observed,
-                                                     observed_time))
+            logger.info(
+                "Restoring from a previous point in time. "
+                "Previous={}; Now={}".format(last_observed, observed_time)
+            )
         self._completed_progress += delta
         self._live_trials[trial] = result
 
@@ -469,7 +482,7 @@ class Bracket:
         Lets the last trial continue to run until termination condition
         kicks in."""
         for trial in self.current_trials():
-            if (trial.status == Trial.PAUSED):
+            if trial.status == Trial.PAUSED:
                 trial_runner.stop_trial(trial)
 
     def completion_percentage(self) -> float:
@@ -498,12 +511,15 @@ class Bracket:
         return work
 
     def __repr__(self) -> str:
-        status = ", ".join([
-            "Max Size (n)={}".format(self._n),
-            "Milestone (r)={}".format(self._cumul_r),
-            "completed={:.1%}".format(self.completion_percentage())
-        ])
+        status = ", ".join(
+            [
+                "Max Size (n)={}".format(self._n),
+                "Milestone (r)={}".format(self._cumul_r),
+                "completed={:.1%}".format(self.completion_percentage()),
+            ]
+        )
         counts = collections.Counter([t.status for t in self._all_trials])
         trial_statuses = ", ".join(
-            sorted("{}: {}".format(k, v) for k, v in counts.items()))
+            sorted("{}: {}".format(k, v) for k, v in counts.items())
+        )
         return "Bracket({}): {{{}}} ".format(status, trial_statuses)

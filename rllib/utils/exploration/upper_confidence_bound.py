@@ -8,13 +8,14 @@ from ray.rllib.utils.framework import TensorType
 
 class UpperConfidenceBound(Exploration):
     @override(Exploration)
-    def get_exploration_action(self,
-                               action_distribution: ActionDistribution,
-                               timestep: Union[int, TensorType],
-                               explore: bool = True):
+    def get_exploration_action(
+        self,
+        action_distribution: ActionDistribution,
+        timestep: Union[int, TensorType],
+        explore: bool = True,
+    ):
         if self.framework == "torch":
-            return self._get_torch_exploration_action(action_distribution,
-                                                      explore)
+            return self._get_torch_exploration_action(action_distribution, explore)
         else:
             raise NotImplementedError
 

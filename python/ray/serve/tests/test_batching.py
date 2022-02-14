@@ -67,12 +67,12 @@ async def test_decorator_validation():
     async def function2():
         pass
 
-    class Class():
+    class Class:
         @serve.batch
         async def method(self):
             pass
 
-    class Class2():
+    class Class2:
         @serve.batch(max_batch_size=10, batch_wait_timeout_s=1.5)
         async def method(self):
             pass
@@ -261,4 +261,5 @@ async def test_batch_size_multiple_long_timeout(use_class):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

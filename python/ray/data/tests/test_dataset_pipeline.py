@@ -13,10 +13,12 @@ from ray.tests.conftest import *  # noqa
 
 def test_pipeline_actors(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1)
-    pipe = ray.data.range(3) \
-        .repeat(10) \
-        .map(lambda x: x + 1) \
+    pipe = (
+        ray.data.range(3)
+        .repeat(10)
+        .map(lambda x: x + 1)
         .map(lambda x: x + 1, compute="actors", num_gpus=1)
+    )
 
     assert sorted(pipe.take(999)) == sorted([2, 3, 4] * 10)
 
@@ -37,8 +39,7 @@ def test_incremental_take(shutdown_only):
 
 def test_epoch(ray_start_regular_shared):
     # Test dataset repeat.
-    pipe = ray.data.range(5).map(lambda x: x * 2).repeat(3).map(
-        lambda x: x * 2)
+    pipe = ray.data.range(5).map(lambda x: x * 2).repeat(3).map(lambda x: x * 2)
     results = [p.take() for p in pipe.iter_epochs()]
     assert results == [[0, 4, 8, 12, 16], [0, 4, 8, 12, 16], [0, 4, 8, 12, 16]]
 
@@ -50,8 +51,7 @@ def test_epoch(ray_start_regular_shared):
     # Test nested repeat.
     pipe = ray.data.range(5).repeat(2).repeat(2)
     results = [p.take() for p in pipe.iter_epochs()]
-    assert results == [[0, 1, 2, 3, 4, 0, 1, 2, 3, 4],
-                       [0, 1, 2, 3, 4, 0, 1, 2, 3, 4]]
+    assert results == [[0, 1, 2, 3, 4, 0, 1, 2, 3, 4], [0, 1, 2, 3, 4, 0, 1, 2, 3, 4]]
 
     # Test preserve_epoch=True.
     pipe = ray.data.range(5).repeat(2).rewindow(blocks_per_window=2)
@@ -59,8 +59,9 @@ def test_epoch(ray_start_regular_shared):
     assert results == [[0, 1, 2, 3, 4], [0, 1, 2, 3, 4]]
 
     # Test preserve_epoch=False.
-    pipe = ray.data.range(5).repeat(2).rewindow(
-        blocks_per_window=2, preserve_epoch=False)
+    pipe = (
+        ray.data.range(5).repeat(2).rewindow(blocks_per_window=2, preserve_epoch=False)
+    )
     results = [p.take() for p in pipe.iter_epochs()]
     assert results == [[0, 1, 2, 3], [4, 0, 1, 2, 3, 4]]
 
@@ -148,7 +149,8 @@ def test_repeat(ray_start_regular_shared):
 
 def test_from_iterable(ray_start_regular_shared):
     pipe = DatasetPipeline.from_iterable(
-        [lambda: ray.data.range(3), lambda: ray.data.range(2)])
+        [lambda: ray.data.range(3), lambda: ray.data.range(2)]
+    )
     assert pipe.take() == [0, 1, 2, 0, 1]
 
 
@@ -200,9 +202,7 @@ def test_schema(ray_start_regular_shared):
 
 
 def test_split(ray_start_regular_shared):
-    pipe = ray.data.range(3) \
-        .map(lambda x: x + 1) \
-        .repeat(10)
+    pipe = ray.data.range(3).map(lambda x: x + 1).repeat(10)
 
     @ray.remote
     def consume(shard, i):
@@ -220,9 +220,7 @@ def test_split(ray_start_regular_shared):
 def test_split_at_indices(ray_start_regular_shared):
     indices = [2, 5]
     n = 8
-    pipe = ray.data.range(n) \
-        .map(lambda x: x + 1) \
-        .repeat(2)
+    pipe = ray.data.range(n).map(lambda x: x + 1).repeat(2)
 
     @ray.remote
     def consume(shard, i):
@@ -245,8 +243,9 @@ def test_split_at_indices(ray_start_regular_shared):
     np.testing.assert_equal(
         np.array(outs, dtype=np.object),
         np.array(
-            [[1, 2, 1, 2], [3, 4, 5, 3, 4, 5], [6, 7, 8, 6, 7, 8]],
-            dtype=np.object))
+            [[1, 2, 1, 2], [3, 4, 5, 3, 4, 5], [6, 7, 8, 6, 7, 8]], dtype=np.object
+        ),
+    )
 
 
 def test_parquet_write(ray_start_regular_shared, tmp_path):
@@ -306,4 +305,5 @@ def test_count_sum_on_infinite_pipeline(ray_start_regular_shared):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

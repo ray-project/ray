@@ -5,8 +5,11 @@ Source: https://github.com/google-research/recsim
 """
 
 from recsim import choice_model
-from recsim.environments import long_term_satisfaction as lts, \
-    interest_evolution as iev, interest_exploration as iex
+from recsim.environments import (
+    long_term_satisfaction as lts,
+    interest_evolution as iev,
+    interest_exploration as iex,
+)
 
 from ray.rllib.env.wrappers.recsim import make_recsim_env
 from ray.tune import register_env
@@ -24,7 +27,8 @@ def lts_user_model_creator(env_ctx):
     return lts.LTSUserModel(
         env_ctx["slate_size"],
         user_state_ctor=lts.LTSUserState,
-        response_model_ctor=lts.LTSResponse)
+        response_model_ctor=lts.LTSResponse,
+    )
 
 
 def lts_document_sampler_creator(env_ctx):
@@ -49,7 +53,8 @@ def iex_user_model_creator(env_ctx):
         env_ctx["slate_size"],
         user_state_ctor=iex.IEUserState,
         response_model_ctor=iex.IEResponse,
-        seed=env_ctx["seed"])
+        seed=env_ctx["seed"],
+    )
 
 
 def iex_document_sampler_creator(env_ctx):
@@ -69,15 +74,27 @@ InterestExplorationRecSimEnv = make_recsim_env(
 def iev_user_model_creator(env_ctx):
     return iev.IEvUserModel(
         env_ctx["slate_size"],
-        choice_model_ctor=choice_model.MultinomialProportionalChoiceModel,
+        choice_model_ctor=choice_model.MultinomialLogitChoiceModel,
         response_model_ctor=iev.IEvResponse,
         user_state_ctor=iev.IEvUserState,
-        seed=env_ctx["seed"])
+        seed=env_ctx["seed"],
+    )
+
+
+# Extend IEvVideo to fix a bug caused by None cluster_ids.
+class SingleClusterIEvVideo(iev.IEvVideo):
+    def __init__(self, doc_id, features, video_length=None, quality=None):
+        super(SingleClusterIEvVideo, self).__init__(
+            doc_id=doc_id,
+            features=features,
+            cluster_id=0,  # single cluster.
+            video_length=video_length,
+            quality=quality,
+        )
 
 
 def iev_document_sampler_creator(env_ctx):
-    return iev.UtilityModelVideoSampler(
-        doc_ctor=iev.IEvVideo, seed=env_ctx["seed"])
+    return iev.IEvVideoSampler(doc_ctor=SingleClusterIEvVideo, seed=env_ctx["seed"])
 
 
 InterestEvolutionRecSimEnv = make_recsim_env(
@@ -88,5 +105,5 @@ InterestEvolutionRecSimEnv = make_recsim_env(
 
 # Backward compatibility.
 register_env(
-    name="RecSim-v1",
-    env_creator=lambda env_ctx: InterestEvolutionRecSimEnv(env_ctx))
+    name="RecSim-v1", env_creator=lambda env_ctx: InterestEvolutionRecSimEnv(env_ctx)
+)

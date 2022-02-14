@@ -68,8 +68,7 @@ def test_multiple_inputs(execution_mode, shared_ray_instance):
     def step3(step1_output: str, step2_output: str):
         return f"{step1_output}|{step2_output}"
 
-    multiple_inputs = step3(step1(pipeline.INPUT),
-                            step2(pipeline.INPUT)).deploy()
+    multiple_inputs = step3(step1(pipeline.INPUT), step2(pipeline.INPUT)).deploy()
     assert multiple_inputs.call("HELLO") == "step1_HELLO|step2_HELLO"
 
 
@@ -90,8 +89,9 @@ def test_basic_class(execution_mode, shared_ray_instance):
 
 @pytest.mark.parametrize("execution_mode", ALL_EXECUTION_MODES)
 @enable_local_execution_mode_only
-def test_class_constructor_not_called_until_deployed(execution_mode,
-                                                     shared_ray_instance):
+def test_class_constructor_not_called_until_deployed(
+    execution_mode, shared_ray_instance
+):
     """Constructor should only be called after .deploy()."""
 
     tmp = tempfile.NamedTemporaryFile("w+", suffix=".tmp", delete=False)
@@ -146,8 +146,8 @@ def test_mix_classes_and_functions(execution_mode, shared_ray_instance):
         return f"{greeting1}|{greeting2}"
 
     greeter = combiner(
-        GreeterStep1("Howdy")(pipeline.INPUT),
-        greeter_step_2(pipeline.INPUT)).deploy()
+        GreeterStep1("Howdy")(pipeline.INPUT), greeter_step_2(pipeline.INPUT)
+    ).deploy()
     assert greeter.call("Teddy") == "Howdy Teddy!|How's it hanging, Teddy?"
 
 

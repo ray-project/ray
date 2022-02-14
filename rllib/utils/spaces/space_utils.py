@@ -22,6 +22,7 @@ def flatten_space(space: gym.Space) -> List[gym.Space]:
 
     def _helper_flatten(space_, return_list):
         from ray.rllib.utils.spaces.flexdict import FlexDict
+
         if isinstance(space_, Tuple):
             for s in space_:
                 _helper_flatten(s, return_list)
@@ -67,11 +68,11 @@ def get_base_struct_from_space(space):
 
 
 def get_dummy_batch_for_space(
-        space: gym.Space,
-        batch_size: int = 32,
-        fill_value: Union[float, int, str] = 0.0,
-        time_size: Optional[int] = None,
-        time_major: bool = False,
+    space: gym.Space,
+    batch_size: int = 32,
+    fill_value: Union[float, int, str] = 0.0,
+    time_size: Optional[int] = None,
+    time_major: bool = False,
 ) -> np.ndarray:
     """Returns batched dummy data (using `batch_size`) for the given `space`.
 
@@ -107,19 +108,27 @@ def get_dummy_batch_for_space(
             assert batch_size > 0 and time_size > 0
             if time_major:
                 return np.array(
-                    [[space.sample() for _ in range(batch_size)]
-                     for t in range(time_size)],
-                    dtype=space.dtype)
+                    [
+                        [space.sample() for _ in range(batch_size)]
+                        for t in range(time_size)
+                    ],
+                    dtype=space.dtype,
+                )
             else:
                 return np.array(
-                    [[space.sample() for t in range(time_size)]
-                     for _ in range(batch_size)],
-                    dtype=space.dtype)
+                    [
+                        [space.sample() for t in range(time_size)]
+                        for _ in range(batch_size)
+                    ],
+                    dtype=space.dtype,
+                )
         else:
             return np.array(
                 [space.sample() for _ in range(batch_size)]
-                if batch_size > 0 else space.sample(),
-                dtype=space.dtype)
+                if batch_size > 0
+                else space.sample(),
+                dtype=space.dtype,
+            )
     # Fill value given: Use np.full.
     else:
         if time_size is not None:
@@ -131,9 +140,8 @@ def get_dummy_batch_for_space(
         else:
             shape = [batch_size] if batch_size > 0 else []
         return np.full(
-            shape + list(space.shape),
-            fill_value=fill_value,
-            dtype=space.dtype)
+            shape + list(space.shape), fill_value=fill_value, dtype=space.dtype
+        )
 
 
 def flatten_to_single_ndarray(input_):
@@ -196,8 +204,9 @@ def unbatch(batches_struct):
         out.append(
             tree.unflatten_as(
                 batches_struct,
-                [flat_batches[i][batch_pos]
-                 for i in range(len(flat_batches))]))
+                [flat_batches[i][batch_pos] for i in range(len(flat_batches))],
+            )
+        )
     return out
 
 
@@ -247,9 +256,12 @@ def unsquash_action(action, action_space_struct):
     """
 
     def map_(a, s):
-        if isinstance(s, gym.spaces.Box) and \
-                (s.dtype == np.float32 or s.dtype == np.float64) and \
-                np.all(s.bounded_below) and np.all(s.bounded_above):
+        if (
+            isinstance(s, gym.spaces.Box)
+            and (s.dtype == np.float32 or s.dtype == np.float64)
+            and np.all(s.bounded_below)
+            and np.all(s.bounded_above)
+        ):
             # Assuming values are roughly between -1.0 and 1.0 ->
             # unsquash them to the given bounds.
             a = s.low + (a + 1.0) * (s.high - s.low) / 2.0
@@ -281,8 +293,9 @@ def normalize_action(action, action_space_struct):
     """
 
     def map_(a, s):
-        if isinstance(s, gym.spaces.Box) and \
-                (s.dtype == np.float32 or s.dtype == np.float64):
+        if isinstance(s, gym.spaces.Box) and (
+            s.dtype == np.float32 or s.dtype == np.float64
+        ):
             # Normalize values to be exactly between -1.0 and 1.0.
             a = ((a - s.low) * 2.0) / (s.high - s.low) - 1.0
         return a
@@ -307,10 +320,19 @@ def convert_element_to_space_type(element: Any, sampled_element: Any) -> Any:
     def map_(elem, s):
         if isinstance(s, np.ndarray):
             if not isinstance(elem, np.ndarray):
-                raise ValueError(
-                    "Element should be of type np.ndarray but is instead of \
-                        type {}".format(type(elem)))
-            elif (s.dtype != elem.dtype):
+                assert isinstance(
+                    elem, (float, int)
+                ), f"ERROR: `elem` ({elem}) must be np.array, float or int!"
+                if s.shape == ():
+                    elem = np.array(elem, dtype=s.dtype)
+                else:
+                    raise ValueError(
+                        "Element should be of type np.ndarray but is instead of \
+                            type {}".format(
+                            type(elem)
+                        )
+                    )
+            elif s.dtype != elem.dtype:
                 elem = elem.astype(s.dtype)
 
         elif isinstance(s, int):
@@ -318,5 +340,4 @@ def convert_element_to_space_type(element: Any, sampled_element: Any) -> Any:
                 elem = int(elem)
         return elem
 
-    return tree.map_structure(
-        map_, element, sampled_element, check_types=False)
+    return tree.map_structure(map_, element, sampled_element, check_types=False)

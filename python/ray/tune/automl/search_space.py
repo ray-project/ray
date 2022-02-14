@@ -8,8 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 class ParameterSpace:
-    """Base class of a single parameter's search space.
-    """
+    """Base class of a single parameter's search space."""
 
     def __init__(self, name):
         """Initialize ParameterSpace.
@@ -22,8 +21,7 @@ class ParameterSpace:
 
 
 class DiscreteSpace(ParameterSpace):
-    """Search space with discrete choices.
-    """
+    """Search space with discrete choices."""
 
     def __init__(self, name, choices):
         """Initialize DiscreteSpace.
@@ -85,8 +83,7 @@ class ContinuousSpace(ParameterSpace):
         if distribution == ContinuousSpace.LINEAR:
             self.choices = np.linspace(start, end, num)
         else:
-            raise NotImplementedError(
-                "Distribution %s not supported" % distribution)
+            raise NotImplementedError("Distribution %s not supported" % distribution)
 
         self.distribution = distribution
 
@@ -108,8 +105,7 @@ class ContinuousSpace(ParameterSpace):
         return len(self.choices)
 
     def __str__(self):
-        return "ContinuousSpace %s: [%s, %s]" % (self.name, self.start,
-                                                 self.end)
+        return "ContinuousSpace %s: [%s, %s]" % (self.name, self.start, self.end)
 
 
 class SearchSpace:

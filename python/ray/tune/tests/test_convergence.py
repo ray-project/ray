@@ -11,7 +11,7 @@ import unittest
 
 def loss(config, reporter):
     x = config.get("x")
-    reporter(loss=x**2)  # A simple function to optimize
+    reporter(loss=x ** 2)  # A simple function to optimize
 
 
 class ConvergenceTest(unittest.TestCase):
@@ -35,8 +35,7 @@ class ConvergenceTest(unittest.TestCase):
             loss,
             metric="loss",
             mode="min",
-            stop=ExperimentPlateauStopper(
-                metric="loss", top=top, patience=patience),
+            stop=ExperimentPlateauStopper(metric="loss", top=top, patience=patience),
             search_alg=searcher,
             config=space,
             num_samples=max(100, patience),  # Number of iterations
@@ -46,8 +45,10 @@ class ConvergenceTest(unittest.TestCase):
             reuse_actors=True,
             verbose=1,
         )
-        print(f"Num trials: {len(analysis.trials)}. "
-              f"Best result: {analysis.best_config['x']}")
+        print(
+            f"Num trials: {len(analysis.trials)}. "
+            f"Best result: {analysis.best_config['x']}"
+        )
 
         return analysis
 

@@ -17,8 +17,7 @@ from ray.tune.utils.mock_trainable import MyTrainableClass
 class ExperimentAnalysisSuite(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(
-            num_cpus=4, num_gpus=0, local_mode=True, include_dashboard=False)
+        ray.init(num_cpus=4, num_gpus=0, local_mode=True, include_dashboard=False)
 
     @classmethod
     def tearDownClass(cls):
@@ -44,11 +43,10 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             checkpoint_freq=1,
             num_samples=self.num_samples,
             config={
-                "width": tune.sample_from(
-                    lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(
-                    lambda spec: int(100 * random.random())),
-            })
+                "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
+                "height": tune.sample_from(lambda spec: int(100 * random.random())),
+            },
+        )
 
     def nan_test_exp(self):
         nan_ea = tune.run(
@@ -59,11 +57,10 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             checkpoint_freq=1,
             num_samples=self.num_samples,
             config={
-                "width": tune.sample_from(
-                    lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(
-                    lambda spec: int(100 * random.random())),
-            })
+                "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
+                "height": tune.sample_from(lambda spec: int(100 * random.random())),
+            },
+        )
         return nan_ea
 
     def testDataframe(self):
@@ -133,8 +130,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
     def testGetTrialCheckpointsPathsByPath(self):
         logdir = self.ea.get_best_logdir(self.metric, mode="max")
         checkpoints_metrics = self.ea.get_trial_checkpoints_paths(logdir)
-        expected_path = os.path.join(logdir, "checkpoint_000001/",
-                                     "checkpoint")
+        expected_path = os.path.join(logdir, "checkpoint_000001/", "checkpoint")
         assert checkpoints_metrics[0][0] == expected_path
         assert checkpoints_metrics[0][1] == 1
 
@@ -159,7 +155,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         checkpoints_metrics = self.ea.get_trial_checkpoints_paths(best_trial)
         expected_path = max(checkpoints_metrics, key=lambda x: x[1])[0]
         best_checkpoint = self.ea.get_best_checkpoint(
-            best_trial, self.metric, mode="max")
+            best_trial, self.metric, mode="max"
+        )
         assert expected_path == best_checkpoint
 
     def testGetLastCheckpoint(self):
@@ -171,11 +168,10 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             stop={"training_iteration": 2},
             checkpoint_freq=1,
             config={
-                "width": tune.sample_from(
-                    lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(
-                    lambda spec: int(100 * random.random())),
-            })
+                "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
+                "height": tune.sample_from(lambda spec: int(100 * random.random())),
+            },
+        )
 
         # check if it's loaded correctly
         last_checkpoint = new_ea.get_last_checkpoint().local_path
@@ -191,11 +187,10 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             stop={"training_iteration": 3},
             checkpoint_freq=1,
             config={
-                "width": tune.sample_from(
-                    lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(
-                    lambda spec: int(100 * random.random())),
-            })
+                "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
+                "height": tune.sample_from(lambda spec: int(100 * random.random())),
+            },
+        )
 
     def testAllDataframes(self):
         dataframes = self.ea.trial_dataframes
@@ -213,11 +208,10 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             stop={"training_iteration": 1},
             num_samples=1,
             config={
-                "width": tune.sample_from(
-                    lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(
-                    lambda spec: int(100 * random.random())),
-            })
+                "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
+                "height": tune.sample_from(lambda spec: int(100 * random.random())),
+            },
+        )
         df = analysis.dataframe(self.metric, mode="max")
         self.assertEqual(df.shape[0], 1)
 
@@ -233,8 +227,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         )
         logdir = analysis.get_best_logdir(self.metric, mode="max")
         checkpoints_metrics = analysis.get_trial_checkpoints_paths(logdir)
-        expected_path = os.path.join(logdir, "checkpoint_000001/",
-                                     "checkpoint")
+        expected_path = os.path.join(logdir, "checkpoint_000001/", "checkpoint")
         assert checkpoints_metrics[0][0] == expected_path
         assert checkpoints_metrics[0][1] == 1
 
@@ -251,7 +244,8 @@ class ExperimentAnalysisPropertySuite(unittest.TestCase):
             train,
             config={"base": tune.grid_search([100, 200, 300])},
             metric="res",
-            mode="max")
+            mode="max",
+        )
 
         trials = ea.trials
 
@@ -259,8 +253,7 @@ class ExperimentAnalysisPropertySuite(unittest.TestCase):
         self.assertEqual(ea.best_config, trials[2].config)
         self.assertEqual(ea.best_logdir, trials[2].logdir)
         self.assertEqual(ea.best_checkpoint, trials[2].checkpoint.value)
-        self.assertTrue(
-            all(ea.best_dataframe["trial_id"] == trials[2].trial_id))
+        self.assertTrue(all(ea.best_dataframe["trial_id"] == trials[2].trial_id))
         self.assertEqual(ea.results_df.loc[trials[2].trial_id, "res"], 309)
         self.assertEqual(ea.best_result["res"], 309)
         self.assertEqual(ea.best_result_df.loc[trials[2].trial_id, "res"], 309)
@@ -277,10 +270,8 @@ class ExperimentAnalysisPropertySuite(unittest.TestCase):
                 tune.report(loss=10)
 
         analysis = tune.run(
-            train,
-            config={"var": tune.grid_search([1, 2])},
-            metric="loss",
-            mode="min")
+            train, config={"var": tune.grid_search([1, 2])}, metric="loss", mode="min"
+        )
 
         self.assertEqual(analysis.best_config["var"], 1)
 
@@ -327,9 +318,9 @@ class ExperimentAnalysisStubSuite(unittest.TestCase):
             stop={"training_iteration": 1},
             num_samples=self.num_samples,
             config={
-                "alpha": tune.sample_from(
-                    lambda spec: 10 + int(90 * random.random())),
-            })
+                "alpha": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
+            },
+        )
 
     def testPickling(self):
         analysis = self.run_test_exp()
@@ -337,38 +328,37 @@ class ExperimentAnalysisStubSuite(unittest.TestCase):
         with open(pickle_path, "wb") as f:
             pickle.dump(analysis, f)
 
-        self.assertTrue(
-            analysis.get_best_trial(metric=self.metric, mode="max"))
+        self.assertTrue(analysis.get_best_trial(metric=self.metric, mode="max"))
 
         ray.shutdown()
         ray.tune.registry._global_registry = ray.tune.registry._Registry(
-            prefix="global")
+            prefix="global"
+        )
 
         with open(pickle_path, "rb") as f:
             analysis = pickle.load(f)
 
-        self.assertTrue(
-            analysis.get_best_trial(metric=self.metric, mode="max"))
+        self.assertTrue(analysis.get_best_trial(metric=self.metric, mode="max"))
 
     def testFromPath(self):
         self.run_test_exp()
         analysis = ExperimentAnalysis(self.test_path)
 
-        self.assertTrue(
-            analysis.get_best_trial(metric=self.metric, mode="max"))
+        self.assertTrue(analysis.get_best_trial(metric=self.metric, mode="max"))
 
         ray.shutdown()
         ray.tune.registry._global_registry = ray.tune.registry._Registry(
-            prefix="global")
+            prefix="global"
+        )
 
         analysis = ExperimentAnalysis(self.test_path)
 
         # This will be None if validate_trainable during loading fails
-        self.assertTrue(
-            analysis.get_best_trial(metric=self.metric, mode="max"))
+        self.assertTrue(analysis.get_best_trial(metric=self.metric, mode="max"))
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

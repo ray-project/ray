@@ -267,6 +267,8 @@ class LocalResourceManager {
   /// \param task_allocation: Task's resources to be freed.
   void FreeTaskResourceInstances(std::shared_ptr<TaskResourceInstances> task_allocation);
 
+  void UpdateAvailableObjectStoreMemResource();
+
   /// Identifier of local node.
   int64_t local_node_id_;
   /// Keep the mapping between node and resource IDs in string representation
@@ -298,5 +300,7 @@ class LocalResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
 };
+
+int GetPredefinedResourceIndex(const std::string &resource_name);
 
 }  // end namespace ray

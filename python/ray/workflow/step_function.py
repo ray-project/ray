@@ -4,21 +4,27 @@ from typing import Callable, Dict, Any, Optional
 
 from ray._private import signature
 from ray.workflow import serialization_context
-from ray.workflow.common import (Workflow, WorkflowData, StepType,
-                                 ensure_ray_initialized,
-                                 WorkflowStepRuntimeOptions)
+from ray.workflow.common import (
+    Workflow,
+    WorkflowData,
+    StepType,
+    ensure_ray_initialized,
+    WorkflowStepRuntimeOptions,
+)
 from ray.util.annotations import PublicAPI
 
 
 class WorkflowStepFunction:
     """This class represents a workflow step."""
 
-    def __init__(self,
-                 func: Callable,
-                 *,
-                 step_options: "WorkflowStepRuntimeOptions" = None,
-                 name: Optional[str] = None,
-                 metadata: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        func: Callable,
+        *,
+        step_options: "WorkflowStepRuntimeOptions" = None,
+        name: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
         if metadata is not None:
             if not isinstance(metadata, dict):
                 raise ValueError("metadata must be a dict.")
@@ -28,10 +34,10 @@ class WorkflowStepFunction:
                 except TypeError as e:
                     raise ValueError(
                         "metadata values must be JSON serializable, "
-                        "however '{}' has a value whose {}.".format(k, e))
+                        "however '{}' has a value whose {}.".format(k, e)
+                    )
         if step_options is None:
-            step_options = WorkflowStepRuntimeOptions.make(
-                step_type=StepType.FUNCTION)
+            step_options = WorkflowStepRuntimeOptions.make(step_type=StepType.FUNCTION)
         self._func = func
         self._step_options = step_options
         self._func_signature = signature.extract_signature(func)
@@ -41,38 +47,41 @@ class WorkflowStepFunction:
         # Override signature and docstring
         @functools.wraps(func)
         def _build_workflow(*args, **kwargs) -> Workflow:
-            flattened_args = signature.flatten_args(self._func_signature, args,
-                                                    kwargs)
+            flattened_args = signature.flatten_args(self._func_signature, args, kwargs)
 
             def prepare_inputs():
                 ensure_ray_initialized()
-                return serialization_context.make_workflow_inputs(
-                    flattened_args)
+                return serialization_context.make_workflow_inputs(flattened_args)
 
             workflow_data = WorkflowData(
                 func_body=self._func,
                 inputs=None,
                 step_options=step_options,
                 name=self._name,
-                user_metadata=self._user_metadata)
+                user_metadata=self._user_metadata,
+            )
             return Workflow(workflow_data, prepare_inputs)
 
         self.step = _build_workflow
 
     def __call__(self, *args, **kwargs):
-        raise TypeError("Workflow steps cannot be called directly. Instead "
-                        f"of running '{self.step.__name__}()', "
-                        f"try '{self.step.__name__}.step()'.")
+        raise TypeError(
+            "Workflow steps cannot be called directly. Instead "
+            f"of running '{self.step.__name__}()', "
+            f"try '{self.step.__name__}.step()'."
+        )
 
     @PublicAPI(stability="beta")
-    def options(self,
-                *,
-                max_retries: int = 3,
-                catch_exceptions: bool = False,
-                name: str = None,
-                metadata: Dict[str, Any] = None,
-                allow_inplace: bool = False,
-                **ray_options) -> "WorkflowStepFunction":
+    def options(
+        self,
+        *,
+        max_retries: int = 3,
+        catch_exceptions: bool = False,
+        name: str = None,
+        metadata: Dict[str, Any] = None,
+        allow_inplace: bool = False,
+        **ray_options,
+    ) -> "WorkflowStepFunction":
         """This function set how the step function is going to be executed.
 
         Args:
@@ -106,7 +115,5 @@ class WorkflowStepFunction:
             ray_options=ray_options,
         )
         return WorkflowStepFunction(
-            self._func,
-            step_options=step_options,
-            name=name,
-            metadata=metadata)
+            self._func, step_options=step_options, name=name, metadata=metadata
+        )

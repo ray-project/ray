@@ -33,12 +33,13 @@ class WindyMazeEnv(gym.Env):
                     self.start_pos = (x, y)
                 elif self.map[x][y] == "F":
                     self.end_pos = (x, y)
-        logger.info("Start pos {} end pos {}".format(self.start_pos,
-                                                     self.end_pos))
-        self.observation_space = Tuple([
-            Box(0, 100, shape=(2, )),  # (x, y)
-            Discrete(4),  # wind direction (N, E, S, W)
-        ])
+        logger.info("Start pos {} end pos {}".format(self.start_pos, self.end_pos))
+        self.observation_space = Tuple(
+            [
+                Box(0, 100, shape=(2,)),  # (x, y)
+                Discrete(4),  # wind direction (N, E, S, W)
+            ]
+        )
         self.action_space = Discrete(2)  # whether to move or not
 
     def reset(self):
@@ -54,8 +55,12 @@ class WindyMazeEnv(gym.Env):
         self.wind_direction = random.choice([0, 1, 2, 3])
         at_goal = self.pos == self.end_pos
         done = at_goal or self.num_steps >= 200
-        return ([[self.pos[0], self.pos[1]], self.wind_direction],
-                100 * int(at_goal), done, {})
+        return (
+            [[self.pos[0], self.pos[1]], self.wind_direction],
+            100 * int(at_goal),
+            done,
+            {},
+        )
 
     def _get_new_pos(self, pos, direction):
         if direction == 0:
@@ -66,9 +71,13 @@ class WindyMazeEnv(gym.Env):
             new_pos = (pos[0] + 1, pos[1])
         elif direction == 3:
             new_pos = (pos[0], pos[1] - 1)
-        if (new_pos[0] >= 0 and new_pos[0] < self.x_dim and new_pos[1] >= 0
-                and new_pos[1] < self.y_dim
-                and self.map[new_pos[0]][new_pos[1]] != "#"):
+        if (
+            new_pos[0] >= 0
+            and new_pos[0] < self.x_dim
+            and new_pos[1] >= 0
+            and new_pos[1] < self.y_dim
+            and self.map[new_pos[0]][new_pos[1]] != "#"
+        ):
             return new_pos
         else:
             return pos  # did not move
@@ -86,8 +95,7 @@ class HierarchicalWindyMazeEnv(MultiAgentEnv):
         self.num_high_level_steps = 0
         # current low level agent id. This must be unique for each high level
         # step since agent ids cannot be reused.
-        self.low_level_agent_id = "low_level_{}".format(
-            self.num_high_level_steps)
+        self.low_level_agent_id = "low_level_{}".format(self.num_high_level_steps)
         return {
             "high_level_agent": self.cur_obs,
         }
@@ -104,8 +112,7 @@ class HierarchicalWindyMazeEnv(MultiAgentEnv):
         self.current_goal = action
         self.steps_remaining_at_level = 25
         self.num_high_level_steps += 1
-        self.low_level_agent_id = "low_level_{}".format(
-            self.num_high_level_steps)
+        self.low_level_agent_id = "low_level_{}".format(self.num_high_level_steps)
         obs = {self.low_level_agent_id: [self.cur_obs, self.current_goal]}
         rew = {self.low_level_agent_id: 0}
         done = {"__all__": False}

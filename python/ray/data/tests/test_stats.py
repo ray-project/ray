@@ -22,7 +22,9 @@ def test_dataset_stats_basic(ray_start_regular_shared):
     for batch in ds.iter_batches():
         pass
     stats = canonicalize(ds.stats())
-    assert stats == """Stage Z read: N/N blocks executed in T
+    assert (
+        stats
+        == """Stage Z read: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Output num rows: N min, N max, N mean, N total
@@ -50,13 +52,16 @@ Dataset iterator time breakdown:
 * In user code: T
 * Total time: T
 """
+    )
 
 
 def test_dataset_stats_shuffle(ray_start_regular_shared):
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.random_shuffle().repartition(1, shuffle=True)
     stats = canonicalize(ds.stats())
-    assert stats == """Stage Z read: N/N blocks executed in T
+    assert (
+        stats
+        == """Stage Z read: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Output num rows: N min, N max, N mean, N total
@@ -91,6 +96,7 @@ Stage N repartition_reduce: N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 """
+    )
 
 
 def test_dataset_stats_repartition(ray_start_regular_shared):
@@ -134,7 +140,9 @@ def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet(str(tmp_path)).map(lambda x: x)
     stats = canonicalize(ds.stats())
     print(stats)
-    assert stats == """Stage Z read: N/N blocks executed in T
+    assert (
+        stats
+        == """Stage Z read: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Output num rows: N min, N max, N mean, N total
@@ -148,6 +156,7 @@ Stage N map: N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 """
+    )
 
 
 def test_dataset_pipeline_stats_basic(ray_start_regular_shared):
@@ -158,7 +167,9 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared):
     for batch in pipe.iter_batches():
         pass
     stats = canonicalize(pipe.stats())
-    assert stats == """== Pipeline Window N ==
+    assert (
+        stats
+        == """== Pipeline Window N ==
 Stage Z read: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -227,6 +238,7 @@ Dataset iterator time breakdown:
 * Time in user code: T
 * Total time: T
 """
+    )
 
 
 def test_dataset_pipeline_split_stats_basic(ray_start_regular_shared):
@@ -241,7 +253,9 @@ def test_dataset_pipeline_split_stats_basic(ray_start_regular_shared):
 
     s0, s1 = pipe.split(2)
     stats = ray.get([consume.remote(s0), consume.remote(s1)])
-    assert canonicalize(stats[0]) == """== Pipeline Window Z ==
+    assert (
+        canonicalize(stats[0])
+        == """== Pipeline Window Z ==
 Stage Z read: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -277,8 +291,10 @@ Dataset iterator time breakdown:
 * Time in user code: T
 * Total time: T
 """
+    )
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

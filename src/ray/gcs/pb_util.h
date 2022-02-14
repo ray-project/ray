@@ -156,10 +156,12 @@ inline const std::string &GetActorDeathCauseString(
 inline rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
     const rpc::ActorDeathCause &death_cause) {
   rpc::RayErrorInfo error_info;
-  if (death_cause.context_case() == ContextCase::kRuntimeEnvFailedContext ||
-      death_cause.context_case() == ContextCase::kActorDiedErrorContext ||
+  if (death_cause.context_case() == ContextCase::kActorDiedErrorContext ||
       death_cause.context_case() == ContextCase::kCreationTaskFailureContext) {
     error_info.mutable_actor_died_error()->CopyFrom(death_cause);
+  } else if (death_cause.context_case() == ContextCase::kRuntimeEnvFailedContext) {
+    error_info.mutable_runtime_env_setup_failed_error()->CopyFrom(
+        death_cause.runtime_env_failed_context());
   } else {
     RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
   }

@@ -44,16 +44,16 @@ num_evaluations = 10
 # A function for generating random hyperparameters.
 def generate_hyperparameters():
     return {
-        "learning_rate": 10**np.random.uniform(-5, 1),
+        "learning_rate": 10 ** np.random.uniform(-5, 1),
         "batch_size": np.random.randint(1, 100),
-        "momentum": np.random.uniform(0, 1)
+        "momentum": np.random.uniform(0, 1),
     }
 
 
 def get_data_loaders(batch_size):
     mnist_transforms = transforms.Compose(
-        [transforms.ToTensor(),
-         transforms.Normalize((0.1307, ), (0.3081, ))])
+        [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+    )
 
     # We add FileLock here because multiple workers will want to
     # download data, and this may cause overwrites since
@@ -61,16 +61,16 @@ def get_data_loaders(batch_size):
     with FileLock(os.path.expanduser("~/data.lock")):
         train_loader = torch.utils.data.DataLoader(
             datasets.MNIST(
-                "~/data",
-                train=True,
-                download=True,
-                transform=mnist_transforms),
+                "~/data", train=True, download=True, transform=mnist_transforms
+            ),
             batch_size=batch_size,
-            shuffle=True)
+            shuffle=True,
+        )
     test_loader = torch.utils.data.DataLoader(
         datasets.MNIST("~/data", train=False, transform=mnist_transforms),
         batch_size=batch_size,
-        shuffle=True)
+        shuffle=True,
+    )
     return train_loader, test_loader
 
 
@@ -152,9 +152,8 @@ def evaluate_hyperparameters(config):
     model = ConvNet()
     train_loader, test_loader = get_data_loaders(config["batch_size"])
     optimizer = optim.SGD(
-        model.parameters(),
-        lr=config["learning_rate"],
-        momentum=config["momentum"])
+        model.parameters(), lr=config["learning_rate"], momentum=config["momentum"]
+    )
     train(model, optimizer, train_loader)
     return test(model, test_loader)
 
@@ -202,22 +201,33 @@ while remaining_ids:
 
     hyperparameters = hyperparameters_mapping[result_id]
     accuracy = ray.get(result_id)
-    print("""We achieve accuracy {:.3}% with
+    print(
+        """We achieve accuracy {:.3}% with
         learning_rate: {:.2}
         batch_size: {}
         momentum: {:.2}
-      """.format(100 * accuracy, hyperparameters["learning_rate"],
-                 hyperparameters["batch_size"], hyperparameters["momentum"]))
+      """.format(
+            100 * accuracy,
+            hyperparameters["learning_rate"],
+            hyperparameters["batch_size"],
+            hyperparameters["momentum"],
+        )
+    )
     if accuracy > best_accuracy:
         best_hyperparameters = hyperparameters
         best_accuracy = accuracy
 
 # Record the best performing set of hyperparameters.
-print("""Best accuracy over {} trials was {:.3} with
+print(
+    """Best accuracy over {} trials was {:.3} with
       learning_rate: {:.2}
       batch_size: {}
       momentum: {:.2}
-      """.format(num_evaluations, 100 * best_accuracy,
-                 best_hyperparameters["learning_rate"],
-                 best_hyperparameters["batch_size"],
-                 best_hyperparameters["momentum"]))
+      """.format(
+        num_evaluations,
+        100 * best_accuracy,
+        best_hyperparameters["learning_rate"],
+        best_hyperparameters["batch_size"],
+        best_hyperparameters["momentum"],
+    )
+)

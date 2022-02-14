@@ -19,8 +19,8 @@ class OpenSpielEnv(MultiAgentEnv):
 
         # Extract observation- and action spaces from game.
         self.observation_space = Box(
-            float("-inf"), float("inf"),
-            (self.env.observation_tensor_size(), ))
+            float("-inf"), float("inf"), (self.env.observation_tensor_size(),)
+        )
         self.action_space = Discrete(self.env.num_distinct_actions())
 
     def reset(self):
@@ -43,8 +43,7 @@ class OpenSpielEnv(MultiAgentEnv):
             # TODO: (sven) resolve this hack by publishing legal actions
             #  with each step.
             except pyspiel.SpielError:
-                self.state.apply_action(
-                    np.random.choice(self.state.legal_actions()))
+                self.state.apply_action(np.random.choice(self.state.legal_actions()))
                 penalties[curr_player] = -0.1
 
             # Compile rewards dict.
@@ -53,8 +52,7 @@ class OpenSpielEnv(MultiAgentEnv):
         else:
             assert self.state.current_player() == -2
             # Apparently, this works, even if one or more actions are invalid.
-            self.state.apply_actions(
-                [action[ag] for ag in range(self.num_agents)])
+            self.state.apply_actions([action[ag] for ag in range(self.num_agents)])
 
         # Now that we have applied all actions, get the next obs.
         obs = self._get_obs()
@@ -67,9 +65,9 @@ class OpenSpielEnv(MultiAgentEnv):
 
         # Are we done?
         is_done = self.state.is_terminal()
-        dones = dict({ag: is_done
-                      for ag in range(self.num_agents)},
-                     **{"__all__": is_done})
+        dones = dict(
+            {ag: is_done for ag in range(self.num_agents)}, **{"__all__": is_done}
+        )
 
         return obs, rewards, dones, {}
 
@@ -90,9 +88,7 @@ class OpenSpielEnv(MultiAgentEnv):
         # Sequential game:
         if str(self.type.dynamics) == "Dynamics.SEQUENTIAL":
             curr_player = self.state.current_player()
-            return {
-                curr_player: np.reshape(self.state.observation_tensor(), [-1])
-            }
+            return {curr_player: np.reshape(self.state.observation_tensor(), [-1])}
         # Simultaneous game.
         else:
             assert self.state.current_player() == -2

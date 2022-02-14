@@ -15,8 +15,11 @@ import ray.cluster_utils
 
 import ray._private.profiling as profiling
 from ray._private.gcs_utils import use_gcs_for_bootstrap
-from ray._private.test_utils import (client_test_enabled,
-                                     RayTestTimeoutException, SignalActor)
+from ray._private.test_utils import (
+    client_test_enabled,
+    RayTestTimeoutException,
+    SignalActor,
+)
 from ray.exceptions import ReferenceCountingAssertionError
 
 if client_test_enabled():
@@ -169,17 +172,19 @@ def test_running_function_on_all_workers(ray_start_regular):
 
 
 @pytest.mark.skipif(
-    "RAY_PROFILING" not in os.environ,
-    reason="Only tested in client/profiling build.")
+    "RAY_PROFILING" not in os.environ, reason="Only tested in client/profiling build."
+)
 @pytest.mark.skipif(
     client_test_enabled() and use_gcs_for_bootstrap(),
-    reason=("wait_for_function will miss in this mode. To be fixed after using"
-            " gcs to bootstrap all component."))
+    reason=(
+        "wait_for_function will miss in this mode. To be fixed after using"
+        " gcs to bootstrap all component."
+    ),
+)
 def test_profiling_api(ray_start_2_cpus):
     @ray.remote
     def f(delay):
-        with profiling.profile(
-                "custom_event", extra_data={"name": "custom name"}):
+        with profiling.profile("custom_event", extra_data={"name": "custom name"}):
             time.sleep(delay)
             pass
 
@@ -215,15 +220,16 @@ def test_profiling_api(ray_start_2_cpus):
             "custom_event",  # This is the custom one from ray.profile.
         ]
 
-        if all(expected_type in event_types
-               for expected_type in expected_types):
+        if all(expected_type in event_types for expected_type in expected_types):
             break
 
         if time.time() - start_time > timeout_seconds:
             raise RayTestTimeoutException(
                 "Timed out while waiting for information in "
                 "profile table. Missing events: {}.".format(
-                    set(expected_types) - set(event_types)))
+                    set(expected_types) - set(event_types)
+                )
+            )
 
         # The profiling information only flushes once every second.
         time.sleep(1.1)
@@ -261,7 +267,7 @@ def test_object_transfer_dump(ray_start_cluster):
 
     num_nodes = 3
     for i in range(num_nodes):
-        cluster.add_node(resources={str(i): 1}, object_store_memory=10**9)
+        cluster.add_node(resources={str(i): 1}, object_store_memory=10 ** 9)
     ray.init(address=cluster.address)
 
     @ray.remote
@@ -269,16 +275,16 @@ def test_object_transfer_dump(ray_start_cluster):
         return
 
     # These objects will live on different nodes.
-    object_refs = [
-        f._remote(args=[1], resources={str(i): 1}) for i in range(num_nodes)
-    ]
+    object_refs = [f._remote(args=[1], resources={str(i): 1}) for i in range(num_nodes)]
 
     # Broadcast each object from each machine to each other machine.
     for object_ref in object_refs:
-        ray.get([
-            f._remote(args=[object_ref], resources={str(i): 1})
-            for i in range(num_nodes)
-        ])
+        ray.get(
+            [
+                f._remote(args=[object_ref], resources={str(i): 1})
+                for i in range(num_nodes)
+            ]
+        )
 
     # The profiling information only flushes once every second.
     time.sleep(1.1)
@@ -286,15 +292,27 @@ def test_object_transfer_dump(ray_start_cluster):
     transfer_dump = ray.state.object_transfer_timeline()
     # Make sure the transfer dump can be serialized with JSON.
     json.loads(json.dumps(transfer_dump))
-    assert len(transfer_dump) >= num_nodes**2
-    assert len({
-        event["pid"]
-        for event in transfer_dump if event["name"] == "transfer_receive"
-    }) == num_nodes
-    assert len({
-        event["pid"]
-        for event in transfer_dump if event["name"] == "transfer_send"
-    }) == num_nodes
+    assert len(transfer_dump) >= num_nodes ** 2
+    assert (
+        len(
+            {
+                event["pid"]
+                for event in transfer_dump
+                if event["name"] == "transfer_receive"
+            }
+        )
+        == num_nodes
+    )
+    assert (
+        len(
+            {
+                event["pid"]
+                for event in transfer_dump
+                if event["name"] == "transfer_send"
+            }
+        )
+        == num_nodes
+    )
 
 
 def test_identical_function_names(ray_start_regular):
@@ -375,7 +393,8 @@ def test_illegal_api_calls(ray_start_regular):
 
 
 @pytest.mark.skipif(
-    client_test_enabled(), reason="grpc interaction with releasing resources")
+    client_test_enabled(), reason="grpc interaction with releasing resources"
+)
 def test_multithreading(ray_start_2_cpus):
     # This test requires at least 2 CPUs to finish since the worker does not
     # release resources when joining the threads.
@@ -436,9 +455,7 @@ def test_multithreading(ray_start_2_cpus):
 
         # Test multiple threads waiting for objects.
         num_wait_objects = 10
-        objects = [
-            echo.remote(i, delay_ms=10) for i in range(num_wait_objects)
-        ]
+        objects = [echo.remote(i, delay_ms=10) for i in range(num_wait_objects)]
 
         def test_wait():
             ready, _ = ray.wait(
@@ -497,8 +514,7 @@ def test_multithreading(ray_start_2_cpus):
         def spawn(self):
             wait_objects = [echo.remote(i, delay_ms=10) for i in range(10)]
             self.threads = [
-                threading.Thread(
-                    target=self.background_thread, args=(wait_objects, ))
+                threading.Thread(target=self.background_thread, args=(wait_objects,))
                 for _ in range(20)
             ]
             [thread.start() for thread in self.threads]
@@ -569,7 +585,8 @@ def test_future_resolution_skip_plasma(ray_start_cluster):
         # borrowed_ref should be inlined on future resolution and shouldn't be
         # in Plasma.
         assert ray.worker.global_worker.core_worker.object_exists(
-            borrowed_ref, memory_store_only=True)
+            borrowed_ref, memory_store_only=True
+        )
         return f_result * 2
 
     one = f.remote(0)
@@ -606,7 +623,8 @@ def test_task_output_inline_bytes_limit(ray_start_cluster):
         for i, ref in enumerate(numbers):
             result += ray.get(ref)
             inlined = ray.worker.global_worker.core_worker.object_exists(
-                ref, memory_store_only=True)
+                ref, memory_store_only=True
+            )
             if i < 2:
                 assert inlined
             else:
@@ -647,7 +665,9 @@ def test_task_arguments_inline_bytes_limit(ray_start_cluster):
             foo.remote(
                 np.random.rand(1024),  # 8k
                 np.random.rand(1024),  # 8k
-                np.random.rand(1024)))  # 8k
+                np.random.rand(1024),
+            )
+        )  # 8k
 
     ray.get(bar.remote())
 
@@ -657,16 +677,17 @@ def test_task_arguments_inline_bytes_limit(ray_start_cluster):
 def test_schedule_actor_and_normal_task(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
-        memory=1024**3, _system_config={"gcs_actor_scheduling_enabled": True})
+        memory=1024 ** 3, _system_config={"gcs_actor_scheduling_enabled": True}
+    )
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
-    @ray.remote(memory=600 * 1024**2, num_cpus=0.01)
+    @ray.remote(memory=600 * 1024 ** 2, num_cpus=0.01)
     class Foo:
         def method(self):
             return 2
 
-    @ray.remote(memory=600 * 1024**2, num_cpus=0.01)
+    @ray.remote(memory=600 * 1024 ** 2, num_cpus=0.01)
     def fun(singal1, signal_actor2):
         signal_actor2.send.remote()
         ray.get(singal1.wait.remote())
@@ -706,29 +727,30 @@ def test_schedule_many_actors_and_normal_tasks(ray_start_cluster):
     actor_count = 50
     each_actor_task_count = 50
     normal_task_count = 1000
-    node_memory = 2 * 1024**3
+    node_memory = 2 * 1024 ** 3
 
     for i in range(node_count):
         cluster.add_node(
             memory=node_memory,
-            _system_config={"gcs_actor_scheduling_enabled": True}
-            if i == 0 else {})
+            _system_config={"gcs_actor_scheduling_enabled": True} if i == 0 else {},
+        )
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
-    @ray.remote(memory=100 * 1024**2, num_cpus=0.01)
+    @ray.remote(memory=100 * 1024 ** 2, num_cpus=0.01)
     class Foo:
         def method(self):
             return 2
 
-    @ray.remote(memory=100 * 1024**2, num_cpus=0.01)
+    @ray.remote(memory=100 * 1024 ** 2, num_cpus=0.01)
     def fun():
         return 1
 
     normal_task_object_list = [fun.remote() for _ in range(normal_task_count)]
     actor_list = [Foo.remote() for _ in range(actor_count)]
     actor_object_list = [
-        actor.method.remote() for _ in range(each_actor_task_count)
+        actor.method.remote()
+        for _ in range(each_actor_task_count)
         for actor in actor_list
     ]
     for object in ray.get(actor_object_list):
@@ -750,13 +772,13 @@ def test_actor_distribution_balance(ray_start_cluster, args):
 
     for i in range(node_count):
         cluster.add_node(
-            memory=1024**3,
-            _system_config={"gcs_actor_scheduling_enabled": True}
-            if i == 0 else {})
+            memory=1024 ** 3,
+            _system_config={"gcs_actor_scheduling_enabled": True} if i == 0 else {},
+        )
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
-    @ray.remote(memory=100 * 1024**2, num_cpus=0.01)
+    @ray.remote(memory=100 * 1024 ** 2, num_cpus=0.01)
     class Foo:
         def method(self):
             return ray.worker.global_worker.node.unique_id
@@ -784,16 +806,17 @@ def test_actor_distribution_balance(ray_start_cluster, args):
 def test_worker_lease_reply_with_resources(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
-        memory=2000 * 1024**2,
+        memory=2000 * 1024 ** 2,
         _system_config={
             "gcs_resource_report_poll_period_ms": 1000000,
             "gcs_actor_scheduling_enabled": True,
-        })
-    node2 = cluster.add_node(memory=1000 * 1024**2)
+        },
+    )
+    node2 = cluster.add_node(memory=1000 * 1024 ** 2)
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
-    @ray.remote(memory=1500 * 1024**2)
+    @ray.remote(memory=1500 * 1024 ** 2)
     def fun(signal):
         signal.send.remote()
         time.sleep(30)
@@ -804,7 +827,7 @@ def test_worker_lease_reply_with_resources(ray_start_cluster):
     # Make sure that the `fun` is running.
     ray.get(signal.wait.remote())
 
-    @ray.remote(memory=800 * 1024**2)
+    @ray.remote(memory=800 * 1024 ** 2)
     class Foo:
         def method(self):
             return ray.worker.global_worker.node.unique_id
@@ -822,4 +845,5 @@ def test_worker_lease_reply_with_resources(ray_start_cluster):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

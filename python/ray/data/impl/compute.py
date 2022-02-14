@@ -1,8 +1,13 @@
 from typing import TypeVar, Any, Union, Callable, List, Tuple
 
 import ray
-from ray.data.block import Block, BlockAccessor, BlockMetadata, \
-    BlockPartition, BlockExecStats
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    BlockPartition,
+    BlockExecStats,
+)
 from ray.data.context import DatasetContext
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.block_list import BlockList
@@ -21,8 +26,7 @@ class ComputeStrategy:
         raise NotImplementedError
 
 
-def _map_block_split(block: Block, fn: Any,
-                     input_files: List[str]) -> BlockPartition:
+def _map_block_split(block: Block, fn: Any, input_files: List[str]) -> BlockPartition:
     output = []
     stats = BlockExecStats.builder()
     for new_block in fn(block):
@@ -32,15 +36,17 @@ def _map_block_split(block: Block, fn: Any,
             size_bytes=accessor.size_bytes(),
             schema=accessor.schema(),
             input_files=input_files,
-            exec_stats=stats.build())
+            exec_stats=stats.build(),
+        )
         owner = DatasetContext.get_current().block_owner
         output.append((ray.put(new_block, _owner=owner), new_meta))
         stats = BlockExecStats.builder()
     return output
 
 
-def _map_block_nosplit(block: Block, fn: Any,
-                       input_files: List[str]) -> Tuple[Block, BlockMetadata]:
+def _map_block_nosplit(
+    block: Block, fn: Any, input_files: List[str]
+) -> Tuple[Block, BlockMetadata]:
     stats = BlockExecStats.builder()
     builder = DelegatingBlockBuilder()
     for new_block in fn(block):
@@ -48,12 +54,12 @@ def _map_block_nosplit(block: Block, fn: Any,
     new_block = builder.build()
     accessor = BlockAccessor.for_block(new_block)
     return new_block, accessor.get_metadata(
-        input_files=input_files, exec_stats=stats.build())
+        input_files=input_files, exec_stats=stats.build()
+    )
 
 
 class TaskPool(ComputeStrategy):
-    def apply(self, fn: Any, remote_args: dict,
-              blocks: BlockList) -> BlockList:
+    def apply(self, fn: Any, remote_args: dict, blocks: BlockList) -> BlockList:
         context = DatasetContext.get_current()
 
         # Handle empty datasets.
@@ -64,15 +70,13 @@ class TaskPool(ComputeStrategy):
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
         if context.block_splitting_enabled:
-            map_block = cached_remote_fn(_map_block_split).options(
-                **remote_args)
+            map_block = cached_remote_fn(_map_block_split).options(**remote_args)
             refs = [map_block.remote(b, fn, m.input_files) for b, m in blocks]
         else:
             map_block = cached_remote_fn(_map_block_nosplit).options(
-                **dict(remote_args, num_returns=2))
-            all_refs = [
-                map_block.remote(b, fn, m.input_files) for b, m in blocks
-            ]
+                **dict(remote_args, num_returns=2)
+            )
+            all_refs = [map_block.remote(b, fn, m.input_files) for b, m in blocks]
             data_refs = [r[0] for r in all_refs]
             refs = [r[1] for r in all_refs]
 
@@ -88,8 +92,7 @@ class TaskPool(ComputeStrategy):
             for ref in refs:
                 try:
                     ray.get(ref)
-                except (ray.exceptions.RayTaskError,
-                        ray.exceptions.TaskCancelledError):
+                except (ray.exceptions.RayTaskError, ray.exceptions.TaskCancelledError):
                     pass
             # Reraise the original task failure exception.
             raise e from None
@@ -115,8 +118,7 @@ class ActorPool(ComputeStrategy):
         for w in self.workers:
             w.__ray_terminate__.remote()
 
-    def apply(self, fn: Any, remote_args: dict,
-              blocks: BlockList) -> BlockList:
+    def apply(self, fn: Any, remote_args: dict, blocks: BlockList) -> BlockList:
         context = DatasetContext.get_current()
 
         blocks_in = blocks.get_blocks_with_metadata()
@@ -128,13 +130,15 @@ class ActorPool(ComputeStrategy):
             def ready(self):
                 return "ok"
 
-            def map_block_split(self, block: Block,
-                                input_files: List[str]) -> BlockPartition:
+            def map_block_split(
+                self, block: Block, input_files: List[str]
+            ) -> BlockPartition:
                 return _map_block_split(block, fn, input_files)
 
             @ray.method(num_returns=2)
-            def map_block_nosplit(self, block: Block, input_files: List[str]
-                                  ) -> Tuple[Block, BlockMetadata]:
+            def map_block_nosplit(
+                self, block: Block, input_files: List[str]
+            ) -> Tuple[Block, BlockMetadata]:
                 return _map_block_nosplit(block, fn, input_files)
 
         if not remote_args:
@@ -149,7 +153,8 @@ class ActorPool(ComputeStrategy):
 
         while len(results) < orig_num_blocks:
             ready, _ = ray.wait(
-                list(tasks), timeout=0.01, num_returns=1, fetch_local=False)
+                list(tasks), timeout=0.01, num_returns=1, fetch_local=False
+            )
             if not ready:
                 if len(ready_workers) / len(self.workers) > 0.8:
                     w = BlockWorker.remote()
@@ -157,8 +162,9 @@ class ActorPool(ComputeStrategy):
                     tasks[w.ready.remote()] = w
                     map_bar.set_description(
                         "Map Progress ({} actors {} pending)".format(
-                            len(ready_workers),
-                            len(self.workers) - len(ready_workers)))
+                            len(ready_workers), len(self.workers) - len(ready_workers)
+                        )
+                    )
                 continue
 
             [obj_id] = ready
@@ -176,11 +182,11 @@ class ActorPool(ComputeStrategy):
             if blocks_in:
                 block, meta = blocks_in.pop()
                 if context.block_splitting_enabled:
-                    ref = worker.map_block_split.remote(
-                        block, meta.input_files)
+                    ref = worker.map_block_split.remote(block, meta.input_files)
                 else:
                     ref, meta_ref = worker.map_block_nosplit.remote(
-                        block, meta.input_files)
+                        block, meta.input_files
+                    )
                     metadata_mapping[ref] = meta_ref
                 tasks[ref] = worker
 
@@ -198,8 +204,9 @@ class ActorPool(ComputeStrategy):
         return BlockList(new_blocks, new_metadata)
 
 
-def cache_wrapper(fn: Union[CallableClass, Callable[[Any], Any]]
-                  ) -> Callable[[Any], Any]:
+def cache_wrapper(
+    fn: Union[CallableClass, Callable[[Any], Any]]
+) -> Callable[[Any], Any]:
     """Implements caching of stateful callables.
 
     Args:

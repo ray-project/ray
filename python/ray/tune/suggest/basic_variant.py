@@ -12,8 +12,13 @@ from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
 from ray.tune.sample import np_random_generator, _BackwardsCompatibleNumpyRng
 from ray.tune.suggest.variant_generator import (
-    count_variants, count_spec_samples, generate_variants, format_vars,
-    flatten_resolved_vars, get_preset_variants)
+    count_variants,
+    count_spec_samples,
+    generate_variants,
+    format_vars,
+    flatten_resolved_vars,
+    get_preset_variants,
+)
 from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.utils.util import atomic_save, load_newest_checkpoint
 
@@ -81,17 +86,20 @@ class _TrialIterator:
             be guaranteed in a distributed enviroment.
     """
 
-    def __init__(self,
-                 uuid_prefix: str,
-                 num_samples: int,
-                 unresolved_spec: dict,
-                 constant_grid_search: bool = False,
-                 output_path: str = "",
-                 points_to_evaluate: Optional[List] = None,
-                 lazy_eval: bool = False,
-                 start: int = 0,
-                 random_state: Optional[Union[int, "np_random_generator",
-                                              np.random.RandomState]] = None):
+    def __init__(
+        self,
+        uuid_prefix: str,
+        num_samples: int,
+        unresolved_spec: dict,
+        constant_grid_search: bool = False,
+        output_path: str = "",
+        points_to_evaluate: Optional[List] = None,
+        lazy_eval: bool = False,
+        start: int = 0,
+        random_state: Optional[
+            Union[int, "np_random_generator", np.random.RandomState]
+        ] = None,
+    ):
         self.parser = make_parser()
         self.num_samples = num_samples
         self.uuid_prefix = uuid_prefix
@@ -119,7 +127,8 @@ class _TrialIterator:
             self.parser,
             evaluated_params=flatten_resolved_vars(resolved_vars),
             trial_id=trial_id,
-            experiment_tag=experiment_tag)
+            experiment_tag=experiment_tag,
+        )
 
     def __next__(self):
         """Generates Trial objects with the variant generation process.
@@ -134,8 +143,7 @@ class _TrialIterator:
         """
 
         if "run" not in self.unresolved_spec:
-            raise TuneError("Must specify `run` in {}".format(
-                self.unresolved_spec))
+            raise TuneError("Must specify `run` in {}".format(self.unresolved_spec))
 
         if self.variants and self.variants.has_next():
             # This block will be skipped upon instantiation.
@@ -151,8 +159,10 @@ class _TrialIterator:
                     self.unresolved_spec,
                     config,
                     constant_grid_search=self.constant_grid_search,
-                    random_state=self.random_state),
-                lazy_eval=self.lazy_eval)
+                    random_state=self.random_state,
+                ),
+                lazy_eval=self.lazy_eval,
+            )
             resolved_vars, spec = next(self.variants)
             return self.create_trial(resolved_vars, spec)
         elif self.num_samples_left > 0:
@@ -160,8 +170,10 @@ class _TrialIterator:
                 generate_variants(
                     self.unresolved_spec,
                     constant_grid_search=self.constant_grid_search,
-                    random_state=self.random_state),
-                lazy_eval=self.lazy_eval)
+                    random_state=self.random_state,
+                ),
+                lazy_eval=self.lazy_eval,
+            )
             self.num_samples_left -= 1
             resolved_vars, spec = next(self.variants)
             return self.create_trial(resolved_vars, spec)
@@ -259,14 +271,18 @@ class BasicVariantGenerator(SearchAlgorithm):
       both of these trials.
 
     """
+
     CKPT_FILE_TMPL = "basic-variant-state-{}.json"
 
-    def __init__(self,
-                 points_to_evaluate: Optional[List[Dict]] = None,
-                 max_concurrent: int = 0,
-                 constant_grid_search: bool = False,
-                 random_state: Optional[Union[int, "np_random_generator",
-                                              np.random.RandomState]] = None):
+    def __init__(
+        self,
+        points_to_evaluate: Optional[List[Dict]] = None,
+        max_concurrent: int = 0,
+        constant_grid_search: bool = False,
+        random_state: Optional[
+            Union[int, "np_random_generator", np.random.RandomState]
+        ] = None,
+    ):
         self._trial_generator = []
         self._iterators = []
         self._trial_iter = None
@@ -293,8 +309,8 @@ class BasicVariantGenerator(SearchAlgorithm):
         return self._total_samples
 
     def add_configurations(
-            self,
-            experiments: Union[Experiment, List[Experiment], Dict[str, Dict]]):
+        self, experiments: Union[Experiment, List[Experiment], Dict[str, Dict]]
+    ):
         """Chains generator given experiment specifications.
 
         Arguments:
@@ -310,12 +326,12 @@ class BasicVariantGenerator(SearchAlgorithm):
                     "exceeds the serialization threshold "
                     f"({int(SERIALIZATION_THRESHOLD)}). Resume ability is "
                     "disabled. To fix this, reduce the number of "
-                    "dimensions/size of the provided grid search.")
+                    "dimensions/size of the provided grid search."
+                )
 
             previous_samples = self._total_samples
             points_to_evaluate = copy.deepcopy(self._points_to_evaluate)
-            self._total_samples += count_variants(experiment.spec,
-                                                  points_to_evaluate)
+            self._total_samples += count_variants(experiment.spec, points_to_evaluate)
             iterator = _TrialIterator(
                 uuid_prefix=self._uuid_prefix,
                 num_samples=experiment.spec.get("num_samples", 1),
@@ -325,10 +341,10 @@ class BasicVariantGenerator(SearchAlgorithm):
                 points_to_evaluate=points_to_evaluate,
                 lazy_eval=lazy_eval,
                 start=previous_samples,
-                random_state=self._random_state)
+                random_state=self._random_state,
+            )
             self._iterators.append(iterator)
-            self._trial_generator = itertools.chain(self._trial_generator,
-                                                    iterator)
+            self._trial_generator = itertools.chain(self._trial_generator, iterator)
 
     def next_trial(self):
         """Provides one Trial object to be queued into the TrialRunner.
@@ -336,8 +352,7 @@ class BasicVariantGenerator(SearchAlgorithm):
         Returns:
             Trial: Returns a single trial.
         """
-        if self.max_concurrent > 0 and len(
-                self._live_trials) >= self.max_concurrent:
+        if self.max_concurrent > 0 and len(self._live_trials) >= self.max_concurrent:
             return None
         if not self._trial_iter:
             self._trial_iter = iter(self._trial_generator)
@@ -351,10 +366,9 @@ class BasicVariantGenerator(SearchAlgorithm):
             self.set_finished()
             return None
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False):
+    def on_trial_complete(
+        self, trial_id: str, result: Optional[Dict] = None, error: bool = False
+    ):
         if trial_id in self._live_trials:
             self._live_trials.remove(trial_id)
 
@@ -368,8 +382,7 @@ class BasicVariantGenerator(SearchAlgorithm):
     def set_state(self, state):
         self.__dict__.update(state)
         for iterator in self._iterators:
-            self._trial_generator = itertools.chain(self._trial_generator,
-                                                    iterator)
+            self._trial_generator = itertools.chain(self._trial_generator, iterator)
 
     def save_to_dir(self, dirpath, session_str):
         if any(iterator.lazy_eval for iterator in self._iterators):
@@ -379,18 +392,16 @@ class BasicVariantGenerator(SearchAlgorithm):
             state=state_dict,
             checkpoint_dir=dirpath,
             file_name=self.CKPT_FILE_TMPL.format(session_str),
-            tmp_file_name=".tmp_generator")
+            tmp_file_name=".tmp_generator",
+        )
 
     def has_checkpoint(self, dirpath: str):
         """Whether a checkpoint file exists within dirpath."""
-        return bool(
-            glob.glob(os.path.join(dirpath, self.CKPT_FILE_TMPL.format("*"))))
+        return bool(glob.glob(os.path.join(dirpath, self.CKPT_FILE_TMPL.format("*"))))
 
     def restore_from_dir(self, dirpath: str):
         """Restores self + searcher + search wrappers from dirpath."""
-        state_dict = load_newest_checkpoint(dirpath,
-                                            self.CKPT_FILE_TMPL.format("*"))
+        state_dict = load_newest_checkpoint(dirpath, self.CKPT_FILE_TMPL.format("*"))
         if not state_dict:
-            raise RuntimeError(
-                "Unable to find checkpoint in {}.".format(dirpath))
+            raise RuntimeError("Unable to find checkpoint in {}.".format(dirpath))
         self.set_state(state_dict)

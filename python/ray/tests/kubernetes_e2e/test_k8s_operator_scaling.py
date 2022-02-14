@@ -50,8 +50,9 @@ def submit_scaling_job(num_actors):
     print(">>>Waiting for task output.")
     task_output = ray.get(futures, timeout=360)
 
-    assert task_output == list(range(num_actors)), "Tasks did not"\
-        "complete with expected output."
+    assert task_output == list(range(num_actors)), (
+        "Tasks did not" "complete with expected output."
+    )
 
 
 @retry_until_true
@@ -66,19 +67,27 @@ def wait_for_operator():
 
 class KubernetesScaleTest(unittest.TestCase):
     def test_scaling(self):
-        with tempfile.NamedTemporaryFile("w+") as example_cluster_file, \
-                tempfile.NamedTemporaryFile("w+") as example_cluster_file2, \
-                tempfile.NamedTemporaryFile("w+") as operator_file:
+        with tempfile.NamedTemporaryFile(
+            "w+"
+        ) as example_cluster_file, tempfile.NamedTemporaryFile(
+            "w+"
+        ) as example_cluster_file2, tempfile.NamedTemporaryFile(
+            "w+"
+        ) as operator_file:
 
             example_cluster_config_path = get_component_config_path(
-                "example_cluster.yaml")
+                "example_cluster.yaml"
+            )
             operator_config_path = get_component_config_path(
-                "operator_cluster_scoped.yaml")
+                "operator_cluster_scoped.yaml"
+            )
 
             operator_config = list(
-                yaml.safe_load_all(open(operator_config_path).read()))
+                yaml.safe_load_all(open(operator_config_path).read())
+            )
             example_cluster_config = yaml.safe_load(
-                open(example_cluster_config_path).read())
+                open(example_cluster_config_path).read()
+            )
 
             # Set image and pull policy
             podTypes = example_cluster_config["spec"]["podTypes"]
@@ -105,11 +114,9 @@ class KubernetesScaleTest(unittest.TestCase):
             example_cluster_config2["spec"]["podTypes"][1]["minWorkers"] = 1
 
             # Test overriding default client port.
-            example_cluster_config["spec"]["headServicePorts"] = [{
-                "name": "client",
-                "port": 10002,
-                "targetPort": 10001
-            }]
+            example_cluster_config["spec"]["headServicePorts"] = [
+                {"name": "client", "port": 10002, "targetPort": 10001}
+            ]
 
             yaml.dump(example_cluster_config, example_cluster_file)
             yaml.dump(example_cluster_config2, example_cluster_file2)
@@ -140,8 +147,7 @@ class KubernetesScaleTest(unittest.TestCase):
 
             print(">>>Starting a cluster with same name in another namespace")
             # Assumes a namespace called {NAMESPACE}2 has been created.
-            cd = f"kubectl -n {NAMESPACE}2 apply -f "\
-                f"{example_cluster_file2.name}"
+            cd = f"kubectl -n {NAMESPACE}2 apply -f " f"{example_cluster_file2.name}"
             subprocess.check_call(cd, shell=True)
 
             # Check that autoscaling respects minWorkers by waiting for

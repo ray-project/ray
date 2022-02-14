@@ -3,18 +3,26 @@ from typing import Dict, List, Type, Union
 
 import ray
 from ray.rllib.agents.ppo.ppo_tf_policy import setup_config
-from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
-    Postprocessing
+from ray.rllib.evaluation.postprocessing import (
+    compute_gae_for_sample_batch,
+    Postprocessing,
+)
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
-    LearningRateSchedule, TorchPolicy
+from ray.rllib.policy.torch_policy import (
+    EntropyCoeffSchedule,
+    LearningRateSchedule,
+    TorchPolicy,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.torch_utils import apply_grad_clipping, \
-    explained_variance, sequence_mask
+from ray.rllib.utils.torch_utils import (
+    apply_grad_clipping,
+    explained_variance,
+    sequence_mask,
+)
 from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
@@ -34,12 +42,13 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             observation_space,
             action_space,
             config,
-            max_seq_len=config["model"]["max_seq_len"])
+            max_seq_len=config["model"]["max_seq_len"],
+        )
 
-        EntropyCoeffSchedule.__init__(self, config["entropy_coeff"],
-                                      config["entropy_coeff_schedule"])
-        LearningRateSchedule.__init__(self, config["lr"],
-                                      config["lr_schedule"])
+        EntropyCoeffSchedule.__init__(
+            self, config["entropy_coeff"], config["entropy_coeff_schedule"]
+        )
+        LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
 
         # The current KL value (as python float).
         self.kl_coeff = self.config["kl_coeff"]
@@ -50,23 +59,27 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
         self._initialize_loss_from_dummy_batch()
 
     @override(TorchPolicy)
-    def postprocess_trajectory(self,
-                               sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
+    def postprocess_trajectory(
+        self, sample_batch, other_agent_batches=None, episode=None
+    ):
         # Do all post-processing always with no_grad().
         # Not using this here will introduce a memory leak
         # in torch (issue #6962).
         # TODO: no_grad still necessary?
         with torch.no_grad():
-            return compute_gae_for_sample_batch(self, sample_batch,
-                                                other_agent_batches, episode)
+            return compute_gae_for_sample_batch(
+                self, sample_batch, other_agent_batches, episode
+            )
 
     # TODO: Add method to Policy base class (as the new way of defining loss
     #  functions (instead of passing 'loss` to the super's constructor)).
     @override(TorchPolicy)
-    def loss(self, model: ModelV2, dist_class: Type[ActionDistribution],
-             train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+    def loss(
+        self,
+        model: ModelV2,
+        dist_class: Type[ActionDistribution],
+        train_batch: SampleBatch,
+    ) -> Union[TensorType, List[TensorType]]:
         """Constructs the loss for Proximal Policy Objective.
 
         Args:
@@ -88,7 +101,8 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             mask = sequence_mask(
                 train_batch[SampleBatch.SEQ_LENS],
                 max_seq_len,
-                time_major=model.is_time_major())
+                time_major=model.is_time_major(),
+            )
             mask = torch.reshape(mask, [-1])
             num_valid = torch.sum(mask)
 
@@ -101,11 +115,13 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             reduce_mean_valid = torch.mean
 
         prev_action_dist = dist_class(
-            train_batch[SampleBatch.ACTION_DIST_INPUTS], model)
+            train_batch[SampleBatch.ACTION_DIST_INPUTS], model
+        )
 
         logp_ratio = torch.exp(
-            curr_action_dist.logp(train_batch[SampleBatch.ACTIONS]) -
-            train_batch[SampleBatch.ACTION_LOGP])
+            curr_action_dist.logp(train_batch[SampleBatch.ACTIONS])
+            - train_batch[SampleBatch.ACTION_LOGP]
+        )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
         if self.config["kl_coeff"] > 0.0:
@@ -119,9 +135,11 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
 
         surrogate_loss = torch.min(
             train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
-            train_batch[Postprocessing.ADVANTAGES] * torch.clamp(
-                logp_ratio, 1 - self.config["clip_param"],
-                1 + self.config["clip_param"]))
+            train_batch[Postprocessing.ADVANTAGES]
+            * torch.clamp(
+                logp_ratio, 1 - self.config["clip_param"], 1 + self.config["clip_param"]
+            ),
+        )
         mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
         # Compute a value function loss.
@@ -129,21 +147,27 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
             value_fn_out = model.value_function()
             vf_loss1 = torch.pow(
-                value_fn_out - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
+                value_fn_out - train_batch[Postprocessing.VALUE_TARGETS], 2.0
+            )
             vf_clipped = prev_value_fn_out + torch.clamp(
                 value_fn_out - prev_value_fn_out,
-                -self.config["vf_clip_param"], self.config["vf_clip_param"])
+                -self.config["vf_clip_param"],
+                self.config["vf_clip_param"],
+            )
             vf_loss2 = torch.pow(
-                vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
+                vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0
+            )
             vf_loss = torch.max(vf_loss1, vf_loss2)
             mean_vf_loss = reduce_mean_valid(vf_loss)
         # Ignore the value function.
         else:
             vf_loss = mean_vf_loss = 0.0
 
-        total_loss = reduce_mean_valid(-surrogate_loss +
-                                       self.config["vf_loss_coeff"] * vf_loss -
-                                       self.entropy_coeff * curr_entropy)
+        total_loss = reduce_mean_valid(
+            -surrogate_loss
+            + self.config["vf_loss_coeff"] * vf_loss
+            - self.entropy_coeff * curr_entropy
+        )
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
         # if necessary.
@@ -156,7 +180,8 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
         model.tower_stats["mean_policy_loss"] = mean_policy_loss
         model.tower_stats["mean_vf_loss"] = mean_vf_loss
         model.tower_stats["vf_explained_var"] = explained_variance(
-            train_batch[Postprocessing.VALUE_TARGETS], model.value_function())
+            train_batch[Postprocessing.VALUE_TARGETS], model.value_function()
+        )
         model.tower_stats["mean_entropy"] = mean_entropy
         model.tower_stats["mean_kl_loss"] = mean_kl_loss
 
@@ -206,25 +231,30 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
     # TODO: Make this an event-style subscription (e.g.:
     #  "after_losses_computed").
     @override(TorchPolicy)
-    def extra_grad_info(self,
-                        train_batch: SampleBatch) -> Dict[str, TensorType]:
-        return convert_to_numpy({
-            "cur_kl_coeff": self.kl_coeff,
-            "cur_lr": self.cur_lr,
-            "total_loss": torch.mean(
-                torch.stack(self.get_tower_stats("total_loss"))),
-            "policy_loss": torch.mean(
-                torch.stack(self.get_tower_stats("mean_policy_loss"))),
-            "vf_loss": torch.mean(
-                torch.stack(self.get_tower_stats("mean_vf_loss"))),
-            "vf_explained_var": torch.mean(
-                torch.stack(self.get_tower_stats("vf_explained_var"))),
-            "kl": torch.mean(
-                torch.stack(self.get_tower_stats("mean_kl_loss"))),
-            "entropy": torch.mean(
-                torch.stack(self.get_tower_stats("mean_entropy"))),
-            "entropy_coeff": self.entropy_coeff,
-        })
+    def extra_grad_info(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
+        return convert_to_numpy(
+            {
+                "cur_kl_coeff": self.kl_coeff,
+                "cur_lr": self.cur_lr,
+                "total_loss": torch.mean(
+                    torch.stack(self.get_tower_stats("total_loss"))
+                ),
+                "policy_loss": torch.mean(
+                    torch.stack(self.get_tower_stats("mean_policy_loss"))
+                ),
+                "vf_loss": torch.mean(
+                    torch.stack(self.get_tower_stats("mean_vf_loss"))
+                ),
+                "vf_explained_var": torch.mean(
+                    torch.stack(self.get_tower_stats("vf_explained_var"))
+                ),
+                "kl": torch.mean(torch.stack(self.get_tower_stats("mean_kl_loss"))),
+                "entropy": torch.mean(
+                    torch.stack(self.get_tower_stats("mean_entropy"))
+                ),
+                "entropy_coeff": self.entropy_coeff,
+            }
+        )
 
     # TODO: Make lr-schedule and entropy-schedule Plugin-style functionalities
     #  that can be added (via the config) to any Trainer/Policy.
@@ -238,4 +268,5 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
                     p["lr"] = self.cur_lr
         if self._entropy_coeff_schedule is not None:
             self.entropy_coeff = self._entropy_coeff_schedule.value(
-                global_vars["timestep"])
+                global_vars["timestep"]
+            )

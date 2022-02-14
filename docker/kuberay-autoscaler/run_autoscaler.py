@@ -20,8 +20,9 @@ def setup_logging() -> None:
     setup_component_logger(
         logging_level=ray_constants.LOGGER_LEVEL,  # info
         logging_format=ray_constants.LOGGER_FORMAT,
-        log_dir=os.path.join(ray._private.utils.get_ray_temp_dir(),
-                             ray.node.SESSION_LATEST, "logs"),
+        log_dir=os.path.join(
+            ray._private.utils.get_ray_temp_dir(), ray.node.SESSION_LATEST, "logs"
+        ),
         filename=ray_constants.MONITOR_LOG_FILE_NAME,  # monitor.log
         max_bytes=ray_constants.LOGGING_ROTATE_BYTES,
         backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
@@ -47,11 +48,11 @@ if __name__ == "__main__":
         required=False,
         type=str,
         default=None,
-        help="The password to use for Redis")
+        help="The password to use for Redis",
+    )
     args = parser.parse_args()
 
-    cluster_name = yaml.safe_load(
-        open(AUTOSCALING_CONFIG_PATH).read())["cluster_name"]
+    cluster_name = yaml.safe_load(open(AUTOSCALING_CONFIG_PATH).read())["cluster_name"]
     head_ip = get_node_ip_address()
     Monitor(
         address=f"{head_ip}:6379",

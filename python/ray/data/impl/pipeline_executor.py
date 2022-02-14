@@ -4,33 +4,40 @@ import time
 import ray
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T
-from ray.data.impl.progress_bar import ProgressBar, \
-    set_progress_bars
+from ray.data.impl.progress_bar import ProgressBar, set_progress_bars
 from ray.types import ObjectRef
 
 if TYPE_CHECKING:
     from ray.data.dataset_pipeline import DatasetPipeline
 
 
+# Temporarily use an actor here to avoid ownership issues with tasks:
+# https://github.com/ray-project/ray/issues/20554
 @ray.remote(num_cpus=0, placement_group=None)
-def pipeline_stage(fn: Callable[[], Dataset[T]],
-                   context: DatasetContext) -> Dataset[T]:
-    DatasetContext._set_current(context)
-    try:
-        prev = set_progress_bars(False)
-        return fn()
-    finally:
-        set_progress_bars(prev)
+class _StageRunner:
+    def run(self, fn: Callable[[], Dataset[T]], context: DatasetContext) -> Dataset[T]:
+        DatasetContext._set_current(context)
+        try:
+            prev = set_progress_bars(False)
+            # Force eager evaluation of all blocks in the pipeline stage. This
+            # prevents resource deadlocks due to overlapping stage execution
+            # (e.g., task -> actor stage).
+            return fn().force_reads()
+        finally:
+            set_progress_bars(prev)
 
 
 class PipelineExecutor:
     def __init__(self, pipeline: "DatasetPipeline[T]"):
         self._pipeline: "DatasetPipeline[T]" = pipeline
-        self._stages: List[ObjectRef[Dataset[
-            Any]]] = [None] * (len(self._pipeline._stages) + 1)
+        self._stages: List[ObjectRef[Dataset[Any]]] = [None] * (
+            len(self._pipeline._stages) + 1
+        )
+        self._stage_runners = [_StageRunner.remote() for _ in self._stages]
         self._iter = iter(self._pipeline._base_iterable)
-        self._stages[0] = pipeline_stage.remote(
-            next(self._iter), DatasetContext.get_current())
+        self._stages[0] = self._stage_runners[0].run.remote(
+            next(self._iter), DatasetContext.get_current()
+        )
 
         if self._pipeline._length and self._pipeline._length != float("inf"):
             length = self._pipeline._length
@@ -80,14 +87,16 @@ class PipelineExecutor:
                     output = result
                 else:
                     fn = self._pipeline._stages[i]
-                    self._stages[i + 1] = pipeline_stage.remote(
-                        lambda: fn(result), DatasetContext.get_current())
+                    self._stages[i + 1] = self._stage_runners[i].run.remote(
+                        lambda: fn(result), DatasetContext.get_current()
+                    )
 
             # Pull a new element for the initial slot if possible.
             if self._stages[0] is None:
                 try:
-                    self._stages[0] = pipeline_stage.remote(
-                        next(self._iter), DatasetContext.get_current())
+                    self._stages[0] = self._stage_runners[0].run.remote(
+                        next(self._iter), DatasetContext.get_current()
+                    )
                 except StopIteration:
                     pass
 
@@ -98,9 +107,13 @@ class PipelineExecutor:
 
 @ray.remote(num_cpus=0, placement_group=None)
 class PipelineSplitExecutorCoordinator:
-    def __init__(self, pipeline: "DatasetPipeline[T]", n: int,
-                 splitter: Callable[[Dataset], "DatasetPipeline[T]"],
-                 context: DatasetContext):
+    def __init__(
+        self,
+        pipeline: "DatasetPipeline[T]",
+        n: int,
+        splitter: Callable[[Dataset], "DatasetPipeline[T]"],
+        context: DatasetContext,
+    ):
         DatasetContext._set_current(context)
         self.executor = PipelineExecutor(pipeline)
         self.n = n

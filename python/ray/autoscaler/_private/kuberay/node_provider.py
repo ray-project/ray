@@ -6,9 +6,14 @@ import time
 from typing import Any, Dict, List, Tuple
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (NODE_KIND_HEAD, NODE_KIND_WORKER,
-                                 STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED,
-                                 TAG_RAY_NODE_KIND, TAG_RAY_USER_NODE_TYPE)
+from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
+    NODE_KIND_WORKER,
+    STATUS_UP_TO_DATE,
+    STATUS_UPDATE_FAILED,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_USER_NODE_TYPE,
+)
 
 # Terminology:
 
@@ -52,8 +57,10 @@ def to_label_selector(tags: Dict[str, str]) -> str:
 
 def status_tag(pod: Dict[str, Any]) -> str:
     """Convert pod state to Ray autoscaler status tag."""
-    if ("containerStatuses" not in pod["status"]
-            or not pod["status"]["containerStatuses"]):
+    if (
+        "containerStatuses" not in pod["status"]
+        or not pod["status"]["containerStatuses"]
+    ):
         return "pending"
 
     state = pod["status"]["containerStatuses"][0]["state"]
@@ -85,18 +92,17 @@ def make_node_tags(labels: Dict[str, str], status_tag: str) -> Dict[str, str]:
 
 class KuberayNodeProvider(NodeProvider):  # type: ignore
     def __init__(
-            self,
-            provider_config: Dict[str, Any],
-            cluster_name: str,
-            _allow_multiple: bool = False,
+        self,
+        provider_config: Dict[str, Any],
+        cluster_name: str,
+        _allow_multiple: bool = False,
     ):
         logger.info("Creating KuberayNodeProvider.")
         self.namespace = provider_config["namespace"]
         self.cluster_name = cluster_name
         self._lock = threading.RLock()
 
-        with open("/var/run/secrets/kubernetes.io/serviceaccount/token"
-                  ) as secret:
+        with open("/var/run/secrets/kubernetes.io/serviceaccount/token") as secret:
             token = secret.read()
 
         self.headers = {
@@ -107,10 +113,12 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         # Disallow multiple node providers, unless explicitly allowed for testing.
         global provider_exists
         if not _allow_multiple:
-            assert (not provider_exists
-                    ), "Only one KuberayNodeProvider allowed per process."
-        assert (provider_config.get("disable_node_updaters", False) is
-                True), "Must disable node updaters to use KuberayNodeProvider."
+            assert (
+                not provider_exists
+            ), "Only one KuberayNodeProvider allowed per process."
+        assert (
+            provider_config.get("disable_node_updaters", False) is True
+        ), "Must disable node updaters to use KuberayNodeProvider."
         provider_exists = True
 
         super().__init__(provider_config, cluster_name)
@@ -123,32 +131,37 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             api_group = "/apis/ray.io/v1alpha1"
         else:
             raise NotImplementedError(
-                "Tried to access unknown entity at {}".format(path))
-        return ("https://kubernetes.default:443" + api_group + "/namespaces/" +
-                self.namespace + "/" + path)
+                "Tried to access unknown entity at {}".format(path)
+            )
+        return (
+            "https://kubernetes.default:443"
+            + api_group
+            + "/namespaces/"
+            + self.namespace
+            + "/"
+            + path
+        )
 
     def _get(self, path: str) -> Dict[str, Any]:
         """Wrapper for REST GET of resource with proper headers."""
-        result = requests.get(
-            self._url(path), headers=self.headers, verify=self.verify)
+        result = requests.get(self._url(path), headers=self.headers, verify=self.verify)
         assert result.status_code == 200
         return result.json()
 
-    def _patch(self, path: str,
-               payload: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Wrapper for REST PATCH of resource with proper headers."""
         result = requests.patch(
             self._url(path),
             json.dumps(payload),
-            headers={
-                **self.headers, "Content-type": "application/json-patch+json"
-            },
-            verify=self.verify)
+            headers={**self.headers, "Content-type": "application/json-patch+json"},
+            verify=self.verify,
+        )
         assert result.status_code == 200
         return result.json()
 
-    def _get_worker_group(self, raycluster: Dict[str, Any],
-                          group_name: str) -> Tuple[int, Dict[str, Any]]:
+    def _get_worker_group(
+        self, raycluster: Dict[str, Any], group_name: str
+    ) -> Tuple[int, Dict[str, Any]]:
         """Extract group index and group definition from RayCluster."""
         group_index = None
         group_spec = None
@@ -163,43 +176,46 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
 
     def _wait_for_pods(self, group_name: str, replicas: int) -> None:
         """Wait until `replicas` pods of type group_name are posted."""
-        label_filters = to_label_selector({
-            "ray.io/cluster": self.cluster_name,
-            "ray.io/group": group_name
-        })
+        label_filters = to_label_selector(
+            {"ray.io/cluster": self.cluster_name, "ray.io/group": group_name}
+        )
         while True:
-            pods = self._get("pods?labelSelector=" +
-                             requests.utils.quote(label_filters))
+            pods = self._get(
+                "pods?labelSelector=" + requests.utils.quote(label_filters)
+            )
             logger.info(
                 "Currently have {} replicas of group {}, requested {}.".format(
-                    len(pods["items"]), group_name, replicas))
+                    len(pods["items"]), group_name, replicas
+                )
+            )
             if len(pods["items"]) == replicas:
                 break
             else:
                 logger.info(
-                    "Waiting for reconciler, number of replicas is {}, expected {}.".
-                    format(len(pods["items"]), replicas))
+                    "Waiting for reconciler, number of replicas is {}, expected {}.".format(  # noqa: E501
+                        len(pods["items"]), replicas
+                    )
+                )
                 time.sleep(10.0)
 
-    def create_node(self, node_config: Dict[str, Any], tags: Dict[str, str],
-                    count: int) -> Dict[str, Dict[str, str]]:
+    def create_node(
+        self, node_config: Dict[str, Any], tags: Dict[str, str], count: int
+    ) -> Dict[str, Dict[str, str]]:
         """Creates a number of nodes within the namespace."""
         with self._lock:
             url = "rayclusters/{}".format(self.cluster_name)
             raycluster = self._get(url)
             group_name = tags["ray-user-node-type"]
-            group_index, group_spec = self._get_worker_group(
-                raycluster, group_name)
+            group_index, group_spec = self._get_worker_group(raycluster, group_name)
             path = f"/spec/workerGroupSpecs/{group_index}/replicas"
-            payload = [{
-                "op": "test",
-                "path": path,
-                "value": group_spec["replicas"]
-            }, {
-                "op": "replace",
-                "path": path,
-                "value": group_spec["replicas"] + count
-            }]
+            payload = [
+                {"op": "test", "path": path, "value": group_spec["replicas"]},
+                {
+                    "op": "replace",
+                    "path": path,
+                    "value": group_spec["replicas"] + count,
+                },
+            ]
             self._patch(url, payload)
             self._wait_for_pods(group_name, group_spec["replicas"] + count)
         return {}
@@ -216,11 +232,12 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
 
     def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
         """Return a list of node ids filtered by the specified tags dict."""
-        label_filters = to_label_selector({
-            "ray.io/cluster": self.cluster_name,
-        })
-        data = self._get("pods?labelSelector=" +
-                         requests.utils.quote(label_filters))
+        label_filters = to_label_selector(
+            {
+                "ray.io/cluster": self.cluster_name,
+            }
+        )
+        data = self._get("pods?labelSelector=" + requests.utils.quote(label_filters))
         result = []
         for pod in data["items"]:
             labels = pod["metadata"]["labels"]
@@ -233,8 +250,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         """Terminates the specified node (= Kubernetes pod)."""
         self.terminate_nodes([node_id])
 
-    def terminate_nodes(self,
-                        node_ids: List[str]) -> Dict[str, Dict[str, str]]:
+    def terminate_nodes(self, node_ids: List[str]) -> Dict[str, Dict[str, str]]:
         """Batch terminates the specified nodes (= Kubernetes pods)."""
         with self._lock:
             # Split node_ids into groups according to node type and terminate
@@ -242,52 +258,53 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             # a single element and therefore it is most likely not worth
             # optimizing this code to batch the requests to the API server.
             groups = {}
-            label_filters = to_label_selector({
-                "ray.io/cluster": self.cluster_name
-            })
-            pods = self._get("pods?labelSelector=" +
-                             requests.utils.quote(label_filters))
+            label_filters = to_label_selector({"ray.io/cluster": self.cluster_name})
+            pods = self._get(
+                "pods?labelSelector=" + requests.utils.quote(label_filters)
+            )
             for pod in pods["items"]:
                 if pod["metadata"]["name"] in node_ids:
                     groups.setdefault(
-                        pod["metadata"]["labels"]["ray.io/group"],
-                        []).append(pod["metadata"]["name"])
+                        pod["metadata"]["labels"]["ray.io/group"], []
+                    ).append(pod["metadata"]["name"])
 
             url = "rayclusters/{}".format(self.cluster_name)
             raycluster = self._get(url)
             for group_name, nodes in groups.items():
-                group_index, group_spec = self._get_worker_group(
-                    raycluster, group_name)
+                group_index, group_spec = self._get_worker_group(raycluster, group_name)
                 prefix = f"/spec/workerGroupSpecs/{group_index}"
-                payload = [{
-                    "op": "test",
-                    "path": prefix + "/replicas",
-                    "value": group_spec["replicas"]
-                }, {
-                    "op": "replace",
-                    "path": prefix + "/replicas",
-                    "value": group_spec["replicas"] - len(nodes)
-                }, {
-                    "op": "replace",
-                    "path": prefix + "/scaleStrategy",
-                    "value": {
-                        "workersToDelete": nodes
-                    }
-                }]
+                payload = [
+                    {
+                        "op": "test",
+                        "path": prefix + "/replicas",
+                        "value": group_spec["replicas"],
+                    },
+                    {
+                        "op": "replace",
+                        "path": prefix + "/replicas",
+                        "value": group_spec["replicas"] - len(nodes),
+                    },
+                    {
+                        "op": "replace",
+                        "path": prefix + "/scaleStrategy",
+                        "value": {"workersToDelete": nodes},
+                    },
+                ]
                 self._patch(url, payload)
 
             for group_name, nodes in groups.items():
-                group_index, group_spec = self._get_worker_group(
-                    raycluster, group_name)
+                group_index, group_spec = self._get_worker_group(raycluster, group_name)
                 prefix = f"/spec/workerGroupSpecs/{group_index}"
-                self._wait_for_pods(group_name,
-                                    group_spec["replicas"] - len(nodes))
+                self._wait_for_pods(group_name, group_spec["replicas"] - len(nodes))
                 # Clean up workersToDelete
-                self._patch(url, [{
-                    "op": "replace",
-                    "path": prefix + "/scaleStrategy",
-                    "value": {
-                        "workersToDelete": []
-                    }
-                }])
+                self._patch(
+                    url,
+                    [
+                        {
+                            "op": "replace",
+                            "path": prefix + "/scaleStrategy",
+                            "value": {"workersToDelete": []},
+                        }
+                    ],
+                )
         return {}

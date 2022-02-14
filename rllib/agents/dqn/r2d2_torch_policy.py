@@ -4,23 +4,28 @@ from typing import Dict, Tuple
 
 import gym
 import ray
-from ray.rllib.agents.dqn.dqn_tf_policy import (PRIO_WEIGHTS,
-                                                postprocess_nstep_and_prio)
-from ray.rllib.agents.dqn.dqn_torch_policy import adam_optimizer, \
-    build_q_model_and_distribution, compute_q_values
-from ray.rllib.agents.dqn.r2d2_tf_policy import \
-    get_distribution_inputs_and_class
+from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS, postprocess_nstep_and_prio
+from ray.rllib.agents.dqn.dqn_torch_policy import (
+    adam_optimizer,
+    build_q_model_and_distribution,
+    compute_q_values,
+)
+from ray.rllib.agents.dqn.r2d2_tf_policy import get_distribution_inputs_and_class
 from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.torch.torch_action_dist import \
-    TorchDistributionWrapper
+from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import apply_grad_clipping, \
-    concat_multi_gpu_td_errors, FLOAT_MIN, huber_loss, sequence_mask
+from ray.rllib.utils.torch_utils import (
+    apply_grad_clipping,
+    concat_multi_gpu_td_errors,
+    FLOAT_MIN,
+    huber_loss,
+    sequence_mask,
+)
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -30,10 +35,11 @@ if nn:
 
 
 def build_r2d2_model_and_distribution(
-    policy: Policy, obs_space: gym.spaces.Space,
+    policy: Policy,
+    obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict) -> \
-        Tuple[ModelV2, TorchDistributionWrapper]:
+    config: TrainerConfigDict,
+) -> Tuple[ModelV2, TorchDistributionWrapper]:
     """Build q_model and target_model for DQN
 
     Args:
@@ -50,23 +56,26 @@ def build_r2d2_model_and_distribution(
 
     # Create the policy's models and action dist class.
     model, distribution_cls = build_q_model_and_distribution(
-        policy, obs_space, action_space, config)
+        policy, obs_space, action_space, config
+    )
 
     # Assert correct model type by checking the init state to be present.
     # For attention nets: These don't necessarily publish their init state via
     # Model.get_initial_state, but may only use the trajectory view API
     # (view_requirements).
-    assert (model.get_initial_state() != [] or
-            model.view_requirements.get("state_in_0") is not None), \
-        "R2D2 requires its model to be a recurrent one! Try using " \
-        "`model.use_lstm` or `model.use_attention` in your config " \
+    assert (
+        model.get_initial_state() != []
+        or model.view_requirements.get("state_in_0") is not None
+    ), (
+        "R2D2 requires its model to be a recurrent one! Try using "
+        "`model.use_lstm` or `model.use_attention` in your config "
         "to auto-wrap your model with an LSTM- or attention net."
+    )
 
     return model, distribution_cls
 
 
-def r2d2_loss(policy: Policy, model, _,
-              train_batch: SampleBatch) -> TensorType:
+def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
     """Constructs the loss for R2D2TorchPolicy.
 
     Args:
@@ -96,7 +105,8 @@ def r2d2_loss(policy: Policy, model, _,
         state_batches=state_batches,
         seq_lens=train_batch.get(SampleBatch.SEQ_LENS),
         explore=False,
-        is_training=True)
+        is_training=True,
+    )
 
     # Target Q-network evaluation (at t+1).
     q_target, _, _, _ = compute_q_values(
@@ -106,7 +116,8 @@ def r2d2_loss(policy: Policy, model, _,
         state_batches=state_batches,
         seq_lens=train_batch.get(SampleBatch.SEQ_LENS),
         explore=False,
-        is_training=True)
+        is_training=True,
+    )
 
     actions = train_batch[SampleBatch.ACTIONS].long()
     dones = train_batch[SampleBatch.DONES].float()
@@ -119,8 +130,10 @@ def r2d2_loss(policy: Policy, model, _,
     # Q scores for actions which we know were selected in the given state.
     one_hot_selection = F.one_hot(actions, policy.action_space.n)
     q_selected = torch.sum(
-        torch.where(q > FLOAT_MIN, q, torch.tensor(0.0, device=q.device)) *
-        one_hot_selection, 1)
+        torch.where(q > FLOAT_MIN, q, torch.tensor(0.0, device=q.device))
+        * one_hot_selection,
+        1,
+    )
 
     if config["double_q"]:
         best_actions = torch.argmax(q, dim=1)
@@ -129,28 +142,30 @@ def r2d2_loss(policy: Policy, model, _,
 
     best_actions_one_hot = F.one_hot(best_actions, policy.action_space.n)
     q_target_best = torch.sum(
-        torch.where(q_target > FLOAT_MIN, q_target,
-                    torch.tensor(0.0, device=q_target.device)) *
-        best_actions_one_hot,
-        dim=1)
+        torch.where(
+            q_target > FLOAT_MIN, q_target, torch.tensor(0.0, device=q_target.device)
+        )
+        * best_actions_one_hot,
+        dim=1,
+    )
 
     if config["num_atoms"] > 1:
         raise ValueError("Distributional R2D2 not supported yet!")
     else:
-        q_target_best_masked_tp1 = (1.0 - dones) * torch.cat([
-            q_target_best[1:],
-            torch.tensor([0.0], device=q_target_best.device)
-        ])
+        q_target_best_masked_tp1 = (1.0 - dones) * torch.cat(
+            [q_target_best[1:], torch.tensor([0.0], device=q_target_best.device)]
+        )
 
         if config["use_h_function"]:
-            h_inv = h_inverse(q_target_best_masked_tp1,
-                              config["h_function_epsilon"])
+            h_inv = h_inverse(q_target_best_masked_tp1, config["h_function_epsilon"])
             target = h_function(
-                rewards + config["gamma"]**config["n_step"] * h_inv,
-                config["h_function_epsilon"])
+                rewards + config["gamma"] ** config["n_step"] * h_inv,
+                config["h_function_epsilon"],
+            )
         else:
-            target = rewards + \
-                config["gamma"] ** config["n_step"] * q_target_best_masked_tp1
+            target = (
+                rewards + config["gamma"] ** config["n_step"] * q_target_best_masked_tp1
+            )
 
         # Seq-mask all loss-related terms.
         seq_mask = sequence_mask(train_batch[SampleBatch.SEQ_LENS], T)[:, :-1]
@@ -209,12 +224,16 @@ def h_inverse(x, epsilon=1.0):
         (2 * eps^2)
     """
     two_epsilon = epsilon * 2
-    if_x_pos = (two_epsilon * x + (two_epsilon + 1.0) -
-                torch.sqrt(4.0 * epsilon * x +
-                           (two_epsilon + 1.0)**2)) / (2.0 * epsilon**2)
-    if_x_neg = (two_epsilon * x - (two_epsilon + 1.0) +
-                torch.sqrt(-4.0 * epsilon * x +
-                           (two_epsilon + 1.0)**2)) / (2.0 * epsilon**2)
+    if_x_pos = (
+        two_epsilon * x
+        + (two_epsilon + 1.0)
+        - torch.sqrt(4.0 * epsilon * x + (two_epsilon + 1.0) ** 2)
+    ) / (2.0 * epsilon ** 2)
+    if_x_neg = (
+        two_epsilon * x
+        - (two_epsilon + 1.0)
+        + torch.sqrt(-4.0 * epsilon * x + (two_epsilon + 1.0) ** 2)
+    ) / (2.0 * epsilon ** 2)
     return torch.where(x < 0.0, if_x_neg, if_x_pos)
 
 
@@ -225,8 +244,9 @@ class ComputeTDErrorMixin:
     """
 
     def __init__(self):
-        def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
-                             importance_weights):
+        def compute_td_error(
+            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights
+        ):
             input_dict = self._lazy_tensor_dict({SampleBatch.CUR_OBS: obs_t})
             input_dict[SampleBatch.ACTIONS] = act_t
             input_dict[SampleBatch.REWARDS] = rew_t
@@ -246,37 +266,42 @@ def build_q_stats(policy: Policy, batch: SampleBatch) -> Dict[str, TensorType]:
 
     return {
         "cur_lr": policy.cur_lr,
-        "total_loss": torch.mean(
-            torch.stack(policy.get_tower_stats("total_loss"))),
+        "total_loss": torch.mean(torch.stack(policy.get_tower_stats("total_loss"))),
         "mean_q": torch.mean(torch.stack(policy.get_tower_stats("mean_q"))),
         "min_q": torch.mean(torch.stack(policy.get_tower_stats("min_q"))),
         "max_q": torch.mean(torch.stack(policy.get_tower_stats("max_q"))),
         "mean_td_error": torch.mean(
-            torch.stack(policy.get_tower_stats("mean_td_error"))),
+            torch.stack(policy.get_tower_stats("mean_td_error"))
+        ),
     }
 
 
-def setup_early_mixins(policy: Policy, obs_space, action_space,
-                       config: TrainerConfigDict) -> None:
+def setup_early_mixins(
+    policy: Policy, obs_space, action_space, config: TrainerConfigDict
+) -> None:
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-def before_loss_init(policy: Policy, obs_space: gym.spaces.Space,
-                     action_space: gym.spaces.Space,
-                     config: TrainerConfigDict) -> None:
+def before_loss_init(
+    policy: Policy,
+    obs_space: gym.spaces.Space,
+    action_space: gym.spaces.Space,
+    config: TrainerConfigDict,
+) -> None:
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy)
 
 
-def grad_process_and_td_error_fn(policy: Policy,
-                                 optimizer: "torch.optim.Optimizer",
-                                 loss: TensorType) -> Dict[str, TensorType]:
+def grad_process_and_td_error_fn(
+    policy: Policy, optimizer: "torch.optim.Optimizer", loss: TensorType
+) -> Dict[str, TensorType]:
     # Clip grads if configured.
     return apply_grad_clipping(policy, optimizer, loss)
 
 
-def extra_action_out_fn(policy: Policy, input_dict, state_batches, model,
-                        action_dist) -> Dict[str, TensorType]:
+def extra_action_out_fn(
+    policy: Policy, input_dict, state_batches, model, action_dist
+) -> Dict[str, TensorType]:
     return {"q_values": policy.q_values}
 
 
@@ -299,4 +324,5 @@ R2D2TorchPolicy = build_policy_class(
         TargetNetworkMixin,
         ComputeTDErrorMixin,
         LearningRateSchedule,
-    ])
+    ],
+)

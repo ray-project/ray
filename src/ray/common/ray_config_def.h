@@ -28,7 +28,7 @@ RAY_CONFIG(bool, event_stats, true)
 /// Whether to enable Ray legacy scheduler warnings. These are replaced by
 /// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
 /// TODO(ekl) remove this after Ray 1.8
-RAY_CONFIG(bool, legacy_scheduler_warnings, true)
+RAY_CONFIG(bool, legacy_scheduler_warnings, false)
 
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available to
@@ -90,7 +90,16 @@ RAY_CONFIG(int64_t, free_objects_period_milliseconds, 1000)
 /// to -1.
 RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
+/// Whether to pin object lineage, i.e. the task that created the object and
+/// the task's recursive dependencies. If this is set to true, then the system
+/// will attempt to reconstruct the object from its lineage if the object is
+/// lost.
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
+
+/// Objects that require recovery are added to a local cache. This is the
+/// duration between attempts to flush and recover the objects in the local
+/// cache.
+RAY_CONFIG(int64_t, reconstruct_objects_period_milliseconds, 100)
 
 /// Maximum amount of lineage to keep in bytes. This includes the specs of all
 /// tasks that have previously already finished but that may be retried again.
@@ -127,6 +136,11 @@ RAY_CONFIG(int64_t, worker_cap_max_backoff_delay_ms, 1000 * 10)
 /// to prefer spreading tasks to other nodes. This balances between locality and
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
 RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
+
+/// Whether to only report the usage of pinned copies of objects in the
+/// object_store_memory resource. This means nodes holding secondary copies only
+/// will become eligible for removal in the autoscaler.
+RAY_CONFIG(bool, scheduler_report_pinned_bytes_only, false)
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -325,11 +339,6 @@ RAY_CONFIG(int64_t, enable_metrics_collection, true)
 
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
-
-/// Maximum number of tasks that can be in flight between an owner and a worker for which
-/// the owner has been granted a lease. A value >1 is used when we want to enable
-/// pipelining task submission.
-RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
 
 /// Maximum number of pending lease requests per scheduling category
 RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 10)

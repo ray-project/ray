@@ -11,9 +11,11 @@ import time
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-from ray.util.client.common import (CLIENT_SERVER_MAX_THREADS,
-                                    _propagate_error_in_context,
-                                    OrderedResponseCache)
+from ray.util.client.common import (
+    CLIENT_SERVER_MAX_THREADS,
+    _propagate_error_in_context,
+    OrderedResponseCache,
+)
 from ray.util.client import CURRENT_PROTOCOL_VERSION
 from ray.util.debug import log_once
 from ray._private.client_mode_hook import disable_client_hook
@@ -36,7 +38,8 @@ def _get_reconnecting_from_context(context: Any) -> bool:
         logger.error(
             f'Client connecting with invalid value for "reconnecting": {val}, '
             "This may be because you have a mismatched client and server "
-            "version.")
+            "version."
+        )
         return False
     return val == "True"
 
@@ -58,9 +61,8 @@ def _should_cache(req: ray_client_pb2.DataRequest) -> bool:
 
 
 def fill_queue(
-        grpc_input_generator: Iterator[ray_client_pb2.DataRequest],
-        output_queue:
-        "Queue[Union[ray_client_pb2.DataRequest, ray_client_pb2.DataResponse]]"
+    grpc_input_generator: Iterator[ray_client_pb2.DataRequest],
+    output_queue: "Queue[Union[ray_client_pb2.DataRequest, ray_client_pb2.DataResponse]]",  # noqa: E501
 ) -> None:
     """
     Pushes incoming requests to a shared output_queue.
@@ -69,8 +71,10 @@ def fill_queue(
         for req in grpc_input_generator:
             output_queue.put(req)
     except grpc.RpcError as e:
-        logger.debug("closing dataservicer reader thread "
-                     f"grpc error reading request_iterator: {e}")
+        logger.debug(
+            "closing dataservicer reader thread "
+            f"grpc error reading request_iterator: {e}"
+        )
     finally:
         # Set the sentinel value for the output_queue
         output_queue.put(None)
@@ -87,7 +91,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         self.reconnect_grace_periods: Dict[str, float] = {}
         # dictionary mapping client_id's to their response cache
         self.response_caches: Dict[str, OrderedResponseCache] = defaultdict(
-            OrderedResponseCache)
+            OrderedResponseCache
+        )
         # stopped event, useful for signals that the server is shut down
         self.stopped = Event()
 
@@ -110,9 +115,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         try:
             request_queue = Queue()
             queue_filler_thread = Thread(
-                target=fill_queue,
-                daemon=True,
-                args=(request_iterator, request_queue))
+                target=fill_queue, daemon=True, args=(request_iterator, request_queue)
+            )
             queue_filler_thread.start()
             """For non `async get` requests, this loop yields immediately
             For `async get` requests, this loop:
@@ -139,17 +143,21 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 req_type = req.WhichOneof("type")
                 if req_type == "init":
                     resp_init = self.basic_service.Init(req.init)
-                    resp = ray_client_pb2.DataResponse(init=resp_init, )
+                    resp = ray_client_pb2.DataResponse(
+                        init=resp_init,
+                    )
                     with self.clients_lock:
-                        self.reconnect_grace_periods[client_id] = \
-                            req.init.reconnect_grace_period
+                        self.reconnect_grace_periods[
+                            client_id
+                        ] = req.init.reconnect_grace_period
                         if req.init.reconnect_grace_period == 0:
                             reconnect_enabled = False
 
                 elif req_type == "get":
                     if req.get.asynchronous:
                         get_resp = self.basic_service._async_get_object(
-                            req.get, client_id, req.req_id, request_queue)
+                            req.get, client_id, req.req_id, request_queue
+                        )
                         if get_resp is None:
                             # Skip sending a response for this request and
                             # continue to the next requst. The response for
@@ -157,12 +165,10 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                             # ready.
                             continue
                     else:
-                        get_resp = self.basic_service._get_object(
-                            req.get, client_id)
+                        get_resp = self.basic_service._get_object(req.get, client_id)
                     resp = ray_client_pb2.DataResponse(get=get_resp)
                 elif req_type == "put":
-                    put_resp = self.basic_service._put_object(
-                        req.put, client_id)
+                    put_resp = self.basic_service._put_object(req.put, client_id)
                     resp = ray_client_pb2.DataResponse(put=put_resp)
                 elif req_type == "release":
                     released = []
@@ -170,45 +176,45 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         rel = self.basic_service.release(client_id, rel_id)
                         released.append(rel)
                     resp = ray_client_pb2.DataResponse(
-                        release=ray_client_pb2.ReleaseResponse(ok=released))
+                        release=ray_client_pb2.ReleaseResponse(ok=released)
+                    )
                 elif req_type == "connection_info":
                     resp = ray_client_pb2.DataResponse(
-                        connection_info=self._build_connection_response())
+                        connection_info=self._build_connection_response()
+                    )
                 elif req_type == "prep_runtime_env":
                     with self.clients_lock:
                         resp_prep = self.basic_service.PrepRuntimeEnv(
-                            req.prep_runtime_env)
-                        resp = ray_client_pb2.DataResponse(
-                            prep_runtime_env=resp_prep)
+                            req.prep_runtime_env
+                        )
+                        resp = ray_client_pb2.DataResponse(prep_runtime_env=resp_prep)
                 elif req_type == "connection_cleanup":
                     cleanup_requested = True
                     cleanup_resp = ray_client_pb2.ConnectionCleanupResponse()
-                    resp = ray_client_pb2.DataResponse(
-                        connection_cleanup=cleanup_resp)
+                    resp = ray_client_pb2.DataResponse(connection_cleanup=cleanup_resp)
                 elif req_type == "acknowledge":
                     # Clean up acknowledged cache entries
                     response_cache.cleanup(req.acknowledge.req_id)
                     continue
                 elif req_type == "task":
                     with self.clients_lock:
-                        resp_ticket = self.basic_service.Schedule(
-                            req.task, context)
-                        resp = ray_client_pb2.DataResponse(
-                            task_ticket=resp_ticket)
+                        resp_ticket = self.basic_service.Schedule(req.task, context)
+                        resp = ray_client_pb2.DataResponse(task_ticket=resp_ticket)
                 elif req_type == "terminate":
                     with self.clients_lock:
-                        response = self.basic_service.Terminate(
-                            req.terminate, context)
+                        response = self.basic_service.Terminate(req.terminate, context)
                         resp = ray_client_pb2.DataResponse(terminate=response)
                 elif req_type == "list_named_actors":
                     with self.clients_lock:
                         response = self.basic_service.ListNamedActors(
-                            req.list_named_actors)
-                        resp = ray_client_pb2.DataResponse(
-                            list_named_actors=response)
+                            req.list_named_actors
+                        )
+                        resp = ray_client_pb2.DataResponse(list_named_actors=response)
                 else:
-                    raise Exception(f"Unreachable code: Request type "
-                                    f"{req_type} not handled in Datapath")
+                    raise Exception(
+                        f"Unreachable code: Request type "
+                        f"{req_type} not handled in Datapath"
+                    )
                 resp.req_id = req.req_id
                 if _should_cache(req) and reconnect_enabled:
                     response_cache.update_cache(req.req_id, resp)
@@ -226,12 +232,16 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             queue_filler_thread.join(QUEUE_JOIN_SECONDS)
             if queue_filler_thread.is_alive():
                 logger.error(
-                    "Queue filler thread failed to join before timeout: {}".
-                    format(QUEUE_JOIN_SECONDS))
+                    "Queue filler thread failed to join before timeout: {}".format(
+                        QUEUE_JOIN_SECONDS
+                    )
+                )
             cleanup_delay = self.reconnect_grace_periods.get(client_id)
             if not cleanup_requested and cleanup_delay is not None:
-                logger.debug("Cleanup wasn't requested, delaying cleanup by"
-                             f"{cleanup_delay} seconds.")
+                logger.debug(
+                    "Cleanup wasn't requested, delaying cleanup by"
+                    f"{cleanup_delay} seconds."
+                )
                 # Delay cleanup, since client may attempt a reconnect
                 # Wait on the "stopped" event in case the grpc server is
                 # stopped and we can clean up earlier.
@@ -261,8 +271,9 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 if client_id in self.response_caches:
                     del self.response_caches[client_id]
                 self.num_clients -= 1
-                logger.debug(f"Removed client {client_id}, "
-                             f"remaining={self.num_clients}")
+                logger.debug(
+                    f"Removed client {client_id}, " f"remaining={self.num_clients}"
+                )
 
                 # It's important to keep the Ray shutdown
                 # within this locked context or else Ray could hang.
@@ -285,13 +296,15 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 logger.warning(
                     f"[Data Servicer]: Num clients {self.num_clients} "
                     f"has reached the threshold {threshold}. "
-                    f"Rejecting client: {client_id}. ")
+                    f"Rejecting client: {client_id}. "
+                )
                 if log_once("client_threshold"):
                     logger.warning(
                         "You can configure the client connection "
                         "threshold by setting the "
                         "RAY_CLIENT_SERVER_MAX_THREADS env var "
-                        f"(currently set to {CLIENT_SERVER_MAX_THREADS}).")
+                        f"(currently set to {CLIENT_SERVER_MAX_THREADS})."
+                    )
                 context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
                 return False
             if reconnecting and client_id not in self.client_last_seen:
@@ -300,14 +313,17 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 context.set_code(grpc.StatusCode.NOT_FOUND)
                 context.set_details(
                     "Attempted to reconnect to a session that has already "
-                    "been cleaned up.")
+                    "been cleaned up."
+                )
                 return False
             if client_id in self.client_last_seen:
                 logger.debug(f"Client {client_id} has reconnected.")
             else:
                 self.num_clients += 1
-                logger.debug(f"Accepted data connection from {client_id}. "
-                             f"Total clients: {self.num_clients}")
+                logger.debug(
+                    f"Accepted data connection from {client_id}. "
+                    f"Total clients: {self.num_clients}"
+                )
             self.client_last_seen[client_id] = start_time
             return True
 
@@ -317,7 +333,9 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         return ray_client_pb2.ConnectionInfoResponse(
             num_clients=cur_num_clients,
             python_version="{}.{}.{}".format(
-                sys.version_info[0], sys.version_info[1], sys.version_info[2]),
+                sys.version_info[0], sys.version_info[1], sys.version_info[2]
+            ),
             ray_version=ray.__version__,
             ray_commit=ray.__commit__,
-            protocol_version=CURRENT_PROTOCOL_VERSION)
+            protocol_version=CURRENT_PROTOCOL_VERSION,
+        )

@@ -5,6 +5,7 @@ Source: https://github.com/Kaggle/kaggle-environments
 
 from copy import deepcopy
 from typing import Any, Dict, Optional, Tuple
+
 try:
     import kaggle_environments
 except (ImportError, ModuleNotFoundError):
@@ -35,7 +36,8 @@ class KaggleFootballMultiAgentEnv(MultiAgentEnv):
         """
         super().__init__()
         self.kaggle_env = kaggle_environments.make(
-            "football", configuration=configuration or {})
+            "football", configuration=configuration or {}
+        )
         self.last_cumulative_reward = None
 
     def reset(self) -> MultiAgentDict:
@@ -48,7 +50,7 @@ class KaggleFootballMultiAgentEnv(MultiAgentEnv):
         }
 
     def step(
-            self, action_dict: Dict[AgentID, int]
+        self, action_dict: Dict[AgentID, int]
     ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
         # Convert action_dict (used by RLlib) to a list of actions (used by
         # kaggle_environments)
@@ -109,50 +111,62 @@ class KaggleFootballMultiAgentEnv(MultiAgentEnv):
         # The football field's corners are [+-1., +-0.42]. However, the players
         # and balls may get out of the field. Thus we multiply those limits by
         # a factor of 2.
-        xlim = 1. * 2
+        xlim = 1.0 * 2
         ylim = 0.42 * 2
         num_players: int = 11
         xy_space = Box(
             np.array([-xlim, -ylim], dtype=np.float32),
-            np.array([xlim, ylim], dtype=np.float32))
+            np.array([xlim, ylim], dtype=np.float32),
+        )
         xyz_space = Box(
             np.array([-xlim, -ylim, 0], dtype=np.float32),
-            np.array([xlim, ylim, np.inf], dtype=np.float32))
-        observation_space = DictSpace({
-            "controlled_players": Discrete(2),
-            "players_raw": TupleSpace([
-                DictSpace({
-                    # ball information
-                    "ball": xyz_space,
-                    "ball_direction": Box(-np.inf, np.inf, (3, )),
-                    "ball_rotation": Box(-np.inf, np.inf, (3, )),
-                    "ball_owned_team": Discrete(3),
-                    "ball_owned_player": Discrete(num_players + 1),
-                    # left team
-                    "left_team": TupleSpace([xy_space] * num_players),
-                    "left_team_direction": TupleSpace(
-                        [xy_space] * num_players),
-                    "left_team_tired_factor": Box(0., 1., (num_players, )),
-                    "left_team_yellow_card": MultiBinary(num_players),
-                    "left_team_active": MultiBinary(num_players),
-                    "left_team_roles": MultiDiscrete([10] * num_players),
-                    # right team
-                    "right_team": TupleSpace([xy_space] * num_players),
-                    "right_team_direction": TupleSpace(
-                        [xy_space] * num_players),
-                    "right_team_tired_factor": Box(0., 1., (num_players, )),
-                    "right_team_yellow_card": MultiBinary(num_players),
-                    "right_team_active": MultiBinary(num_players),
-                    "right_team_roles": MultiDiscrete([10] * num_players),
-                    # controlled player information
-                    "active": Discrete(num_players),
-                    "designated": Discrete(num_players),
-                    "sticky_actions": MultiBinary(10),
-                    # match state
-                    "score": Box(-np.inf, np.inf, (2, )),
-                    "steps_left": Box(0, np.inf, (1, )),
-                    "game_mode": Discrete(7)
-                })
-            ])
-        })
+            np.array([xlim, ylim, np.inf], dtype=np.float32),
+        )
+        observation_space = DictSpace(
+            {
+                "controlled_players": Discrete(2),
+                "players_raw": TupleSpace(
+                    [
+                        DictSpace(
+                            {
+                                # ball information
+                                "ball": xyz_space,
+                                "ball_direction": Box(-np.inf, np.inf, (3,)),
+                                "ball_rotation": Box(-np.inf, np.inf, (3,)),
+                                "ball_owned_team": Discrete(3),
+                                "ball_owned_player": Discrete(num_players + 1),
+                                # left team
+                                "left_team": TupleSpace([xy_space] * num_players),
+                                "left_team_direction": TupleSpace(
+                                    [xy_space] * num_players
+                                ),
+                                "left_team_tired_factor": Box(0.0, 1.0, (num_players,)),
+                                "left_team_yellow_card": MultiBinary(num_players),
+                                "left_team_active": MultiBinary(num_players),
+                                "left_team_roles": MultiDiscrete([10] * num_players),
+                                # right team
+                                "right_team": TupleSpace([xy_space] * num_players),
+                                "right_team_direction": TupleSpace(
+                                    [xy_space] * num_players
+                                ),
+                                "right_team_tired_factor": Box(
+                                    0.0, 1.0, (num_players,)
+                                ),
+                                "right_team_yellow_card": MultiBinary(num_players),
+                                "right_team_active": MultiBinary(num_players),
+                                "right_team_roles": MultiDiscrete([10] * num_players),
+                                # controlled player information
+                                "active": Discrete(num_players),
+                                "designated": Discrete(num_players),
+                                "sticky_actions": MultiBinary(10),
+                                # match state
+                                "score": Box(-np.inf, np.inf, (2,)),
+                                "steps_left": Box(0, np.inf, (1,)),
+                                "game_mode": Discrete(7),
+                            }
+                        )
+                    ]
+                ),
+            }
+        )
         return action_space, observation_space

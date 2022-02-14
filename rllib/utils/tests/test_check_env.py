@@ -6,8 +6,12 @@ from unittest.mock import Mock, MagicMock
 
 from ray.rllib.env.multi_agent_env import make_multi_agent, MultiAgentEnvWrapper
 from ray.rllib.examples.env.random_env import RandomEnv
-from ray.rllib.utils.pre_checks.env import check_env, check_gym_environments, \
-    check_multiagent_environments, check_base_env
+from ray.rllib.utils.pre_checks.env import (
+    check_env,
+    check_gym_environments,
+    check_multiagent_environments,
+    check_base_env,
+)
 
 
 class TestGymCheckEnv(unittest.TestCase):
@@ -17,12 +21,10 @@ class TestGymCheckEnv(unittest.TestCase):
 
     def test_has_observation_and_action_space(self):
         env = Mock(spec=[])
-        with pytest.raises(
-                AttributeError, match="Env must have observation_space."):
+        with pytest.raises(AttributeError, match="Env must have observation_space."):
             check_gym_environments(env)
         env = Mock(spec=["observation_space"])
-        with pytest.raises(
-                AttributeError, match="Env must have action_space."):
+        with pytest.raises(AttributeError, match="Env must have action_space."):
             check_gym_environments(env)
         del env
 
@@ -30,13 +32,11 @@ class TestGymCheckEnv(unittest.TestCase):
         env = RandomEnv()
         observation_space = env.observation_space
         env.observation_space = "not a gym space"
-        with pytest.raises(
-                ValueError, match="Observation space must be a gym.space"):
+        with pytest.raises(ValueError, match="Observation space must be a gym.space"):
             check_env(env)
         env.observation_space = observation_space
         env.action_space = "not an action space"
-        with pytest.raises(
-                ValueError, match="Action space must be a gym.space"):
+        with pytest.raises(ValueError, match="Action space must be a gym.space"):
             check_env(env)
         del env
 
@@ -97,22 +97,19 @@ class TestGymCheckEnv(unittest.TestCase):
         # check step that returns reward of non float/int fails
         step = MagicMock(return_value=(1, "Not a valid reward", True, {}))
         env.step = step
-        error = ("Your step function must return a reward that is integer or "
-                 "float.")
+        error = "Your step function must return a reward that is integer or " "float."
         with pytest.raises(AssertionError, match=error):
             check_env(env)
 
         # check step that returns a non bool fails
-        step = MagicMock(
-            return_value=(1, float(5), "not a valid done signal", {}))
+        step = MagicMock(return_value=(1, float(5), "not a valid done signal", {}))
         env.step = step
         error = "Your step function must return a done that is a boolean."
         with pytest.raises(AssertionError, match=error):
             check_env(env)
 
         # check step that returns a non dict fails
-        step = MagicMock(
-            return_value=(1, float(5), True, "not a valid env info"))
+        step = MagicMock(return_value=(1, float(5), True, "not a valid env info"))
         env.step = step
         error = "Your step function must return a info that is a dict."
         with pytest.raises(AssertionError, match=error):
@@ -139,12 +136,10 @@ class TestCheckMultiAgentEnv(unittest.TestCase):
             check_env(env)
         bad_obs = {
             0: np.array([np.inf, np.inf, np.inf, np.inf]),
-            1: np.array([np.inf, np.inf, np.inf, np.inf])
+            1: np.array([np.inf, np.inf, np.inf, np.inf]),
         }
         env.reset = lambda *_: bad_obs
-        with pytest.raises(
-                ValueError, match="The observation collected from "
-                "env"):
+        with pytest.raises(ValueError, match="The observation collected from " "env"):
             check_env(env)
         del env
 
@@ -155,25 +150,22 @@ class TestCheckMultiAgentEnv(unittest.TestCase):
         env = make_multi_agent("CartPole-v1")({"num_agents": 2})
         env.observation_space_contains = bad_contains_function
         with pytest.raises(
-                ValueError,
-                match="Your observation_space_contains "
-                "function has some"):
+            ValueError, match="Your observation_space_contains " "function has some"
+        ):
             check_env(env)
         del env
         env = make_multi_agent("CartPole-v1")({"num_agents": 2})
         bad_action = {0: 2, 1: 2}
         env.action_space_sample = lambda *_: bad_action
         with pytest.raises(
-                ValueError,
-                match="The action collected from "
-                "action_space_sample"):
+            ValueError, match="The action collected from " "action_space_sample"
+        ):
             check_env(env)
 
         env.action_space_contains = bad_contains_function
         with pytest.raises(
-                ValueError,
-                match="Your action_space_contains "
-                "function has some error"):
+            ValueError, match="Your action_space_contains " "function has some error"
+        ):
             check_env(env)
 
     def test_check_env_step_incorrect_error(self):
@@ -187,22 +179,21 @@ class TestCheckMultiAgentEnv(unittest.TestCase):
         step = MagicMock(return_value=(sampled_obs, "Not a reward", True, {}))
         env.step = step
         with pytest.raises(
-                AssertionError,
-                match="Your step function must "
-                "return a reward "):
+            AssertionError, match="Your step function must " "return a reward "
+        ):
             check_env(env)
         step = MagicMock(return_value=(sampled_obs, 5, "Not a bool", {}))
         env.step = step
         with pytest.raises(
-                AssertionError, match="Your step function must "
-                "return a done"):
+            AssertionError, match="Your step function must " "return a done"
+        ):
             check_env(env)
 
         step = MagicMock(return_value=(sampled_obs, 5, False, "Not a Dict"))
         env.step = step
         with pytest.raises(
-                AssertionError, match="Your step function must "
-                "return a info"):
+            AssertionError, match="Your step function must " "return a info"
+        ):
             check_env(env)
 
     def test_bad_sample_function(self):
@@ -210,21 +201,20 @@ class TestCheckMultiAgentEnv(unittest.TestCase):
         bad_action = {0: 2, 1: 2}
         env.action_space_sample = lambda *_: bad_action
         with pytest.raises(
-                ValueError,
-                match="The action collected from "
-                "action_space_sample"):
+            ValueError, match="The action collected from " "action_space_sample"
+        ):
             check_env(env)
         del env
         env = make_multi_agent("CartPole-v1")({"num_agents": 2})
         bad_obs = {
             0: np.array([np.inf, np.inf, np.inf, np.inf]),
-            1: np.array([np.inf, np.inf, np.inf, np.inf])
+            1: np.array([np.inf, np.inf, np.inf, np.inf]),
         }
         env.observation_space_sample = lambda *_: bad_obs
         with pytest.raises(
-                ValueError,
-                match="The observation collected from "
-                "observation_space_sample"):
+            ValueError,
+            match="The observation collected from " "observation_space_sample",
+        ):
             check_env(env)
 
 
@@ -233,9 +223,7 @@ class TestCheckBaseEnv:
         del self
         num_envs = 2
         sub_envs = [
-            make_multi_agent("CartPole-v1")({
-                "num_agents": 2
-            }) for _ in range(num_envs)
+            make_multi_agent("CartPole-v1")({"num_agents": 2}) for _ in range(num_envs)
         ]
         env = MultiAgentEnvWrapper(None, sub_envs, 2)
         return env
@@ -251,39 +239,40 @@ class TestCheckBaseEnv:
         env = self._make_base_env()
         env.try_reset = reset
         with pytest.raises(
-                ValueError, match=("MultiEnvDict. Instead, it is of"
-                                   " type")):
+            ValueError, match=("MultiEnvDict. Instead, it is of" " type")
+        ):
             check_env(env)
         obs_with_bad_agent_ids = {
             2: np.array([np.inf, np.inf, np.inf, np.inf]),
-            1: np.array([np.inf, np.inf, np.inf, np.inf])
+            1: np.array([np.inf, np.inf, np.inf, np.inf]),
         }
         obs_with_bad_env_ids = {"bad_env_id": obs_with_bad_agent_ids}
         reset = MagicMock(return_value=obs_with_bad_env_ids)
         env.try_reset = reset
         with pytest.raises(
-                ValueError, match="has dict keys that don't "
-                "correspond to"):
+            ValueError, match="has dict keys that don't " "correspond to"
+        ):
             check_env(env)
         reset = MagicMock(return_value={0: obs_with_bad_agent_ids})
         env.try_reset = reset
 
         with pytest.raises(
-                ValueError,
-                match="The element returned by "
-                "try_reset has agent_ids that are"
-                " not the names of the agents"):
+            ValueError,
+            match="The element returned by "
+            "try_reset has agent_ids that are"
+            " not the names of the agents",
+        ):
             check_env(env)
         out_of_bounds_obs = {
             0: {
                 0: np.array([np.inf, np.inf, np.inf, np.inf]),
-                1: np.array([np.inf, np.inf, np.inf, np.inf])
+                1: np.array([np.inf, np.inf, np.inf, np.inf]),
             }
         }
         env.try_reset = lambda *_: out_of_bounds_obs
         with pytest.raises(
-                ValueError, match="The observation collected from "
-                "try_reset"):
+            ValueError, match="The observation collected from " "try_reset"
+        ):
             check_env(env)
         del env
 
@@ -295,18 +284,16 @@ class TestCheckBaseEnv:
 
         env.observation_space_contains = bad_contains_function
         with pytest.raises(
-                ValueError,
-                match="Your observation_space_contains "
-                "function has some"):
+            ValueError, match="Your observation_space_contains " "function has some"
+        ):
             check_env(env)
 
         del env
         env = self._make_base_env()
         env.action_space_contains = bad_contains_function
         with pytest.raises(
-                ValueError,
-                match="Your action_space_contains "
-                "function has some error"):
+            ValueError, match="Your action_space_contains " "function has some error"
+        ):
             check_env(env)
         del env
 
@@ -315,9 +302,8 @@ class TestCheckBaseEnv:
         bad_action = {0: {0: 2, 1: 2}}
         env.action_space_sample = lambda *_: bad_action
         with pytest.raises(
-                ValueError,
-                match="The action collected from "
-                "action_space_sample"):
+            ValueError, match="The action collected from " "action_space_sample"
+        ):
             check_env(env)
 
         del env
@@ -325,14 +311,14 @@ class TestCheckBaseEnv:
         bad_obs = {
             0: {
                 0: np.array([np.inf, np.inf, np.inf, np.inf]),
-                1: np.array([np.inf, np.inf, np.inf, np.inf])
+                1: np.array([np.inf, np.inf, np.inf, np.inf]),
             }
         }
         env.observation_space_sample = lambda *_: bad_obs
         with pytest.raises(
-                ValueError,
-                match="The observation collected from "
-                "observation_space_sample"):
+            ValueError,
+            match="The observation collected from " "observation_space_sample",
+        ):
             check_env(env)
 
     def test_check_env_step_incorrect_error(self):
@@ -343,45 +329,40 @@ class TestCheckBaseEnv:
         env = self._make_base_env()
         bad_multi_env_dict_obs = {0: 1, 1: {0: np.zeros(4)}}
         poll = MagicMock(
-            return_value=(bad_multi_env_dict_obs, good_reward, good_done,
-                          good_info, {}))
+            return_value=(bad_multi_env_dict_obs, good_reward, good_done, good_info, {})
+        )
         env.poll = poll
         with pytest.raises(
-                ValueError,
-                match="The element returned by step, "
-                "next_obs has values that are not"
-                " MultiAgentDicts"):
+            ValueError,
+            match="The element returned by step, "
+            "next_obs has values that are not"
+            " MultiAgentDicts",
+        ):
             check_env(env)
 
         bad_reward = {0: {0: "not_reward", 1: 1}}
         good_obs = env.observation_space_sample()
-        poll = MagicMock(
-            return_value=(good_obs, bad_reward, good_done, good_info, {}))
+        poll = MagicMock(return_value=(good_obs, bad_reward, good_done, good_info, {}))
         env.poll = poll
         with pytest.raises(
-                AssertionError,
-                match="Your step function must "
-                "return a rewards that are"):
+            AssertionError, match="Your step function must " "return a rewards that are"
+        ):
             check_env(env)
         bad_done = {0: {0: "not_done", 1: False}}
-        poll = MagicMock(
-            return_value=(good_obs, good_reward, bad_done, good_info, {}))
+        poll = MagicMock(return_value=(good_obs, good_reward, bad_done, good_info, {}))
         env.poll = poll
         with pytest.raises(
-                AssertionError,
-                match="Your step function must "
-                "return a done that is "
-                "boolean."):
+            AssertionError,
+            match="Your step function must " "return a done that is " "boolean.",
+        ):
             check_env(env)
         bad_info = {0: {0: "not_info", 1: {}}}
-        poll = MagicMock(
-            return_value=(good_obs, good_reward, good_done, bad_info, {}))
+        poll = MagicMock(return_value=(good_obs, good_reward, good_done, bad_info, {}))
         env.poll = poll
         with pytest.raises(
-                AssertionError,
-                match="Your step function must"
-                " return a info that is a "
-                "dict."):
+            AssertionError,
+            match="Your step function must" " return a info that is a " "dict.",
+        ):
             check_env(env)
 
     def test_check_correct_env(self):
