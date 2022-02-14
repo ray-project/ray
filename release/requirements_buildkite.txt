@@ -1,5 +1,6 @@
 click
 boto3
+jinja2
 pydantic
 pyyaml
 requests
