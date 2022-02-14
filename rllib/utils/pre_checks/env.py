@@ -345,9 +345,9 @@ def _check_reward(reward, base_env=False, agent_ids=None):
                     raise ValueError(error)
                 if not (agent_id in agent_ids or agent_id == "__all__"):
                     error = (
-                        f"Your reward dictionary must have agent ids that belong to the "
-                        f"environment. Agent_ids recieved from env.get_agent_ids() are: "
-                        f"{agent_ids}"
+                        f"Your reward dictionary must have agent ids that belong to "
+                        f"the environment. Agent_ids recieved from "
+                        f"env.get_agent_ids() are: {agent_ids}"
                     )
                     raise ValueError(error)
     elif not (
@@ -371,9 +371,9 @@ def _check_done(done, base_env=False, agent_ids=None):
                     )
                 if not (agent_id in agent_ids or agent_id == "__all__"):
                     error = (
-                        f"Your dones dictionary must have agent ids that belong to the "
-                        f"environment. Agent_ids recieved from env.get_agent_ids() are: "
-                        f"{agent_ids}"
+                        f"Your dones dictionary must have agent ids that belong to "
+                        f"the environment. Agent_ids recieved from "
+                        f"env.get_agent_ids() are: {agent_ids}"
                     )
                     raise ValueError(error)
     elif not isinstance(done, (bool, np.bool, np.bool_)):
@@ -395,9 +395,9 @@ def _check_info(info, base_env=False, agent_ids=None):
                     )
                 if not (agent_id in agent_ids or agent_id == "__all__"):
                     error = (
-                        f"Your dones dictionary must have agent ids that belong to the "
-                        f"environment. Agent_ids recieved from env.get_agent_ids() are: "
-                        f"{agent_ids}"
+                        f"Your dones dictionary must have agent ids that belong to "
+                        f"the environment. Agent_ids recieved from "
+                        f"env.get_agent_ids() are: {agent_ids}"
                     )
                     raise ValueError(error)
     elif not isinstance(info, dict):
