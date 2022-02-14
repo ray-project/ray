@@ -498,6 +498,110 @@ def test_tensor_array_block_slice():
     check_for_copy(table, table2, a, b, is_copy=False)
 
 
+@pytest.mark.parametrize(
+    "test_data,a,b",
+    [
+        ([[False, True], [True, False], [True, True], [False, False]], 1, 3),
+        ([[False, True], [True, False], [True, True], [False, False]], 0, 1),
+        (
+            [
+                [False, True],
+                [True, False],
+                [True, True],
+                [False, False],
+                [True, False],
+                [False, False],
+                [False, True],
+                [True, True],
+                [False, False],
+                [True, True],
+                [False, True],
+                [True, False],
+            ],
+            3,
+            6,
+        ),
+        (
+            [
+                [False, True],
+                [True, False],
+                [True, True],
+                [False, False],
+                [True, False],
+                [False, False],
+                [False, True],
+                [True, True],
+                [False, False],
+                [True, True],
+                [False, True],
+                [True, False],
+            ],
+            7,
+            11,
+        ),
+        (
+            [
+                [False, True],
+                [True, False],
+                [True, True],
+                [False, False],
+                [True, False],
+                [False, False],
+                [False, True],
+                [True, True],
+                [False, False],
+                [True, True],
+                [False, True],
+                [True, False],
+            ],
+            9,
+            12,
+        ),
+    ],
+)
+@pytest.mark.parametrize("init_with_pandas", [True, False])
+def test_tensor_array_boolean_slice_pandas_roundtrip(init_with_pandas,
+                                                     test_data, a, b):
+    n = len(test_data)
+    test_arr = np.array(test_data)
+    df = pd.DataFrame({"one": TensorArray(test_arr), "two": ["a"] * n})
+    if init_with_pandas:
+        table = pa.Table.from_pandas(df)
+    else:
+        pa_dtype = pa.bool_()
+        flat = [w for v in test_data for w in v]
+        data_array = pa.array(flat, pa_dtype)
+        inner_len = len(test_data[0])
+        offsets = list(range(0, len(flat) + 1, inner_len))
+        offset_buffer = pa.py_buffer(np.int32(offsets))
+        storage = pa.Array.from_buffers(
+            pa.list_(pa_dtype),
+            len(test_data),
+            [None, offset_buffer],
+            children=[data_array],
+        )
+        t_arr = pa.ExtensionArray.from_storage(
+            ArrowTensorType((inner_len, ), pa.bool_()), storage)
+        table = pa.table({"one": t_arr, "two": ["a"] * n})
+    block_accessor = BlockAccessor.for_block(table)
+
+    # Test without copy.
+    table2 = block_accessor.slice(a, b, False)
+    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(),
+                                  test_arr[a:b, :])
+    pd.testing.assert_frame_equal(
+        table2.to_pandas().reset_index(drop=True),
+        df[a:b].reset_index(drop=True))
+
+    # Test with copy.
+    table2 = block_accessor.slice(a, b, True)
+    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(),
+                                  test_arr[a:b, :])
+    pd.testing.assert_frame_equal(
+        table2.to_pandas().reset_index(drop=True),
+        df[a:b].reset_index(drop=True))
+
+
 def test_arrow_tensor_array_getitem(ray_start_regular_shared):
     outer_dim = 3
     inner_shape = (2, 2, 2)
