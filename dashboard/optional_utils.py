@@ -282,7 +282,9 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
                         raise e from None
 
                 if connect_to_serve:
-                    serve.start(detached=True, _namespace="serve")
+                    # TODO(edoakes): this should probably run in the `serve`
+                    # namespace.
+                    serve.start(detached=True)
 
                 return await f(self, *args, **kwargs)
             except Exception as e:
