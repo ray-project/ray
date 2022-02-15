@@ -1,4 +1,5 @@
 from typing import Any, Dict, Tuple, Optional, List
+import uuid
 
 from ray.experimental.dag import (
     DAGNode,
@@ -6,9 +7,18 @@ from ray.experimental.dag import (
     ClassNode,
     ClassMethodNode,
 )
+from ray.experimental.dag.format_utils import (
+    get_args_lines,
+    get_kwargs_lines,
+    get_options_lines,
+    get_other_args_to_resolve_lines,
+    get_indentation,
+)
 from ray.experimental.dag.function_node import FunctionNode
 from ray.serve.api import Deployment, DeploymentConfig
 from ray.serve.handle import RayServeHandle
+import ray
+from ray import serve
 
 
 class DeploymentNode(DAGNode):
@@ -117,8 +127,52 @@ class DeploymentMethodNode(DAGNode):
             **self._bound_kwargs,
         )
 
+    def __str__(self) -> str:
+        indent = get_indentation()
 
-def generate_deployments_from_ray_dag(ray_dag_root: DAGNode):
+        method_line = str(self._method_name) + "()"
+        body_line = str(self._body)
+
+        args_line = get_args_lines(self._bound_args)
+        kwargs_line = get_kwargs_lines(self._bound_kwargs)
+        options_line = get_options_lines(self._bound_options)
+        other_args_to_resolve_line = get_other_args_to_resolve_lines(
+            self._bound_other_args_to_resolve
+        )
+        node_type = f"{self.__class__.__name__}"
+
+        return (
+            f"({node_type})(\n"
+            f"{indent}method={method_line}\n"
+            f"{indent}deployment={body_line}\n"
+            f"{indent}args={args_line}\n"
+            f"{indent}kwargs={kwargs_line}\n"
+            f"{indent}options={options_line}\n"
+            f"{indent}other_args_to_resolve={other_args_to_resolve_line}\n"
+            f")"
+        )
+
+
+def pipeline_root_wrapper(
+    serve_dag_root: DAGNode,
+    pipeline_root_name: str
+):
+    @serve.deployment(name=pipeline_root_name)
+    class DAGRunner:
+        def __init__(self):
+            # TODO: (jiaodong) Make this class take JSON serialized dag
+            self.dag = serve_dag_root
+
+        def __call__(self, request):
+            return ray.get(self.dag(request))
+
+    return DAGRunner
+
+
+def generate_deployments_from_ray_dag(
+    ray_dag_root: DAGNode,
+    pipeline_root_name=None
+):
     """
     ** Experimental **
     Given a ray DAG with given root node, generate a list of deployments
@@ -126,19 +180,8 @@ def generate_deployments_from_ray_dag(ray_dag_root: DAGNode):
     """
 
     deployments = []
-    # TODO: (jiaodong) make DAG manipulation methods not private
-    # dag_root_copy = ray_dag_root._apply_recursive(
-    #     lambda node: node._copy(
-    #         node.get_args(),
-    #         node.get_kwargs(),
-    #         node.get_options(),
-    #         node.get_other_args_to_resolve(),
-    #     )
-    # )
-
 
     def convert_to_deployments(dag_node):
-        print(f">>>> processing {dag_node}")
         if isinstance(dag_node, ClassNode):
             deployment_name = (
                 dag_node.get_options().get("name", None)
@@ -167,7 +210,9 @@ def generate_deployments_from_ray_dag(ray_dag_root: DAGNode):
                 dag_node._body,
                 deployment_name,
                 DeploymentConfig(),
-                init_args=tuple(init_args), # replace DeploymentNode with handle
+                init_args=tuple(
+                    init_args
+                ),  # replace DeploymentNode with handle
                 init_kwargs=dag_node.get_kwargs(),
                 ray_actor_options=ray_actor_options,
                 _internal=True,
@@ -193,7 +238,7 @@ def generate_deployments_from_ray_dag(ray_dag_root: DAGNode):
                 dag_node._method_name,
                 dag_node.get_args(),
                 dag_node.get_kwargs(),
-                dag_node.get_options()
+                dag_node.get_options(),
             )
             return deployment_method_node
         elif isinstance(dag_node, FunctionNode):
@@ -206,4 +251,13 @@ def generate_deployments_from_ray_dag(ray_dag_root: DAGNode):
         lambda node: convert_to_deployments(node)
     )
 
-    return serve_dag_root, deployments
+    pipeline_root_name = (
+        pipeline_root_name or f"serve_pipeline_root_{uuid.uuid4().hex}"
+    )
+
+    serve_dag_root_deployment = pipeline_root_wrapper(
+        serve_dag_root, pipeline_root_name
+    )
+    deployments.insert(0, serve_dag_root_deployment)
+
+    return deployments

@@ -144,47 +144,55 @@ def test_multi_classes(serve_instance):
     _validate_consistent_output(deployments[2], dag, "Combine", input=1, output=6)
 
 
-# def test_multiple_class_method_entrypoints_func_output(serve_instance):
-#     """This test is doing the same computation as "test_multi_classes" above,
-#     but DAG is built in different order where input directly fed to models,
-#     and we bind their outputs to a simple combine function.
-#     """
-#     @ray.remote
-#     class Model1:
-#         def __init__(self, weight: int):
-#             self.weight = weight
+def test_multiple_class_method_entrypoints_func_output(serve_instance):
+    """This test is doing the same computation as "test_multi_classes" above,
+    but DAG is built in different order where input directly fed to models,
+    and we bind their outputs to a simple combine function.
+    """
+    @ray.remote
+    class Model1:
+        def __init__(self, weight: int):
+            self.weight = weight
 
-#         def forward(self, input: int):
-#             return self.weight * input
+        def forward(self, input: int):
+            return self.weight * input
 
-#     @ray.remote
-#     class Model2:
-#         def __init__(self, weight: int):
-#             self.weight = weight
+        # User need to implement this for HTTP
+        def __call__(self, input):
+            return self.forward(input)
 
-#         def forward(self, input: int):
-#             return self.weight + input
+    @ray.remote
+    class Model2:
+        def __init__(self, weight: int):
+            self.weight = weight
 
-#     @ray.remote
-#     def combine(m1_output, m2_output):
-#         return m1_output + m2_output
+        def forward(self, input: int):
+            return self.weight + input
 
-#     m1 = Model1._bind(2)
-#     m2 = Model2._bind(3)
+        # User need to implement this for HTTP
+        def __call__(self, input):
+            return self.forward(input)
 
-#     m1_output = m1.forward._bind(InputNode())
-#     m2_output = m2.forward._bind(InputNode())
+    @ray.remote
+    def combine(m1_output, m2_output):
+        return m1_output + m2_output
 
-#     dag = combine._bind(m1_output, m2_output)
-#     print(dag)
-#     deployments = generate_deployments_from_ray_dag(dag)
-#     # import ipdb
-#     # ipdb.set_trace()
-#     assert len(deployments) == 3
-#     for deployment in deployments:
-#         deployment.deploy()
+    m1 = Model1._bind(2)
+    m2 = Model2._bind(3)
 
-#     _validate_consistent_output(deployments[0], dag, "dag_runner", input=1, output=6)
+    m1_output = m1.forward._bind(InputNode())
+    m2_output = m2.forward._bind(InputNode())
+
+    dag = combine._bind(m1_output, m2_output)
+    print(dag)
+    deployments = generate_deployments_from_ray_dag(dag, pipeline_root_name="pipeline")
+    assert len(deployments) == 3
+    for deployment in deployments:
+        deployment.deploy()
+    import ipdb
+    ipdb.set_trace()
+
+    _validate_consistent_output(deployments[0], dag, "pipeline", input=1, output=6)
 
 
 def test_simple_function(serve_instance):
