@@ -118,6 +118,7 @@ BLACK_EXCLUDES=(
     '--extend-exclude' 'python/ray/core/src/ray/gcs/*'
     '--extend-exclude' 'python/ray/thirdparty_files/*'
     '--extend-exclude' 'python/ray/_private/thirdparty/*'
+    '--extend-exclude' 'python/ray/_private/runtime_env/_clonevirtualenv.py'
 )
 
 GIT_LS_EXCLUDES=(
