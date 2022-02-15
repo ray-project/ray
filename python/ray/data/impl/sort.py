@@ -103,6 +103,10 @@ def sort_impl(
         result = sort_block.remote(block, boundaries, key, descending)
         map_results[i, :] = result[:-1]
         map_meta.append(result[-1])
+
+    # Early release memory.
+    del blocks
+
     map_bar = ProgressBar("Sort Map", len(map_results))
     map_bar.block_until_complete(map_meta)
     map_bar.close()
