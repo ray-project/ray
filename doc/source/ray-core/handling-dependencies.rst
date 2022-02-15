@@ -272,7 +272,7 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
   Note: If your local directory contains a ``.gitignore`` file, the files and paths specified therein will not be uploaded to the cluster.
 
 - ``py_modules`` (List[str|module]): Specifies Python modules to be available for import in the Ray workers.  (For more ways to specify packages, see also the ``pip`` and ``conda`` fields below.)
-  Each entry must be either (1) a path to a local directory, (2) a URI to a remote zip file (see :ref:`remote-uris` for details), or (3) a Python module object.
+  Each entry must be either (1) a path to a local directory, (2) a URI to a remote zip file (see :ref:`remote-uris` for details), (3) a Python module object, or (4) a path to a local `.whl` file.
 
   - Examples of entries in the list:
 
@@ -283,6 +283,8 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
     - ``"s3://bucket/my_module.zip"``
 
     - ``my_module # Assumes my_module has already been imported, e.g. via 'import my_module'``
+
+    - ``my_module.whl``
 
   The modules will be downloaded to each node on the cluster.
 
