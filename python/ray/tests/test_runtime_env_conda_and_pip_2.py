@@ -3,7 +3,7 @@ from typing import Dict
 import pytest
 import sys
 from ray.exceptions import RuntimeEnvSetupError
-from ray._private.test_utils import wait_for_condition, generate_runtime_env_dict
+from ray._private.test_utils import generate_runtime_env_dict
 import ray
 
 if not os.environ.get("CI"):
@@ -13,10 +13,14 @@ if not os.environ.get("CI"):
 
 
 @pytest.mark.parametrize("field", ["conda", "pip"])
-@pytest.mark.parametrize("specify_env_in_init", [False, True])
+@pytest.mark.parametrize("specify_env_in_init", [True, False])
 @pytest.mark.parametrize("spec_format", ["file", "python_object"])
 def test_install_failure_logging(
-    start_cluster, specify_env_in_init, field, spec_format, tmp_path, capsys
+    start_cluster,
+    specify_env_in_init,
+    field,
+    spec_format,
+    tmp_path,
 ):
     cluster, address = start_cluster
     using_ray_client = address.startswith("ray://")
@@ -33,36 +37,35 @@ def test_install_failure_logging(
         if using_ray_client:
             with pytest.raises(ConnectionAbortedError) as excinfo:
                 ray.init(address, runtime_env=bad_envs["init"])
-            assert bad_packages["init"] in str(excinfo.value)
+                assert bad_packages["init"] in str(excinfo.value)
         else:
             ray.init(address, runtime_env=bad_envs["init"])
-            wait_for_condition(
-                lambda: bad_packages["init"] in capsys.readouterr().out, timeout=30
-            )
+
+            @ray.remote
+            def g():
+                pass
+
+            with pytest.raises(RuntimeEnvSetupError, match=bad_packages["init"]):
+                ray.get(g.remote())
         return
 
     ray.init(address)
 
     @ray.remote(runtime_env=bad_envs["actor"])
     class A:
-        pass
+        def f(self):
+            pass
 
     a = A.remote()  # noqa
-
-    wait_for_condition(
-        lambda: bad_packages["actor"] in capsys.readouterr().out, timeout=30
-    )
+    with pytest.raises(RuntimeEnvSetupError, match=bad_packages["actor"]):
+        ray.get(a.f.remote())
 
     @ray.remote(runtime_env=bad_envs["task"])
     def f():
         pass
 
-    with pytest.raises(RuntimeEnvSetupError):
+    with pytest.raises(RuntimeEnvSetupError, match=bad_packages["task"]):
         ray.get(f.remote())
-
-    wait_for_condition(
-        lambda: bad_packages["task"] in capsys.readouterr().out, timeout=30
-    )
 
 
 if __name__ == "__main__":

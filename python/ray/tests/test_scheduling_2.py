@@ -65,6 +65,31 @@ def test_load_balancing_under_constrained_memory(
     ray.get(tasks)
 
 
+def test_critical_object_store_mem_resource_utilization(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        _system_config={
+            "scheduler_spread_threshold": 0.0,
+        },
+    )
+    ray.init(address=cluster.address)
+    non_local_node = cluster.add_node()
+    cluster.wait_for_nodes()
+
+    x = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
+    print(x)
+
+    @ray.remote
+    def f():
+        return ray.worker.global_worker.node.unique_id
+
+    # Wait for resource availabilities to propagate.
+    time.sleep(1)
+    # The task should be scheduled to the remote node since
+    # local node has non-zero object store mem utilization.
+    assert ray.get(f.remote()) == non_local_node.unique_id
+
+
 @pytest.mark.parametrize("connect_to_client", [True, False])
 def test_default_scheduling_strategy(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster

@@ -15,7 +15,7 @@ class Counter:
         return self.i
 
 
-def test_basic_task_dag():
+def test_basic_task_dag(shared_ray_instance):
     ct = Counter.remote()
 
     @ray.remote
@@ -51,7 +51,7 @@ def test_basic_task_dag():
     assert ray.get(ct.get.remote()) == 7
 
 
-def test_basic_task_dag_with_options():
+def test_basic_task_dag_with_options(shared_ray_instance):
     ct = Counter.remote()
 
     @ray.remote
@@ -92,7 +92,7 @@ def test_basic_task_dag_with_options():
     assert dag.get_options().get("num_cpus") == 2
 
 
-def test_invalid_task_options():
+def test_invalid_task_options(shared_ray_instance):
     """
     Test to ensure options used in DAG binding are applied, and will throw
     as expected even given invalid values.
@@ -116,7 +116,7 @@ def test_invalid_task_options():
         ray.get(invalid_dag.execute())
 
 
-def test_node_accessors():
+def test_node_accessors(shared_ray_instance):
     @ray.remote
     def a(*a, **kw):
         pass
@@ -137,7 +137,7 @@ def test_node_accessors():
     assert n2._get_all_child_nodes() == {tmp4, tmp5}
 
 
-def test_nested_args():
+def test_nested_args(shared_ray_instance):
     ct = Counter.remote()
 
     @ray.remote
