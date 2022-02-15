@@ -205,6 +205,7 @@ def ray_start_cluster(request):
     with _ray_start_cluster(**param) as res:
         yield res
 
+
 @pytest.fixture
 def ray_start_cluster_enabled(request):
     param = getattr(request, "param", {})
