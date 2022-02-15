@@ -202,7 +202,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
         "data": [
             "pandas",
-            "pyarrow>=4.0.1",
+            "pyarrow >= 4.0.1, < 7.0.0",
             "fsspec",
         ],
         "default": [
@@ -279,6 +279,7 @@ if setup_spec.type == SetupType.RAY:
         "aioredis < 2",
         "aiosignal",
         "frozenlist",
+        "virtualenv",  # For pip runtime env.
     ]
 
 

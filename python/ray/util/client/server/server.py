@@ -39,6 +39,7 @@ from ray.util.client.server.logservicer import LogstreamServicer
 from ray.util.client.server.server_stubs import current_server
 from ray.ray_constants import env_integer
 from ray._private.client_mode_hook import disable_client_hook
+from ray._private.ray_logging import setup_logger
 from ray._private.services import canonicalize_bootstrap_address
 from ray._private.tls_utils import add_port_to_grpc_server
 from ray._private.gcs_utils import use_gcs_for_bootstrap, GcsClient
@@ -801,7 +802,7 @@ def main():
         help="The port to use for connecting to the runtime_env agent.",
     )
     args, _ = parser.parse_known_args()
-    logging.basicConfig(level="INFO")
+    setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
 
     ray_connect_handler = create_ray_handler(args.address, args.redis_password)
 

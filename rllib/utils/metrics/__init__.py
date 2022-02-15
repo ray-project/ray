@@ -9,6 +9,7 @@ LAST_TARGET_UPDATE_TS = "last_target_update_ts"
 NUM_TARGET_UPDATES = "num_target_updates"
 
 # Performance timers (keys for Trainer._timers or metrics.timers).
+TRAINING_ITERATION_TIMER = "training_iteration"
 APPLY_GRADS_TIMER = "apply_grad"
 COMPUTE_GRADS_TIMER = "compute_grads"
 SYNCH_WORKER_WEIGHTS_TIMER = "synch_weights"

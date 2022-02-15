@@ -24,6 +24,7 @@
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/scheduler_resource_reporter.h"
+#include "ray/raylet/scheduling/scheduler_stats.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
@@ -389,39 +390,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   const int64_t sched_cls_cap_max_ms_;
 
-  struct InternalStats {
-    /// Number of tasks that are spilled to other
-    /// nodes because it cannot be scheduled locally.
-    int64_t metric_tasks_spilled = 0;
-    /// Number of tasks that are waiting for
-    /// resources to be available locally.
-    int64_t num_waiting_for_resource = 0;
-    /// Number of tasks that are waiting for available memory
-    /// from the plasma store.
-    int64_t num_waiting_for_plasma_memory = 0;
-    /// Number of tasks that are waiting for nodes with available resources.
-    int64_t num_waiting_for_remote_node_resources = 0;
-    /// Number of workers that couldn't be started because the job config wasn't local.
-    int64_t num_worker_not_started_by_job_config_not_exist = 0;
-    /// Number of workers that couldn't be started because the worker registration timed
-    /// out.
-    int64_t num_worker_not_started_by_registration_timeout = 0;
-    /// Number of workers that couldn't be started becasue it hits the worker startup rate
-    /// limit.
-    int64_t num_worker_not_started_by_process_rate_limit = 0;
-    /// Number of tasks that are waiting for worker processes to start.
-    int64_t num_tasks_waiting_for_workers = 0;
-    /// Number of cancelled tasks.
-    int64_t num_cancelled_tasks = 0;
-    /// Number of infeasible tasks.
-    int64_t num_infeasible_tasks = 0;
-    /// Number of tasks to schedule.
-    int64_t num_tasks_to_schedule = 0;
-    /// Number of tasks to dispatch.
-    int64_t num_tasks_to_dispatch = 0;
-  };
-
-  mutable InternalStats internal_stats_;
+  mutable SchedulerStats internal_stats_;
 
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.
@@ -449,6 +418,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                    std::vector<std::unique_ptr<RayObject>> args);
   void ReleaseTaskArgs(const TaskID &task_id);
 
+  friend class SchedulerStats;
   friend class ClusterTaskManagerTest;
   FRIEND_TEST(ClusterTaskManagerTest, FeasibleToNonFeasible);
 };

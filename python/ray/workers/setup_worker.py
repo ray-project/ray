@@ -1,8 +1,10 @@
 import argparse
 import logging
 
+from ray._private.ray_logging import setup_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray.core.generated.common_pb2 import Language
+from ray.ray_constants import LOGGER_LEVEL, LOGGER_FORMAT
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +21,7 @@ parser.add_argument(
 parser.add_argument("--language", type=str, help="the language type of the worker")
 
 if __name__ == "__main__":
+    setup_logger(LOGGER_LEVEL, LOGGER_FORMAT)
     args, remaining_args = parser.parse_known_args()
     # NOTE(edoakes): args.serialized_runtime_env_context is only None when
     # we're starting the main Ray client proxy server. That case should

@@ -22,7 +22,7 @@ class _StageRunner:
             # Force eager evaluation of all blocks in the pipeline stage. This
             # prevents resource deadlocks due to overlapping stage execution
             # (e.g., task -> actor stage).
-            return fn().force_reads()
+            return fn().fully_executed()
         finally:
             set_progress_bars(prev)
 
@@ -101,7 +101,7 @@ class PipelineExecutor:
                     pass
 
         self._pipeline._stats.wait_time_s.append(time.perf_counter() - start)
-        self._pipeline._stats.add(output._stats)
+        self._pipeline._stats.add(output._plan.stats())
         return output
 
 

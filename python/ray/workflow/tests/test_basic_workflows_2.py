@@ -333,6 +333,28 @@ def test_dedupe_indirect(workflow_start_regular, tmp_path):
     assert "4" == join.step(a, a, a, a).run()
 
 
+def test_run_off_main_thread(workflow_start_regular):
+    @workflow.step
+    def fake_data(num: int):
+        return list(range(num))
+
+    succ = False
+
+    # Start new thread here ⚠️
+    def run():
+        global succ
+        # Setup the workflow.
+        data = fake_data.step(10)
+        assert data.run(workflow_id="run") == list(range(10))
+
+    import threading
+
+    t = threading.Thread(target=run)
+    t.start()
+    t.join()
+    assert workflow.get_status("run") == workflow.SUCCESSFUL
+
+
 if __name__ == "__main__":
     import sys
 

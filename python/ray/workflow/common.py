@@ -1,4 +1,6 @@
 import base64
+import asyncio
+
 from ray import cloudpickle
 from collections import deque
 from enum import Enum, unique
@@ -21,6 +23,15 @@ WorkflowOutputType = ObjectRef
 MANAGEMENT_ACTOR_NAMESPACE = "workflow"
 MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
 STORAGE_ACTOR_NAME = "StorageManagementActor"
+
+
+def asyncio_run(coro):
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
 
 
 def get_module(f):
