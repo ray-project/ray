@@ -336,7 +336,7 @@ def test_dedupe_indirect(workflow_start_regular, tmp_path):
 def test_run_off_main_thread(workflow_start_regular):
     @workflow.step
     def fake_data(num: int):
-        return [i for i in range(num)]
+        return list(range(num))
 
     succ = False
 
