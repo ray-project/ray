@@ -56,7 +56,7 @@ class GroupedDataset(Generic[T]):
             If groupby key is ``None`` then the key part of return is omitted.
         """
 
-        def do_agg(blocks, clear_input_blocks: bool):
+        def do_agg(blocks, clear_input_blocks: bool, block_udf):
             # TODO: implement clear_input_blocks
             stage_info = {}
             if len(aggs) == 0:
