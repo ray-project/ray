@@ -492,9 +492,9 @@ def test_raylet_node_manager_server_failure(ray_start_cluster_head, log_pubsub):
     assert len(match) > 0
 
 
-def test_gcs_server_crash_cluster(ray_start_cluster_enabled):
+def test_gcs_server_crash_cluster(ray_start_cluster):
     # Test the GCS server failures will crash the driver.
-    cluster = ray_start_cluster_enabled
+    cluster = ray_start_cluster
     GCS_RECONNECTION_TIMEOUT = 5
     node = cluster.add_node(
         num_cpus=0,
