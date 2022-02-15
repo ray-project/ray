@@ -113,27 +113,22 @@ def ppo_surrogate_loss(
 
     # Compute a value function loss.
     if policy.config["use_critic"]:
-        prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
-        vf_loss1 = tf.math.square(
+        vf_loss = tf.math.square(
             value_fn_out - train_batch[Postprocessing.VALUE_TARGETS]
         )
-        vf_clipped = prev_value_fn_out + tf.clip_by_value(
-            value_fn_out - prev_value_fn_out,
-            -policy.config["vf_clip_param"],
+        vf_loss_clipped = tf.clip_by_value(
+            vf_loss,
+            0,
             policy.config["vf_clip_param"],
         )
-        vf_loss2 = tf.math.square(
-            vf_clipped - train_batch[Postprocessing.VALUE_TARGETS]
-        )
-        vf_loss = tf.maximum(vf_loss1, vf_loss2)
-        mean_vf_loss = reduce_mean_valid(vf_loss)
+        mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
     # Ignore the value function.
     else:
-        vf_loss = mean_vf_loss = tf.constant(0.0)
+        vf_loss_clipped = mean_vf_loss = tf.constant(0.0)
 
     total_loss = reduce_mean_valid(
         -surrogate_loss
-        + policy.config["vf_loss_coeff"] * vf_loss
+        + policy.config["vf_loss_coeff"] * vf_loss_clipped
         - policy.entropy_coeff * curr_entropy
     )
     # Add mean_kl_loss (already processed through `reduce_mean_valid`),
