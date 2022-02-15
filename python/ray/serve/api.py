@@ -68,11 +68,11 @@ def _get_controller_namespace(detached):
     return controller_namespace
 
 
-def _get_global_client(namespace: Optional[str] = None):
+def _get_global_client():
     if _global_client is not None:
         return _global_client
 
-    return _connect(namespace=namespace)
+    return _connect()
 
 
 def _set_global_client(client):
@@ -641,7 +641,7 @@ def start(
     controller_namespace = _get_controller_namespace(detached)
 
     try:
-        client = _get_global_client(namespace=controller_namespace)
+        client = _get_global_client()
         logger.info(
             "Connecting to existing Serve instance in namespace "
             f"'{controller_namespace}'."
@@ -700,7 +700,7 @@ def start(
     return client
 
 
-def _connect(namespace: Optional[str] = None) -> Client:
+def _connect() -> Client:
     """Connect to an existing Serve instance on this Ray cluster.
 
     If calling from the driver program, the Serve instance on this Ray cluster
@@ -713,7 +713,7 @@ def _connect(namespace: Optional[str] = None) -> Client:
     # Initialize ray if needed.
     ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
-        ray.init(namespace=namespace if namespace is not None else "serve")
+        ray.init(namespace="serve")
 
     # When running inside of a replica, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
@@ -723,9 +723,6 @@ def _connect(namespace: Optional[str] = None) -> Client:
     else:
         controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
         controller_namespace = _INTERNAL_REPLICA_CONTEXT._internal_controller_namespace
-
-    if namespace is not None:
-        controller_namespace = namespace
 
     # Try to get serve controller if it exists
     try:
