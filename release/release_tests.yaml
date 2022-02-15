@@ -122,9 +122,10 @@
 
   smoke_test:
     frequency: nightly
-    wait_for_nodes:
-      num_nodes: 4
-      timeout: 300
+    run:
+      wait_for_nodes:
+        num_nodes: 4
+        timeout: 300
 
   alert: xgboost_tests
 
