@@ -1,7 +1,6 @@
 import itertools
 import os
 import logging
-from collections import OrderedDict
 from typing import (
     List,
     Any,
@@ -103,7 +102,7 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
     return Dataset(
         ExecutionPlan(
             BlockList(blocks, metadata),
-            DatasetStats(stages=OrderedDict({"from_items": metadata}), parent=None),
+            DatasetStats(stages={"from_items": metadata}, parent=None),
         ),
         0,
         False,
@@ -286,7 +285,7 @@ def read_datasource(
         block_list.ensure_schema_for_first_block()
 
     stats = DatasetStats(
-        stages=OrderedDict({"read": metadata}),
+        stages={"read": metadata},
         parent=None,
         stats_actor=stats_actor,
         stats_uuid=stats_uuid,
@@ -735,9 +734,7 @@ def from_pandas_refs(
     return Dataset(
         ExecutionPlan(
             BlockList(blocks, ray.get(list(metadata))),
-            DatasetStats(
-                stages=OrderedDict({"from_pandas_refs": metadata}), parent=None
-            ),
+            DatasetStats(stages={"from_pandas_refs": metadata}, parent=None),
         ),
         0,
         False,
@@ -760,7 +757,7 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
     return Dataset(
         ExecutionPlan(
             BlockList(blocks, ray.get(list(metadata))),
-            DatasetStats(stages=OrderedDict({"from_numpy": metadata}), parent=None),
+            DatasetStats(stages={"from_numpy": metadata}, parent=None),
         ),
         0,
         False,
@@ -811,9 +808,7 @@ def from_arrow_refs(
     return Dataset(
         ExecutionPlan(
             BlockList(tables, ray.get(metadata)),
-            DatasetStats(
-                stages=OrderedDict({"from_arrow_refs": metadata}), parent=None
-            ),
+            DatasetStats(stages={"from_arrow_refs": metadata}, parent=None),
         ),
         0,
         False,

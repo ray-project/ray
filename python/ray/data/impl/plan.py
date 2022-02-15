@@ -1,5 +1,4 @@
 from typing import Callable, Tuple, Optional, Union, Iterable, TYPE_CHECKING
-from collections import OrderedDict
 import uuid
 
 if TYPE_CHECKING:
@@ -110,7 +109,7 @@ class ExecutionPlan:
         if self._stages and self._is_read_stage():
             block_list, stage = self._rewrite_read_stage()
             self._in_blocks = block_list
-            self._in_stats = DatasetStats(stages=OrderedDict(), parent=None)
+            self._in_stats = DatasetStats(stages={}, parent=None)
             self._stages.insert(0, stage)
 
     def _is_read_stage(self) -> bool:
