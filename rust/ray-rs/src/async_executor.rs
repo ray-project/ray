@@ -99,18 +99,20 @@ pub(crate) fn handle_async_startup() {
                 // Future: plug-and-play with async-rs etc
                 let (on_start, on_stop) = get_tokio_handle_callbacks();
 
+                let (on_start_, on_stop_) = (on_start.clone(), on_stop.clone());
+
                 let rt =
                     tokio::runtime::Builder::new_current_thread()
                     // tokio::runtime::Builder::new_multi_thread()
                     // .worker_threads(1)
                     .enable_all()
                     .on_thread_start(move || {
-                        for c in on_start.iter() {
+                        for c in on_start_.iter() {
                             c()
                         }
                     })
                     .on_thread_stop(move || {
-                        for c in on_stop.iter() {
+                        for c in on_stop_.iter() {
                             c()
                         }
                     })
@@ -132,6 +134,10 @@ pub(crate) fn handle_async_startup() {
                     }
                 }
 
+                for c in on_start.iter() {
+                    c();
+                }
+
                 ray_info!("rust async executor: looping");
                 rt.block_on(async move {
                     loop {
@@ -143,6 +149,10 @@ pub(crate) fn handle_async_startup() {
                         });
                     }
                 });
+
+                for c in on_stop.iter() {
+                    c();
+                }
             });
         },
         _ => (),

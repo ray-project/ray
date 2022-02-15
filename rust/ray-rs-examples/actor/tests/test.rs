@@ -129,7 +129,7 @@ mod test {
 
             let now = std::time::Instant::now();
             // Next step: define tasks with closures etc...
-            let mut obj_refs: Vec<_> = (0..1000)
+            let mut obj_refs: Vec<_> = (0..10_000)
                 .map(|i| append_tokio.remote(&handle, format!(" World X {}", i)))
                 .collect();
 

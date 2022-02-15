@@ -6,5 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { path = "../../../../../tokio/tokio", features = ["rt", "rt-multi-thread", "time", "sync", "net"] }
-#path = "../../../../../tokio/tokio",version="1.16.1"
+tokio = { version = "1.16.1", features = ["rt", "time"] }
+#path = "../../../../../tokio/tokio",version = "1.16.1"

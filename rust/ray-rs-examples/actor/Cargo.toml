@@ -10,8 +10,8 @@ publish = true
 # ray-rs = "0.0.0"
 ray-rs = { path = "../../ray-rs", features = ["async"] }
 serde = "1.0.132"
-tokio = { path = "../../../../tokio/tokio", features = ["rt", "rt-multi-thread", "sync", "time"] }
-#path = "../../../../tokio/tokio",version="1.16.1",
+tokio = { version = "1.16.1", features = ["sync", "time", "macros"] }
+#path = "../../../../tokio/tokio",version = "1.16.1",
 tokio-time-sleep = { path = "./tokio-time-sleep" }
 
 [build-dependencies]
