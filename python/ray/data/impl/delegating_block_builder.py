@@ -32,8 +32,8 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
         self._builder.add(item)
 
     def add_block(self, block: Block) -> None:
-        if not block:
-            return  # Dpn't infer types of empty lists.
+        if isinstance(block, list) and not block:
+            return  # Don't infer types of empty lists.
         if self._builder is None:
             self._builder = BlockAccessor.for_block(block).builder()
         self._builder.add_block(block)
