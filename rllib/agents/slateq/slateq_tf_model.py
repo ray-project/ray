@@ -24,9 +24,13 @@ class SlateQTFModel(TFModelV2):
     ):
         """Initializes a SlateQTFModel instance.
 
+        Each document candidate receives one full Q-value stack, defined by
+        `fcnet_hiddens_per_candidate`. The input to each of these Q-value stacks
+        is always {[user] concat [document[i]] for i in document_candidates}.
+
         Extra model kwargs:
-            q_hiddens (List[int]): List of layer-sizes for each(!) of the candidate
-                documents.
+            fcnet_hiddens_per_candidate: List of layer-sizes for each(!) of the
+                candidate documents.
         """
         super(SlateQTFModel, self).__init__(
             obs_space, action_space, None, model_config, name
@@ -63,7 +67,7 @@ class SlateQTFModel(TFModelV2):
 
     def get_q_values(
         self, user: TensorType, docs: List[TensorType]
-    ) -> List[TensorType]:
+    ) -> TensorType:
         """Returns Q-values, 1 for each candidate document, given user and doc tensors.
 
         Args:
@@ -72,7 +76,7 @@ class SlateQTFModel(TFModelV2):
                 list represents one document candidate.
 
         Returns:
-            (action_scores, logits, dist) if num_atoms == 1, otherwise
-            (action_scores, z, support_logits_per_action, logits, dist)
+            Tensor ([batch, num candidates) of Q-values.
+            1 Q-value per document candidate.
         """
         return self.q_value_head([user, tf.concat(docs, 1)])
