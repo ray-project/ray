@@ -18,6 +18,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/scheduling/internal.h"
+#include "ray/raylet/scheduling/local_scheduler.h"
 #include "ray/raylet/worker_pool.h"
 
 namespace ray {
@@ -28,7 +29,8 @@ class ClusterTaskManager;
 // readable string.
 class SchedulerStats {
  public:
-  explicit SchedulerStats(const ClusterTaskManager &cluster_task_manager);
+  explicit SchedulerStats(const ClusterTaskManager &cluster_task_manager,
+                          const LocalScheduler &local_scheduler);
 
   // Report metrics doesn't recompute the stats.
   void RecordMetrics() const;
@@ -44,6 +46,7 @@ class SchedulerStats {
   void ComputeStats();
 
   const ClusterTaskManager &cluster_task_manager_;
+  const LocalScheduler &local_scheduler_;
 
   /// Number of tasks that are spilled to other
   /// nodes because it cannot be scheduled locally.

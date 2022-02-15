@@ -182,6 +182,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       infeasible_tasks_;
 
   const SchedulerResourceReporter scheduler_resource_reporter_;
+  mutable SchedulerStats internal_stats_;
 
   /// Returns the current time in milliseconds.
   std::function<int64_t()> get_time_ms_;

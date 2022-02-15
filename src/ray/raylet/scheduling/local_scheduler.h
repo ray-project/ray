@@ -35,15 +35,16 @@ namespace raylet {
 /// Manages the lifetime of a task on the local node. It receives request from
 /// cluster_task_manager (the distributed scheduler) and does the following
 /// steps:
-/// 1. Pulling task dependencies, add the task into to_dispatch queue.
-/// 2. Once task's dependencies are all pulled locally, the task becomes ready
-///    to dispatch.
-/// 3. For all tasks that are dispatch-ready, we schedule them by acquiring
+/// 1. Pulling task dependencies, add the task into waiting queue.
+/// 2. Once task's dependencies are all pulled locally, the task be added into
+///    dispatch queue.
+/// 3. For all tasks in dispatch queue, we schedule them by first acquiring
 ///    local resources (including pinning the objects in memory and deduct
-///    cpu/gpu and other resources from local reosource manager), and start
-///    an worker.
-/// 4. If task failed to acquire resources in step 3, we will try to
+///    cpu/gpu and other resources from local reosource manager)) .
+///    If a task failed to acquire resources in step 3, we will try to
 ///    spill it to an different remote node.
+/// 4. If all resources are acquired, we start a worker and returns the worker
+///    address to the client once worker starts up.
 /// 5. When a worker finishes executing its task(s), the requester will return
 ///    it and we should release the resources in our view of the node's state.
 /// 6. If a task has been waiting for arguments for too long, it will also be
@@ -90,7 +91,7 @@ class LocalScheduler {
       int64_t sched_cls_cap_interval_ms =
           RayConfig::instance().worker_cap_initial_backoff_delay_ms());
 
-  /// Queue task and schedule. This hanppens when processing the worker lease request.
+  /// Queue task and schedule.
   void QueueAndScheduleTask(std::shared_ptr<internal::Work> work);
 
   // Schedule and dispatch tasks.
@@ -367,41 +368,11 @@ class LocalScheduler {
 
   const int64_t sched_cls_cap_max_ms_;
 
-  struct InternalStats {
-    /// Number of tasks that are spilled to other
-    /// nodes because it cannot be scheduled locally.
-    int64_t metric_tasks_spilled = 0;
-    /// Number of tasks that are waiting for
-    /// resources to be available locally.
-    int64_t num_waiting_for_resource = 0;
-    /// Number of tasks that are waiting for available memory
-    /// from the plasma store.
-    int64_t num_waiting_for_plasma_memory = 0;
-    /// Number of tasks that are waiting for nodes with available resources.
-    int64_t num_waiting_for_remote_node_resources = 0;
-    /// Number of workers that couldn't be started because the job config wasn't local.
-    int64_t num_worker_not_started_by_job_config_not_exist = 0;
-    /// Number of workers that couldn't be started because the worker registration timed
-    /// out.
-    int64_t num_worker_not_started_by_registration_timeout = 0;
-    /// Number of workers that couldn't be started becasue it hits the worker startup rate
-    /// limit.
-    int64_t num_worker_not_started_by_process_rate_limit = 0;
-    /// Number of tasks that are waiting for worker processes to start.
-    int64_t num_tasks_waiting_for_workers = 0;
-    /// Number of cancelled tasks.
-    int64_t num_cancelled_tasks = 0;
-    /// Number of infeasible tasks.
-    int64_t num_infeasible_tasks = 0;
-    /// Number of tasks to schedule.
-    int64_t num_tasks_to_schedule = 0;
-    /// Number of tasks to dispatch.
-    int64_t num_tasks_to_dispatch = 0;
-  };
+  size_t num_task_spilled_ = 0;
 
-  mutable InternalStats internal_stats_;
   friend class SchedulerResourceReporter;
   friend class ClusterTaskManagerTest;
+  friend class SchedulerStats;
   FRIEND_TEST(ClusterTaskManagerTest, FeasibleToNonFeasible);
 };
 }  // namespace raylet

@@ -38,6 +38,7 @@ ClusterTaskManager::ClusterTaskManager(
       local_scheduler_(std::move(local_scheduler)),
       scheduler_resource_reporter_(tasks_to_schedule_, infeasible_tasks_,
                                    *local_scheduler_),
+      internal_stats_(*this, *local_scheduler_),
       get_time_ms_(get_time_ms) {}
 
 void ClusterTaskManager::QueueAndScheduleTask(
