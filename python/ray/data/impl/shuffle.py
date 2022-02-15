@@ -94,12 +94,10 @@ def simple_shuffle(
     new_metadata = ray.get(list(new_metadata))
     reduce_bar.close()
 
-    stats = dict(
-        [
-            ("map", shuffle_map_metadata),
-            ("reduce", new_metadata),
-        ]
-    )
+    stats = {
+        "map": shuffle_map_metadata,
+        "reduce": new_metadata,
+    }
 
     return BlockList(list(new_blocks), list(new_metadata)), stats
 
