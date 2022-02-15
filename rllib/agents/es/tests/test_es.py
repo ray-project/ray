@@ -17,7 +17,8 @@ class TestES(unittest.TestCase):
         config["num_workers"] = 1
         config["episodes_per_batch"] = 10
         config["train_batch_size"] = 100
-        # Test eval workers ("normal" Trainer eval WorkerSet).
+        # Test eval workers ("normal" WorkerSet, unlike ES' list of
+        # RolloutWorkers used for collecting train batches).
         config["evaluation_interval"] = 1
         config["evaluation_num_workers"] = 2
 

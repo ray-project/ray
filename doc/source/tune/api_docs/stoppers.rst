@@ -10,7 +10,7 @@ doesn't change anymore.
 Ray Tune comes with several stopping mechanisms out of the box. For custom stopping behavior, you can
 inherit from the :class:`Stopper <ray.tune.Stopper>` class.
 
-Other stopping behaviors are described :ref:`in the user guide <tune-stopping>`.
+Other stopping behaviors are described :ref:`in the user guide <tune-stopping-ref>`.
 
 .. contents::
     :local:

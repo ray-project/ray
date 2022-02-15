@@ -131,6 +131,51 @@ Scaling I/O throughput
 
 Similar to scaling online training, you can scale offline I/O throughput by increasing the number of RLlib workers via the ``num_workers`` config. Each worker accesses offline storage independently in parallel, for linear scaling of I/O throughput. Within each read worker, files are chosen in random order for reads, but file contents are read sequentially.
 
+Ray Dataset Integration
+~~~~~~~~~~~~~~~~~~~~~~~
+
+RLlib has experimental support for reading/writing training samples from/to large offline datasets using
+`Ray Dataset <https://docs.ray.io/en/latest/data/dataset.html>`__.
+We support JSON and Parquet files today. Other file formats supported by Dataset can also be easily added.
+
+Unlike JSON input, a single dataset can be automatically sharded and replayed by multiple rollout workers
+by simply specifying the desired num_workers config.
+
+To load sample data using Dataset, specify input and input_config keys like the following:
+
+.. code-block:: python
+
+    config = {
+        ...
+        "input"="dataset",
+        "input_config"={
+            "format": "json",  # json or parquet
+	    # Path to data file or directory.
+            "path": "/path/to/json_dir/",
+	    # Num of tasks reading dataset in parallel, default is num_workers.
+            "parallelism": 3,
+	    # Dataset allocates 0.5 CPU for each reader by default.
+	    # Adjust this value based on the size of your offline dataset.
+            "num_cpus_per_read_task": 0.5,
+        }
+	...
+    }
+
+To write sample data to JSON or Parquet files using Dataset, specify output and output_config keys like the following:
+
+.. code-block:: python
+
+    config = {
+        "output": "dataset",
+        "output_config": {
+            "format": "json",  # json or parquet
+	    # Directory to write data files.
+            "path": "/tmp/test_samples/",
+	    # Break samples into multiple files, each containing about this many records.
+            "max_num_samples_per_file": 100000,
+        }
+    }
+
 Input Pipeline for Supervised Losses
 ------------------------------------
 
@@ -150,7 +195,6 @@ You can also define supervised model losses over offline data. This requires def
         return policy_loss + supervised_loss
 
 See `custom_model_loss_and_metrics.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__ for a runnable example of using these TF input ops in a custom loss.
-
 
 Input API
 ---------

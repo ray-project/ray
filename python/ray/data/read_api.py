@@ -55,6 +55,7 @@ from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
+from ray.data.impl.plan import ExecutionPlan
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.stats import DatasetStats, get_or_create_stats_actor
 from ray.data.impl.util import _get_spread_resources_iter
@@ -99,9 +100,12 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
         i += block_size
 
     return Dataset(
-        BlockList(blocks, metadata),
+        ExecutionPlan(
+            BlockList(blocks, metadata),
+            DatasetStats(stages={"from_items": metadata}, parent=None),
+        ),
         0,
-        DatasetStats(stages={"from_items": metadata}, parent=None),
+        False,
     )
 
 
@@ -223,7 +227,7 @@ def read_datasource(
     stats_uuid = uuid.uuid4()
     stats_actor.record_start.remote(stats_uuid)
 
-    def remote_read(i: int, task: ReadTask) -> MaybeBlockPartition:
+    def remote_read(i: int, task: ReadTask, stats_actor) -> MaybeBlockPartition:
         DatasetContext._set_current(context)
         stats = BlockExecStats.builder()
 
@@ -268,7 +272,7 @@ def read_datasource(
         calls.append(
             lambda i=i, task=task, resources=next(resource_iter): remote_read.options(
                 **ray_remote_args, resources=resources
-            ).remote(i, task)
+            ).remote(i, task, stats_actor)
         )
         metadata.append(task.get_metadata())
 
@@ -278,15 +282,16 @@ def read_datasource(
     if metadata and metadata[0].schema is None:
         block_list.ensure_schema_for_first_block()
 
+    stats = DatasetStats(
+        stages={"read": metadata},
+        parent=None,
+        stats_actor=stats_actor,
+        stats_uuid=stats_uuid,
+    )
     return Dataset(
-        block_list,
+        ExecutionPlan(block_list, stats),
         0,
-        DatasetStats(
-            stages={"read": metadata},
-            parent=None,
-            stats_actor=stats_actor,
-            stats_uuid=stats_uuid,
-        ),
+        False,
     )
 
 
@@ -467,6 +472,8 @@ def read_text(
     paths: Union[str, List[str]],
     *,
     encoding: str = "utf-8",
+    errors: str = "ignore",
+    drop_empty_lines: bool = True,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = 200,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
@@ -483,6 +490,8 @@ def read_text(
     Args:
         paths: A single file path or a list of file paths (or directories).
         encoding: The encoding of the files (e.g., "utf-8" or "ascii").
+        errors: What to do with errors on decoding. Specify either "strict",
+            "ignore", or "replace". Defaults to "ignore".
         filesystem: The filesystem implementation to read from.
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the number of files of the dataset.
@@ -493,12 +502,18 @@ def read_text(
         Dataset holding lines of text read from the specified paths.
     """
 
+    def to_text(s):
+        lines = s.decode(encoding).split("\n")
+        if drop_empty_lines:
+            lines = [line for line in lines if line.strip() != ""]
+        return lines
+
     return read_binary_files(
         paths,
         filesystem=filesystem,
         parallelism=parallelism,
         arrow_open_stream_args=arrow_open_stream_args,
-    ).flat_map(lambda x: x.decode(encoding).split("\n"))
+    ).flat_map(to_text)
 
 
 @PublicAPI(stability="beta")
@@ -704,16 +719,23 @@ def from_pandas_refs(
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(_get_metadata)
         metadata = [get_metadata.remote(df) for df in dfs]
-        return Dataset(BlockList(dfs, ray.get(metadata)), 0, DatasetStats.TODO())
+        return Dataset(
+            ExecutionPlan(BlockList(dfs, ray.get(metadata)), DatasetStats.TODO()),
+            0,
+            False,
+        )
 
     df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
 
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = zip(*res)
     return Dataset(
-        BlockList(blocks, ray.get(list(metadata))),
+        ExecutionPlan(
+            BlockList(blocks, ray.get(list(metadata))),
+            DatasetStats(stages={"from_pandas_refs": metadata}, parent=None),
+        ),
         0,
-        DatasetStats(stages={"from_pandas_refs": metadata}, parent=None),
+        False,
     )
 
 
@@ -731,9 +753,12 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
     res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
     blocks, metadata = zip(*res)
     return Dataset(
-        BlockList(blocks, ray.get(list(metadata))),
+        ExecutionPlan(
+            BlockList(blocks, ray.get(list(metadata))),
+            DatasetStats(stages={"from_numpy": metadata}, parent=None),
+        ),
         0,
-        DatasetStats(stages={"from_numpy": metadata}, parent=None),
+        False,
     )
 
 
@@ -779,9 +804,12 @@ def from_arrow_refs(
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = [get_metadata.remote(t) for t in tables]
     return Dataset(
-        BlockList(tables, ray.get(metadata)),
+        ExecutionPlan(
+            BlockList(tables, ray.get(metadata)),
+            DatasetStats(stages={"from_arrow_refs": metadata}, parent=None),
+        ),
         0,
-        DatasetStats(stages={"from_arrow_refs": metadata}, parent=None),
+        False,
     )
 
 

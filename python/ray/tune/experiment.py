@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Dict, Sequence, Any
 import copy
 import inspect
@@ -273,6 +274,12 @@ class Experiment:
                     name = "DEFAULT"
                 else:
                     name = fn_name
+            elif (
+                isinstance(run_object, partial)
+                and hasattr(run_object, "func")
+                and hasattr(run_object.func, "__name__")
+            ):
+                name = run_object.func.__name__
             else:
                 logger.warning("No name detected on trainable. Using {}.".format(name))
             try:

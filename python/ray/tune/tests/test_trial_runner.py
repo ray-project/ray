@@ -19,28 +19,10 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 class TrialRunnerTest(unittest.TestCase):
     def setUp(self):
-        # Wait up to five seconds for placement groups when starting a trial
-        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
-        # Block for results even when placement groups are pending
-        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
-        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
         _register_all()  # re-register the evicted objects
 
     def tearDown(self):
         ray.shutdown()
-
-    def testTrialStatus(self):
-        ray.init(num_cpus=2)
-
-        trial = Trial("__fake")
-        trial_executor = RayTrialExecutor()
-        self.assertEqual(trial.status, Trial.PENDING)
-        trial_executor.start_trial(trial)
-        self.assertEqual(trial.status, Trial.RUNNING)
-        trial_executor.stop_trial(trial)
-        self.assertEqual(trial.status, Trial.TERMINATED)
-        trial_executor.stop_trial(trial, error=True)
-        self.assertEqual(trial.status, Trial.ERROR)
 
     def testExperimentTagTruncation(self):
         ray.init(num_cpus=2)
@@ -74,7 +56,8 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testExtraResources(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner()
+        snapshot = TrialStatusSnapshot()
+        runner = TrialRunner(callbacks=[TrialStatusSnapshotTaker(snapshot)])
         kwargs = {
             "stopping_criterion": {"training_iteration": 1},
             "placement_group_factory": PlacementGroupFactory(
@@ -85,17 +68,18 @@ class TrialRunnerTest(unittest.TestCase):
         for t in trials:
             runner.add_trial(t)
 
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(trials[1].status, Trial.PENDING)
+        while not runner.is_finished():
+            runner.step()
 
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.TERMINATED)
-        self.assertEqual(trials[1].status, Trial.PENDING)
+        self.assertLess(snapshot.max_running_trials(), 2)
+        self.assertTrue(snapshot.all_trials_are_terminated())
 
     def testCustomResources(self):
         ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
-        runner = TrialRunner()
+        # Since each trial will occupy the full custom resources,
+        # there are at most 1 trial running at any given moment.
+        snapshot = TrialStatusSnapshot()
+        runner = TrialRunner(callbacks=[TrialStatusSnapshotTaker(snapshot)])
         kwargs = {
             "stopping_criterion": {"training_iteration": 1},
             "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "a": 2}]),
@@ -104,16 +88,18 @@ class TrialRunnerTest(unittest.TestCase):
         for t in trials:
             runner.add_trial(t)
 
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(trials[1].status, Trial.PENDING)
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.TERMINATED)
-        self.assertEqual(trials[1].status, Trial.PENDING)
+        while not runner.is_finished():
+            runner.step()
+
+        self.assertLess(snapshot.max_running_trials(), 2)
+        self.assertTrue(snapshot.all_trials_are_terminated())
 
     def testExtraCustomResources(self):
         ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
-        runner = TrialRunner()
+        # Since each trial will occupy the full custom resources,
+        # there are at most 1 trial running at any given moment.
+        snapshot = TrialStatusSnapshot()
+        runner = TrialRunner(callbacks=[TrialStatusSnapshotTaker(snapshot)])
         kwargs = {
             "stopping_criterion": {"training_iteration": 1},
             "placement_group_factory": PlacementGroupFactory([{"CPU": 1}, {"a": 2}]),
@@ -122,14 +108,11 @@ class TrialRunnerTest(unittest.TestCase):
         for t in trials:
             runner.add_trial(t)
 
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(trials[1].status, Trial.PENDING)
+        while not runner.is_finished():
+            runner.step()
 
-        runner.step()
-        self.assertTrue(sum(t.status == Trial.RUNNING for t in trials) < 2)
-        self.assertEqual(trials[0].status, Trial.TERMINATED)
-        self.assertEqual(trials[1].status, Trial.PENDING)
+        self.assertLess(snapshot.max_running_trials(), 2)
+        self.assertTrue(snapshot.all_trials_are_terminated())
 
     def testFractionalGpus(self):
         ray.init(num_cpus=4, num_gpus=1)
@@ -209,13 +192,8 @@ class TrialRunnerTest(unittest.TestCase):
         for t in trials:
             runner.add_trial(t)
 
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-
-        runner.step()
+        while not runner.is_finished():
+            runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertRaises(TuneError, runner.step)
 
@@ -224,15 +202,23 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=2)
 
         class ChangingScheduler(FIFOScheduler):
+            def __init__(self):
+                self._has_received_one_trial_result = False
+
+            # For figuring out how many runner.step there are.
+            def has_received_one_trial_result(self):
+                return self._has_received_one_trial_result
+
             def on_trial_result(self, trial_runner, trial, result):
                 if result["training_iteration"] == 1:
+                    self._has_received_one_trial_result = True
                     executor = trial_runner.trial_executor
-                    executor.stop_trial(trial)
+                    executor.pause_trial(trial)
                     trial.update_resources(dict(cpu=2, gpu=0))
-                    executor.start_trial(trial)
-                return TrialScheduler.CONTINUE
+                return TrialScheduler.NOOP
 
-        runner = TrialRunner(scheduler=ChangingScheduler())
+        scheduler = ChangingScheduler()
+        runner = TrialRunner(scheduler=scheduler)
         kwargs = {
             "stopping_criterion": {"training_iteration": 2},
             "resources": Resources(cpu=1, gpu=0),
@@ -250,8 +236,11 @@ class TrialRunnerTest(unittest.TestCase):
             ValueError, lambda: trials[0].update_resources(dict(cpu=2, gpu=0))
         )
 
+        while not scheduler.has_received_one_trial_result():
+            runner.step()
+        self.assertEqual(trials[0].status, Trial.PAUSED)
+        # extra step for tune loop to stage the resource requests.
         runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(
             runner.trial_executor._pg_manager.occupied_resources().get("CPU"), 2
         )

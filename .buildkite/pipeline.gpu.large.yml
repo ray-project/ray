@@ -2,7 +2,9 @@
   conditions: ["RAY_CI_TRAIN_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TRAIN_TESTING=1 TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/travis/install-dependencies.sh
+    - PYTHON=3.6 TRAIN_TESTING=1 TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/travis/install-dependencies.sh
+    # Because Python version changed, we need to re-install Ray here
+    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
     - pip install -Ur ./python/requirements_ml_docker.txt
     - ./ci/travis/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only python/ray/train/...
@@ -11,9 +13,7 @@
   conditions: ["RAY_CI_TRAIN_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TRAIN_TESTING=1 DATA_PROCESSING_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
+    - PYTHON=3.7 TRAIN_TESTING=1 DATA_PROCESSING_TESTING=1 ./ci/travis/install-dependencies.sh
     - pip install -Ur ./python/requirements_ml_docker.txt
     - ./ci/travis/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=datasets_train doc/...
@@ -22,9 +22,7 @@
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
+    - PYTHON=3.7 RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - pip install -Ur ./python/requirements_ml_docker.txt
     - ./ci/travis/env_info.sh
     # --jobs 2 is necessary as we only need to have at least 2 gpus on the machine

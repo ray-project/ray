@@ -37,6 +37,11 @@ data:
     head_node: {}
     worker_nodes: {}
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: autoscaler-sa
+---
 kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:

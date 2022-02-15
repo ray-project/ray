@@ -10,6 +10,7 @@ import subprocess
 import json
 import time
 from pathlib import Path
+from unittest import mock
 
 import ray
 import ray.ray_constants as ray_constants
@@ -316,7 +317,6 @@ def call_ray_stop_only():
 def start_cluster(ray_start_cluster, request):
     assert request.param in {"ray_client", "no_ray_client"}
     use_ray_client: bool = request.param == "ray_client"
-
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=4)
     if use_ray_client:
@@ -563,3 +563,18 @@ def ray_start_chaos_cluster(request):
     """Returns the cluster and chaos thread."""
     for x in _ray_start_chaos_cluster(request):
         yield x
+
+
+# Set scope to "class" to force this to run before start_cluster, whose scope
+# is "function".  We need these env vars to be set before Ray is started.
+@pytest.fixture(scope="class")
+def runtime_env_disable_URI_cache():
+    with mock.patch.dict(
+        os.environ,
+        {
+            "RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB": "0",
+            "RAY_RUNTIME_ENV_PIP_CACHE_SIZE_GB": "0",
+        },
+    ):
+        print("URI caching disabled (conda and pip cache size set to 0).")
+        yield

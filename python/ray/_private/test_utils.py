@@ -207,7 +207,7 @@ def kill_process_by_name(name, SIGKILL=False):
                 p.terminate()
 
 
-def run_string_as_driver(driver_script: str, env: Dict = None):
+def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ascii"):
     """Run a driver as a separate process.
 
     Args:
@@ -235,13 +235,13 @@ def run_string_as_driver(driver_script: str, env: Dict = None):
         env=env,
     )
     with proc:
-        output = proc.communicate(driver_script.encode("ascii"))[0]
+        output = proc.communicate(driver_script.encode(encoding=encode))[0]
         if proc.returncode:
-            print(ray._private.utils.decode(output))
+            print(ray._private.utils.decode(output, encode_type=encode))
             raise subprocess.CalledProcessError(
                 proc.returncode, proc.args, output, proc.stderr
             )
-        out = ray._private.utils.decode(output)
+        out = ray._private.utils.decode(output, encode_type=encode)
     return out
 
 
@@ -371,6 +371,34 @@ def wait_for_condition(
         except Exception as ex:
             last_ex = ex
         time.sleep(retry_interval_ms / 1000.0)
+    message = "The condition wasn't met before the timeout expired."
+    if last_ex is not None:
+        message += f" Last exception: {last_ex}"
+    raise RuntimeError(message)
+
+
+async def async_wait_for_condition(
+    condition_predictor, timeout=10, retry_interval_ms=100, **kwargs: Any
+):
+    """Wait until a condition is met or time out with an exception.
+
+    Args:
+        condition_predictor: A function that predicts the condition.
+        timeout: Maximum timeout in seconds.
+        retry_interval_ms: Retry interval in milliseconds.
+
+    Raises:
+        RuntimeError: If the condition is not met before the timeout expires.
+    """
+    start = time.time()
+    last_ex = None
+    while time.time() - start <= timeout:
+        try:
+            if condition_predictor(**kwargs):
+                return
+        except Exception as ex:
+            last_ex = ex
+        await asyncio.sleep(retry_interval_ms / 1000.0)
     message = "The condition wasn't met before the timeout expired."
     if last_ex is not None:
         message += f" Last exception: {last_ex}"
@@ -521,15 +549,6 @@ def put_object(obj, use_ray_put):
         return ray.put(obj)
     else:
         return _put.remote(obj)
-
-
-def put_unpinned_object(obj):
-    value = ray.worker.global_worker.get_serialization_context().serialize(obj)
-    return ray.ObjectRef(
-        ray.worker.global_worker.core_worker.put_serialized_object(
-            value, pin_object=False
-        )
-    )
 
 
 def wait_until_server_available(address, timeout_ms=5000, retry_interval_ms=100):
@@ -1158,8 +1177,25 @@ def get_and_run_node_killer(
 def chdir(d: str):
     old_dir = os.getcwd()
     os.chdir(d)
-    yield
-    os.chdir(old_dir)
+    try:
+        yield
+    finally:
+        os.chdir(old_dir)
+
+
+def test_get_directory_size_bytes():
+    with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
+        assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 0
+        with open("test_file", "wb") as f:
+            f.write(os.urandom(100))
+        assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 100
+        with open("test_file_2", "wb") as f:
+            f.write(os.urandom(50))
+        assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 150
+        os.mkdir("subdir")
+        with open("subdir/subdir_file", "wb") as f:
+            f.write(os.urandom(2))
+        assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 152
 
 
 def check_local_files_gced(cluster):

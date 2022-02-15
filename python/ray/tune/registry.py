@@ -1,5 +1,6 @@
 import logging
 import uuid
+from functools import partial
 
 from types import FunctionType
 from typing import Optional
@@ -71,7 +72,7 @@ def register_trainable(name, trainable, warn=True):
 
     if isinstance(trainable, type):
         logger.debug("Detected class for trainable.")
-    elif isinstance(trainable, FunctionType):
+    elif isinstance(trainable, FunctionType) or isinstance(trainable, partial):
         logger.debug("Detected function for trainable.")
         trainable = wrap_function(trainable, warn=warn)
     elif callable(trainable):

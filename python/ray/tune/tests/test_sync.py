@@ -15,6 +15,7 @@ import ray
 from ray.rllib import _register_all
 
 from ray import tune
+from ray.tune import TuneError
 from ray.tune.integration.docker import DockerSyncer
 from ray.tune.integration.kubernetes import KubernetesSyncer
 from ray.tune.sync_client import NOOP
@@ -29,12 +30,6 @@ from ray.tune.utils.callback import create_default_callbacks
 
 class TestSyncFunctionality(unittest.TestCase):
     def setUp(self):
-        # Wait up to 1.5 seconds for placement groups when starting a trial
-        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "1.5"
-        # Block for results even when placement groups are pending
-        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
-        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
-
         ray.init(num_cpus=2)
 
     def tearDown(self):
@@ -120,7 +115,7 @@ class TestSyncFunctionality(unittest.TestCase):
 
     def testClusterProperString(self):
         """Tests that invalid commands throw.."""
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TuneError):
             # This raises ValueError because logger is init in safe zone.
             sync_config = tune.SyncConfig(syncer="ls {target}")
             [trial] = tune.run(
@@ -131,7 +126,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 sync_config=sync_config,
             ).trials
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TuneError):
             # This raises ValueError because logger is init in safe zone.
             sync_config = tune.SyncConfig(syncer="ls {source}")
             [trial] = tune.run(

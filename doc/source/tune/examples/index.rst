@@ -1,3 +1,5 @@
+.. _tune-examples-ref:
+
 ========
 Examples
 ========
@@ -84,14 +86,14 @@ PyTorch
 Pytorch Lightning
 ~~~~~~~~~~~~~~~~~
 
-- :doc:`/tune/examples/mnist_ptl_mini`: A minimal example of using `Pytorch Lightning <https://github.com/PyTorchLightning/pytorch-lightning>`_ to train a MNIST model. This example utilizes the Ray Tune-provided :ref:`PyTorch Lightning callbacks <tune-integration-pytorch-lightning>`. See also :ref:`this tutorial for a full walkthrough <tune-pytorch-lightning>`.
+- :doc:`/tune/examples/mnist_ptl_mini`: A minimal example of using `Pytorch Lightning <https://github.com/PyTorchLightning/pytorch-lightning>`_ to train a MNIST model. This example utilizes the Ray Tune-provided :ref:`PyTorch Lightning callbacks <tune-integration-pytorch-lightning>`. See also :ref:`this tutorial for a full walkthrough <tune-pytorch-lightning-ref>`.
 - :doc:`/tune/examples/mnist_pytorch_lightning`: A comprehensive example using `Pytorch Lightning <https://github.com/PyTorchLightning/pytorch-lightning>`_ to train a MNIST model. This example showcases how to use various search optimization techniques. It utilizes the Ray Tune-provided :ref:`PyTorch Lightning callbacks <tune-integration-pytorch-lightning>`.
-- :ref:`A walkthrough tutorial for using Ray Tune with Pytorch-Lightning <tune-pytorch-lightning>`.
+- :ref:`A walkthrough tutorial for using Ray Tune with Pytorch-Lightning <tune-pytorch-lightning-ref>`.
 
 Wandb, MLflow
 ~~~~~~~~~~~~~
 
-- :ref:`Tutorial <tune-wandb>` for using `wandb <https://www.wandb.ai/>`__ with Ray Tune
+- :ref:`Tutorial <tune-wandb-ref>` for using `wandb <https://www.wandb.ai/>`__ with Ray Tune
 - :doc:`/tune/examples/wandb_example`: Example for using `Weights and Biases <https://www.wandb.ai/>`__ with Ray Tune.
 - :doc:`/tune/examples/mlflow_example`: Example for using `MLflow <https://github.com/mlflow/mlflow/>`__ with Ray Tune.
 - :doc:`/tune/examples/mlflow_ptl_example`: Example for using `MLflow <https://github.com/mlflow/mlflow/>`__ and `Pytorch Lightning <https://github.com/PyTorchLightning/pytorch-lightning>`_ with Ray Tune.
@@ -118,7 +120,7 @@ Horovod
 XGBoost, LightGBM
 ~~~~~~~~~~~~~~~~~
 
-- :ref:`XGBoost tutorial <tune-xgboost>`: A guide to tuning XGBoost parameters with Tune.
+- :ref:`XGBoost tutorial <tune-xgboost-ref>`: A guide to tuning XGBoost parameters with Tune.
 - :doc:`/tune/examples/xgboost_example`: Trains a basic XGBoost model with Tune with the function-based API and an XGBoost callback.
 - :doc:`/tune/examples/xgboost_dynamic_resources_example`: Trains a basic XGBoost model with Tune with the class-based API and a ResourceChangingScheduler, ensuring all resources are being used at all time.
 - :doc:`/tune/examples/lightgbm_example`: Trains a basic LightGBM model with Tune with the function-based API and a LightGBM callback.

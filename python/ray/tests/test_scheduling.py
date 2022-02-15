@@ -260,6 +260,35 @@ def test_spillback_waiting_task_on_oom(ray_start_cluster):
     ray.get(f.remote(dep), timeout=30)
 
 
+def test_spread_scheduling_overrides_locality_aware_scheduling(ray_start_cluster):
+    # This test ensures that explicit spread scheduling strategy has higher
+    # priority than locality aware scheduling which means the lease request
+    # will be sent to local raylet instead of locality favored raylet.
+    cluster = ray_start_cluster
+    local_node = cluster.add_node(
+        num_cpus=8,
+        _system_config={
+            "worker_lease_timeout_milliseconds": 0,
+            "max_direct_call_object_size": 0,
+        },
+    )
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=8, resources={"pin": 1})
+    cluster.wait_for_nodes()
+
+    @ray.remote(resources={"pin": 1})
+    def non_local():
+        return ray.worker.global_worker.node.unique_id
+
+    @ray.remote(scheduling_strategy="SPREAD")
+    def f(x):
+        return ray.worker.global_worker.node.unique_id
+
+    # Test that task f() runs on the local node
+    # even though non local node has the dependencies.
+    assert ray.get(f.remote(non_local.remote())) == local_node.unique_id
+
+
 def test_locality_aware_leasing(ray_start_cluster):
     # This test ensures that a task will run where its task dependencies are
     # located. We run an initial non_local() task that is pinned to a
@@ -275,13 +304,21 @@ def test_locality_aware_leasing(ray_start_cluster):
         _system_config={
             "worker_lease_timeout_milliseconds": 0,
             "max_direct_call_object_size": 0,
-            # Needed because the above test sets this to False.
-            "locality_aware_leasing_enabled": True,
+            "scheduler_spread_threshold": 0.1,
         },
     )
-    # Use a custom resource for pinning tasks to a node.
-    non_local_node = cluster.add_node(num_cpus=1, resources={"pin": 1})
     ray.init(address=cluster.address)
+    # Use a custom resource for pinning tasks to a node.
+    non_local_node = cluster.add_node(num_cpus=2, resources={"pin": 2})
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=1, resources={"pin": 1})
+    class Actor:
+        def ping(self):
+            pass
+
+    actor = Actor.remote()
+    ray.get(actor.ping.remote())
 
     @ray.remote(resources={"pin": 1})
     def non_local():
@@ -291,7 +328,8 @@ def test_locality_aware_leasing(ray_start_cluster):
     def f(x):
         return ray.worker.global_worker.node.unique_id
 
-    # Test that task f() runs on the same node as non_local().
+    # Test that task f() runs on the same node as non_local()
+    # even though local node is lower critical resource utilization.
     assert ray.get(f.remote(non_local.remote())) == non_local_node.unique_id
 
 
