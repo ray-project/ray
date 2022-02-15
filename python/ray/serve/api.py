@@ -901,7 +901,7 @@ class Deployment:
         if not (prev_version is None or isinstance(prev_version, str)):
             raise TypeError("prev_version must be a string.")
         if not (init_args is None or isinstance(init_args, (tuple, list))):
-            raise TypeError("init_args must be a tuple.")
+            raise TypeError("init_args must be a tuple or list.")
         if not (init_kwargs is None or isinstance(init_kwargs, dict)):
             raise TypeError("init_kwargs must be a dict.")
         if route_prefix is not DEFAULT.VALUE and route_prefix is not None:
@@ -1184,6 +1184,9 @@ class Deployment:
 def deployment(func_or_class: Callable) -> Deployment:
     pass
 
+@overload
+def deployment(func_or_class: Callable, init_args: Optional[Tuple[Any]] = None) -> Deployment:
+    pass
 
 @overload
 def deployment(

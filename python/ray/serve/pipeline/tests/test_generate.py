@@ -5,6 +5,8 @@ import ray
 from ray import serve
 from ray.experimental.dag import InputNode
 from ray.serve.pipeline.generate import generate_deployments_from_ray_dag
+from ray.serve.pipeline.tests.test_modules import Model, combine
+
 
 RayHandleLike = TypeVar("RayHandleLike")
 
@@ -149,36 +151,10 @@ def test_multiple_class_method_entrypoints_func_output(serve_instance):
     but DAG is built in different order where input directly fed to models,
     and we bind their outputs to a simple combine function.
     """
-    @ray.remote
-    class Model1:
-        def __init__(self, weight: int):
-            self.weight = weight
 
-        def forward(self, input: int):
-            return self.weight * input
 
-        # User need to implement this for HTTP
-        def __call__(self, input):
-            return self.forward(input)
-
-    @ray.remote
-    class Model2:
-        def __init__(self, weight: int):
-            self.weight = weight
-
-        def forward(self, input: int):
-            return self.weight + input
-
-        # User need to implement this for HTTP
-        def __call__(self, input):
-            return self.forward(input)
-
-    @ray.remote
-    def combine(m1_output, m2_output):
-        return m1_output + m2_output
-
-    m1 = Model1._bind(2)
-    m2 = Model2._bind(3)
+    m1 = Model._bind(2)
+    m2 = Model._bind(3)
 
     m1_output = m1.forward._bind(InputNode())
     m2_output = m2.forward._bind(InputNode())

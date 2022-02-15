@@ -1,172 +1,22 @@
-from typing import Any, Dict, Tuple, Optional, List
+from typing import Any, Dict
 import uuid
 
 from ray.experimental.dag import (
     DAGNode,
-    InputNode,
     ClassNode,
     ClassMethodNode,
 )
-from ray.experimental.dag.format_utils import (
-    get_args_lines,
-    get_kwargs_lines,
-    get_options_lines,
-    get_other_args_to_resolve_lines,
-    get_indentation,
-)
-from ray.experimental.dag.function_node import FunctionNode
 from ray.serve.api import Deployment, DeploymentConfig
-from ray.serve.handle import RayServeHandle
-import ray
 from ray import serve
+from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
+from ray.serve.pipeline.deployment_node import DeploymentNode
 
 
-class DeploymentNode(DAGNode):
-    """Represents a deployment node in a DAG authored Ray DAG API."""
+def to_json(dag_node: DAGNode):
+    pass
 
-    def __init__(
-        self,
-        deployment_body,
-        deployment_name,
-        cls_args,
-        cls_kwargs,
-        cls_options,
-        other_args_to_resolve=None,
-    ):
-        self._body: Deployment = deployment_body
-        self._deployment_name: str = deployment_name
-        # TODO: (jiaodong) Support async handle
-        self._deployment_handle: RayServeHandle = deployment_body.get_handle()
-
-        super().__init__(
-            cls_args,
-            cls_kwargs,
-            cls_options,
-            other_args_to_resolve=other_args_to_resolve,
-        )
-
-        if self._contain_input_node():
-            raise ValueError(
-                "InputNode handles user dynamic input the the DAG, and "
-                "cannot be used as args, kwargs, or other_args_to_resolve "
-                "in DeploymentNode constructor because it is not available at "
-                "class construction or binding time."
-            )
-
-    def _copy_impl(
-        self,
-        new_args: List[Any],
-        new_kwargs: Dict[str, Any],
-        new_options: Dict[str, Any],
-        new_other_args_to_resolve: Dict[str, Any],
-    ):
-        return DeploymentNode(
-            self._body,
-            new_args,
-            new_kwargs,
-            new_options,
-            other_args_to_resolve=new_other_args_to_resolve,
-        )
-
-    def _execute_impl(self, *args):
-        """Executor of ClassNode by ray.remote()"""
-        return self._deployment_handle.options(**self._bound_options).remote(
-            *self._bound_args, **self._bound_kwargs
-        )
-
-
-class DeploymentMethodNode(DAGNode):
-    """Represents a deployment method invocation in a Ray function DAG."""
-
-    def __init__(
-        self,
-        deployment_body: Deployment,
-        deployment_name: str,
-        method_name: str,
-        method_args: Tuple[Any],
-        method_kwargs: Dict[str, Any],
-        method_options: Dict[str, Any],
-    ):
-        self._body = deployment_body
-        self._deployment_name: str = deployment_name
-        self._method_name: str = method_name
-        self._deployment_handle: RayServeHandle = deployment_body.get_handle()
-
-        self._bound_args = method_args or []
-        self._bound_kwargs = method_kwargs or {}
-        self._bound_options = method_options or {}
-
-        super().__init__(
-            method_args,
-            method_kwargs,
-            method_options,
-            other_args_to_resolve={},
-        )
-
-    def _copy_impl(
-        self,
-        new_args: List[Any],
-        new_kwargs: Dict[str, Any],
-        new_options: Dict[str, Any],
-        new_other_args_to_resolve: Dict[str, Any],
-    ):
-        return DeploymentMethodNode(
-            self._body,
-            self._deployment_name,
-            self._method_name,
-            new_args,
-            new_kwargs,
-            new_options,
-        )
-
-    def _execute_impl(self, *args):
-        """Executor of ClassMethodNode by ray.remote()"""
-        # Execute with bound args.
-        return self._deployment_handle.options(**self._bound_options).remote(
-            *self._bound_args,
-            **self._bound_kwargs,
-        )
-
-    def __str__(self) -> str:
-        indent = get_indentation()
-
-        method_line = str(self._method_name) + "()"
-        body_line = str(self._body)
-
-        args_line = get_args_lines(self._bound_args)
-        kwargs_line = get_kwargs_lines(self._bound_kwargs)
-        options_line = get_options_lines(self._bound_options)
-        other_args_to_resolve_line = get_other_args_to_resolve_lines(
-            self._bound_other_args_to_resolve
-        )
-        node_type = f"{self.__class__.__name__}"
-
-        return (
-            f"({node_type})(\n"
-            f"{indent}method={method_line}\n"
-            f"{indent}deployment={body_line}\n"
-            f"{indent}args={args_line}\n"
-            f"{indent}kwargs={kwargs_line}\n"
-            f"{indent}options={options_line}\n"
-            f"{indent}other_args_to_resolve={other_args_to_resolve_line}\n"
-            f")"
-        )
-
-
-def pipeline_root_wrapper(
-    serve_dag_root: DAGNode,
-    pipeline_root_name: str
-):
-    @serve.deployment(name=pipeline_root_name)
-    class DAGRunner:
-        def __init__(self):
-            # TODO: (jiaodong) Make this class take JSON serialized dag
-            self.dag = serve_dag_root
-
-        def __call__(self, request):
-            return ray.get(self.dag(request))
-
-    return DAGRunner
+def from_json(json: Dict[str, Any]) -> DAGNode:
+    pass
 
 
 def generate_deployments_from_ray_dag(
@@ -241,10 +91,7 @@ def generate_deployments_from_ray_dag(
                 dag_node.get_options(),
             )
             return deployment_method_node
-        elif isinstance(dag_node, FunctionNode):
-            return dag_node
         else:
-
             return dag_node
 
     serve_dag_root = ray_dag_root._apply_recursive(
@@ -255,9 +102,11 @@ def generate_deployments_from_ray_dag(
         pipeline_root_name or f"serve_pipeline_root_{uuid.uuid4().hex}"
     )
 
-    serve_dag_root_deployment = pipeline_root_wrapper(
-        serve_dag_root, pipeline_root_name
-    )
+    serve_dag_root_deployment = serve.deployment(
+        name="pipeline_root_name",
+    )("ray.serve.pipeline.generate.DAGRunner")
+    serve_dag_root_deployment._init_args = (serve_dag_root,)
+
     deployments.insert(0, serve_dag_root_deployment)
 
     return deployments
