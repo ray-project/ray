@@ -1338,7 +1338,7 @@ except ImportError:
                         ):
                             return False
                         raise
-                    except:
+                    except:  # noqa: E722
                         # only re-raise if it's *not* the exception that was
                         # passed to throw(), because __exit__() must not raise an
                         # exception unless __exit__() itself failed. But throw()

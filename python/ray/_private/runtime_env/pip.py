@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import os
 import sys
 import json
@@ -10,7 +9,6 @@ import shutil
 from filelock import FileLock
 from typing import Optional, List, Dict, Tuple
 
-from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.utils import RuntimeEnv, check_output_cmd
