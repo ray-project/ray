@@ -30,12 +30,15 @@ from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.resources import Resources
 from ray.tune.utils.placement_groups import PlacementGroupManager, get_tune_pg_prefix
-from ray.tune.utils.trainable import TrainableUtil
-from ray.tune.trial import Trial, _ManagedCheckpoint, Location, TrialInfo
+from ray.tune.trial import Trial, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
+from ray.util.ml_utils.checkpoint import (
+    Checkpoint,
+    DataCheckpoint,
+)
 from ray.util.placement_group import remove_placement_group, PlacementGroup
 
 logger = logging.getLogger(__name__)
@@ -762,7 +765,7 @@ class RayTrialExecutor(TrialExecutor):
 
     def save(
         self, trial, storage=PERSISTENT, result: Optional[Dict] = None
-    ) -> _ManagedCheckpoint:
+    ) -> Union[Checkpoint, ray.ObjectRef]:
         """Saves the trial's state to a checkpoint asynchronously.
 
         Args:
@@ -799,37 +802,22 @@ class RayTrialExecutor(TrialExecutor):
                 ineligible for restoration, given the Tune input arguments.
         """
         checkpoint = trial.checkpoint
-        if checkpoint.value is None:
+        if checkpoint is None:
             return
         if trial.runner is None:
             raise RuntimeError(
                 "Trial {}: Unable to restore - no runner found.".format(trial)
             )
-        value = checkpoint.value
-        if checkpoint.storage == MEMORY:
+        if isinstance(checkpoint, DataCheckpoint):
             logger.debug("Trial %s: Attempting restore from object", trial)
             # Note that we don't store the remote since in-memory checkpoints
             # don't guarantee fault tolerance and don't need to be waited on.
             with self._change_working_directory(trial):
-                trial.runner.restore_from_object.remote(value)
+                trial.runner.restore_from_object.remote(checkpoint)
         else:
-            logger.debug("Trial %s: Attempting restore from %s", trial, value)
-            if trial.uses_cloud_checkpointing or not trial.sync_on_checkpoint:
-                with self._change_working_directory(trial):
-                    remote = trial.runner.restore.remote(value)
-            elif trial.sync_on_checkpoint:
-                # This provides FT backwards compatibility in the
-                # case where no cloud checkpoints are provided.
-                logger.debug("Trial %s: Reading checkpoint into memory", trial)
-                obj = TrainableUtil.checkpoint_to_object(value)
-                with self._change_working_directory(trial):
-                    remote = trial.runner.restore_from_object.remote(obj)
-            else:
-                raise AbortTrialExecution(
-                    "Pass in `sync_on_checkpoint=True` for driver-based trial"
-                    "restoration. Pass in an `upload_dir` for remote "
-                    "storage-based restoration"
-                )
+            logger.debug("Trial %s: Attempting restore from %s", trial, checkpoint)
+            with self._change_working_directory(trial):
+                remote = trial.runner.restore.remote(checkpoint)
 
             self._futures[remote] = (ExecutorEventType.RESTORING_RESULT, trial)
             trial.restoring_from = checkpoint
@@ -1027,7 +1015,8 @@ class RayTrialExecutor(TrialExecutor):
                         return ExecutorEvent(result_type, trial, result=future_result)
                     else:
                         raise TuneError(f"Unexpected future type - [{result_type}]")
-                except Exception:
+                except Exception as e:
+                    logger.exception(e)  # Todo remove?
                     return ExecutorEvent(
                         ExecutorEventType.ERROR, trial, traceback.format_exc()
                     )

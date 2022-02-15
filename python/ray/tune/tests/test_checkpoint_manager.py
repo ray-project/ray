@@ -8,12 +8,10 @@ from unittest.mock import patch
 
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.checkpoint_manager import (
-    _ManagedCheckpoint,
     CheckpointManager,
     logger,
-    MEMORY,
-    PERSISTENT,
 )
+from ray.util.ml_utils.checkpoint import LocalStorageCheckpoint, DataCheckpoint
 
 
 class CheckpointManagerTest(unittest.TestCase):
@@ -26,12 +24,12 @@ class CheckpointManagerTest(unittest.TestCase):
 
     def testNewestCheckpoint(self):
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
-        memory_checkpoint = _ManagedCheckpoint(MEMORY, {0}, self.mock_result(0))
-        checkpoint_manager.on_checkpoint(memory_checkpoint)
-        persistent_checkpoint = _ManagedCheckpoint(PERSISTENT, {1}, self.mock_result(1))
-        checkpoint_manager.on_checkpoint(persistent_checkpoint)
+        memory_checkpoint = DataCheckpoint(data={0})
+        checkpoint_manager.on_checkpoint(memory_checkpoint, self.mock_result(0))
+        persistent_checkpoint = LocalStorageCheckpoint(path={1})
+        checkpoint_manager.on_checkpoint(persistent_checkpoint, self.mock_result(1))
         self.assertEqual(
-            checkpoint_manager.newest_persistent_wrapped_checkpoint,
+            checkpoint_manager.newest_persistent_wrapped_checkpoint.value,
             persistent_checkpoint,
         )
 
@@ -42,17 +40,15 @@ class CheckpointManagerTest(unittest.TestCase):
         """
         keep_checkpoints_num = 2
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
-        checkpoints = [
-            _ManagedCheckpoint(PERSISTENT, {i}, self.mock_result(i)) for i in range(3)
-        ]
+        checkpoints = [LocalStorageCheckpoint(path=i) for i in range(3)]
 
         with patch.object(checkpoint_manager, "delete") as delete_mock:
             for j in range(3):
-                checkpoint_manager.on_checkpoint(checkpoints[j])
+                checkpoint_manager.on_checkpoint(checkpoints[j], self.mock_result(j))
                 expected_deletes = 0 if j != 2 else 1
                 self.assertEqual(delete_mock.call_count, expected_deletes, j)
                 self.assertEqual(
-                    checkpoint_manager.newest_persistent_wrapped_checkpoint,
+                    checkpoint_manager.newest_persistent_wrapped_checkpoint.value,
                     checkpoints[j],
                 )
 
@@ -68,25 +64,25 @@ class CheckpointManagerTest(unittest.TestCase):
         """
         keep_checkpoints_num = 2
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
-        checkpoints = [
-            _ManagedCheckpoint(PERSISTENT, {i}, self.mock_result(i))
+        checkpoints_results = [
+            (LocalStorageCheckpoint(path=i), self.mock_result(i))
             for i in range(3, -1, -1)
         ]
 
         with patch.object(checkpoint_manager, "delete") as delete_mock:
-            for j in range(0, len(checkpoints)):
-                checkpoint_manager.on_checkpoint(checkpoints[j])
+            for j, (checkpoint, result) in enumerate(checkpoints_results):
+                checkpoint_manager.on_checkpoint(checkpoint, result)
                 expected_deletes = 0 if j != 3 else 1
                 self.assertEqual(delete_mock.call_count, expected_deletes)
                 self.assertEqual(
-                    checkpoint_manager.newest_persistent_wrapped_checkpoint,
-                    checkpoints[j],
+                    checkpoint_manager.newest_persistent_wrapped_checkpoint.value,
+                    checkpoint,
                 )
 
         best_checkpoints = checkpoint_manager.best_checkpoints()
         self.assertEqual(len(best_checkpoints), keep_checkpoints_num)
-        self.assertIn(checkpoints[0], best_checkpoints)
-        self.assertIn(checkpoints[1], best_checkpoints)
+        self.assertIn(checkpoints_results[0][0], best_checkpoints)
+        self.assertIn(checkpoints_results[1][0], best_checkpoints)
 
     def testBestCheckpoints(self):
         """
@@ -94,18 +90,18 @@ class CheckpointManagerTest(unittest.TestCase):
         """
         keep_checkpoints_num = 4
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
-        checkpoints = [
-            _ManagedCheckpoint(PERSISTENT, i, self.mock_result(i)) for i in range(16)
+        checkpoint_results = [
+            (LocalStorageCheckpoint(path=i), self.mock_result(i)) for i in range(16)
         ]
-        random.shuffle(checkpoints)
+        random.shuffle(checkpoint_results)
 
-        for checkpoint in checkpoints:
-            checkpoint_manager.on_checkpoint(checkpoint)
+        for checkpoint, result in checkpoint_results:
+            checkpoint_manager.on_checkpoint(checkpoint, result)
 
         best_checkpoints = checkpoint_manager.best_checkpoints()
         self.assertEqual(len(best_checkpoints), keep_checkpoints_num)
         for i in range(len(best_checkpoints)):
-            self.assertEqual(best_checkpoints[i].value, i + 12)
+            self.assertEqual(best_checkpoints[i].path, i + 12)
 
     def testOnCheckpointUnavailableAttribute(self):
         """
@@ -114,24 +110,24 @@ class CheckpointManagerTest(unittest.TestCase):
         """
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
 
-        no_attr_checkpoint = _ManagedCheckpoint(PERSISTENT, 0, {})
+        no_attr_checkpoint = LocalStorageCheckpoint(path=0)
         with patch.object(logger, "error") as log_error_mock:
-            checkpoint_manager.on_checkpoint(no_attr_checkpoint)
+            checkpoint_manager.on_checkpoint(no_attr_checkpoint, {})
             log_error_mock.assert_called_once()
             # The newest checkpoint should still be set despite this error.
             self.assertEqual(
-                checkpoint_manager.newest_persistent_wrapped_checkpoint,
+                checkpoint_manager.newest_persistent_wrapped_checkpoint.value,
                 no_attr_checkpoint,
             )
 
     def testOnMemoryCheckpoint(self):
         checkpoints = [
-            _ManagedCheckpoint(MEMORY, 0, self.mock_result(0)),
-            _ManagedCheckpoint(MEMORY, 0, self.mock_result(0)),
+            DataCheckpoint(0),
+            DataCheckpoint(0),
         ]
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
-        checkpoint_manager.on_checkpoint(checkpoints[0])
-        checkpoint_manager.on_checkpoint(checkpoints[1])
+        checkpoint_manager.on_checkpoint(checkpoints[0], self.mock_result(0))
+        checkpoint_manager.on_checkpoint(checkpoints[1], self.mock_result(0))
         newest = checkpoint_manager.newest_memory_checkpoint
 
         self.assertEqual(newest, checkpoints[1])
@@ -139,7 +135,7 @@ class CheckpointManagerTest(unittest.TestCase):
 
     def testSameCheckpoint(self):
         checkpoint_manager = CheckpointManager(
-            1, "i", delete_fn=lambda c: os.remove(c.value)
+            1, "i", delete_fn=lambda c: os.remove(c.path)
         )
 
         tmpfiles = []
@@ -149,15 +145,15 @@ class CheckpointManagerTest(unittest.TestCase):
                 fp.write("")
             tmpfiles.append(tmpfile)
 
-        checkpoints = [
-            _ManagedCheckpoint(PERSISTENT, tmpfiles[0], self.mock_result(5)),
-            _ManagedCheckpoint(PERSISTENT, tmpfiles[1], self.mock_result(10)),
-            _ManagedCheckpoint(PERSISTENT, tmpfiles[2], self.mock_result(0)),
-            _ManagedCheckpoint(PERSISTENT, tmpfiles[1], self.mock_result(20)),
+        checkpoints_results = [
+            (LocalStorageCheckpoint(path=tmpfiles[0]), self.mock_result(5)),
+            (LocalStorageCheckpoint(path=tmpfiles[1]), self.mock_result(10)),
+            (LocalStorageCheckpoint(path=tmpfiles[2]), self.mock_result(0)),
+            (LocalStorageCheckpoint(path=tmpfiles[1]), self.mock_result(20)),
         ]
-        for checkpoint in checkpoints:
-            checkpoint_manager.on_checkpoint(checkpoint)
-            self.assertTrue(os.path.exists(checkpoint.value))
+        for checkpoint, result in checkpoints_results:
+            checkpoint_manager.on_checkpoint(checkpoint, result)
+            self.assertTrue(os.path.exists(checkpoint.path))
 
         for tmpfile in tmpfiles:
             if os.path.exists(tmpfile):

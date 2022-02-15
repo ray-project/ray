@@ -1,6 +1,5 @@
 import abc
-import tarfile
-import tempfile
+import json
 
 import cloudpickle as pickle
 import os
@@ -16,30 +15,9 @@ from ray.util.ml_utils.artifact import (
     MultiLocationArtifact,
     FSStorageArtifact,
     DataArtifact,
+    _pack,
+    _unpack,
 )
-
-
-def _pack(path: str) -> bytes:
-    _, tmpfile = tempfile.mkstemp()
-    with tarfile.open(tmpfile, "w:gz") as tar:
-        tar.add(path, arcname="")
-
-    with open(tmpfile, "rb") as f:
-        stream = f.read()
-
-    return stream
-
-
-def _unpack(stream: bytes, path: str) -> str:
-    _, tmpfile = tempfile.mkstemp()
-
-    with open(tmpfile, "wb") as f:
-        f.write(stream)
-
-    with tarfile.open(tmpfile) as tar:
-        tar.extractall(path)
-
-    return path
 
 
 # class CheckpointInterface(abc.ABC):
@@ -52,12 +30,15 @@ def _unpack(stream: bytes, path: str) -> str:
 
 class Checkpoint(Artifact, abc.ABC):
     def __init__(self, metadata: Any = None):
-        super().__init__()
+        Artifact.__init__(self)
         self.metadata = metadata
+
+    def __eq__(self, other):
+        return isinstance(other, Checkpoint) and self.metadata == other.metadata
 
 
 class DataCheckpoint(Checkpoint, DataArtifact):
-    def __init__(self, data: Any, metadata: Any):
+    def __init__(self, data: Any, metadata: Any = None):
         Checkpoint.__init__(self, metadata=metadata)
         DataArtifact.__init__(self, data=data)
 
@@ -87,11 +68,25 @@ class DataCheckpoint(Checkpoint, DataArtifact):
         local_checkpoint.write_metadata()
         return local_checkpoint
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, DataCheckpoint)
+            and DataArtifact.__eq__(self, other)
+            and Checkpoint.__eq__(self, other)
+        )
+
 
 class ObjectStoreCheckpoint(Checkpoint, ObjectStoreArtifact):
     def __init__(self, obj_ref: ray.ObjectRef, metadata: Any):
         Checkpoint.__init__(self, metadata=metadata)
         ObjectStoreArtifact.__init__(self, obj_ref=obj_ref)
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, ObjectStoreCheckpoint)
+            and ObjectStoreArtifact.__eq__(self, other)
+            and Checkpoint.__eq__(self, other)
+        )
 
 
 class FSStorageCheckpoint(Checkpoint, FSStorageArtifact, abc.ABC):
@@ -124,6 +119,13 @@ class FSStorageCheckpoint(Checkpoint, FSStorageArtifact, abc.ABC):
         else:
             return RemoteNodeStorageCheckpoint, (self.path, self.node_ip, self.metadata)
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, FSStorageCheckpoint)
+            and FSStorageArtifact.__eq__(self, other)
+            and Checkpoint.__eq__(self, other)
+        )
+
 
 class LocalStorageCheckpoint(FSStorageCheckpoint, LocalStorageArtifact):
     def __init__(self, path: str, metadata: Any = None):
@@ -131,7 +133,22 @@ class LocalStorageCheckpoint(FSStorageCheckpoint, LocalStorageArtifact):
         LocalStorageArtifact.__init__(self, path=path)
 
     def write_metadata(self):
-        pass
+        metadata_file = os.path.join(self.path, ".checkpoint_metadata")
+        with open(metadata_file, "wt") as fp:
+            json.dump(self.metadata, fp)
+
+    def load_metadata(self):
+        metadata_file = os.path.join(self.path, ".checkpoint_metadata")
+        if os.path.exists(metadata_file):
+            with open(metadata_file, "rt") as fp:
+                self.metadata = json.load(fp)
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, LocalStorageCheckpoint)
+            and LocalStorageArtifact.__eq__(self, other)
+            and FSStorageCheckpoint.__eq__(self, other)
+        )
 
 
 class RemoteNodeStorageCheckpoint(FSStorageCheckpoint, RemoteNodeStorageArtifact):
@@ -139,11 +156,29 @@ class RemoteNodeStorageCheckpoint(FSStorageCheckpoint, RemoteNodeStorageArtifact
         Checkpoint.__init__(self, metadata=metadata)
         RemoteNodeStorageArtifact.__init__(self, path=path, node_ip=node_ip)
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, RemoteNodeStorageCheckpoint)
+            and RemoteNodeStorageArtifact.__eq__(self, other)
+            and FSStorageCheckpoint.__eq__(self, other)
+        )
+
+    def to_local_storage(self, path: str) -> LocalStorageCheckpoint:
+        local_artifact = RemoteNodeStorageArtifact.to_local_storage(self, path)
+        return LocalStorageCheckpoint(path=local_artifact.path, metadata=self.metadata)
+
 
 class CloudStorageCheckpoint(Checkpoint, CloudStorageArtifact):
     def __init__(self, location: str, metadata: Any = None):
         Checkpoint.__init__(self, metadata=metadata)
         CloudStorageArtifact.__init__(self, location=location)
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, CloudStorageCheckpoint)
+            and CloudStorageArtifact.__eq__(self, other)
+            and Checkpoint.__eq__(self, other)
+        )
 
 
 class MultiLocationCheckpoint(Checkpoint, MultiLocationArtifact):
@@ -158,3 +193,10 @@ class MultiLocationCheckpoint(Checkpoint, MultiLocationArtifact):
             if isinstance(location, checkpoint_cls):
                 return location
         return None
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, MultiLocationCheckpoint)
+            and MultiLocationArtifact.__eq__(self, other)
+            and Checkpoint.__eq__(self, other)
+        )

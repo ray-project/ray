@@ -16,9 +16,7 @@ import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import (
-    _ManagedCheckpoint,
     CheckpointManager,
-    PERSISTENT,
 )
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -44,7 +42,11 @@ from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
 from ray.util.annotations import DeveloperAPI
 from ray._private.utils import binary_to_hex, hex_to_binary
-from ray.util.ml_utils.checkpoint import Checkpoint, LocalStorageCheckpoint
+from ray.util.ml_utils.checkpoint import (
+    Checkpoint,
+    LocalStorageCheckpoint,
+    DataCheckpoint,
+)
 
 DEBUG_PRINT_INTERVAL = 5
 logger = logging.getLogger(__name__)
@@ -104,34 +106,33 @@ class CheckpointDeleter:
         self.trial_id = trial_id
         self.runner = runner
 
-    def __call__(self, checkpoint):
+    def __call__(self, checkpoint: Checkpoint):
         """Requests checkpoint deletion asynchronously.
 
         Args:
-            checkpoint (_ManagedCheckpoint): Checkpoint to delete.
+            checkpoint (Checkpoint): Checkpoint to delete.
         """
         if not self.runner:
             return
 
-        if checkpoint.storage == PERSISTENT and checkpoint.value:
-            checkpoint_path = checkpoint.value
-
-            logger.debug(
-                "Trial %s: Deleting checkpoint %s", self.trial_id, checkpoint_path
-            )
+        if not isinstance(checkpoint, DataCheckpoint):
+            logger.debug("Trial %s: Deleting checkpoint %s", self.trial_id, checkpoint)
 
             # TODO(ujvl): Batch remote deletes.
             # We first delete the remote checkpoint. If it is on the same
             # node as the driver, it will also remove the local copy.
-            ray.get(self.runner.delete_checkpoint.remote(checkpoint_path))
+            ray.get(self.runner.delete_checkpoint.remote(checkpoint))
 
-            # Delete local copy, if any exists.
-            if os.path.exists(checkpoint_path):
-                try:
-                    checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-                    shutil.rmtree(checkpoint_dir)
-                except FileNotFoundError:
-                    logger.debug("Local checkpoint dir not found during deletion.")
+            if isinstance(checkpoint, LocalStorageCheckpoint):
+                # Delete local copy, if any exists.
+                if os.path.exists(checkpoint.path):
+                    try:
+                        checkpoint_dir = TrainableUtil.find_checkpoint_dir(
+                            checkpoint.path
+                        )
+                        shutil.rmtree(checkpoint_dir)
+                    except FileNotFoundError:
+                        logger.debug("Local checkpoint dir not found during deletion.")
 
 
 class TrialInfo:
@@ -452,7 +453,7 @@ class Trial:
         return self.location.hostname
 
     @property
-    def checkpoint(self) -> Checkpoint:
+    def checkpoint(self) -> Optional[Checkpoint]:
         """Returns the most recent checkpoint.
 
         If the trial is in ERROR state, the most recent PERSISTENT checkpoint
@@ -464,7 +465,7 @@ class Trial:
             )
         else:
             checkpoint = self.checkpoint_manager.newest_checkpoint
-        if checkpoint is None:
+        if checkpoint is None and self.restore_path:
             checkpoint = LocalStorageCheckpoint(path=self.restore_path)
         return checkpoint
 

@@ -2,7 +2,7 @@
 import heapq
 import gc
 import logging
-from typing import Dict
+from typing import Dict, List
 
 from ray.tune.utils.util import flatten_dict
 from ray.util.ml_utils.checkpoint import DataCheckpoint, Checkpoint
@@ -52,7 +52,7 @@ class _ManagedCheckpoint:
         return self.storage == MEMORY
 
     def __repr__(self):
-        return f"Checkpoint({self.storage}, {self.value})"
+        return f"ManagedCheckpoint({self.storage}, {self.value})"
 
 
 class QueueItem:
@@ -157,7 +157,7 @@ class CheckpointManager:
 
         # Remove the old checkpoint if it isn't one of the best ones.
         if old_checkpoint.value and old_checkpoint not in self._membership:
-            self.delete(old_checkpoint)
+            self.delete(old_checkpoint.value)
 
         try:
             queue_item = QueueItem(
@@ -182,15 +182,15 @@ class CheckpointManager:
             # Don't delete the newest checkpoint. It will be deleted on the
             # next on_checkpoint() call since it isn't in self._membership.
             if worst.value != wrapped_checkpoint.value:
-                self.delete(worst)
+                self.delete(worst.value)
 
-    def best_checkpoints(self):
+    def best_checkpoints(self) -> List[Checkpoint]:
         """Returns best PERSISTENT checkpoints, sorted by score."""
         checkpoints = sorted(self._best_checkpoints, key=lambda c: c.priority)
-        return [queue_item.value for queue_item in checkpoints]
+        return [queue_item.value.value for queue_item in checkpoints]
 
-    def _priority(self, checkpoint):
-        result = flatten_dict(checkpoint.result)
+    def _priority(self, manager_checkpoint: _ManagedCheckpoint):
+        result = flatten_dict(manager_checkpoint.result)
         priority = result[self._checkpoint_score_attr]
         return -priority if self._checkpoint_score_desc else priority
 

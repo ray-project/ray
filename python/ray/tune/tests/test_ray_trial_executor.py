@@ -10,16 +10,18 @@ from ray import tune
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.callback import Callback
-from ray.tune.checkpoint_manager import MEMORY, PERSISTENT
+from ray.tune.checkpoint_manager import PERSISTENT
 from ray.tune.ray_trial_executor import RayTrialExecutor, ExecutorEventType
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import PID, TRAINING_ITERATION, TRIAL_ID
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.trial import Trial, _ManagedCheckpoint
+from ray.tune.trial import Trial
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from unittest.mock import patch
+
+from ray.util.ml_utils.checkpoint import DataCheckpoint
 
 
 class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
@@ -116,13 +118,13 @@ class RayTrialExecutorTest(unittest.TestCase):
     def _simulate_saving(self, trial):
         checkpoint = self.trial_executor.save(trial, PERSISTENT)
         self.assertEqual(checkpoint, trial.saving_to)
-        self.assertEqual(trial.checkpoint.value, None)
+        self.assertEqual(trial.checkpoint, None)
         future_result = self.trial_executor.get_next_executor_event(
             live_trials={trial}, next_trial_exists=False
         )
         assert future_result.type == ExecutorEventType.SAVING_RESULT
         self.process_trial_save(trial, future_result.result)
-        self.assertEqual(checkpoint, trial.checkpoint)
+        self.assertEqual(ray.get(checkpoint), trial.checkpoint)
 
     def testStartStop(self):
         trial = Trial("__fake")
@@ -183,7 +185,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         # Pause
         self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
-        self.assertEqual(trial.checkpoint.storage, MEMORY)
+        self.assertTrue(isinstance(ray.get(trial.checkpoint), DataCheckpoint))
 
         # Resume
         self._simulate_starting_trial(trial)
@@ -364,11 +366,10 @@ class RayTrialExecutorTest(unittest.TestCase):
                 break
         return trials
 
-    def process_trial_save(self, trial, checkpoint_value):
+    def process_trial_save(self, trial, checkpoint):
         """Simulates trial runner save."""
-        checkpoint = trial.saving_to
-        checkpoint.value = checkpoint_value
-        trial.on_checkpoint(checkpoint)
+        trial.saving_to = checkpoint
+        trial.on_checkpoint(checkpoint, trial.last_result)
 
 
 class RayExecutorPlacementGroupTest(unittest.TestCase):

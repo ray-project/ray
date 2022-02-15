@@ -49,7 +49,7 @@ class TrainableUtil:
                 )
             metadata["suffix"] = os.path.relpath(checkpoint_path_or_obj, parent_dir)
             local_checkpoint = LocalStorageCheckpoint(
-                path=checkpoint_path_or_obj, metadata=metadata
+                path=parent_dir, metadata=metadata
             )
             if return_data_checkpoint:
                 return local_checkpoint.to_data()

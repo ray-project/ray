@@ -12,7 +12,6 @@ from typing import Any, Dict, Optional, Union, Callable
 import uuid
 
 import ray
-from ray.tune.cloud import TrialCheckpoint
 from ray.tune.logger import Logger
 from ray.tune.resources import Resources
 from ray.tune.result import (
@@ -502,7 +501,7 @@ class Trainable:
         # First, check if the checkpoint is locally available:
         local_checkpoint = multi_checkpoint.search_checkpoint(LocalStorageCheckpoint)
         if local_checkpoint:
-            return self._restore_from_local_chekcpoint(local_checkpoint)
+            return self._restore_from_local_checkpoint(local_checkpoint)
 
         # Else, check if there is a cloud checkpoint we can fetch
         cloud_checkpoint = multi_checkpoint.search_checkpoint(CloudStorageCheckpoint)
@@ -572,6 +571,7 @@ class Trainable:
     def _restore_from_local_checkpoint(self, local_checkpoint: LocalStorageCheckpoint):
         assert isinstance(local_checkpoint, LocalStorageCheckpoint)
 
+        local_checkpoint.load_metadata()
         self._restore_metadata(local_checkpoint.metadata)
 
         logger.info(

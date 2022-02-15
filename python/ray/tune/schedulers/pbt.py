@@ -17,7 +17,7 @@ from ray.tune.utils.util import SafeFallbackEncoder
 from ray.tune.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
-from ray.tune.trial import Trial, _ManagedCheckpoint
+from ray.tune.trial import Trial
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)

@@ -6,7 +6,7 @@ import warnings
 
 from ray.tune.checkpoint_manager import MEMORY, PERSISTENT
 from ray.util.annotations import DeveloperAPI
-from ray.tune.trial import Trial, _ManagedCheckpoint
+from ray.tune.trial import Trial
 from ray.util.ml_utils.checkpoint import Checkpoint
 
 logger = logging.getLogger(__name__)

@@ -10,7 +10,7 @@ import traceback
 import warnings
 
 import ray
-from ray.tune.checkpoint_manager import MEMORY, PERSISTENT
+from ray.tune.checkpoint_manager import PERSISTENT
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList
@@ -36,6 +36,7 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
 from ray.util.debug import log_once
+from ray.util.ml_utils.checkpoint import DataCheckpoint
 
 MAX_DEBUG_TRIALS = 20
 
@@ -1119,15 +1120,15 @@ class TrialRunner:
         logger.debug("Trial %s: Processing trial save.", trial)
 
         try:
-            trial.saving_to.value = result
+            trial.saving_to = result
             self._callbacks.on_checkpoint(
                 iteration=self._iteration,
                 trials=self._trials,
                 trial=trial,
                 checkpoint=trial.saving_to,
             )
-            trial.on_checkpoint(trial.saving_to)
-            if trial.checkpoint.storage != MEMORY:
+            trial.on_checkpoint(trial.saving_to, trial.last_result)
+            if not isinstance(trial.checkpoint, DataCheckpoint):
                 self.trial_executor.mark_trial_to_checkpoint(trial)
         except Exception:
             logger.exception("Trial %s: Error handling checkpoint %s", trial, result)
