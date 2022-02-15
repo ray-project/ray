@@ -1731,6 +1731,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self, env_creator, env_context, validate_env, env_wrapper, seed
     ):
         disable_env_checking = self._disable_env_checking
+
         def _make_sub_env_local(vector_index):
             # Used to created additional environments during environment
             # vectorization.
