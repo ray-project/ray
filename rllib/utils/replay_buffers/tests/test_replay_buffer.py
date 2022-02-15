@@ -1,4 +1,3 @@
-import math
 import unittest
 
 import numpy as np
@@ -8,7 +7,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 
 
-class TestReplayBuffers(unittest.TestCase):
+class TestReplayBuffer(unittest.TestCase):
     def test_timesteps_unit(self):
         """Tests adding, sampling, get-/set state, and eviction with
             experiences stored by timesteps."""
