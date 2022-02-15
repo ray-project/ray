@@ -1730,6 +1730,7 @@ class RolloutWorker(ParallelIteratorWorker):
     def _get_make_sub_env_fn(
         self, env_creator, env_context, validate_env, env_wrapper, seed
     ):
+        disable_env_checking = self._disable_env_checking
         def _make_sub_env_local(vector_index):
             # Used to created additional environments during environment
             # vectorization.
@@ -1740,7 +1741,7 @@ class RolloutWorker(ParallelIteratorWorker):
             # Create the sub-env.
             env = env_creator(env_ctx)
             # Validate first.
-            if not self._disable_env_checking:
+            if not disable_env_checking:
                 logger.warning(
                     "We've added a module for checking environments that "
                     "are used in experiments. It will cause your "
