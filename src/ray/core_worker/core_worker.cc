@@ -78,7 +78,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       background_work_(background_service_),
-      periodical_runner_(background_service_),
+      periodical_runner_(io_service_),
       task_queue_length_(0),
       num_executed_tasks_(0),
       resource_ids_(new ResourceMappingType()),
