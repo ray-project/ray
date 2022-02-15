@@ -1,6 +1,10 @@
 #!/bin/bash
 
-set -ex
+set -e
+
+if [ -n "$DEBUG" ]; then
+  set -x
+fi
 
 cd "${0%/*}" || exit 1
 

@@ -87,6 +87,17 @@ def main(test_collection_file: Optional[str] = None):
         )
     grouped_tests = group_tests(filtered_tests)
 
+    group_str = ""
+    for group, tests in grouped_tests.items():
+        group_str += f"\n{group}:\n"
+        for test, smoke in tests:
+            group_str += f"  {test['name']}"
+            if smoke:
+                group_str += " [smoke test]"
+            group_str += "\n"
+
+    logger.info(f"Tests to run:\n{group_str}")
+
     # Wait for wheels here so we hafve them ready before we kick off
     # the other workers
     ray_wheels_url = find_and_wait_for_ray_wheels_url(

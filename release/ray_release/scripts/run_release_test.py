@@ -135,8 +135,8 @@ def main(
         f"Release test pipeline for test {test['name']} completed. "
         f"Returning with exit code = {result.return_code}"
     )
-    return result.return_code
+    sys.exit(result.return_code)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
