@@ -306,7 +306,7 @@ class DeploymentRequest(BaseModel):
     @validator("deployer_job_id", always=True)
     def check_job_id_format(cls, v):
         parts = v.split(".")
-        if len(parts) < 3 and parts[0] != "ray" and parts[1] != "_raylet":
+        if len(parts) < 3 or parts[0] != "ray" or parts[1] != "_raylet":
             raise ValueError(f"DeploymentRequest got deployer_job_id "
                              f"\"{v}\". Expected deployer_job_id of format "
                              f"\"ray._raylet.[JobID]\".")
