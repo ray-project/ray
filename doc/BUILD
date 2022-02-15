@@ -114,24 +114,36 @@ py_test(
 )
 
 # --------------------------------------------------------------------
-# Tests from the doc/source/tune/_tutorials directory.
+# Tests from the doc/source/tune/tutorials directory.
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
 
 py_test(
     name = "tune_sklearn",
     size = "medium",
-    main = "source/tune/_tutorials/tune-sklearn.py",
-    srcs = ["source/tune/_tutorials/tune-sklearn.py"],
-    tags = ["exclusive", "example", "team:ml"],
-    args = ["--smoke-test"]
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    args = ["--path", "doc/source/tune/tutorials/tune-sklearn.md"],
+    data = ["//doc/source/tune/tutorials:tune_tutorials"],
+    tags = ["exclusive", "team:ml"],
 )
 
 py_test(
     name = "tune_serve_integration_mnist",
     size = "medium",
-    main = "source/tune/_tutorials/tune-serve-integration-mnist.py",
-    srcs = ["source/tune/_tutorials/tune-serve-integration-mnist.py"],
-    tags = ["exclusive", "example", "team:ml"],
-    args = ["--smoke-test", "--from_scratch", "--day 0"]
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    args = ["--path", "doc/source/tune/tutorials/tune-serve-integration-mnist.md", "--smoke-test", "--from_scratch", "--day 0"],
+    data = ["//doc/source/tune/tutorials:tune_tutorials"],
+    tags = ["exclusive", "team:ml"],
+)
+
+py_test(
+    name = "hyperopt_example",
+    size = "small",
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    args = ["--path", "doc/source/tune/examples/hyperopt_example.md"],
+    data = ["//doc/source/tune/examples:tune_examples"],
+    tags = ["exclusive", "team:ml"],
 )

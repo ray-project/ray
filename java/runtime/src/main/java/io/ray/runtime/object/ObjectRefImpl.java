@@ -32,10 +32,22 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
 
   private Class<T> type;
 
-  public ObjectRefImpl(ObjectId id, Class<T> type) {
+  public ObjectRefImpl(ObjectId id, Class<T> type, boolean skipAddingLocalRef) {
     this.id = id;
     this.type = type;
-    addLocalReference();
+    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
+    Preconditions.checkState(workerId == null);
+    workerId = runtime.getWorkerContext().getCurrentWorkerId();
+    if (!skipAddingLocalRef) {
+      runtime.getObjectStore().addLocalReference(workerId, id);
+    }
+    // We still add the reference so that the local ref count will be properly
+    // decremented once this object is GCed.
+    new ObjectRefImplReference(this);
+  }
+
+  public ObjectRefImpl(ObjectId id, Class<T> type) {
+    this(id, type, /*skipAddingLocalRef=*/ false);
   }
 
   public ObjectRefImpl() {}
@@ -81,20 +93,17 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     int len = in.readInt();
     byte[] ownerAddress = new byte[len];
     in.readFully(ownerAddress);
-    addLocalReference();
+
     RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
+    Preconditions.checkState(workerId == null);
+    workerId = runtime.getWorkerContext().getCurrentWorkerId();
+    runtime.getObjectStore().addLocalReference(workerId, id);
+    new ObjectRefImplReference(this);
+
     runtime
         .getObjectStore()
         .registerOwnershipInfoAndResolveFuture(
             this.id, ObjectSerializer.getOuterObjectId(), ownerAddress);
-  }
-
-  private void addLocalReference() {
-    Preconditions.checkState(workerId == null);
-    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
-    workerId = runtime.getWorkerContext().getCurrentWorkerId();
-    runtime.getObjectStore().addLocalReference(workerId, id);
-    new ObjectRefImplReference(this);
   }
 
   private static final class ObjectRefImplReference

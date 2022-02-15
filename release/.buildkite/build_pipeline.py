@@ -6,6 +6,11 @@ import sys
 
 import yaml
 
+# If you update or reorganize the periodic tests, please ensure the
+# relevant portions of the Ray release instructions (go/release-ray)
+# (in particular, running periodic tests and collecting release logs)
+# are up to date.  If you need access, please contact @zhe-thoughts.
+
 # Env variables:
 
 # RAY_REPO          Repo to use for finding the wheel
@@ -74,7 +79,6 @@ CORE_NIGHTLY_TESTS = {
         "autoscaling_shuffle_1tb_1000_partitions",
         SmokeTest("stress_test_many_tasks"),
         SmokeTest("stress_test_dead_actors"),
-        "shuffle_data_loader",
         SmokeTest("threaded_actors_stress_test"),
         "pg_long_running_performance_test",
     ],

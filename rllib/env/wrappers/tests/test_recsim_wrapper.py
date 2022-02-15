@@ -28,6 +28,11 @@ class TestRecSimWrapper(unittest.TestCase):
         new_obs, _, _, _ = env.step(action)
         self.assertTrue(env.observation_space.contains(new_obs))
 
+    def test_bandits_observation_space_conversion(self):
+        env = InterestEvolutionRecSimEnv({"wrap_for_bandits": True})
+        # "item" of observation space is a Box space.
+        self.assertIsInstance(env.observation_space["item"], gym.spaces.Box)
+
     def test_double_action_space_conversion_raises_exception(self):
         env = InterestEvolutionRecSimEnv({"convert_to_discrete_action_space": True})
         with self.assertRaises(UnsupportedSpaceException):

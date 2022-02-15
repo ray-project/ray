@@ -2,24 +2,26 @@ import logging
 from pathlib import Path
 import sys
 import tempfile
+from typing import Optional
 
 import pytest
+from unittest.mock import patch
 
 import ray
+from ray.job_submission import JobSubmissionClient, JobStatus
+from ray.dashboard.modules.job.common import CURRENT_VERSION
+from ray.dashboard.modules.job.sdk import (
+    ClusterInfo,
+    parse_cluster_info,
+)
 from ray.dashboard.tests.conftest import *  # noqa
+from ray.ray_constants import DEFAULT_DASHBOARD_PORT
 from ray.tests.conftest import _ray_start
 from ray._private.test_utils import (
     format_web_url,
     wait_for_condition,
     wait_until_server_available,
 )
-from ray.dashboard.modules.job.common import CURRENT_VERSION, JobStatus
-from ray.dashboard.modules.job.sdk import (
-    ClusterInfo,
-    JobSubmissionClient,
-    parse_cluster_info,
-)
-from unittest.mock import patch
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +156,7 @@ def test_runtime_env_setup_failure(job_sdk_client):
 
     wait_for_condition(_check_job_failed, client=client, job_id=job_id)
     status = client.get_job_status(job_id)
-    assert "The runtime_env failed to be set up" in status.message
+    assert "Failed to setup runtime environment" in status.message
 
 
 def test_submit_job_with_exception_in_driver(job_sdk_client):
@@ -319,26 +321,28 @@ def test_request_headers(job_sdk_client):
         )
 
 
-@pytest.mark.parametrize(
-    "address",
-    [
-        "http://127.0.0.1",
-        "https://127.0.0.1",
-        "ray://127.0.0.1",
-        "fake_module://127.0.0.1",
-    ],
-)
-def test_parse_cluster_info(address: str):
-    if address.startswith("ray"):
+@pytest.mark.parametrize("scheme", ["http", "https", "ray", "fake_module"])
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "fake.dns.name"])
+@pytest.mark.parametrize("port", [None, 8265, 10000])
+def test_parse_cluster_info(scheme: str, host: str, port: Optional[int]):
+    address = f"{scheme}://{host}"
+    if port is not None:
+        address += f":{port}"
+
+    final_port = port if port is not None else DEFAULT_DASHBOARD_PORT
+    if scheme in {"http", "ray"}:
         assert parse_cluster_info(address, False) == ClusterInfo(
-            address="http" + address[address.index("://") :],
+            address=f"http://{host}:{final_port}",
             cookies=None,
             metadata=None,
             headers=None,
         )
-    elif address.startswith("http") or address.startswith("https"):
+    elif scheme == "https":
         assert parse_cluster_info(address, False) == ClusterInfo(
-            address=address, cookies=None, metadata=None, headers=None
+            address=f"https://{host}:{final_port}",
+            cookies=None,
+            metadata=None,
+            headers=None,
         )
     else:
         with pytest.raises(RuntimeError):

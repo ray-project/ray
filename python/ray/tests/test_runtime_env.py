@@ -18,6 +18,8 @@ from ray._private.utils import (
     get_release_wheel_url,
 )
 
+from ray._private.runtime_env.uri_cache import URICache
+
 
 def test_get_wheel_filename():
     ray_version = "2.0.0.dev0"
@@ -135,7 +137,11 @@ def test_invalid_conda_env(shutdown_only):
 
     start = time.time()
     bad_env = {"conda": {"dependencies": ["this_doesnt_exist"]}}
-    with pytest.raises(RuntimeEnvSetupError):
+    with pytest.raises(
+        RuntimeEnvSetupError,
+        # The actual error message should be included in the exception.
+        match="ResolvePackageNotFound",
+    ):
         ray.get(f.options(runtime_env=bad_env).remote())
     first_time = time.time() - start
 
@@ -143,12 +149,14 @@ def test_invalid_conda_env(shutdown_only):
     ray.get(f.remote())
 
     a = A.options(runtime_env=bad_env).remote()
-    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+    with pytest.raises(
+        ray.exceptions.RuntimeEnvSetupError, match="ResolvePackageNotFound"
+    ):
         ray.get(a.f.remote())
 
     # The second time this runs it should be faster as the error is cached.
     start = time.time()
-    with pytest.raises(RuntimeEnvSetupError):
+    with pytest.raises(RuntimeEnvSetupError, match="ResolvePackageNotFound"):
         ray.get(f.options(runtime_env=bad_env).remote())
 
     assert (time.time() - start) < (first_time / 2.0)
@@ -239,6 +247,24 @@ def test_runtime_env_no_spurious_resource_deadlock_msg(
     assert len(errors) == 0
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="pip not supported on Windows.")
+def test_failed_job_env_no_hang(shutdown_only):
+    """Test that after a failed job-level env, tasks can still be run."""
+    ray.init(runtime_env={"pip": ["ray-doesnotexist-123"]})
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa: F401
+
+        return True
+
+    assert ray.get(f.options(runtime_env={"pip": ["pip-install-test==0.5"]}).remote())
+
+    # Task with no runtime env should inherit the bad job env.
+    with pytest.raises(RuntimeEnvSetupError):
+        ray.get(f.remote())
+
+
 @pytest.fixture
 def set_agent_failure_env_var():
     os.environ["_RAY_AGENT_FAILING"] = "1"
@@ -280,6 +306,119 @@ def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
     a = A.options(runtime_env=runtime_env).remote()
     with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
         ray.get(a.ready.remote())
+
+
+class TestURICache:
+    def test_zero_cache_size(self):
+        uris_to_sizes = {"5": 5, "3": 3}
+
+        def delete_fn(uri, logger):
+            return uris_to_sizes[uri]
+
+        cache = URICache(delete_fn, max_total_size_bytes=0, debug_mode=True)
+        cache.add("5", 5)
+        assert cache.get_total_size_bytes() == 5
+        cache.mark_unused("5")
+        assert cache.get_total_size_bytes() == 0
+        cache.add("3", 3)
+        cache.add("5", 5)
+        assert cache.get_total_size_bytes() == 8
+        cache.mark_unused("3")
+        cache.mark_unused("5")
+        assert cache.get_total_size_bytes() == 0
+
+    def test_nonzero_cache_size(self):
+        uris_to_sizes = {"a": 4, "b": 4, "c": 4}
+
+        def delete_fn(uri, logger):
+            return uris_to_sizes[uri]
+
+        cache = URICache(delete_fn, max_total_size_bytes=10, debug_mode=True)
+        cache.add("a", 4)
+        cache.add("b", 4)
+        cache.mark_unused("a")
+        assert "a" in cache
+        cache.add("c", 4)
+        # Now we have total size 12, which exceeds the max size 10.
+        assert cache.get_total_size_bytes() == 8
+        # "a" was the only unused URI, so it must have been deleted.
+        assert "b" and "c" in cache and "a" not in cache
+
+    def test_mark_used_nonadded_uri_error(self):
+        cache = URICache(debug_mode=True)
+        with pytest.raises(ValueError):
+            cache.mark_used("nonadded_uri")
+
+    def test_mark_used(self):
+        uris_to_sizes = {"a": 3, "b": 3, "big": 300}
+
+        def delete_fn(uri, logger):
+            return uris_to_sizes[uri]
+
+        cache = URICache(delete_fn, max_total_size_bytes=10, debug_mode=True)
+        cache.add("a", 3)
+        cache.add("b", 3)
+        cache.mark_unused("a")
+        cache.mark_unused("b")
+        assert "a" in cache and "b" in cache
+        assert cache.get_total_size_bytes() == 6
+
+        cache.mark_used("a")
+        cache.add("big", 300)
+        # We are over capacity and the only unused URI is "b", so we delete it
+        assert "a" in cache and "big" in cache and "b" not in cache
+        assert cache.get_total_size_bytes() == 303
+
+        cache.mark_unused("big")
+        assert "big" not in cache
+        assert cache.get_total_size_bytes() == 3
+
+    def test_many_URIs(self):
+        uris_to_sizes = {str(i): i for i in range(1000)}
+
+        def delete_fn(uri, logger):
+            return uris_to_sizes[uri]
+
+        cache = URICache(delete_fn, debug_mode=True)
+        for i in range(1000):
+            cache.add(str(i), i)
+        for i in range(1000):
+            cache.mark_unused(str(i))
+        for i in range(1000):
+            assert str(i) in cache
+
+    def test_delete_fn_called(self):
+        num_delete_fn_calls = 0
+        uris_to_sizes = {"a": 8, "b": 6, "c": 4, "d": 20}
+
+        def delete_fn(uri, logger):
+            nonlocal num_delete_fn_calls
+            num_delete_fn_calls += 1
+            return uris_to_sizes[uri]
+
+        cache = URICache(delete_fn, max_total_size_bytes=10, debug_mode=True)
+        cache.add("a", 8)
+        cache.add("b", 6)
+        cache.mark_unused("b")
+        # Total size is 14 > 10, so we need to delete "b".
+        assert num_delete_fn_calls == 1
+
+        cache.add("c", 4)
+        cache.mark_unused("c")
+        # Total size is 12 > 10, so we delete "c".
+        assert num_delete_fn_calls == 2
+
+        cache.mark_unused("a")
+        # Total size is 8 <= 10, so we shouldn't delete anything.
+        assert num_delete_fn_calls == 2
+
+        cache.add("d", 20)
+        # Total size is 28 > 10, so we delete "a".
+        assert num_delete_fn_calls == 3
+
+        cache.mark_unused("d")
+        # Total size is 20 > 10, so we delete "d".
+        assert num_delete_fn_calls == 4
 
 
 @pytest.fixture

@@ -66,21 +66,26 @@ message DeploymentConfig {
   bytes user_config = 3;
 
   // Duration that deployment replicas will wait until there is no more work to be done
-  // before shutting down. Defaults to 2s.
+  // before shutting down.
   double graceful_shutdown_wait_loop_s = 4;
 
   // Controller waits for this duration to forcefully kill the replica for shutdown.
-  // Defaults to 20s.
   double graceful_shutdown_timeout_s = 5;
 
+  // Frequency at which the controller health checks replicas.
+  double health_check_period_s = 6;
+
+  // Timeout after which a replica is marked unhealthy without a response.
+  double health_check_timeout_s = 7;
+
   // Is the construction of deployment is cross language?
-  bool is_cross_language = 6;
+  bool is_cross_language = 8;
 
   // The deployment's programming language.
-  DeploymentLanguage deployment_language = 7;
+  DeploymentLanguage deployment_language = 9;
 
   // The deployment's autoscaling configuration.
-  AutoscalingConfig autoscaling_config = 8;
+  AutoscalingConfig autoscaling_config = 10;
 }
 
 // Deployment language.

@@ -28,6 +28,8 @@ A2C_DEFAULT_CONFIG = merge_dicts(
         # training with batch sizes much larger than can fit in GPU memory.
         # To enable, set this to a value less than the train batch size.
         "microbatch_size": None,
+        # Use `execution_plan` for A2C (no `training_iteration` implementation yet).
+        "_disable_execution_plan_api": False,
     },
 )
 

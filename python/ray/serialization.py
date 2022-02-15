@@ -200,14 +200,19 @@ class SerializationContext:
             raise DeserializationError()
         return obj
 
-    def _deserialize_actor_died_error(self, data, metadata_fields):
-        if not data:
-            return RayActorError()
+    def _deserialize_error_info(self, data, metadata_fields):
+        assert data
         pb_bytes = self._deserialize_msgpack_data(data, metadata_fields)
         assert pb_bytes
 
         ray_error_info = RayErrorInfo()
         ray_error_info.ParseFromString(pb_bytes)
+        return ray_error_info
+
+    def _deserialize_actor_died_error(self, data, metadata_fields):
+        if not data:
+            return RayActorError()
+        ray_error_info = self._deserialize_error_info(data, metadata_fields)
         assert ray_error_info.HasField("actor_died_error")
         if ray_error_info.actor_died_error.HasField("creation_task_failure_context"):
             return RayError.from_ray_exception(
@@ -291,7 +296,12 @@ class SerializationContext:
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
             elif error_type == ErrorType.Value("RUNTIME_ENV_SETUP_FAILED"):
-                return RuntimeEnvSetupError()
+                error_info = self._deserialize_error_info(data, metadata_fields)
+                # TODO(sang): Assert instead once actor also reports error messages.
+                error_msg = ""
+                if error_info.HasField("runtime_env_setup_failed_error"):
+                    error_msg = error_info.runtime_env_setup_failed_error.error_message
+                return RuntimeEnvSetupError(error_message=error_msg)
             elif error_type == ErrorType.Value("TASK_PLACEMENT_GROUP_REMOVED"):
                 return TaskPlacementGroupRemoved()
             elif error_type == ErrorType.Value("ACTOR_PLACEMENT_GROUP_REMOVED"):

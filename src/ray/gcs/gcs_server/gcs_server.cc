@@ -291,12 +291,14 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   std::unique_ptr<GcsActorSchedulerInterface> scheduler;
   auto schedule_failure_handler =
       [this](std::shared_ptr<GcsActor> actor,
-             const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type) {
+             const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+             const std::string &scheduling_failure_message) {
         // When there are no available nodes to schedule the actor the
         // gcs_actor_scheduler will treat it as failed and invoke this handler. In
         // this case, the actor manager should schedule the actor once an
         // eligible node is registered.
-        gcs_actor_manager_->OnActorSchedulingFailed(std::move(actor), failure_type);
+        gcs_actor_manager_->OnActorSchedulingFailed(std::move(actor), failure_type,
+                                                    scheduling_failure_message);
       };
   auto schedule_success_handler = [this](std::shared_ptr<GcsActor> actor,
                                          const rpc::PushTaskReply &reply) {

@@ -1,5 +1,5 @@
 # flake8: noqa
-# yapf: disable
+# fmt: off
 
 # __torch_setup_begin__
 import torch
@@ -49,6 +49,7 @@ def train_func():
 # __torch_distributed_begin__
 
 from ray import train
+import ray.train.torch
 
 def train_func_distributed():
     num_epochs = 3

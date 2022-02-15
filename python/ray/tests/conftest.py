@@ -10,10 +10,12 @@ import subprocess
 import json
 import time
 from pathlib import Path
+from unittest import mock
 
 import ray
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster, AutoscalingCluster, cluster_not_supported
+from ray._private.runtime_env.pip import PipProcessor
 from ray._private.services import (
     REDIS_EXECUTABLE,
     _start_redis_instance,
@@ -316,7 +318,6 @@ def call_ray_stop_only():
 def start_cluster(ray_start_cluster, request):
     assert request.param in {"ray_client", "no_ray_client"}
     use_ray_client: bool = request.param == "ray_client"
-
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=4)
     if use_ray_client:
@@ -563,3 +564,43 @@ def ray_start_chaos_cluster(request):
     """Returns the cluster and chaos thread."""
     for x in _ray_start_chaos_cluster(request):
         yield x
+
+
+# Set scope to "class" to force this to run before start_cluster, whose scope
+# is "function".  We need these env vars to be set before Ray is started.
+@pytest.fixture(scope="class")
+def runtime_env_disable_URI_cache():
+    with mock.patch.dict(
+        os.environ,
+        {
+            "RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB": "0",
+            "RAY_RUNTIME_ENV_PIP_CACHE_SIZE_GB": "0",
+        },
+    ):
+        print("URI caching disabled (conda and pip cache size set to 0).")
+        yield
+
+
+# Use to create virtualenv that clone from current python env.
+# The difference between this fixture and `pytest_virtual.virtual` is that
+# `pytest_virtual.virtual` will not inherit current python env's site-package.
+# Note: Can't use in virtualenv, this must be noted when testing locally.
+@pytest.fixture(scope="function")
+def cloned_virtualenv():
+    # Lazy import pytest_virtualenv,
+    # aviod import `pytest_virtualenv` in test case `Minimal install`
+    from pytest_virtualenv import VirtualEnv
+
+    if PipProcessor._is_in_virtualenv():
+        raise RuntimeError("Forbid the use of this fixture in virtualenv")
+
+    venv = VirtualEnv(
+        args=[
+            "--system-site-packages",
+            "--reset-app-data",
+            "--no-periodic-update",
+            "--no-download",
+        ],
+    )
+    yield venv
+    venv.teardown()

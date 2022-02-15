@@ -86,6 +86,14 @@ MLflowLoggerCallback
 
 .. autoclass:: ray.train.callbacks.MLflowLoggerCallback
 
+
+.. _train-api-torch-tensorboard-profiler-callback:
+
+TorchTensorboardProfilerCallback
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.train.callbacks.TorchTensorboardProfilerCallback
+
 ResultsPreprocessors
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -174,6 +182,14 @@ train.torch.get_device
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.get_device
+
+.. _train-api-torch-worker-profiler:
+
+train.torch.TorchWorkerProfiler
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.train.torch.TorchWorkerProfiler
+    :members:
 
 TensorFlow Training Function Utilities
 --------------------------------------
