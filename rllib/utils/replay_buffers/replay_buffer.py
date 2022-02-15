@@ -19,26 +19,6 @@ from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
 logger = logging.getLogger(__name__)
 
 
-def warn_buffer_mode_changed(size_one: int, size_two: int) -> None:
-    """Warn if the buffer changes mode to timestep sampling mode."""
-    if log_once("buffer_mode"):
-        msg = (
-            "Reservoir buffer has changed mode from sampling complete batches "
-            "to combining batches. This happened because a batch of size {} "
-            "was added, after a batch of size {} was added and results in "
-            "slower sampling.").format(size_one, size_two
-                                       )
-
-        logger.info(msg)
-
-
-@ExperimentalAPI
-class BufferMode(Enum):
-    """Distinguishes sampling from diffrently- and equally sized batches."""
-    SAMPLE_COMPLETE_BATCHES = 0
-    COMBINE_BATCHES = 1
-
-
 @ExperimentalAPI
 class StorageUnit(Enum):
     TIMESTEPS = 0
@@ -61,11 +41,11 @@ class ReplayBuffer:
             **kwargs: Forward compatibility kwargs.
         """
 
-        if storage_unit == "timesteps" or StorageUnit.TIMESTEPS:
+        if storage_unit in ["timesteps", StorageUnit.TIMESTEPS]:
             self._storage_unit = StorageUnit.TIMESTEPS
-        elif storage_unit == "sequences" or StorageUnit.SEQUENCES:
+        elif storage_unit in ["sequences", StorageUnit.SEQUENCES]:
             self._storage_unit = StorageUnit.SEQUENCES
-        elif storage_unit == "episodes" or StorageUnit.EPISODES:
+        elif storage_unit in ["episodes", StorageUnit.EPISODES]:
             self._storage_unit = StorageUnit.EPISODES
         else:
             raise ValueError(
@@ -79,6 +59,7 @@ class ReplayBuffer:
         self.capacity = capacity
         # The next index to override in the buffer.
         self._next_idx = 0
+        # len(self._hit_count) must always be less than len(capacity)
         self._hit_count = np.zeros(self.capacity)
 
         # Whether we have already hit our capacity (and have therefore
@@ -99,7 +80,6 @@ class ReplayBuffer:
         self._est_size_bytes = 0
 
         self.batch_size = None
-        self.mode = BufferMode.SAMPLE_COMPLETE_BATCHES
 
     def __len__(self) -> int:
         """Returns the number of items currently stored in this buffer."""
@@ -116,37 +96,34 @@ class ReplayBuffer:
         assert batch.count > 0, batch
         warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
 
-        # Update our timesteps counts.
-        self._num_timesteps_added += batch.count
-        self._num_timesteps_added_wrap += batch.count
-
         if self._storage_unit == StorageUnit.TIMESTEPS:
-            self._add_one_item(batch)
+            self._add_single_batch(batch)
         elif self._storage_unit == StorageUnit.SEQUENCES:
             timestep_count = 0
             for seq_len in batch.get(SampleBatch.SEQ_LENS):
                 start_seq = timestep_count
                 end_seq = timestep_count + seq_len
-                self._add_one_item(batch[start_seq:end_seq])
+                self._add_single_batch(batch[start_seq:end_seq])
                 timestep_count = end_seq
         elif self._storage_unit == StorageUnit.EPISODES:
             for eps in batch.split_by_episode():
                 if eps.get(SampleBatch.T)[0] == 0 and \
-                        eps.get(SampleBatch.DONES)[-1] is True:
+                        eps.get(SampleBatch.DONES)[-1] == True:
                     # Only add full episodes to the buffer
-                    self._add_one_item(eps)
+                    self._add_single_batch(eps)
                 else:
-                    raise ValueError("This buffer uses episodes as a "
-                                     "storage unit and thus allows only full "
-                                     "episodes to be added to it.")
+                    if log_once("only_full_episodes"):
+                        logger.info("This buffer uses episodes as a storage "
+                                    "unit and thus allows only full episodes "
+                                    "to be added to it. Some samples may be "
+                                    "dropped.")
+
 
     @ExperimentalAPI
-    def _add_one_item(self, item: SampleBatchType):
-        if self.batch_size is None:
-            self.batch_size = item.count
-        elif self.batch_size != item.count:
-            warn_buffer_mode_changed(self.batch_size, item.count)
-            self.mode = BufferMode.COMBINE_BATCHES
+    def _add_single_batch(self, item: SampleBatchType):
+        # Update our timesteps counts.
+        self._num_timesteps_added += item.count
+        self._num_timesteps_added_wrap += item.count
 
         if self._next_idx >= len(self._storage):
             self._storage.append(item)
@@ -169,7 +146,7 @@ class ReplayBuffer:
 
     @ExperimentalAPI
     def sample(self, num_items: int, **kwargs) -> Optional[SampleBatchType]:
-        """Samples `num_items` timesteps or sequences from this buffer.
+        """Samples `num_items` items from this buffer.
 
         If less than `num_items` records are in this buffer, some samples in
         the results may be repeated to fulfil the request.
@@ -185,17 +162,12 @@ class ReplayBuffer:
         if len(self) == 0:
             return None
 
-        if self.mode == BufferMode.SAMPLE_COMPLETE_BATCHES:
-            idxes = [random.randint(0, len(self) - 1) for _ in
-                     range(num_items)]
-            sample = self._encode_sample(idxes)
-            # Update our timesteps counters.
-            self._num_timesteps_sampled += len(sample)
-            return sample
-        else:
-            NotImplementedError("Sampling from a replay buffer with "
-                                "batches of different sizes is not yet "
-                                "permitted.")
+        idxes = [random.randint(0, len(self) - 1) for _ in
+                 range(num_items)]
+        sample = self._encode_sample(idxes)
+        # Update our timesteps counters.
+        self._num_timesteps_sampled += len(sample)
+        return sample
 
     @ExperimentalAPI
     def stats(self, debug: bool = False) -> dict:
