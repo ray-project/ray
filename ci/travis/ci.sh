@@ -152,8 +152,6 @@ test_python() {
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job
       -python/ray/tests:test_memstat
-      -python/ray/tests:test_multiprocessing  # flaky, causes subsequent tests to fail
-      -python/ray/tests:test_multiprocessing_client_mode
       -python/ray/tests:test_multi_node_3
       -python/ray/tests:test_object_manager # OOM on test_object_directory_basic
       -python/ray/tests:test_resource_demand_scheduler
