@@ -1,9 +1,11 @@
 import os
 import pytest
 import sys
+import subprocess
 import time
 import requests
 from pathlib import Path
+from unittest import mock
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
@@ -17,7 +19,10 @@ from ray._private.utils import (
     get_master_wheel_url,
     get_release_wheel_url,
 )
-
+from ray._private.runtime_env.utils import (
+    SubprocessCalledProcessError,
+    check_output_cmd,
+)
 from ray._private.runtime_env.uri_cache import URICache
 
 
@@ -449,6 +454,67 @@ def test_runtime_env_log_msg(
         assert "runtime_env" in sources
     else:
         assert "runtime_env" not in sources
+
+
+def test_subprocess_error():
+    ex = SubprocessCalledProcessError
+    with pytest.raises(subprocess.SubprocessError) as e:
+        raise ex(123, "abc")
+    assert "test_out" not in str(e.value)
+    assert "test_err" not in str(e.value)
+    with pytest.raises(subprocess.SubprocessError) as e:
+        raise ex(123, "abc", stderr="test_err")
+    assert "test_out" not in str(e.value)
+    assert "test_err" in str(e.value)
+    with pytest.raises(subprocess.SubprocessError) as e:
+        raise ex(123, "abc", output="test_out")
+    assert "test_out" in str(e.value)
+    assert "test_err" not in str(e.value)
+    with pytest.raises(subprocess.SubprocessError) as e:
+        raise ex(123, "abc", output="test_out", stderr="test_err")
+    assert "test_out" in str(e.value)
+    assert "test_err" in str(e.value)
+
+
+def test_subprocess_error_with_last_n_lines():
+    stdout = "1\n2\n3\n4\n5\n"
+    stderr = "5\n4\n3\n2\n1\n"
+    exception = SubprocessCalledProcessError(123, "abc", output=stdout, stderr=stderr)
+    exception.LAST_N_LINES = 3
+    assert "stdout='4\n5\n'" in str(exception)
+    assert "stderr='2\n1\n'" in str(exception)
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Fails on Windows.")
+@pytest.mark.asyncio
+async def test_check_output_cmd():
+    logs = []
+
+    class _FakeLogger:
+        def __getattr__(self, item):
+            def _log(formatter, *args):
+                logs.append(formatter % args)
+
+            return _log
+
+    for _ in range(2):
+        output = await check_output_cmd(["pwd"], logger=_FakeLogger())
+        assert len(output) > 0
+
+    all_log_string = "\n".join(logs)
+
+    # Check the cmd index generator works.
+    assert "cmd[1]" in all_log_string
+    assert "cmd[2]" in all_log_string
+
+    with mock.patch(
+        "asyncio.subprocess.Process.communicate",
+        side_effect=Exception("fake exception"),
+    ):
+        with pytest.raises(RuntimeError) as e:
+            await check_output_cmd(["pwd"], logger=_FakeLogger())
+        # Make sure the exception has cmd trace info.
+        assert "cmd[3]" in str(e)
 
 
 if __name__ == "__main__":

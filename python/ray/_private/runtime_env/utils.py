@@ -294,7 +294,7 @@ class SubprocessCalledProcessError(subprocess.CalledProcessError):
     LAST_N_LINES = 10
 
     @staticmethod
-    def _get_last_n_line(str_data, last_n_lines):
+    def _get_last_n_line(str_data: str, last_n_lines: int) -> str:
         if last_n_lines < 0:
             return str_data
         lines = str_data.split("\n")
@@ -308,19 +308,17 @@ class SubprocessCalledProcessError(subprocess.CalledProcessError):
         }
         for name, s in out.items():
             if s:
-                str_list.append(
-                    f"{name}={repr(self._get_last_n_line(s, self.LAST_N_LINES))}"
-                )
+                str_list.append(f"{name}={self._get_last_n_line(s, self.LAST_N_LINES)}")
         return ", ".join(str_list)
 
 
 async def check_output_cmd(
-    cmd,
+    cmd: List[str],
     *,
     logger: logging.Logger,
     cmd_index_gen: types.GeneratorType = itertools.count(1),
     **kwargs,
-):
+) -> str:
     """Run command with arguments and return its output.
 
     If the return code was non-zero it raises a CalledProcessError. The
@@ -355,8 +353,8 @@ async def check_output_cmd(
         #     https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.asyncio.subprocess.Process.stderr
         #   * Avoid mixing multiple outputs of concurrent cmds.
         stdout, _ = await proc.communicate()
-    except BaseException:
-        raise
+    except BaseException as e:
+        raise RuntimeError(f"Run cmd[{cmd_index}] got exception.") from e
     else:
         stdout = stdout.decode("utf-8")
         if stdout:
@@ -367,7 +365,6 @@ async def check_output_cmd(
             raise SubprocessCalledProcessError(proc.returncode, cmd, output=stdout)
         return stdout
     finally:
-        logger.info("Clean cmd[%s]", cmd_index)
         # Kill process.
         try:
             proc.kill()
@@ -375,4 +372,3 @@ async def check_output_cmd(
             pass
         # Wait process exit.
         await proc.wait()
-        assert proc.returncode is not None
