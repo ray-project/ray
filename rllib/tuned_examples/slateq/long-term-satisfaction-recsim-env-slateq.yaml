@@ -25,7 +25,7 @@ long-term-satisfaction-recsim-env-slateq:
                 # timestep?
                 slate_size: 2
                 # Should the action space be purely Discrete? Useful for algos that
-                # don't support MultiDiscrete (e.g. DQN).
+                # don't support MultiDiscrete (e.g. DQN or Bandits).
                 # SlateQ handles MultiDiscrete action spaces.
                 convert_to_discrete_action_space: false
                 seed: 42

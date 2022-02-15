@@ -3,12 +3,12 @@ interest-evolution-recsim-env-slateq:
     run: SlateQ
     stop:
         episode_reward_mean: 500.0
-        timesteps_total: 100000
+        timesteps_total: 1000000
     config:
-        # SlateQ only supported for torch so far.
-        framework: torch
+        framework: tf2
+        # eager_tracing: true  # true by default
 
-        metrics_num_episodes_for_smoothing: 1000
+        metrics_num_episodes_for_smoothing: 100
 
         # RLlib/RecSim wrapper specific settings:
         env_config:
@@ -17,32 +17,37 @@ interest-evolution-recsim-env-slateq:
                 # document sampler model (a logic that creates n documents to select
                 # the slate from).
                 resample_documents: false
-                num_candidates: 10
+                num_candidates: 50
                 # How many documents to recommend (out of `num_candidates`) each
                 # timestep?
                 slate_size: 2
                 # Should the action space be purely Discrete? Useful for algos that
-                # don't support MultiDiscrete (e.g. DQN).
+                # don't support MultiDiscrete (e.g. DQN or Bandits).
                 # SlateQ handles MultiDiscrete action spaces.
                 convert_to_discrete_action_space: false
-                seed: 42
+                seed: 0
 
-        hiddens: [256, 256]
+        #fcnet_hiddens_per_candidate: [256, 32]
+
+        exploration_config:
+            epsilon_timesteps: 2500000
+
+        grad_clip: 10.0
 
         num_workers: 0
         num_gpus: 0
 
-        train_batch_size: 64
+        train_batch_size: 32
 
-        lr_choice_model: 0.003
-        lr_q_model: 0.003
+        #lr_choice_model: 0.003
+        lr: 0.00025
 
-        target_network_update_freq: 800
+        target_network_update_freq: 1000
         tau: 1.0
 
         # Evaluation settings.
-        evaluation_interval: 1
-        evaluation_num_workers: 6
-        evaluation_duration: 500
-        evaluation_duration_unit: episodes
-        evaluation_parallel_to_training: true
+        #evaluation_interval: 1
+        #evaluation_num_workers: 6
+        #evaluation_duration: 500
+        #evaluation_duration_unit: episodes
+        #evaluation_parallel_to_training: true

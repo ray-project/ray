@@ -111,17 +111,21 @@ def build_slateq_losses(
     # action.shape: [batch_size, slate_size]
     actions = train_batch[SampleBatch.ACTIONS]
 
+    slate_size = len(observation["response"])
+
     # click_indicator: [B, S]
-    # q_values: [B, A]
-    # actions: [B, S]
-    # slate_q_values: [B, S]
-    # replay_click_q: [B]
     click_indicator = tf.stack([k["click"][:, 1] for k in observation["response"]], 1) #self._replay.rewards[:, :, self._click_response_index]
+    # item_reward: [B, S]
+    item_reward = tf.stack([k["watch_time"] for k in observation["response"]], 1)
+    # q_values: [B, A]
     q_values = model.get_q_values(user_obs, doc_obs)
+    # slate_q_values: [B, S]
     slate_q_values = tf.gather(
         q_values,
-        tf.cast(train_batch["actions"], dtype=tf.int32), batch_dims=-1)
+        tf.cast(actions, dtype=tf.int32), batch_dims=-1)
+
     # Only get the Q from the clicked document.
+    # replay_click_q: [B]
     replay_click_q = tf.reduce_sum(
         input_tensor=slate_q_values * click_indicator,
         axis=1,
@@ -135,8 +139,68 @@ def build_slateq_losses(
     # doc.shape: [batch_size, num_docs, embedding_size]
     doc_next_obs = list(next_obs["doc"].values())
     #target = tf.stop_gradient(self._build_target_q_op())
-    target_q_values = policy.target_model.get_q_values(user_next_obs, doc_next_obs)
-    target_q_values = tf.stop_gradient(target_q_values)
+
+    #click_indicator = self._replay.rewards[:, :, self._click_response_index]
+
+    # Only compute the watch time reward of the clicked item.
+    reward = tf.reduce_sum(input_tensor=item_reward * click_indicator, axis=1)
+
+
+    next_q_values = policy.target_model.get_q_values(user_next_obs, doc_next_obs)
+    scores, score_no_click = score_documents(user_next_obs, doc_next_obs)
+
+    # Obtain all possible slates given current docs in the candidate set.
+    #slate_size = next_actions.get_shape().as_list()[1]
+    #num_candidates = next_q_values.get_shape().as_list()[1]
+    #mesh_args = [list(range(num_candidates))] * slate_size
+    #slates = tf.stack(tf.meshgrid(*mesh_args), axis=-1)
+    #slates = tf.reshape(slates, shape=(-1, slate_size))
+    # Filter slates that include duplicates to ensure each document is picked
+    # at most once.
+    #unique_mask = tf.map_fn(
+    #    lambda x: tf.equal(tf.size(input=x), tf.size(input=tf.unique(x)[0])),
+    #    slates,
+    #    dtype=tf.bool)
+    # [num_of_slates, slate_size]
+    #slates = tf.boolean_mask(tensor=slates, mask=unique_mask)
+
+    # [batch_size, num_of_slates, slate_size]
+    next_q_values_slate = tf.gather(next_q_values, policy.slates, axis=1)
+    # [batch_size, num_of_slates, slate_size]
+    scores_slate = tf.gather(scores, policy.slates, axis=1)
+    # [batch_size, num_of_slates]
+    batch_size = user_next_obs.get_shape().as_list()[0]
+    score_no_click_slate = tf.reshape(
+      tf.tile(score_no_click,
+              tf.shape(input=policy.slates)[:1]), [batch_size, -1])
+
+    # [batch_size, num_of_slates]
+    next_q_target_slate = tf.reduce_sum(
+      input_tensor=next_q_values_slate * scores_slate, axis=2) / (
+          tf.reduce_sum(input_tensor=scores_slate, axis=2) +
+          score_no_click_slate)
+
+    next_q_target_max = tf.reduce_max(input_tensor=next_q_target_slate, axis=1)
+
+    target = reward + policy.config["gamma"] * next_q_target_max * (1. -
+                                                 tf.cast(train_batch["dones"], tf.float32))
+
+
+
+
+
+
+    #target = compute_target_optimal_q(
+    #    reward=reward,
+    #    gamma=policy.config["gamma"],
+    #    slates=policy.slates,
+    #    slate_size=slate_size,
+    #    next_q_values=policy.target_model.get_q_values(user_next_obs, doc_next_obs),
+    #    user_obs=user_next_obs,
+    #    doc_obs=doc_next_obs,
+    #    terminals=train_batch["dones"],
+    #)
+    target = tf.stop_gradient(target)
 
     clicked = tf.reduce_sum(input_tensor=click_indicator, axis=1)
     clicked_indices = tf.squeeze(tf.where(tf.equal(clicked, 1)), axis=1)
@@ -144,8 +208,11 @@ def build_slateq_losses(
     q_clicked = tf.gather(replay_click_q, clicked_indices)
     target_clicked = tf.gather(target, clicked_indices)
 
-    #def get_train_op():
-    #  loss = tf.reduce_mean(input_tensor=tf.square(q_clicked - target_clicked))
+    def get_train_op():
+        td_error = q_clicked - target_clicked
+        loss = huber_loss(td_error)
+        loss = tf.reduce_mean(loss)
+        return loss
       #if self.summary_writer is not None:
       #  with tf.variable_scope('Losses'):
       #    tf.summary.scalar('Loss', loss)
@@ -154,16 +221,26 @@ def build_slateq_losses(
 
     loss = tf.cond(
         pred=tf.greater(tf.reduce_sum(input_tensor=clicked), 0),
-        true_fn=lambda: tf.reduce_mean(input_tensor=tf.square(q_clicked - target_clicked)),
+        true_fn=get_train_op,
         false_fn=lambda: tf.constant(0.),
         name='')
+
+    policy._q_loss = loss
+    policy._target = tf.reduce_mean(target)
+    policy._q_clicked = tf.reduce_mean(q_clicked)
+    policy._target_clicked = tf.reduce_mean(target_clicked)
 
     return loss
 
 
 def build_slateq_stats(policy: Policy, batch) -> Dict[str, TensorType]:
-    stats = {}
-        #"q_loss": torch.mean(torch.stack(policy.get_tower_stats("q_loss"))),
+    stats = {
+        "q_loss": policy._q_loss,
+        "target": policy._target,
+        "q_clicked": policy._q_clicked,
+        "target_clicked": policy._target_clicked,
+        #"per_slate_q_values": policy._per_slate_q_values,
+    }
         #"q_values": torch.mean(torch.stack(policy.get_tower_stats("q_values"))),
         #"next_q_values": torch.mean(
         #    torch.stack(policy.get_tower_stats("next_q_values"))
@@ -217,16 +294,16 @@ def action_distribution_fn(
     q_values = model.get_q_values(user_obs, doc_obs)
 
     with tf.name_scope('select_slate'):
-        per_slate_q_values, slates = get_per_slate_q_values(
-            slate_size, score_no_click, scores, q_values)
+        per_slate_q_values = get_per_slate_q_values(
+            policy.slates, slate_size, score_no_click, scores, q_values)
     #output_slate = select_slate_optimal(
     #      slate_size, score_no_click, scores, q_values)
-
     #self._output_slate = tf.Print(
     #    self._output_slate, [tf.constant('cp 1'), self._output_slate, p, q],
     #    summarize=10000)
     #output_slate = tf.reshape(output_slate, (slate_size,))
-    model.slates = slates
+    model.slates = policy.slates
+    #policy._per_slate_q_values = per_slate_q_values
     return per_slate_q_values, Categorical, []
 
 
@@ -242,55 +319,39 @@ def action_distribution_fn(
     #return output_slate
 
 
-def setup_late_mixins(
-    policy: Policy,
-    obs_space: gym.spaces.Space,
-    action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
-) -> None:
-    """Call all mixin classes' constructors before SlateQTorchPolicy initialization.
-
-    Args:
-        policy: The Policy object.
-        obs_space: The Policy's observation space.
-        action_space: The Policy's action space.
-        config: The Policy's config.
-    """
-    TargetNetworkMixin.__init__(policy)
-
-
-def select_slate_optimal(slate_size, s_no_click, s, q):
-    """Selects the slate using exhaustive search.
-    This algorithm corresponds to the method "OS" in
-    Ie et al. https://arxiv.org/abs/1905.12767.
-    Args:
-    slate_size: int, the size of the recommendation slate.
-    s_no_click: float tensor, the score for not clicking any document.
-    s: [num_of_documents] tensor, the scores for clicking documents.
-    q: [num_of_documents] tensor, the predicted q values for documents.
-    Returns:
-    [slate_size] tensor, the selected slate.
-    """
-    per_slate_q_values, slates = get_per_slate_q_values(slate_size, s_no_click, s, q)
-    max_q_slate_index = tf.argmax(input=per_slate_q_values)
-    return tf.gather(slates, max_q_slate_index, axis=0)
+#def select_slate_optimal(slates, slate_size, s_no_click, s, q):
+#    """Selects the slate using exhaustive search.
+#    This algorithm corresponds to the method "OS" in
+#    Ie et al. https://arxiv.org/abs/1905.12767.
+#    Args:
+#    slate_size: int, the size of the recommendation slate.
+#    s_no_click: float tensor, the score for not clicking any document.
+#    s: [num_of_documents] tensor, the scores for clicking documents.
+#    q: [num_of_documents] tensor, the predicted q values for documents.
+#    Returns:
+#    [slate_size] tensor, the selected slate.
+#    """
+#    per_slate_q_values, slates = get_per_slate_q_values(slates, slate_size, s_no_click, s, q)
+#    max_q_slate_index = tf.argmax(input=per_slate_q_values)
+#    return tf.gather(slates, max_q_slate_index, axis=0)
 
 
-def get_per_slate_q_values(slate_size, s_no_click, s, q):
-    num_candidates = s.shape.as_list()[1]
+def get_per_slate_q_values(slates, slate_size, s_no_click, s, q):
+    #num_candidates = s.shape.as_list()[1]
 
-    # Obtain all possible slates given current docs in the candidate set.
-    mesh_args = [list(range(num_candidates))] * slate_size
-    slates = tf.stack(tf.meshgrid(*mesh_args), axis=-1)
-    slates = tf.reshape(slates, shape=(-1, slate_size))
+    ## Obtain all possible slates given current docs in the candidate set.
+    #mesh_args = [list(range(num_candidates))] * slate_size
+    #slates = tf.stack(tf.meshgrid(*mesh_args), axis=-1)
+    #slates = tf.reshape(slates, shape=(-1, slate_size))
 
-    # Filter slates that include duplicates to ensure each document is picked
-    # at most once.
-    unique_mask = tf.map_fn(
-        lambda x: tf.equal(tf.size(input=x), tf.size(input=tf.unique(x)[0])),
-        slates,
-        dtype=tf.bool)
-    slates = tf.boolean_mask(tensor=slates, mask=unique_mask)
+    ## Filter slates that include duplicates to ensure each document is picked
+    ## at most once.
+    #unique_mask = tf.map_fn(
+    #    lambda x: tf.equal(tf.size(input=x), tf.size(input=tf.unique(x)[0])),
+    #    slates,
+    #    dtype=tf.bool)
+    #slates = tf.boolean_mask(tensor=slates, mask=unique_mask)
+
     #repeat_slates = tf.tile(tf.expand_dims(slates, 0), [tf.shape(s)[0], 1, 1])
 
     slate_q_values = tf.gather(s * q, slates, axis=1)
@@ -300,11 +361,11 @@ def get_per_slate_q_values(slate_size, s_no_click, s, q):
 
     slate_q_values = slate_q_values / tf.expand_dims(slate_normalizer, 2)
     slate_sum_q_values = tf.reduce_sum(input_tensor=slate_q_values, axis=2)
-    return slate_sum_q_values, slates
+    return slate_sum_q_values
 
 
-def compute_target_optimal_q(reward, gamma, next_actions, next_q_values,
-                             next_states, terminals):
+def compute_target_optimal_q(reward, gamma, slates, slate_size, next_q_values,
+                             user_obs, doc_obs, terminals):
     """Builds an op used as a target for the Q-value.
 
     This algorithm corresponds to the method "OT" in
@@ -313,7 +374,6 @@ def compute_target_optimal_q(reward, gamma, next_actions, next_q_values,
     Args:
         reward: [batch_size] tensor, the immediate reward.
         gamma: float, discount factor with the usual RL meaning.
-        next_actions: [batch_size, slate_size] tensor, the next slate.
         next_q_values: [batch_size, num_of_documents] tensor, the q values of the
           documents in the next step.
         next_states: [batch_size, 1 + num_of_documents] tensor, the features for the
@@ -322,29 +382,29 @@ def compute_target_optimal_q(reward, gamma, next_actions, next_q_values,
     Returns:
         [batch_size] tensor, the target q values.
     """
-    scores, score_no_click = _get_unnormalized_scores(next_states)
+    scores, score_no_click = score_documents(user_obs, doc_obs)
 
     # Obtain all possible slates given current docs in the candidate set.
-    slate_size = next_actions.get_shape().as_list()[1]
-    num_candidates = next_q_values.get_shape().as_list()[1]
-    mesh_args = [list(range(num_candidates))] * slate_size
-    slates = tf.stack(tf.meshgrid(*mesh_args), axis=-1)
-    slates = tf.reshape(slates, shape=(-1, slate_size))
+    #slate_size = next_actions.get_shape().as_list()[1]
+    #num_candidates = next_q_values.get_shape().as_list()[1]
+    #mesh_args = [list(range(num_candidates))] * slate_size
+    #slates = tf.stack(tf.meshgrid(*mesh_args), axis=-1)
+    #slates = tf.reshape(slates, shape=(-1, slate_size))
     # Filter slates that include duplicates to ensure each document is picked
     # at most once.
-    unique_mask = tf.map_fn(
-        lambda x: tf.equal(tf.size(input=x), tf.size(input=tf.unique(x)[0])),
-        slates,
-        dtype=tf.bool)
+    #unique_mask = tf.map_fn(
+    #    lambda x: tf.equal(tf.size(input=x), tf.size(input=tf.unique(x)[0])),
+    #    slates,
+    #    dtype=tf.bool)
     # [num_of_slates, slate_size]
-    slates = tf.boolean_mask(tensor=slates, mask=unique_mask)
+    #slates = tf.boolean_mask(tensor=slates, mask=unique_mask)
 
     # [batch_size, num_of_slates, slate_size]
     next_q_values_slate = tf.gather(next_q_values, slates, axis=1)
     # [batch_size, num_of_slates, slate_size]
     scores_slate = tf.gather(scores, slates, axis=1)
     # [batch_size, num_of_slates]
-    batch_size = next_states.get_shape().as_list()[0]
+    batch_size = user_obs.get_shape().as_list()[0]
     score_no_click_slate = tf.reshape(
       tf.tile(score_no_click,
               tf.shape(input=slates)[:1]), [batch_size, -1])
@@ -399,53 +459,68 @@ def score_documents(user_obs,
     return all_scores[:, :-1], all_scores[:, -1]
 
 
-def _get_unnormalized_scores(states):
-    """Computes the unnormalized scores for the docs."""
-    #stack_number = -1
-    user_obs = states[:, 0, :]#, stack_number]
-    doc_obs = states[:, 1:, :]#, stack_number]
+def setup_early(policy, obs_space, action_space, config):
+    # Obtain all possible slates given current docs in the candidate set.
+    #slate_size = next_actions.get_shape().as_list()[1]
+    num_candidates = action_space.nvec[0]
+    slate_size = len(action_space.nvec)
 
-    batch_size = states.get_shape().as_list()[0]
-    scores_list = []
-    score_no_click_list = []
-    for i in range(batch_size):
-        scores_tf, score_no_click_tf = score_documents(user_obs[i], doc_obs[i])
-        scores_list.append(scores_tf)
-        score_no_click_list.append(score_no_click_tf)
-    scores = tf.stack(scores_list)
-    score_no_click = tf.stack(score_no_click_list)
+    mesh_args = [list(range(num_candidates))] * slate_size
+    slates = tf.stack(tf.meshgrid(*mesh_args), axis=-1)
+    slates = tf.reshape(slates, shape=(-1, slate_size))
+    # Filter slates that include duplicates to ensure each document is picked
+    # at most once.
+    unique_mask = tf.map_fn(
+        lambda x: tf.equal(tf.size(input=x), tf.size(input=tf.unique(x)[0])),
+        slates,
+        dtype=tf.bool)
+    # [num_of_slates, slate_size]
+    slates = tf.boolean_mask(tensor=slates, mask=unique_mask)
 
-    return scores, score_no_click
+    policy.slates = slates
 
-
-"""def _build_select_slate_op(self, q_values, scores, score_no_click):
-    #p_no_click = self._prob_no_click_ph
-    #p = self._doc_affinity_scores_ph
-    #q = self._net_outputs.q_values[0]
-    with tf.name_scope('select_slate'):
-      output_slate = select_slate_optimal(
-          self._slate_size, score_no_click, scores, q_values)
-
-    #self._output_slate = tf.Print(
-    #    self._output_slate, [tf.constant('cp 1'), self._output_slate, p, q],
-    #    summarize=10000)
-    output_slate = tf.reshape(output_slate, (self._slate_size,))
-    return output_slate
-
-    #self._action_counts = tf.get_variable(
-    #    'action_counts',
-    #    shape=[self._num_candidates],
-    #    initializer=tf.zeros_initializer())
-    #output_slate = tf.reshape(self._output_slate, [-1])
-    #output_one_hot = tf.one_hot(output_slate, self._num_candidates)
-    #update_ops = []
-    #for i in range(self._slate_size):
-    #  update_ops.append(tf.assign_add(self._action_counts, output_one_hot[i]))
-    #self._select_action_update_op = tf.group(*update_ops)
-"""
 
 def setup_mid_mixins(policy: Policy, obs_space, action_space, config) -> None:
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
+
+
+def setup_late_mixins(
+    policy: Policy,
+    obs_space: gym.spaces.Space,
+    action_space: gym.spaces.Space,
+    config: TrainerConfigDict,
+) -> None:
+    """Call all mixin classes' constructors before SlateQTorchPolicy initialization.
+
+    Args:
+        policy: The Policy object.
+        obs_space: The Policy's observation space.
+        action_space: The Policy's action space.
+        config: The Policy's config.
+    """
+    TargetNetworkMixin.__init__(policy, config)
+
+
+
+def rmsprop_optimizer(
+    policy: Policy, config: TrainerConfigDict
+) -> "tf.keras.optimizers.Optimizer":
+    if policy.config["framework"] in ["tf2", "tfe"]:
+        return tf.keras.optimizers.RMSprop(
+            learning_rate=policy.cur_lr,
+            epsilon=0.00001,
+            decay=0.95,
+            momentum=0.0,
+            centered=True,
+        )
+    else:
+        return tf1.train.RMSPropOptimizer(
+            learning_rate=policy.cur_lr,
+            epsilon=0.00001,
+            decay=0.95,
+            momentum=0.0,
+            centered=True,
+        )
 
 
 SlateQTFPolicy = build_tf_policy(
@@ -456,11 +531,12 @@ SlateQTFPolicy = build_tf_policy(
     make_model=build_slateq_model,
     loss_fn=build_slateq_losses,
     stats_fn=build_slateq_stats,
-    optimizer_fn=adam_optimizer,
+    optimizer_fn=rmsprop_optimizer,
     # Define how to act.
     action_distribution_fn=action_distribution_fn,
     compute_gradients_fn=clip_gradients,
 
+    before_init=setup_early,
     before_loss_init=setup_mid_mixins,
     mixins=[LearningRateSchedule, TargetNetworkMixin],
 )

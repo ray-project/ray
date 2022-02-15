@@ -72,7 +72,7 @@ InterestExplorationRecSimEnv = make_recsim_env(
 def iev_user_model_creator(env_ctx):
     return iev.IEvUserModel(
         env_ctx["slate_size"],
-        choice_model_ctor=choice_model.MultinomialLogitChoiceModel,
+        choice_model_ctor=choice_model.MultinomialProportionalChoiceModel,
         response_model_ctor=iev.IEvResponse,
         user_state_ctor=iev.IEvUserState,
         seed=env_ctx["seed"],
@@ -92,7 +92,8 @@ class SingleClusterIEvVideo(iev.IEvVideo):
 
 
 def iev_document_sampler_creator(env_ctx):
-    return iev.IEvVideoSampler(doc_ctor=SingleClusterIEvVideo, seed=env_ctx["seed"])
+    return iev.UtilityModelVideoSampler(
+        doc_ctor=iev.IEvVideo, seed=env_ctx['seed'])
 
 
 InterestEvolutionRecSimEnv = make_recsim_env(

@@ -63,7 +63,7 @@ DEFAULT_CONFIG = with_common_config({
         # E.g.: action_space=MultiDiscrete([5, 5]) <- slate-size=2, num-docs=5,
         # but action distribution is Categorical(5*4) -> all possible unique slates.
         "type": "SlateEpsilonGreedy",
-        "epsilon_timesteps": 50000,
+        "epsilon_timesteps": 250000,
     },
     # Switch to greedy actions in evaluation workers.
     "evaluation_config": {

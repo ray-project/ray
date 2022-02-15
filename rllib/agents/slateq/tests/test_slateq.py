@@ -25,11 +25,12 @@ class TestSlateQ(unittest.TestCase):
         """Test whether a SlateQTrainer can be built with both frameworks."""
         config = {
             "env": InterestEvolutionRecSimEnv,
+            "learning_starts": 1000,
         }
 
-        num_iterations = 1
+        num_iterations = 200
 
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+        for _ in framework_iterator(config, frameworks=("tf2", "torch"), with_eager_tracing=False):
             trainer = slateq.SlateQTrainer(config=config)
             for i in range(num_iterations):
                 results = trainer.train()
