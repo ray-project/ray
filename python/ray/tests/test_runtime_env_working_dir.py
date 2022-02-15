@@ -122,7 +122,7 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
 
         @ray.remote
         def test_py_modules_whl():
-            import pip_install_test
+            import pip_install_test  # noqa: F401
 
             return True
 

@@ -107,7 +107,8 @@ def upload_py_modules_if_needed(
                     )
             else:
                 raise ValueError(
-                    f"py_modules entry must be a directory or a .whl file; got {module_path}"
+                    "py_modules entry must be a directory or a .whl file; "
+                    f"got {module_path}"
                 )
 
         py_modules_uris.append(module_uri)
