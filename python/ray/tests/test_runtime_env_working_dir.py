@@ -86,13 +86,12 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
             ray.init(
                 address,
                 runtime_env={
-                    "py_modules": [str(Path(tmp_working_dir) / "test_module")]
+                    "py_modules": [
+                        str(Path(tmp_working_dir) / "test_module"),
+                        Path(os.path.dirname(__file__))
+                        / "pip_install_test-0.5-py3-none-any.whl",
+                    ]
                 },
-            )
-        elif option == "py_modules_path":
-            ray.init(
-                address,
-                runtime_env={"py_modules": [Path(tmp_working_dir) / "test_module"]},
             )
 
     call_ray_init()
@@ -118,6 +117,20 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
             ray.get(test_import.remote())
     else:
         assert ray.get(test_import.remote()) == 1
+
+    if option == "py_modules":
+
+        @ray.remote
+        def test_py_modules_whl():
+            import pip_install_test
+
+            return True
+
+        assert ray.get(test_py_modules_whl.remote())
+
+    if option in {"py_modules", "working_dir_zip"}:
+        # These options are not tested beyond this point, so return to save time.
+        return
 
     reinit()
 
