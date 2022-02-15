@@ -1,7 +1,13 @@
-from typing import Dict, List, Tuple, Any
+import asyncio
+import itertools
 import json
-from ray.core.generated.runtime_env_common_pb2 import RuntimeEnv as ProtoRuntimeEnv
+import logging
+import subprocess
+import types
+from typing import Dict, List, Tuple, Any
+
 from google.protobuf import json_format
+from ray.core.generated.runtime_env_common_pb2 import RuntimeEnv as ProtoRuntimeEnv
 
 
 def _build_proto_pip_runtime_env(runtime_env_dict: dict, runtime_env: ProtoRuntimeEnv):
@@ -280,3 +286,93 @@ class RuntimeEnv:
         _build_proto_container_runtime_env(runtime_env_dict, proto_runtime_env)
         _build_proto_plugin_runtime_env(runtime_env_dict, proto_runtime_env)
         return cls(proto_runtime_env=proto_runtime_env)
+
+
+class SubprocessCalledProcessError(subprocess.CalledProcessError):
+    """The subprocess.CalledProcessError with stripped stdout."""
+
+    LAST_N_LINES = 10
+
+    @staticmethod
+    def _get_last_n_line(str_data, last_n_lines):
+        if last_n_lines < 0:
+            return str_data
+        lines = str_data.split("\n")
+        return "\n".join(lines[-last_n_lines:])
+
+    def __str__(self):
+        str_list = [super().__str__().strip(",.")]
+        out = {
+            "stdout": self.stdout,
+            "stderr": self.stderr,
+        }
+        for name, s in out.items():
+            if s:
+                str_list.append(
+                    f"{name}={repr(self._get_last_n_line(s, self.LAST_N_LINES))}"
+                )
+        return ", ".join(str_list)
+
+
+async def check_output_cmd(
+    cmd,
+    *,
+    logger: logging.Logger,
+    cmd_index_gen: types.GeneratorType = itertools.count(1),
+    **kwargs,
+):
+    """Run command with arguments and return its output.
+
+    If the return code was non-zero it raises a CalledProcessError. The
+    CalledProcessError object will have the return code in the returncode
+    attribute and any output in the output attribute.
+
+    Args:
+        cmd: The cmdline should be a sequence of program arguments or else
+            a single string or path-like object. The program to execute is
+            the first item in cmd.
+        logger: The logger instance.
+        cmd_index_gen: The cmd index generator, default is itertools.count(1).
+        kwargs: All arguments are passed to the create_subprocess_exec.
+
+    Returns:
+        The stdout of cmd.
+
+    Raises:
+        CalledProcessError: If the return code of cmd is not 0.
+    """
+
+    cmd_index = next(cmd_index_gen)
+    logger.info("Run cmd[%s] %s", cmd_index, repr(cmd))
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, **kwargs
+    )
+
+    try:
+        # Use communicate instead of polling stdout:
+        #   * Avoid deadlocks due to streams pausing reading or writing and blocking the
+        #     child process. Please refer to:
+        #     https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.asyncio.subprocess.Process.stderr
+        #   * Avoid mixing multiple outputs of concurrent cmds.
+        stdout, _ = await proc.communicate()
+    except BaseException:
+        raise
+    else:
+        stdout = stdout.decode("utf-8")
+        if stdout:
+            logger.info("Output of cmd[%s]: %s", cmd_index, stdout)
+        else:
+            logger.info("No output for cmd[%s]", cmd_index)
+        if proc.returncode != 0:
+            raise SubprocessCalledProcessError(proc.returncode, cmd, output=stdout)
+        return stdout
+    finally:
+        logger.info("Clean cmd[%s]", cmd_index)
+        # Kill process.
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+        # Wait process exit.
+        await proc.wait()
+        assert proc.returncode is not None
