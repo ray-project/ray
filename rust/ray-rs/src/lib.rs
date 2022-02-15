@@ -279,7 +279,8 @@ unsafe impl Send for RayRustBuffer {}
 unsafe impl Sync for RayRustBuffer {}
 
 #[cfg(feature = "async")]
-pub extern "C" fn rust_worker_execute_async(
+pub extern "C" fn rust_worker_execute(
+    is_async: bool,
     actor_ptr: *mut *mut std::os::raw::c_void,
     task_type_int: i32,
     ray_function_info: RaySlice,
@@ -287,32 +288,43 @@ pub extern "C" fn rust_worker_execute_async(
     args_len: u64,
     return_values: RaySlice,
 ) {
-    let mut e = Arc::new(FiberEvent::new());
-    let e_ = e.clone();
+    if is_async {
+        let mut e = Arc::new(FiberEvent::new());
+        let e_ = e.clone();
 
-    handle_async_startup();
+        handle_async_startup();
 
-    ASYNC_RUNTIME_SENDER
-        .lock()
-        .unwrap()
-        .as_ref()
-        .expect("runtime is not initialized")
-        .send(
-            (TaskData {
-                actor_ptr,
-                task_type_int,
-                ray_function_info,
-                args,
-                args_len,
-                return_values,
-            },
-            e_)
+        ASYNC_RUNTIME_SENDER
+            .lock()
+            .unwrap()
+            .as_ref()
+            .expect("runtime is not initialized")
+            .send(
+                (TaskData {
+                    actor_ptr,
+                    task_type_int,
+                    ray_function_info,
+                    args,
+                    args_len,
+                    return_values,
+                },
+                e_)
+            );
+
+        // Not sure if this is safe. When we call yield, are we sure
+        // boost.asio is aware enough to save all of Rust's (or other lang's)
+        // live state?
+        e.yield_and_await();
+    } else {
+        rust_worker_execute_internal(
+            actor_ptr,
+            task_type_int,
+            ray_function_info,
+            args,
+            args_len,
+            return_values,
         );
-
-    // Not sure if this is safe. When we call yield, are we sure
-    // boost.asio is aware enough to save all of Rust's (or other lang's)
-    // live state?
-    e.yield_and_await();
+    }
 }
 
 
@@ -421,7 +433,7 @@ async fn rust_worker_execute_async_internal(task_data: TaskData) {
     }
 }
 
-pub extern "C" fn rust_worker_execute(
+fn rust_worker_execute_internal(
     actor_ptr: *mut *mut std::os::raw::c_void,
     task_type_int: i32,
     ray_function_info: RaySlice,

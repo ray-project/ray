@@ -1,4 +1,5 @@
 pub use tokio::runtime::{EnterGuard as TokioHandleGuard, Handle as TokioHandle};
+use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 use super::{Symbol, ray_info, lazy_static, RwLock, FiberEvent, TaskData, Mutex, util, LIBRARIES, Arc, rust_worker_execute_async_internal};
 use std::{
     cell::RefCell,
@@ -6,8 +7,8 @@ use std::{
 
 #[cfg(feature = "async")]
 lazy_static! {
-    pub(crate) static ref ASYNC_RUNTIME_SENDER: Mutex<Option<tokio::sync::mpsc::UnboundedSender<(TaskData, Arc<FiberEvent>)>>> =
-        Mutex::new(None);
+    pub(crate) static ref ASYNC_RUNTIME_SENDER:
+        Mutex<Option<UnboundedSender<(TaskData, Arc<FiberEvent>)>>> = Mutex::new(None);
     static ref TOKIO_HANDLE: RwLock<Option<TokioHandle>> = RwLock::new(None);
 }
 
@@ -92,7 +93,7 @@ pub(crate) fn handle_async_startup() {
         //
         // Idea: get rid of
         None => {
-            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(TaskData, Arc<FiberEvent>)>();
+            let (tx, mut rx) = unbounded_channel::<(TaskData, Arc<FiberEvent>)>();
             *guard = Some(tx);
             std::thread::spawn(move || {
                 // Future: plug-and-play with async-rs etc
@@ -131,7 +132,7 @@ pub(crate) fn handle_async_startup() {
                     }
                 }
 
-                ray_info!("Looping");
+                ray_info!("rust async executor: looping");
                 rt.block_on(async move {
                     loop {
                         let (task_data, notifier) = rx.recv().await.expect("did not receive");
