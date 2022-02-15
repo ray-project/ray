@@ -454,9 +454,10 @@ RAY_CONFIG(int64_t, max_command_batch_size, 2000)
 /// The maximum batch size for OBOD report.
 RAY_CONFIG(int64_t, max_object_report_batch_size, 2000)
 
-/// The time where the subscriber connection is timed out in milliseconds.
-/// This is for the pubsub module.
-RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
+/// For Ray publishers, the minimum time to drop an inactive subscriber connection in ms.
+/// In the current implementation, a subscriber might be dead for up to 3x the configured
+/// time before it is deleted from the publisher, i.e. deleted in 300s ~ 900s.
+RAY_CONFIG(uint64_t, subscriber_timeout_ms, 300 * 1000)
 
 // This is the minimum time an actor will remain in the actor table before
 // being garbage collected when a job finishes
