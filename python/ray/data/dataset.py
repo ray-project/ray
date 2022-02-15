@@ -72,7 +72,8 @@ from ray.data.impl.stats import DatasetStats
 from ray.data.impl.compute import cache_wrapper, CallableClass
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
+from ray.data.impl.shuffle import simple_shuffle
+from ray.data.impl.fast_repartition import fast_repartition
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
@@ -475,70 +476,21 @@ class Dataset(Generic[T]):
                     "repartition", num_blocks, do_shuffle, supports_block_udf=True
                 )
             )
-            return Dataset(plan, self._epoch, self._lazy)
 
-        def do_fast(blocks, clear_input_blocks: bool):
-            # TODO(lazy): this won't work in lazy mode since it references `self`.
-            # Compute the (n-1) indices needed for an equal split of the data.
-            count = self.count()
-            indices = []
-            cur_idx = 0
-            for _ in range(num_blocks - 1):
-                cur_idx += count / num_blocks
-                indices.append(int(cur_idx))
-            assert len(indices) < num_blocks, (indices, num_blocks)
-            if indices:
-                splits = self.split_at_indices(indices)
-            else:
-                splits = [self]
-            # TODO(ekl) include stats for the split tasks. We may also want to
-            # consider combining the split and coalesce tasks as an optimization.
+        else:
 
-            # Coalesce each split into a single block.
-            reduce_task = cached_remote_fn(_shuffle_reduce).options(num_returns=2)
-            reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
-            reduce_out = [
-                reduce_task.remote(*s.get_internal_block_refs())
-                for s in splits
-                if s.num_blocks() > 0
-            ]
-
-            del splits  # Early-release memory.
-            if clear_input_blocks:
-                blocks.clear()
-
-            new_blocks, new_metadata = zip(*reduce_out)
-            new_blocks, new_metadata = list(new_blocks), list(new_metadata)
-            new_metadata = reduce_bar.fetch_until_complete(new_metadata)
-            reduce_bar.close()
-
-            # Handle empty blocks.
-            if len(new_blocks) < num_blocks:
-                from ray.data.impl.arrow_block import ArrowBlockBuilder
-                from ray.data.impl.pandas_block import PandasBlockBuilder
-                from ray.data.impl.simple_block import SimpleBlockBuilder
-
-                num_empties = num_blocks - len(new_blocks)
-                dataset_format = self._dataset_format()
-                if dataset_format == "arrow":
-                    builder = ArrowBlockBuilder()
-                elif dataset_format == "pandas":
-                    builder = PandasBlockBuilder()
+            def do_fast_repartition(block_list, clear_input_blocks: bool):
+                if clear_input_blocks:
+                    blocks = block_list.copy()
+                    block_list.clear()
                 else:
-                    builder = SimpleBlockBuilder()
-                empty_block = builder.build()
-                empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
-                    input_files=None, exec_stats=None
-                )  # No stats for empty block.
-                empty_blocks, empty_metadata = zip(
-                    *[(ray.put(empty_block), empty_meta) for _ in range(num_empties)]
-                )
-                new_blocks += empty_blocks
-                new_metadata += empty_metadata
+                    blocks = block_list
+                return fast_repartition(blocks, num_blocks)
 
-            return BlockList(new_blocks, new_metadata), {}
+            plan = self._plan.with_stage(
+                AllToAllStage("repartition", num_blocks, do_fast_repartition)
+            )
 
-        plan = self._plan.with_stage(AllToAllStage("repartition", num_blocks, do_fast))
         return Dataset(plan, self._epoch, self._lazy)
 
     def random_shuffle(
