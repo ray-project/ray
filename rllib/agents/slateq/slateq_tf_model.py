@@ -58,11 +58,13 @@ class SlateQTFModel(TFModelV2):
 
         self.q_value_head = tf.keras.Model([self.user_in, self.docs_in], q_outs)
 
-    def get_q_values(self, user: TensorType, docs: TensorType) -> List[TensorType]:
+    def get_q_values(self, user: TensorType, docs: List[TensorType]) -> List[TensorType]:
         """Returns Q-values, 1 for each candidate document, given user and doc tensors.
 
         Args:
-            model_out (Tensor): Embedding from the model layers.
+            user: [B x u] where u=embedding of user features.
+            docs: List[[B x d]] where d=embedding of doc features. Each item in the
+                list represents one document candidate.
 
         Returns:
             (action_scores, logits, dist) if num_atoms == 1, otherwise

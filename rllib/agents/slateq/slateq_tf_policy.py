@@ -101,36 +101,42 @@ def build_slateq_losses(
     Returns:
         Tuple consisting of 1) the choice loss- and 2) the Q-value loss tensors.
     """
-    obs = restore_original_dimensions(
+    observation = restore_original_dimensions(
         train_batch[SampleBatch.OBS], policy.observation_space, tensorlib=tf
     )
     # user.shape: [batch_size, embedding_size]
-    user = obs["user"]
+    user_obs = observation["user"]
     # doc.shape: [batch_size, num_docs, embedding_size]
-    doc = tf.concat([val.unsqueeze(1) for val in obs["doc"].values()], 1)
+    doc_obs = list(observation["doc"].values())
     # action.shape: [batch_size, slate_size]
     actions = train_batch[SampleBatch.ACTIONS]
-
-    next_obs = restore_original_dimensions(
-        train_batch[SampleBatch.NEXT_OBS], policy.observation_space, tensorlib=tf
-    )
 
     # click_indicator: [B, S]
     # q_values: [B, A]
     # actions: [B, S]
     # slate_q_values: [B, S]
     # replay_click_q: [B]
-    click_indicator = tf.stack([k["click"][:, 1] for k in obs["response"]], 1) #self._replay.rewards[:, :, self._click_response_index]
-    slate_q_values = tf.batch_gather(
-        self._replay_net_outputs.q_values,
-        tf.cast(train_batch["actions"], dtype=tf.int32))
+    click_indicator = tf.stack([k["click"][:, 1] for k in observation["response"]], 1) #self._replay.rewards[:, :, self._click_response_index]
+    q_values = model.get_q_values(user_obs, doc_obs)
+    slate_q_values = tf.gather(
+        q_values,
+        tf.cast(train_batch["actions"], dtype=tf.int32), batch_dims=-1)
     # Only get the Q from the clicked document.
     replay_click_q = tf.reduce_sum(
         input_tensor=slate_q_values * click_indicator,
         axis=1,
-        name='replay_click_q')
+        name="replay_click_q")
 
-    target = tf.stop_gradient(self._build_target_q_op())
+    next_obs = restore_original_dimensions(
+        train_batch[SampleBatch.NEXT_OBS], policy.observation_space, tensorlib=tf
+    )
+    # user.shape: [batch_size, embedding_size]
+    user_next_obs = next_obs["user"]
+    # doc.shape: [batch_size, num_docs, embedding_size]
+    doc_next_obs = list(next_obs["doc"].values())
+    #target = tf.stop_gradient(self._build_target_q_op())
+    target_q_values = policy.target_model.get_q_values(user_next_obs, doc_next_obs)
+    target_q_values = tf.stop_gradient(target_q_values)
 
     clicked = tf.reduce_sum(input_tensor=click_indicator, axis=1)
     clicked_indices = tf.squeeze(tf.where(tf.equal(clicked, 1)), axis=1)
@@ -138,17 +144,17 @@ def build_slateq_losses(
     q_clicked = tf.gather(replay_click_q, clicked_indices)
     target_clicked = tf.gather(target, clicked_indices)
 
-    def get_train_op():
-      loss = tf.reduce_mean(input_tensor=tf.square(q_clicked - target_clicked))
+    #def get_train_op():
+    #  loss = tf.reduce_mean(input_tensor=tf.square(q_clicked - target_clicked))
       #if self.summary_writer is not None:
       #  with tf.variable_scope('Losses'):
       #    tf.summary.scalar('Loss', loss)
 
-      return loss
+    #  return loss
 
     loss = tf.cond(
         pred=tf.greater(tf.reduce_sum(input_tensor=clicked), 0),
-        true_fn=get_train_op,
+        true_fn=lambda: tf.reduce_mean(input_tensor=tf.square(q_clicked - target_clicked)),
         false_fn=lambda: tf.constant(0.),
         name='')
 
