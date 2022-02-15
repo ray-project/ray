@@ -450,18 +450,18 @@ cc_library(
     ],
 )
 
-# This header is used to warp some streaming code so we can reduce suspicious
+# This header is used to warp some internal code so we can reduce suspicious
 # symbols export.
 cc_library(
-    name = "exported_streaming_internal",
+    name = "exported_internal",
     srcs = glob(
         [
-            "src/ray/streaming/streaming.cc",
+            "src/ray/internal/internal.cc",
         ],
     ),
     hdrs = glob(
         [
-            "src/ray/streaming/streaming.h",
+            "src/ray/internal/internal.h",
         ],
     ),
     copts = COPTS,
@@ -608,6 +608,7 @@ cc_library(
         ":ray_util",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -673,7 +674,7 @@ cc_library(
         ],
     }),
     strip_include_prefix = "src",
-    visibility = ["//streaming:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":agent_manager_rpc",
         ":gcs",
@@ -721,7 +722,7 @@ cc_library(
         ],
     }),
     strip_include_prefix = "src",
-    visibility = ["//streaming:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":agent_manager_rpc",
         ":node_manager_fbs",
@@ -854,6 +855,18 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_function_manager_test",
+    srcs = ["src/ray/gcs/gcs_server/test/gcs_function_manager_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
         ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1308,6 +1321,20 @@ cc_test(
 )
 
 cc_test(
+    name = "container_util_test",
+    size = "small",
+    srcs = ["src/ray/util/container_util_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_util",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "util_test",
     size = "small",
     srcs = ["src/ray/util/util_test.cc"],
@@ -1349,6 +1376,18 @@ cc_test(
     name = "dependency_manager_test",
     size = "small",
     srcs = ["src/ray/raylet/dependency_manager_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "wait_manager_test",
+    size = "small",
+    srcs = ["src/ray/raylet/wait_manager_test.cc"],
     copts = COPTS,
     tags = ["team:core"],
     deps = [
@@ -1581,6 +1620,23 @@ cc_test(
 )
 
 cc_test(
+    name = "gcs_job_manager_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_job_manager_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "gcs_placement_group_manager_test",
     size = "small",
     srcs = [
@@ -1672,6 +1728,7 @@ cc_test(
         ":gcs_server_lib",
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2280,7 +2337,7 @@ pyx_library(
     ),
     deps = [
         "//:core_worker_lib",
-        "//:exported_streaming_internal",
+        "//:exported_internal",
         "//:global_state_accessor_lib",
         "//:ray_util",
         "//:raylet_lib",
@@ -2288,33 +2345,6 @@ pyx_library(
         "//:src/ray/ray_version_script.lds",
         "//:stats_lib",
         "//src/ray/protobuf:serialization_cc_proto",
-    ],
-)
-
-pyx_library(
-    name = "_streaming",
-    srcs = glob([
-        "python/ray/streaming/_streaming.pyx",
-        "python/ray/__init__.py",
-        "python/ray/_raylet.pxd",
-        "python/ray/includes/*.pxd",
-        "python/ray/includes/*.pxi",
-        "python/ray/streaming/__init__.pxd",
-        "python/ray/streaming/includes/*.pxd",
-        "python/ray/streaming/includes/*.pxi",
-    ]),
-    cc_kwargs = dict(
-        srcs = PYX_SRCS,
-        copts = COPTS + PYX_COPTS,
-    ),
-    deps = [
-        "//streaming:streaming_lib",
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
     ],
 )
 
@@ -2341,7 +2371,7 @@ cc_binary(
     visibility = ["//java:__subpackages__"],
     deps = [
         "//:core_worker_lib",
-        "//:exported_streaming_internal",
+        "//:exported_internal",
         "//:global_state_accessor_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
@@ -2435,12 +2465,6 @@ copy_to_workspace(
 )
 
 copy_to_workspace(
-    name = "cp_streaming",
-    srcs = ["python/ray/streaming/_streaming.so"],
-    dstdir = "python/ray/streaming",
-)
-
-copy_to_workspace(
     name = "cp_all_py_proto",
     srcs = [":all_py_proto"],
     dstdir = "python/ray/core/generated",
@@ -2478,7 +2502,6 @@ genrule(
     srcs = [
         ":cp_all_py_proto",
         ":cp_serve_py_proto",
-        "//streaming:copy_streaming_py_proto",
     ],
     outs = ["install_py_proto.out"],
     cmd = """
@@ -2498,7 +2521,6 @@ genrule(
     name = "ray_pkg",
     srcs = [
         ":cp_raylet_so",
-        ":cp_streaming",
         ":python_sources",
         ":install_py_proto",
         ":cp_redis",

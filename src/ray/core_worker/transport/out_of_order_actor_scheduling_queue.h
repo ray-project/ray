@@ -56,11 +56,8 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
            rpc::SendReplyCallback send_reply_callback,
            const std::string &concurrency_group_name,
            const ray::FunctionDescriptor &function_descriptor,
-           std::function<void(rpc::SendReplyCallback)> steal_request = nullptr,
            TaskID task_id = TaskID::Nil(),
            const std::vector<rpc::ObjectReference> &dependencies = {}) override;
-
-  size_t Steal(rpc::StealTasksReply *reply) override;
 
   // We don't allow the cancellation of actor tasks, so invoking CancelTaskIfFound
   // results in a fatal error.

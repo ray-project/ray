@@ -17,14 +17,14 @@ MAX_BATCH_SIZE = 16
 
 # Cluster setup constants
 NUM_REDIS_SHARDS = 1
-REDIS_MAX_MEMORY = 10**8
-OBJECT_STORE_MEMORY = 10**8
+REDIS_MAX_MEMORY = 10 ** 8
+OBJECT_STORE_MEMORY = 10 ** 8
 NUM_NODES = 4
 
 # RandomTest setup constants
 CPUS_PER_NODE = 10
 
-IS_SMOKE_TEST = "IS_SMOKE_TEST" in os.environ
+RAY_UNIT_TEST = "RAY_UNIT_TEST" in os.environ
 
 
 def update_progress(result):
@@ -33,8 +33,9 @@ def update_progress(result):
     anyscale product runs in each releaser test
     """
     result["last_update"] = time.time()
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/release_test_output.json")
+    test_output_json = os.environ.get(
+        "TEST_OUTPUT_JSON", "/tmp/release_test_output.json"
+    )
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 
@@ -101,8 +102,7 @@ class RandomTest:
             deployment_to_delete = self.deployments.pop()
             serve.get_deployment(deployment_to_delete).delete()
 
-        new_name = "".join(
-            [random.choice(string.ascii_letters) for _ in range(10)])
+        new_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
 
         @serve.deployment(name=new_name)
         def handler(self, *args):
@@ -134,22 +134,26 @@ class RandomTest:
                 action_chosen()
 
             new_time = time.time()
-            print("Iteration {}:\n"
-                  "  - Iteration time: {}.\n"
-                  "  - Absolute time: {}.\n"
-                  "  - Total elapsed time: {}.".format(
-                      iteration, new_time - previous_time, new_time,
-                      new_time - start_time))
-            update_progress({
-                "iteration": iteration,
-                "iteration_time": new_time - previous_time,
-                "absolute_time": new_time,
-                "elapsed_time": new_time - start_time,
-            })
+            print(
+                "Iteration {}:\n"
+                "  - Iteration time: {}.\n"
+                "  - Absolute time: {}.\n"
+                "  - Total elapsed time: {}.".format(
+                    iteration, new_time - previous_time, new_time, new_time - start_time
+                )
+            )
+            update_progress(
+                {
+                    "iteration": iteration,
+                    "iteration_time": new_time - previous_time,
+                    "absolute_time": new_time,
+                    "elapsed_time": new_time - start_time,
+                }
+            )
             previous_time = new_time
             iteration += 1
 
-            if IS_SMOKE_TEST:
+            if RAY_UNIT_TEST:
                 break
 
 

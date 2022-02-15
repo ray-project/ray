@@ -1,14 +1,17 @@
+import tempfile
 from dataclasses import dataclass
 import io
 import logging
 import os
 
 from datetime import timedelta
+from pathlib import Path
 from typing import Optional, Dict, Any
 
 import ray
 from ray import train
 from ray.train.backend import BackendConfig, Backend, EncodedData
+from ray.train.constants import PYTORCH_PROFILER_KEY
 from ray.train.worker_group import WorkerGroup
 from ray.train.utils import get_address_and_port
 
@@ -16,8 +19,17 @@ import torch
 import torch.distributed as dist
 from ray.util import PublicAPI
 from torch.nn.parallel import DistributedDataParallel
-from torch.utils.data import DistributedSampler, DataLoader, \
-    IterableDataset, SequentialSampler
+from torch.utils.data import (
+    DistributedSampler,
+    DataLoader,
+    IterableDataset,
+    SequentialSampler,
+)
+
+try:
+    from torch.profiler import profile
+except ImportError:
+    profile = None
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +52,7 @@ class TorchConfig(BackendConfig):
             initialization. Defaults to "env".
         timeout_s (int): Seconds for process group operations to timeout.
     """
+
     backend: Optional[str] = None
     init_method: str = "env"
     timeout_s: int = 1800
@@ -49,11 +62,13 @@ class TorchConfig(BackendConfig):
         return TorchBackend
 
 
-def setup_torch_process_group(backend: str,
-                              world_rank: int,
-                              world_size: int,
-                              init_method: str,
-                              timeout_s: int = 1800):
+def setup_torch_process_group(
+    backend: str,
+    world_rank: int,
+    world_size: int,
+    init_method: str,
+    timeout_s: int = 1800,
+):
     """Connects the distributed PyTorch backend.
 
     Args:
@@ -65,13 +80,15 @@ def setup_torch_process_group(backend: str,
     """
     logger.info(
         f"Setting up process group for: {init_method} [rank={world_rank}, "
-        f"world_size={world_size}]")
+        f"world_size={world_size}]"
+    )
     logger.debug(f"using {backend}")
 
     if backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
         logger.debug(
             "Setting NCCL_BLOCKING_WAIT for detecting node failure. "
-            "To override this behavior, you can set NCCL_BLOCKING_WAIT=0.")
+            "To override this behavior, you can set NCCL_BLOCKING_WAIT=0."
+        )
         os.environ["NCCL_BLOCKING_WAIT"] = "1"
 
     dist.init_process_group(
@@ -79,7 +96,8 @@ def setup_torch_process_group(backend: str,
         init_method=init_method,
         rank=world_rank,
         world_size=world_size,
-        timeout=timedelta(seconds=timeout_s))
+        timeout=timedelta(seconds=timeout_s),
+    )
 
 
 def shutdown_torch(destroy_process_group=False):
@@ -104,15 +122,15 @@ class TorchBackend(Backend):
                 backend = backend_config.backend
 
             master_addr, master_port = worker_group.execute_single(
-                0, get_address_and_port)
+                0, get_address_and_port
+            )
             if backend_config.init_method == "env":
 
                 def set_env_vars(addr, port):
                     os.environ["MASTER_ADDR"] = addr
                     os.environ["MASTER_PORT"] = str(port)
 
-                worker_group.execute(
-                    set_env_vars, addr=master_addr, port=master_port)
+                worker_group.execute(set_env_vars, addr=master_addr, port=master_port)
                 url = "env://"
             elif backend_config.init_method == "tcp":
                 url = f"tcp://{master_addr}:{master_port}"
@@ -120,7 +138,8 @@ class TorchBackend(Backend):
                 raise ValueError(
                     f"The provided init_method ("
                     f"{backend_config.init_method}) is not supported. Must "
-                    f"be either 'env' or 'tcp'.")
+                    f"be either 'env' or 'tcp'."
+                )
 
             setup_futures = []
             for i in range(len(worker_group)):
@@ -132,16 +151,18 @@ class TorchBackend(Backend):
                         world_rank=i,
                         world_size=len(worker_group),
                         init_method=url,
-                        timeout_s=backend_config.timeout_s))
+                        timeout_s=backend_config.timeout_s,
+                    )
+                )
             ray.get(setup_futures)
         else:
             raise RuntimeError("Distributed torch is not available.")
 
-    def on_shutdown(self, worker_group: WorkerGroup,
-                    backend_config: TorchConfig):
+    def on_shutdown(self, worker_group: WorkerGroup, backend_config: TorchConfig):
 
         worker_group.execute(
-            shutdown_torch, destroy_process_group=len(worker_group) > 1)
+            shutdown_torch, destroy_process_group=len(worker_group) > 1
+        )
 
     @staticmethod
     def encode_data(data_dict: Dict) -> EncodedData:
@@ -174,25 +195,30 @@ class _WrappedDataLoader(DataLoader):
     def __init__(self, base_dataloader: DataLoader, device: torch.device):
 
         self.__dict__.update(getattr(base_dataloader, "__dict__", {}))
-        self._dataloader = base_dataloader
-        self._device = device
+        self.dataloader = base_dataloader
+        self.device = device
+
+    def _move_to_device(self, item):
+        def try_move_device(i):
+            try:
+                i = i.to(self.device)
+            except AttributeError:
+                logger.debug(f"Item {i} cannot be moved to device " f"{self.device}.")
+            return i
+
+        return tuple(try_move_device(i) for i in item)
 
     def __len__(self):
-        return len(self._dataloader)
-
-    @property
-    def device(self) -> Optional[torch.device]:
-        return self._device
+        return len(self.dataloader)
 
     def __iter__(self):
-        iterator = iter(self._dataloader)
-        if self._device is None:
-            yield from iterator
+        iterator = iter(self.dataloader)
 
         for item in iterator:
-            yield (i.to(self.device) for i in item)
+            yield self._move_to_device(item)
 
 
+@PublicAPI(stability="beta")
 def get_device() -> torch.device:
     """Gets the correct torch device to use for training."""
     if torch.cuda.is_available():
@@ -206,10 +232,11 @@ def get_device() -> torch.device:
 
 @PublicAPI(stability="beta")
 def prepare_model(
-        model: torch.nn.Module,
-        move_to_device: bool = True,
-        wrap_ddp: bool = True,
-        ddp_kwargs: Optional[Dict[str, Any]] = None) -> torch.nn.Module:
+    model: torch.nn.Module,
+    move_to_device: bool = True,
+    wrap_ddp: bool = True,
+    ddp_kwargs: Optional[Dict[str, Any]] = None,
+) -> torch.nn.Module:
     """Prepares the model for distributed execution.
 
     This allows you to use the same exact code regardless of number of
@@ -242,7 +269,8 @@ def prepare_model(
         logger.info("Wrapping provided model in DDP.")
         if torch.cuda.is_available():
             model = DistributedDataParallel(
-                model, device_ids=[rank], output_device=rank, **ddp_kwargs)
+                model, device_ids=[rank], output_device=rank, **ddp_kwargs
+            )
         else:
             model = DistributedDataParallel(model, **ddp_kwargs)
 
@@ -250,10 +278,11 @@ def prepare_model(
 
 
 @PublicAPI(stability="beta")
-def prepare_data_loader(data_loader: torch.utils.data.DataLoader,
-                        add_dist_sampler: bool = True,
-                        move_to_device: bool = True) -> \
-        torch.utils.data.DataLoader:
+def prepare_data_loader(
+    data_loader: torch.utils.data.DataLoader,
+    add_dist_sampler: bool = True,
+    move_to_device: bool = True,
+) -> torch.utils.data.DataLoader:
     """
     Prepares DataLoader for distributed execution.
 
@@ -274,11 +303,15 @@ def prepare_data_loader(data_loader: torch.utils.data.DataLoader,
     # 2. A DistributedSampler has not already been added by the user.
     # 3. The dataset is not an IterableDataset. Samplers do not worker with
     # IterableDatasets.
-    if train.world_size() > 1 \
-        and not isinstance(data_loader.sampler, DistributedSampler) \
-        and not (hasattr(data_loader, "dataset")
-                 and isinstance(data_loader.dataset, IterableDataset)) \
-            and add_dist_sampler:
+    if (
+        train.world_size() > 1
+        and not isinstance(data_loader.sampler, DistributedSampler)
+        and not (
+            hasattr(data_loader, "dataset")
+            and isinstance(data_loader.dataset, IterableDataset)
+        )
+        and add_dist_sampler
+    ):
 
         def with_sampler(loader):
             # Automatically set the DistributedSampler
@@ -302,7 +335,7 @@ def prepare_data_loader(data_loader: torch.utils.data.DataLoader,
                 "drop_last": loader.drop_last,
                 "timeout": loader.timeout,
                 "worker_init_fn": loader.worker_init_fn,
-                "sampler": DistributedSampler(loader.dataset, shuffle=shuffle)
+                "sampler": DistributedSampler(loader.dataset, shuffle=shuffle),
             }
             return DataLoader(**data_loader_args)
 
@@ -313,3 +346,68 @@ def prepare_data_loader(data_loader: torch.utils.data.DataLoader,
         data_loader = _WrappedDataLoader(data_loader, device)
 
     return data_loader
+
+
+WORKER_TRACE_DIR_NAME = "pytorch_profiler_worker_traces"
+
+
+class TorchWorkerProfiler:
+    """Utility class for running PyTorch Profiler on a Train worker.
+
+    Args:
+        trace_dir (Optional[str]): The directory to store traces on the
+           worker node. If ``None``, this will use a default temporary dir.
+    """
+
+    def __init__(self, trace_dir: Optional[str] = None):
+        if profile is None:
+            raise ImportError(
+                "Torch Profiler requires torch>=1.8.1. "
+                "Run `pip install 'torch>=1.8.1'` to use TorchWorkerProfiler."
+            )
+
+        trace_dir = trace_dir or Path(tempfile.gettempdir()).joinpath(
+            WORKER_TRACE_DIR_NAME
+        )
+        self.trace_dir = Path(trace_dir)
+        self.trace_dir.mkdir(parents=True, exist_ok=True)
+        # Accumulated traces.
+        self.profiler_trace_filenames = []
+
+    def trace_handler(self, p: profile):
+        """A stateful PyTorch Profiler trace handler.
+
+        This will the export chrome trace to a file on disk.
+
+        These exported traces can then be fetched by calling
+        ``get_and_clear_profile_traces``.
+
+        Args:
+            p (profile): A PyTorch Profiler profile.
+        """
+        trace_filename = f"worker_{train.world_rank()}_epoch_{p.step_num}.pt.trace.json"
+        trace_path = self.trace_dir.joinpath(trace_filename)
+
+        logger.debug(f"Writing worker trace to {trace_path}.")
+        p.export_chrome_trace(str(trace_path))
+        self.profiler_trace_filenames.append(trace_filename)
+
+    def get_and_clear_profile_traces(self):
+        """Reads unread Profiler traces from this worker.
+
+        Returns:
+            The traces in a format consumable by
+            ``TorchTensorboardProfilerCallback``.
+        """
+
+        def get_trace(filename):
+            trace_path = self.trace_dir.joinpath(filename)
+            return trace_path.read_text()
+
+        traces = [
+            (trace_filename, get_trace(trace_filename))
+            for trace_filename in self.profiler_trace_filenames
+        ]
+
+        self.profiler_trace_files = []
+        return {PYTORCH_PROFILER_KEY: traces}

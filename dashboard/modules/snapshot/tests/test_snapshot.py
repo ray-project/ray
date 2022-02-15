@@ -34,11 +34,14 @@ ray.get(a.ping.remote())
     """
     address = ray_start_with_dashboard["address"]
     detached_driver = driver_template.format(
-        address=address, lifetime="'detached'", name="'abc'")
+        address=address, lifetime="'detached'", name="'abc'"
+    )
     named_driver = driver_template.format(
-        address=address, lifetime="None", name="'xyz'")
+        address=address, lifetime="None", name="'xyz'"
+    )
     unnamed_driver = driver_template.format(
-        address=address, lifetime="None", name="None")
+        address=address, lifetime="None", name="None"
+    )
 
     run_string_as_driver(detached_driver)
     run_string_as_driver(named_driver)
@@ -50,8 +53,8 @@ ray.get(a.ping.remote())
     response.raise_for_status()
     data = response.json()
     schema_path = os.path.join(
-        os.path.dirname(dashboard.__file__),
-        "modules/snapshot/snapshot_schema.json")
+        os.path.dirname(dashboard.__file__), "modules/snapshot/snapshot_schema.json"
+    )
     pprint.pprint(data)
     jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
 
@@ -72,10 +75,7 @@ ray.get(a.ping.remote())
     assert data["data"]["snapshot"]["rayVersion"] == ray.__version__
 
 
-@pytest.mark.parametrize(
-    "ray_start_with_dashboard", [{
-        "num_cpus": 4
-    }], indirect=True)
+@pytest.mark.parametrize("ray_start_with_dashboard", [{"num_cpus": 4}], indirect=True)
 def test_serve_snapshot(ray_start_with_dashboard):
     """Test detached and nondetached Serve instances running concurrently."""
 
@@ -115,8 +115,7 @@ my_func_deleted.delete()
 
     my_func_nondetached.deploy()
 
-    assert requests.get(
-        "http://127.0.0.1:8123/my_func_nondetached").text == "hello"
+    assert requests.get("http://127.0.0.1:8123/my_func_nondetached").text == "hello"
 
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
@@ -124,15 +123,16 @@ my_func_deleted.delete()
     response.raise_for_status()
     data = response.json()
     schema_path = os.path.join(
-        os.path.dirname(dashboard.__file__),
-        "modules/snapshot/snapshot_schema.json")
+        os.path.dirname(dashboard.__file__), "modules/snapshot/snapshot_schema.json"
+    )
     pprint.pprint(data)
     jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
 
     assert len(data["data"]["snapshot"]["deployments"]) == 3
 
-    entry = data["data"]["snapshot"]["deployments"][hashlib.sha1(
-        "my_func".encode()).hexdigest()]
+    entry = data["data"]["snapshot"]["deployments"][
+        hashlib.sha1("my_func".encode()).hexdigest()
+    ]
     assert entry["name"] == "my_func"
     assert entry["version"] is None
     assert entry["namespace"] == "serve"
@@ -145,14 +145,14 @@ my_func_deleted.delete()
 
     assert len(entry["actors"]) == 1
     actor_id = next(iter(entry["actors"]))
-    metadata = data["data"]["snapshot"]["actors"][actor_id]["metadata"][
-        "serve"]
+    metadata = data["data"]["snapshot"]["actors"][actor_id]["metadata"]["serve"]
     assert metadata["deploymentName"] == "my_func"
     assert metadata["version"] is None
     assert len(metadata["replicaTag"]) > 0
 
-    entry_deleted = data["data"]["snapshot"]["deployments"][hashlib.sha1(
-        "my_func_deleted".encode()).hexdigest()]
+    entry_deleted = data["data"]["snapshot"]["deployments"][
+        hashlib.sha1("my_func_deleted".encode()).hexdigest()
+    ]
     assert entry_deleted["name"] == "my_func_deleted"
     assert entry_deleted["version"] == "v1"
     assert entry_deleted["namespace"] == "serve"
@@ -163,8 +163,9 @@ my_func_deleted.delete()
     assert entry_deleted["startTime"] > 0
     assert entry_deleted["endTime"] > entry_deleted["startTime"]
 
-    entry_nondetached = data["data"]["snapshot"]["deployments"][hashlib.sha1(
-        "my_func_nondetached".encode()).hexdigest()]
+    entry_nondetached = data["data"]["snapshot"]["deployments"][
+        hashlib.sha1("my_func_nondetached".encode()).hexdigest()
+    ]
     assert entry_nondetached["name"] == "my_func_nondetached"
     assert entry_nondetached["version"] == "v1"
     assert entry_nondetached["namespace"] == "default_test_namespace"
@@ -177,8 +178,7 @@ my_func_deleted.delete()
 
     assert len(entry_nondetached["actors"]) == 1
     actor_id = next(iter(entry_nondetached["actors"]))
-    metadata = data["data"]["snapshot"]["actors"][actor_id]["metadata"][
-        "serve"]
+    metadata = data["data"]["snapshot"]["actors"][actor_id]["metadata"]["serve"]
     assert metadata["deploymentName"] == "my_func_nondetached"
     assert metadata["version"] == "v1"
     assert len(metadata["replicaTag"]) > 0

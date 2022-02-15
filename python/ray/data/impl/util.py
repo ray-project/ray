@@ -15,31 +15,36 @@ def _check_pyarrow_version():
     global _VERSION_VALIDATED
     if not _VERSION_VALIDATED:
         import pkg_resources
+
         try:
             version_info = pkg_resources.require("pyarrow")
             version_str = version_info[0].version
-            version = tuple(
-                int(n) for n in version_str.split(".") if "dev" not in n)
+            version = tuple(int(n) for n in version_str.split(".") if "dev" not in n)
             if version < MIN_PYARROW_VERSION:
                 raise ImportError(
                     "Datasets requires pyarrow >= "
                     f"{'.'.join(str(n) for n in MIN_PYARROW_VERSION)}, "
                     f"but {version_str} is installed. Upgrade with "
-                    "`pip install -U pyarrow`.")
+                    "`pip install -U pyarrow`."
+                )
         except pkg_resources.DistributionNotFound:
-            logger.warning("You are using the 'pyarrow' module, but "
-                           "the exact version is unknown (possibly carried as "
-                           "an internal component by another module). Please "
-                           "make sure you are using pyarrow >= "
-                           f"{'.'.join(str(n) for n in MIN_PYARROW_VERSION)} "
-                           "to ensure compatibility with Ray Datasets.")
+            logger.warning(
+                "You are using the 'pyarrow' module, but "
+                "the exact version is unknown (possibly carried as "
+                "an internal component by another module). Please "
+                "make sure you are using pyarrow >= "
+                f"{'.'.join(str(n) for n in MIN_PYARROW_VERSION)} "
+                "to ensure compatibility with Ray Datasets."
+            )
         else:
             _VERSION_VALIDATED = True
 
 
-def _get_spread_resources_iter(nodes: List[Dict[str, Any]],
-                               spread_resource_prefix: str,
-                               ray_remote_args: Dict[str, Any]):
+def _get_spread_resources_iter(
+    nodes: List[Dict[str, Any]],
+    spread_resource_prefix: str,
+    ray_remote_args: Dict[str, Any],
+):
     """Returns a round-robin iterator over resources that match the given
     prefix and that coexist on nodes with the resource requests given in the
     provided remote args (along with the task resource request defaults).
@@ -50,17 +55,17 @@ def _get_spread_resources_iter(nodes: List[Dict[str, Any]],
     spread_resource_labels = _filtered_resources(
         nodes,
         include_prefix=spread_resource_prefix,
-        include_colocated_with=resource_request_labels)
+        include_colocated_with=resource_request_labels,
+    )
     if not spread_resource_labels:
         # No spreadable resource labels available, raise an error.
         raise ValueError(
             "No resources both match the provided prefix "
             f"{spread_resource_prefix} and are colocated with resources "
-            f"{resource_request_labels}.")
+            f"{resource_request_labels}."
+        )
     # Return a round-robin resource iterator over the spread labels.
-    return itertools.cycle([{
-        label: 0.001
-    } for label in spread_resource_labels])
+    return itertools.cycle([{label: 0.001} for label in spread_resource_labels])
 
 
 def _get_resource_request_labels(ray_remote_args: Dict[str, Any]):
@@ -68,7 +73,7 @@ def _get_resource_request_labels(ray_remote_args: Dict[str, Any]):
     task resource request defaults.
     """
     resource_request_labels = set(ray_remote_args.get("resources", {}).keys())
-    if DEFAULT_REMOTE_FUNCTION_CPUS > 0:
+    if ray_remote_args.get("num_cpus", DEFAULT_REMOTE_FUNCTION_CPUS) > 0:
         resource_request_labels.add("CPU")
     if "num_gpus" in ray_remote_args:
         resource_request_labels.add("GPU")
@@ -78,20 +83,22 @@ def _get_resource_request_labels(ray_remote_args: Dict[str, Any]):
         pass
     else:
         resource_request_labels.add(
-            f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
-            f"{accelerator_type}")
+            f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{accelerator_type}"
+        )
     return resource_request_labels
 
 
-def _filtered_resources(nodes: List[Dict[str, Any]], include_prefix: str,
-                        include_colocated_with: List[str]):
+def _filtered_resources(
+    nodes: List[Dict[str, Any]], include_prefix: str, include_colocated_with: List[str]
+):
     """Filters cluster resource labels based on the given prefix and the
     given resource colocation constraints.
 
     Returns a list of unique, sorted resource labels.
     """
     resources = [
-        resource for node in nodes
+        resource
+        for node in nodes
         if set(include_colocated_with) <= set(node["Resources"].keys())
         for resource in node["Resources"].keys()
         if resource.startswith(include_prefix)

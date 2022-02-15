@@ -8,10 +8,12 @@ from ray.serve.exceptions import RayServeException
 
 
 class _BatchQueue:
-    def __init__(self,
-                 max_batch_size: int,
-                 timeout_s: float,
-                 handle_batch_func: Optional[Callable] = None) -> None:
+    def __init__(
+        self,
+        max_batch_size: int,
+        timeout_s: float,
+        handle_batch_func: Optional[Callable] = None,
+    ) -> None:
         """Async queue that accepts individual items and returns batches.
 
         Respects max_batch_size and timeout_s; a batch will be returned when
@@ -36,7 +38,8 @@ class _BatchQueue:
         self._handle_batch_task = None
         if handle_batch_func is not None:
             self._handle_batch_task = asyncio.get_event_loop().create_task(
-                self._handle_batches(handle_batch_func))
+                self._handle_batches(handle_batch_func)
+            )
 
     def put(self, request: Tuple[Any, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
@@ -68,8 +71,7 @@ class _BatchQueue:
             # or the max batch size to be ready.
             else:
                 try:
-                    await asyncio.wait_for(self.full_batch_event.wait(),
-                                           curr_timeout)
+                    await asyncio.wait_for(self.full_batch_event.wait(), curr_timeout)
                 except asyncio.TimeoutError:
                     pass
 
@@ -79,8 +81,10 @@ class _BatchQueue:
 
             # Reset the event if there are fewer than max_batch_size requests
             # in the queue.
-            if (self.queue.qsize() < self.max_batch_size
-                    and self.full_batch_event.is_set()):
+            if (
+                self.queue.qsize() < self.max_batch_size
+                and self.full_batch_event.is_set()
+            ):
                 self.full_batch_event.clear()
 
             # Adjust the timeout based on the time spent in this iteration.
@@ -108,7 +112,8 @@ class _BatchQueue:
                     raise RayServeException(
                         "Batched function doesn't preserve batch size. "
                         f"The input list has length {len(batch)} but the "
-                        f"returned list has length {len(results)}.")
+                        f"returned list has length {len(results)}."
+                    )
 
                 for i, result in enumerate(results):
                     futures[i].set_result(result)
@@ -117,8 +122,7 @@ class _BatchQueue:
                     future.set_exception(e)
 
     def __del__(self):
-        if (self._handle_batch_task is None
-                or not asyncio.get_event_loop().is_running()):
+        if self._handle_batch_task is None or not asyncio.get_event_loop().is_running():
             return
 
         # TODO(edoakes): although we try to gracefully shutdown here, it still
@@ -127,8 +131,7 @@ class _BatchQueue:
         self._handle_batch_task.cancel()
 
 
-def extract_self_if_method_call(args: List[Any],
-                                func: Callable) -> Optional[object]:
+def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[object]:
     """Check if this is a method rather than a function.
 
     Does this by checking to see if `func` is the attribute of the first
@@ -166,8 +169,9 @@ def batch(func: F) -> G:
 
 # "Decorator factory" use case (called with arguments).
 @overload
-def batch(max_batch_size: Optional[int] = 10,
-          batch_wait_timeout_s: Optional[float] = 0.0) -> Callable[[F], G]:
+def batch(
+    max_batch_size: Optional[int] = 10, batch_wait_timeout_s: Optional[float] = 0.0
+) -> Callable[[F], G]:
     pass
 
 
@@ -201,12 +205,12 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
     # See the comment at the end of this function for a detailed explanation.
     if _func is not None:
         if not callable(_func):
-            raise TypeError("@serve.batch can only be used to "
-                            "decorate functions or methods.")
+            raise TypeError(
+                "@serve.batch can only be used to " "decorate functions or methods."
+            )
 
         if not iscoroutinefunction(_func):
-            raise TypeError(
-                "Functions decorated with @serve.batch must be 'async def'")
+            raise TypeError("Functions decorated with @serve.batch must be 'async def'")
 
     if not isinstance(max_batch_size, int):
         if isinstance(max_batch_size, float) and max_batch_size.is_integer():
@@ -230,12 +234,12 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
             self = extract_self_if_method_call(args, _func)
 
             if len(args) != 1:
-                raise ValueError("@serve.batch functions can only take a "
-                                 "single argument as input")
+                raise ValueError(
+                    "@serve.batch functions can only take a " "single argument as input"
+                )
 
             if len(kwargs) != 0:
-                raise ValueError(
-                    "@serve.batch functions do not support kwargs")
+                raise ValueError("@serve.batch functions do not support kwargs")
 
             if self is None:
                 # For functions, inject the batch queue as an
@@ -251,8 +255,7 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
             # runs, we just get a reference to the attribute.
             batch_queue_attr = f"__serve_batch_queue_{_func.__name__}"
             if not hasattr(batch_queue_object, batch_queue_attr):
-                batch_queue = _BatchQueue(max_batch_size, batch_wait_timeout_s,
-                                          _func)
+                batch_queue = _BatchQueue(max_batch_size, batch_wait_timeout_s, _func)
                 setattr(batch_queue_object, batch_queue_attr, batch_queue)
             else:
                 batch_queue = getattr(batch_queue_object, batch_queue_attr)

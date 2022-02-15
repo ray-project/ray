@@ -1,7 +1,5 @@
 - name: dask_xgboost_test
-  owner:
-    mail: "antoni@anyscale.com"
-    slack: "@team_ml"
+  team: ml
   cluster:
     app_config: dask_xgboost_app_config.yaml
     compute_template: compute_tpl.yaml
@@ -20,9 +18,7 @@
       ]
 
 - name: modin_xgboost_test
-  owner:
-    mail: "antoni@anyscale.com"
-    slack: "@team_ml"
+  team: ml
   cluster:
     app_config: modin_xgboost_app_config.yaml
     compute_template: compute_tpl.yaml
@@ -41,10 +37,7 @@
       ]
 
 - name: torch_tune_serve_test
-  owner:
-    mail: "matt@anyscale.com"
-    slack: "@team_ml"
-
+  team: ml
   cluster:
     app_config: torch_tune_serve_app_config.yaml
     compute_template: gpu_tpl.yaml

@@ -23,9 +23,11 @@ class ARSTFPolicy(Policy):
         super().__init__(obs_space, action_space, config)
         self.action_noise_std = self.config["action_noise_std"]
         self.preprocessor = ModelCatalog.get_preprocessor_for_space(
-            self.observation_space)
-        self.observation_filter = get_filter(self.config["observation_filter"],
-                                             self.preprocessor.shape)
+            self.observation_space
+        )
+        self.observation_filter = get_filter(
+            self.config["observation_filter"], self.preprocessor.shape
+        )
 
         self.single_threaded = self.config.get("single_threaded", False)
         if self.config["framework"] == "tf":
@@ -37,7 +39,8 @@ class ARSTFPolicy(Policy):
                     tf1.set_random_seed(config["seed"])
 
             self.inputs = tf1.placeholder(
-                tf.float32, [None] + list(self.preprocessor.shape))
+                tf.float32, [None] + list(self.preprocessor.shape)
+            )
         else:
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
@@ -52,13 +55,15 @@ class ARSTFPolicy(Policy):
 
         # Policy network.
         self.dist_class, dist_dim = ModelCatalog.get_action_dist(
-            self.action_space, self.config["model"], dist_type="deterministic")
+            self.action_space, self.config["model"], dist_type="deterministic"
+        )
 
         self.model = ModelCatalog.get_model_v2(
             obs_space=self.preprocessor.observation_space,
             action_space=self.action_space,
             num_outputs=dist_dim,
-            model_config=self.config["model"])
+            model_config=self.config["model"],
+        )
 
         self.sampler = None
         if self.sess:
@@ -66,21 +71,20 @@ class ARSTFPolicy(Policy):
             dist = self.dist_class(dist_inputs, self.model)
             self.sampler = dist.sample()
             self.variables = ray.experimental.tf_utils.TensorFlowVariables(
-                dist_inputs, self.sess)
+                dist_inputs, self.sess
+            )
             self.sess.run(tf1.global_variables_initializer())
         else:
             self.variables = ray.experimental.tf_utils.TensorFlowVariables(
-                [], None, self.model.variables())
+                [], None, self.model.variables()
+            )
 
         self.num_params = sum(
             np.prod(variable.shape.as_list())
-            for _, variable in self.variables.variables.items())
+            for _, variable in self.variables.variables.items()
+        )
 
-    def compute_actions(self,
-                        observation,
-                        add_noise=False,
-                        update=True,
-                        **kwargs):
+    def compute_actions(self, observation, add_noise=False, update=True, **kwargs):
         # Squeeze batch dimension (we always calculate actions for only a
         # single obs).
         observation = observation[0]
@@ -96,21 +100,19 @@ class ARSTFPolicy(Policy):
             actions = tree.map_structure(lambda a: a.numpy(), actions)
         # Graph mode.
         else:
-            actions = self.sess.run(
-                self.sampler, feed_dict={self.inputs: observation})
+            actions = self.sess.run(self.sampler, feed_dict={self.inputs: observation})
 
         actions = unbatch(actions)
         if add_noise and isinstance(self.action_space, gym.spaces.Box):
             actions += np.random.randn(*actions.shape) * self.action_noise_std
         return actions, [], {}
 
-    def compute_single_action(self,
-                              observation,
-                              add_noise=False,
-                              update=True,
-                              **kwargs):
+    def compute_single_action(
+        self, observation, add_noise=False, update=True, **kwargs
+    ):
         action, state_outs, extra_fetches = self.compute_actions(
-            [observation], add_noise=add_noise, update=update, **kwargs)
+            [observation], add_noise=add_noise, update=update, **kwargs
+        )
         return action[0], state_outs, extra_fetches
 
     def get_state(self):

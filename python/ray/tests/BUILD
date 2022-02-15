@@ -54,12 +54,20 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_client.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "client_tests", "team:serverless"],
+  deps = ["//:ray_lib"],
+)
+    
+py_test_module_list(
+  files = [
     "test_client_builder.py",
     "test_client_compat.py",
     "test_client_init.py",
     "test_client_multi.py",
     "test_client_proxy.py",
-    "test_client_server.py",
     "test_client_references.py",
     "test_client_warnings.py",
     "test_client_library_integration.py",
@@ -73,6 +81,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
     "test_memory_scheduling.py",
     "test_metrics.py",
     "test_multi_node.py",
@@ -85,6 +94,7 @@ py_test_module_list(
     "test_placement_group.py",
     "test_placement_group_2.py",
     "test_placement_group_3.py",
+    "test_placement_group_4.py",
     "test_ray_init.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
@@ -108,6 +118,7 @@ py_test_module_list(
     "test_multi_tenancy.py",
     "test_scheduling.py",
     "test_scheduling_2.py",
+    "test_traceback.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -124,17 +135,16 @@ py_test_module_list(
     "test_component_failures.py",
     "test_debug_tools.py",
     "test_distributed_sort.py",
-    "test_kv.py",
     "test_microbenchmarks.py",
     "test_mini.py",
     "test_node_manager.py",
     "test_numba.py",
     "test_queue.py",
     "test_ray_shutdown.py",
-    "test_traceback.py",
     "test_unhandled_error.py",
     "test_top_level_api.py",
     "test_list_actors.py",
+    "test_usage_stats.py",
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -214,6 +224,7 @@ py_test_module_list(
     "test_runtime_env_conda_and_pip.py",
     "test_runtime_env_conda_and_pip_2.py",
     "test_runtime_env_conda_and_pip_3.py",
+    "test_runtime_env_conda_and_pip_4.py",
     "test_runtime_env_complicated.py"
   ],
   size = "large",

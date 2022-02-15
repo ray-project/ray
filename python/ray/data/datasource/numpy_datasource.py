@@ -23,22 +23,25 @@ class NumpyDatasource(FileBasedDatasource):
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
         from ray.data.extensions import TensorArray
         import pyarrow as pa
+
         # TODO(ekl) Ideally numpy can read directly from the file, but it
         # seems like it requires the file to be seekable.
         buf = BytesIO()
         data = f.readall()
         buf.write(data)
         buf.seek(0)
-        return pa.Table.from_pydict({
-            "value": TensorArray(np.load(buf, allow_pickle=True))
-        })
+        return pa.Table.from_pydict(
+            {"value": TensorArray(np.load(buf, allow_pickle=True))}
+        )
 
-    def _write_block(self,
-                     f: "pyarrow.NativeFile",
-                     block: BlockAccessor,
-                     column: str,
-                     writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-                     **writer_args):
+    def _write_block(
+        self,
+        f: "pyarrow.NativeFile",
+        block: BlockAccessor,
+        column: str,
+        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        **writer_args
+    ):
         value = block.to_numpy(column)
         np.save(f, value)
 

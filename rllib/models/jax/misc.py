@@ -13,14 +13,16 @@ if flax:
 class SlimFC:
     """Simple JAX version of a fully connected layer."""
 
-    def __init__(self,
-                 in_size,
-                 out_size,
-                 initializer: Optional[Callable] = None,
-                 activation_fn: Optional[str] = None,
-                 use_bias: bool = True,
-                 prng_key: Optional[jax.random.PRNGKey] = None,
-                 name: Optional[str] = None):
+    def __init__(
+        self,
+        in_size,
+        out_size,
+        initializer: Optional[Callable] = None,
+        activation_fn: Optional[str] = None,
+        use_bias: bool = True,
+        prng_key: Optional[jax.random.PRNGKey] = None,
+        name: Optional[str] = None,
+    ):
         """Initializes a SlimFC instance.
 
         Args:
@@ -38,7 +40,7 @@ class SlimFC:
 
         # By default, use Glorot unform initializer.
         if initializer is None:
-            initializer = flax.nn.initializers.xavier_uniform()
+            initializer = nn.initializers.xavier_uniform()
 
         self.prng_key = prng_key or jax.random.PRNGKey(int(time.time()))
         _, self.prng_key = jax.random.split(self.prng_key)
@@ -50,8 +52,7 @@ class SlimFC:
             name=name,
         )
         # Initialize it.
-        dummy_in = jax.random.normal(
-            self.prng_key, (in_size, ), dtype=np.float32)
+        dummy_in = jax.random.normal(self.prng_key, (in_size,), dtype=np.float32)
         _, self.prng_key = jax.random.split(self.prng_key)
         self._params = self._dense.init(self.prng_key, dummy_in)
 

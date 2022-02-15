@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -ex
+
 cd "${0%/*}" || exit 1
 
 reason() {
@@ -88,11 +90,13 @@ done
 
 RAY_TEST_REPO=${RAY_TEST_REPO-https://github.com/ray-project/ray.git}
 RAY_TEST_BRANCH=${RAY_TEST_BRANCH-master}
+RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
 
 export RAY_REPO RAY_BRANCH RAY_VERSION RAY_WHEELS RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
 
+pip uninstall -q -y ray
 pip install -q -r requirements.txt
-pip install -U boto3 botocore
+pip install -q -U boto3 botocore
 git clone -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" ~/ray
 
 RETRY_NUM=0
@@ -116,6 +120,8 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
     sleep ${SLEEP_TIME}
   fi
 
+  sudo rm -rf "${RELEASE_RESULTS_DIR}"/* || true
+
   python e2e.py "$@"
   EXIT_CODE=$?
   REASON=$(reason "${EXIT_CODE}")
@@ -137,7 +143,8 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
 
 done
 
-sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts || true
+sudo rm -rf /tmp/ray_release_test_artifacts/* || true
+sudo cp -rf "${RELEASE_RESULTS_DIR}"/* /tmp/ray_release_test_artifacts/ || true
 
 echo "----------------------------------------"
 echo "e2e test finished with final exit code ${EXIT_CODE} after ${RETRY_NUM}/${MAX_RETRIES} tries"

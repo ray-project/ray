@@ -211,24 +211,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param pull_request_id The request to cancel.
   void CancelPull(uint64_t pull_request_id) override;
 
-  /// Callback definition for wait.
-  using WaitCallback = std::function<void(const std::vector<ray::ObjectID> &found,
-                                          const std::vector<ray::ObjectID> &remaining)>;
-  /// Wait until either num_required_objects are located or wait_ms has elapsed,
-  /// then invoke the provided callback.
-  ///
-  /// \param object_ids The object ids to wait on.
-  /// \param timeout_ms The time in milliseconds to wait before invoking the callback.
-  /// \param num_required_objects The minimum number of objects required before
-  /// invoking the callback.
-  /// \param callback Invoked when either timeout_ms is satisfied OR num_ready_objects
-  /// is satisfied.
-  /// \return Status of whether the wait successfully initiated.
-  ray::Status Wait(const std::vector<ObjectID> &object_ids,
-                   const std::unordered_map<ObjectID, rpc::Address> &owner_addresses,
-                   int64_t timeout_ms, uint64_t num_required_objects,
-                   const WaitCallback &callback);
-
   /// Free a list of objects from object store.
   ///
   /// \param object_ids the The list of ObjectIDs to be deleted.
@@ -264,49 +246,6 @@ class ObjectManager : public ObjectManagerInterface,
 
  private:
   friend class TestObjectManager;
-
-  struct WaitState {
-    WaitState(instrumented_io_context &service, int64_t timeout_ms,
-              const WaitCallback &callback)
-        : timeout_ms(timeout_ms),
-          timeout_timer(std::make_unique<boost::asio::deadline_timer>(
-              service, boost::posix_time::milliseconds(timeout_ms))),
-          callback(callback) {}
-    /// The period of time to wait before invoking the callback.
-    int64_t timeout_ms;
-    /// The timer used whenever wait_ms > 0.
-    std::unique_ptr<boost::asio::deadline_timer> timeout_timer;
-    /// The callback invoked when WaitCallback is complete.
-    WaitCallback callback;
-    /// Ordered input object_ids.
-    std::vector<ObjectID> object_id_order;
-    /// Objects' owners.
-    std::unordered_map<ObjectID, rpc::Address> owner_addresses;
-    /// The objects that have not yet been found.
-    std::unordered_set<ObjectID> remaining;
-    /// The objects that have been found.
-    std::unordered_set<ObjectID> found;
-    /// Objects that have been requested either by Lookup or Subscribe.
-    std::unordered_set<ObjectID> requested_objects;
-    /// The number of required objects.
-    uint64_t num_required_objects;
-  };
-
-  /// Creates a wait request and adds it to active_wait_requests_.
-  ray::Status AddWaitRequest(
-      const UniqueID &wait_id, const std::vector<ObjectID> &object_ids,
-      const std::unordered_map<ObjectID, rpc::Address> &owner_addresses,
-      int64_t timeout_ms, uint64_t num_required_objects, const WaitCallback &callback);
-
-  /// Lookup any remaining objects that are not local. This is invoked after
-  /// the wait request is created and local objects are identified.
-  ray::Status LookupRemainingWaitObjects(const UniqueID &wait_id);
-
-  /// Invoked when lookup for remaining objects has been invoked. This method subscribes
-  /// to any remaining objects if wait conditions have not yet been satisfied.
-  void SubscribeRemainingWaitObjects(const UniqueID &wait_id);
-  /// Completion handler for Wait.
-  void WaitComplete(const UniqueID &wait_id);
 
   /// Spread the Free request to all objects managers.
   ///
@@ -458,9 +397,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// SubscribeObjectLocations. We only need one identifier because we never need to
   /// subscribe multiple times to the same object during Pull.
   UniqueID object_directory_pull_callback_id_ = UniqueID::FromRandom();
-
-  /// A set of active wait requests.
-  std::unordered_map<UniqueID, WaitState> active_wait_requests_;
 
   /// Maintains a map of push requests that have not been fulfilled due to an object not
   /// being local. Objects are removed from this map after push_timeout_ms have elapsed.

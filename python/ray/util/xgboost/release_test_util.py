@@ -4,8 +4,13 @@ import time
 
 import ray
 
-from xgboost_ray import train, RayDMatrix, RayFileType, \
-    RayDeviceQuantileDMatrix, RayParams
+from xgboost_ray import (
+    train,
+    RayDMatrix,
+    RayFileType,
+    RayDeviceQuantileDMatrix,
+    RayParams,
+)
 from xgboost_ray.session import get_actor_rank, put_queue
 from xgboost.callback import TrainingCallback
 from xgboost.rabit import get_world_size
@@ -71,15 +76,17 @@ def get_parquet_files(path, num_files=0):
     return files[0:num_files]
 
 
-def train_ray(path,
-              num_workers,
-              num_boost_rounds,
-              num_files=0,
-              regression=False,
-              use_gpu=False,
-              ray_params=None,
-              xgboost_params=None,
-              **kwargs):
+def train_ray(
+    path,
+    num_workers,
+    num_boost_rounds,
+    num_files=0,
+    regression=False,
+    use_gpu=False,
+    ray_params=None,
+    xgboost_params=None,
+    **kwargs,
+):
     if not isinstance(path, list):
         path = get_parquet_files(path, num_files=num_files)
 
@@ -87,6 +94,7 @@ def train_ray(path,
     if use_gpu:
         try:
             import cupy  # noqa: F401
+
             use_device_matrix = True
         except ImportError:
             use_device_matrix = False
@@ -97,29 +105,35 @@ def train_ray(path,
             num_actors=num_workers,
             label="labels",
             ignore=["partition"],
-            filetype=RayFileType.PARQUET)
+            filetype=RayFileType.PARQUET,
+        )
     else:
         dtrain = RayDMatrix(
             path,
             num_actors=num_workers,
             label="labels",
             ignore=["partition"],
-            filetype=RayFileType.PARQUET)
+            filetype=RayFileType.PARQUET,
+        )
 
     config = {"tree_method": "hist" if not use_gpu else "gpu_hist"}
 
     if not regression:
         # Classification
-        config.update({
-            "objective": "binary:logistic",
-            "eval_metric": ["logloss", "error"],
-        })
+        config.update(
+            {
+                "objective": "binary:logistic",
+                "eval_metric": ["logloss", "error"],
+            }
+        )
     else:
         # Regression
-        config.update({
-            "objective": "reg:squarederror",
-            "eval_metric": ["logloss", "rmse"],
-        })
+        config.update(
+            {
+                "objective": "reg:squarederror",
+                "eval_metric": ["logloss", "rmse"],
+            }
+        )
 
     if xgboost_params:
         config.update(xgboost_params)
@@ -133,20 +147,23 @@ def train_ray(path,
         evals_result=evals_result,
         additional_results=additional_results,
         num_boost_round=num_boost_rounds,
-        ray_params=ray_params or RayParams(
+        ray_params=ray_params
+        or RayParams(
             max_actor_restarts=2,
             num_actors=num_workers,
             cpus_per_actor=1,
-            gpus_per_actor=1 if not use_gpu else 1),
+            gpus_per_actor=1 if not use_gpu else 1,
+        ),
         evals=[(dtrain, "train")],
-        **kwargs)
+        **kwargs,
+    )
     taken = time.time() - start
     print(f"TRAIN TIME TAKEN: {taken:.2f} seconds")
 
     out_file = os.path.expanduser(
-        "~/benchmark_{}.xgb".format("cpu" if not use_gpu else "gpu"))
+        "~/benchmark_{}.xgb".format("cpu" if not use_gpu else "gpu")
+    )
     bst.save_model(out_file)
 
-    print("Final training error: {:.4f}".format(
-        evals_result["train"]["error"][-1]))
+    print("Final training error: {:.4f}".format(evals_result["train"]["error"][-1]))
     return bst, additional_results, taken

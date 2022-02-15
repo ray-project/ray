@@ -1,5 +1,8 @@
 # flake8: noqa: E501
 """
+
+.. _data_ml_ingest_example:
+
 Example: Large-scale ML Ingest
 =================================================
 
@@ -15,7 +18,7 @@ In particular, we will show you:
 * How to scale the pipeline from ingesting 100MiB data to
   500GiB data.
 
-.. image:: ../../data/dataset-repeat-2.svg
+.. image:: ../images/dataset-repeat-2.svg
     :align: center
 
 """
@@ -56,13 +59,16 @@ from ray.data.datasource.datasource import RandomIntRowDatasource
 # Let’s see how we implement such pipeline using Ray Dataset:
 
 
-def create_shuffle_pipeline(training_data_dir: str, num_epochs: int,
-                            num_shards: int) -> List[DatasetPipeline]:
+def create_shuffle_pipeline(
+    training_data_dir: str, num_epochs: int, num_shards: int
+) -> List[DatasetPipeline]:
 
-    return ray.data.read_parquet(training_data_dir) \
-        .repeat(num_epochs) \
-        .random_shuffle_each_window() \
+    return (
+        ray.data.read_parquet(training_data_dir)
+        .repeat(num_epochs)
+        .random_shuffle_each_window()
         .split(num_shards, equal=True)
+    )
 
 
 ############################################################################
@@ -114,7 +120,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--large-scale-test",
     action="store_true",
-    help="Run large scale test (500GiB of data).")
+    help="Run large scale test (500GiB of data).",
+)
 
 args, _ = parser.parse_known_args()
 
@@ -139,13 +146,15 @@ if not args.large_scale_test:
         ray.data.read_datasource(
             RandomIntRowDatasource(),
             n=size_bytes // 8 // NUM_COLUMNS,
-            num_columns=NUM_COLUMNS).write_parquet(tmpdir)
+            num_columns=NUM_COLUMNS,
+        ).write_parquet(tmpdir)
         return tmpdir
 
     example_files_dir = generate_example_files(SIZE_100MiB)
 
-    splits = create_shuffle_pipeline(example_files_dir, NUM_EPOCHS,
-                                     NUM_TRAINING_WORKERS)
+    splits = create_shuffle_pipeline(
+        example_files_dir, NUM_EPOCHS, NUM_TRAINING_WORKERS
+    )
 
     training_workers = [
         TrainingWorker.remote(rank, shard) for rank, shard in enumerate(splits)
@@ -195,18 +204,22 @@ if not args.large_scale_test:
 # generated data.
 
 
-def create_large_shuffle_pipeline(data_size_bytes: int, num_epochs: int,
-                                  num_columns: int,
-                                  num_shards: int) -> List[DatasetPipeline]:
+def create_large_shuffle_pipeline(
+    data_size_bytes: int, num_epochs: int, num_columns: int, num_shards: int
+) -> List[DatasetPipeline]:
     # _spread_resource_prefix is used to ensure tasks are evenly spread to all
     # CPU nodes.
-    return ray.data.read_datasource(
-            RandomIntRowDatasource(), n=data_size_bytes // 8 // num_columns,
+    return (
+        ray.data.read_datasource(
+            RandomIntRowDatasource(),
+            n=data_size_bytes // 8 // num_columns,
             num_columns=num_columns,
-            _spread_resource_prefix="node:") \
-        .repeat(num_epochs) \
-        .random_shuffle_each_window(_spread_resource_prefix="node:") \
+            _spread_resource_prefix="node:",
+        )
+        .repeat(num_epochs)
+        .random_shuffle_each_window(_spread_resource_prefix="node:")
         .split(num_shards, equal=True)
+    )
 
 
 #################################################################################
@@ -226,19 +239,18 @@ if args.large_scale_test:
 
     # waiting for cluster nodes to come up.
     while len(ray.nodes()) < TOTAL_NUM_NODES:
-        print(
-            f"waiting for nodes to start up: {len(ray.nodes())}/{TOTAL_NUM_NODES}"
-        )
+        print(f"waiting for nodes to start up: {len(ray.nodes())}/{TOTAL_NUM_NODES}")
         time.sleep(5)
 
-    splits = create_large_shuffle_pipeline(SIZE_500GiB, NUM_EPOCHS,
-                                           NUM_COLUMNS, NUM_TRAINING_WORKERS)
+    splits = create_large_shuffle_pipeline(
+        SIZE_500GiB, NUM_EPOCHS, NUM_COLUMNS, NUM_TRAINING_WORKERS
+    )
 
     # Note we set num_gpus=1 for workers so that
     # the workers will only run on GPU nodes.
     training_workers = [
-        TrainingWorker.options(num_gpus=1) \
-            .remote(rank, shard) for rank, shard in enumerate(splits)
+        TrainingWorker.options(num_gpus=1).remote(rank, shard)
+        for rank, shard in enumerate(splits)
     ]
 
     start = time.time()

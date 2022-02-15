@@ -1,4 +1,5 @@
 - name: microbenchmark
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_64.yaml

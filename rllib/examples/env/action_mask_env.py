@@ -5,8 +5,7 @@ from ray.rllib.examples.env.random_env import RandomEnv
 
 
 class ActionMaskEnv(RandomEnv):
-    """A randomly acting environment that publishes an action-mask each step.
-    """
+    """A randomly acting environment that publishes an action-mask each step."""
 
     def __init__(self, config):
         super().__init__(config)
@@ -14,10 +13,12 @@ class ActionMaskEnv(RandomEnv):
         # Masking only works for Discrete actions.
         assert isinstance(self.action_space, Discrete)
         # Add action_mask to observations.
-        self.observation_space = Dict({
-            "action_mask": Box(0.0, 1.0, shape=(self.action_space.n, )),
-            "observations": self.observation_space,
-        })
+        self.observation_space = Dict(
+            {
+                "action_mask": Box(0.0, 1.0, shape=(self.action_space.n,)),
+                "observations": self.observation_space,
+            }
+        )
         self.valid_actions = None
 
     def reset(self):
@@ -28,8 +29,9 @@ class ActionMaskEnv(RandomEnv):
     def step(self, action):
         # Check whether action is valid.
         if not self.valid_actions[action]:
-            raise ValueError(f"Invalid action sent to env! "
-                             f"valid_actions={self.valid_actions}")
+            raise ValueError(
+                f"Invalid action sent to env! " f"valid_actions={self.valid_actions}"
+            )
         obs, rew, done, info = super().step(action)
         self._fix_action_mask(obs)
         return obs, rew, done, info

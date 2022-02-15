@@ -9,20 +9,26 @@ import numpy as np
 import ray
 from ray.core.generated import common_pb2
 from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
-from ray._private.test_utils import (wait_for_condition, run_string_as_driver,
-                                     run_string_as_driver_nonblocking)
+from ray._private.test_utils import (
+    wait_for_condition,
+    run_string_as_driver,
+    run_string_as_driver_nonblocking,
+)
 from ray._private.utils import init_grpc_channel
 
 
 def get_workers():
     raylet = ray.nodes()[0]
-    raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
-                                    raylet["NodeManagerPort"])
+    raylet_address = "{}:{}".format(
+        raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
+    )
     channel = init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     return [
-        worker for worker in stub.GetNodeStats(
-            node_manager_pb2.GetNodeStatsRequest()).core_workers_stats
+        worker
+        for worker in stub.GetNodeStats(
+            node_manager_pb2.GetNodeStatsRequest()
+        ).core_workers_stats
         if worker.worker_type != common_pb2.DRIVER
     ]
 
@@ -75,12 +81,13 @@ pids = set([ray.get(obj) for obj in pid_objs])
 print("PID:" + str.join(",", [str(_) for _ in pids]))
 
 ray.shutdown()
-    """.format(info["address"])
+    """.format(
+        info["address"]
+    )
 
     driver_count = 3
     processes = [
-        run_string_as_driver_nonblocking(driver_code)
-        for _ in range(driver_count)
+        run_string_as_driver_nonblocking(driver_code) for _ in range(driver_count)
     ]
     outputs = []
     for p in processes:
@@ -91,8 +98,9 @@ ray.shutdown()
         # out = ray._private.utils.decode(out)
         # err = ray._private.utils.decode(err)
         if p.returncode != 0:
-            print("Driver with PID {} returned error code {}".format(
-                p.pid, p.returncode))
+            print(
+                "Driver with PID {} returned error code {}".format(p.pid, p.returncode)
+            )
             print("STDOUT:\n{}".format(out))
             print("STDERR:\n{}".format(err))
         outputs.append((p, out))
@@ -106,19 +114,17 @@ ray.shutdown()
                 assert len(worker_pids) > 0
                 for worker_pid in worker_pids:
                     assert worker_pid not in all_worker_pids, (
-                        ("Worker process with PID {} is shared" +
-                         " by multiple drivers.").format(worker_pid))
+                        "Worker process with PID {} is shared" + " by multiple drivers."
+                    ).format(worker_pid)
                     all_worker_pids.add(worker_pid)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_runtime_env(shutdown_only):
     ray.init(
         job_config=ray.job_config.JobConfig(
-            runtime_env={"env_vars": {
-                "foo1": "bar1",
-                "foo2": "bar2"
-            }}))
+            runtime_env={"env_vars": {"foo1": "bar1", "foo2": "bar2"}}
+        )
+    )
 
     @ray.remote
     def get_env(key):
@@ -226,7 +232,9 @@ def foo():
 [foo.remote() for _ in range(100)]
 
 ray.shutdown()
-    """.format(info["address"])
+    """.format(
+        info["address"]
+    )
 
     before = len(get_workers())
     assert before == 1
@@ -245,8 +253,9 @@ def test_not_killing_workers_that_own_objects(shutdown_only):
         num_cpus=1,
         _system_config={
             "kill_idle_workers_interval_ms": 10,
-            "worker_lease_timeout_milliseconds": 0
-        })
+            "worker_lease_timeout_milliseconds": 0,
+        },
+    )
 
     expected_num_workers = 6
     # Create a nested tasks to start 8 workers each of which owns an object.
@@ -257,8 +266,9 @@ def test_not_killing_workers_that_own_objects(shutdown_only):
         if i >= expected_num_workers - 1:
             return [ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))]
         else:
-            return ([ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))] +
-                    ray.get(nested.remote(i + 1)))
+            return [ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))] + ray.get(
+                nested.remote(i + 1)
+            )
 
     ref = ray.get(nested.remote(0))
     num_workers = len(get_workers())
@@ -273,8 +283,7 @@ def test_not_killing_workers_that_own_objects(shutdown_only):
     cur_num_workers = len(get_workers())
     # TODO(ekl) ideally these would be exactly equal, however the test is
     # occasionally flaky with that check.
-    assert abs(num_workers - cur_num_workers) < 2, \
-        (num_workers, cur_num_workers)
+    assert abs(num_workers - cur_num_workers) < 2, (num_workers, cur_num_workers)
     assert len(ref2) == expected_num_workers
     assert len(ref) == expected_num_workers
 
@@ -288,18 +297,20 @@ def test_kill_idle_workers_that_are_behind_owned_workers(shutdown_only):
         num_cpus=1,
         _system_config={
             "kill_idle_workers_interval_ms": 10,
-            "worker_lease_timeout_milliseconds": 0
-        })
+            "worker_lease_timeout_milliseconds": 0,
+        },
+    )
 
     @ray.remote
     def nested(i):
         if i >= (N * 2) - 1:
             return [ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))]
         elif i >= N:
-            return ([ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))] +
-                    ray.get(nested.remote(i + 1)))
+            return [ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))] + ray.get(
+                nested.remote(i + 1)
+            )
         else:
-            return ([1] + ray.get(nested.remote(i + 1)))
+            return [1] + ray.get(nested.remote(i + 1))
 
     # The first N workers don't own objects
     # and the later N workers do.

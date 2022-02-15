@@ -4,6 +4,7 @@ from ray.data.block import Block, T, BlockAccessor
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.simple_block import SimpleBlockBuilder
 from ray.data.impl.arrow_block import ArrowRow, ArrowBlockBuilder
+from ray.data.impl.pandas_block import PandasRow, PandasBlockBuilder
 
 
 class DelegatingBlockBuilder(BlockBuilder[T]):
@@ -13,8 +14,10 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
     def add(self, item: Any) -> None:
 
         if self._builder is None:
+            # TODO (kfstorm): Maybe we can use Pandas block format for dict.
             if isinstance(item, dict) or isinstance(item, ArrowRow):
                 import pyarrow
+
                 try:
                     check = ArrowBlockBuilder()
                     check.add(item)
@@ -22,6 +25,8 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
                     self._builder = ArrowBlockBuilder()
                 except (TypeError, pyarrow.lib.ArrowInvalid):
                     self._builder = SimpleBlockBuilder()
+            elif isinstance(item, PandasRow):
+                self._builder = PandasBlockBuilder()
             else:
                 self._builder = SimpleBlockBuilder()
         self._builder.add(item)

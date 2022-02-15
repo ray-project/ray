@@ -26,6 +26,7 @@ pyyaml
 redis >= 3.5.0, < 4.0.0
 requests
 smart_open
+virtualenv
 
 ## setup.py extras
 dm_tree
@@ -40,13 +41,13 @@ pandas>=1.2.0; python_version >= '3.7'
 scipy==1.4.1
 tabulate
 tensorboardX >= 1.9
-uvicorn
+uvicorn==0.16.0
 dataclasses; python_version < '3.7'
 starlette
 aiorwlock
 
 # Requirements for running tests
-pyarrow==4.0.1
+pyarrow >= 4.0.1, < 7.0.0
 blist; platform_system != "Windows"
 azure-cli-core==2.29.1
 azure-identity==1.7.0
@@ -78,7 +79,7 @@ Pillow; platform_system != "Windows"
 pygments
 pyspark==3.1.2
 pytest==5.4.3
-pytest-asyncio
+pytest-asyncio==0.16.0
 pytest-rerunfailures
 pytest-sugar
 pytest-lazy-fixture
@@ -95,3 +96,7 @@ tqdm
 async-exit-stack
 async-generator
 cryptography>=3.0.0
+# For doc tests
+myst-parser==0.15.2
+myst-nb==0.13.1
+jupytext==1.13.6

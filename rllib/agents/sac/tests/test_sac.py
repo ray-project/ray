@@ -7,22 +7,26 @@ import unittest
 import ray
 import ray.rllib.agents.sac as sac
 from ray.rllib.agents.sac.sac_tf_policy import sac_actor_critic_loss as tf_loss
-from ray.rllib.agents.sac.sac_torch_policy import actor_critic_loss as \
-    loss_torch
+from ray.rllib.agents.sac.sac_torch_policy import actor_critic_loss as loss_torch
 from ray.rllib.examples.env.random_env import RandomEnv
-from ray.rllib.examples.models.batch_norm_model import KerasBatchNormModel, \
-    TorchBatchNormModel
+from ray.rllib.examples.models.batch_norm_model import (
+    KerasBatchNormModel,
+    TorchBatchNormModel,
+)
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import Dirichlet
 from ray.rllib.models.torch.torch_action_dist import TorchDirichlet
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
-    MultiAgentReplayBuffer
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, relu
 from ray.rllib.utils.spaces.simplex import Simplex
-from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    check_train_results, framework_iterator
+from ray.rllib.utils.test_utils import (
+    check,
+    check_compute_single_action,
+    check_train_results,
+    framework_iterator,
+)
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray import tune
 
@@ -33,10 +37,10 @@ torch, _ = try_import_torch()
 class SimpleEnv(Env):
     def __init__(self, config):
         if config.get("simplex_actions", False):
-            self.action_space = Simplex((2, ))
+            self.action_space = Simplex((2,))
         else:
-            self.action_space = Box(0.0, 1.0, (1, ))
-        self.observation_space = Box(0.0, 1.0, (1, ))
+            self.action_space = Box(0.0, 1.0, (1,))
+        self.observation_space = Box(0.0, 1.0, (1,))
         self.max_steps = config.get("max_steps", 100)
         self.state = None
         self.steps = None
@@ -86,39 +90,54 @@ class TestSAC(unittest.TestCase):
         num_iterations = 1
 
         ModelCatalog.register_custom_model("batch_norm", KerasBatchNormModel)
-        ModelCatalog.register_custom_model("batch_norm_torch",
-                                           TorchBatchNormModel)
+        ModelCatalog.register_custom_model("batch_norm_torch", TorchBatchNormModel)
 
         image_space = Box(-1.0, 1.0, shape=(84, 84, 3))
-        simple_space = Box(-1.0, 1.0, shape=(3, ))
+        simple_space = Box(-1.0, 1.0, shape=(3,))
 
         tune.register_env(
-            "random_dict_env", lambda _: RandomEnv({
-                "observation_space": Dict({
-                    "a": simple_space,
-                    "b": Discrete(2),
-                    "c": image_space, }),
-                "action_space": Box(-1.0, 1.0, shape=(1, )), }))
+            "random_dict_env",
+            lambda _: RandomEnv(
+                {
+                    "observation_space": Dict(
+                        {
+                            "a": simple_space,
+                            "b": Discrete(2),
+                            "c": image_space,
+                        }
+                    ),
+                    "action_space": Box(-1.0, 1.0, shape=(1,)),
+                }
+            ),
+        )
         tune.register_env(
-            "random_tuple_env", lambda _: RandomEnv({
-                "observation_space": Tuple([
-                    simple_space, Discrete(2), image_space]),
-                "action_space": Box(-1.0, 1.0, shape=(1, )), }))
+            "random_tuple_env",
+            lambda _: RandomEnv(
+                {
+                    "observation_space": Tuple(
+                        [simple_space, Discrete(2), image_space]
+                    ),
+                    "action_space": Box(-1.0, 1.0, shape=(1,)),
+                }
+            ),
+        )
 
         for fw in framework_iterator(config, with_eager_tracing=True):
             # Test for different env types (discrete w/ and w/o image, + cont).
             for env in [
-                    "random_dict_env",
-                    "random_tuple_env",
-                    # "MsPacmanNoFrameskip-v4",
-                    "CartPole-v0",
+                "random_dict_env",
+                "random_tuple_env",
+                # "MsPacmanNoFrameskip-v4",
+                "CartPole-v0",
             ]:
                 print("Env={}".format(env))
                 # Test making the Q-model a custom one for CartPole, otherwise,
                 # use the default model.
-                config["Q_model"]["custom_model"] = "batch_norm{}".format(
-                    "_torch"
-                    if fw == "torch" else "") if env == "CartPole-v0" else None
+                config["Q_model"]["custom_model"] = (
+                    "batch_norm{}".format("_torch" if fw == "torch" else "")
+                    if env == "CartPole-v0"
+                    else None
+                )
                 trainer = sac.SACTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
@@ -135,9 +154,11 @@ class TestSAC(unittest.TestCase):
                     new_trainer.restore(checkpoint)
                     # Get some data from the buffer and compare.
                     data = trainer.local_replay_buffer.replay_buffers[
-                        "default_policy"]._storage[:42 + 42]
+                        "default_policy"
+                    ]._storage[: 42 + 42]
                     new_data = new_trainer.local_replay_buffer.replay_buffers[
-                        "default_policy"]._storage[:42 + 42]
+                        "default_policy"
+                    ]._storage[: 42 + 42]
                     check(data, new_data)
                     new_trainer.stop()
 
@@ -157,7 +178,7 @@ class TestSAC(unittest.TestCase):
         config["Q_model"]["fcnet_hiddens"] = [10]
         config["policy_model"]["fcnet_hiddens"] = [10]
         # Make sure, timing differences do not affect trainer.train().
-        config["min_iter_time_s"] = 0
+        config["min_time_s_per_reporting"] = 0
         # Test SAC with Simplex action space.
         config["env_config"] = {"simplex_actions": True}
 
@@ -167,51 +188,40 @@ class TestSAC(unittest.TestCase):
             "_model.0.weight",
             "default_policy/fc_1/bias": "action_model._hidden_layers.0."
             "_model.0.bias",
-            "default_policy/fc_out/kernel": "action_model."
-            "_logits._model.0.weight",
+            "default_policy/fc_out/kernel": "action_model." "_logits._model.0.weight",
             "default_policy/fc_out/bias": "action_model._logits._model.0.bias",
             "default_policy/value_out/kernel": "action_model."
             "_value_branch._model.0.weight",
             "default_policy/value_out/bias": "action_model."
             "_value_branch._model.0.bias",
             # Q-net.
-            "default_policy/fc_1_1/kernel": "q_net."
-            "_hidden_layers.0._model.0.weight",
-            "default_policy/fc_1_1/bias": "q_net."
-            "_hidden_layers.0._model.0.bias",
+            "default_policy/fc_1_1/kernel": "q_net." "_hidden_layers.0._model.0.weight",
+            "default_policy/fc_1_1/bias": "q_net." "_hidden_layers.0._model.0.bias",
             "default_policy/fc_out_1/kernel": "q_net._logits._model.0.weight",
             "default_policy/fc_out_1/bias": "q_net._logits._model.0.bias",
             "default_policy/value_out_1/kernel": "q_net."
             "_value_branch._model.0.weight",
-            "default_policy/value_out_1/bias": "q_net."
-            "_value_branch._model.0.bias",
+            "default_policy/value_out_1/bias": "q_net." "_value_branch._model.0.bias",
             "default_policy/log_alpha": "log_alpha",
             # Target action-net.
             "default_policy/fc_1_2/kernel": "action_model."
             "_hidden_layers.0._model.0.weight",
             "default_policy/fc_1_2/bias": "action_model."
             "_hidden_layers.0._model.0.bias",
-            "default_policy/fc_out_2/kernel": "action_model."
-            "_logits._model.0.weight",
-            "default_policy/fc_out_2/bias": "action_model."
-            "_logits._model.0.bias",
+            "default_policy/fc_out_2/kernel": "action_model." "_logits._model.0.weight",
+            "default_policy/fc_out_2/bias": "action_model." "_logits._model.0.bias",
             "default_policy/value_out_2/kernel": "action_model."
             "_value_branch._model.0.weight",
             "default_policy/value_out_2/bias": "action_model."
             "_value_branch._model.0.bias",
             # Target Q-net
-            "default_policy/fc_1_3/kernel": "q_net."
-            "_hidden_layers.0._model.0.weight",
-            "default_policy/fc_1_3/bias": "q_net."
-            "_hidden_layers.0._model.0.bias",
-            "default_policy/fc_out_3/kernel": "q_net."
-            "_logits._model.0.weight",
-            "default_policy/fc_out_3/bias": "q_net."
-            "_logits._model.0.bias",
+            "default_policy/fc_1_3/kernel": "q_net." "_hidden_layers.0._model.0.weight",
+            "default_policy/fc_1_3/bias": "q_net." "_hidden_layers.0._model.0.bias",
+            "default_policy/fc_out_3/kernel": "q_net." "_logits._model.0.weight",
+            "default_policy/fc_out_3/bias": "q_net." "_logits._model.0.bias",
             "default_policy/value_out_3/kernel": "q_net."
             "_value_branch._model.0.weight",
-            "default_policy/value_out_3/bias": "q_net."
-            "_value_branch._model.0.bias",
+            "default_policy/value_out_3/bias": "q_net." "_value_branch._model.0.bias",
             "default_policy/log_alpha_1": "log_alpha",
         }
 
@@ -232,7 +242,8 @@ class TestSAC(unittest.TestCase):
         # History of input batches used.
         tf_inputs = []
         for fw, sess in framework_iterator(
-                config, frameworks=("tf", "torch"), session=True):
+            config, frameworks=("tf", "torch"), session=True
+        ):
             # Generate Trainer and get its default Policy object.
             trainer = sac.SACTrainer(config=config, env=env)
             policy = trainer.get_policy()
@@ -247,12 +258,10 @@ class TestSAC(unittest.TestCase):
                 weights_dict = policy.get_weights()
                 if fw == "tfe":
                     log_alpha = weights_dict[10]
-                    weights_dict = self._translate_tfe_weights(
-                        weights_dict, map_)
+                    weights_dict = self._translate_tfe_weights(weights_dict, map_)
             else:
                 assert fw == "torch"  # Then transfer that to torch Model.
-                model_dict = self._translate_weights_to_torch(
-                    weights_dict, map_)
+                model_dict = self._translate_weights_to_torch(weights_dict, map_)
                 # Have to add this here (not a parameter in tf, but must be
                 # one in torch, so it gets properly copied to the GPU(s)).
                 model_dict["target_entropy"] = policy.model.target_entropy
@@ -270,33 +279,47 @@ class TestSAC(unittest.TestCase):
             # Only run the expectation once, should be the same anyways
             # for all frameworks.
             if expect_c is None:
-                expect_c, expect_a, expect_e, expect_t = \
-                    self._sac_loss_helper(input_, weights_dict,
-                                          sorted(weights_dict.keys()),
-                                          log_alpha, fw,
-                                          gamma=config["gamma"], sess=sess)
+                expect_c, expect_a, expect_e, expect_t = self._sac_loss_helper(
+                    input_,
+                    weights_dict,
+                    sorted(weights_dict.keys()),
+                    log_alpha,
+                    fw,
+                    gamma=config["gamma"],
+                    sess=sess,
+                )
 
             # Get actual outs and compare to expectation AND previous
             # framework. c=critic, a=actor, e=entropy, t=td-error.
             if fw == "tf":
-                c, a, e, t, tf_c_grads, tf_a_grads, tf_e_grads = \
-                    p_sess.run([
+                c, a, e, t, tf_c_grads, tf_a_grads, tf_e_grads = p_sess.run(
+                    [
                         policy.critic_loss,
                         policy.actor_loss,
                         policy.alpha_loss,
                         policy.td_error,
                         policy.optimizer().compute_gradients(
                             policy.critic_loss[0],
-                            [v for v in policy.model.q_variables() if
-                             "value_" not in v.name]),
+                            [
+                                v
+                                for v in policy.model.q_variables()
+                                if "value_" not in v.name
+                            ],
+                        ),
                         policy.optimizer().compute_gradients(
                             policy.actor_loss,
-                            [v for v in policy.model.policy_variables() if
-                             "value_" not in v.name]),
+                            [
+                                v
+                                for v in policy.model.policy_variables()
+                                if "value_" not in v.name
+                            ],
+                        ),
                         policy.optimizer().compute_gradients(
-                            policy.alpha_loss, policy.model.log_alpha)],
-                        feed_dict=policy._get_loss_inputs_dict(
-                            input_, shuffle=False))
+                            policy.alpha_loss, policy.model.log_alpha
+                        ),
+                    ],
+                    feed_dict=policy._get_loss_inputs_dict(input_, shuffle=False),
+                )
                 tf_c_grads = [g for g, v in tf_c_grads]
                 tf_a_grads = [g for g, v in tf_a_grads]
                 tf_e_grads = [g for g, v in tf_e_grads]
@@ -304,8 +327,12 @@ class TestSAC(unittest.TestCase):
             elif fw == "tfe":
                 with tf.GradientTape() as tape:
                     tf_loss(policy, policy.model, None, input_)
-                c, a, e, t = policy.critic_loss, policy.actor_loss, \
-                    policy.alpha_loss, policy.td_error
+                c, a, e, t = (
+                    policy.critic_loss,
+                    policy.actor_loss,
+                    policy.alpha_loss,
+                    policy.td_error,
+                )
                 vars = tape.watched_variables()
                 tf_c_grads = tape.gradient(c[0], vars[6:10])
                 tf_a_grads = tape.gradient(a, vars[2:6])
@@ -313,62 +340,67 @@ class TestSAC(unittest.TestCase):
 
             elif fw == "torch":
                 loss_torch(policy, policy.model, None, input_)
-                c, a, e, t = policy.get_tower_stats("critic_loss")[0], \
-                    policy.get_tower_stats("actor_loss")[0], \
-                    policy.get_tower_stats("alpha_loss")[0], \
-                    policy.get_tower_stats("td_error")[0]
+                c, a, e, t = (
+                    policy.get_tower_stats("critic_loss")[0],
+                    policy.get_tower_stats("actor_loss")[0],
+                    policy.get_tower_stats("alpha_loss")[0],
+                    policy.get_tower_stats("td_error")[0],
+                )
 
                 # Test actor gradients.
                 policy.actor_optim.zero_grad()
                 assert all(v.grad is None for v in policy.model.q_variables())
-                assert all(
-                    v.grad is None for v in policy.model.policy_variables())
+                assert all(v.grad is None for v in policy.model.policy_variables())
                 assert policy.model.log_alpha.grad is None
                 a.backward()
                 # `actor_loss` depends on Q-net vars (but these grads must
                 # be ignored and overridden in critic_loss.backward!).
                 assert not all(
-                    torch.mean(v.grad) == 0
-                    for v in policy.model.policy_variables())
+                    torch.mean(v.grad) == 0 for v in policy.model.policy_variables()
+                )
                 assert not all(
-                    torch.min(v.grad) == 0
-                    for v in policy.model.policy_variables())
+                    torch.min(v.grad) == 0 for v in policy.model.policy_variables()
+                )
                 assert policy.model.log_alpha.grad is None
                 # Compare with tf ones.
                 torch_a_grads = [
-                    v.grad for v in policy.model.policy_variables()
+                    v.grad
+                    for v in policy.model.policy_variables()
                     if v.grad is not None
                 ]
-                check(tf_a_grads[2],
-                      np.transpose(torch_a_grads[0].detach().cpu()))
+                check(tf_a_grads[2], np.transpose(torch_a_grads[0].detach().cpu()))
 
                 # Test critic gradients.
                 policy.critic_optims[0].zero_grad()
                 assert all(
                     torch.mean(v.grad) == 0.0
-                    for v in policy.model.q_variables() if v.grad is not None)
+                    for v in policy.model.q_variables()
+                    if v.grad is not None
+                )
                 assert all(
                     torch.min(v.grad) == 0.0
-                    for v in policy.model.q_variables() if v.grad is not None)
+                    for v in policy.model.q_variables()
+                    if v.grad is not None
+                )
                 assert policy.model.log_alpha.grad is None
                 c[0].backward()
                 assert not all(
                     torch.mean(v.grad) == 0
-                    for v in policy.model.q_variables() if v.grad is not None)
+                    for v in policy.model.q_variables()
+                    if v.grad is not None
+                )
                 assert not all(
-                    torch.min(v.grad) == 0 for v in policy.model.q_variables()
-                    if v.grad is not None)
+                    torch.min(v.grad) == 0
+                    for v in policy.model.q_variables()
+                    if v.grad is not None
+                )
                 assert policy.model.log_alpha.grad is None
                 # Compare with tf ones.
                 torch_c_grads = [v.grad for v in policy.model.q_variables()]
-                check(tf_c_grads[0],
-                      np.transpose(torch_c_grads[2].detach().cpu()))
+                check(tf_c_grads[0], np.transpose(torch_c_grads[2].detach().cpu()))
                 # Compare (unchanged(!) actor grads) with tf ones.
-                torch_a_grads = [
-                    v.grad for v in policy.model.policy_variables()
-                ]
-                check(tf_a_grads[2],
-                      np.transpose(torch_a_grads[0].detach().cpu()))
+                torch_a_grads = [v.grad for v in policy.model.policy_variables()]
+                check(tf_a_grads[2], np.transpose(torch_a_grads[0].detach().cpu()))
 
                 # Test alpha gradient.
                 policy.alpha_optim.zero_grad()
@@ -408,9 +440,9 @@ class TestSAC(unittest.TestCase):
                     if tf_updated_weights:
                         check(
                             updated_weights["default_policy/fc_1/kernel"],
-                            tf_updated_weights[-1][
-                                "default_policy/fc_1/kernel"],
-                            false=True)
+                            tf_updated_weights[-1]["default_policy/fc_1/kernel"],
+                            false=True,
+                        )
                     tf_updated_weights.append(updated_weights)
 
                 # Compare with updated tf-weights. Must all be the same.
@@ -432,41 +464,43 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                atol=0.003)
+                                atol=0.003,
+                            )
                         else:
                             check(tf_var, torch_var, atol=0.003)
                     # And alpha.
-                    check(policy.model.log_alpha,
-                          tf_weights["default_policy/log_alpha"])
+                    check(
+                        policy.model.log_alpha, tf_weights["default_policy/log_alpha"]
+                    )
                     # Compare target nets.
                     for tf_key in sorted(tf_weights.keys()):
                         if not re.search("_[23]", tf_key):
                             continue
                         tf_var = tf_weights[tf_key]
-                        torch_var = policy.target_model.state_dict()[map_[
-                            tf_key]]
+                        torch_var = policy.target_model.state_dict()[map_[tf_key]]
                         if tf_var.shape != torch_var.shape:
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                atol=0.003)
+                                atol=0.003,
+                            )
                         else:
                             check(tf_var, torch_var, atol=0.003)
             trainer.stop()
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
-        return SampleBatch({
-            SampleBatch.CUR_OBS: np.random.random(size=obs_size),
-            SampleBatch.ACTIONS: actions,
-            SampleBatch.REWARDS: np.random.random(size=(batch_size, )),
-            SampleBatch.DONES: np.random.choice(
-                [True, False], size=(batch_size, )),
-            SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
-            "weights": np.random.random(size=(batch_size, )),
-        })
+        return SampleBatch(
+            {
+                SampleBatch.CUR_OBS: np.random.random(size=obs_size),
+                SampleBatch.ACTIONS: actions,
+                SampleBatch.REWARDS: np.random.random(size=(batch_size,)),
+                SampleBatch.DONES: np.random.choice([True, False], size=(batch_size,)),
+                SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
+                "weights": np.random.random(size=(batch_size,)),
+            }
+        )
 
-    def _sac_loss_helper(self, train_batch, weights, ks, log_alpha, fw, gamma,
-                         sess):
+    def _sac_loss_helper(self, train_batch, weights, ks, log_alpha, fw, gamma, sess):
         """Emulates SAC loss functions for tf and torch."""
         # ks:
         # 0=log_alpha
@@ -496,11 +530,12 @@ class TestSAC(unittest.TestCase):
         # get_policy_output
         action_dist_t = cls(
             fc(
-                relu(
-                    fc(model_out_t,
-                       weights[ks[1]],
-                       weights[ks[0]],
-                       framework=fw)), weights[ks[9]], weights[ks[8]]), None)
+                relu(fc(model_out_t, weights[ks[1]], weights[ks[0]], framework=fw)),
+                weights[ks[9]],
+                weights[ks[8]],
+            ),
+            None,
+        )
         policy_t = action_dist_t.deterministic_sample()
         log_pis_t = action_dist_t.logp(policy_t)
         if sess:
@@ -511,11 +546,12 @@ class TestSAC(unittest.TestCase):
         # Get policy output for t+1.
         action_dist_tp1 = cls(
             fc(
-                relu(
-                    fc(model_out_tp1,
-                       weights[ks[1]],
-                       weights[ks[0]],
-                       framework=fw)), weights[ks[9]], weights[ks[8]]), None)
+                relu(fc(model_out_tp1, weights[ks[1]], weights[ks[0]], framework=fw)),
+                weights[ks[9]],
+                weights[ks[8]],
+            ),
+            None,
+        )
         policy_tp1 = action_dist_tp1.deterministic_sample()
         log_pis_tp1 = action_dist_tp1.logp(policy_tp1)
         if sess:
@@ -527,50 +563,65 @@ class TestSAC(unittest.TestCase):
         # get_q_values
         q_t = fc(
             relu(
-                fc(np.concatenate(
-                    [model_out_t, train_batch[SampleBatch.ACTIONS]], -1),
-                   weights[ks[3]],
-                   weights[ks[2]],
-                   framework=fw)),
+                fc(
+                    np.concatenate([model_out_t, train_batch[SampleBatch.ACTIONS]], -1),
+                    weights[ks[3]],
+                    weights[ks[2]],
+                    framework=fw,
+                )
+            ),
             weights[ks[11]],
             weights[ks[10]],
-            framework=fw)
+            framework=fw,
+        )
 
         # Q-values for current policy in given current state.
         # get_q_values
         q_t_det_policy = fc(
             relu(
-                fc(np.concatenate([model_out_t, policy_t], -1),
-                   weights[ks[3]],
-                   weights[ks[2]],
-                   framework=fw)),
+                fc(
+                    np.concatenate([model_out_t, policy_t], -1),
+                    weights[ks[3]],
+                    weights[ks[2]],
+                    framework=fw,
+                )
+            ),
             weights[ks[11]],
             weights[ks[10]],
-            framework=fw)
+            framework=fw,
+        )
 
         # Target q network evaluation.
         # target_model.get_q_values
         if fw == "tf":
             q_tp1 = fc(
                 relu(
-                    fc(np.concatenate([target_model_out_tp1, policy_tp1], -1),
-                       weights[ks[7]],
-                       weights[ks[6]],
-                       framework=fw)),
+                    fc(
+                        np.concatenate([target_model_out_tp1, policy_tp1], -1),
+                        weights[ks[7]],
+                        weights[ks[6]],
+                        framework=fw,
+                    )
+                ),
                 weights[ks[15]],
                 weights[ks[14]],
-                framework=fw)
+                framework=fw,
+            )
         else:
             assert fw == "tfe"
             q_tp1 = fc(
                 relu(
-                    fc(np.concatenate([target_model_out_tp1, policy_tp1], -1),
-                       weights[ks[7]],
-                       weights[ks[6]],
-                       framework=fw)),
+                    fc(
+                        np.concatenate([target_model_out_tp1, policy_tp1], -1),
+                        weights[ks[7]],
+                        weights[ks[6]],
+                        framework=fw,
+                    )
+                ),
                 weights[ks[9]],
                 weights[ks[8]],
-                framework=fw)
+                framework=fw,
+            )
 
         q_t_selected = np.squeeze(q_t, axis=-1)
         q_tp1 -= alpha * log_pis_tp1
@@ -585,10 +636,11 @@ class TestSAC(unittest.TestCase):
         base_td_error = np.abs(q_t_selected - q_t_selected_target)
         td_error = base_td_error
         critic_loss = [
-            np.mean(train_batch["weights"] *
-                    huber_loss(q_t_selected_target - q_t_selected))
+            np.mean(
+                train_batch["weights"] * huber_loss(q_t_selected_target - q_t_selected)
+            )
         ]
-        target_entropy = -np.prod((1, ))
+        target_entropy = -np.prod((1,))
         alpha_loss = -np.mean(log_alpha * (log_pis_t + target_entropy))
         actor_loss = np.mean(alpha * log_pis_t - q_t_det_policy)
 
@@ -597,9 +649,14 @@ class TestSAC(unittest.TestCase):
     def _translate_weights_to_torch(self, weights_dict, map_):
         model_dict = {
             map_[k]: convert_to_torch_tensor(
-                np.transpose(v) if re.search("kernel", k) else np.array([v])
-                if re.search("log_alpha", k) else v)
-            for i, (k, v) in enumerate(weights_dict.items()) if i < 13
+                np.transpose(v)
+                if re.search("kernel", k)
+                else np.array([v])
+                if re.search("log_alpha", k)
+                else v
+            )
+            for i, (k, v) in enumerate(weights_dict.items())
+            if i < 13
         }
 
         return model_dict
@@ -625,4 +682,5 @@ class TestSAC(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

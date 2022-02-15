@@ -51,8 +51,9 @@ def auto_http_archive(
     if name == None:  # Deduce "com_github_user_project_name" from "https://github.com/user/project-name/..."
         name = "_".join(url_parts["netloc"][::-1] + url_path_parts[:2]).replace("-", "_")
 
+    # auto appending ray project namespace prefix for 3rd party library reusing.
     if build_file == True:
-        build_file = "@//%s:%s" % ("bazel", "BUILD." + name)
+        build_file = "@com_github_ray_project_ray//%s:%s" % ("bazel", "BUILD." + name)
 
     if urls == True:
         prefer_url_over_mirrors = is_github
@@ -92,36 +93,38 @@ def ray_deps_setup():
         sha256 = "7892a35d979304a404400a101c46ce90e85ec9e2a766a86041bb361f626247f5",
     )
 
+    # NOTE(lingxuan.zlx): 3rd party dependencies could be accessed, so it suggests
+    # all of http/git_repository should add prefix for patches defined in ray directory.
     auto_http_archive(
         name = "com_github_antirez_redis",
-        build_file = "//bazel:BUILD.redis",
+        build_file = "@com_github_ray_project_ray//bazel:BUILD.redis",
         url = "https://github.com/redis/redis/archive/6.0.10.tar.gz",
         sha256 = "900cb82227bac58242c9b7668e7113cd952253b256fe04bbdab1b78979cf255a",
         patches = [
-            "//thirdparty/patches:redis-quiet.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:redis-quiet.patch",
         ],
     )
 
     auto_http_archive(
         name = "com_github_redis_hiredis",
-        build_file = "//bazel:BUILD.hiredis",
+        build_file = "@com_github_ray_project_ray//bazel:BUILD.hiredis",
         url = "https://github.com/redis/hiredis/archive/392de5d7f97353485df1237872cb682842e8d83f.tar.gz",
         sha256 = "2101650d39a8f13293f263e9da242d2c6dee0cda08d343b2939ffe3d95cf3b8b",
         patches = [
-            "//thirdparty/patches:hiredis-windows-msvc.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:hiredis-windows-msvc.patch",
         ],
     )
 
     auto_http_archive(
         name = "com_github_spdlog",
-        build_file = "//bazel:BUILD.spdlog",
+        build_file = "@com_github_ray_project_ray//bazel:BUILD.spdlog",
         urls = ["https://github.com/gabime/spdlog/archive/v1.7.0.zip"],
         sha256 = "c8f1e1103e0b148eb8832275d8e68036f2fdd3975a1199af0e844908c56f6ea5",
     )
 
     auto_http_archive(
         name = "com_github_tporadowski_redis_bin",
-        build_file = "//bazel:BUILD.redis",
+        build_file = "@com_github_ray_project_ray//bazel:BUILD.redis",
         strip_prefix = None,
         url = "https://github.com/tporadowski/redis/releases/download/v5.0.9/Redis-x64-5.0.9.zip",
         sha256 = "b09565b22b50c505a5faa86a7e40b6683afb22f3c17c5e6a5e35fc9b7c03f4c2",
@@ -154,7 +157,7 @@ def ray_deps_setup():
         sha256 = "83bfc1507731a0906e387fc28b7ef5417d591429e51e788417fe9ff025e116b1",
         url = "https://boostorg.jfrog.io/artifactory/main/release/1.74.0/source/boost_1_74_0.tar.bz2",
         patches = [
-            "//thirdparty/patches:boost-exception-no_warn_typeid_evaluated.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:boost-exception-no_warn_typeid_evaluated.patch",
         ],
     )
 
@@ -164,7 +167,7 @@ def ray_deps_setup():
         url = "https://github.com/nelhage/rules_boost/archive/652b21e35e4eeed5579e696da0facbe8dba52b1f.tar.gz",
         sha256 = "c1b8b2adc3b4201683cf94dda7eef3fc0f4f4c0ea5caa3ed3feffe07e1fb5b15",
         patches = [
-            "//thirdparty/patches:rules_boost-windows-linkopts.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:rules_boost-windows-linkopts.patch",
         ],
     )
 
@@ -204,8 +207,8 @@ def ray_deps_setup():
         url = "https://github.com/census-instrumentation/opencensus-cpp/archive/b14a5c0dcc2da8a7fc438fab637845c73438b703.zip",
         sha256 = "6592e07672e7f7980687f6c1abda81974d8d379e273fea3b54b6c4d855489b9d",
         patches = [
-            "//thirdparty/patches:opencensus-cpp-harvest-interval.patch",
-            "//thirdparty/patches:opencensus-cpp-shutdown-api.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:opencensus-cpp-harvest-interval.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:opencensus-cpp-shutdown-api.patch",
         ],
     )
 
@@ -223,10 +226,10 @@ def ray_deps_setup():
         url = "https://github.com/jupp0r/prometheus-cpp/archive/60eaa4ea47b16751a8e8740b05fe70914c68a480.tar.gz",
         sha256 = "ec825b802487ac18b0d98e2e8b7961487b12562f8f82e424521d0a891d9e1373",
         patches = [
-            "//thirdparty/patches:prometheus-windows-headers.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:prometheus-windows-headers.patch",
             # https://github.com/jupp0r/prometheus-cpp/pull/225
-            "//thirdparty/patches:prometheus-windows-zlib.patch",
-            "//thirdparty/patches:prometheus-windows-pollfd.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:prometheus-windows-zlib.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:prometheus-windows-pollfd.patch",
         ],
     )
 
@@ -236,10 +239,10 @@ def ray_deps_setup():
         url = "https://github.com/grpc/grpc/archive/refs/tags/v1.42.0.tar.gz",
         sha256 = "b2f2620c762427bfeeef96a68c1924319f384e877bc0e084487601e4cc6e434c",
         patches = [
-            "//thirdparty/patches:grpc-cython-copts.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
             # Delete after upgrading from 1.42.0
-            "//thirdparty/patches:grpc-default-initialization.patch",
-            "//thirdparty/patches:grpc-python.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:grpc-default-initialization.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:grpc-python.patch",
         ],
     )
 
@@ -269,7 +272,7 @@ def ray_deps_setup():
         url = "https://github.com/msgpack/msgpack-c/archive/8085ab8721090a447cf98bb802d1406ad7afe420.tar.gz",
         sha256 = "83c37c9ad926bbee68d564d9f53c6cbb057c1f755c264043ddd87d89e36d15bb",
         patches = [
-            "//thirdparty/patches:msgpack-windows-iovec.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:msgpack-windows-iovec.patch",
         ],
     )
 

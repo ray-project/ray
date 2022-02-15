@@ -36,11 +36,17 @@ from torch.utils.data import DataLoader, RandomSampler
 from tqdm import trange
 import torch.distributed as dist
 
-from transformers import (MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
-                          ALL_PRETRAINED_CONFIG_ARCHIVE_MAP, AdamW, AutoConfig,
-                          AutoModelForSequenceClassification, AutoTokenizer,
-                          get_linear_schedule_with_warmup, HfArgumentParser,
-                          TrainingArguments)
+from transformers import (
+    MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING,
+    ALL_PRETRAINED_CONFIG_ARCHIVE_MAP,
+    AdamW,
+    AutoConfig,
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+    get_linear_schedule_with_warmup,
+    HfArgumentParser,
+    TrainingArguments,
+)
 from transformers import glue_output_modes as output_modes
 from transformers import glue_processors as processors
 
@@ -48,7 +54,10 @@ import ray
 from ray.util.sgd.torch import TrainingOperator
 from ray.util.sgd import TorchTrainer
 from ray.util.sgd.torch.examples.transformers.utils import (
-    evaluate, load_and_cache_examples, save_and_evaluate_checkpoints)
+    evaluate,
+    load_and_cache_examples,
+    save_and_evaluate_checkpoints,
+)
 
 try:
     from apex import amp
@@ -59,9 +68,14 @@ MODEL_CONFIG_CLASSES = list(MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
 ALL_MODELS = sum(
-    (tuple(key for key in ALL_PRETRAINED_CONFIG_ARCHIVE_MAP.keys()
-           if key.startswith(conf.model_type))
-     for conf in MODEL_CONFIG_CLASSES),
+    (
+        tuple(
+            key
+            for key in ALL_PRETRAINED_CONFIG_ARCHIVE_MAP.keys()
+            if key.startswith(conf.model_type)
+        )
+        for conf in MODEL_CONFIG_CLASSES
+    ),
     (),
 )
 
@@ -80,15 +94,16 @@ def announce_training(args, dataset_len, t_total):
     logger.info("***** Running training *****")
     logger.info("  Num examples = %d", dataset_len)
     logger.info("  Num Epochs = %d", args.num_train_epochs)
-    logger.info("  Instantaneous batch size per device = %d",
-                args.per_device_train_batch_size)
+    logger.info(
+        "  Instantaneous batch size per device = %d", args.per_device_train_batch_size
+    )
     logger.info(
         "  Total train batch size (w. parallel, distributed & accum) = %d",
-        args.per_device_train_batch_size * args.gradient_accumulation_steps *
-        args.num_workers,
+        args.per_device_train_batch_size
+        * args.gradient_accumulation_steps
+        * args.num_workers,
     )
-    logger.info("  Gradient Accumulation steps = %d",
-                args.gradient_accumulation_steps)
+    logger.info("  Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
     logger.info("  Total optimization steps = %d", t_total)
 
 
@@ -97,21 +112,23 @@ class TransformerOperator(TrainingOperator):
         self.args = args = config["args"]
         start = time.time()
         self.tokenizer = AutoTokenizer.from_pretrained(
-            args.tokenizer_name
-            if args.tokenizer_name else args.model_name_or_path,
+            args.tokenizer_name if args.tokenizer_name else args.model_name_or_path,
             cache_dir=args.cache_dir if args.cache_dir else None,
         )
         logger.info(f"tokenizer instantiation time: {time.time() - start}")
 
         # Load data.
         train_dataset = load_and_cache_examples(
-            args, args.task_name, self.tokenizer, evaluate=False)
-        train_sampler = RandomSampler(
-            train_dataset) if not dist.is_initialized() else None
+            args, args.task_name, self.tokenizer, evaluate=False
+        )
+        train_sampler = (
+            RandomSampler(train_dataset) if not dist.is_initialized() else None
+        )
         train_loader = DataLoader(
             train_dataset,
             sampler=train_sampler,
-            batch_size=args.per_device_train_batch_size)
+            batch_size=args.per_device_train_batch_size,
+        )
 
         # Create model.
         with FileLock(os.path.expanduser("~/.download.lock")):
@@ -119,8 +136,7 @@ class TransformerOperator(TrainingOperator):
             label_list = processor.get_labels()
             num_labels = len(label_list)
             model_config = AutoConfig.from_pretrained(
-                args.config_name
-                if args.config_name else args.model_name_or_path,
+                args.config_name if args.config_name else args.model_name_or_path,
                 num_labels=num_labels,
                 finetuning_task=args.task_name,
                 cache_dir=args.cache_dir if args.cache_dir else None,
@@ -137,30 +153,32 @@ class TransformerOperator(TrainingOperator):
         optimizer_grouped_parameters = [
             {
                 "params": [
-                    p for n, p in model.named_parameters()
+                    p
+                    for n, p in model.named_parameters()
                     if not any(nd in n for nd in no_decay)
                 ],
                 "weight_decay": args.weight_decay,
             },
             {
                 "params": [
-                    p for n, p in model.named_parameters()
+                    p
+                    for n, p in model.named_parameters()
                     if any(nd in n for nd in no_decay)
                 ],
-                "weight_decay": 0.0
+                "weight_decay": 0.0,
             },
         ]
 
         optimizer = AdamW(
-            optimizer_grouped_parameters,
-            lr=args.learning_rate,
-            eps=args.adam_epsilon)
+            optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon
+        )
 
         # Register components.
         self.model, self.optimizer = self.register(
             models=model,
             optimizers=optimizer,
-            apex_args={"opt_level": args.fp16_opt_level})
+            apex_args={"opt_level": args.fp16_opt_level},
+        )
 
         self.register_data(train_loader=train_loader, validation_loader=None)
 
@@ -168,7 +186,8 @@ class TransformerOperator(TrainingOperator):
         self._warmup_scheduler = get_linear_schedule_with_warmup(
             self.optimizer,
             num_warmup_steps=args.warmup_steps,
-            num_training_steps=self.calculate_t_total())
+            num_training_steps=self.calculate_t_total(),
+        )
         self._global_step = 0
 
         announce_training(args, self.train_data_len, self.calculate_t_total())
@@ -181,16 +200,12 @@ class TransformerOperator(TrainingOperator):
 
         model.train()
         batch = tuple(t.to(self.device) for t in batch)
-        inputs = {
-            "input_ids": batch[0],
-            "attention_mask": batch[1],
-            "labels": batch[3]
-        }
+        inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
         if args.model_type != "distilbert":
             # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
-            inputs["token_type_ids"] = (batch[2] if args.model_type in [
-                "bert", "xlnet", "albert"
-            ] else None)
+            inputs["token_type_ids"] = (
+                batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
+            )
         if self.use_fp16_native:
             with self._amp.autocast():
                 outputs = model(**inputs)
@@ -220,17 +235,19 @@ class TransformerOperator(TrainingOperator):
 
         # last step in epoch but step is always smaller
         # than gradient_accumulation_steps
-        ending = (self.train_data_len <= args.gradient_accumulation_steps
-                  and (step + 1) == self.train_data_len)
+        ending = (
+            self.train_data_len <= args.gradient_accumulation_steps
+            and (step + 1) == self.train_data_len
+        )
         if (step + 1) % args.gradient_accumulation_steps == 0 or ending:
             if self.use_fp16_apex:
                 torch.nn.utils.clip_grad_norm_(
-                    amp.master_params(optimizer), args.max_grad_norm)
+                    amp.master_params(optimizer), args.max_grad_norm
+                )
             else:
                 if self.use_fp16_native:
                     self._amp_scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(),
-                                               args.max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
             if self.use_fp16_native:
                 self._amp_scaler.step(self.optimizer)
@@ -250,11 +267,11 @@ class TransformerOperator(TrainingOperator):
         train_data_len = len(self.train_loader)
         if args.max_steps > 0:
             t_total = args.max_steps
-            args.num_train_epochs = args.max_steps // (
-                train_data_len // grad_accum_steps) + 1
+            args.num_train_epochs = (
+                args.max_steps // (train_data_len // grad_accum_steps) + 1
+            )
         else:
-            t_total = (
-                train_data_len // grad_accum_steps * args.num_train_epochs)
+            t_total = train_data_len // grad_accum_steps * args.num_train_epochs
         return t_total
 
 
@@ -263,72 +280,103 @@ class ModelArguments:
     """Arguments pertaining to model/config/tokenizer."""
 
     model_name_or_path: str = field(
-        metadata=dict(help="Path to pre-trained model or shortcut name "
-                      "selected in the list: " + ", ".join(ALL_MODELS)))
+        metadata=dict(
+            help="Path to pre-trained model or shortcut name "
+            "selected in the list: " + ", ".join(ALL_MODELS)
+        )
+    )
     model_type: str = field(
-        metadata=dict(help="Model type selected "
-                      "in the list: " + ", ".join(MODEL_TYPES)))
+        metadata=dict(
+            help="Model type selected " "in the list: " + ", ".join(MODEL_TYPES)
+        )
+    )
     config_name: Optional[str] = field(
         default=None,
         metadata=dict(
             help="Pretrained config name or path if not the same as model_name"
-        ))
+        ),
+    )
     tokenizer_name: Optional[str] = field(
         default=None,
-        metadata=dict(help="Pretrained tokenizer name or path "
-                      "if not the same as model_name"))
+        metadata=dict(
+            help="Pretrained tokenizer name or path " "if not the same as model_name"
+        ),
+    )
     cache_dir: Optional[str] = field(
         default=None,
-        metadata=dict(help="Where do you want to store the pre-trained "
-                      "models downloaded from s3"))
+        metadata=dict(
+            help="Where do you want to store the pre-trained "
+            "models downloaded from s3"
+        ),
+    )
 
 
 @dataclass
 class DataProcessingArguments:
     task_name: str = field(
-        metadata=dict(help="The name of the task to train selected "
-                      "in the list: " + ", ".join(processors.keys())))
+        metadata=dict(
+            help="The name of the task to train selected "
+            "in the list: " + ", ".join(processors.keys())
+        )
+    )
     data_dir: str = field(
-        metadata=dict(help="The input data dir. Should contain "
-                      "the .tsv files (or other data files) for the task."))
+        metadata=dict(
+            help="The input data dir. Should contain "
+            "the .tsv files (or other data files) for the task."
+        )
+    )
     max_seq_length: int = field(
         default=128,
-        metadata=dict(help="The maximum total input sequence length "
-                      "after tokenization. Sequences longer "
-                      "than this will be truncated, sequences "
-                      "shorter will be padded."))
+        metadata=dict(
+            help="The maximum total input sequence length "
+            "after tokenization. Sequences longer "
+            "than this will be truncated, sequences "
+            "shorter will be padded."
+        ),
+    )
     overwrite_cache: bool = field(
         default=False,
-        metadata={"help": "Overwrite the cached training and evaluation sets"})
+        metadata={"help": "Overwrite the cached training and evaluation sets"},
+    )
 
 
 @dataclass
 class RayArguments:
     num_workers: int = field(
-        default=1,
-        metadata={"help": "Number of data-parallel workers to use."})
+        default=1, metadata={"help": "Number of data-parallel workers to use."}
+    )
     address: str = field(
-        default=None,
-        metadata={"help": "Address of the Ray cluster to connect to."})
+        default=None, metadata={"help": "Address of the Ray cluster to connect to."}
+    )
 
 
 def main():
-    parser = HfArgumentParser((ModelArguments, DataProcessingArguments,
-                               TrainingArguments, RayArguments))
+    parser = HfArgumentParser(
+        (ModelArguments, DataProcessingArguments, TrainingArguments, RayArguments)
+    )
     all_args = parser.parse_args_into_dataclasses()
     model_args, dataprocessing_args, training_args, ray_args = all_args
 
     # For now, let's merge all the sets of args into one,
     # but soon, we'll keep distinct sets of args, with a
     # cleaner separation of concerns.
-    args = argparse.Namespace(**vars(model_args), **vars(dataprocessing_args),
-                              **vars(training_args), **vars(ray_args))
+    args = argparse.Namespace(
+        **vars(model_args),
+        **vars(dataprocessing_args),
+        **vars(training_args),
+        **vars(ray_args),
+    )
 
-    if (os.path.exists(args.output_dir) and os.listdir(args.output_dir)
-            and args.do_train and not args.overwrite_output_dir):
+    if (
+        os.path.exists(args.output_dir)
+        and os.listdir(args.output_dir)
+        and args.do_train
+        and not args.overwrite_output_dir
+    ):
         raise ValueError(
             "Output directory ({}) already exists and is not empty. "
-            "Use --overwrite_output_dir to overcome.".format(args.output_dir))
+            "Use --overwrite_output_dir to overcome.".format(args.output_dir)
+        )
 
     use_gpu = torch.cuda.is_available() and not args.no_cuda
 
@@ -341,7 +389,8 @@ def main():
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO)
+        level=logging.INFO,
+    )
     logger.info("Training/evaluation parameters %s", args)
     ray.init(address=args.address)
     # Training
@@ -352,7 +401,8 @@ def main():
         num_workers=args.num_workers,
         use_gpu=use_gpu,
         use_tqdm=True,
-        config={"args": args})
+        config={"args": args},
+    )
 
     args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

@@ -2,18 +2,23 @@ import pytest
 
 import ray
 from ray.train import Trainer
-from ray.train.examples.horovod.horovod_example import train_func as \
-    horovod_torch_train_func, HorovodTrainClass
-from ray.train.examples.tensorflow_mnist_example import train_func as \
-    tensorflow_mnist_train_func
-from ray.train.examples.tensorflow_quick_start import train_func as \
-    tf_quick_start_train_func
-from ray.train.examples.torch_quick_start import train_func as \
-    torch_quick_start_train_func
-from ray.train.examples.train_fashion_mnist_example import train_func \
-    as fashion_mnist_train_func
-from ray.train.examples.train_linear_example import train_func as \
-    linear_train_func
+from ray.train.examples.horovod.horovod_example import (
+    train_func as horovod_torch_train_func,
+    HorovodTrainClass,
+)
+from ray.train.examples.tensorflow_mnist_example import (
+    train_func as tensorflow_mnist_train_func,
+)
+from ray.train.examples.tensorflow_quick_start import (
+    train_func as tf_quick_start_train_func,
+)
+from ray.train.examples.torch_quick_start import (
+    train_func as torch_quick_start_train_func,
+)
+from ray.train.examples.train_fashion_mnist_example import (
+    train_func as fashion_mnist_train_func,
+)
+from ray.train.examples.train_linear_example import train_func as linear_train_func
 
 
 @pytest.fixture
@@ -106,11 +111,8 @@ def test_horovod_torch_mnist(ray_start_2_cpus):
     trainer = Trainer("horovod", num_workers)
     trainer.start()
     results = trainer.run(
-        horovod_torch_train_func,
-        config={
-            "num_epochs": num_epochs,
-            "lr": 1e-3
-        })
+        horovod_torch_train_func, config={"num_epochs": num_epochs, "lr": 1e-3}
+    )
     trainer.shutdown()
 
     assert len(results) == num_workers
@@ -124,10 +126,8 @@ def test_horovod_torch_mnist_stateful(ray_start_2_cpus):
     num_epochs = 2
     trainer = Trainer("horovod", num_workers)
     workers = trainer.to_worker_group(
-        HorovodTrainClass, config={
-            "num_epochs": num_epochs,
-            "lr": 1e-3
-        })
+        HorovodTrainClass, config={"num_epochs": num_epochs, "lr": 1e-3}
+    )
     results = []
     for epoch in range(num_epochs):
         results.append(ray.get([w.train.remote(epoch=epoch) for w in workers]))

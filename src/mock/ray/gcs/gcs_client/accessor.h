@@ -259,21 +259,25 @@ namespace gcs {
 class MockInternalKVAccessor : public InternalKVAccessor {
  public:
   MOCK_METHOD(Status, AsyncInternalKVKeys,
-              (const std::string &prefix,
+              (const std::string &ns, const std::string &prefix,
                const OptionalItemCallback<std::vector<std::string>> &callback),
               (override));
   MOCK_METHOD(Status, AsyncInternalKVGet,
-              (const std::string &key, const OptionalItemCallback<std::string> &callback),
+              (const std::string &ns, const std::string &key,
+               const OptionalItemCallback<std::string> &callback),
               (override));
   MOCK_METHOD(Status, AsyncInternalKVPut,
-              (const std::string &key, const std::string &value, bool overwrite,
-               const OptionalItemCallback<int> &callback),
+              (const std::string &ns, const std::string &key, const std::string &value,
+               bool overwrite, const OptionalItemCallback<int> &callback),
               (override));
   MOCK_METHOD(Status, AsyncInternalKVExists,
-              (const std::string &key, const OptionalItemCallback<bool> &callback),
+              (const std::string &ns, const std::string &key,
+               const OptionalItemCallback<bool> &callback),
               (override));
   MOCK_METHOD(Status, AsyncInternalKVDel,
-              (const std::string &key, const StatusCallback &callback), (override));
+              (const std::string &ns, const std::string &key, bool del_by_prefix,
+               const StatusCallback &callback),
+              (override));
 };
 
 }  // namespace gcs

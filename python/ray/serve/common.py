@@ -1,6 +1,6 @@
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Dict, Optional
-from uuid import UUID
 
 import ray
 from ray.actor import ActorHandle
@@ -11,7 +11,6 @@ str = str
 EndpointTag = str
 ReplicaTag = str
 NodeId = str
-GoalId = UUID
 Duration = float
 
 
@@ -20,17 +19,31 @@ class EndpointInfo:
     route: str
 
 
+class DeploymentStatus(Enum):
+    UPDATING = 1
+    HEALTHY = 2
+    UNHEALTHY = 3
+
+
+@dataclass
+class DeploymentStatusInfo:
+    status: DeploymentStatus
+    message: str = ""
+
+
 class DeploymentInfo:
-    def __init__(self,
-                 deployment_config: DeploymentConfig,
-                 replica_config: ReplicaConfig,
-                 start_time_ms: int,
-                 deployer_job_id: "ray._raylet.JobID",
-                 actor_name: Optional[str] = None,
-                 serialized_deployment_def: Optional[bytes] = None,
-                 version: Optional[str] = None,
-                 end_time_ms: Optional[int] = None,
-                 autoscaling_policy: Optional[AutoscalingPolicy] = None):
+    def __init__(
+        self,
+        deployment_config: DeploymentConfig,
+        replica_config: ReplicaConfig,
+        start_time_ms: int,
+        deployer_job_id: "ray._raylet.JobID",
+        actor_name: Optional[str] = None,
+        serialized_deployment_def: Optional[bytes] = None,
+        version: Optional[str] = None,
+        end_time_ms: Optional[int] = None,
+        autoscaling_policy: Optional[AutoscalingPolicy] = None,
+    ):
         self.deployment_config = deployment_config
         self.replica_config = replica_config
         # The time when .deploy() was first called for this deployment.
@@ -59,12 +72,28 @@ class DeploymentInfo:
     def actor_def(self):
         # Delayed import as replica depends on this file.
         from ray.serve.replica import create_replica_wrapper
+
         if self._cached_actor_def is None:
             assert self.actor_name is not None
-            assert self.serialized_deployment_def is not None
-            self._cached_actor_def = ray.remote(
-                create_replica_wrapper(self.actor_name,
-                                       self.serialized_deployment_def))
+            assert (
+                self.replica_config.import_path is not None
+                or self.serialized_deployment_def is not None
+            )
+            if self.replica_config.import_path is not None:
+                self._cached_actor_def = ray.remote(
+                    create_replica_wrapper(
+                        self.actor_name,
+                        import_path=self.replica_config.import_path,
+                    )
+                )
+            else:
+                self._cached_actor_def = ray.remote(
+                    create_replica_wrapper(
+                        self.actor_name,
+                        serialized_deployment_def=self.serialized_deployment_def,
+                    )
+                )
+
         return self._cached_actor_def
 
 
@@ -94,7 +123,8 @@ class ReplicaName:
         parsed = replica_name.split(cls.delimiter)
         assert len(parsed) == 2, (
             f"Given replica name {replica_name} didn't match pattern, please "
-            f"ensure it has exactly two fields with delimiter {cls.delimiter}")
+            f"ensure it has exactly two fields with delimiter {cls.delimiter}"
+        )
         return cls(deployment_tag=parsed[0], replica_suffix=parsed[1])
 
     def __str__(self):

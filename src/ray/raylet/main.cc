@@ -30,10 +30,10 @@ DEFINE_string(store_socket_name, "", "The socket name of object store.");
 DEFINE_int32(object_manager_port, -1, "The port of object manager.");
 DEFINE_int32(node_manager_port, -1, "The port of node manager.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
-DEFINE_int32(metrics_export_port, 1, "Maximum startup concurrency");
+DEFINE_int32(metrics_export_port, 1, "The port at which metrics are exposed.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(gcs_address, "", "The address of the GCS server, including IP and port.");
-DEFINE_string(redis_address, "", "The ip address of redis server.");
+DEFINE_string(redis_address, "", "The IP address of redis server.");
 DEFINE_int32(redis_port, -1, "The port of redis server.");
 DEFINE_int32(min_worker_port, 0,
              "The lowest port that workers' gRPC servers will bind on.");
@@ -43,7 +43,7 @@ DEFINE_string(worker_port_list, "",
               "An explicit list of ports that workers' gRPC servers will bind on.");
 DEFINE_int32(num_initial_python_workers_for_first_job, 0,
              "Number of initial Python workers for the first job.");
-DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency");
+DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency.");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
@@ -66,7 +66,7 @@ DEFINE_string(plasma_directory, "/dev/shm",
 DEFINE_string(plasma_directory, "/tmp",
               "The shared memory directory of the object store.");
 #endif
-DEFINE_bool(huge_pages, false, "Whether enable huge pages");
+DEFINE_bool(huge_pages, false, "Enable huge pages.");
 #ifndef RAYLET_TEST
 
 int main(int argc, char *argv[]) {

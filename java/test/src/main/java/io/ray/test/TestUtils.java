@@ -110,7 +110,7 @@ public class TestUtils {
     fullArgs.add("java");
     fullArgs.add("-cp");
     fullArgs.add(System.getProperty("java.class.path"));
-    fullArgs.add("-Dray.address=" + rayConfig.getRedisAddress());
+    fullArgs.add("-Dray.address=" + rayConfig.getBootstrapAddress());
     fullArgs.add("-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName);
     fullArgs.add("-Dray.raylet.socket-name=" + rayConfig.rayletSocketName);
     fullArgs.add("-Dray.raylet.node-manager-port=" + rayConfig.getNodeManagerPort());

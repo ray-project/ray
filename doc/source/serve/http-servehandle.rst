@@ -15,7 +15,7 @@ Calling Deployments via HTTP
 Basic Example
 ^^^^^^^^^^^^^
 
-As described in the :doc:`tutorial`, when you create a deployment, it is exposed over HTTP by default at ``/{deployment_name}``. You can change the route by specifying the ``route_prefix`` argument to the :mod:`@serve.deployment <ray.serve.api.deployment>` decorator.
+As shown in the :ref:`serve_quickstart`, when you create a deployment, it is exposed over HTTP by default at ``/{deployment_name}``. You can change the route by specifying the ``route_prefix`` argument to the :mod:`@serve.deployment <ray.serve.api.deployment>` decorator.
 
 .. code-block:: python
 

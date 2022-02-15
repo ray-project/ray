@@ -1,5 +1,5 @@
-Serve API Reference
-===================
+Ray Serve API
+=============
 
 Core APIs
 ---------

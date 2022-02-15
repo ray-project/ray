@@ -21,7 +21,7 @@ In `vector envs <rllib-env.html#vectorized>`__, policy inference is for multiple
 and in `multi-agent <rllib-env.html#multi-agent-and-hierarchical>`__, there may be multiple policies,
 each controlling one or more agents:
 
-.. image:: ../multi-flat.svg
+.. image:: images/multi-flat.svg
 
 Policies can be implemented using `any framework <https://github.com/ray-project/ray/blob/master/rllib/policy/policy.py>`__.
 However, for TensorFlow and PyTorch, RLlib has
@@ -73,7 +73,7 @@ Policies each define a ``learn_on_batch()`` method that improves the policy give
 
 RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distributed workflow of running rollouts and optimizing policies. Trainer classes leverage parallel iterators to implement the desired computation pattern. The following figure shows *synchronous sampling*, the simplest of `these patterns <rllib-algorithms.html>`__:
 
-.. figure:: ../a2c-arch.svg
+.. figure:: images/a2c-arch.svg
 
     Synchronous Sampling (e.g., A2C, PG, PPO)
 

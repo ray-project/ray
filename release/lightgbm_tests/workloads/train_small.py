@@ -24,8 +24,7 @@ if __name__ == "__main__":
     else:
         ray.init(address="auto")
 
-    wait_for_num_nodes(
-        int(os.environ.get("RAY_RELEASE_MIN_WORKERS", 0)) + 1, 600)
+    wait_for_num_nodes(int(os.environ.get("RAY_RELEASE_MIN_WORKERS", 0)) + 1, 600)
 
     output = os.environ["TEST_OUTPUT_JSON"]
     state = os.environ["TEST_STATE_JSON"]
@@ -34,7 +33,8 @@ if __name__ == "__main__":
         max_actor_restarts=2,
         num_actors=4,
         cpus_per_actor=4,
-        gpus_per_actor=0)
+        gpus_per_actor=0,
+    )
 
     start = time.time()
 
@@ -59,8 +59,7 @@ if __name__ == "__main__":
     result = {
         "time_taken": taken,
     }
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/train_small.json")
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/train_small.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 

@@ -14,8 +14,7 @@ from ray.exceptions import GetTimeoutError
 
 def valid_exceptions(use_force):
     if use_force:
-        return (RayTaskError, TaskCancelledError, WorkerCrashedError,
-                ObjectLostError)
+        return (RayTaskError, TaskCancelledError, WorkerCrashedError, ObjectLostError)
     else:
         return (RayTaskError, TaskCancelledError)
 
@@ -25,9 +24,10 @@ def _all_actors_dead(ray):
     import ray._private.gcs_utils as gcs_utils
 
     def _all_actors_dead_internal():
-        return all(actor["State"] == convert_actor_state(
-            gcs_utils.ActorTableData.DEAD)
-                   for actor in list(real_ray.state.actors().values()))
+        return all(
+            actor["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
+            for actor in list(real_ray.state.actors().values())
+        )
 
     return _all_actors_dead_internal
 
@@ -63,7 +63,7 @@ def test_cancel_chain(ray_start_regular, use_force):
         obj3 = wait_for.remote([obj2])
         obj4 = wait_for.remote([obj3])
 
-        assert len(ray.wait([obj1], timeout=.1)[0]) == 0
+        assert len(ray.wait([obj1], timeout=0.1)[0]) == 0
         ray.cancel(obj1, force=use_force)
         for ob in [obj1, obj2, obj3, obj4]:
             with pytest.raises(valid_exceptions(use_force)):
@@ -75,17 +75,17 @@ def test_cancel_chain(ray_start_regular, use_force):
         obj3 = wait_for.remote([obj2])
         obj4 = wait_for.remote([obj3])
 
-        assert len(ray.wait([obj3], timeout=.1)[0]) == 0
+        assert len(ray.wait([obj3], timeout=0.1)[0]) == 0
         ray.cancel(obj3, force=use_force)
         for ob in [obj3, obj4]:
             with pytest.raises(valid_exceptions(use_force)):
                 ray.get(ob)
 
         with pytest.raises(GetTimeoutError):
-            ray.get(obj1, timeout=.1)
+            ray.get(obj1, timeout=0.1)
 
         with pytest.raises(GetTimeoutError):
-            ray.get(obj2, timeout=.1)
+            ray.get(obj2, timeout=0.1)
 
         signaler2.send.remote()
         ray.get(obj1)
@@ -137,4 +137,5 @@ def test_kill_cancel_metadata(ray_start_regular):
 if __name__ == "__main__":
     import sys
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -33,10 +33,8 @@ def _shared_serve_instance():
         # A dummy code search path to enable cross language.
         job_config=job_config.JobConfig(code_search_path=["."]),
         _metrics_export_port=9999,
-        _system_config={
-            "metrics_report_interval_ms": 1000,
-            "task_retry_delay_ms": 50
-        })
+        _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
+    )
     yield serve.start(detached=True)
 
 
