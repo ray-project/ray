@@ -551,7 +551,7 @@ class Trainable:
         self.storage_client.sync_down(
             cloud_checkpoint.location,
         )
-        self.storage_client.wait()
+        self.storage_client.wait_or_retry()
         # Todo: In the future, this may become
         # local_checkpoint = cloud_checkpoint.to_local()
 
@@ -677,6 +677,7 @@ class Trainable:
                 )
             elif isinstance(location, CloudStorageCheckpoint):
                 self.storage_client.delete(location.location)
+                self.storage_client.wait_or_retry()
 
     def export_model(self, export_formats, export_dir=None):
         """Exports model based on export_formats.
