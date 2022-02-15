@@ -277,6 +277,44 @@ class ReplicaConfig:
             self.resource_dict.update(custom_resources)
 
 
+class DeploymentRequest(BaseModel):
+    """
+    Options needed to issue a deploy() call from the Serve controller.
+
+    Args:
+        name (str): The deployment's name.
+        deployment_config_proto_bytes (byte): The serialized DeploymentConfig,
+            which contains the deployment's configurations.
+        replica_config (ReplicaConfig): The configurations needed to launch
+            each replica's Ray actor.
+        version (Optional[str]): The requested deployment's version.
+        prev_version (Optional[str]): The expected version for the existing
+            deployment with the requested name.
+        route_prefix (Optional[str]): The route prefix for the requested
+            deployment's endpoint.
+        deployer_job_id (str): JobID string of format "ray._raylet.JobID".
+    """
+
+    name: str
+    deployment_config_proto_bytes: bytes
+    replica_config: ReplicaConfig
+    version: Optional[str] = None
+    prev_version: Optional[str] = None
+    route_prefix: Optional[str] = None
+    deployer_job_id: str
+
+    @validator("deployer_job_id", always=True)
+    def check_job_id_format(cls, v):
+        parts = v.split(".")
+        if len(parts) < 3 and parts[0] != "ray" and parts[1] != "_raylet":
+            raise ValueError(f"DeploymentRequest got deployer_job_id "
+                             f"\"{v}\". Expected deployer_job_id of format "
+                             f"\"ray._raylet.[JobID]\".")
+
+    class Config:
+        arbitrary_types_allowed = True
+
+
 class DeploymentMode(str, Enum):
     NoServer = "NoServer"
     HeadOnly = "HeadOnly"
