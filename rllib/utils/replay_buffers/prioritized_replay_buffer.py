@@ -57,6 +57,19 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
     @ExperimentalAPI
     @override(ReplayBuffer)
+    def _add_single_batch(self, item: SampleBatchType, **kwargs):
+        weight = kwargs.get('weight', None)
+
+        if weight is None:
+            weight = self._max_priority
+
+        self._it_sum[self._next_idx] = weight ** self._alpha
+        self._it_min[self._next_idx] = weight ** self._alpha
+
+        ReplayBuffer._add_single_batch(self, item)
+
+    @ExperimentalAPI
+    @override(ReplayBuffer)
     def add(self, batch: SampleBatchType, weight: float) -> None:
         """Add a batch of experiences.
 
@@ -65,38 +78,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             weight: The weight of the added sample used in subsequent sampling
                 steps.
         """
-        idx = self._next_idx
+        ReplayBuffer.add(self, batch, weight=weight)
 
-        assert batch.count > 0, batch
-        warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
-
-        # Update our timesteps counts.
-        self._num_timesteps_added += batch.count
-        self._num_timesteps_added_wrap += batch.count
-
-        if self._next_idx >= len(self._storage):
-            self._storage.append(batch)
-            self._est_size_bytes += batch.size_bytes()
-        else:
-            self._storage[self._next_idx] = batch
-
-        # Wrap around storage as a circular buffer once we hit capacity.
-        if self._num_timesteps_added_wrap >= self.capacity:
-            self._eviction_started = True
-            self._num_timesteps_added_wrap = 0
-            self._next_idx = 0
-        else:
-            self._next_idx += 1
-
-        # Eviction of older samples has already started (buffer is "full").
-        if self._eviction_started:
-            self._evicted_hit_stats.push(self._hit_count[self._next_idx])
-            self._hit_count[self._next_idx] = 0
-
-        if weight is None:
-            weight = self._max_priority
-        self._it_sum[idx] = weight ** self._alpha
-        self._it_min[idx] = weight ** self._alpha
 
     def _sample_proportional(self, num_items: int) -> List[int]:
         res = []
@@ -167,16 +150,15 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     @ExperimentalAPI
     def update_priorities(self, idxes: List[int],
                           priorities: List[float]) -> None:
-        """Update priorities of sampled transitions.
+        """Update priorities of items at idxes.
 
-        Sets priority of transition at index idxes[i] in buffer
+        Sets priority of item at index idxes[i] in buffer
         to priorities[i].
 
         Args:
-            idxes: List of indices of sampled transitions
+            idxes: List of indices of items
             priorities: List of updated priorities corresponding to
-                transitions at the sampled idxes denoted by
-                variable `idxes`.
+                items at the idxes denoted by variable `idxes`.
         """
         # Making sure we don't pass in e.g. a torch tensor.
         assert isinstance(

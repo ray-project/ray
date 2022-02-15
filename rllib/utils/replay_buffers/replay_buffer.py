@@ -36,8 +36,8 @@ class ReplayBuffer:
             capacity: Max number of timesteps to store in the FIFO
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
-            storage_unit (str): Either 'timesteps', 'sequences' or
-                'episodes'. Specifies how experiences are stored.
+            storage_unit: Either 'timesteps', `sequences` or
+                `episodes`. Specifies how experiences are stored.
             **kwargs: Forward compatibility kwargs.
         """
 
@@ -49,8 +49,8 @@ class ReplayBuffer:
             self._storage_unit = StorageUnit.EPISODES
         else:
             raise ValueError(
-                "storage_unit must be either 'timesteps', 'sequences' or "
-                "'episodes'."
+                "storage_unit must be either 'timesteps', `sequences` or "
+                "`episodes`."
             )
 
         # The actual storage (list of SampleBatches).
@@ -97,20 +97,20 @@ class ReplayBuffer:
         warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
 
         if self._storage_unit == StorageUnit.TIMESTEPS:
-            self._add_single_batch(batch)
+            self._add_single_batch(batch, **kwargs)
         elif self._storage_unit == StorageUnit.SEQUENCES:
             timestep_count = 0
             for seq_len in batch.get(SampleBatch.SEQ_LENS):
                 start_seq = timestep_count
                 end_seq = timestep_count + seq_len
-                self._add_single_batch(batch[start_seq:end_seq])
+                self._add_single_batch(batch[start_seq:end_seq], **kwargs)
                 timestep_count = end_seq
         elif self._storage_unit == StorageUnit.EPISODES:
             for eps in batch.split_by_episode():
                 if eps.get(SampleBatch.T)[0] == 0 and \
                         eps.get(SampleBatch.DONES)[-1] == True:
                     # Only add full episodes to the buffer
-                    self._add_single_batch(eps)
+                    self._add_single_batch(eps, **kwargs)
                 else:
                     if log_once("only_full_episodes"):
                         logger.info("This buffer uses episodes as a storage "
@@ -118,9 +118,8 @@ class ReplayBuffer:
                                     "to be added to it. Some samples may be "
                                     "dropped.")
 
-
     @ExperimentalAPI
-    def _add_single_batch(self, item: SampleBatchType):
+    def _add_single_batch(self, item: SampleBatchType, **kwargs):
         # Update our timesteps counts.
         self._num_timesteps_added += item.count
         self._num_timesteps_added_wrap += item.count
