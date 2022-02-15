@@ -57,6 +57,9 @@ def get_step(
     branch = get_test_env_var("RAY_BRANCH")
     label = commit[:7] if commit else branch
 
-    step["label"] = f"{test['name']} ({label}"
+    step["label"] = test["name"]
+    if smoke_test:
+        step["label"] += " [smoke test] "
+    step["label"] += f" ({label})"
 
     return step

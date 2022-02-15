@@ -115,10 +115,15 @@
     script: python workloads/train_small.py
 
     wait_for_nodes:
-      num_nodes: 4
-      timeout: 600
+      num_nodes: 8
+      timeout: 20
 
     type: client
+
+  smoke_test:
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 300
 
   alert: xgboost_tests
 
