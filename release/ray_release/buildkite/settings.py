@@ -9,6 +9,7 @@ from ray_release.wheels import DEFAULT_BRANCH
 
 
 class Frequency(enum.Enum):
+    DISABLED = enum.auto()
     ANY = enum.auto()
     MULTI = enum.auto()
     NIGHTLY = enum.auto()
@@ -16,6 +17,7 @@ class Frequency(enum.Enum):
 
 
 frequency_str_to_enum = {
+    "disabled": Frequency.DISABLED,
     "any": Frequency.ANY,
     "multi": Frequency.MULTI,
     "nightly": Frequency.NIGHTLY,

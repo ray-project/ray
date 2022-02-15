@@ -158,6 +158,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "smoke_test": {"frequency": "multi"},
                 }
             ),
+            Test({"name": "other_3", "frequency": "disabled"}),
             Test({"name": "test_3", "frequency": "nightly"}),
         ]
 

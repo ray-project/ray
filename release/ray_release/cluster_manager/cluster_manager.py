@@ -30,7 +30,7 @@ class ClusterManager(abc.ABC):
         self.cluster_compute_name = None
         self.cluster_compute_id = None
 
-        self.autosuspend_minutes = 30  # Todo: set to 10 for prod
+        self.autosuspend_minutes = 10
 
     def set_cluster_env(self, cluster_env: Dict[str, Any]):
         self.cluster_env = cluster_env
