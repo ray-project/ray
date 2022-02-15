@@ -54,7 +54,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    cluster_name = yaml.safe_load(open(AUTOSCALING_CONFIG_PATH).read())["cluster_name"]
     head_ip = get_node_ip_address()
     Monitor(
         address=f"{head_ip}:6379",
