@@ -361,8 +361,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 --------------------------------------------------------------------------------
-
-
 Code in python/ray/_private/runtime_env/_clonevirtualenv.py is adapted from https://github.com/edwardgeorge/virtualenv-clone/blob/master/clonevirtualenv.py
 
 Copyright (c) 2011, Edward George, based on code contained within the
