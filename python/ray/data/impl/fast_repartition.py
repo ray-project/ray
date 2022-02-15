@@ -1,7 +1,23 @@
+import ray
+
+from ray.data.block import BlockAccessor
+from ray.data.impl.block_list import BlockList
+from ray.data.impl.plan import ExecutionPlan
+from ray.data.impl.progress_bar import ProgressBar
+from ray.data.impl.remote_fn import cached_remote_fn
+from ray.data.impl.shuffle import _shuffle_reduce
+from ray.data.impl.stats import DatasetStats
+
 
 def fast_repartition(blocks, num_blocks):
+    from ray.data.dataset import Dataset
+
+    wrapped_ds = Dataset(
+        ExecutionPlan(blocks, DatasetStats(stages={}, parent=None)), 0, lazy=False
+    )
     # Compute the (n-1) indices needed for an equal split of the data.
-    count = self.count()
+    count = wrapped_ds.count()
+    dataset_format = wrapped_ds._dataset_format()
     indices = []
     cur_idx = 0
     for _ in range(num_blocks - 1):
@@ -9,9 +25,9 @@ def fast_repartition(blocks, num_blocks):
         indices.append(int(cur_idx))
     assert len(indices) < num_blocks, (indices, num_blocks)
     if indices:
-        splits = self.split_at_indices(indices)
+        splits = wrapped_ds.split_at_indices(indices)
     else:
-        splits = [self]
+        splits = [wrapped_ds]
     # TODO(ekl) include stats for the split tasks. We may also want to
     # consider combining the split and coalesce tasks as an optimization.
 
@@ -24,9 +40,8 @@ def fast_repartition(blocks, num_blocks):
         if s.num_blocks() > 0
     ]
 
-    del splits  # Early-release memory.
-    if clear_input_blocks:
-        blocks.clear()
+    # Early-release memory.
+    del splits, blocks, wrapped_ds
 
     new_blocks, new_metadata = zip(*reduce_out)
     new_blocks, new_metadata = list(new_blocks), list(new_metadata)
@@ -40,7 +55,6 @@ def fast_repartition(blocks, num_blocks):
         from ray.data.impl.simple_block import SimpleBlockBuilder
 
         num_empties = num_blocks - len(new_blocks)
-        dataset_format = self._dataset_format()
         if dataset_format == "arrow":
             builder = ArrowBlockBuilder()
         elif dataset_format == "pandas":
