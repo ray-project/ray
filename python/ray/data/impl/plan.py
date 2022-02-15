@@ -146,6 +146,8 @@ class AllToAllStage(Stage):
     ):
         super().__init__(name, num_blocks)
         self.fn = fn
+        self.supports_block_udf = supports_block_udf
+        self.block_udf = block_udf
 
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
