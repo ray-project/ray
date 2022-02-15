@@ -35,7 +35,8 @@ with tf1.Session() as sess:
         sess=sess,
         observation_space=env.observation_space,
         action_space=env.action_space,
-        #min_replay_history=1000,
+        epsilon_decay_period=50000,
+        target_update_period=800,
     )
     sess.run(tf1.global_variables_initializer())
 

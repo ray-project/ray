@@ -284,14 +284,14 @@ class TFPolicy(Policy):
 
         # The log-likelihood calculator op.
         self._log_likelihood = log_likelihood
-        if (
-            self._log_likelihood is None
-            and self._dist_inputs is not None
-            and self.dist_class is not None
-        ):
-            self._log_likelihood = self.dist_class(self._dist_inputs, self.model).logp(
-                self._action_input
-            )
+        #if (
+        #    self._log_likelihood is None
+        #    and self._dist_inputs is not None
+        #    and self.dist_class is not None
+        #):
+        #    self._log_likelihood = self.dist_class(self._dist_inputs, self.model).logp(
+        #        self._action_input
+        #    )
 
     @override(Policy)
     def compute_actions_from_input_dict(

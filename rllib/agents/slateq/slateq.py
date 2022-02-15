@@ -15,6 +15,7 @@ environment (https://github.com/google-research/recsim).
 import logging
 from typing import List, Type
 
+from ray.rllib.agents.slateq.slateq_tf_policy import SlateQTFPolicy
 from ray.rllib.agents.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -50,26 +51,19 @@ ALL_SLATEQ_STRATEGIES = [
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
-    # Dense-layer setup for each the advantage branch and the value branch
-    # in a dueling architecture.
-    "hiddens": [256, 64, 16],
-
-    # Set batch_mode.
-    "batch_mode": "truncate_episodes",
-
-    # === Deep Learning Framework Settings ===
-    # Currently, only PyTorch is supported
-    "framework": "torch",
+    # Dense-layer setup for each the n (document) candidate networks.
+    "fcnet_hiddens_per_candidate": [256, 32],
 
     # === Exploration Settings ===
     "exploration_config": {
         # The Exploration class to use.
-        # Must be SlateSoftQ (recommended) or SlateEpsilonGreedy
+        # Must be SlateEpsilonGreedy or SlateSoftQ
         # to deal with the fact that the action space of the policy is different
         # from the space used inside the exploration component.
         # E.g.: action_space=MultiDiscrete([5, 5]) <- slate-size=2, num-docs=5,
-        # but action distribution is Categorical(5*4 / 2) -> all possible unique slates.
-        "type": "SlateSoftQ",
+        # but action distribution is Categorical(5*4) -> all possible unique slates.
+        "type": "SlateEpsilonGreedy",
+        "epsilon_timesteps": 50000,
     },
     # Switch to greedy actions in evaluation workers.
     "evaluation_config": {
@@ -80,9 +74,9 @@ DEFAULT_CONFIG = with_common_config({
     # not affect learning, only the length of iterations.
     "timesteps_per_iteration": 1000,
     # Update the target network every `target_network_update_freq` steps.
-    "target_network_update_freq": 1,
+    "target_network_update_freq": 800,
     # Update the target by \tau * policy + (1-\tau) * target_policy.
-    "tau": 5e-3,
+    "tau": 1.0,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
@@ -105,15 +99,21 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Optimization ===
     # Learning rate for adam optimizer for the user choice model
-    "lr_choice_model": 1e-3,
+    #"lr_choice_model": 1e-3,
     # Learning rate for adam optimizer for the q model
-    "lr_q_model": 1e-3,
+    #"lr_q_model": 1e-3,
+    # Learning rate for adam optimizer for the q model.
+    "lr": 3e-4,
+    # Learning rate schedule
+    # In the format of [[timestep, value], [timestep, value], ...]
+    # A schedule should normally start from timestep 0.
+    "lr_schedule": None,
     # Adam epsilon hyper parameter
     "adam_epsilon": 1e-8,
     # If not None, clip gradients during optimization at this value
     "grad_clip": 40,
     # How many steps of the model to sample before learning starts.
-    "learning_starts": 1000,
+    "learning_starts": 20000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
     "rollout_fragment_length": 4,
@@ -138,7 +138,7 @@ DEFAULT_CONFIG = with_common_config({
     "slateq_strategy": "QL",
     # Only relevant for `slateq_strategy="QL"`:
     # Use double_q correction to avoid overestimation of target Q-values.
-    "double_q": True,
+    #"double_q": True,
 })
 # __sphinx_doc_end__
 # fmt: on
@@ -170,9 +170,6 @@ class SlateQTrainer(Trainer):
         if config["num_gpus"] > 1:
             raise ValueError("`num_gpus` > 1 not yet supported for SlateQ!")
 
-        if config["framework"] != "torch":
-            raise ValueError("SlateQ only runs on PyTorch")
-
         if config["slateq_strategy"] not in ALL_SLATEQ_STRATEGIES:
             raise ValueError(
                 "Unknown slateq_strategy: " f"{config['slateq_strategy']}."
@@ -181,15 +178,17 @@ class SlateQTrainer(Trainer):
         if config["slateq_strategy"] == "SARSA":
             if config["batch_mode"] != "complete_episodes":
                 raise ValueError(
-                    "For SARSA strategy, batch_mode must be " "'complete_episodes'"
+                    "For SARSA strategy, `batch_mode` must be " "'complete_episodes'"
                 )
 
     @override(Trainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["slateq_strategy"] == "RANDOM":
             return RandomPolicy
-        else:
+        elif config["framework"] == "torch":
             return SlateQTorchPolicy
+        else:
+            return SlateQTFPolicy
 
     @staticmethod
     @override(Trainer)
