@@ -271,8 +271,9 @@ py_test(
 #    because they requires globs and it might be refactored in the future.
 py_test(
     name = "test_typing",
-    size = "small",
-    srcs = SRCS + ["test_typing.py"] + glob(["typing_files"]),
+    size = "medium",
+    srcs = SRCS + ["test_typing.py", "typing_files/check_typing_bad.py",
+                   "typing_files/check_typing_good.py"],
     tags = ["exclusive", "small_size_python_tests", "team:core"],
     deps = ["//:ray_lib"],
 )

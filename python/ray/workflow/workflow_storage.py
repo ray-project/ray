@@ -20,6 +20,7 @@ from ray.workflow.common import (
     WorkflowRef,
     WorkflowNotFoundError,
     WorkflowStepRuntimeOptions,
+    asyncio_run,
 )
 from ray.workflow import workflow_context
 from ray.workflow import serialization
@@ -53,12 +54,6 @@ WORKFLOW_PROGRESS = "progress.json"
 # steps with a given name. This can be very expensive if there are too
 # many duplicates.
 DUPLICATE_NAME_COUNTER = "duplicate_name_counter"
-
-
-# TODO: Get rid of this and use asyncio.run instead once we don't support py36
-def asyncio_run(coro):
-    loop = asyncio.get_event_loop()
-    return loop.run_until_complete(coro)
 
 
 @dataclass
