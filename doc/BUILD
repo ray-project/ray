@@ -127,6 +127,7 @@ py_test(
     data = ["//doc/source/tune/tutorials:tune_tutorials"],
     tags = ["exclusive", "team:ml"],
 )
+
 py_test(
     name = "tune_serve_integration_mnist",
     size = "medium",
@@ -134,5 +135,15 @@ py_test(
     srcs = ["test_myst_doc.py"],
     args = ["--path", "doc/source/tune/tutorials/tune-serve-integration-mnist.md", "--smoke-test", "--from_scratch", "--day 0"],
     data = ["//doc/source/tune/tutorials:tune_tutorials"],
+    tags = ["exclusive", "team:ml"],
+)
+
+py_test(
+    name = "hyperopt_example",
+    size = "small",
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    args = ["--path", "doc/source/tune/examples/hyperopt_example.md"],
+    data = ["//doc/source/tune/examples:tune_examples"],
     tags = ["exclusive", "team:ml"],
 )

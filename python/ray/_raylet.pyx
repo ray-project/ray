@@ -501,7 +501,6 @@ cdef execute_task(
     worker = ray.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
-
     cdef:
         dict execution_infos = manager.execution_infos
         CoreWorker core_worker = worker.core_worker

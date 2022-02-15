@@ -75,7 +75,7 @@ from ray.worker import global_worker  # type: ignore
 from ray.util.debug import log_once
 
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
-from ray.autoscaler._private.load_metrics import LoadMetricsSummary
+from ray.autoscaler._private.util import LoadMetricsSummary
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.util import format_info_string
 

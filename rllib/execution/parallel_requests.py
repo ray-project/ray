@@ -14,7 +14,7 @@ def asynchronous_parallel_requests(
     actors: List[ActorHandle],
     ray_wait_timeout_s: Optional[float] = None,
     max_remote_requests_in_flight_per_actor: int = 2,
-    remote_fn: Optional[Callable[[ActorHandle, Any, Any], Any]] = None,
+    remote_fn: Optional[Callable[[Any, Optional[Any], Optional[Any]], Any]] = None,
     remote_args: Optional[List[List[Any]]] = None,
     remote_kwargs: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[ActorHandle, Any]:

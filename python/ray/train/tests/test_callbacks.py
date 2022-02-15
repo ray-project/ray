@@ -11,7 +11,12 @@ import ray
 import ray.train as train
 from ray.train import Trainer
 from ray.train.backend import BackendConfig, Backend
-from ray.train.callbacks import JsonLoggerCallback, PrintCallback, TBXLoggerCallback
+from ray.train.callbacks import (
+    JsonLoggerCallback,
+    PrintCallback,
+    TBXLoggerCallback,
+    TorchTensorboardProfilerCallback,
+)
 from ray.train.callbacks.logging import MLflowLoggerCallback, TrainCallbackLogdirManager
 from ray.train.constants import (
     TRAINING_ITERATION,
@@ -253,6 +258,47 @@ def test_mlflow(ray_start_4_cpus, tmp_path):
     assert iterations == [1, 2, 3]
     rewards = [metric.value for metric in metric_history]
     assert rewards == [4, 5, 6]
+
+
+def test_torch_tensorboard_profiler_callback(ray_start_4_cpus, tmp_path):
+    config = TestConfig()
+
+    temp_dir = tmp_path
+    num_workers = 4
+    num_epochs = 2
+
+    def train_func():
+        from ray.train.torch import TorchWorkerProfiler
+        from torch.profiler import profile, record_function, schedule
+
+        twp = TorchWorkerProfiler()
+        with profile(
+            activities=[],
+            schedule=schedule(wait=0, warmup=0, active=1),
+            on_trace_ready=twp.trace_handler,
+        ) as p:
+
+            for epoch in range(num_epochs):
+                with record_function("test_function"):
+                    pass
+
+                p.step()
+
+                profile_results = twp.get_and_clear_profile_traces()
+                train.report(epoch=epoch, **profile_results)
+
+    callback = TorchTensorboardProfilerCallback(temp_dir)
+    trainer = Trainer(config, num_workers=num_workers)
+    trainer.start()
+    trainer.run(train_func, callbacks=[callback])
+
+    assert temp_dir.exists()
+
+    count = 0
+    for path in temp_dir.iterdir():
+        assert path.is_file()
+        count += 1
+    assert count == num_workers * num_epochs
 
 
 if __name__ == "__main__":

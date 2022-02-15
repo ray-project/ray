@@ -1,7 +1,7 @@
 import collections
 import random
 import heapq
-from typing import Dict, List, Tuple, Any, TypeVar, Optional, TYPE_CHECKING
+from typing import Dict, List, Tuple, Iterator, Any, TypeVar, Optional, TYPE_CHECKING
 
 import numpy as np
 
@@ -11,7 +11,8 @@ except ImportError:
     pyarrow = None
 
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats, KeyFn
-from ray.data.impl.table_block import TableBlockAccessor, TableRow, TableBlockBuilder
+from ray.data.row import TableRow
+from ray.data.impl.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data.aggregate import AggregateFn
 
 if TYPE_CHECKING:
@@ -22,8 +23,9 @@ T = TypeVar("T")
 
 
 class ArrowRow(TableRow):
-    def as_pydict(self) -> dict:
-        return {k: v[0] for k, v in self._row.to_pydict().items()}
+    """
+    Row of a tabular Dataset backed by a Arrow Table block.
+    """
 
     def __getitem__(self, key: str) -> Any:
         col = self._row[key]
@@ -37,6 +39,10 @@ class ArrowRow(TableRow):
             # Assume that this row is an element of an extension array, and
             # that it is bypassing pyarrow's scalar model.
             return item
+
+    def __iter__(self) -> Iterator:
+        for k in self._row.column_names:
+            yield k
 
     def __len__(self):
         return self._row.num_columns
