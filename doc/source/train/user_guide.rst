@@ -519,7 +519,7 @@ Here is an example:
 .. code-block:: python
 
     from ray import train
-    from train.train import Trainer, TrainingCallback
+    from ray.train import Trainer, TrainingCallback
     from typing import List, Dict
 
     import torch
@@ -821,7 +821,7 @@ Checkpoints can be loaded into the training function in 2 steps:
         print(trainer.latest_checkpoint)
         # {'epoch': 3, 'model_weights': OrderedDict([('bias', tensor([-0.3304])), ('weight', tensor([[-0.0197, -0.3704,  0.2944,  0.3117]]))]), '_timestamp': 1639117865}
 
-  .. tabbed:: TensorFlow
+.. tabbed:: TensorFlow
 
     .. code-block:: python
         :emphasize-lines: 16, 22, 23, 26, 27, 30
@@ -1113,7 +1113,7 @@ A couple caveats:
 * You should **not** call ``tune.report`` or ``tune.checkpoint_dir`` in your
   training function. Functional parity is achieved through ``train.report``,
   ``train.save_checkpoint``, and ``train.load_checkpoint``. This allows you to go
-  from Ray Train to Ray Train+RayTune without changing any code in the training
+  from Ray Train to Ray Train + Ray Tune without changing any code in the training
   function.
 
 
