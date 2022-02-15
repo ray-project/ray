@@ -75,7 +75,7 @@ remote_actor! {
 pub async fn append_tokio(s: &mut AsyncMutex<String>, tail: String) -> String {
     let fut = tokio_time_sleep::sleep(500);
 
-    // tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     fut.await;
     // let mut guard = s.lock().await;

@@ -1,6 +1,5 @@
-use ray_rs_sys::*;
 // TODO: Load as prelude?
-use ray_rs::{load_code_paths_from_raw_c_cmdline, rust_worker_execute_async};
+use ray_rs::{load_code_paths_from_raw_c_cmdline, ray, rust_worker_execute_async};
 use std::ffi::CString;
 use std::os::raw::*;
 
