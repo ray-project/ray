@@ -36,9 +36,9 @@ class SlimFC:
             name (Optional[str]): An optional name for this layer.
         """
 
-        # By default, use Glorot unform initializer.
+        # By default, use Glorot uniform initializer.
         if initializer is None:
-            initializer = flax.nn.initializers.xavier_uniform()
+            initializer = nn.initializers.xavier_uniform()
 
         self.prng_key = prng_key or jax.random.PRNGKey(int(time.time()))
         _, self.prng_key = jax.random.split(self.prng_key)
