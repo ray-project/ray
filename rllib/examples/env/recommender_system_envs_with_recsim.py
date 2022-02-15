@@ -92,8 +92,7 @@ class SingleClusterIEvVideo(iev.IEvVideo):
 
 
 def iev_document_sampler_creator(env_ctx):
-    return iev.UtilityModelVideoSampler(
-        doc_ctor=iev.IEvVideo, seed=env_ctx['seed'])
+    return iev.UtilityModelVideoSampler(doc_ctor=iev.IEvVideo, seed=env_ctx["seed"])
 
 
 InterestEvolutionRecSimEnv = make_recsim_env(

@@ -51,15 +51,22 @@ ALL_SLATEQ_STRATEGIES = [
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
-    # Dense-layer setup for each the n (document) candidate networks.
-    "fcnet_hiddens_per_candidate": [256, 32],
+    # TODO: Unify torch and tf config settings:
+    # Dense-layer setup for each the n (document) candidate Q-network stacks.
+    "fcnet_hiddens_per_candidate": [256, 32],  # Only relevant for framework=tf|tf2.
+    # NOTE: The torch default model used does NOT build a separate Q-value stack
+    # per candidate document. Instead, only a single stack is generated. This leads
+    # to SlateQ with framework="torch" not learning as well as its "tf" counterpart.
+    # TODO: Fix the framework="torch" implementation of SlateQ by making it 100%
+    #  analogous to "tf|tf2".
+    "hiddens": [256, 64, 32],  # Only relevant for framework=torch.
 
     # === Exploration Settings ===
     "exploration_config": {
         # The Exploration class to use.
-        # Must be SlateEpsilonGreedy or SlateSoftQ
-        # to deal with the fact that the action space of the policy is different
-        # from the space used inside the exploration component.
+        # Must be SlateEpsilonGreedy or SlateSoftQ to handle the problem that
+        # the action space of the policy is different from the space used inside
+        # the exploration component.
         # E.g.: action_space=MultiDiscrete([5, 5]) <- slate-size=2, num-docs=5,
         # but action distribution is Categorical(5*4) -> all possible unique slates.
         "type": "SlateEpsilonGreedy",
@@ -98,16 +105,19 @@ DEFAULT_CONFIG = with_common_config({
     "training_intensity": None,
 
     # === Optimization ===
-    # Learning rate for adam optimizer for the user choice model
-    #"lr_choice_model": 1e-3,
-    # Learning rate for adam optimizer for the q model
-    #"lr_q_model": 1e-3,
+    # TODO: Unify torch and tf config settings:
+    # Learning rate for adam optimizer for the user choice model.
+    "lr_choice_model": 1e-3,  # Only relevant for framework=torch.
     # Learning rate for adam optimizer for the q model.
-    "lr": 3e-4,
-    # Learning rate schedule
+    "lr_q_model": 1e-3,  # Only relevant for framework=torch.
+    # TODO: Unify torch and tf config settings:
+    # Learning rate for adam optimizer for the q model.
+    "lr": 3e-4,  # Only relevant for framework=tf|tf2.
+    # Learning rate schedule.
     # In the format of [[timestep, value], [timestep, value], ...]
     # A schedule should normally start from timestep 0.
-    "lr_schedule": None,
+    "lr_schedule": None,  # Only relevant for framework=tf|tf2.
+
     # Adam epsilon hyper parameter
     "adam_epsilon": 1e-8,
     # If not None, clip gradients during optimization at this value
@@ -136,9 +146,10 @@ DEFAULT_CONFIG = with_common_config({
     # Learning method used by the slateq policy. Choose from: RANDOM,
     # MYOP (myopic), SARSA, QL (Q-Learning),
     "slateq_strategy": "QL",
-    # Only relevant for `slateq_strategy="QL"`:
+
+    # TODO: Unify torch and tf configs.
     # Use double_q correction to avoid overestimation of target Q-values.
-    #"double_q": True,
+    "double_q": True,  # Only relevant for `slateq_strategy="QL"` and framework="torch".
 })
 # __sphinx_doc_end__
 # fmt: on

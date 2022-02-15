@@ -26,8 +26,10 @@ class SlateSoftQ(SoftQ):
 
         # Re-create the action distribution with the correct temperature
         # applied.
-        action_distribution = cls(action_distribution.inputs, self.model, temperature=self.temperature)
-        #per_slate_q_values = dist.inputs
+        action_distribution = cls(
+            action_distribution.inputs, self.model, temperature=self.temperature
+        )
+        # per_slate_q_values = dist.inputs
         all_slates = self.model.slates
 
         batch_size = action_distribution.inputs.size()[0]

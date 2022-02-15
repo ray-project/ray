@@ -235,7 +235,9 @@ def build_slateq_stats(policy: Policy, batch) -> Dict[str, TensorType]:
         "choice_loss": torch.mean(torch.stack(policy.get_tower_stats("choice_loss"))),
         "raw_scores": torch.mean(torch.stack(policy.get_tower_stats("raw_scores"))),
         "choice_beta": torch.mean(torch.stack(policy.get_tower_stats("choice_beta"))),
-        "choice_score_no_click": torch.mean(torch.stack(policy.get_tower_stats("choice_score_no_click"))),
+        "choice_score_no_click": torch.mean(
+            torch.stack(policy.get_tower_stats("choice_score_no_click"))
+        ),
     }
     model_stats = {
         k: torch.mean(var)
@@ -249,8 +251,7 @@ def build_slateq_optimizers(
     policy: Policy, config: TrainerConfigDict
 ) -> List["torch.optim.Optimizer"]:
     optimizer_choice = torch.optim.Adam(
-        policy.model.choice_model.parameters(),
-        lr=config["lr_choice_model"]
+        policy.model.choice_model.parameters(), lr=config["lr_choice_model"]
     )
     optimizer_q_value = torch.optim.Adam(
         policy.model.q_model.parameters(),

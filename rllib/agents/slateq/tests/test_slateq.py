@@ -30,7 +30,9 @@ class TestSlateQ(unittest.TestCase):
 
         num_iterations = 200
 
-        for _ in framework_iterator(config, frameworks=("tf2", "torch"), with_eager_tracing=False):
+        for _ in framework_iterator(
+            config, frameworks=("tf2", "torch"), with_eager_tracing=False
+        ):
             trainer = slateq.SlateQTrainer(config=config)
             for i in range(num_iterations):
                 results = trainer.train()
