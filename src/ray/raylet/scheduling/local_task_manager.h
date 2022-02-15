@@ -54,7 +54,7 @@ namespace raylet {
 /// as it should return the request to the distributed scheduler if
 /// resource accusition failed, or a task has arguments pending resolution for too long
 /// time.
-class LocalScheduler {
+class LocalTaskManager {
  public:
   /// \param self_node_id: ID of local node.
   /// \param cluster_resource_scheduler: The resource scheduler which contains
@@ -75,7 +75,7 @@ class LocalScheduler {
   ///                                   on the number of tasks that can run per
   ///                                   scheduling class. If set to 0, there is no
   ///                                   cap. If it's a large number, the cap is hard.
-  LocalScheduler(
+  LocalTaskManager(
       const NodeID &self_node_id,
       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
       TaskDependencyManagerInterface &task_dependency_manager,
@@ -134,7 +134,7 @@ class LocalScheduler {
                                              int *num_pending_actor_creation,
                                              int *num_pending_tasks) const;
 
-  /// (Step 5) Call once a task finishes (i.e. a worker is returned).
+  /// Call once a task finishes (i.e. a worker is returned).
   ///
   /// \param worker: The worker which was running the task.
   void ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker);
@@ -155,12 +155,6 @@ class LocalScheduler {
   /// \return true if the cpu resources are returned back to the specified worker, else
   /// false.
   bool ReturnCpuResourcesToBlockedWorker(std::shared_ptr<WorkerInterface> worker);
-
-  /// Record the internal metrics.
-  void RecordMetrics() const;
-
-  /// The helper to dump the debug state of the cluster task manater.
-  std::string DebugStr() const;
 
   /// Check if there are enough available resources for the given input.
   bool IsLocallySchedulable(const RayTask &task) const;
@@ -186,16 +180,14 @@ class LocalScheduler {
                            bool is_detached_actor, const rpc::Address &owner_address,
                            const std::string &runtime_env_setup_error_message);
 
-  /// (Step 3) Attempts to dispatch all tasks which are ready to run. A task
+  /// Attempts to dispatch all tasks which are ready to run. A task
   /// will be dispatched if it is on `tasks_to_dispatch_` and there are still
   /// available resources on the node.
   ///
   /// If there are not enough resources locally, up to one task per resource
   /// shape (the task at the head of the queue) will get spilled back to a
   /// different node.
-  void DispatchScheduledTasksToWorkers(
-      WorkerPoolInterface &worker_pool,
-      absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers);
+  void DispatchScheduledTasksToWorkers();
 
   /// Helper method when the current node does not have the available resources to run a
   /// task.

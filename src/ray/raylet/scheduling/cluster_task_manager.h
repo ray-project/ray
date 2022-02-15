@@ -23,7 +23,7 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/scheduling/internal.h"
-#include "ray/raylet/scheduling/local_scheduler.h"
+#include "ray/raylet/scheduling/local_task_manager.h"
 #include "ray/raylet/scheduling/scheduler_resource_reporter.h"
 #include "ray/raylet/scheduling/scheduler_stats.h"
 #include "ray/raylet/worker.h"
@@ -70,7 +70,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
       internal::NodeInfoGetter get_node_info,
       std::function<void(const RayTask &)> announce_infeasible_task,
-      std::shared_ptr<LocalScheduler> local_task_manager,
+      std::shared_ptr<LocalTaskManager> local_task_manager,
       std::function<int64_t(void)> get_time_ms = []() {
         return (int64_t)(absl::GetCurrentTimeNanos() / 1e6);
       });
@@ -148,7 +148,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                                      bool requires_object_store_memory,
                                      bool force_spillback, bool *is_infeasible);
 
-  void TryLocalInfeasibleTaskScheduling();
+  void TryScheduleInfeasibleTask();
+
+  // Schedule the task onto a node (which could be either remote or local).
   void ScheduleOnNode(const NodeID &node_to_schedule,
                       const std::shared_ptr<internal::Work> &work);
 
@@ -167,7 +169,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Function to announce infeasible task to GCS.
   std::function<void(const RayTask &)> announce_infeasible_task_;
 
-  std::shared_ptr<LocalScheduler> local_scheduler_;
+  std::shared_ptr<LocalTaskManager> local_task_manager_;
 
   /// TODO(swang): Add index from TaskID -> Work to avoid having to iterate
   /// through queues to cancel tasks, etc.

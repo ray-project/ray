@@ -29,16 +29,16 @@ ClusterTaskManager::ClusterTaskManager(
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
     internal::NodeInfoGetter get_node_info,
     std::function<void(const RayTask &)> announce_infeasible_task,
-    std::shared_ptr<LocalScheduler> local_scheduler,
+    std::shared_ptr<LocalTaskManager> local_task_manager,
     std::function<int64_t(void)> get_time_ms)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       get_node_info_(get_node_info),
       announce_infeasible_task_(announce_infeasible_task),
-      local_scheduler_(std::move(local_scheduler)),
+      local_task_manager_(std::move(local_task_manager)),
       scheduler_resource_reporter_(tasks_to_schedule_, infeasible_tasks_,
-                                   *local_scheduler_),
-      internal_stats_(*this, *local_scheduler_),
+                                   *local_task_manager_),
+      internal_stats_(*this, *local_task_manager_),
       get_time_ms_(get_time_ms) {}
 
 void ClusterTaskManager::QueueAndScheduleTask(
@@ -62,7 +62,7 @@ void ClusterTaskManager::QueueAndScheduleTask(
 
 void ClusterTaskManager::ScheduleAndDispatchTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
-  TryLocalInfeasibleTaskScheduling();
+  TryScheduleInfeasibleTask();
   for (auto shapes_it = tasks_to_schedule_.begin();
        shapes_it != tasks_to_schedule_.end();) {
     auto &work_queue = shapes_it->second;
@@ -113,10 +113,10 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       shapes_it++;
     }
   }
-  local_scheduler_->ScheduleAndDispatchTasks();
+  local_task_manager_->ScheduleAndDispatchTasks();
 }
 
-void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
+void ClusterTaskManager::TryScheduleInfeasibleTask() {
   for (auto shapes_it = infeasible_tasks_.begin();
        shapes_it != infeasible_tasks_.end();) {
     auto &work_queue = shapes_it->second;
@@ -203,7 +203,8 @@ bool ClusterTaskManager::CancelTask(
     }
   }
 
-  return local_scheduler_->CancelTask(task_id, failure_type, scheduling_failure_message);
+  return local_task_manager_->CancelTask(task_id, failure_type,
+                                         scheduling_failure_message);
 }
 
 void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const {
@@ -258,7 +259,7 @@ bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
     }
   }
 
-  local_scheduler_->AnyPendingTasksForResourceAcquisition(
+  local_task_manager_->AnyPendingTasksForResourceAcquisition(
       exemplar, any_pending, num_pending_actor_creation, num_pending_tasks);
 
   // If there's any pending task, at this point, there's no progress being made.
@@ -273,8 +274,8 @@ std::string ClusterTaskManager::DebugStr() const {
 
 void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
                                         const std::shared_ptr<internal::Work> &work) {
-  if (spillback_to == self_node_id_ && local_scheduler_) {
-    local_scheduler_->QueueAndScheduleTask(work);
+  if (spillback_to == self_node_id_ && local_task_manager_) {
+    local_task_manager_->QueueAndScheduleTask(work);
     return;
   }
 

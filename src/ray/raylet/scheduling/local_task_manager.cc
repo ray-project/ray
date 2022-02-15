@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/scheduling/local_scheduler.h"
+#include "ray/raylet/scheduling/local_task_manager.h"
 
 #include <google/protobuf/map.h>
 
@@ -24,7 +24,7 @@
 namespace ray {
 namespace raylet {
 
-LocalScheduler::LocalScheduler(
+LocalTaskManager::LocalTaskManager(
     const NodeID &self_node_id,
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
     TaskDependencyManagerInterface &task_dependency_manager,
@@ -52,12 +52,12 @@ LocalScheduler::LocalScheduler(
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
       sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
 
-void LocalScheduler::QueueAndScheduleTask(std::shared_ptr<internal::Work> work) {
+void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work) {
   WaitForTaskArgsRequests(work);
   ScheduleAndDispatchTasks();
 }
 
-bool LocalScheduler::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> work) {
+bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> work) {
   const auto &task = work->task;
   const auto &task_id = task.GetTaskSpecification().TaskId();
   const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
@@ -84,8 +84,8 @@ bool LocalScheduler::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> wor
   return can_dispatch;
 }
 
-void LocalScheduler::ScheduleAndDispatchTasks() {
-  DispatchScheduledTasksToWorkers(worker_pool_, leased_workers_);
+void LocalTaskManager::ScheduleAndDispatchTasks() {
+  DispatchScheduledTasksToWorkers();
   // TODO(swang): Spill from waiting queue first? Otherwise, we may end up
   // spilling a task whose args are already local.
   // TODO(swang): Invoke ScheduleAndDispatchTasks() when we run out of memory
@@ -94,9 +94,7 @@ void LocalScheduler::ScheduleAndDispatchTasks() {
   SpillWaitingTasks();
 }
 
-void LocalScheduler::DispatchScheduledTasksToWorkers(
-    WorkerPoolInterface &worker_pool,
-    absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
+void LocalTaskManager::DispatchScheduledTasksToWorkers() {
   // Check every task in task_to_dispatch queue to see
   // whether it can be dispatched and ran. This avoids head-of-line
   // blocking where a task which cannot be dispatched because
@@ -287,7 +285,7 @@ void LocalScheduler::DispatchScheduledTasksToWorkers(
   }
 }
 
-void LocalScheduler::SpillWaitingTasks() {
+void LocalTaskManager::SpillWaitingTasks() {
   // Try to spill waiting tasks to a remote node, prioritizing those at the end
   // of the queue. Waiting tasks are spilled if there are enough remote
   // resources AND (we have no resources available locally OR their
@@ -346,8 +344,8 @@ void LocalScheduler::SpillWaitingTasks() {
   }
 }
 
-bool LocalScheduler::TrySpillback(const std::shared_ptr<internal::Work> &work,
-                                  bool &is_infeasible) {
+bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
+                                    bool &is_infeasible) {
   std::string node_id_string =
       GetBestSchedulableNode(*work,
                              /*requires_object_store_memory=*/false,
@@ -363,7 +361,7 @@ bool LocalScheduler::TrySpillback(const std::shared_ptr<internal::Work> &work,
   return true;
 }
 
-bool LocalScheduler::PoppedWorkerHandler(
+bool LocalTaskManager::PoppedWorkerHandler(
     const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,
     const TaskID &task_id, SchedulingClass scheduling_class,
     const std::shared_ptr<internal::Work> &work, bool is_detached_actor,
@@ -507,8 +505,8 @@ bool LocalScheduler::PoppedWorkerHandler(
   return dispatched;
 }
 
-void LocalScheduler::Spillback(const NodeID &spillback_to,
-                               const std::shared_ptr<internal::Work> &work) {
+void LocalTaskManager::Spillback(const NodeID &spillback_to,
+                                 const std::shared_ptr<internal::Work> &work) {
   auto send_reply_callback = work->callback;
 
   if (work->grant_or_reject) {
@@ -541,7 +539,7 @@ void LocalScheduler::Spillback(const NodeID &spillback_to,
   send_reply_callback();
 }
 
-void LocalScheduler::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
+void LocalTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
   if (ready_ids.empty()) {
     return;
   }
@@ -562,7 +560,7 @@ void LocalScheduler::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
   ScheduleAndDispatchTasks();
 }
 
-void LocalScheduler::RemoveFromRunningTasksIfExists(const RayTask &task) {
+void LocalTaskManager::RemoveFromRunningTasksIfExists(const RayTask &task) {
   auto sched_cls = task.GetTaskSpecification().GetSchedulingClass();
   auto it = info_by_sched_cls_.find(sched_cls);
   if (it != info_by_sched_cls_.end()) {
@@ -573,8 +571,8 @@ void LocalScheduler::RemoveFromRunningTasksIfExists(const RayTask &task) {
   }
 }
 
-void LocalScheduler::TaskFinished(std::shared_ptr<WorkerInterface> worker,
-                                  RayTask *task) {
+void LocalTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
+                                    RayTask *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
   RemoveFromRunningTasksIfExists(*task);
@@ -586,8 +584,8 @@ void LocalScheduler::TaskFinished(std::shared_ptr<WorkerInterface> worker,
 }
 
 // TODO(scv119): task args related logic probaly belongs task dependency manager.
-bool LocalScheduler::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spec,
-                                                  bool *args_missing) {
+bool LocalTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spec,
+                                                    bool *args_missing) {
   std::vector<std::unique_ptr<RayObject>> args;
   const auto &deps = spec.GetDependencyIds();
   if (!deps.empty()) {
@@ -643,8 +641,8 @@ bool LocalScheduler::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spec,
   return true;
 }
 
-void LocalScheduler::PinTaskArgs(const TaskSpecification &spec,
-                                 std::vector<std::unique_ptr<RayObject>> args) {
+void LocalTaskManager::PinTaskArgs(const TaskSpecification &spec,
+                                   std::vector<std::unique_ptr<RayObject>> args) {
   const auto &deps = spec.GetDependencyIds();
   // TODO(swang): This should really be an assertion, but we can sometimes
   // receive a duplicate task request if there is a failure and the original
@@ -667,7 +665,7 @@ void LocalScheduler::PinTaskArgs(const TaskSpecification &spec,
   }
 }
 
-void LocalScheduler::ReleaseTaskArgs(const TaskID &task_id) {
+void LocalTaskManager::ReleaseTaskArgs(const TaskID &task_id) {
   auto it = executing_task_args_.find(task_id);
   // TODO(swang): This should really be an assertion, but we can sometimes
   // receive a duplicate task request if there is a failure and the original
@@ -701,7 +699,7 @@ void ReplyCancelled(std::shared_ptr<internal::Work> &work,
 }
 }  // namespace
 
-bool LocalScheduler::CancelTask(
+bool LocalTaskManager::CancelTask(
     const TaskID &task_id,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
@@ -752,7 +750,7 @@ bool LocalScheduler::CancelTask(
   return false;
 }
 
-bool LocalScheduler::AnyPendingTasksForResourceAcquisition(
+bool LocalTaskManager::AnyPendingTasksForResourceAcquisition(
     RayTask *exemplar, bool *any_pending, int *num_pending_actor_creation,
     int *num_pending_tasks) const {
   // We are guaranteed that these tasks are blocked waiting for resources after a
@@ -797,7 +795,7 @@ bool LocalScheduler::AnyPendingTasksForResourceAcquisition(
   return *any_pending;
 }
 
-void LocalScheduler::Dispatch(
+void LocalTaskManager::Dispatch(
     std::shared_ptr<WorkerInterface> worker,
     absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     const std::shared_ptr<TaskResourceInstances> &allocated_instances,
@@ -875,7 +873,7 @@ void LocalScheduler::Dispatch(
   send_reply_callback();
 }
 
-void LocalScheduler::ClearWorkerBacklog(const WorkerID &worker_id) {
+void LocalTaskManager::ClearWorkerBacklog(const WorkerID &worker_id) {
   for (auto it = backlog_tracker_.begin(); it != backlog_tracker_.end();) {
     it->second.erase(worker_id);
     if (it->second.empty()) {
@@ -886,8 +884,8 @@ void LocalScheduler::ClearWorkerBacklog(const WorkerID &worker_id) {
   }
 }
 
-void LocalScheduler::SetWorkerBacklog(SchedulingClass scheduling_class,
-                                      const WorkerID &worker_id, int64_t backlog_size) {
+void LocalTaskManager::SetWorkerBacklog(SchedulingClass scheduling_class,
+                                        const WorkerID &worker_id, int64_t backlog_size) {
   if (backlog_size == 0) {
     backlog_tracker_[scheduling_class].erase(worker_id);
     if (backlog_tracker_[scheduling_class].empty()) {
@@ -898,7 +896,7 @@ void LocalScheduler::SetWorkerBacklog(SchedulingClass scheduling_class,
   }
 }
 
-int64_t LocalScheduler::TotalBacklogSize(SchedulingClass scheduling_class) {
+int64_t LocalTaskManager::TotalBacklogSize(SchedulingClass scheduling_class) {
   auto backlog_it = backlog_tracker_.find(scheduling_class);
   if (backlog_it == backlog_tracker_.end()) {
     return 0;
@@ -912,7 +910,7 @@ int64_t LocalScheduler::TotalBacklogSize(SchedulingClass scheduling_class) {
   return sum;
 }
 
-void LocalScheduler::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) {
+void LocalTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) {
   RAY_CHECK(worker != nullptr);
   auto allocated_instances = worker->GetAllocatedInstances();
   if (allocated_instances != nullptr) {
@@ -940,7 +938,7 @@ void LocalScheduler::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> wor
   }
 }
 
-bool LocalScheduler::ReleaseCpuResourcesFromUnblockedWorker(
+bool LocalTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
     std::shared_ptr<WorkerInterface> worker) {
   if (!worker || worker->IsBlocked()) {
     return false;
@@ -963,7 +961,7 @@ bool LocalScheduler::ReleaseCpuResourcesFromUnblockedWorker(
   return false;
 }
 
-bool LocalScheduler::ReturnCpuResourcesToBlockedWorker(
+bool LocalTaskManager::ReturnCpuResourcesToBlockedWorker(
     std::shared_ptr<WorkerInterface> worker) {
   if (!worker || !worker->IsBlocked()) {
     return false;
@@ -983,13 +981,13 @@ bool LocalScheduler::ReturnCpuResourcesToBlockedWorker(
   return false;
 }
 
-bool LocalScheduler::IsLocallySchedulable(const RayTask &task) const {
+bool LocalTaskManager::IsLocallySchedulable(const RayTask &task) const {
   const auto &spec = task.GetTaskSpecification();
   return cluster_resource_scheduler_->IsSchedulableOnNode(
       self_node_id_.Binary(), spec.GetRequiredResources().GetResourceMap());
 }
 
-ResourceSet LocalScheduler::CalcNormalTaskResources() const {
+ResourceSet LocalTaskManager::CalcNormalTaskResources() const {
   absl::flat_hash_map<std::string, FixedPoint> total_normal_task_resources;
   const auto &string_id_map = cluster_resource_scheduler_->GetStringIdMap();
   for (auto &entry : leased_workers_) {
@@ -1024,7 +1022,7 @@ ResourceSet LocalScheduler::CalcNormalTaskResources() const {
   return ResourceSet(total_normal_task_resources);
 }
 
-uint64_t LocalScheduler::MaxRunningTasksPerSchedulingClass(
+uint64_t LocalTaskManager::MaxRunningTasksPerSchedulingClass(
     SchedulingClass sched_cls_id) const {
   auto sched_cls = TaskSpecification::GetSchedulingClassDescriptor(sched_cls_id);
   double cpu_req = sched_cls.resource_set.GetNumCpusAsDouble();
@@ -1037,10 +1035,10 @@ uint64_t LocalScheduler::MaxRunningTasksPerSchedulingClass(
   return static_cast<uint64_t>(std::round(total_cpus / cpu_req));
 }
 
-std::string LocalScheduler::GetBestSchedulableNode(const internal::Work &work,
-                                                   bool requires_object_store_memory,
-                                                   bool force_spillback,
-                                                   bool *is_infeasible) {
+std::string LocalTaskManager::GetBestSchedulableNode(const internal::Work &work,
+                                                     bool requires_object_store_memory,
+                                                     bool force_spillback,
+                                                     bool *is_infeasible) {
   // If the local node is available, we should directly return it instead of
   // going through the full hybrid policy since we don't want spillback.
   if ((work.grant_or_reject || work.is_selected_based_on_locality) && !force_spillback &&
