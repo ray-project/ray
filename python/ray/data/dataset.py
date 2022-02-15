@@ -462,8 +462,12 @@ class Dataset(Generic[T]):
 
         if shuffle:
 
-            def do_shuffle(blocks, clear_input_blocks: bool, block_udf):
-                # TODO: implement clear_input_blocks
+            def do_shuffle(block_list, clear_input_blocks: bool, block_udf):
+                if clear_input_blocks:
+                    blocks = block_list.copy()
+                    block_list.clear()
+                else:
+                    blocks = block_list
                 return simple_shuffle(blocks, block_udf, num_blocks)
 
             plan = self._plan.with_stage(
@@ -474,8 +478,7 @@ class Dataset(Generic[T]):
             return Dataset(plan, self._epoch, self._lazy)
 
         def do_fast(blocks, clear_input_blocks: bool):
-            # TODO: this won't work in lazy mode since it references `self`.
-            # TODO: implement clear_input_blocks.
+            # TODO(lazy): this won't work in lazy mode since it references `self`.
             # Compute the (n-1) indices needed for an equal split of the data.
             count = self.count()
             indices = []
@@ -499,7 +502,11 @@ class Dataset(Generic[T]):
                 for s in splits
                 if s.num_blocks() > 0
             ]
+
             del splits  # Early-release memory.
+            if clear_input_blocks:
+                blocks.clear()
+
             new_blocks, new_metadata = zip(*reduce_out)
             new_blocks, new_metadata = list(new_blocks), list(new_metadata)
             new_metadata = reduce_bar.fetch_until_complete(new_metadata)
@@ -540,7 +547,7 @@ class Dataset(Generic[T]):
         seed: Optional[int] = None,
         num_blocks: Optional[int] = None,
         _spread_resource_prefix: Optional[str] = None,
-        _move: bool = False,
+        _move: bool = False,  # TODO: deprecate.
     ) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
 
@@ -569,8 +576,7 @@ class Dataset(Generic[T]):
             num_blocks = block_list.executed_num_blocks()  # Blocking.
             if num_blocks == 0:
                 return block_list, {}
-            # TODO: implement clear_input_blocks instead.
-            if _move:
+            if _move or clear_input_blocks:
                 blocks = block_list.copy()
                 block_list.clear()
             else:
@@ -1415,11 +1421,15 @@ class Dataset(Generic[T]):
             A new, sorted dataset.
         """
 
-        def do_sort(blocks, keep_input_blocks: bool):
-            # TODO: implement clear_input_blocks
+        def do_sort(block_list, clear_input_blocks: bool):
             # Handle empty dataset.
-            if blocks.initial_num_blocks() == 0:
-                return blocks, {}
+            if block_list.initial_num_blocks() == 0:
+                return block_list, {}
+            if clear_input_blocks:
+                blocks = block_list.copy()
+                block_list.clear()
+            else:
+                blocks = block_list
             if isinstance(key, list):
                 if not key:
                     raise ValueError("`key` must be a list of non-zero length")
@@ -1455,10 +1465,12 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
-        def do_zip_all(blocks, keep_input_blocks: bool):
-            # TODO: implement clear_input_blocks
-            blocks1 = blocks.get_blocks()
+        def do_zip_all(block_list, clear_input_blocks: bool):
+            blocks1 = block_list.get_blocks()
             blocks2 = other.get_internal_block_refs()
+
+            if clear_input_blocks:
+                block_list.clear()
 
             if len(blocks1) != len(blocks2):
                 # TODO(ekl) consider supporting if num_rows are equal.
@@ -1483,6 +1495,9 @@ class Dataset(Generic[T]):
                 res, meta = do_zip_fn.remote(b1, b2)
                 blocks.append(res)
                 metadata.append(meta)
+
+            # Early release memory.
+            del blocks1, blocks2
 
             # TODO(ekl) it might be nice to have a progress bar here.
             metadata = ray.get(metadata)
