@@ -461,7 +461,7 @@ class Trainable:
             # checkpoint.to_cloud()
             cloud_location = self._storage_path(checkpoint_dir)
             self.storage_client.sync_up(checkpoint_dir, cloud_location)
-            self.storage_client.wait()
+            self.storage_client.wait_or_retry()
             return CloudStorageCheckpoint(
                 location=cloud_location,
                 metadata={

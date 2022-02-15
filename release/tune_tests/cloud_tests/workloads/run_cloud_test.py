@@ -266,7 +266,12 @@ def send_signal_after_wait(process: subprocess.Popen, signal: int, wait: int = 3
     time.sleep(wait)
 
     if process.poll() is not None:
-        raise RuntimeError(f"Process {process.pid} already terminated.")
+        raise RuntimeError(
+            f"Process {process.pid} already terminated. This usually means "
+            f"that some of the trials ERRORed (e.g. because they couldn't be "
+            f"restored. Try re-running this test to see if this fixes the "
+            f"issue."
+        )
 
     print(f"Sending signal {signal} to process {process.pid}")
     process.send_signal(signal)
