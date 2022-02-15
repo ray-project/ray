@@ -1,10 +1,13 @@
 import logging
 import os
+import shutil
+import tempfile
 from types import ModuleType
 from typing import Any, Dict, List, Optional
 from pathlib import Path
 
 from ray.experimental.internal_kv import _internal_kv_initialized
+from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package,
@@ -80,16 +83,32 @@ def upload_py_modules_if_needed(
             module_uri = module_path
         else:
             # module_path is a local path.
-            excludes = runtime_env.get("excludes", None)
-            module_uri = get_uri_for_directory(module_path, excludes=excludes)
-            upload_package_if_needed(
-                module_uri,
-                scratch_dir,
-                module_path,
-                excludes=excludes,
-                include_parent_dir=True,
-                logger=logger,
-            )
+            if Path(module_path).is_dir():
+                excludes = runtime_env.get("excludes", None)
+                module_uri = get_uri_for_directory(module_path, excludes=excludes)
+                upload_package_if_needed(
+                    module_uri,
+                    scratch_dir,
+                    module_path,
+                    excludes=excludes,
+                    include_parent_dir=True,
+                    logger=logger,
+                )
+            elif Path(module_path).suffix == ".whl":
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    shutil.copy2(module_path, temp_dir)
+                    module_uri = get_uri_for_directory(temp_dir)
+                    upload_package_if_needed(
+                        module_uri,
+                        scratch_dir,
+                        module_path,
+                        include_parent_dir=True,
+                        logger=logger,
+                    )
+            else:
+                raise ValueError(
+                    f"py_modules entry must be a directory or a .whl file; got {module_path}"
+                )
 
         py_modules_uris.append(module_uri)
 
@@ -133,6 +152,24 @@ class PyModulesManager:
         module_dir = download_and_unpack_package(
             uri, self._resources_dir, logger=logger
         )
+        if (
+            len(os.listdir(module_dir)) == 1
+            and Path(os.listdir(module_dir)[0]).suffix == ".whl"
+        ):
+            whl_file_path = Path(os.listdir(module_dir)[0])
+            pip_install_cmd = [
+                "pip",
+                "install",
+                str(whl_file_path),
+                f"--target={module_dir}",
+            ]
+            logger.info("Installing python requirements to %s", module_dir)
+            exit_code, output = exec_cmd_stream_to_logger(pip_install_cmd, logger)
+            if exit_code != 0:
+                raise RuntimeError(
+                    f"Failed to install python requirements to {module_dir}:\n{output}"
+                )
+
         return get_directory_size_bytes(module_dir)
 
     def modify_context(
