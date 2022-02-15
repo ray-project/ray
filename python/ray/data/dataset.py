@@ -2545,7 +2545,7 @@ Dict[str, List[str]]]): The names of the columns
                     raise StopIteration
                 self._ds._set_epoch(self._i)
                 self._i += 1
-                return lambda: self._ds.fully_executed()
+                return lambda: self._ds.fully_executed()  # TODO should we not do this for lazy mode to enable pipelining?
 
         class Iterable:
             def __init__(self, ds: "Dataset[T]"):

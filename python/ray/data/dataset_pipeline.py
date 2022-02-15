@@ -610,7 +610,22 @@ class DatasetPipeline(Generic[T]):
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
+        self._optimize_stages()
         return PipelineExecutor(self)
+
+    def _optimize_stages(self):
+        dummy_ds = ray.data.range(1)._experimental_lazy()
+        for stage in self._stages:
+            dummy_ds = stage(dummy_ds)
+        print("Before optimize", dummy_ds._plan._stages)
+        dummy_ds._plan._optimize()
+        print("After optimize", dummy_ds._plan._stages)
+        optimized_stages = []
+        for stage in dummy_ds._plan._stages:
+            optimized_stages.append(
+                lambda ds, stage=stage: Dataset(
+                    ds._plan.with_stage(stage), ds._epoch, True))
+        self._stages = optimized_stages
 
     @DeveloperAPI
     def foreach_window(

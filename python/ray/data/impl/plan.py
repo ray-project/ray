@@ -13,7 +13,7 @@ from ray.data.impl.stats import DatasetStats
 from ray.data.impl.lazy_block_list import LazyBlockList
 
 OPTIMIZE_FUSE = True
-OPTIMIZE_FUSE_READ = True
+OPTIMIZE_FUSE_READ = False
 OPTIMIZE_FUSE_SHUFFLE = True
 
 
@@ -83,10 +83,7 @@ class ExecutionPlan:
         # 2. task fusion of OneToOne to AlltoAll
         # 3. clear input blocks
         if self._out_blocks is None:
-            if OPTIMIZE_FUSE:
-                if OPTIMIZE_FUSE_READ:
-                    self._rewrite_read_stages()
-                self._fuse_one_to_one_stages()
+            self._optimize()
             blocks = self._in_blocks
             stats = self._in_stats
             for stage in self._stages:
@@ -101,6 +98,12 @@ class ExecutionPlan:
             self._out_stats = stats
             self._out_stats.dataset_uuid = self._dataset_uuid
         return self._out_blocks
+
+    def _optimize(self):
+        if OPTIMIZE_FUSE:
+            if OPTIMIZE_FUSE_READ:
+                self._rewrite_read_stages()
+            self._fuse_one_to_one_stages()
 
     def _rewrite_read_stages(self) -> None:
         """Rewrites read stages into one-to-one stages."""
@@ -137,10 +140,6 @@ class ExecutionPlan:
             optimized_stages.append(prev_stage)
             prev_stage = None
         self._stages = optimized_stages
-
-    def _fuse_shuffle_stages(self) -> None:
-        """Fuses compatible one-to-one to all-to-all stages."""
-        pass  # TODO
 
     def clear(self) -> None:
         self._out_blocks = None
