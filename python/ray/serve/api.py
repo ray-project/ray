@@ -20,6 +20,7 @@ from ray.serve.common import DeploymentInfo, DeploymentStatus, ReplicaTag
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
+    DeploymentRequest,
     HTTPOptions,
     ReplicaConfig,
 )
@@ -288,7 +289,7 @@ class Client:
         _blocking: Optional[bool] = True,
     ):
 
-        controller_deploy_args = self.get_deploy_args(
+        deployment_request = self.create_deployment_request(
             name=name,
             deployment_def=deployment_def,
             init_args=init_args,
@@ -300,7 +301,7 @@ class Client:
             route_prefix=route_prefix,
         )
 
-        updating = ray.get(self._controller.deploy.remote(**controller_deploy_args))
+        updating = ray.get(self._controller.deploy.remote(deployment_request))
 
         tag = self.log_deployment_update_status(name, version, updating)
 
@@ -310,10 +311,10 @@ class Client:
 
     @_ensure_connected
     def deploy_group(self, deployments: List[Dict], _blocking: bool = True):
-        deployment_args_list = []
+        deployment_requests = []
         for deployment in deployments:
-            deployment_args_list.append(
-                self.get_deploy_args(
+            deployment_requests.append(
+                self.create_deployment_request(
                     deployment["name"],
                     deployment["func_or_class"],
                     deployment["init_args"],
@@ -327,7 +328,7 @@ class Client:
             )
 
         updating_list = ray.get(
-            self._controller.deploy_group.remote(deployment_args_list)
+            self._controller.deploy_group.remote(deployment_requests)
         )
 
         tags = []
@@ -449,7 +450,7 @@ class Client:
         return handle
 
     @_ensure_connected
-    def get_deploy_args(
+    def create_deployment_request(
         self,
         name: str,
         deployment_def: Union[Callable, Type[Callable], str],
@@ -460,10 +461,10 @@ class Client:
         version: Optional[str] = None,
         prev_version: Optional[str] = None,
         route_prefix: Optional[str] = None,
-    ) -> Dict:
+    ) -> DeploymentRequest:
         """
-        Takes a deployment's configuration, and returns the arguments needed
-        for the controller to deploy it.
+        Takes a deployment's configuration, and creates a DeploymentRequest
+        containing the data needed for the controller to deploy it.
         """
 
         if config is None:
@@ -504,17 +505,15 @@ class Client:
                 "'target_num_ongoing_requests_per_replica' now."
             )
 
-        controller_deploy_args = {
-            "name": name,
-            "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
-            "replica_config": replica_config,
-            "version": version,
-            "prev_version": prev_version,
-            "route_prefix": route_prefix,
-            "deployer_job_id": ray.get_runtime_context().job_id,
-        }
-
-        return controller_deploy_args
+        return DeploymentRequest(
+            name=name,
+            deployment_config_proto_bytes=deployment_config.to_proto_bytes(),
+            replica_config=replica_config,
+            version=version,
+            prev_version=prev_version,
+            route_prefix=route_prefix,
+            deployer_job_id=ray.get_runtime_context().job_id
+        )
 
     @_ensure_connected
     def log_deployment_update_status(

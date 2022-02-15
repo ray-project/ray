@@ -18,7 +18,7 @@ from ray.serve.common import (
     NodeId,
     RunningReplicaInfo,
 )
-from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
+from ray.serve.config import DeploymentConfig, DeploymentRequest, HTTPOptions, ReplicaConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
@@ -280,35 +280,26 @@ class ServeController:
             self.endpoint_state.shutdown()
             self.http_state.shutdown()
 
-    def deploy(
-        self,
-        name: str,
-        deployment_config_proto_bytes: bytes,
-        replica_config: ReplicaConfig,
-        version: Optional[str],
-        prev_version: Optional[str],
-        route_prefix: Optional[str],
-        deployer_job_id: "ray._raylet.JobID",
-    ) -> bool:
-        if route_prefix is not None:
-            assert route_prefix.startswith("/")
+    def deploy(self, req: DeploymentRequest) -> bool:
+        if req.route_prefix is not None:
+            assert req.route_prefix.startswith("/")
 
         deployment_config = DeploymentConfig.from_proto_bytes(
-            deployment_config_proto_bytes
+            req.deployment_config_proto_bytes
         )
 
-        if prev_version is not None:
+        if req.prev_version is not None:
             existing_deployment_info = self.deployment_state_manager.get_deployment(
-                name
+                req.name
             )
             if existing_deployment_info is None or not existing_deployment_info.version:
                 raise ValueError(
-                    f"prev_version '{prev_version}' is specified but "
+                    f"prev_version '{req.prev_version}' is specified but "
                     "there is no existing deployment."
                 )
-            if existing_deployment_info.version != prev_version:
+            if existing_deployment_info.version != req.prev_version:
                 raise ValueError(
-                    f"prev_version '{prev_version}' "
+                    f"prev_version '{req.prev_version}' "
                     "does not match with the existing "
                     f"version '{existing_deployment_info.version}'."
                 )
@@ -323,12 +314,12 @@ class ServeController:
             autoscaling_policy = None
 
         deployment_info = DeploymentInfo(
-            actor_name=name,
-            serialized_deployment_def=replica_config.serialized_deployment_def,
-            version=version,
+            actor_name=req.name,
+            serialized_deployment_def=req.replica_config.serialized_deployment_def,
+            version=req.version,
             deployment_config=deployment_config,
-            replica_config=replica_config,
-            deployer_job_id=deployer_job_id,
+            replica_config=req.replica_config,
+            deployer_job_id=req.deployer_job_id,
             start_time_ms=int(time.time() * 1000),
             autoscaling_policy=autoscaling_policy,
         )
@@ -336,23 +327,23 @@ class ServeController:
         # the only change was num_replicas, the start_time_ms is refreshed.
         # Is this the desired behaviour?
 
-        updating = self.deployment_state_manager.deploy(name, deployment_info)
+        updating = self.deployment_state_manager.deploy(req.name, deployment_info)
 
-        if route_prefix is not None:
-            endpoint_info = EndpointInfo(route=route_prefix)
-            self.endpoint_state.update_endpoint(name, endpoint_info)
+        if req.route_prefix is not None:
+            endpoint_info = EndpointInfo(route=req.route_prefix)
+            self.endpoint_state.update_endpoint(req.name, endpoint_info)
 
         return updating
 
-    def deploy_group(self, deployment_args_list: List[Dict]) -> List[bool]:
+    def deploy_group(self, reqs: List[DeploymentRequest]) -> List[bool]:
         """
-        Takes in a list of dictionaries that contain keyword arguments for the
-        controller's deploy() function. Calls deploy on all the argument
-        dictionaries in the list. Effectively executes an atomic deploy on a
+        Takes in a list of DeploymentRequests that contain Deployment
+        configurations used in the controller's deploy() function. Calls
+        deploy on all requests. Essentially executes an atomic deploy on a
         group of deployments.
         """
 
-        return [self.deploy(**args) for args in deployment_args_list]
+        return [self.deploy(req) for req in reqs]
 
     def delete_deployment(self, name: str):
         self.endpoint_state.delete_endpoint(name)
