@@ -32,7 +32,6 @@ def ray_start_workers_separate_multinode(request):
     cluster.shutdown()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_worker_failed(ray_start_workers_separate_multinode):
     num_nodes, num_initial_workers = ray_start_workers_separate_multinode
 
