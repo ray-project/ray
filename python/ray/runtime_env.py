@@ -1,4 +1,3 @@
-import logging
 import ray
 
 from ray.util.annotations import PublicAPI
