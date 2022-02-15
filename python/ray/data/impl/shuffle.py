@@ -1,6 +1,6 @@
 import itertools
 import math
-from typing import TypeVar, List, Optional, Dict, Any, Tuple, Union
+from typing import TypeVar, List, Optional, Dict, Any, Tuple, Union, Callable, Iterable
 
 import numpy as np
 
@@ -17,6 +17,7 @@ T = TypeVar("T")
 
 def simple_shuffle(
     input_blocks: BlockList,
+    block_udf: Optional[Callable[[Block], Iterable[Block]]],
     output_num_blocks: int,
     *,
     random_shuffle: bool = False,
@@ -55,7 +56,7 @@ def simple_shuffle(
             **map_ray_remote_args,
             num_returns=1 + output_num_blocks,
             resources=next(map_resource_iter)
-        ).remote(block, i, output_num_blocks, random_shuffle, random_seed)
+        ).remote(block, block_udf, i, output_num_blocks, random_shuffle, random_seed)
         for i, block in enumerate(input_blocks)
     ]
 
@@ -93,16 +94,19 @@ def simple_shuffle(
     new_metadata = ray.get(list(new_metadata))
     reduce_bar.close()
 
-    stats = {
-        "map": shuffle_map_metadata,
-        "reduce": new_metadata,
-    }
+    stats = dict(
+        [
+            ("map", shuffle_map_metadata),
+            ("reduce", new_metadata),
+        ]
+    )
 
     return BlockList(list(new_blocks), list(new_metadata)), stats
 
 
 def _shuffle_map(
     block: Block,
+    block_udf: Optional[Callable[[Block], Iterable[Block]]],
     idx: int,
     output_num_blocks: int,
     random_shuffle: bool,
@@ -110,6 +114,16 @@ def _shuffle_map(
 ) -> List[Union[BlockMetadata, Block]]:
     """Returns list of [BlockMetadata, O1, O2, O3, ...output_num_blocks]."""
     stats = BlockExecStats.builder()
+    if block_udf:
+        # TODO(ekl) note that this effectively disables block splitting.
+        pieces = list(block_udf(block))
+        if len(pieces) > 1:
+            builder = BlockAccessor.for_block(pieces[0]).builder()
+            for p in pieces:
+                builder.add_block(p)
+            block = builder.build()
+        else:
+            block = pieces[0]
     block = BlockAccessor.for_block(block)
 
     # Randomize the distribution of records to blocks.

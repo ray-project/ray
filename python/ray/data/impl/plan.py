@@ -140,7 +140,9 @@ class AllToAllStage(Stage):
         self,
         name: str,
         num_blocks: Optional[int],
-        fn: Callable[[BlockList, bool], Tuple[BlockList, dict]],
+        fn: Callable[[BlockList, bool, Callable], Tuple[BlockList, dict]],
+        supports_block_udf: bool = False,
+        block_udf=None,
     ):
         super().__init__(name, num_blocks)
         self.fn = fn
@@ -148,6 +150,6 @@ class AllToAllStage(Stage):
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
     ) -> Tuple[BlockList, dict]:
-        blocks, stage_info = self.fn(blocks, clear_input_blocks)
+        blocks, stage_info = self.fn(blocks, clear_input_blocks, self.block_udf)
         assert isinstance(blocks, BlockList), blocks
         return blocks, stage_info
