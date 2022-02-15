@@ -28,6 +28,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentLanguage,
     AutoscalingConfig as AutoscalingConfigProto,
 )
+from ray._raylet import JobID
 
 
 class AutoscalingConfig(BaseModel):
@@ -292,7 +293,7 @@ class DeploymentRequest(BaseModel):
             deployment with the requested name.
         route_prefix (Optional[str]): The route prefix for the requested
             deployment's endpoint.
-        deployer_job_id (str): JobID string of format "ray._raylet.JobID".
+        deployer_job_id (ray._raylet.JobID): The runtime context's JobID
     """
 
     name: str
@@ -301,17 +302,7 @@ class DeploymentRequest(BaseModel):
     version: Optional[str] = None
     prev_version: Optional[str] = None
     route_prefix: Optional[str] = None
-    deployer_job_id: str
-
-    @validator("deployer_job_id", always=True)
-    def check_job_id_format(cls, v):
-        parts = v.split(".")
-        if len(parts) < 3 or parts[0] != "ray" or parts[1] != "_raylet":
-            raise ValueError(
-                f"DeploymentRequest got deployer_job_id "
-                f'"{v}". Expected deployer_job_id of format '
-                f'"ray._raylet.[JobID]".'
-            )
+    deployer_job_id: JobID
 
     class Config:
         arbitrary_types_allowed = True
