@@ -107,22 +107,30 @@ class ExecutionPlan:
 
     def _rewrite_read_stages(self) -> None:
         """Rewrites read stages into one-to-one stages."""
-        if self._stages and isinstance(self._in_blocks, LazyBlockList):
-            blocks = []
-            metadata = []
-            for i, read_task in enumerate(self._in_blocks._read_tasks):
-                blocks.append(ray.put([read_task]))
-                metadata.append(self._in_blocks._metadata[i])
-            self._in_blocks = BlockList(blocks, metadata)
+        if self._stages and self._is_read_stage():
+            block_list, stage = self._rewrite_read_stage()
+            self._in_blocks = block_list
             self._in_stats = DatasetStats(stages=OrderedDict(), parent=None)
+            self._stages.insert(0, stage)
 
-            def block_fn(block: Block) -> Iterable[Block]:
-                [read_task] = block
-                for tmp1 in read_task._read_fn():
-                    yield tmp1
+    def _is_read_stage(self) -> bool:
+        return isinstance(self._in_blocks, LazyBlockList)
 
-            # TODO: use num_cpus=1 by default for read and pass in remote args?
-            self._stages.insert(0, OneToOneStage("read", block_fn, None, {}))
+    def _rewrite_read_stage(self) -> Tuple[BlockList, "Stage"]:
+        blocks = []
+        metadata = []
+        for i, read_task in enumerate(self._in_blocks._read_tasks):
+            blocks.append(ray.put([read_task]))
+            metadata.append(self._in_blocks._metadata[i])
+        block_list = BlockList(blocks, metadata)
+
+        def block_fn(block: Block) -> Iterable[Block]:
+            [read_task] = block
+            for tmp1 in read_task._read_fn():
+                yield tmp1
+
+        # TODO: add num_cpus properly here and make the read default num_cpus=1.
+        return block_list, OneToOneStage("read", block_fn, None, {})
 
     def _fuse_one_to_one_stages(self) -> None:
         """Fuses compatible one-to-one stages."""

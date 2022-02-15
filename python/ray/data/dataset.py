@@ -2610,8 +2610,13 @@ Dict[str, List[str]]]): The names of the columns
         """
         from ray.data.dataset_pipeline import DatasetPipeline
 
-        blocks = self._plan.execute()
-        outer_stats = self._plan.stats()
+        if self._plan._is_read_stage():
+            blocks, read_stage = self._plan._rewrite_read_stage()
+            outer_stats = DatasetStats(stages=OrderedDict(), parent=None)
+        else:
+            blocks = self._plan.execute()
+            init_stage = None
+            outer_stats = self._plan.stats()
 
         class Iterator:
             def __init__(self, splits, epoch):
@@ -2641,7 +2646,14 @@ Dict[str, List[str]]]): The names of the columns
                 return Iterator(self._splits, self._epoch)
 
         it = Iterable(blocks, self._epoch)
-        return DatasetPipeline(it, length=len(it._splits))
+        pipe = DatasetPipeline(it, length=len(it._splits))
+        if read_stage:
+            print("READ STAGE", blocks.initial_num_blocks(), read_stage)
+            pipe = pipe.foreach_window(
+                lambda ds, read_stage=read_stage:
+                    Dataset(
+                        ds._plan.with_stage(read_stage), ds._epoch, True))
+        return pipe
 
     @DeveloperAPI
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
