@@ -102,7 +102,7 @@
     test_name: train_small
     test_suite: xgboost_tests
 
-  frequency: nightly
+  frequency: weekly
   team: ml
 
   cluster:
@@ -121,6 +121,7 @@
     type: client
 
   smoke_test:
+    frequency: nightly
     wait_for_nodes:
       num_nodes: 4
       timeout: 300
