@@ -444,7 +444,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     periodical_runner_.RunFnPeriodically(
         [this] {
           RAY_LOG(INFO) << "Event stats:\n\n"
-                        << io_service_.stats().StatsString() << "\n\n";
+                        << io_service_.stats().StatsString() << "\n";
+          RAY_LOG(INFO) << "Task stats:\n\n"
+                        << task_execution_service_.stats().StatsString() << "\n\n";
         },
         event_stats_print_interval_ms);
   }
