@@ -73,7 +73,7 @@ class IgnoresWorkerFailure(unittest.TestCase):
         for _ in framework_iterator(config, frameworks=("torch", "tf")):
             a = agent_cls(config=config, env="fault_env")
             result = a.train()
-            self.assertTrue(result["num_healthy_workers"], 1)
+            self.assertEqual(result["num_healthy_workers"], 1)
             a.stop()
 
     def _do_test_fault_fatal(self, alg, config):
