@@ -624,7 +624,9 @@ class DatasetPipeline(Generic[T]):
         for stage in dummy_ds._plan._stages:
             optimized_stages.append(
                 lambda ds, stage=stage: Dataset(
-                    ds._plan.with_stage(stage), ds._epoch, True))
+                    ds._plan.with_stage(stage), ds._epoch, True
+                )
+            )
         self._stages = optimized_stages
 
     @DeveloperAPI
