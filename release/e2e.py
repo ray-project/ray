@@ -1464,15 +1464,20 @@ def run_test_config(
 
     app_config_rel_path = test_config["cluster"].get("app_config", None)
     app_config = _load_config(local_dir, app_config_rel_path)
+    if app_config.get("env_vars") is None:
+        app_config["env_vars"] = {}
     # A lot of staging tests share the same app config yaml, except the flags.
     # `app_env_vars` in test config will help this one.
     # Here we extend the env_vars to use the one specified in the test config.
     if test_config.get("app_env_vars") is not None:
-        if app_config["env_vars"] is None:
-            app_config["env_vars"] = test_config["app_env_vars"]
-        else:
-            app_config["env_vars"].update(test_config["app_env_vars"])
+        app_config["env_vars"].update(test_config["app_env_vars"])
         logger.info(f"Using app config:\n{app_config}")
+
+    # Flags for redisless ray.
+    # TODO: remove them once done.
+    app_config["env_vars"]["MATCH_AUTOSCALER_AND_RAY_IMAGES"] = "1"
+    app_config["env_vars"]["RAY_bootstrap_with_gcs"] = "1"
+    app_config["env_vars"]["RAY_gcs_storage"] = "memory"
 
     compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
     compute_tpl = _load_config(local_dir, compute_tpl_rel_path)
