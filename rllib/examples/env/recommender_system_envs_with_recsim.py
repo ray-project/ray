@@ -41,13 +41,12 @@ LongTermSatisfactionRecSimEnv = make_recsim_env(
     reward_aggregator=lts.clicked_engagement_reward,
 )
 
+
 # Interest exploration env: Models the problem of active exploration
 # of user interests. It is meant to illustrate popularity bias in
 # recommender systems, where myopic maximization of engagement leads
 # to bias towards documents that have wider appeal,
 # whereas niche user interests remain unexplored.
-
-
 def iex_user_model_creator(env_ctx):
     return iex.IEUserModel(
         env_ctx["slate_size"],
@@ -67,14 +66,13 @@ InterestExplorationRecSimEnv = make_recsim_env(
     reward_aggregator=iex.total_clicks_reward,
 )
 
+
 # Interest evolution env: See https://github.com/google-research/recsim
 # for more information.
-
-
 def iev_user_model_creator(env_ctx):
     return iev.IEvUserModel(
         env_ctx["slate_size"],
-        choice_model_ctor=choice_model.MultinomialLogitChoiceModel,
+        choice_model_ctor=choice_model.MultinomialProportionalChoiceModel,
         response_model_ctor=iev.IEvResponse,
         user_state_ctor=iev.IEvUserState,
         seed=env_ctx["seed"],
@@ -94,7 +92,8 @@ class SingleClusterIEvVideo(iev.IEvVideo):
 
 
 def iev_document_sampler_creator(env_ctx):
-    return iev.IEvVideoSampler(doc_ctor=SingleClusterIEvVideo, seed=env_ctx["seed"])
+    return iev.UtilityModelVideoSampler(
+        doc_ctor=iev.IEvVideo, seed=env_ctx['seed'])
 
 
 InterestEvolutionRecSimEnv = make_recsim_env(
@@ -102,6 +101,7 @@ InterestEvolutionRecSimEnv = make_recsim_env(
     recsim_document_sampler_creator=iev_document_sampler_creator,
     reward_aggregator=iev.clicked_watchtime_reward,
 )
+
 
 # Backward compatibility.
 register_env(
