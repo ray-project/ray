@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 import ray
 from ray import tune
 from ray.tune import Trainable
+from ray.tune.checkpoint_manager import MEMORY, PERSISTENT
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (
     FIFOScheduler,
@@ -28,7 +29,7 @@ from ray.tune.schedulers import (
 from ray.tune.schedulers.pbt import explore, PopulationBasedTrainingReplay
 from ray.tune.suggest._mock import _MockSearcher
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, _ManagedCheckpoint
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.resources import Resources
 
@@ -248,8 +249,8 @@ class _MockTrialExecutor(TrialExecutor):
     def restore(self, trial, checkpoint=None, block=False):
         pass
 
-    def save(self, trial, type=Checkpoint.PERSISTENT, result=None):
-        return Checkpoint(Checkpoint.PERSISTENT, trial.trainable_name, result)
+    def save(self, trial, type=PERSISTENT, result=None):
+        return _ManagedCheckpoint(PERSISTENT, trial.trainable_name, result)
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         return False
@@ -304,7 +305,7 @@ class _MockTrialRunner:
         return self.trials
 
     def _pause_trial(self, trial):
-        self.trial_executor.save(trial, Checkpoint.MEMORY, None)
+        self.trial_executor.save(trial, MEMORY, None)
         trial.status = Trial.PAUSED
 
     def _launch_trial(self, trial):
@@ -839,7 +840,7 @@ class _MockTrial(Trial):
 
     @property
     def checkpoint(self):
-        return Checkpoint(Checkpoint.MEMORY, self.trainable_name, None)
+        return _ManagedCheckpoint(MEMORY, self.trainable_name, None)
 
 
 class PopulationBasedTestingSuite(unittest.TestCase):

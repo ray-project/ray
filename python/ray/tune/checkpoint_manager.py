@@ -2,13 +2,18 @@
 import heapq
 import gc
 import logging
+from typing import Dict
 
 from ray.tune.utils.util import flatten_dict
+from ray.util.ml_utils.checkpoint import DataCheckpoint, Checkpoint
 
 logger = logging.getLogger(__name__)
 
+MEMORY = "memory"
+PERSISTENT = "persistent"
 
-class Checkpoint:
+
+class _ManagedCheckpoint:
     """Describes a checkpoint of trial state.
 
     Checkpoint may be saved in different storage.
@@ -19,9 +24,6 @@ class Checkpoint:
             If storage==PERSISTENT, it is a path to persistent storage,
             or a future that will be resolved to such a path.
     """
-
-    MEMORY = "memory"
-    PERSISTENT = "persistent"
 
     def __init__(self, storage, value, result=None):
         self.storage = storage
@@ -35,7 +37,7 @@ class Checkpoint:
     @staticmethod
     def from_object(value=None):
         """Creates a checkpoint from a Python object."""
-        return Checkpoint(Checkpoint.MEMORY, value)
+        return _ManagedCheckpoint(MEMORY, value)
 
     @property
     def is_ready(self):
@@ -45,9 +47,9 @@ class Checkpoint:
         to an actual path. MEMORY checkpoints are always considered ready since
         they are transient.
         """
-        if self.storage == Checkpoint.PERSISTENT:
+        if self.storage == PERSISTENT:
             return isinstance(self.value, str)
-        return self.storage == Checkpoint.MEMORY
+        return self.storage == MEMORY
 
     def __repr__(self):
         return f"Checkpoint({self.storage}, {self.value})"
@@ -92,33 +94,36 @@ class CheckpointManager:
             self._checkpoint_score_attr = checkpoint_score_attr
 
         self.delete = delete_fn
-        self.newest_persistent_checkpoint = Checkpoint(Checkpoint.PERSISTENT, None)
-        self._newest_memory_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
+        self.newest_persistent_wrapped_checkpoint = _ManagedCheckpoint(PERSISTENT, None)
+        self._newest_wrapped_memory_checkpoint = _ManagedCheckpoint(MEMORY, None)
         self._best_checkpoints = []
         self._membership = set()
         self._cur_order = 0
 
     @property
-    def newest_checkpoint(self):
+    def newest_checkpoint(self) -> Checkpoint:
         """Returns the newest checkpoint (based on training iteration)."""
         newest_checkpoint = max(
-            [self.newest_persistent_checkpoint, self.newest_memory_checkpoint],
+            [
+                self.newest_persistent_wrapped_checkpoint,
+                self._newest_wrapped_memory_checkpoint,
+            ],
             key=lambda c: c.order,
         )
-        return newest_checkpoint
+        return newest_checkpoint.value
 
     @property
-    def newest_memory_checkpoint(self):
-        return self._newest_memory_checkpoint
+    def newest_memory_checkpoint(self) -> Checkpoint:
+        return self._newest_wrapped_memory_checkpoint.value
 
-    def replace_newest_memory_checkpoint(self, new_checkpoint):
+    def replace_newest_memory_checkpoint(self, new_checkpoint: _ManagedCheckpoint):
         # Forcibly remove the memory checkpoint
-        del self._newest_memory_checkpoint
+        del self._newest_wrapped_memory_checkpoint
         # Apparently avoids memory leaks on k8s/k3s/pods
         gc.collect()
-        self._newest_memory_checkpoint = new_checkpoint
+        self._newest_wrapped_memory_checkpoint = new_checkpoint
 
-    def on_checkpoint(self, checkpoint):
+    def on_checkpoint(self, checkpoint: Checkpoint, result: Dict):
         """Starts tracking checkpoint metadata on checkpoint.
 
         Checkpoints get assigned with an `order` as they come in.
@@ -131,28 +136,33 @@ class CheckpointManager:
         Args:
             checkpoint (Checkpoint): Trial state checkpoint.
         """
+        wrapped_checkpoint = _ManagedCheckpoint(PERSISTENT, checkpoint, result)
+
         self._cur_order += 1
-        checkpoint.order = self._cur_order
+        wrapped_checkpoint.order = self._cur_order
 
-        if checkpoint.storage == Checkpoint.MEMORY:
-            self.replace_newest_memory_checkpoint(checkpoint)
+        if isinstance(checkpoint, DataCheckpoint):
+            wrapped_checkpoint.storage = MEMORY
+            self.replace_newest_memory_checkpoint(wrapped_checkpoint)
             return
 
-        old_checkpoint = self.newest_persistent_checkpoint
+        old_checkpoint = self.newest_persistent_wrapped_checkpoint
 
-        if old_checkpoint.value == checkpoint.value:
+        if old_checkpoint.value == wrapped_checkpoint.value:
             # Overwrite the order of the checkpoint.
-            old_checkpoint.order = checkpoint.order
+            old_checkpoint.order = wrapped_checkpoint.order
             return
 
-        self.newest_persistent_checkpoint = checkpoint
+        self.newest_persistent_wrapped_checkpoint = wrapped_checkpoint
 
         # Remove the old checkpoint if it isn't one of the best ones.
         if old_checkpoint.value and old_checkpoint not in self._membership:
             self.delete(old_checkpoint)
 
         try:
-            queue_item = QueueItem(self._priority(checkpoint), checkpoint)
+            queue_item = QueueItem(
+                self._priority(wrapped_checkpoint), wrapped_checkpoint
+            )
         except KeyError:
             logger.error(
                 "Result dict has no key: {}. "
@@ -163,15 +173,15 @@ class CheckpointManager:
 
         if len(self._best_checkpoints) < self.keep_checkpoints_num:
             heapq.heappush(self._best_checkpoints, queue_item)
-            self._membership.add(checkpoint)
+            self._membership.add(wrapped_checkpoint)
         elif queue_item.priority >= self._best_checkpoints[0].priority:
             worst = heapq.heappushpop(self._best_checkpoints, queue_item).value
-            self._membership.add(checkpoint)
+            self._membership.add(wrapped_checkpoint)
             if worst in self._membership:
                 self._membership.remove(worst)
             # Don't delete the newest checkpoint. It will be deleted on the
             # next on_checkpoint() call since it isn't in self._membership.
-            if worst.value != checkpoint.value:
+            if worst.value != wrapped_checkpoint.value:
                 self.delete(worst)
 
     def best_checkpoints(self):
@@ -187,7 +197,7 @@ class CheckpointManager:
     def __getstate__(self):
         state = self.__dict__.copy()
         # Avoid serializing the memory checkpoint.
-        state["_newest_memory_checkpoint"] = Checkpoint(Checkpoint.MEMORY, None)
+        state["_newest_memory_checkpoint"] = _ManagedCheckpoint(MEMORY, None)
         # Avoid serializing lambda since it may capture cyclical dependencies.
         state.pop("delete")
         return state

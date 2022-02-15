@@ -4,8 +4,10 @@ import logging
 from typing import Dict, List, Optional
 import warnings
 
+from ray.tune.checkpoint_manager import MEMORY, PERSISTENT
 from ray.util.annotations import DeveloperAPI
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, _ManagedCheckpoint
+from ray.util.ml_utils.checkpoint import Checkpoint
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +121,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
-            self.save(trial, Checkpoint.MEMORY)
+            self.save(trial, MEMORY)
             self.stop_trial(trial)
             self.set_status(trial, Trial.PAUSED)
         except Exception:
@@ -187,7 +189,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
 
     @abstractmethod
     def save(
-        self, trial, storage: str = Checkpoint.PERSISTENT, result: Optional[Dict] = None
+        self, trial, storage: str = PERSISTENT, result: Optional[Dict] = None
     ) -> Checkpoint:
         """Saves training state of this trial to a checkpoint.
 

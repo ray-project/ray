@@ -51,6 +51,7 @@ from ray.util.ml_utils.checkpoint import (
     DataCheckpoint,
     FSStorageCheckpoint,
     RemoteNodeStorageCheckpoint,
+    Checkpoint,
 )
 
 logger = logging.getLogger(__name__)
@@ -540,13 +541,12 @@ class Trainable:
         # If we have a cloud checkpoint, fetch from cloud
         rel_path = cloud_checkpoint.metadata.get("relative_path")
         if not rel_path:
-            pass  # Todo
-            # rel_path = TrainableUtil.make_checkpoint_dir()
-            # rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
-            #     self.logdir, local_checkpoint.path
-            # )
-
-        checkpoint_path = os.path.join(self.logdir, rel_path)
+            temporary_checkpoint_dir = TrainableUtil.make_checkpoint_dir(
+                self.logdir, index="cloud" + uuid.uuid4().hex[:6], override=True
+            )
+            checkpoint_path = temporary_checkpoint_dir
+        else:
+            checkpoint_path = os.path.join(self.logdir, rel_path)
 
         self.storage_client.sync_down(
             cloud_checkpoint.location,
@@ -656,32 +656,27 @@ class Trainable:
         )
         self._restore_metadata(checkpoint.metadata)
 
-    def delete_checkpoint(self, checkpoint_path):
+    def delete_checkpoint(self, checkpoint: Checkpoint):
         """Deletes local copy of checkpoint.
 
         Args:
             checkpoint_path (str): Path to checkpoint.
         """
-        # Ensure TrialCheckpoints are converted
-        if isinstance(checkpoint_path, TrialCheckpoint):
-            checkpoint_path = checkpoint_path.local_path
-
-        try:
-            checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-        except FileNotFoundError:
-            # The checkpoint won't exist locally if the
-            # trial was rescheduled to another worker.
-            logger.debug(
-                f"Local checkpoint not found during garbage collection: "
-                f"{self.trial_id} - {checkpoint_path}"
-            )
-            return
+        if isinstance(checkpoint, MultiLocationCheckpoint):
+            locations = checkpoint.locations
         else:
-            if self.uses_cloud_checkpointing:
-                self.storage_client.delete(self._storage_path(checkpoint_dir))
+            locations = [checkpoint]
 
-        if os.path.exists(checkpoint_dir):
-            shutil.rmtree(checkpoint_dir)
+        for location in locations:
+            if isinstance(location, LocalStorageCheckpoint):
+                shutil.rmtree(location.path)
+            elif isinstance(location, RemoteNodeStorageCheckpoint):
+                logger.warning(
+                    f"Cannot delete remote node storage checkpoint from "
+                    f"non-local node: {location.node_ip}:{location.path}"
+                )
+            elif isinstance(location, CloudStorageCheckpoint):
+                self.storage_client.delete(location.location)
 
     def export_model(self, export_formats, export_dir=None):
         """Exports model based on export_formats.

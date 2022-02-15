@@ -14,7 +14,6 @@ import ray
 import yaml
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.checkpoint_manager import Checkpoint
 from ray.tune.result import NODE_IP
 from ray.util import get_node_ip_address
 from ray.util.debug import log_once
@@ -26,6 +25,7 @@ from ray.tune.sync_client import (
     NOOP,
 )
 from ray.util.annotations import PublicAPI
+from ray.util.ml_utils.checkpoint import Checkpoint, LocalStorageCheckpoint
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
@@ -471,7 +471,7 @@ class SyncerCallback(Callback):
         )
 
     def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: Checkpoint):
-        if checkpoint.storage == Checkpoint.MEMORY:
+        if not isinstance(checkpoint, LocalStorageCheckpoint):
             return
 
         trial_syncer = self._get_trial_syncer(trial)
@@ -512,7 +512,7 @@ class SyncerCallback(Callback):
                     # shouldn't track it with the checkpoint_manager.
                     raise e
             if not trial.uses_cloud_checkpointing:
-                if not os.path.exists(checkpoint.value):
+                if not os.path.exists(checkpoint.path):
                     raise TuneError(
                         "Trial {}: Checkpoint path {} not "
                         "found after successful sync down. "
@@ -522,7 +522,7 @@ class SyncerCallback(Callback):
                         "You'll need to use cloud-checkpointing "
                         "if that's the case, see instructions "
                         "here: {} .".format(
-                            trial, checkpoint.value, CLOUD_CHECKPOINTING_URL
+                            trial, checkpoint.path, CLOUD_CHECKPOINTING_URL
                         )
                     )
 

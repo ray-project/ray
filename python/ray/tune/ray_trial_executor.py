@@ -24,13 +24,14 @@ import ray
 from ray.exceptions import GetTimeoutError
 from ray import ray_constants
 from ray._private.resource_spec import NODE_ID_PREFIX
+from ray.tune.checkpoint_manager import MEMORY, PERSISTENT
 from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.resources import Resources
 from ray.tune.utils.placement_groups import PlacementGroupManager, get_tune_pg_prefix
 from ray.tune.utils.trainable import TrainableUtil
-from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
+from ray.tune.trial import Trial, _ManagedCheckpoint, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
 from ray.util import log_once
@@ -760,8 +761,8 @@ class RayTrialExecutor(TrialExecutor):
         self.last_pg_recon = -float("inf")
 
     def save(
-        self, trial, storage=Checkpoint.PERSISTENT, result: Optional[Dict] = None
-    ) -> Checkpoint:
+        self, trial, storage=PERSISTENT, result: Optional[Dict] = None
+    ) -> _ManagedCheckpoint:
         """Saves the trial's state to a checkpoint asynchronously.
 
         Args:
@@ -777,15 +778,13 @@ class RayTrialExecutor(TrialExecutor):
         logger.info(f"saving trial {trial}")
         result = result or trial.last_result
         with self._change_working_directory(trial):
-            if storage == Checkpoint.MEMORY:
-                value = trial.runner.save_to_object.remote()
-                checkpoint = Checkpoint(storage, value, result)
-                trial.on_checkpoint(checkpoint)
+            if storage == MEMORY:
+                checkpoint = trial.runner.save_to_object.remote()
+                trial.on_checkpoint(checkpoint, result)
             else:
-                value = trial.runner.save.remote()
-                checkpoint = Checkpoint(storage, value, result)
+                checkpoint = trial.runner.save.remote()
                 trial.saving_to = checkpoint
-                self._futures[value] = (ExecutorEventType.SAVING_RESULT, trial)
+                self._futures[checkpoint] = (ExecutorEventType.SAVING_RESULT, trial)
         return checkpoint
 
     def restore(self, trial) -> None:
@@ -807,7 +806,7 @@ class RayTrialExecutor(TrialExecutor):
                 "Trial {}: Unable to restore - no runner found.".format(trial)
             )
         value = checkpoint.value
-        if checkpoint.storage == Checkpoint.MEMORY:
+        if checkpoint.storage == MEMORY:
             logger.debug("Trial %s: Attempting restore from object", trial)
             # Note that we don't store the remote since in-memory checkpoints
             # don't guarantee fault tolerance and don't need to be waited on.

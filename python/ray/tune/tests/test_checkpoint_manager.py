@@ -7,7 +7,13 @@ import unittest
 from unittest.mock import patch
 
 from ray.tune.result import TRAINING_ITERATION
-from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager, logger
+from ray.tune.checkpoint_manager import (
+    _ManagedCheckpoint,
+    CheckpointManager,
+    logger,
+    MEMORY,
+    PERSISTENT,
+)
 
 
 class CheckpointManagerTest(unittest.TestCase):
@@ -20,14 +26,13 @@ class CheckpointManagerTest(unittest.TestCase):
 
     def testNewestCheckpoint(self):
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
-        memory_checkpoint = Checkpoint(Checkpoint.MEMORY, {0}, self.mock_result(0))
+        memory_checkpoint = _ManagedCheckpoint(MEMORY, {0}, self.mock_result(0))
         checkpoint_manager.on_checkpoint(memory_checkpoint)
-        persistent_checkpoint = Checkpoint(
-            Checkpoint.PERSISTENT, {1}, self.mock_result(1)
-        )
+        persistent_checkpoint = _ManagedCheckpoint(PERSISTENT, {1}, self.mock_result(1))
         checkpoint_manager.on_checkpoint(persistent_checkpoint)
         self.assertEqual(
-            checkpoint_manager.newest_persistent_checkpoint, persistent_checkpoint
+            checkpoint_manager.newest_persistent_wrapped_checkpoint,
+            persistent_checkpoint,
         )
 
     def testOnCheckpointOrdered(self):
@@ -38,8 +43,7 @@ class CheckpointManagerTest(unittest.TestCase):
         keep_checkpoints_num = 2
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
-            Checkpoint(Checkpoint.PERSISTENT, {i}, self.mock_result(i))
-            for i in range(3)
+            _ManagedCheckpoint(PERSISTENT, {i}, self.mock_result(i)) for i in range(3)
         ]
 
         with patch.object(checkpoint_manager, "delete") as delete_mock:
@@ -48,7 +52,8 @@ class CheckpointManagerTest(unittest.TestCase):
                 expected_deletes = 0 if j != 2 else 1
                 self.assertEqual(delete_mock.call_count, expected_deletes, j)
                 self.assertEqual(
-                    checkpoint_manager.newest_persistent_checkpoint, checkpoints[j]
+                    checkpoint_manager.newest_persistent_wrapped_checkpoint,
+                    checkpoints[j],
                 )
 
         best_checkpoints = checkpoint_manager.best_checkpoints()
@@ -64,7 +69,7 @@ class CheckpointManagerTest(unittest.TestCase):
         keep_checkpoints_num = 2
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
-            Checkpoint(Checkpoint.PERSISTENT, {i}, self.mock_result(i))
+            _ManagedCheckpoint(PERSISTENT, {i}, self.mock_result(i))
             for i in range(3, -1, -1)
         ]
 
@@ -74,7 +79,8 @@ class CheckpointManagerTest(unittest.TestCase):
                 expected_deletes = 0 if j != 3 else 1
                 self.assertEqual(delete_mock.call_count, expected_deletes)
                 self.assertEqual(
-                    checkpoint_manager.newest_persistent_checkpoint, checkpoints[j]
+                    checkpoint_manager.newest_persistent_wrapped_checkpoint,
+                    checkpoints[j],
                 )
 
         best_checkpoints = checkpoint_manager.best_checkpoints()
@@ -89,7 +95,7 @@ class CheckpointManagerTest(unittest.TestCase):
         keep_checkpoints_num = 4
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
-            Checkpoint(Checkpoint.PERSISTENT, i, self.mock_result(i)) for i in range(16)
+            _ManagedCheckpoint(PERSISTENT, i, self.mock_result(i)) for i in range(16)
         ]
         random.shuffle(checkpoints)
 
@@ -108,19 +114,20 @@ class CheckpointManagerTest(unittest.TestCase):
         """
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
 
-        no_attr_checkpoint = Checkpoint(Checkpoint.PERSISTENT, 0, {})
+        no_attr_checkpoint = _ManagedCheckpoint(PERSISTENT, 0, {})
         with patch.object(logger, "error") as log_error_mock:
             checkpoint_manager.on_checkpoint(no_attr_checkpoint)
             log_error_mock.assert_called_once()
             # The newest checkpoint should still be set despite this error.
             self.assertEqual(
-                checkpoint_manager.newest_persistent_checkpoint, no_attr_checkpoint
+                checkpoint_manager.newest_persistent_wrapped_checkpoint,
+                no_attr_checkpoint,
             )
 
     def testOnMemoryCheckpoint(self):
         checkpoints = [
-            Checkpoint(Checkpoint.MEMORY, 0, self.mock_result(0)),
-            Checkpoint(Checkpoint.MEMORY, 0, self.mock_result(0)),
+            _ManagedCheckpoint(MEMORY, 0, self.mock_result(0)),
+            _ManagedCheckpoint(MEMORY, 0, self.mock_result(0)),
         ]
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
         checkpoint_manager.on_checkpoint(checkpoints[0])
@@ -143,10 +150,10 @@ class CheckpointManagerTest(unittest.TestCase):
             tmpfiles.append(tmpfile)
 
         checkpoints = [
-            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[0], self.mock_result(5)),
-            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[1], self.mock_result(10)),
-            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[2], self.mock_result(0)),
-            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[1], self.mock_result(20)),
+            _ManagedCheckpoint(PERSISTENT, tmpfiles[0], self.mock_result(5)),
+            _ManagedCheckpoint(PERSISTENT, tmpfiles[1], self.mock_result(10)),
+            _ManagedCheckpoint(PERSISTENT, tmpfiles[2], self.mock_result(0)),
+            _ManagedCheckpoint(PERSISTENT, tmpfiles[1], self.mock_result(20)),
         ]
         for checkpoint in checkpoints:
             checkpoint_manager.on_checkpoint(checkpoint)

@@ -2,8 +2,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 from abc import ABC
 import warnings
 
-from ray.tune.checkpoint_manager import Checkpoint
 from ray.util.annotations import PublicAPI
+from ray.util.ml_utils.checkpoint import Checkpoint
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
