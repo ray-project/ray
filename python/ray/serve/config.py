@@ -61,7 +61,7 @@ class AutoscalingConfig(BaseModel):
     # How long to wait before scaling up replicas
     upscale_delay_s: NonNegativeFloat = 30.0
 
-    @validator("max_replicas")
+    @validator("max_replicas", allow_reuse=True)
     def max_replicas_greater_than_or_equal_to_min_replicas(cls, v, values):
         if "min_replicas" in values and v < values["min_replicas"]:
             raise ValueError(
