@@ -302,11 +302,11 @@ def test_release_resource(object_spilling_config, shutdown_only):
     assert_no_thrashing(address["address"])
 
 
-def test_spill_objects_on_object_transfer(object_spilling_config, ray_start_cluster):
+def test_spill_objects_on_object_transfer(object_spilling_config, ray_start_cluster_enabled):
     object_spilling_config, _ = object_spilling_config
     # This test checks that objects get spilled to make room for transferred
     # objects.
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     object_size = int(1e7)
     num_objects = 10
     num_tasks = 10

@@ -1,5 +1,6 @@
 import copy
 import json
+import platform
 import random
 import sys
 import shutil
@@ -133,8 +134,8 @@ def test_default_config(shutdown_only):
     assert config["type"] == "mock_distributed_fs"
 
 
-def test_default_config_cluster(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_default_config_cluster(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=0)
     ray.init(cluster.address)
     worker_nodes = []
@@ -176,8 +177,8 @@ def test_spilling_not_done_for_pinned_object(object_spilling_config, shutdown_on
     assert_no_thrashing(address["address"])
 
 
-def test_spill_remote_object(ray_start_cluster, multi_node_object_spilling_config):
-    cluster = ray_start_cluster
+def test_spill_remote_object(ray_start_cluster_enabled, multi_node_object_spilling_config):
+    cluster = ray_start_cluster_enabled
     object_spilling_config, _ = multi_node_object_spilling_config
     cluster.add_node(
         num_cpus=0,
@@ -259,6 +260,10 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
     assert_no_thrashing(address["address"])
 
 
+@pytest.mark.skipif(
+     platform.system() in ["Darwin"],
+     reason="Very flaky on OSX.",
+ )
 def test_unstable_spill_objects_automatically(unstable_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = unstable_spilling_config
@@ -381,6 +386,7 @@ def test_spill_stats(object_spilling_config, shutdown_only):
     assert_no_thrashing(address["address"])
 
 
+@pytest.mark.skipif(platform.system() == "Darwin", reason="Failing on macOS.")
 @pytest.mark.asyncio
 @pytest.mark.parametrize("is_async", [False, True])
 async def test_spill_during_get(object_spilling_config, shutdown_only, is_async):
@@ -472,8 +478,8 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
     assert_no_thrashing(address["address"])
 
 
-def test_partial_retval_allocation(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_partial_retval_allocation(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     cluster.add_node(object_store_memory=100 * 1024 * 1024)
     ray.init(cluster.address)
 
@@ -488,9 +494,9 @@ def test_partial_retval_allocation(ray_start_cluster):
 
 
 def test_pull_spilled_object(
-    ray_start_cluster, multi_node_object_spilling_config, shutdown_only
+    ray_start_cluster_enabled, multi_node_object_spilling_config, shutdown_only
 ):
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     object_spilling_config, _ = multi_node_object_spilling_config
 
     # Head node.

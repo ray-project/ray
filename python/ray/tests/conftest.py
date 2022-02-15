@@ -202,6 +202,12 @@ def _ray_start_cluster(**kwargs):
 @pytest.fixture
 def ray_start_cluster(request):
     param = getattr(request, "param", {})
+    with _ray_start_cluster(**param) as res:
+        yield res
+
+@pytest.fixture
+def ray_start_cluster_enabled(request):
+    param = getattr(request, "param", {})
     param["skip_cluster"] = False
     with _ray_start_cluster(**param) as res:
         yield res

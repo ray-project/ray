@@ -1,7 +1,6 @@
 import logging
 import os
 import signal
-import platform
 import sys
 import threading
 import time
@@ -493,10 +492,9 @@ def test_raylet_node_manager_server_failure(ray_start_cluster_head, log_pubsub):
     assert len(match) > 0
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
-def test_gcs_server_crash_cluster(ray_start_cluster):
+def test_gcs_server_crash_cluster(ray_start_cluster_enabled):
     # Test the GCS server failures will crash the driver.
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     GCS_RECONNECTION_TIMEOUT = 5
     node = cluster.add_node(
         num_cpus=0,
