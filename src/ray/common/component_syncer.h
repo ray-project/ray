@@ -52,7 +52,7 @@ class RaySyncer {
 
   // Register a component
   void Register(RayComponentId component_id, const Reporter *reporter, Receiver *receiver,
-                int64_t publish_ms = 10) {
+                int64_t publish_ms = 100) {
     reporters_[component_id] = reporter;
     receivers_[component_id] = receiver;
     if (reporter != nullptr) {
@@ -148,7 +148,7 @@ class NodeSyncContext : public T,
         rpc_context_(rpc_context),
         io_context_(io_context),
         instance_(syncer) {
-    write_opts_.set_corked();
+    // write_opts_.set_corked();
   }
 
   void Init() {
@@ -235,15 +235,16 @@ class NodeSyncContext : public T,
 
     if (out_buffer_.empty()) {
       RAY_LOG(DEBUG) << "DBG: Stop sending since no more messages";
-      if (out_message_ != nullptr) {
-        out_message_ = nullptr;
-        // Flush
-        write_opts_.clear_corked();
-        StartWrite(out_message_, write_opts_);
-      } else {
-        write_opts_.set_corked();
-        sending_ = false;
-      }
+      // if (out_message_ != nullptr) {
+      //   out_message_ = nullptr;
+      //   // Flush
+      //   write_opts_.clear_corked();
+      //   StartWrite(out_message_, write_opts_);
+      // } else {
+      //   write_opts_.set_corked();
+      //   sending_ = false;
+      // }
+      sending_ = false;
     } else {
       arena_.Reset();
       out_message_ = google::protobuf::Arena::CreateMessage<RaySyncMessages>(&arena_);
