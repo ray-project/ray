@@ -45,8 +45,8 @@ def _configure_system():
                 "Failed to import grpc on Apple Silicon. On Apple"
                 " Silicon machines, try `pip uninstall grpcio; conda "
                 "install grpcio`. Check out "
-                "https://docs.ray.io/en/master/installation.html"
-                "#apple-silicon-support for more details."
+                "https://docs.ray.io/en/master/ray-overview/installation.html"
+                "#m1-mac-apple-silicon-support for more details."
             )
 
     if "OMP_NUM_THREADS" not in os.environ:

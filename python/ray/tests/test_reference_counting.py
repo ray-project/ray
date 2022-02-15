@@ -523,7 +523,6 @@ def _all_actors_dead():
     )
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_kill_actor_immediately_after_creation(ray_start_regular):
     @ray.remote
     class A:

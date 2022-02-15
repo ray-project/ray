@@ -1002,12 +1002,15 @@ class Trainer(Trainable):
 
             self.config["evaluation_config"] = eval_config
 
+            env_id = self._register_if_needed(eval_config.get("env"), eval_config)
+            env_creator = self._get_env_creator_from_env_id(env_id)
+
             # Create a separate evaluation worker set for evaluation.
             # If evaluation_num_workers=0, use the evaluation set's local
             # worker for evaluation, otherwise, use its remote workers
             # (parallelized evaluation).
             self.evaluation_workers: WorkerSet = WorkerSet(
-                env_creator=self.env_creator,
+                env_creator=env_creator,
                 validate_env=None,
                 policy_class=self.get_default_policy_class(self.config),
                 trainer_config=eval_config,

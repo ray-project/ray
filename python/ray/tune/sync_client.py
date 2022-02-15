@@ -5,6 +5,7 @@ import logging
 import pathlib
 import subprocess
 import tempfile
+import time
 import types
 import warnings
 
@@ -30,7 +31,7 @@ def noop(*args):
     return
 
 
-def get_sync_client(sync_function, delete_function=None):
+def get_sync_client(sync_function, delete_function=None) -> Optional["SyncClient"]:
     """Returns a sync client.
 
     Args:
@@ -58,7 +59,7 @@ def get_sync_client(sync_function, delete_function=None):
     return client_cls(sync_function, sync_function, delete_function)
 
 
-def get_cloud_sync_client(remote_path):
+def get_cloud_sync_client(remote_path) -> "CommandBasedClient":
     """Returns a CommandBasedClient that can sync to/from remote storage.
 
     Args:
@@ -158,6 +159,10 @@ class SyncClient:
         """Waits for current sync to complete, if asynchronously started."""
         pass
 
+    def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
+        """Wait for current sync to complete or retries on error."""
+        pass
+
     def reset(self):
         """Resets state."""
         pass
@@ -251,6 +256,8 @@ class CommandBasedClient(SyncClient):
         self.logfile = None
         self._closed = False
         self.cmd_process = None
+        # Keep track of last command for retry
+        self._last_cmd = None
 
     def set_logdir(self, logdir):
         """Sets the directory to log sync execution output in.
@@ -273,6 +280,11 @@ class CommandBasedClient(SyncClient):
         else:
             return self.logfile
 
+    def _start_process(self, cmd: str) -> subprocess.Popen:
+        return subprocess.Popen(
+            cmd, shell=True, stderr=subprocess.PIPE, stdout=self._get_logfile()
+        )
+
     def sync_up(self, source, target, exclude: Optional[List] = None):
         return self._execute(self.sync_up_template, source, target, exclude)
 
@@ -284,13 +296,15 @@ class CommandBasedClient(SyncClient):
 
     def delete(self, target):
         if self.is_running:
-            logger.warning("Last sync client cmd still in progress, skipping.")
+            logger.warning(
+                f"Last sync client cmd still in progress, "
+                f"skipping deletion of {target}"
+            )
             return False
         final_cmd = self.delete_template.format(target=quote(target), options="")
         logger.debug("Running delete: {}".format(final_cmd))
-        self.cmd_process = subprocess.Popen(
-            final_cmd, shell=True, stderr=subprocess.PIPE, stdout=self._get_logfile()
-        )
+        self._last_cmd = final_cmd
+        self.cmd_process = self._start_process(final_cmd)
         return True
 
     def wait(self):
@@ -306,10 +320,28 @@ class CommandBasedClient(SyncClient):
                     "Error message ({}): {}".format(args, code, error_msg)
                 )
 
+    def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
+        assert max_retries > 0
+        for i in range(max_retries - 1):
+            try:
+                self.wait()
+            except TuneError as e:
+                logger.error(
+                    f"Caught sync error: {e}. "
+                    f"Retrying after sleeping for {backoff_s} seconds..."
+                )
+                time.sleep(backoff_s)
+                self.cmd_process = self._start_process(self._last_cmd)
+                continue
+            return
+        self.cmd_process = None
+        raise TuneError(f"Failed sync even after {max_retries} retries.")
+
     def reset(self):
         if self.is_running:
             logger.warning("Sync process still running but resetting anyways.")
         self.cmd_process = None
+        self._last_cmd = None
 
     def close(self):
         if self.logfile:
@@ -329,7 +361,10 @@ class CommandBasedClient(SyncClient):
     def _execute(self, sync_template, source, target, exclude: Optional[List] = None):
         """Executes sync_template on source and target."""
         if self.is_running:
-            logger.warning("Last sync client cmd still in progress, skipping.")
+            logger.warning(
+                f"Last sync client cmd still in progress, "
+                f"skipping sync from {source} to {target}."
+            )
             return False
 
         if exclude and self.exclude_template:
@@ -355,9 +390,8 @@ class CommandBasedClient(SyncClient):
             source=quote(source), target=quote(target), options=option_str
         )
         logger.debug("Running sync: {}".format(final_cmd))
-        self.cmd_process = subprocess.Popen(
-            final_cmd, shell=True, stderr=subprocess.PIPE, stdout=self._get_logfile()
-        )
+        self._last_cmd = final_cmd
+        self.cmd_process = self._start_process(final_cmd)
         return True
 
     @staticmethod
