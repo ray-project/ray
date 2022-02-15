@@ -8,7 +8,7 @@ import time
 
 import ray
 from ray import tune
-from ray.rllib.examples.env.bandit_envs_recommender_system import ParametricItemRecoEnv
+from ray.rllib.examples.env.bandit_envs_recommender_system import ParametricRecSys
 
 if __name__ == "__main__":
     # Temp fix to avoid OMP conflict.
@@ -17,8 +17,20 @@ if __name__ == "__main__":
     ray.init()
 
     config = {
-        "env": ParametricItemRecoEnv,
+        "env": "ParametricRecSysEnv",
+        "env_config": {
+            "embedding_size": 20,
+            "num_docs_to_select_from": 10,
+            "slate_size": 1,
+            "num_docs_in_db": 100,
+            "num_users_in_db": 1,
+            "user_time_budget": 1.0,
+        },
         "num_envs_per_worker": 2,  # Test with batched inference.
+        "evaluation_interval": 20,
+        "evaluation_duration": 100,
+        "evaluation_duration_unit": "episodes",
+        "simple_optimizer": True,
     }
 
     # Actual training_iterations will be 10 * timesteps_per_iteration
