@@ -1407,16 +1407,26 @@ static std::vector<std::string> GetUrisFromRuntimeEnv(
 std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(
     const std::string &serialized_runtime_env,
     std::vector<std::string> *runtime_env_uris) {
+  std::shared_ptr<rpc::RuntimeEnv> parent_runtime_env;
+  std::string parent_serialized_runtime_env;
+  if (options_.worker_type == WorkerType::DRIVER) {
+    parent_runtime_env = job_runtime_env_;
+    parent_serialized_runtime_env =
+        job_config_->runtime_env_info().serialized_runtime_env();
+  } else {
+    parent_runtime_env = worker_context_.GetCurrentRuntimeEnv();
+    parent_serialized_runtime_env = worker_context_.GetCurrentSerializedRuntimeEnv();
+  }
   if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
     // Try to inherit runtime env from job or worker.
-    if (options_.worker_type == WorkerType::DRIVER) {
-      *runtime_env_uris = GetUrisFromRuntimeEnv(job_runtime_env_.get());
-      return job_config_->runtime_env_info().serialized_runtime_env();
-    } else {
-      *runtime_env_uris =
-          GetUrisFromRuntimeEnv(worker_context_.GetCurrentRuntimeEnv().get());
-      return worker_context_.GetCurrentSerializedRuntimeEnv();
-    }
+    *runtime_env_uris = GetUrisFromRuntimeEnv(parent_runtime_env.get());
+    return parent_serialized_runtime_env;
+  }
+
+  if (!IsRuntimeEnvEmpty(parent_serialized_runtime_env)) {
+    RAY_LOG(WARNING) << "Runtime env already exists and the parent runtime env is "
+                     << parent_serialized_runtime_env << ". It will be overrode by "
+                     << serialized_runtime_env << ".";
   }
 
   rpc::RuntimeEnv runtime_env;
