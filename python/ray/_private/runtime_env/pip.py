@@ -303,7 +303,8 @@ class PipManager:
             pip_processor = PipProcessor(target_dir, runtime_env, logger)
             await pip_processor.run()
 
-        return get_directory_size_bytes(target_dir)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, get_directory_size_bytes, target_dir)
 
     def modify_context(
         self,
