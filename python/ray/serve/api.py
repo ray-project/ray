@@ -512,7 +512,7 @@ class Client:
             version=version,
             prev_version=prev_version,
             route_prefix=route_prefix,
-            deployer_job_id=ray.get_runtime_context().job_id
+            deployer_job_id=ray.get_runtime_context().job_id,
         )
 
     @_ensure_connected

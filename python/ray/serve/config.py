@@ -307,9 +307,11 @@ class DeploymentRequest(BaseModel):
     def check_job_id_format(cls, v):
         parts = v.split(".")
         if len(parts) < 3 or parts[0] != "ray" or parts[1] != "_raylet":
-            raise ValueError(f"DeploymentRequest got deployer_job_id "
-                             f"\"{v}\". Expected deployer_job_id of format "
-                             f"\"ray._raylet.[JobID]\".")
+            raise ValueError(
+                f"DeploymentRequest got deployer_job_id "
+                f'"{v}". Expected deployer_job_id of format '
+                f'"ray._raylet.[JobID]".'
+            )
 
     class Config:
         arbitrary_types_allowed = True

@@ -1,4 +1,3 @@
-from multiprocessing.sharedctypes import Value
 import pytest
 from pydantic import ValidationError
 
@@ -166,12 +165,17 @@ def test_zero_default_proto():
 class TestDeploymentRequest:
     def test_deployment_request_required_fields(self):
         # Check that missing required fields raises ValidationError
-        required_fields = ["name", "deployment_config_proto_bytes", "replica_config", "deployer_job_id"]
+        required_fields = [
+            "name",
+            "deployment_config_proto_bytes",
+            "replica_config",
+            "deployer_job_id",
+        ]
         all_req_fields = dict(
             name="test",
             deployment_config_proto_bytes=b"bytes",
             replica_config=ReplicaConfig("test_replica"),
-            deployer_job_id="ray._raylet.validjobid"
+            deployer_job_id="ray._raylet.validjobid",
         )
 
         for field in required_fields:
@@ -179,7 +183,7 @@ class TestDeploymentRequest:
                 missing_one_req_field = all_req_fields.copy()
                 missing_one_req_field.pop(field)
                 DeploymentRequest(**missing_one_req_field)
-        
+
         # Should pass with all required fields specified:
         DeploymentRequest(**all_req_fields)
 
@@ -190,17 +194,16 @@ class TestDeploymentRequest:
                 name="test",
                 deployment_config_proto_bytes=b"bytes",
                 replica_config=ReplicaConfig("test_replica"),
-                deployer_job_id="invalid_JobID"
+                deployer_job_id="invalid_JobID",
             )
-        
+
         # Valid JobID should pass
         DeploymentRequest(
             name="test",
             deployment_config_proto_bytes=b"bytes",
             replica_config=ReplicaConfig("test_replica"),
-            deployer_job_id="ray._raylet.validjobid"
+            deployer_job_id="ray._raylet.validjobid",
         )
-
 
 
 if __name__ == "__main__":

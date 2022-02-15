@@ -18,7 +18,11 @@ from ray.serve.common import (
     NodeId,
     RunningReplicaInfo,
 )
-from ray.serve.config import DeploymentConfig, DeploymentRequest, HTTPOptions, ReplicaConfig
+from ray.serve.config import (
+    DeploymentConfig,
+    DeploymentRequest,
+    HTTPOptions,
+)
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
