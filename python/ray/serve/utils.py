@@ -8,6 +8,7 @@ import time
 from typing import Iterable, Tuple
 import os
 import traceback
+from ray.actor import ActorHandle
 
 import requests
 import numpy as np
@@ -264,3 +265,18 @@ def parse_import_path(import_path: str):
         )
 
     return ".".join(nodes[:-1]), nodes[-1]
+
+
+class JavaActorHandleProxy:
+    """Wraps actor handle and translate snake_case to camelCase."""
+
+    def __init__(self, handle: ActorHandle):
+        self.handle = handle
+
+    def __getattr__(self, key: str):
+        if hasattr(key):
+            camel_case_key = key
+        else:
+            components = key.split("_")
+            camel_case_key = components[0] + "".join(x.title() for x in components[1:])
+        return getattr(self.handle, camel_case_key)
