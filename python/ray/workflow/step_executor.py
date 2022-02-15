@@ -26,6 +26,7 @@ from ray.workflow.common import (
     StepID,
     WorkflowData,
     WorkflowStaticRef,
+    asyncio_run,
 )
 
 if TYPE_CHECKING:
@@ -247,7 +248,7 @@ def commit_step(
             # its input (again).
             if w.ref is None:
                 tasks.append(_write_step_inputs(store, w.step_id, w.data))
-        asyncio.get_event_loop().run_until_complete(asyncio.gather(*tasks))
+        asyncio_run(asyncio.gather(*tasks))
 
     context = workflow_context.get_workflow_step_context()
     store.save_step_output(

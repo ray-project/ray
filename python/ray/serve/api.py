@@ -217,10 +217,10 @@ class Client:
                 f"Deployments still alive: {live_names}."
             )
 
-    def _wait_for_deployment_running(self, name: str, timeout_s: int = -1):
-        """Waits for the named deployment to enter "RUNNING" status.
+    def _wait_for_deployment_healthy(self, name: str, timeout_s: int = -1):
+        """Waits for the named deployment to enter "HEALTHY" status.
 
-        Raises RuntimeError if the deployment enters the "FAILED" status
+        Raises RuntimeError if the deployment enters the "UNHEALTHY" status
         instead.
 
         Raises TimeoutError if this doesn't happen before timeout_s.
@@ -232,14 +232,14 @@ class Client:
                 status = statuses[name]
             except KeyError:
                 raise RuntimeError(
-                    f"Waiting for deployment {name} to be RUNNING, "
+                    f"Waiting for deployment {name} to be HEALTHY, "
                     "but deployment doesn't exist."
                 ) from None
 
-            if status.status == DeploymentStatus.RUNNING:
+            if status.status == DeploymentStatus.HEALTHY:
                 break
-            elif status.status == DeploymentStatus.FAILED:
-                raise RuntimeError(f"Deployment {name} is FAILED: {status.message}")
+            elif status.status == DeploymentStatus.UNHEALTHY:
+                raise RuntimeError(f"Deployment {name} is UNHEALTHY: {status.message}")
             else:
                 # Guard against new unhandled statuses being added.
                 assert status.status == DeploymentStatus.UPDATING
@@ -250,7 +250,7 @@ class Client:
             time.sleep(1)
         else:
             raise TimeoutError(
-                f"Deployment {name} did not become RUNNING after {timeout_s}s."
+                f"Deployment {name} did not become HEALTHY after {timeout_s}s."
             )
 
     def _wait_for_deployment_deleted(self, name: str, timeout_s: int = 60):
@@ -305,7 +305,7 @@ class Client:
         tag = self.log_deployment_update_status(name, version, updating)
 
         if _blocking:
-            self._wait_for_deployment_running(name)
+            self._wait_for_deployment_healthy(name)
             self.log_deployment_ready(name, version, url, tag)
 
     @_ensure_connected
@@ -342,7 +342,7 @@ class Client:
             url = deployment["url"]
 
             if _blocking:
-                self._wait_for_deployment_running(name)
+                self._wait_for_deployment_healthy(name)
                 self.log_deployment_ready(name, version, url, tags[i])
 
     @_ensure_connected
@@ -648,7 +648,6 @@ def start(
         )
 
         _check_http_and_checkpoint_options(client, http_options, _checkpoint_path)
-
         return client
     except RayServeException:
         pass
@@ -1090,6 +1089,8 @@ class Deployment:
         _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
         _graceful_shutdown_wait_loop_s: Optional[float] = None,
         _graceful_shutdown_timeout_s: Optional[float] = None,
+        _health_check_period_s: Optional[float] = None,
+        _health_check_timeout_s: Optional[float] = None,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -1134,6 +1135,12 @@ class Deployment:
 
         if _graceful_shutdown_timeout_s is not None:
             new_config.graceful_shutdown_timeout_s = _graceful_shutdown_timeout_s
+
+        if _health_check_period_s is not None:
+            new_config.health_check_period_s = _health_check_period_s
+
+        if _health_check_timeout_s is not None:
+            new_config.health_check_timeout_s = _health_check_timeout_s
 
         return Deployment(
             func_or_class,
@@ -1193,6 +1200,8 @@ def deployment(
     _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
     _graceful_shutdown_wait_loop_s: Optional[float] = None,
     _graceful_shutdown_timeout_s: Optional[float] = None,
+    _health_check_period_s: Optional[float] = None,
+    _health_check_timeout_s: Optional[float] = None,
 ) -> Callable[[Callable], Deployment]:
     pass
 
@@ -1213,6 +1222,8 @@ def deployment(
     _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
     _graceful_shutdown_wait_loop_s: Optional[float] = None,
     _graceful_shutdown_timeout_s: Optional[float] = None,
+    _health_check_period_s: Optional[float] = None,
+    _health_check_timeout_s: Optional[float] = None,
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
@@ -1295,6 +1306,12 @@ def deployment(
 
     if _graceful_shutdown_timeout_s is not None:
         config.graceful_shutdown_timeout_s = _graceful_shutdown_timeout_s
+
+    if _health_check_period_s is not None:
+        config.health_check_period_s = _health_check_period_s
+
+    if _health_check_timeout_s is not None:
+        config.health_check_timeout_s = _health_check_timeout_s
 
     def decorator(_func_or_class):
         return Deployment(
