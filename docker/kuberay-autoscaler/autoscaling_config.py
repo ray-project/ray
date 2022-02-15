@@ -275,7 +275,8 @@ def _get_custom_resources(ray_start_params: dict, group_name: str) -> Dict[str, 
         logger.error(
             f"Error reading `resource` rayStartParam for group {group_name}."
             " For the correct format, refer to example configuration at "
-            "https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kuberay/ray-cluster.complete.yaml."
+            "https://github.com/ray-project/ray/blob/master/python/"
+            "ray/autoscaler/kuberay/ray-cluster.complete.yaml."
         )
         raise e
     return resources

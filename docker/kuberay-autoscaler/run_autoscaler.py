@@ -7,7 +7,6 @@ from ray import ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray._private.services import get_node_ip_address
 from ray.autoscaler._private.monitor import Monitor
-import yaml
 
 from autoscaling_config import generate_autoscaling_config
 
