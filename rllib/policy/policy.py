@@ -1130,8 +1130,8 @@ class Policy(metaclass=ABCMeta):
                 if torch and torch.is_tensor(state)
                 else None
             )
-            if hasattr(obj, "get_initial_state_shape"):
-                space = obj.get_initial_state_shape()[i]
+            if hasattr(obj, "get_initial_state_space"):
+                space = obj.get_initial_state_space()[i]
             elif fw:
                 space = (
                     Box(-1.0, 1.0, shape=state.shape) if fw.all(state == 0.0) else state

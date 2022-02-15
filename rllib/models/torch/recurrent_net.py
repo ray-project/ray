@@ -279,7 +279,7 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         ]
         return h
 
-    def get_initial_state_shape(self):
+    def get_initial_state_space(self):
         return [gym.spaces.Box(-1, 1, shape=(self.cell_size,), dtype=np.float)] * 2
 
     @override(ModelV2)
