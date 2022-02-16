@@ -27,6 +27,10 @@ a3c-pongdeterministic-v4:
         timesteps_total: 5000000
     stop:
         time_total_s: 3600
+    # TODO(sven, jungong): there seems to be a race condition between A3C
+    #    and torch, causing matrix shape mismatch error.
+    #    Fix and re-enable torch.
+    frameworks: ["tf"]
     config:
         num_gpus: 0
         num_workers: 16
