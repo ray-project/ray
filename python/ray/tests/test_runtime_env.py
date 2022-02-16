@@ -479,10 +479,14 @@ def test_subprocess_error():
 def test_subprocess_error_with_last_n_lines():
     stdout = "1\n2\n3\n4\n5\n"
     stderr = "5\n4\n3\n2\n1\n"
-    exception = SubprocessCalledProcessError(123, "abc", output=stdout, stderr=stderr)
+    exception = SubprocessCalledProcessError(888, "abc", output=stdout, stderr=stderr)
     exception.LAST_N_LINES = 3
-    assert "stdout='4\n5\n'" in str(exception)
-    assert "stderr='2\n1\n'" in str(exception)
+    exception_str = str(exception)
+    assert "cmd" not in exception_str
+    assert "Last 3 lines" in exception_str
+    s = "".join([s.strip() for s in exception_str.splitlines()])
+    assert "345" in s
+    assert "321" in s
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Fails on Windows.")
@@ -507,6 +511,7 @@ async def test_check_output_cmd():
     assert "cmd[1]" in all_log_string
     assert "cmd[2]" in all_log_string
 
+    # Test communicate fails.
     with mock.patch(
         "asyncio.subprocess.Process.communicate",
         side_effect=Exception("fake exception"),
@@ -514,7 +519,19 @@ async def test_check_output_cmd():
         with pytest.raises(RuntimeError) as e:
             await check_output_cmd(["pwd"], logger=_FakeLogger())
         # Make sure the exception has cmd trace info.
-        assert "cmd[3]" in str(e)
+        assert "cmd[3]" in str(e.value)
+
+    # Test asyncio.create_subprocess_exec fails.
+    with pytest.raises(RuntimeError) as e:
+        await check_output_cmd(["not_exist_cmd"], logger=_FakeLogger())
+    # Make sure the exception has cmd trace info.
+    assert "cmd[4]" in str(e.value)
+
+    # Test returncode != 0.
+    with pytest.raises(SubprocessCalledProcessError) as e:
+        await check_output_cmd(["ls", "--abc"], logger=_FakeLogger())
+    # Make sure the exception has cmd trace info.
+    assert "cmd[5]" in str(e.value)
 
 
 if __name__ == "__main__":

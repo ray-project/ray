@@ -3,6 +3,7 @@ import itertools
 import json
 import logging
 import subprocess
+import textwrap
 import types
 from typing import Dict, List, Tuple, Any
 
@@ -293,23 +294,36 @@ class SubprocessCalledProcessError(subprocess.CalledProcessError):
 
     LAST_N_LINES = 10
 
+    def __init__(self, *args, cmd_index=None, **kwargs):
+        self.cmd_index = cmd_index
+        super().__init__(*args, **kwargs)
+
     @staticmethod
     def _get_last_n_line(str_data: str, last_n_lines: int) -> str:
         if last_n_lines < 0:
             return str_data
-        lines = str_data.split("\n")
+        lines = str_data.strip().split("\n")
         return "\n".join(lines[-last_n_lines:])
 
     def __str__(self):
-        str_list = [super().__str__().strip(",.")]
+        str_list = (
+            []
+            if self.cmd_index is None
+            else [f"Run cmd[{self.cmd_index}] failed with the following details."]
+        )
+        str_list.append(super().__str__())
         out = {
             "stdout": self.stdout,
             "stderr": self.stderr,
         }
         for name, s in out.items():
             if s:
-                str_list.append(f"{name}={self._get_last_n_line(s, self.LAST_N_LINES)}")
-        return ", ".join(str_list)
+                subtitle = f"Last {self.LAST_N_LINES} lines of {name}:"
+                last_n_line_str = self._get_last_n_line(s, self.LAST_N_LINES).strip()
+                str_list.append(
+                    f"{subtitle}\n{textwrap.indent(last_n_line_str, ' ' * 4)}"
+                )
+        return "\n".join(str_list)
 
 
 async def check_output_cmd(
@@ -342,11 +356,15 @@ async def check_output_cmd(
 
     cmd_index = next(cmd_index_gen)
     logger.info("Run cmd[%s] %s", cmd_index, repr(cmd))
-    proc = await asyncio.create_subprocess_exec(
-        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, **kwargs
-    )
 
+    proc = None
     try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            **kwargs,
+        )
         # Use communicate instead of polling stdout:
         #   * Avoid deadlocks due to streams pausing reading or writing and blocking the
         #     child process. Please refer to:
@@ -362,13 +380,16 @@ async def check_output_cmd(
         else:
             logger.info("No output for cmd[%s]", cmd_index)
         if proc.returncode != 0:
-            raise SubprocessCalledProcessError(proc.returncode, cmd, output=stdout)
+            raise SubprocessCalledProcessError(
+                proc.returncode, cmd, output=stdout, cmd_index=cmd_index
+            )
         return stdout
     finally:
-        # Kill process.
-        try:
-            proc.kill()
-        except ProcessLookupError:
-            pass
-        # Wait process exit.
-        await proc.wait()
+        if proc is not None:
+            # Kill process.
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            # Wait process exit.
+            await proc.wait()
