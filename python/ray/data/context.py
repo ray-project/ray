@@ -19,6 +19,7 @@ DEFAULT_BLOCK_SPLITTING_ENABLED = False
 DEFAULT_ENABLE_PANDAS_BLOCK = True
 
 # Whether to enable stage-fusion optimizations for dataset pipelines.
+# TODO(ekl): enable this by default when ready.
 DEFAULT_OPTIMIZE_FUSE_STAGES = False
 
 # Whether to furthermore fuse read stages. When this is enabled, data will also be
