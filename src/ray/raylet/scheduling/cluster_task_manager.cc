@@ -1120,7 +1120,7 @@ void ClusterTaskManager::SpillWaitingTasks() {
                        << " has blocked dependencies, but no other node has resources, "
                           "keeping the task local";
       } else {
-        RAY_LOG(LOG) << "Keeping waiting task " << task_id << " local";
+        RAY_LOG(INFO) << "Keeping waiting task " << task_id << " local";
       }
       // We should keep the task local. Note that an earlier task in the queue
       // may have different resource requirements and could actually be
