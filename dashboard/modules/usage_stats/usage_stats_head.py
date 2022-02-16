@@ -36,7 +36,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             await self.client.report_usage_data_async(
                 ray_usage_lib._usage_stats_report_url(), data
             )
-        except:
+        except Exception:
             # Log nothing if something goes wrong.
             pass
 
