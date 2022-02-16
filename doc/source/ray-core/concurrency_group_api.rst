@@ -12,7 +12,7 @@ Defining Concurrency Groups
 
 You can define concurrency groups for asyncio actors using the ``concurrency_groups`` decorator argument:
 
-You can define concurrency groups for asyncio actors in Python and for Concurrent
+You can define concurrency groups for asyncio actors in Python and for concurrent
 actors in Java.
 
 This defines two concurrency groups, "io" with max concurrency = 2 and
