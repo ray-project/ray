@@ -18,7 +18,7 @@ from ray.tune.integration.torch import (
 logger = logging.getLogger(__name__)
 
 
-def train_mnist(config, checkpoint_dir=False):
+def train_mnist(config, checkpoint_dir=None):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     train_loader, test_loader = get_data_loaders()

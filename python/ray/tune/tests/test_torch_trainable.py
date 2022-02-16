@@ -72,9 +72,9 @@ def test_save_checkpoint(ray_start_2_cpus):  # noqa: F811
     trainable_cls = DistributedTrainableCreator(_train_simple, num_workers=2)
     trainer = trainable_cls(config={"epochs": 1})
     trainer.train()
-    checkpoint_dir = trainer.save()
+    checkpoint = trainer.save()
     model_state_dict, opt_state_dict = torch.load(
-        os.path.join(checkpoint_dir, "checkpoint")
+        os.path.join(checkpoint.path, "checkpoint")
     )
     trainer.stop()
 
@@ -83,8 +83,8 @@ def test_restore_checkpoint(ray_start_2_cpus):  # noqa: F811
     trainable_cls = DistributedTrainableCreator(_train_simple, num_workers=2)
     trainer = trainable_cls(config={"epochs": 1})
     trainer.train()
-    checkpoint_dir = trainer.save()
-    trainer.restore(checkpoint_dir)
+    checkpoint = trainer.save()
+    trainer.restore(checkpoint)
     trainer.stop()
 
 

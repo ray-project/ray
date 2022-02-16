@@ -204,7 +204,8 @@ class TrainableUtil:
             metadata_file = list(set(metadata_file))  # avoid duplication
             if len(metadata_file) != 1:
                 raise ValueError(
-                    "{} has zero or more than one tune_metadata.".format(chkpt_dir)
+                    f"{chkpt_dir} has zero or more than one tune_metadata "
+                    f"({len(metadata_file)})."
                 )
 
             chkpt_path = metadata_file[0][: -len(".tune_metadata")]

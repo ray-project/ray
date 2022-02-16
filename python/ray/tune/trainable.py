@@ -446,15 +446,20 @@ class Trainable:
         )
 
         # Maybe sync to cloud
-        cloud_checkpoint = self._maybe_save_to_cloud(local_checkpoint.path)
+        cloud_checkpoint = self._maybe_save_to_cloud(
+            local_checkpoint.path, local_checkpoint.metadata
+        )
 
         if cloud_checkpoint:
             return MultiLocationCheckpoint(local_checkpoint, cloud_checkpoint)
 
         return local_checkpoint
 
-    def _maybe_save_to_cloud(self, checkpoint_dir) -> Optional[CloudStorageCheckpoint]:
+    def _maybe_save_to_cloud(
+        self, checkpoint_dir, metadata: Optional[Dict]
+    ) -> Optional[CloudStorageCheckpoint]:
         # Derived classes like the FunctionRunner might call this
+        metadata = metadata or {}
         if self.uses_cloud_checkpointing:
             # Todo: in the future this may become
             # checkpoint.to_cloud()
@@ -464,7 +469,8 @@ class Trainable:
             return CloudStorageCheckpoint(
                 location=cloud_location,
                 metadata={
-                    "relative_path": os.path.relpath(checkpoint_dir, self.logdir)
+                    **metadata,
+                    "relative_path": os.path.relpath(checkpoint_dir, self.logdir),
                 },
             )
         return None
@@ -500,7 +506,7 @@ class Trainable:
 
         # First, check if the checkpoint is locally available:
         local_checkpoint = multi_checkpoint.search_checkpoint(LocalStorageCheckpoint)
-        if local_checkpoint:
+        if local_checkpoint and os.path.exists(local_checkpoint.path):
             return self._restore_from_local_checkpoint(local_checkpoint)
 
         # Else, check if there is a cloud checkpoint we can fetch
@@ -546,10 +552,7 @@ class Trainable:
             checkpoint_path = temporary_checkpoint_dir
         else:
             checkpoint_path = os.path.join(self.logdir, rel_path)
-
-        self.storage_client.sync_down(
-            cloud_checkpoint.location,
-        )
+        self.storage_client.sync_down(cloud_checkpoint.location, checkpoint_path)
         self.storage_client.wait_or_retry()
         # Todo: In the future, this may become
         # local_checkpoint = cloud_checkpoint.to_local_storage()
@@ -570,6 +573,10 @@ class Trainable:
 
     def _restore_from_local_checkpoint(self, local_checkpoint: LocalStorageCheckpoint):
         assert isinstance(local_checkpoint, LocalStorageCheckpoint)
+
+        if local_checkpoint.is_data_checkpoint:
+            data_checkpoint = local_checkpoint.to_data()
+            return self.restore_from_object(data_checkpoint)
 
         checkpoint_path = local_checkpoint.path
         if "suffix" in local_checkpoint.metadata:

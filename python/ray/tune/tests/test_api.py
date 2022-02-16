@@ -1135,6 +1135,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         test_trainable = TestTrain()
         result = test_trainable.save()
+        print(result)
         test_trainable.state["hi"] = 2
         test_trainable.restore(result)
         self.assertEqual(test_trainable.state["hi"], 1)

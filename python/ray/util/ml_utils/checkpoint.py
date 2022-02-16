@@ -78,6 +78,12 @@ class DataCheckpoint(Checkpoint, DataArtifact):
         local_checkpoint.write_metadata()
         return local_checkpoint
 
+    @classmethod
+    def from_local_storage(cls, path: str) -> "DataCheckpoint":
+        local_checkpoint = LocalStorageCheckpoint(path=path)
+        local_checkpoint.load_metadata()
+        return local_checkpoint.to_data()
+
     def __eq__(self, other):
         return (
             isinstance(other, DataCheckpoint)
@@ -112,7 +118,7 @@ class FSStorageCheckpoint(Checkpoint, FSStorageArtifact, abc.ABC):
         if self.is_data_checkpoint:
             # Restore previous DataCheckpoint from disk
             checkpoint_data_path = os.path.join(self.path, "checkpoint.pkl")
-            with open(checkpoint_data_path, "wb") as f:
+            with open(checkpoint_data_path, "rb") as f:
                 data = pickle.load(f)
             new_metadata["is_fs_checkpoint"] = False
         else:
@@ -146,12 +152,12 @@ class LocalStorageCheckpoint(FSStorageCheckpoint, LocalStorageArtifact):
         LocalStorageArtifact.__init__(self, path=path)
 
     def write_metadata(self):
-        metadata_file = os.path.join(self.path, ".checkpoint_metadata")
+        metadata_file = os.path.join(self.path, ".tune_metadata")
         with open(metadata_file, "wt") as fp:
             json.dump(self.metadata, fp)
 
     def load_metadata(self):
-        metadata_file = os.path.join(self.path, ".checkpoint_metadata")
+        metadata_file = os.path.join(self.path, ".tune_metadata")
         if os.path.exists(metadata_file):
             with open(metadata_file, "rt") as fp:
                 self.metadata = json.load(fp)

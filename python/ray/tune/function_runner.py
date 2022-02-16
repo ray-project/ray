@@ -485,7 +485,9 @@ class FunctionRunner(Trainable):
             checkpoint, parent_dir, state, return_data_checkpoint=False
         )
 
-        cloud_checkpoint = self._maybe_save_to_cloud(parent_dir)
+        cloud_checkpoint = self._maybe_save_to_cloud(
+            parent_dir, local_checkpoint.metadata
+        )
 
         if cloud_checkpoint:
             return MultiLocationCheckpoint(local_checkpoint, cloud_checkpoint)

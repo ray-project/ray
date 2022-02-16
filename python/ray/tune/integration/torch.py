@@ -17,8 +17,9 @@ from ray.tune.logger import NoopLogger
 from ray.tune.function_runner import wrap_function
 from ray.tune.trainable import DistributedTrainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
-from ray.tune.utils.trainable import PlacementGroupUtil, TrainableUtil
+from ray.tune.utils.trainable import PlacementGroupUtil
 from ray.tune.utils import detect_checkpoint_function
+from ray.util.ml_utils.checkpoint import DataCheckpoint
 from ray.util.sgd.torch.utils import setup_process_group, setup_address
 from ray.util.placement_group import remove_placement_group
 from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
@@ -133,14 +134,12 @@ class _TorchTrainable(DistributedTrainable):
     def save_checkpoint(self, checkpoint_dir: str) -> str:
         # TODO: optimize if colocated
         save_obj = ray.get(self.workers[0].save_to_object.remote())
-        checkpoint_path = TrainableUtil.create_from_pickle(save_obj, checkpoint_dir)
-        return checkpoint_path
+        save_obj.to_local_storage(checkpoint_dir)
+        return checkpoint_dir
 
     def load_checkpoint(self, checkpoint_dir: str):
-        checkpoint_obj = TrainableUtil.checkpoint_to_object(checkpoint_dir)
-        return ray.get(
-            [w.restore_from_object.remote(checkpoint_obj) for w in self.workers]
-        )
+        checkpoint = DataCheckpoint.from_local_storage(checkpoint_dir)
+        return ray.get([w.restore_from_object.remote(checkpoint) for w in self.workers])
 
     def stop(self):
         ray.get([worker.stop.remote() for worker in self.workers])
