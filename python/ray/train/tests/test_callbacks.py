@@ -300,6 +300,10 @@ def test_torch_tensorboard_profiler_callback(ray_start_4_cpus, tmp_path):
         count += 1
     assert count == num_workers * num_epochs
 
+def test_early_stopping(ray_start_2_cpus):
+    # Test that training is stopped immediately and not run to completion.
+    #
+
 
 if __name__ == "__main__":
     import pytest

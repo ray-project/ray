@@ -95,3 +95,11 @@ class TrainingCallback(abc.ABC):
             **info: kwargs dict for forward compatibility.
         """
         pass
+
+    def should_terminate(self) -> bool:
+        """Indiciates whether Trainer should terminate training.
+
+        If returns True, then trainer will immediately stop training and
+        """
+
+        return False

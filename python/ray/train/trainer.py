@@ -15,7 +15,7 @@ from ray.train.backend import (
     TrainingWorkerError,
 )
 from ray.train.callbacks.callback import TrainingCallback
-from ray.train.session import TrainingResultType
+from ray.train.session import TrainingResultType, TrainingResult
 from ray.train.utils import RayDataset
 from ray.train.checkpoint import (
     CheckpointStrategy,
@@ -270,7 +270,7 @@ class Trainer:
         dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
         checkpoint: Optional[Union[Dict, str, Path]] = None,
         checkpoint_strategy: Optional[CheckpointStrategy] = None,
-    ) -> List[T]:
+    ) -> Optional[List[T]]:
         """Runs a training function in a distributed manner.
 
         Args:
@@ -332,11 +332,22 @@ class Trainer:
                 run_dir=self.latest_run_dir,
             )
             for intermediate_result in iterator:
+                should_terminate = False
                 for callback in callbacks:
                     callback.process_results(intermediate_result)
+                    should_terminate = should_terminate or callback.should_terminate()
+
+                if should_terminate:
+                    for callback in callbacks:
+                        callback.finish_training(error=False)
+                    iterator.terminate_training()
+                    return
 
             assert iterator.is_finished()
             return iterator.get_final_results()
+        except RuntimeError:
+            finished_with_errors = True
+            raise
         finally:
             for callback in callbacks:
                 callback.finish_training(error=finished_with_errors)
@@ -746,17 +757,12 @@ class TrainingIterator:
     def __next__(self):
         if self.is_finished():
             raise StopIteration
+
         next_results = self._run_with_error_handling(self._fetch_next_result)
         if next_results is None:
-            try:
-                self._final_results = self._run_with_error_handling(
-                    self._finish_training
-                )
-            finally:
-                self._finished_training = True
+            self._finished_training = True
             raise StopIteration
         else:
-
             return next_results
 
     def _fetch_next_result(self) -> Optional[List[Dict]]:
@@ -770,43 +776,38 @@ class TrainingIterator:
                 a single worker. If there are no more items to fetch,
                 returns None.
         """
-
         while True:
-            results = ray.get(self._backend_executor_actor.get_next_results.remote())
-            if results is None:
+            next_results = ray.get(
+                self._backend_executor_actor.get_next_results.remote())
+            if next_results is None:
                 return None
-            first_result = results[0]
-            result_type = first_result.type
-            if result_type is TrainingResultType.REPORT:
-                result_data = [self._backend.decode_data(r.data) for r in results]
-                return result_data
-            elif result_type is TrainingResultType.CHECKPOINT:
-                self._checkpoint_manager._process_checkpoint(
-                    results, decode_checkpoint_fn=self._backend.decode_data
-                )
-                # Iterate until next REPORT call or training has finished.
             else:
-                raise TrainBackendError(
-                    f"Unexpected result type: "
-                    f"{result_type}. "
-                    f"Expected one of "
-                    f"{[type in TrainingResultType]}"
-                )
+                first_result = next_results[0]
+                first_result_type = first_result.type
+                if first_result_type is TrainingResultType.REPORT:
+                    result_data = [self._backend.decode_data(r.data) for r
+                                   in next_results]
+                    return result_data
+                elif first_result_type is TrainingResultType.CHECKPOINT:
+                    self._checkpoint_manager._process_checkpoint(
+                        next_results,
+                        decode_checkpoint_fn=self._backend.decode_data
+                    )
+                    # Continue iterating until next report call or training
+                    # has finished.
+                else:
+                    raise TrainBackendError(
+                        f"Unexpected result type: "
+                        f"{first_result_type}. "
+                        f"Expected one of "
+                        f"{[type in TrainingResultType]}"
+                    )
 
-    def _finish_checkpointing(self):
-        while True:
-            results = ray.get(self._backend_executor_actor.get_next_results.remote())
-            if results is None:
-                break
-            result_type = results[0].type
-            # Process checkpoints and ignore other result types.
-            if result_type is TrainingResultType.CHECKPOINT:
-                self._checkpoint_manager._process_checkpoint(
-                    results, decode_checkpoint_fn=self._backend.decode_data
-                )
+    def is_finished(self) -> bool:
+        return self._finished_training
 
     def _finish_training(self):
-        """Finish training and return final results. Propagate any exceptions.
+        """Finish training and returns final results. Propagate any exceptions.
 
         Blocks until training is finished on all workers.
 
@@ -818,44 +819,55 @@ class TrainingIterator:
         """
 
         ray.get(self._backend_executor_actor.pause_reporting.remote())
+
         # Finish up processing checkpoints. Reporting has been disabled.
-        # Results will not be processed.
-        self._finish_checkpointing()
+        # Report results will not be processed.
+        while True:
+         if self._fetch_next_result() is None:
+             break
+
         return ray.get(self._backend_executor_actor.finish_training.remote())
 
-    def is_finished(self) -> bool:
-        return self._finished_training
+    def terminate_training(self):
+        """Immediately end execution of training function."""
 
-    def get_final_results(self, force: bool = False) -> List[T]:
+        ray.get(self._backend_executor_actor.terminate_training.remote())
+
+    def get_final_results(self, force: bool = False) -> Optional[List[T]]:
         """Gets the training func return values from each worker.
 
-        If ``force`` is ``True``, then immediately finish training
-        and return even if all the intermediate results have not
-        been processed yet. Else, intermediate results must be
-        processed before obtaining the final results. Defaults to
-        False.
+        Args:
+            force (bool): If ``True``, then immediately finish training
+                and return even if all the intermediate results have not
+                been processed yet. Else, intermediate results must be
+                processed before obtaining the final results. Defaults to
+                False.
+
+        Returns:
+            A list containing the return values from each worker.
         """
-        if not self.is_finished():
-            assert self._final_results is None
-            if force:
-                try:
-                    self._final_results = self._run_with_error_handling(
-                        self._finish_training
-                    )
-                finally:
-                    self._finished_training = True
-            else:
-                logger.info(
-                    "Please finish iterating through the "
-                    "intermediate results before getting the"
-                    "final returns. If you would like "
-                    "training to finish immediately and get "
-                    "the final returns, then set "
-                    "`force=True`."
-                )
+
+        if not self.is_finished() and not force:
+            logger.info(
+                "Please finish iterating through the "
+                "intermediate results before getting the"
+                "final returns. If you would like "
+                "training to finish immediately and get "
+                "the final returns, then set "
+                "`force=True`."
+            )
+            return
+
+        # Either iteration has completed (self.is_finished() is True)
+        # Or force is True.
+        if self._final_results is None:
+            try:
+                self._final_results = self._run_with_error_handling(
+                    self._finish_training)
+            finally:
+                self._finished_training = True
 
         return self._final_results
-
 
 def _create_tune_trainable(
     train_func, dataset, backend_config, num_workers, use_gpu, resources_per_worker

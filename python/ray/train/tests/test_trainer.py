@@ -337,9 +337,7 @@ def test_run_iterator_error(ray_start_2_cpus):
     iterator = trainer.run_iterator(fail_train)
 
     with pytest.raises(NotImplementedError):
-        next(iterator)
-
-    assert iterator.get_final_results() is None
+        iterator.get_final_results(force=True)
     assert iterator.is_finished()
 
 
@@ -750,12 +748,12 @@ def test_worker_failure_2(ray_start_2_cpus):
     test_config = TestConfig()
 
     def train_func():
-        for _ in range(2):
+        for _ in range(1):
             train.report(loss=1)
         return 1
 
     def train_actor_failure():
-        for _ in range(2):
+        for _ in range(1):
             train.report(loss=1)
         import sys
 

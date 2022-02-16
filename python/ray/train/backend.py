@@ -513,6 +513,9 @@ class BackendExecutor:
 
         Assumes `start_training` has already been called.
 
+        Args:
+            to_completion
+
         Returns:
             A list of return values from calling ``train_func`` on each worker.
                 Each item corresponds to the return value from a single worker.
@@ -533,6 +536,21 @@ class BackendExecutor:
         futures = self.worker_group.execute_async(end_training)
         results = self.get_with_failure_handling(futures)
         return results
+
+    def terminate_training(self):
+        """Immediately stop training and shutdown session.
+
+        Do not run training function to completion.
+        """
+        def terminate():
+            session = _get_session("terminate")
+            session.terminate()
+            shutdown_session()
+
+        # We don't care about catching failures or doing any retrying here
+        # since we want training to immediately terminate.
+
+        self.worker_group.execute_async(terminate)
 
     def get_with_failure_handling(self, remote_values):
         """Gets the remote values while handling for worker failures.

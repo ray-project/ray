@@ -1,6 +1,7 @@
 import os
 import platform
 import queue
+import sys
 import threading
 import time
 from datetime import datetime
@@ -57,6 +58,9 @@ class Session:
         self.dataset_shard = dataset_shard
 
         # The Thread object that is running the training function.
+        # Set it as a daemon thread so that when the main thread terminates
+        # (for early stopping for example), the training thread also
+        # immediately terminates.
         self.training_thread = PropagatingThread(target=training_func, daemon=True)
         self.world_rank = world_rank
         self.local_rank = local_rank
@@ -110,7 +114,7 @@ class Session:
 
         # Wait for training to finish.
         # This will raise any errors that occur during training, including
-        # SystemError
+        # SystemExit
         func_output = self.training_thread.join()
         # If training finished successfully, then return results.
         return func_output
@@ -231,6 +235,14 @@ class Session:
         # Acquire lock to stop the training thread until
         # checkpoint has been processed.
         self.continue_lock.acquire()
+
+    def terminate(self):
+        """Stop training and exit the main thread.
+
+        The training function is a daemon thread, so exiting the main thread
+        cause training to terminate immediately.
+        """
+        sys.exit(0)
 
 
 _session = None
