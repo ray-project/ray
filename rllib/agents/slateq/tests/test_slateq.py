@@ -28,7 +28,7 @@ class TestSlateQ(unittest.TestCase):
             "learning_starts": 1000,
         }
 
-        num_iterations = 200
+        num_iterations = 2
 
         for _ in framework_iterator(
             config, frameworks=("tf2", "torch"), with_eager_tracing=False

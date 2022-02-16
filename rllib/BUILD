@@ -819,7 +819,7 @@ py_test(
 py_test(
     name = "test_slateq",
     tags = ["team:ml", "trainers_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/slateq/tests/test_slateq.py"]
 )
 
