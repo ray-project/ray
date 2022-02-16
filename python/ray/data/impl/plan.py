@@ -14,7 +14,15 @@ from ray.data.impl.lazy_block_list import LazyBlockList
 
 
 class ExecutionPlan:
+    """A lazy execution plan for a Dataset."""
+
     def __init__(self, in_blocks: BlockList, stats: DatasetStats):
+        """Create a plan with no transformation stages.
+
+        Args:
+            in_blocks: Base list of blocks.
+            stats: Stats for the base blocks.
+        """
         self._in_blocks = in_blocks
         self._out_blocks = None
         self._in_stats = stats
@@ -24,7 +32,15 @@ class ExecutionPlan:
         if not stats.dataset_uuid:
             stats.dataset_uuid = self._dataset_uuid
 
-    def with_stage(self, stage: "Stage"):
+    def with_stage(self, stage: "Stage") -> "ExecutionPlan":
+        """Return a copy of this plan with the given stage appended.
+
+        Args:
+            stage: The stage to append.
+
+        Returns:
+            A new ExecutionPlan with this stage appended.
+        """
         if self._out_blocks:
             copy = ExecutionPlan(self._out_blocks, self._out_stats)
             copy._stages = [stage]
@@ -35,6 +51,7 @@ class ExecutionPlan:
         return copy
 
     def initial_num_blocks(self) -> int:
+        """Get the estimated number of blocks after applying all plan stages."""
         if self._out_blocks:
             return self._out_blocks.initial_num_blocks()
         for stage in self._stages[::-1]:
@@ -45,6 +62,14 @@ class ExecutionPlan:
     def schema(
         self, fetch_if_missing: bool = False
     ) -> Union[type, "pyarrow.lib.Schema"]:
+        """Get the schema after applying all plan stages.
+
+        Args:
+            fetch_if_missing: Whether to execute the plan to fetch the schema.
+
+        Returns:
+            The schema of the output dataset.
+        """
         if self._stages:
             if fetch_if_missing:
                 self.execute()
@@ -63,6 +88,13 @@ class ExecutionPlan:
         return blocks.ensure_schema_for_first_block()
 
     def meta_count(self) -> Optional[int]:
+        """Get the number of rows after applying all plan stages if possible.
+
+        This method will never trigger any computation.
+
+        Returns:
+            The number of records of the result Dataset, or None.
+        """
         if self._stages:
             blocks = self._out_blocks
         else:
@@ -74,6 +106,15 @@ class ExecutionPlan:
             return None
 
     def execute(self, clear_input_blocks: bool = True) -> BlockList:
+        """Execute this plan.
+
+        Args:
+            clear_input_blocks: Whether to assume ownership of the input blocks,
+                allowing them to be dropped from memory during execution.
+
+        Returns:
+            The blocks of the output dataset.
+        """
         # TODO: add optimizations:
         # 1. task fusion of OneToOne
         # 2. task fusion of OneToOne to AlltoAll
@@ -95,7 +136,8 @@ class ExecutionPlan:
             self._out_stats.dataset_uuid = self._dataset_uuid
         return self._out_blocks
 
-    def _optimize(self, fuse_reads=True):
+    def _optimize(self) -> None:
+        """Apply stage fusion optimizations, updating this plan."""
         context = DatasetContext.get_current()
         if context.optimize_fuse_stages:
             if context.optimize_fuse_read_stages:
@@ -104,18 +146,33 @@ class ExecutionPlan:
 
     def _rewrite_read_stages(self) -> None:
         """Rewrites read stages into one-to-one stages."""
-        if self._stages and self._is_read_stage():
+        if self._stages and self._has_read_stage():
             block_list, stage = self._rewrite_read_stage()
             self._in_blocks = block_list
             self._in_stats = DatasetStats(stages={}, parent=None)
             self._stages.insert(0, stage)
 
-    def _is_read_stage(self) -> bool:
+    def _has_read_stage(self) -> bool:
+        """Whether this plan has a read stage for its input."""
         return isinstance(self._in_blocks, LazyBlockList) and hasattr(
             self._in_blocks, "_read_tasks"
         )
 
+    def _is_read_stage(self) -> bool:
+        """Whether this plan is a bare read stage."""
+        return self._has_read_stage() and not self._stages
+
     def _rewrite_read_stage(self) -> Tuple[BlockList, "Stage"]:
+        """Rewrite the read stage to a OneToOne stage over read tasks as input.
+
+        For example, suppose the plan was [Read -> MapBatches(Fn)]. These stages cannot
+        be fused, since read stages are handled specially.
+
+        After rewriting to [GetReadTasks -> MapBatches(DoRead) -> MapBatches(Fn)],
+        now we can fuse the latter two MapBatches stages into a single OneToOne stage:
+        [GetReadTasks -> MapBatches(DoRead -> Fn)].
+        """
+        # Generate the "GetReadTasks" stage blocks.
         blocks = []
         metadata = []
         for i, read_task in enumerate(self._in_blocks._read_tasks):
@@ -128,7 +185,7 @@ class ExecutionPlan:
             for tmp1 in read_task._read_fn():
                 yield tmp1
 
-        # TODO: add num_cpus properly here and make the read default num_cpus=1.
+        # TODO(ekl): add num_cpus properly here and make the read default num_cpus=1.
         return block_list, OneToOneStage("read", block_fn, None, {})
 
     def _fuse_one_to_one_stages(self) -> None:
@@ -148,16 +205,14 @@ class ExecutionPlan:
             prev_stage = None
         self._stages = optimized_stages
 
-    def clear(self) -> None:
-        self._out_blocks = None
-        self._out_stats = None
-
     def stats(self) -> DatasetStats:
+        """Return stats for this plan, forcing execution if needed."""
         self.execute()
         return self._out_stats
 
 
 class Stage:
+    """Represents a Dataset transform stage (e.g., map or shuffle)."""
     def __init__(self, name: str, num_blocks: Optional[int]):
         self.name = name
         self.num_blocks = num_blocks
@@ -165,16 +220,20 @@ class Stage:
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
     ) -> Tuple[BlockList, dict]:
+        """Execute this stage against the given blocks."""
         raise NotImplementedError
 
-    def can_fuse(self, other: "Stage"):
+    def can_fuse(self, other: "Stage") -> bool:
+        """Return whether this can be fused with another stage."""
         raise NotImplementedError
 
-    def fuse(self, other: "Stage"):
+    def fuse(self, other: "Stage") -> "Stage":
+        """Fuse this stage with a compatible stage."""
         raise NotImplementedError
 
 
 class OneToOneStage(Stage):
+    """A stage that transforms blocks independently (e.g., map or filter)."""
     def __init__(
         self,
         name: str,
@@ -220,6 +279,7 @@ class OneToOneStage(Stage):
 
 
 class AllToAllStage(Stage):
+    """A stage that transforms blocks holistically (e.g., shuffle)."""
     def __init__(
         self,
         name: str,
