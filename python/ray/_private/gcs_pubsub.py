@@ -279,8 +279,9 @@ class _SyncSubscriber(_SubscriberBase):
                 self._poll_request(), timeout=timeout
             )
             fut.add_done_callback(process_result)
-
+            self._lock.release()
             f = self._results.get()
+            self._lock.acquire()
             if f is None:
                 # Subscriber has closed. Cancel inflight request and
                 # return from polling.

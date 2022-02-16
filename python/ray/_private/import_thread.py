@@ -94,6 +94,7 @@ class ImportThread:
             self.subscriber.close()
 
     def _do_importing(self):
+        self.subscriber.subscribe()
         while True:
             with self._lock:
                 export_key = ray._private.function_manager.make_export_key(
