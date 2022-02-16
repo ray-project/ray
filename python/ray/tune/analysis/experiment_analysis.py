@@ -81,6 +81,8 @@ class ExperimentAnalysis:
     ):
         experiment_checkpoint_path = os.path.expanduser(experiment_checkpoint_path)
 
+        self.experiment_dir = os.path.dirname(experiment_checkpoint_path)
+
         latest_checkpoint = self._get_latest_checkpoint(experiment_checkpoint_path)
 
         self._experiment_states = []
@@ -513,6 +515,9 @@ class ExperimentAnalysis:
                 values are disregarded and these trials are never selected as
                 the best trial.
         """
+        if len(self.trials) == 1:
+            return self.trials[0]
+
         metric = self._validate_metric(metric)
         mode = self._validate_mode(mode)
 
@@ -528,6 +533,7 @@ class ExperimentAnalysis:
             )
         best_trial = None
         best_metric_score = None
+
         for trial in self.trials:
             if metric not in trial.metric_analysis:
                 continue
