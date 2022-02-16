@@ -59,8 +59,7 @@ def _run_cmd(cmd: str, should_fail=False) -> Tuple[str, str]:
     """
     print(f"Running command: '{cmd}'")
     p: subprocess.CompletedProcess = subprocess.run(
-        cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-    )
+        cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if p.returncode == 0:
         print("Command succeeded.")
         if should_fail:
@@ -88,11 +87,10 @@ class TestRayAddress:
 
     def test_empty_ray_address(self, ray_start_stop):
         with set_env_var("RAY_ADDRESS", None):
-            _, stderr = _run_cmd("ray job submit -- echo hello", should_fail=True)
-            assert (
-                "Address must be specified using either the "
-                "--address flag or RAY_ADDRESS environment"
-            ) in stderr
+            _, stderr = _run_cmd(
+                "ray job submit -- echo hello", should_fail=True)
+            assert ("Address must be specified using either the "
+                    "--address flag or RAY_ADDRESS environment") in stderr
 
     def test_ray_client_address(self, ray_start_stop):
         stdout, _ = _run_cmd("ray job submit -- echo hello")
@@ -150,7 +148,8 @@ class TestJobStop:
         """Should not wait until the job is stopped."""
         cmd = "echo hello && sleep 1000"
         job_id = "test_stop_no_wait"
-        _run_cmd(f"ray job submit --no-wait --job-id={job_id} -- bash -c '{cmd}'")
+        _run_cmd(
+            f"ray job submit --no-wait --job-id={job_id} -- bash -c '{cmd}'")
 
         stdout, _ = _run_cmd(f"ray job stop --no-wait {job_id}")
         assert "Waiting for job" not in stdout
@@ -160,9 +159,7 @@ class TestJobStop:
 def test_quote_escaping(ray_start_stop):
     cmd = "echo \"hello 'world'\""
     job_id = "test_quote_escaping"
-    stdout, _ = _run_cmd(
-        f"ray job submit --job-id={job_id} -- {cmd}",
-    )
+    stdout, _ = _run_cmd(f"ray job submit --job-id={job_id} -- {cmd}", )
     assert "hello 'world'" in stdout
 
 
