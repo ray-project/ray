@@ -239,10 +239,17 @@ class DAGNode:
     def __str__(self) -> str:
         indent = get_indentation()
 
-        if isinstance(self, (ray_dag.FunctionNode, ray_dag.ClassNode)):
-            body_line = str(self._body)
+        if isinstance(self, ray_dag.ClassNode):
+            body = self._body.__ray_actor_class__
+            body_line = f"{body.__module__}.{body.__qualname__}"
+        elif isinstance(self, ray_dag.FunctionNode):
+            body_line = f"{self._body.__module__}.{self._body.__qualname__}"
         elif isinstance(self, ray_dag.ClassMethodNode):
-            body_line = f"{self._method_name}()"
+            parent_body = self._parent_class_node._body.__ray_actor_class__
+            body_line = (
+                f"{parent_body.__module__}."
+                f"{parent_body.__qualname__}.{self._method_name}()"
+            )
         elif isinstance(self, ray_dag.InputNode):
             body_line = "__InputNode__"
         else:
