@@ -1,8 +1,6 @@
 import ray
 import argparse
 
-import random
-import string
 import logging
 
 parser = argparse.ArgumentParser(prog="Stress Test - Logging")
