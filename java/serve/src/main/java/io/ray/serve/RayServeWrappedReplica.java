@@ -64,6 +64,14 @@ public class RayServeWrappedReplica implements RayServeReplica {
         null);
   }
 
+  public RayServeWrappedReplica(
+    DeploymentInfo deploymentInfo,
+    String replicaTag,
+    String controllerName,
+    RayServeConfig rayServeConfig) {
+    init(deploymentInfo, replicaTag, controllerName, rayServeConfig);
+  }
+
   @SuppressWarnings("rawtypes")
   private void init(
       DeploymentInfo deploymentInfo,
@@ -124,8 +132,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
             });
   }
 
-  private Object[] parseInitArgs(byte[] initArgsbytes)
-      throws IOException {
+  private Object[] parseInitArgs(byte[] initArgsbytes) throws IOException {
 
     if (initArgsbytes == null || initArgsbytes.length == 0) {
       return new Object[0];
