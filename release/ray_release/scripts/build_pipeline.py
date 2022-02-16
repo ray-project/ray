@@ -98,7 +98,7 @@ def main(test_collection_file: Optional[str] = None):
 
     logger.info(f"Tests to run:\n{group_str}")
 
-    # Wait for wheels here so we hafve them ready before we kick off
+    # Wait for wheels here so we have them ready before we kick off
     # the other workers
     ray_wheels_url = find_and_wait_for_ray_wheels_url(
         ray_wheels, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT
