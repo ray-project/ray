@@ -5,7 +5,6 @@ import logging
 import hashlib
 import shutil
 
-from filelock import FileLock
 from typing import Optional, List, Dict, Tuple
 
 from ray._private.async_compat import asynccontextmanager, get_running_loop
@@ -253,11 +252,6 @@ class PipManager:
     def __init__(self, resources_dir: str):
         self._pip_resources_dir = os.path.join(resources_dir, "pip")
         try_to_create_directory(self._pip_resources_dir)
-        # Concurrent pip installs are unsafe.  This lock prevents concurrent
-        # installs (and deletions).
-        self._installs_and_deletions_file_lock = os.path.join(
-            self._pip_resources_dir, "ray-pip-installs-and-deletions.lock"
-        )
 
     def _get_path_from_hash(self, hash: str) -> str:
         """Generate a path from the hash of a pip spec.
@@ -290,8 +284,7 @@ class PipManager:
         pip_env_path = self._get_path_from_hash(hash)
         local_dir_size = get_directory_size_bytes(pip_env_path)
         try:
-            with FileLock(self._installs_and_deletions_file_lock):
-                shutil.rmtree(pip_env_path)
+            shutil.rmtree(pip_env_path)
         except OSError as e:
             logger.warning(f"Error when deleting pip env {pip_env_path}: {str(e)}")
             return 0
@@ -311,9 +304,8 @@ class PipManager:
         protocol, hash = parse_uri(uri)
         target_dir = self._get_path_from_hash(hash)
 
-        with FileLock(self._installs_and_deletions_file_lock):
-            pip_processor = PipProcessor(target_dir, runtime_env, logger)
-            await pip_processor.run()
+        pip_processor = PipProcessor(target_dir, runtime_env, logger)
+        await pip_processor.run()
 
         loop = get_running_loop()
         return await loop.run_in_executor(None, get_directory_size_bytes, target_dir)
