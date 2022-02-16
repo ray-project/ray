@@ -88,7 +88,7 @@
 
   run:
     timeout: 3600
-    script: python workloads/many_logs.py --total-num-tasks=64 --log-lines-per-task=134217728 --log-line-size=512 2> logs
+    script: python workloads/many_logs.py --total-num-tasks=64 --log-lines-per-task=134217728 --log-line-size=1048576 2> logs
     long_running: True
   stable: false
 
