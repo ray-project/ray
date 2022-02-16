@@ -2,7 +2,7 @@ import abc
 import tarfile
 import tempfile
 import time
-from typing import Any
+from typing import Any, Optional
 
 import ray
 
@@ -116,6 +116,14 @@ class MultiLocationArtifact(Artifact):
     def __init__(self, *locations: Artifact):
         super().__init__()
         self.locations = locations
+
+    @property
+    def path(self) -> Optional[str]:
+        """Convenience function to return first local path"""
+        for location in self.locations:
+            if isinstance(location, FSStorageArtifact):
+                return location.path
+        return None
 
     def __eq__(self, other):
         return (

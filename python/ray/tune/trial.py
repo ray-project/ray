@@ -8,7 +8,7 @@ import platform
 import re
 import shutil
 import time
-from typing import Dict, Optional, Sequence, Union
+from typing import Dict, Optional, Sequence, Union, Tuple
 import uuid
 
 import ray
@@ -259,7 +259,7 @@ class Trial:
         keep_checkpoints_num=None,
         checkpoint_score_attr=TRAINING_ITERATION,
         export_formats=None,
-        restore_path=None,
+        restore=None,
         trial_name_creator=None,
         trial_dirname_creator=None,
         log_to_file=None,
@@ -376,7 +376,7 @@ class Trial:
         )
 
         # Restoration fields
-        self.restore_path = restore_path
+        self.restore = restore
         self.restoring_from = None
         self.num_failures = 0
         self.has_new_resources = False
@@ -452,6 +452,24 @@ class Trial:
     def node_ip(self):
         return self.location.hostname
 
+    def _checkpoint_result(self) -> Tuple[Optional[Checkpoint], Dict]:
+        if self.status == Trial.ERROR:
+            wrapped = self.checkpoint_manager.newest_persistent_wrapped_checkpoint
+            checkpoint = wrapped.value
+            result = wrapped.result
+        else:
+            checkpoint, result = self.checkpoint_manager.newest_checkpoint
+        if checkpoint is None and self.restore:
+            if isinstance(self.restore, Checkpoint):
+                checkpoint = self.restore
+                result = {}
+            else:
+                checkpoint_dir = TrainableUtil.find_checkpoint_dir(self.restore)
+                checkpoint = LocalStorageCheckpoint(path=checkpoint_dir)
+                checkpoint.load_metadata()
+                result = {}
+        return checkpoint, result
+
     @property
     def checkpoint(self) -> Optional[Checkpoint]:
         """Returns the most recent checkpoint.
@@ -459,15 +477,18 @@ class Trial:
         If the trial is in ERROR state, the most recent PERSISTENT checkpoint
         is returned.
         """
-        if self.status == Trial.ERROR:
-            checkpoint = (
-                self.checkpoint_manager.newest_persistent_wrapped_checkpoint.value
-            )
-        else:
-            checkpoint = self.checkpoint_manager.newest_checkpoint
-        if checkpoint is None and self.restore_path:
-            checkpoint = LocalStorageCheckpoint(path=self.restore_path)
+        checkpoint, _ = self._checkpoint_result()
         return checkpoint
+
+    @property
+    def checkpoint_result(self) -> Dict:
+        """Returns the most recent checkpoint's result.
+
+        If the trial is in ERROR state, the most recent PERSISTENT checkpoint
+        is returned.
+        """
+        _, result = self._checkpoint_result()
+        return result
 
     @classmethod
     def generate_id(cls):
@@ -520,7 +541,7 @@ class Trial:
             keep_checkpoints_num=self.keep_checkpoints_num,
             checkpoint_score_attr=self.checkpoint_score_attr,
             export_formats=self.export_formats,
-            restore_path=self.restore_path,
+            restore=self.restore,
             trial_name_creator=self.trial_name_creator,
             log_to_file=self.log_to_file,
             max_failures=self.max_failures,
@@ -641,11 +662,13 @@ class Trial:
         )
 
     def has_checkpoint(self):
-        return self.checkpoint.value is not None
+        return self.checkpoint is not None
 
     def clear_checkpoint(self):
-        self.checkpoint.value = None
         self.restoring_from = None
+        # By deleting the newest checkpoint, we should try to recover
+        # from the next newest checkpoint instead
+        self.checkpoint_manager.delete_newest_checkpoint()
         self.invalidate_json_state()
 
     def on_checkpoint(self, checkpoint: Checkpoint, result: Dict):
@@ -660,7 +683,7 @@ class Trial:
     def on_restore(self):
         """Handles restoration completion."""
         assert self.is_restoring
-        self.last_result = self.restoring_from.result
+        self.last_result = self.checkpoint_result
         self.restoring_from = None
         self.invalidate_json_state()
 

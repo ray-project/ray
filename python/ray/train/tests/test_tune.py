@@ -117,7 +117,7 @@ def test_tune_checkpoint(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     [trial] = tune.run(TestTrainable).trials
-    checkpoint_file = os.path.join(trial.checkpoint.value, TUNE_CHECKPOINT_FILE_NAME)
+    checkpoint_file = os.path.join(trial.checkpoint.path, TUNE_CHECKPOINT_FILE_NAME)
     assert os.path.exists(checkpoint_file)
     with open(checkpoint_file, "rb") as f:
         checkpoint = cloudpickle.load(f)
@@ -132,6 +132,7 @@ def test_reuse_checkpoint(ray_start_2_cpus):
             itr = ckpt["iter"] + 1
 
         for i in range(itr, config["max_iter"]):
+            print("OK I AM AT", i, itr)
             train.save_checkpoint(iter=i)
             train.report(test=i, training_iteration=i)
 
@@ -139,8 +140,8 @@ def test_reuse_checkpoint(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     [trial] = tune.run(TestTrainable, config={"max_iter": 5}).trials
-    last_ckpt = trial.checkpoint.value
-    checkpoint_file = os.path.join(last_ckpt, TUNE_CHECKPOINT_FILE_NAME)
+    last_ckpt = trial.checkpoint
+    checkpoint_file = os.path.join(last_ckpt.path, TUNE_CHECKPOINT_FILE_NAME)
     assert os.path.exists(checkpoint_file)
     with open(checkpoint_file, "rb") as f:
         checkpoint = cloudpickle.load(f)
@@ -168,8 +169,8 @@ def test_retry(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     analysis = tune.run(TestTrainable, max_failures=3)
-    last_ckpt = analysis.trials[0].checkpoint.value
-    checkpoint_file = os.path.join(last_ckpt, TUNE_CHECKPOINT_FILE_NAME)
+    last_ckpt = analysis.trials[0].checkpoint
+    checkpoint_file = os.path.join(last_ckpt.path, TUNE_CHECKPOINT_FILE_NAME)
     assert os.path.exists(checkpoint_file)
     with open(checkpoint_file, "rb") as f:
         checkpoint = cloudpickle.load(f)

@@ -206,8 +206,8 @@ class Experiment:
             "export_formats": export_formats or [],
             "max_failures": max_failures,
             "restore": os.path.abspath(os.path.expanduser(restore))
-            if restore
-            else None,
+            if isinstance(restore, str)
+            else restore,
         }
         self.spec = spec
 

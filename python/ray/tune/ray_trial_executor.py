@@ -1015,8 +1015,7 @@ class RayTrialExecutor(TrialExecutor):
                         return ExecutorEvent(result_type, trial, result=future_result)
                     else:
                         raise TuneError(f"Unexpected future type - [{result_type}]")
-                except Exception as e:
-                    logger.exception(e)  # Todo remove?
+                except Exception:
                     return ExecutorEvent(
                         ExecutorEventType.ERROR, trial, traceback.format_exc()
                     )

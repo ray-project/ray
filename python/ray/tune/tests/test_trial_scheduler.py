@@ -836,7 +836,7 @@ class _MockTrial(Trial):
         self._default_result_or_future = None
 
     def on_checkpoint(self, checkpoint):
-        self.restored_checkpoint = checkpoint.value
+        self.restored_checkpoint = checkpoint
 
     @property
     def checkpoint(self):

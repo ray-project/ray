@@ -1,5 +1,6 @@
 import abc
 import json
+import shutil
 
 import cloudpickle as pickle
 import os
@@ -31,10 +32,16 @@ from ray.util.ml_utils.artifact import (
 class Checkpoint(Artifact, abc.ABC):
     def __init__(self, metadata: Any = None):
         Artifact.__init__(self)
-        self.metadata = metadata
+        self.metadata = metadata or {}
 
     def __eq__(self, other):
         return isinstance(other, Checkpoint) and self.metadata == other.metadata
+
+    def to_data(self) -> "DataCheckpoint":
+        raise NotImplementedError
+
+    def to_local_storage(self, path: str) -> "LocalStorageCheckpoint":
+        raise NotImplementedError
 
 
 class DataCheckpoint(Checkpoint, DataArtifact):
@@ -45,6 +52,9 @@ class DataCheckpoint(Checkpoint, DataArtifact):
     @property
     def is_fs_checkpoint(self):
         return self.metadata.get("is_fs_checkpoint", False)
+
+    def to_data(self) -> "DataCheckpoint":
+        return self
 
     def to_local_storage(self, path: str) -> "LocalStorageCheckpoint":
         """Convert DataCheckpoint to LocalStorageCheckpoint"""
@@ -126,6 +136,9 @@ class FSStorageCheckpoint(Checkpoint, FSStorageArtifact, abc.ABC):
             and Checkpoint.__eq__(self, other)
         )
 
+    def __repr__(self):
+        return f"<{self.__class__.__name__} path={self.path} node_ip={self.node_ip}>"
+
 
 class LocalStorageCheckpoint(FSStorageCheckpoint, LocalStorageArtifact):
     def __init__(self, path: str, metadata: Any = None):
@@ -142,6 +155,14 @@ class LocalStorageCheckpoint(FSStorageCheckpoint, LocalStorageArtifact):
         if os.path.exists(metadata_file):
             with open(metadata_file, "rt") as fp:
                 self.metadata = json.load(fp)
+
+    def to_local_storage(self, path: str) -> "LocalStorageCheckpoint":
+        if path == self.path:
+            return self
+        if os.path.exists(path):
+            shutil.rmtree(path)
+        shutil.copytree(self.path, path)
+        return LocalStorageCheckpoint(path, metadata=self.metadata)
 
     def __eq__(self, other):
         return (

@@ -238,7 +238,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         checkpoint_score_attr=args.checkpoint_score_attr,
         export_formats=spec.get("export_formats", []),
         # str(None) doesn't create None
-        restore_path=spec.get("restore"),
+        restore=spec.get("restore"),
         trial_name_creator=spec.get("trial_name_creator"),
         trial_dirname_creator=spec.get("trial_dirname_creator"),
         log_to_file=spec.get("log_to_file"),

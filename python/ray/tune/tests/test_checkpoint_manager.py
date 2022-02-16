@@ -128,7 +128,7 @@ class CheckpointManagerTest(unittest.TestCase):
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
         checkpoint_manager.on_checkpoint(checkpoints[0], self.mock_result(0))
         checkpoint_manager.on_checkpoint(checkpoints[1], self.mock_result(0))
-        newest = checkpoint_manager.newest_memory_checkpoint
+        newest = checkpoint_manager.newest_memory_checkpoint[0]
 
         self.assertEqual(newest, checkpoints[1])
         self.assertEqual(checkpoint_manager.best_checkpoints(), [])

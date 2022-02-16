@@ -369,7 +369,7 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster, trainab
 
         return hidden_path_func
 
-    trainable_util = "ray.tune.ray_trial_executor.TrainableUtil"
+    trainable_util = "ray.tune.utils.trainable.TrainableUtil"
     _find_ckpt = trainable_util + ".find_checkpoint_dir"
     find_func = TrainableUtil.find_checkpoint_dir
     _pickle_ckpt = trainable_util + ".pickle_checkpoint"
@@ -392,7 +392,7 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster, trainab
         cluster.add_node(num_cpus=1)
         cluster.remove_node(node)
         cluster.wait_for_nodes()
-        shutil.rmtree(os.path.dirname(t1.checkpoint.value))
+        shutil.rmtree(os.path.dirname(t1.checkpoint.path))
         while not runner.is_finished():
             runner.step()
     assert t1.status == Trial.TERMINATED, runner.debug_string()

@@ -2,7 +2,7 @@
 import heapq
 import gc
 import logging
-from typing import Dict, List
+from typing import Dict, List, Tuple, Union
 
 from ray.tune.utils.util import flatten_dict
 from ray.util.ml_utils.checkpoint import DataCheckpoint, Checkpoint
@@ -101,8 +101,8 @@ class CheckpointManager:
         self._cur_order = 0
 
     @property
-    def newest_checkpoint(self) -> Checkpoint:
-        """Returns the newest checkpoint (based on training iteration)."""
+    def newest_checkpoint(self) -> Tuple[Checkpoint, Dict]:
+        """Returns the newest checkpoint and result."""
         newest_checkpoint = max(
             [
                 self.newest_persistent_wrapped_checkpoint,
@@ -110,11 +110,31 @@ class CheckpointManager:
             ],
             key=lambda c: c.order,
         )
-        return newest_checkpoint.value
+        return newest_checkpoint.value, newest_checkpoint.result
 
     @property
-    def newest_memory_checkpoint(self) -> Checkpoint:
-        return self._newest_wrapped_memory_checkpoint.value
+    def newest_memory_checkpoint(self) -> Tuple[Checkpoint, Dict]:
+        checkpoint = self._newest_wrapped_memory_checkpoint
+        return checkpoint.value, checkpoint.result
+
+    def delete_newest_checkpoint(self):
+        newest_checkpoint = max(
+            [
+                self.newest_persistent_wrapped_checkpoint,
+                self._newest_wrapped_memory_checkpoint,
+            ],
+            key=lambda c: c.order,
+        )
+        # Drop from heap
+        try:
+            self._best_checkpoints.remove(newest_checkpoint)
+        except Exception:
+            pass
+        # Drop from membership
+        self._membership.discard(newest_checkpoint)
+        # Delete data
+        self.delete(newest_checkpoint)
+        newest_checkpoint.value = None
 
     def replace_newest_memory_checkpoint(self, new_checkpoint: _ManagedCheckpoint):
         # Forcibly remove the memory checkpoint
@@ -184,10 +204,14 @@ class CheckpointManager:
             if worst.value != wrapped_checkpoint.value:
                 self.delete(worst.value)
 
-    def best_checkpoints(self) -> List[Checkpoint]:
+    def best_checkpoints(
+        self, return_results: bool = False
+    ) -> Union[List[Checkpoint], List[Tuple[Checkpoint, Dict]]]:
         """Returns best PERSISTENT checkpoints, sorted by score."""
         checkpoints = sorted(self._best_checkpoints, key=lambda c: c.priority)
-        return [queue_item.value.value for queue_item in checkpoints]
+        if return_results:
+            return [(qi.value.value, qi.value.result) for qi in checkpoints]
+        return [qi.value.value for qi in checkpoints]
 
     def _priority(self, manager_checkpoint: _ManagedCheckpoint):
         result = flatten_dict(manager_checkpoint.result)

@@ -15,6 +15,8 @@ from typing import Any, Callable, Optional
 from ray.util.ml_utils.checkpoint import (
     Checkpoint,
     MultiLocationCheckpoint,
+    LocalStorageCheckpoint,
+    DataCheckpoint,
 )
 from six.moves import queue
 
@@ -490,11 +492,12 @@ class FunctionRunner(Trainable):
 
         return local_checkpoint
 
-    def save_to_object(self):
+    def save_to_object(self) -> DataCheckpoint:
         # WIP: Continue here
-        checkpoint_path = self.save()
-        obj = TrainableUtil.checkpoint_to_object(checkpoint_path)
-        return obj
+        checkpoint = self.save()
+        if isinstance(checkpoint, MultiLocationCheckpoint):
+            checkpoint = checkpoint.search_checkpoint(LocalStorageCheckpoint)
+        return checkpoint.to_data()
 
     def load_checkpoint(self, checkpoint):
         # This should be removed once Trainables are refactored.
@@ -509,14 +512,12 @@ class FunctionRunner(Trainable):
         # as a new checkpoint.
         self._status_reporter.set_checkpoint(checkpoint, is_new=False)
 
-    def restore_from_object(self, obj):
+    def restore_from_object(self, checkpoint: DataCheckpoint):
         self.temp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
             self.logdir
         )
-        checkpoint_path = TrainableUtil.create_from_pickle(
-            obj, self.temp_checkpoint_dir
-        )
-        self.restore(checkpoint_path)
+        local_checkpoint = checkpoint.to_local_storage(self.temp_checkpoint_dir)
+        self.restore(local_checkpoint)
 
     def cleanup(self):
         # Trigger thread termination

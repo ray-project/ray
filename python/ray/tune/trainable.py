@@ -552,7 +552,7 @@ class Trainable:
         )
         self.storage_client.wait_or_retry()
         # Todo: In the future, this may become
-        # local_checkpoint = cloud_checkpoint.to_local()
+        # local_checkpoint = cloud_checkpoint.to_local_storage()
 
         local_checkpoint = LocalStorageCheckpoint(
             path=checkpoint_path, metadata=cloud_checkpoint.metadata
@@ -565,11 +565,19 @@ class Trainable:
         assert isinstance(remote_checkpoint, RemoteNodeStorageCheckpoint)
 
         # Otherwise, fetch data from remote node
-        local_checkpoint = remote_checkpoint.to_local_storage()
+        local_checkpoint = remote_checkpoint.to_local_storage(remote_checkpoint.path)
         return self._restore_from_local_checkpoint(local_checkpoint)
 
     def _restore_from_local_checkpoint(self, local_checkpoint: LocalStorageCheckpoint):
         assert isinstance(local_checkpoint, LocalStorageCheckpoint)
+
+        checkpoint_path = local_checkpoint.path
+        if "suffix" in local_checkpoint.metadata:
+            checkpoint_path = os.path.join(
+                checkpoint_path, local_checkpoint.metadata["suffix"]
+            )
+
+        self.load_checkpoint(checkpoint_path)
 
         local_checkpoint.load_metadata()
         self._restore_metadata(local_checkpoint.metadata)
@@ -610,9 +618,10 @@ class Trainable:
             return self._restore_from_remote_node_checkpoint(checkpoint)
         elif isinstance(checkpoint, LocalStorageCheckpoint):
             return self._restore_from_local_checkpoint(checkpoint)
+        elif isinstance(checkpoint, DataCheckpoint):
+            return self.restore_from_object(checkpoint)
         else:
-            # Todo
-            pass
+            raise RuntimeError(f"Unsupported checkpoint type: {type(checkpoint)}")
 
     def _restore_metadata(self, metadata: Dict[str, Any]):
         self._experiment_id = metadata["experiment_id"]

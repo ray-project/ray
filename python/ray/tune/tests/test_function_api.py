@@ -321,7 +321,7 @@ class FunctionApiTest(unittest.TestCase):
                     f.write("hello")
 
         [trial] = tune.run(train).trials
-        assert os.path.exists(os.path.join(trial.checkpoint.value, "ckpt.log"))
+        assert os.path.exists(os.path.join(trial.checkpoint.path, "ckpt.log"))
 
     def testCheckpointFunctionAtEndContext(self):
         def train(config, checkpoint_dir=False):
@@ -333,7 +333,7 @@ class FunctionApiTest(unittest.TestCase):
                     f.write("hello")
 
         [trial] = tune.run(train).trials
-        assert os.path.exists(os.path.join(trial.checkpoint.value, "ckpt.log"))
+        assert os.path.exists(os.path.join(trial.checkpoint.path, "ckpt.log"))
 
     def testVariousCheckpointFunctionAtEnd(self):
         def train(config, checkpoint_dir=False):
@@ -349,7 +349,7 @@ class FunctionApiTest(unittest.TestCase):
                     f.write("goodbye")
 
         [trial] = tune.run(train, keep_checkpoints_num=3).trials
-        assert os.path.exists(os.path.join(trial.checkpoint.value, "ckpt.log2"))
+        assert os.path.exists(os.path.join(trial.checkpoint.path, "ckpt.log2"))
 
     def testReuseCheckpoint(self):
         def train(config, checkpoint_dir=None):
@@ -369,8 +369,8 @@ class FunctionApiTest(unittest.TestCase):
             train,
             config={"max_iter": 5},
         ).trials
-        last_ckpt = trial.checkpoint.value
-        assert os.path.exists(os.path.join(trial.checkpoint.value, "ckpt.log"))
+        last_ckpt = trial.checkpoint
+        assert os.path.exists(os.path.join(last_ckpt.path, "ckpt.log"))
         analysis = tune.run(train, config={"max_iter": 10}, restore=last_ckpt)
         trial_dfs = list(analysis.trial_dataframes.values())
         assert len(trial_dfs[0]["training_iteration"]) == 5
@@ -393,8 +393,8 @@ class FunctionApiTest(unittest.TestCase):
                 tune.report(test=i, training_iteration=i)
 
         analysis = tune.run(train, max_failures=3)
-        last_ckpt = analysis.trials[0].checkpoint.value
-        assert os.path.exists(os.path.join(last_ckpt, "ckpt.log"))
+        last_ckpt = analysis.trials[0].checkpoint
+        assert os.path.exists(os.path.join(last_ckpt.path, "ckpt.log"))
         trial_dfs = list(analysis.trial_dataframes.values())
         assert len(trial_dfs[0]["training_iteration"]) == 10
 
