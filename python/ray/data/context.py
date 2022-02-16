@@ -19,7 +19,7 @@ DEFAULT_BLOCK_SPLITTING_ENABLED = False
 DEFAULT_ENABLE_PANDAS_BLOCK = True
 
 # Whether to enable stage-fusion optimization for dataset pipelines.
-DEFAULT_OPTIMIZE_FUSE_STAGES = True
+DEFAULT_OPTIMIZE_FUSE_STAGES = False
 
 # Whether to furthermore fuse read stages.
 DEFAULT_OPTIMIZE_FUSE_READ_STAGES = True

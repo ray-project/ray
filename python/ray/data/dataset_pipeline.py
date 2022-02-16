@@ -687,6 +687,13 @@ class DatasetPipeline(Generic[T]):
         self._uuid = uuid
 
     def _optimize_stages(self):
+        """Optimize this pipeline, fusing stages together as possible."""
+        context = DatasetContext.get_current()
+
+        if not context.optimize_fuse_stages:
+            self._optimized_stages = self._stages
+            return
+
         dummy_ds = Dataset(
             ExecutionPlan(BlockList([], []), DatasetStats(stages={}, parent=None)),
             0,
