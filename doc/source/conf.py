@@ -121,16 +121,12 @@ sphinx_gallery_conf = {
     # Example sources are taken from these folders:
     "examples_dirs": [
         "ray-core/_examples",
-        "data/_examples",
     ],
     # and then generated into these respective target folders:
-    "gallery_dirs": ["ray-core/examples", "data/examples"],
+    "gallery_dirs": ["ray-core/examples"],
     "ignore_pattern": "ray-core/examples/doc_code/",
     "plot_gallery": "False",
     "min_reported_time": sys.maxsize,
-    # "filename_pattern": "tutorial.py",
-    # "backreferences_dir": "False",
-    # "show_memory': False,
 }
 
 for i in range(len(sphinx_gallery_conf["examples_dirs"])):

@@ -32,16 +32,31 @@ py_test(
 py_test(
     name = "quick_start",
     size = "small",
-    srcs = ["source/data/_examples/doc_code/quick_start.py"],
+    srcs = ["source/data/examples/doc_code/quick_start.py"],
     tags = ["exclusive", "team:ml"]
 )
 
 py_test(
     name = "big_data_ingestion",
     size = "small",
-    srcs = ["source/data/_examples/big_data_ingestion.py"],
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    args = ["--path", "doc/source/data/examples/big_data_ingestion.md"],
+    data = ["//doc/source/data/examples:data_examples"],
     tags = ["exclusive", "team:core", "py37"]
 )
+
+py_test(
+    name = "big_data_ingestion",
+    size = "small",
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    args = ["--path", "doc/source/data/examples/big_data_ingestion.md"],
+    data = ["//doc/source/tune/examples:tune_examples"],
+    tags = ["exclusive", "team:ml"],
+)
+
+
 
 py_test(
     name = "datasets_train",
