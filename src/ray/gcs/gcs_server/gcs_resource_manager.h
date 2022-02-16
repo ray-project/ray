@@ -82,7 +82,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// Get the resources of all nodes in the cluster.
   ///
   /// \return The resources of all nodes in the cluster.
-  const absl::flat_hash_map<NodeID, SchedulingResources> &GetClusterResources() const;
+  const absl::flat_hash_map<NodeID, std::shared_ptr<SchedulingResources>>
+      &GetClusterResources() const;
 
   /// Handle a node registration.
   ///
@@ -204,7 +205,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// Whether or not to broadcast resource usage via redis.
   const bool redis_broadcast_enabled_;
   /// Map from node id to the scheduling resources of the node.
-  absl::flat_hash_map<NodeID, SchedulingResources> cluster_scheduling_resources_;
+  absl::flat_hash_map<NodeID, std::shared_ptr<SchedulingResources>>
+      cluster_scheduling_resources_;
   /// Placement group load information that is used for autoscaler.
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
   /// Normal task resources could be uploaded by 1) Raylets' periodical reporters; 2)

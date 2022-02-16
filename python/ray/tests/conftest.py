@@ -15,6 +15,7 @@ from unittest import mock
 import ray
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster, AutoscalingCluster, cluster_not_supported
+from ray._private.runtime_env.pip import PipProcessor
 from ray._private.services import (
     REDIS_EXECUTABLE,
     _start_redis_instance,
@@ -591,3 +592,28 @@ def set_env_var(request):
     yield
     for k in keys:
         del os.environ[k]
+
+
+# Use to create virtualenv that clone from current python env.
+# The difference between this fixture and `pytest_virtual.virtual` is that
+# `pytest_virtual.virtual` will not inherit current python env's site-package.
+# Note: Can't use in virtualenv, this must be noted when testing locally.
+@pytest.fixture(scope="function")
+def cloned_virtualenv():
+    # Lazy import pytest_virtualenv,
+    # aviod import `pytest_virtualenv` in test case `Minimal install`
+    from pytest_virtualenv import VirtualEnv
+
+    if PipProcessor._is_in_virtualenv():
+        raise RuntimeError("Forbid the use of this fixture in virtualenv")
+
+    venv = VirtualEnv(
+        args=[
+            "--system-site-packages",
+            "--reset-app-data",
+            "--no-periodic-update",
+            "--no-download",
+        ],
+    )
+    yield venv
+    venv.teardown()
