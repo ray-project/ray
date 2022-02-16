@@ -350,7 +350,7 @@
 #######################
 - name: tune_cloud_aws_no_sync_down
   group: Tune cloud tests
-  working_dir: cloud_tests
+  working_dir: tune_tests/cloud_tests
 
   legacy:
     test_name: aws_no_sync_down
@@ -378,7 +378,7 @@
 
 - name: tune_cloud_aws_ssh_sync
   group: Tune cloud tests
-  working_dir: cloud_tests
+  working_dir: tune_tests/cloud_tests
 
   legacy:
     test_name: aws_ssh_sync
@@ -406,7 +406,7 @@
 
 - name: tune_cloud_aws_durable_upload
   group: Tune cloud tests
-  working_dir: cloud_tests
+  working_dir: tune_tests/cloud_tests
 
   legacy:
     test_name: aws_durable_upload
@@ -434,7 +434,7 @@
 
 - name: tune_cloud_aws_durable_upload_rllib_str
   group: Tune cloud tests
-  working_dir: cloud_tests
+  working_dir: tune_tests/cloud_tests
 
   legacy:
     test_name: aws_durable_upload_rllib_str
@@ -464,7 +464,7 @@
 
 - name: tune_cloud_aws_durable_upload_rllib_trainer
   group: Tune cloud tests
-  working_dir: cloud_tests
+  working_dir: tune_tests/cloud_tests
 
   legacy:
     test_name: aws_durable_upload_rllib_trainer
@@ -493,7 +493,7 @@
 
 - name: tune_cloud_aws_no_durable_upload
   group: Tune cloud tests
-  working_dir: cloud_tests
+  working_dir: tune_tests/cloud_tests
 
   legacy:
     test_name: aws_no_durable_upload
@@ -521,7 +521,7 @@
 
 - name: tune_cloud_gcp_k8s_no_sync_down
   group: Tune cloud tests
-  working_dir: cloud_tests
+  working_dir: tune_tests/cloud_tests
 
   legacy:
     test_name: gcp_k8s_no_sync_down
@@ -544,7 +544,7 @@
 
 - name: tune_cloud_gcp_k8s_ssh_sync
   group: Tune cloud tests
-  working_dir: cloud_tests
+  working_dir: tune_tests/cloud_tests
 
   legacy:
     test_name: gcp_k8s_ssh_sync
@@ -567,7 +567,7 @@
 
 - name: tune_cloud_gcp_k8s_durable_upload
   group: Tune cloud tests
-  working_dir: cloud_tests
+  working_dir: tune_tests/cloud_tests
 
   legacy:
     test_name: gcp_k8s_durable_upload
@@ -590,7 +590,7 @@
 
 - name: tune_cloud_gcp_k8s_no_durable_upload
   group: Tune cloud tests
-  working_dir: cloud_tests
+  working_dir: tune_tests/cloud_tests
 
   legacy:
     test_name: gcp_k8s_no_durable_upload
@@ -618,7 +618,7 @@
 
 - name: tune_scalability_bookkeeping_overhead
   group: Tune scalability tests
-  working_dir: scalability_tests
+  working_dir: tune_tests/scalability_tests
 
   legacy:
     test_name: bookkeeping_overhead
@@ -641,7 +641,7 @@
 
 - name: tune_scalability_durable_trainable
   group: Tune scalability tests
-  working_dir: scalability_tests
+  working_dir: tune_tests/scalability_tests
 
   legacy:
     test_name: durable_trainable
@@ -668,7 +668,7 @@
 
 - name: tune_scalability_long_running_large_checkpoints
   group: Tune scalability tests
-  working_dir: scalability_tests
+  working_dir: tune_tests/scalability_tests
 
   legacy:
     test_name: long_running_large_checkpoints
@@ -697,7 +697,7 @@
 
 - name: tune_scalability_network_overhead
   group: Tune scalability tests
-  working_dir: scalability_tests
+  working_dir: tune_tests/scalability_tests
   legacy:
     test_name: network_overhead
     test_suite: tune_tests
@@ -736,7 +736,7 @@
 
 - name: tune_scalability_result_throughput_cluster
   group: Tune scalability tests
-  working_dir: scalability_tests
+  working_dir: tune_tests/scalability_tests
 
   legacy:
     test_name: result_throughput_cluster
@@ -763,7 +763,7 @@
 
 - name: tune_scalability_result_throughput_single_node
   group: Tune scalability tests
-  working_dir: scalability_tests
+  working_dir: tune_tests/scalability_tests
 
   legacy:
     test_name: result_throughput_single_node
@@ -786,7 +786,7 @@
 
 - name: tune_scalability_xgboost_sweep
   group: Tune scalability tests
-  working_dir: scalability_tests
+  working_dir: tune_tests/scalability_tests
 
   legacy:
     test_name: xgboost_sweep
