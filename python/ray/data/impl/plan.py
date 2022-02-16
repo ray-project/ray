@@ -5,15 +5,12 @@ if TYPE_CHECKING:
     import pyarrow
 
 import ray
+from ray.data.context import DatasetContext
 from ray.data.block import Block
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.compute import get_compute
 from ray.data.impl.stats import DatasetStats
 from ray.data.impl.lazy_block_list import LazyBlockList
-
-OPTIMIZE_FUSE = True
-OPTIMIZE_FUSE_READ = True
-OPTIMIZE_FUSE_SHUFFLE = True
 
 
 class ExecutionPlan:
@@ -99,8 +96,9 @@ class ExecutionPlan:
         return self._out_blocks
 
     def _optimize(self, fuse_reads=True):
-        if OPTIMIZE_FUSE:
-            if OPTIMIZE_FUSE_READ:
+        context = DatasetContext.get_current()
+        if context.optimize_fuse_stages:
+            if context.optimize_fuse_read_stages:
                 self._rewrite_read_stages()
             self._fuse_one_to_one_stages()
 
@@ -236,7 +234,8 @@ class AllToAllStage(Stage):
         self.block_udf = block_udf
 
     def can_fuse(self, prev: Stage):
-        if not OPTIMIZE_FUSE_SHUFFLE:
+        context = DatasetContext.get_current()
+        if not context.optimize_fuse_shuffle_stages:
             return False
         if not self.supports_block_udf:
             return False

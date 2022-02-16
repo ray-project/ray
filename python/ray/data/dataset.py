@@ -2498,7 +2498,8 @@ Dict[str, List[str]]]): The names of the columns
         """
         from ray.data.dataset_pipeline import DatasetPipeline
 
-        if self._plan._is_read_stage():
+        ctx = DatasetContext.get_current()
+        if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
             blocks, read_stage = self._plan._rewrite_read_stage()
             outer_stats = DatasetStats(stages={}, parent=None)
         else:
@@ -2597,7 +2598,8 @@ Dict[str, List[str]]]): The names of the columns
         """
         from ray.data.dataset_pipeline import DatasetPipeline
 
-        if self._plan._is_read_stage():
+        ctx = DatasetContext.get_current()
+        if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
             blocks, read_stage = self._plan._rewrite_read_stage()
             outer_stats = DatasetStats(stages={}, parent=None)
         else:
