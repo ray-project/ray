@@ -98,7 +98,7 @@ class ExecutionPlan:
             self._out_stats.dataset_uuid = self._dataset_uuid
         return self._out_blocks
 
-    def _optimize(self):
+    def _optimize(self, fuse_reads=True):
         if OPTIMIZE_FUSE:
             if OPTIMIZE_FUSE_READ:
                 self._rewrite_read_stages()
@@ -113,7 +113,9 @@ class ExecutionPlan:
             self._stages.insert(0, stage)
 
     def _is_read_stage(self) -> bool:
-        return isinstance(self._in_blocks, LazyBlockList)
+        return isinstance(self._in_blocks, LazyBlockList) and hasattr(
+            self._in_blocks, "_read_tasks"
+        )
 
     def _rewrite_read_stage(self) -> Tuple[BlockList, "Stage"]:
         blocks = []

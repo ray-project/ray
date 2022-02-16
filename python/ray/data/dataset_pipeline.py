@@ -1,4 +1,5 @@
 import inspect
+
 import time
 from typing import (
     Any,
@@ -21,7 +22,9 @@ from ray.data.impl.pipeline_executor import (
 )
 from ray.data.row import TableRow
 from ray.data.impl import progress_bar
-from ray.data.impl.stats import DatasetPipelineStats
+from ray.data.impl.block_list import BlockList
+from ray.data.impl.plan import ExecutionPlan
+from ray.data.impl.stats import DatasetPipelineStats, DatasetStats
 from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
@@ -80,6 +83,7 @@ class DatasetPipeline(Generic[T]):
         """
         self._base_iterable = base_iterable
         self._stages = stages or []
+        self._optimized_stages = None
         self._length = length
         self._progress_bars = progress_bars
         self._uuid = None  # For testing only.
@@ -613,22 +617,6 @@ class DatasetPipeline(Generic[T]):
         self._optimize_stages()
         return PipelineExecutor(self)
 
-    def _optimize_stages(self):
-        dummy_ds = ray.data.range(1)._experimental_lazy()
-        for stage in self._stages:
-            dummy_ds = stage(dummy_ds)
-        print("Before optimize", dummy_ds._plan._stages)
-        dummy_ds._plan._optimize()
-        print("After optimize", dummy_ds._plan._stages)
-        optimized_stages = []
-        for stage in dummy_ds._plan._stages:
-            optimized_stages.append(
-                lambda ds, stage=stage: Dataset(
-                    ds._plan.with_stage(stage), ds._epoch, True
-                )
-            )
-        self._stages = optimized_stages
-
     @DeveloperAPI
     def foreach_window(
         self, fn: Callable[[Dataset[T]], Dataset[U]]
@@ -697,6 +685,24 @@ class DatasetPipeline(Generic[T]):
 
     def _set_uuid(self, uuid: str) -> None:
         self._uuid = uuid
+
+    def _optimize_stages(self):
+        dummy_ds = Dataset(
+            ExecutionPlan(BlockList([], []), DatasetStats(stages={}, parent=None)),
+            0,
+            True,
+        )
+        for stage in self._stages:
+            dummy_ds = stage(dummy_ds)
+        dummy_ds._plan._optimize()
+        optimized_stages = []
+        for stage in dummy_ds._plan._stages:
+            optimized_stages.append(
+                lambda ds, stage=stage: Dataset(
+                    ds._plan.with_stage(stage), ds._epoch, True
+                )
+            )
+        self._optimized_stages = optimized_stages
 
 
 for method in PER_DATASET_OPS:
