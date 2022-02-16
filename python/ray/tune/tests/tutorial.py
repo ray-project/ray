@@ -1,7 +1,7 @@
 # flake8: noqa
 # Original Code: https://github.com/pytorch/examples/blob/master/mnist/main.py
 
-# yapf: disable
+# fmt: off
 # __tutorial_imports_begin__
 import numpy as np
 import torch
@@ -14,10 +14,10 @@ import torch.nn.functional as F
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
 # __tutorial_imports_end__
-# yapf: enable
+# fmt: on
 
 
-# yapf: disable
+# fmt: off
 # __model_def_begin__
 class ConvNet(nn.Module):
     def __init__(self):
@@ -33,9 +33,9 @@ class ConvNet(nn.Module):
         x = self.fc(x)
         return F.log_softmax(x, dim=1)
 # __model_def_end__
-# yapf: enable
+# fmt: on
 
-# yapf: disable
+# fmt: off
 # __train_def_begin__
 
 # Change these values if you want the training to run quicker or slower.
@@ -111,7 +111,7 @@ def train_mnist(config):
             # This saves the model to the trial directory
             torch.save(model.state_dict(), "./model.pth")
 # __train_func_end__
-# yapf: enable
+# fmt: on
 
 # __eval_func_begin__
 search_space = {
@@ -145,14 +145,14 @@ analysis = tune.run(
 dfs = analysis.trial_dataframes
 # __run_scheduler_end__
 
-# yapf: disable
+# fmt: off
 # __plot_scheduler_begin__
 # Plot by epoch
 ax = None  # This plots everything on the same plot
 for d in dfs.values():
     ax = d.mean_accuracy.plot(ax=ax, legend=False)
 # __plot_scheduler_end__
-# yapf: enable
+# fmt: on
 
 # __run_searchalg_begin__
 from hyperopt import hp

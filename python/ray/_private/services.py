@@ -1313,6 +1313,7 @@ def start_dashboard(
     gcs_address,
     temp_dir,
     logdir,
+    session_dir,
     port=None,
     redis_password=None,
     fate_share=None,
@@ -1331,6 +1332,8 @@ def start_dashboard(
         gcs_address (str): The gcs address the dashboard should connect to
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
+        session_dir (str): The session directory under temp_dir.
+            It is used as a identifier of individual cluster.
         logdir (str): The log directory used to generate dashboard log.
         port (str): The port to bind the dashboard web server to.
             Defaults to 8265.
@@ -1392,6 +1395,7 @@ def start_dashboard(
             f"--redis-address={redis_address}",
             f"--temp-dir={temp_dir}",
             f"--log-dir={logdir}",
+            f"--session-dir={session_dir}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
             f"--gcs-address={gcs_address}",
@@ -2099,61 +2103,6 @@ def determine_plasma_store_config(
     return plasma_directory, object_store_memory
 
 
-def start_worker(
-    node_ip_address,
-    object_store_name,
-    raylet_name,
-    redis_address,
-    worker_path,
-    temp_dir,
-    raylet_ip_address=None,
-    stdout_file=None,
-    stderr_file=None,
-    fate_share=None,
-):
-    """This method starts a worker process.
-
-    Args:
-        node_ip_address (str): The IP address of the node that this worker is
-            running on.
-        object_store_name (str): The socket name of the object store.
-        raylet_name (str): The socket name of the raylet server.
-        redis_address (str): The address that the Redis server is listening on.
-        worker_path (str): The path of the source code which the worker process
-            will run.
-        temp_dir (str): The path of the temp dir.
-        raylet_ip_address (str): The IP address of the worker's raylet. If not
-            provided, it defaults to the node_ip_address.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
-
-    Returns:
-        ProcessInfo for the process that was started.
-    """
-    command = [
-        sys.executable,
-        "-u",
-        worker_path,
-        "--node-ip-address=" + node_ip_address,
-        "--object-store-name=" + object_store_name,
-        "--raylet-name=" + raylet_name,
-        "--redis-address=" + str(redis_address),
-        "--temp-dir=" + temp_dir,
-    ]
-    if raylet_ip_address is not None:
-        command.append("--raylet-ip-address=" + raylet_ip_address)
-    process_info = start_ray_process(
-        command,
-        ray_constants.PROCESS_TYPE_WORKER,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file,
-        fate_share=fate_share,
-    )
-    return process_info
-
-
 def start_monitor(
     redis_address,
     gcs_address,
@@ -2195,12 +2144,13 @@ def start_monitor(
         "-u",
         monitor_path,
         f"--logs-dir={logs_dir}",
-        f"--redis-address={redis_address}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
-        f"--gcs-address={gcs_address}",
     ]
-
+    if redis_address is not None:
+        command.append(f"--redis-address={redis_address}")
+    if gcs_address is not None:
+        command.append(f"--gcs-address={gcs_address}")
     if stdout_file is None and stderr_file is None:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.

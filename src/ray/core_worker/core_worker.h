@@ -260,9 +260,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Create and return a buffer in the object store that can be directly written
   /// into. After writing to the buffer, the caller must call `SealOwned()` to
-  /// finalize the object. The `CreateOwned()` and `SealOwned()` combination is
-  /// an alternative interface to `Put()` that allows frontends to avoid an extra
-  /// copy when possible.
+  /// finalize the object. The `CreateOwnedAndIncrementLocalRef()` and
+  /// `SealOwned()` combination is an alternative interface to `Put()` that
+  /// allows frontends to avoid an extra copy when possible.
+  ///
+  /// Note that this call also initializes the local reference count for the
+  /// object to 1 so that the ref is considered in scope. The caller must
+  /// ensure that they decrement the ref count once the returned ObjectRef has
+  /// gone out of scope.
   ///
   /// \param[in] metadata Metadata of the object to be written.
   /// \param[in] data_size Size of the object to be written.
@@ -275,12 +280,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] inline_small_object Whether to inline create this object if it's
   /// small.
   /// \return Status.
-  Status CreateOwned(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                     const std::vector<ObjectID> &contained_object_ids,
-                     ObjectID *object_id, std::shared_ptr<Buffer> *data,
-                     bool created_by_worker,
-                     const std::unique_ptr<rpc::Address> &owner_address = nullptr,
-                     bool inline_small_object = true);
+  Status CreateOwnedAndIncrementLocalRef(
+      const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+      const std::vector<ObjectID> &contained_object_ids, ObjectID *object_id,
+      std::shared_ptr<Buffer> *data, bool created_by_worker,
+      const std::unique_ptr<rpc::Address> &owner_address = nullptr,
+      bool inline_small_object = true);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -300,6 +305,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateOwned()` call and then writing into the returned buffer.
+  ///
+  /// If the object seal fails, then the initial local reference that was added
+  /// in CreateOwnedAndIncrementLocalRef will be deleted and the object will be
+  /// released by the ref counter.
   ///
   /// \param[in] object_id Object ID corresponding to the object.
   /// \param[in] pin_object Whether or not to pin the object at the local raylet.

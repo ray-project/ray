@@ -27,7 +27,7 @@ from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # Should use a critic as a baseline (otherwise don't use value baseline;
@@ -68,7 +68,7 @@ DEFAULT_CONFIG = with_common_config({
     "_disable_execution_plan_api": True,
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class A3CTrainer(Trainer):
@@ -135,7 +135,6 @@ class A3CTrainer(Trainer):
         for worker, result in async_results.items():
             # Apply gradients to local worker.
             with self._timers[APPLY_GRADS_TIMER]:
-                print("Calling local-worker's `apply_gradients()` ...")
                 local_worker.apply_gradients(result["grads"])
             self._timers[APPLY_GRADS_TIMER].push_units_processed(result["agent_steps"])
 
@@ -155,7 +154,7 @@ class A3CTrainer(Trainer):
                 weights = local_worker.get_weights(local_worker.get_policies_to_train())
                 worker.set_weights.remote(weights, global_vars)
 
-            learner_info_builder.add_learn_on_batch_results(result["infos"])
+            learner_info_builder.add_learn_on_batch_results_multi_agent(result["infos"])
 
         # Update global vars of the local worker.
         if global_vars:

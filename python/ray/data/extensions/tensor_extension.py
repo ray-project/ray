@@ -1245,6 +1245,12 @@ class ArrowTensorArray(pa.ExtensionArray):
             num_items_per_element = np.prod(element_shape) if element_shape else 1
 
             # Data buffer.
+            if pa.types.is_boolean(pa_dtype):
+                # NumPy doesn't represent boolean arrays as bit-packed, so we manually
+                # bit-pack the booleans before handing the buffer off to Arrow.
+                # NOTE: Arrow expects LSB bit-packed ordering.
+                # NOTE: This creates a copy.
+                arr = np.packbits(arr, bitorder="little")
             data_buffer = pa.py_buffer(arr)
             data_array = pa.Array.from_buffers(
                 pa_dtype, total_num_items, [None, data_buffer]
@@ -1289,16 +1295,18 @@ class ArrowTensorArray(pa.ExtensionArray):
             The corresponding tensor element as an ndarray if an index was
             given, or the entire array of tensors as an ndarray otherwise.
         """
+        # TODO(Clark): Enforce zero_copy_only.
+        # TODO(Clark): Support strides?
         # Buffers schema:
         # [None, offset_buffer, None, data_buffer]
         buffers = self.buffers()
         data_buffer = buffers[3]
         storage_list_type = self.storage.type
-        ext_dtype = storage_list_type.value_type.to_pandas_dtype()
-        shape = self.type.shape
         value_type = storage_list_type.value_type
+        ext_dtype = value_type.to_pandas_dtype()
+        shape = self.type.shape
         if pa.types.is_boolean(value_type):
-            # Boolean array buffers are byte-packed, with 8 entries per byte,
+            # Arrow boolean array buffers are bit-packed, with 8 entries per byte,
             # and are accessed via bit offsets.
             buffer_item_width = value_type.bit_width
         else:
@@ -1324,8 +1332,29 @@ class ArrowTensorArray(pa.ExtensionArray):
         else:
             # Getting the entire array of tensors.
             shape = (len(self),) + shape
-        # TODO(Clark): Enforce zero_copy_only.
-        # TODO(Clark): Support strides?
+        if pa.types.is_boolean(value_type):
+            # Special handling for boolean arrays, since Arrow bit-packs boolean arrays
+            # while NumPy does not.
+            # Cast as uint8 array and let NumPy unpack into a boolean view.
+            # Offset into uint8 array, where each element is a bucket for 8 booleans.
+            byte_bucket_offset = offset // 8
+            # Offset for a specific boolean, within a uint8 array element.
+            bool_offset = offset % 8
+            # The number of uint8 array elements (buckets) that our slice spans.
+            # Note that, due to the offset for a specific boolean, the slice can span
+            # byte boundaries even if it contains less than 8 booleans.
+            num_boolean_byte_buckets = 1 + ((bool_offset + np.prod(shape) - 1) // 8)
+            # Construct the uint8 array view on the buffer.
+            arr = np.ndarray(
+                (num_boolean_byte_buckets,),
+                dtype=np.uint8,
+                buffer=data_buffer,
+                offset=byte_bucket_offset,
+            )
+            # Unpack into a byte per boolean, using LSB bit-packed ordering.
+            arr = np.unpackbits(arr, bitorder="little")
+            # Interpret buffer as boolean array.
+            return np.ndarray(shape, dtype=np.bool_, buffer=arr, offset=bool_offset)
         return np.ndarray(shape, dtype=ext_dtype, buffer=data_buffer, offset=offset)
 
     def to_numpy(self, zero_copy_only: bool = True):

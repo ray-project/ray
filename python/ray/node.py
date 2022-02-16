@@ -2,7 +2,6 @@ import atexit
 import collections
 import datetime
 import errno
-import grpc
 import json
 import logging
 import os
@@ -31,6 +30,7 @@ from ray._private.gcs_utils import (
 )
 from ray._private.resource_spec import ResourceSpec
 from ray._private.utils import try_to_create_directory, try_to_symlink, open_log
+import ray._private.usage.usage_lib as ray_usage_lib
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -186,8 +186,11 @@ class Node:
             date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
             self.session_name = f"session_{date_str}_{os.getpid()}"
         else:
-            session_name = self._internal_kv_get_with_retry(
-                "session_name", ray_constants.KV_NAMESPACE_SESSION
+            session_name = ray._private.utils.internal_kv_get_with_retry(
+                self.get_gcs_client(),
+                "session_name",
+                ray_constants.KV_NAMESPACE_SESSION,
+                num_retries=NUM_REDIS_GET_RETRIES,
             )
             self.session_name = ray._private.utils.decode(session_name)
             # setup gcs client
@@ -339,13 +342,16 @@ class Node:
         Raises:
             Exception: An exception is raised if there is a version mismatch.
         """
-        version_info = self.get_gcs_client().internal_kv_get(
-            b"VERSION_INFO", namespace=ray_constants.KV_NAMESPACE_CLUSTER
+        cluster_metadata = ray_usage_lib.get_cluster_metadata(
+            self.get_gcs_client(), num_retries=NUM_REDIS_GET_RETRIES
         )
-        if version_info is None:
+        if cluster_metadata is None:
             return
-        true_version_info = tuple(json.loads(ray._private.utils.decode(version_info)))
-        version_info = self._compute_version_info()
+        true_version_info = (
+            cluster_metadata["ray_version"],
+            cluster_metadata["python_version"],
+        )
+        version_info = ray._private.utils.compute_version_info()
         if version_info != true_version_info:
             node_ip_address = ray._private.services.get_node_ip_address()
             error_message = (
@@ -360,16 +366,6 @@ class Node:
                 raise RuntimeError(error_message)
             else:
                 logger.warning(error_message)
-
-    def _compute_version_info(self):
-        """Compute the versions of Python, and Ray.
-
-        Returns:
-            A tuple containing the version information.
-        """
-        ray_version = ray.__version__
-        python_version = ".".join(map(str, sys.version_info[:3]))
-        return ray_version, python_version
 
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit
@@ -408,8 +404,11 @@ class Node:
         if self.head:
             self._temp_dir = self._ray_params.temp_dir
         else:
-            temp_dir = self._internal_kv_get_with_retry(
-                "temp_dir", ray_constants.KV_NAMESPACE_SESSION
+            temp_dir = ray._private.utils.internal_kv_get_with_retry(
+                self.get_gcs_client(),
+                "temp_dir",
+                ray_constants.KV_NAMESPACE_SESSION,
+                num_retries=NUM_REDIS_GET_RETRIES,
             )
             self._temp_dir = ray._private.utils.decode(temp_dir)
 
@@ -418,8 +417,11 @@ class Node:
         if self.head:
             self._session_dir = os.path.join(self._temp_dir, self.session_name)
         else:
-            session_dir = self._internal_kv_get_with_retry(
-                "session_dir", ray_constants.KV_NAMESPACE_SESSION
+            session_dir = ray._private.utils.internal_kv_get_with_retry(
+                self.get_gcs_client(),
+                "session_dir",
+                ray_constants.KV_NAMESPACE_SESSION,
+                num_retries=NUM_REDIS_GET_RETRIES,
             )
             self._session_dir = ray._private.utils.decode(session_dir)
         session_symlink = os.path.join(self._temp_dir, SESSION_LATEST)
@@ -934,6 +936,7 @@ class Node:
             self.gcs_address,
             self._temp_dir,
             self._logs_dir,
+            self._session_dir,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
@@ -1092,14 +1095,13 @@ class Node:
         ]
 
     def _write_cluster_info_to_kv(self):
-        # Write Version info.
-        ray_version, python_version = self._compute_version_info()
-        version_info = json.dumps((ray_version, python_version))
-        self._internal_kv_put_with_retry(
-            b"VERSION_INFO",
-            version_info.encode(),
-            namespace=ray_constants.KV_NAMESPACE_CLUSTER,
-        )
+        """Write the cluster metadata to GCS.
+        Cluster metadata is always recorded, but they are
+        not reported unless usage report is enabled.
+        Check `usage_stats_head.py` for more details.
+        """
+        # Make sure the cluster metadata wasn't reported before.
+        ray_usage_lib.put_cluster_metadata(self.get_gcs_client(), NUM_REDIS_GET_RETRIES)
 
     def start_head_processes(self):
         """Start head processes on the node."""
@@ -1518,44 +1520,3 @@ class Node:
 
         external_storage.setup_external_storage(deserialized_config)
         external_storage.reset_external_storage()
-
-    def _internal_kv_get_with_retry(
-        self, key, namespace, num_retries=NUM_REDIS_GET_RETRIES
-    ):
-        result = None
-        if isinstance(key, str):
-            key = key.encode()
-        for i in range(num_retries):
-            try:
-                result = self.get_gcs_client().internal_kv_get(key, namespace)
-            except Exception:
-                logger.exception("Internal KV Get failed")
-                result = None
-
-            if result is not None:
-                break
-            else:
-                logger.debug(f"Fetched {key}=None from redis. Retrying.")
-                time.sleep(2)
-        if not result:
-            raise RuntimeError(
-                f"Could not read '{key}' from GCS (redis). "
-                "If using Redis, did Redis start successfully?"
-            )
-        return result
-
-    def _internal_kv_put_with_retry(
-        self, key, value, namespace, num_retries=NUM_REDIS_GET_RETRIES
-    ):
-        if isinstance(key, str):
-            key = key.encode()
-        for i in range(num_retries):
-            try:
-                return self.get_gcs_client().internal_kv_put(
-                    key, value, overwrite=True, namespace=namespace
-                )
-            except grpc.RpcError:
-                logger.exception("Internal KV Put failed")
-                time.sleep(2)
-        # Reraise the last grpc.RpcError.
-        raise
