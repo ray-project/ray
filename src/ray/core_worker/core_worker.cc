@@ -1424,8 +1424,11 @@ std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(
   }
 
   if (!IsRuntimeEnvEmpty(parent_serialized_runtime_env)) {
+    // TODO(SongGuyang): We add this warning log because of the change of API behavior.
+    // Refer to https://github.com/ray-project/ray/issues/21818.
+    // Modify this log level to `INFO` or `DEBUG` after a few release versions.
     RAY_LOG(WARNING) << "Runtime env already exists and the parent runtime env is "
-                     << parent_serialized_runtime_env << ". It will be overrode by "
+                     << parent_serialized_runtime_env << ". It will be overridden by "
                      << serialized_runtime_env << ".";
   }
 

@@ -9,7 +9,25 @@ _runtime_env = None
 @PublicAPI(stability="beta")
 @client_mode_hook(auto_init=False)
 def get_current_runtime_env():
-    """Get the runtime env of the current driver/worker."""
+    """Get the runtime env of the current job/worker.
+
+    If you use this API in driver or ray client, the job level runtime env will be
+    returned.
+    If you use this API in workers/actors, the worker level runtime env will be
+    returned.
+
+    Returns:
+        A dict of the current runtime env
+
+    To merge from the parent runtime env in some specific cases, you can get the parent
+    runtime env by this API and modify it by yourself.
+
+    Example:
+
+    >>> # Inherit parent runtime env, except `env_vars`
+    >>> Actor.options(runtime_env=ray.get_current_runtime_env().update(
+        {"env_vars": {"A": "a", "B": "b"}}))
+    """
     global _runtime_env
     if _runtime_env is None:
         _runtime_env = dict(ray.get_runtime_context().runtime_env)
