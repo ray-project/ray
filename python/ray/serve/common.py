@@ -1,23 +1,33 @@
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Dict, Optional
-from uuid import UUID
 
 import ray
 from ray.actor import ActorHandle
 from ray.serve.config import DeploymentConfig, ReplicaConfig
 from ray.serve.autoscaling_policy import AutoscalingPolicy
 
-str = str
 EndpointTag = str
 ReplicaTag = str
 NodeId = str
-GoalId = UUID
 Duration = float
 
 
 @dataclass
 class EndpointInfo:
     route: str
+
+
+class DeploymentStatus(Enum):
+    UPDATING = 1
+    HEALTHY = 2
+    UNHEALTHY = 3
+
+
+@dataclass
+class DeploymentStatusInfo:
+    status: DeploymentStatus
+    message: str = ""
 
 
 class DeploymentInfo:
