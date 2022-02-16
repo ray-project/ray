@@ -137,7 +137,7 @@ The concurrency of the default group can be changed by setting the ``max_concurr
 
 .. tabbed:: Java
 
-    The following ConcurrentActor has 2 concurrency groups: "io" and "default".
+    The following concurrent actor has 2 concurrency groups: "io" and "default".
     The max concurrency of "io" is 2, and the max concurrency of "default" is 10.
 
     .. code-block:: java
