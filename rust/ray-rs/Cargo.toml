@@ -17,7 +17,8 @@ serde = "1.0.132"
 libloading = "0.7.2"
 libc = "0.2.112"
 ctor = "0.1.21"
-tokio = { path = "../../../tokio/tokio", optional = true, features = ["rt", "rt-multi-thread", "time", "sync", "net"] }
+tokio = { version = "1.16.1", optional = true, features = ["rt", "rt-multi-thread", "time", "sync", "net"] }
+#path = "../../../tokio/tokio",
 async-ffi = "0.4.0"
 # ray-rs-sys = "0.0.0"
 ray-rs-sys = { path="../ray-rs-sys" }
