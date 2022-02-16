@@ -645,7 +645,7 @@ class PopulationBasedTraining(FIFOScheduler):
             trial_executor.set_status(trial, Trial.PAUSED)
         trial.set_experiment_tag(new_tag)
         trial.set_config(new_config)
-        trial.on_checkpoint(new_state.last_checkpoint)
+        trial.on_checkpoint(new_state.last_checkpoint, new_state.last_result)
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
@@ -876,7 +876,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         trial_executor.set_status(trial, Trial.PAUSED)
         trial.set_experiment_tag(new_tag)
         trial.set_config(new_config)
-        trial.on_checkpoint(checkpoint)
+        trial.on_checkpoint(checkpoint, result)
 
         self.current_config = new_config
         self._num_perturbations += 1
