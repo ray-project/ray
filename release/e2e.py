@@ -1665,6 +1665,8 @@ def run_test_config(
     # When running the test script in client mode, the finish command is a
     # completed local process.
     def _process_finished_client_command(returncode: int, logs: str):
+        if returncode != 0:
+            raise RuntimeError(f"Client returned non-success status: {returncode}")
         if upload_artifacts:
             saved_artifacts = pull_artifacts_and_store_in_cloud(
                 temp_dir=temp_dir,
