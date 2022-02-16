@@ -45,6 +45,20 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Kuberay Autoscaler")
     parser.add_argument(
+        "--cluster-name",
+        required=True,
+        type=str,
+        help="The name of the Ray Cluster.\n"
+        "Should coincide with the `metadata.name` of the RayCluster CR.",
+    )
+    parser.add_argument(
+        "--cluster-namespace",
+        required=True,
+        type=str,
+        help="The Kubernetes namespace the Ray Cluster lives in.\n"
+        "Should coincide with the `metadata.namespace` of the RayCluster CR.",
+    )
+    parser.add_argument(
         "--redis-password",
         required=False,
         type=str,
@@ -54,11 +68,18 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     head_ip = get_node_ip_address()
+
+    def config_reader():
+        return generate_autoscaling_config(
+            args.ray_cluster_name,
+            args.ray_cluster_namespace
+        )
+
     Monitor(
         address=f"{head_ip}:6379",
         redis_password=args.redis_password,
         # The `autoscaling_config` arg can be a dict or a `Callable: () -> dict`.
         # In this case, it's a callable.
-        autoscaling_config=generate_autoscaling_config,
+        autoscaling_config=config_reader,
         monitor_ip=head_ip,
     ).run()

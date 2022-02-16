@@ -1,11 +1,11 @@
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 from unittest.mock import DEFAULT, Mock, patch
 
 import pytest
 import yaml
 
-from autoscaling_config import generate_autoscaling_config
+from autoscaling_config import _derive_autoscaling_config_from_ray_cr
 
 
 def _get_basic_ray_cr() -> dict:
@@ -24,11 +24,11 @@ def _get_basic_ray_cr() -> dict:
 def _get_basic_autoscaling_config() -> dict:
     """The expected autoscaling derived from the example Ray CR."""
     return {
-        "cluster_name": "test-cluster-name",
+        "cluster_name": "raycluster-complete",
         "provider": {
             "disable_launch_config_check": True,
             "disable_node_updaters": True,
-            "namespace": "test-namespace",
+            "namespace": "default",
             "type": "kuberay",
         },
         "available_node_types": {
@@ -173,31 +173,20 @@ TEST_DATA = [
 
 @pytest.mark.parametrize(PARAM_ARGS, TEST_DATA)
 def test_autoscaling_config(
-    ray_cr_in: dict,
-    expected_config_out: Optional[dict],
+    ray_cr_in: Dict[str, Any],
+    expected_config_out: Optional[Dict[str, Any]],
     expected_error: Optional[Exception],
     expected_error_message: Optional[str],
     expected_log_warning: Optional[str],
 ):
-    with patch.multiple(
-        "autoscaling_config",
-        logger=DEFAULT,
-        _get_node_provider=Mock(
-            return_value=Mock(
-                get=Mock(
-                    return_value=ray_cr_in,
-                )
-            )
-        ),
-        _RAY_CLUSTER_NAME="test-cluster-name",
-        _RAY_CLUSTER_NAMESPACE="test-namespace",
-    ) as mock_values:
+    ray_cr_in["metadata"]["namespace"] = "default"
+    with patch("autoscaling_config.logger") as mock_logger:
         if expected_error:
             with pytest.raises(expected_error, match=expected_error_message):
-                generate_autoscaling_config()
+                _derive_autoscaling_config_from_ray_cr(ray_cr_in)
         else:
-            assert generate_autoscaling_config() == expected_config_out
-            mock_logger = mock_values["logger"]
+            assert _derive_autoscaling_config_from_ray_cr(
+                ray_cr_in) == expected_config_out
             if expected_log_warning:
                 mock_logger.warning.assert_called_with(expected_log_warning)
             else:

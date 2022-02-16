@@ -2,8 +2,9 @@ from contextlib import suppress
 import logging
 import math
 import os
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
+import kubernetes
 import json
 
 from ray.autoscaler._private.providers import _get_node_provider
@@ -11,12 +12,6 @@ from ray.autoscaler._private.util import validate_config
 
 logger = logging.getLogger(__name__)
 
-# The name of this Ray cluster. Should coincide with the `metadata.name` field of the
-# Ray CR.
-_RAY_CLUSTER_NAME = os.getenv("RAY_CLUSTER_NAME")
-
-# The Kubernetes namespace in which this Ray cluster runs.
-_RAY_CLUSTER_NAMESPACE = os.getenv("RAY_CLUSTER_NAMESPACE")
 
 # Logical group name for the KubeRay head group.
 # Used as the name of the "head node type" by the autoscaler.
@@ -24,34 +19,57 @@ _HEAD_GROUP_NAME = "head-group"
 
 _GPU_WARNING_LOGGED = False
 
+_k8s_cr_client = None
 
-def generate_autoscaling_config() -> dict:
-    """Generates an autoscaling config by reading the RayCluster CR and translating it
-    into a format readable by the autoscaler.
+
+def generate_autoscaling_config(ray_cluster_name: str,
+                                ray_cluster_namespace: str) -> Dict[str, Any]:
+    """Generates an autoscaling config by reading data from the RayCluster CR.
 
     Used to fetch the autoscaling config at the beginning of each autoscaler iteration.
 
+    In the context of Ray deployment on Kubernetes, the autoscaling config is an
+    internal interface carrying the strict subset of RayCluster CR data required
+    by the autoscaler to make scaling decisions.
+    In particular, the autoscaling config does not carry pod configuration data.
+
     This function is the only public object in this file.
     """
-    assert (
-        _RAY_CLUSTER_NAME
-    ), "The RAY_CLUSTER_NAME environment variable is unset. Check the RayCluster CR."
-    assert _RAY_CLUSTER_NAMESPACE, (
-        "The RAY_CLUSTER_NAMESPACE environment variable is unset. "
-        "Check the RayCluster CR."
+    ray_cr = _fetch_ray_cr_from_k8s(ray_cluster_name, ray_cluster_namespace)
+    autoscaling_config = _derive_autoscaling_config_from_ray_cr(ray_cr)
+    return autoscaling_config
+
+
+def _fetch_ray_cr_from_k8s(ray_cluster_name: str,
+                           ray_cluster_namespace: str) -> Dict[str, Any]:
+    cr_client = _get_k8s_cr_client()
+    ray_cr = cr_client.get_namespaced_custom_object(
+        name=ray_cluster_name,
+        namespace=ray_cluster_namespace,
+        plural="rayclusters",
+        group="ray.io",
+        version="v1alpha1",
     )
+    return ray_cr
 
-    provider_config = _generate_provider_config()
 
-    # Get the KubeRay node provider by instantiating it (on first call) or retrieving it
-    # from cache (subsequent calls).
-    # The autoscaler accesses the single node provider instance in the same way.
-    provider = _get_node_provider(
-        provider_config=provider_config, cluster_name=_RAY_CLUSTER_NAME, use_cache=True
+def _get_k8s_cr_client() -> kubernetes.client.CustomObjectsApi:
+    global _k8s_cr_client
+    if not _k8s_cr_client:
+        try:
+            # Convenience for local testing.
+            kubernetes.config.load_kube_config()
+        except kubernetes.config.config_exception.ConfigException:
+            # The typical code path used.
+            kubernetes.config.load_incluster_config()
+        _k8s_cr_client = kubernetes.client.CustomObjectsApi()
+    return _k8s_cr_client
+
+
+def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, Any]:
+    provider_config = _generate_provider_config(
+        ray_cr["metadata"]["namespace"]
     )
-
-    # Fetch the Ray CR from K8s.
-    ray_cr = provider.get("rayclusters/{}".format(_RAY_CLUSTER_NAME))
 
     available_node_types = _generate_available_node_types_from_ray_cr_spec(
         ray_cr["spec"]
@@ -68,7 +86,7 @@ def generate_autoscaling_config() -> dict:
 
     autoscaling_config = {
         "provider": provider_config,
-        "cluster_name": _RAY_CLUSTER_NAME,
+        "cluster_name": ray_cr["metadata"]["name"],
         "head_node_type": _HEAD_GROUP_NAME,
         "available_node_types": available_node_types,
         "max_workers": global_max_workers,
@@ -87,19 +105,19 @@ def generate_autoscaling_config() -> dict:
     return autoscaling_config
 
 
-def _generate_provider_config() -> dict:
-    """Generates the `provider` field of the autoscaling config, which carries data required
-    to instantiate the KubeRay node provider.
+def _generate_provider_config(ray_cluster_namespace: str) -> Dict[str, Any]:
+    """Generates the `provider` field of the autoscaling config, which carries data
+    required to instantiate the KubeRay node provider.
     """
     return {
         "type": "kuberay",
-        "namespace": _RAY_CLUSTER_NAMESPACE,
+        "namespace": ray_cluster_namespace,
         "disable_node_updaters": True,
         "disable_launch_config_check": True,
     }
 
 
-def _generate_legacy_autoscaling_config_fields():
+def _generate_legacy_autoscaling_config_fields() -> Dict[str, Any]:
     """Generates legacy autoscaling config fields required for compatibiliy."""
     return {
         "file_mounts": {},
@@ -117,7 +135,8 @@ def _generate_legacy_autoscaling_config_fields():
     }
 
 
-def _generate_available_node_types_from_ray_cr_spec(ray_cr_spec: dict) -> dict:
+def _generate_available_node_types_from_ray_cr_spec(ray_cr_spec: Dict[
+        str, Any]) -> Dict[str, Any]:
     """Formats autoscaler "available_node_types" field based on the Ray CR's group
     specs.
     """
@@ -133,7 +152,8 @@ def _generate_available_node_types_from_ray_cr_spec(ray_cr_spec: dict) -> dict:
     }
 
 
-def _node_type_from_group_spec(group_spec: dict, is_head: bool) -> dict:
+def _node_type_from_group_spec(group_spec: Dict[str, Any],
+                               is_head: bool) -> Dict[str, Any]:
     """Converts CR group spec to autoscaler node type."""
     if is_head:
         # The head node type has no workers because the head is not a worker.
@@ -148,13 +168,15 @@ def _node_type_from_group_spec(group_spec: dict, is_head: bool) -> dict:
     return {
         "min_workers": min_workers,
         "max_workers": max_workers,
-        "node_config": {},  # Pod configuration is the Ray Operator's business.
+        # `node_config` is a legacy field required for compatibility.
+        # Pod config data is required by the operator but not by the autoscaler.
+        "node_config": {},
         "resources": resources,
     }
 
 
 def _get_ray_resources_from_group_spec(
-    group_spec: dict, is_head: bool
+    group_spec: Dict[str, Any], is_head: bool
 ) -> Dict[str, int]:
     """
     Infers Ray resources from rayStartCommands and K8s limits.
@@ -198,7 +220,8 @@ def _get_ray_resources_from_group_spec(
 
 
 def _get_num_cpus(
-    ray_start_params: dict, k8s_resource_limits: Dict[str, str], group_name: str
+    ray_start_params: Dict[str, str],
+    k8s_resource_limits: Dict[str, str], group_name: str
 ) -> int:
     if "num_cpus" in ray_start_params:
         return int(ray_start_params["num_cpus"])
@@ -218,7 +241,8 @@ def _get_num_cpus(
         )
 
 
-def _get_memory(ray_start_params, k8s_resource_limits) -> Optional[int]:
+def _get_memory(ray_start_params: Dict[str, str],
+                k8s_resource_limits: Dict[str, Any]) -> Optional[int]:
     """Get memory resource annotation from ray_start_params, if it is set there.
 
     TODO, maybe: Consider container resource limits as in
@@ -230,7 +254,9 @@ def _get_memory(ray_start_params, k8s_resource_limits) -> Optional[int]:
 
 
 def _get_num_gpus(
-    ray_start_params: dict, k8s_resource_limits: Dict[str, str], group_name: str
+    ray_start_params: Dict[str, str],
+    k8s_resource_limits: Dict[str, Any],
+    group_name: str
 ) -> Optional[int]:
     """Read the number of GPUs from the Ray start params.
 
@@ -260,7 +286,8 @@ def _get_num_gpus(
     return None
 
 
-def _get_custom_resources(ray_start_params: dict, group_name: str) -> Dict[str, int]:
+def _get_custom_resources(ray_start_params: Dict[str, Any],
+                          group_name: str) -> Dict[str, int]:
     if "resources" not in ray_start_params:
         return {}
     resources_string = ray_start_params["resources"]

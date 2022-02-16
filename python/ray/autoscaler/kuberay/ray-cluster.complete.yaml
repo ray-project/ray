@@ -33,7 +33,7 @@ spec:
       num-cpus: '1' # can be auto-completed from the limits
       # Use `resources` to optionally specify custom resource annotations for the Ray node.
       # The value of `resources` is a string-integer mapping.
-      # Currently, it must be provided in the unfortunate format demonstrated below.
+      # Currently, `resources` must be provided in the unfortunate format demonstrated below.
       resources: '"{\"Custom1\": 1, \"Custom2\": 5}"'
     #pod template
     template:
@@ -101,8 +101,21 @@ spec:
         - name: autoscaler
           image: rayproject/kuberay-autoscaler
           imagePullPolicy: Always
-          command: ["/bin/sh"]
-          args: ["-c", "$HOME/anaconda3/bin/python /home/ray/run_autoscaler_with_retries.py --redis-password 5241590000000000"]
+          env:
+          - name: RAY_CLUSTER_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: RAY_CLUSTER_NAME
+            # This value must match the metadata.name of the RayCluster CR.
+            # The autoscaler uses this env variable to determine which Ray CR to interact with.
+            # TODO: Match with CR name automatically via operator, Helm, and/or Kustomize.
+            value: raycluster-complete
+          command: ["/bin/sh", "-c"]
+          args:
+            - |-
+              $HOME/anaconda3/bin/python /home/ray/run_autoscaler_with_retries.py \
+              --cluster-name "$RAY_CLUSTER_NAME" --cluster-namespace "$RAY_CLUSTER_NAMESPACE" --redis-password 5241590000000000
           resources:
             limits:
               cpu: 500m
@@ -115,16 +128,6 @@ spec:
               name: autoscaler-config
             - mountPath: /tmp/ray
               name: ray-logs
-          env:
-          - name: RAY_CLUSTER_NAMESPACE
-            valueFrom:
-              fieldRef:
-                fieldPath: metadata.namespace
-          - name: RAY_CLUSTER_NAME
-            # This value must match the metadata.name of the RayCluster CR.
-            # The autoscaler uses this env variable to determine which Ray CR to interact with.
-            # TODO: Match with CR name automatically via operator, Helm, and/or Kustomize.
-            value: raycluster-complete
         volumes:
         # You set volumes at the Pod level, then mount them into containers inside that Pod
         - name: autoscaler-config
