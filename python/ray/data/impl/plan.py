@@ -16,7 +16,7 @@ from ray.data.impl.lazy_block_list import LazyBlockList
 class ExecutionPlan:
     """A lazy execution plan for a Dataset."""
 
-    def __init__(self, in_blocks: BlockList, stats: DatasetStats):
+    def __init__(self, in_blocks: BlockList, stats: DatasetStats, dataset_uuid=None):
         """Create a plan with no transformation stages.
 
         Args:
@@ -28,7 +28,7 @@ class ExecutionPlan:
         self._in_stats = stats
         self._out_stats = None
         self._stages = []
-        self._dataset_uuid = uuid.uuid4().hex
+        self._dataset_uuid = dataset_uuid or uuid.uuid4().hex
         if not stats.dataset_uuid:
             stats.dataset_uuid = self._dataset_uuid
 

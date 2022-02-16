@@ -167,6 +167,7 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared):
     for batch in pipe.iter_batches():
         pass
     stats = canonicalize(pipe.stats())
+    print(stats)
     assert (
         stats
         == """== Pipeline Window N ==

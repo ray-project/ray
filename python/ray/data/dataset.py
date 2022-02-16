@@ -2511,6 +2511,7 @@ Dict[str, List[str]]]): The names of the columns
 
         if times is not None and times < 1:
             raise ValueError("`times` must be >= 1, got {}".format(times))
+        uuid = self._get_uuid()
 
         class Iterator:
             def __init__(self, blocks):
@@ -2525,7 +2526,12 @@ Dict[str, List[str]]]): The names of the columns
                 self._i += 1
 
                 def gen():
-                    ds = Dataset(ExecutionPlan(blocks, outer_stats), epoch, lazy=False)
+                    ds = Dataset(
+                        ExecutionPlan(blocks, outer_stats, dataset_uuid=uuid),
+                        epoch,
+                        lazy=False,
+                    )
+                    ds._set_uuid(uuid)
                     return ds
 
                 return gen
