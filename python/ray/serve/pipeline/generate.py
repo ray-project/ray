@@ -1,6 +1,5 @@
-from typing import Any, Dict
+from typing import Any, Dict, List
 import uuid
-import json
 
 from ray.experimental.dag import (
     DAGNode,
@@ -101,5 +100,18 @@ def generate_deployments_from_ray_dag(
     serve_dag_root_deployment._init_args = (serve_dag_root,)
 
     deployments.insert(0, serve_dag_root_deployment)
+
+    return deployments
+
+def extract_deployments_from_serve_dag(serve_dag_root: DAGNode) -> Dict[str, Deployment]:
+    deployments = {}
+    def extractor(dag_node):
+        if isinstance(dag_node, DeploymentMethodNode):
+            deployments[dag_node._deployment_name] = dag_node._body
+
+
+    serve_dag_root._apply_recursive(
+        lambda node: extractor(node)
+    )
 
     return deployments
