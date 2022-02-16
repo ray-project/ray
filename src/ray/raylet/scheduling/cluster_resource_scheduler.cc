@@ -165,16 +165,22 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     return best_node;
   }
 
-  // TODO (Alex): Setting require_available == force_spillback is a hack in order to
-  // remain bug compatible with the legacy scheduling algorithms.
-  int64_t best_node_id = scheduling_policy_->HybridPolicy(
-      resource_request,
-      scheduling_strategy.scheduling_strategy_case() ==
-              rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy
-          ? 0.0
-          : RayConfig::instance().scheduler_spread_threshold(),
-      force_spillback, force_spillback,
-      [this](auto node_id) { return this->NodeAlive(node_id); });
+  int64_t best_node_id = -1;
+  if (scheduling_strategy.scheduling_strategy_case() ==
+      rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy) {
+    best_node_id = scheduling_policy_->SpreadPolicy(
+        resource_request,
+        force_spillback, force_spillback,
+        [this](auto node_id) { return this->NodeAlive(node_id); });
+  } else {
+    // TODO (Alex): Setting require_available == force_spillback is a hack in order to
+    // remain bug compatible with the legacy scheduling algorithms.
+    best_node_id = scheduling_policy_->HybridPolicy(
+        resource_request, RayConfig::instance().scheduler_spread_threshold(),
+        force_spillback, force_spillback,
+        [this](auto node_id) { return this->NodeAlive(node_id); });
+  }
+
   *is_infeasible = best_node_id == -1 ? true : false;
   if (!*is_infeasible) {
     // TODO (Alex): Support soft constraints if needed later.

@@ -273,7 +273,7 @@ def test_spread_scheduling_overrides_locality_aware_scheduling(ray_start_cluster
         },
     )
     ray.init(address=cluster.address)
-    cluster.add_node(num_cpus=8, resources={"pin": 1})
+    remote_node = cluster.add_node(num_cpus=8, resources={"pin": 1})
     cluster.wait_for_nodes()
 
     @ray.remote(resources={"pin": 1})
@@ -284,9 +284,10 @@ def test_spread_scheduling_overrides_locality_aware_scheduling(ray_start_cluster
     def f(x):
         return ray.worker.global_worker.node.unique_id
 
-    # Test that task f() runs on the local node
-    # even though non local node has the dependencies.
-    assert ray.get(f.remote(non_local.remote())) == local_node.unique_id
+    # Test that task f() runs on the local node as well
+    # even though remote node has the dependencies.
+    obj = non_local.remote()
+    assert {ray.get(f.remote(obj)) for _ in range(2)} == {local_node.unique_id, remote_node.unique_id}
 
 
 def test_locality_aware_leasing(ray_start_cluster):

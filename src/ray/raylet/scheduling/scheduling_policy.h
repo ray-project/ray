@@ -66,6 +66,13 @@ class SchedulingPolicy {
       std::function<bool(int64_t)> is_node_available,
       bool scheduler_avoid_gpu_nodes = RayConfig::instance().scheduler_avoid_gpu_nodes());
 
+  /// Round robin among available nodes.
+  /// If there are no available nodes, fallback to hybrid policy.
+  int64_t SpreadPolicy(
+      const ResourceRequest &resource_request,
+      bool force_spillback, bool require_available,
+      std::function<bool(int64_t)> is_node_available);
+
  private:
   /// Identifier of local node.
   const int64_t local_node_id_;
