@@ -48,6 +48,9 @@ int64_t SchedulingPolicy::SpreadPolicy(
     round.emplace_back(pair.first);
   }
   std::sort(round.begin(), round.end());
+  for (const auto i : round) {
+    RAY_LOG(INFO) << "Round robin " << i << " " << spread_scheduling_next_index_;
+  }
   size_t round_index = spread_scheduling_next_index_;
   for (size_t i = 0; i < round.size(); ++i, ++round_index) {
     const auto &node_id = round[round_index % round.size()];
