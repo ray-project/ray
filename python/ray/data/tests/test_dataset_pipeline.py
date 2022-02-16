@@ -84,19 +84,19 @@ def test_basic_pipeline(ray_start_regular_shared):
     ds = ray.data.range(10)
 
     pipe = ds.window(blocks_per_window=1)
-    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=2)"
+    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=1)"
     assert pipe.count() == 10
 
     pipe = ds.window(blocks_per_window=1).map(lambda x: x).map(lambda x: x)
-    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=4)"
+    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=3)"
     assert pipe.take() == list(range(10))
 
     pipe = ds.window(blocks_per_window=999)
-    assert str(pipe) == "DatasetPipeline(num_windows=1, num_stages=2)"
+    assert str(pipe) == "DatasetPipeline(num_windows=1, num_stages=1)"
     assert pipe.count() == 10
 
     pipe = ds.repeat(10)
-    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=2)"
+    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=1)"
     assert pipe.count() == 100
     pipe = ds.repeat(10)
     assert pipe.sum() == 450
@@ -105,7 +105,7 @@ def test_basic_pipeline(ray_start_regular_shared):
 def test_window(ray_start_regular_shared):
     ds = ray.data.range(10)
     pipe = ds.window(blocks_per_window=1)
-    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=2)"
+    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=1)"
     pipe = pipe.rewindow(blocks_per_window=3)
     assert str(pipe) == "DatasetPipeline(num_windows=None, num_stages=1)"
     datasets = list(pipe.iter_datasets())
@@ -117,7 +117,7 @@ def test_window(ray_start_regular_shared):
 
     ds = ray.data.range(10)
     pipe = ds.window(blocks_per_window=5)
-    assert str(pipe) == "DatasetPipeline(num_windows=2, num_stages=2)"
+    assert str(pipe) == "DatasetPipeline(num_windows=2, num_stages=1)"
     pipe = pipe.rewindow(blocks_per_window=3)
     assert str(pipe) == "DatasetPipeline(num_windows=None, num_stages=1)"
     datasets = list(pipe.iter_datasets())
@@ -131,7 +131,7 @@ def test_window(ray_start_regular_shared):
 def test_repeat(ray_start_regular_shared):
     ds = ray.data.range(5)
     pipe = ds.window(blocks_per_window=1)
-    assert str(pipe) == "DatasetPipeline(num_windows=5, num_stages=2)"
+    assert str(pipe) == "DatasetPipeline(num_windows=5, num_stages=1)"
     pipe = pipe.repeat(2)
     assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=1)"
     assert pipe.take() == (list(range(5)) + list(range(5)))
@@ -157,7 +157,7 @@ def test_from_iterable(ray_start_regular_shared):
 def test_repeat_forever(ray_start_regular_shared):
     ds = ray.data.range(10)
     pipe = ds.repeat()
-    assert str(pipe) == "DatasetPipeline(num_windows=inf, num_stages=2)"
+    assert str(pipe) == "DatasetPipeline(num_windows=inf, num_stages=1)"
     for i, v in enumerate(pipe.iter_rows()):
         assert v == i % 10, (v, i, i % 10)
         if i > 1000:
