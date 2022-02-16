@@ -415,6 +415,41 @@ class TestSyncFunctionality(unittest.TestCase):
         trial_syncer = syncer_callback._get_trial_syncer(trial)
         self.assertEqual(trial_syncer.sync_client, NOOP)
 
+    def testSyncWaitRetry(self):
+        class CountingClient(CommandBasedClient):
+            def __init__(self, *args, **kwargs):
+                self._sync_ups = 0
+                self._sync_downs = 0
+                super(CountingClient, self).__init__(*args, **kwargs)
+
+            def _start_process(self, cmd):
+                if "UPLOAD" in cmd:
+                    self._sync_ups += 1
+                elif "DOWNLOAD" in cmd:
+                    self._sync_downs += 1
+                    if self._sync_downs == 1:
+                        self._last_cmd = "echo DOWNLOAD && true"
+                return super(CountingClient, self)._start_process(cmd)
+
+        client = CountingClient(
+            "echo UPLOAD {source} {target} && false",
+            "echo DOWNLOAD {source} {target} && false",
+            "echo DELETE {target}",
+        )
+
+        # Fail always
+        with self.assertRaisesRegex(TuneError, "Failed sync even after"):
+            client.sync_up("test_source", "test_target")
+            client.wait_or_retry(max_retries=3, backoff_s=0)
+
+        self.assertEquals(client._sync_ups, 3)
+
+        # Succeed after second try
+        client.sync_down("test_source", "test_target")
+        client.wait_or_retry(max_retries=3, backoff_s=0)
+
+        self.assertEquals(client._sync_downs, 2)
+
 
 if __name__ == "__main__":
     import pytest
