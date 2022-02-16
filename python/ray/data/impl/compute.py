@@ -116,9 +116,7 @@ class ActorPool(ComputeStrategy):
         self.workers = []
 
     def __del__(self):
-        logging.info(
-            f"dbg ActorPool destructor."
-        )
+        logging.info(f"dbg ActorPool destructor.")
         for w in self.workers:
             w.__ray_terminate__.remote()
 

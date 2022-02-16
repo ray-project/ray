@@ -83,7 +83,5 @@ class ProgressBar:
             self._bar = None
 
     def __del__(self):
-        logging.info(
-            f"dbg ProgressBar destructor."
-        )
+        logging.info(f"dbg ProgressBar destructor.")
         self.close()

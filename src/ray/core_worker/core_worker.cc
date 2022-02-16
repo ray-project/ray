@@ -2940,8 +2940,8 @@ void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
                                rpc::LocalGCReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
   if (options_.gc_collect != nullptr) {
-//    background_service_.post([gc_collect = options_.gc_collect]() { gc_collect(); },
-//                             "CoreWorker.Background.LocalGC");
+    //    background_service_.post([gc_collect = options_.gc_collect]() { gc_collect(); },
+    //                             "CoreWorker.Background.LocalGC");
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     send_reply_callback(Status::NotImplemented("GC callback not defined"), nullptr,
