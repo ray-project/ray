@@ -1237,7 +1237,7 @@ if __name__ == "__main__":
     else:
         print("This test will run using Ray client.")
 
-        wait_for_nodes(num_nodes=4, timeout=300.0)
+        wait_for_nodes(num_nodes=4, timeout=3000.0)
 
         # This will usually run on the head node
         @ray.remote
