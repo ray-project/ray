@@ -156,7 +156,6 @@ test_python() {
       -python/ray/tests:test_multi_node_3
       -python/ray/tests:test_object_manager # OOM on test_object_directory_basic
       -python/ray/tests:test_resource_demand_scheduler
-      -python/ray/tests:test_runtime_env_complicated # requires conda
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_k8s_operator_unit_tests

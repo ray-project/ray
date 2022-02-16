@@ -73,14 +73,15 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
     """
     assert conda is not None
 
-    result = None
     if sys.platform == "win32":
-        raise NotImplementedError(
-            "The 'conda' field in runtime_env "
-            "is not currently supported on "
-            "Windows."
+        logger.warning(
+            "runtime environment support is experimental on Windows. "
+            "If you run into issues please file a report at "
+            "https://github.com/ray-project/ray/issues."
         )
-    elif isinstance(conda, str):
+
+    result = None
+    if isinstance(conda, str):
         yaml_file = Path(conda)
         if yaml_file.suffix in (".yaml", ".yml"):
             if not yaml_file.is_file():
@@ -132,12 +133,12 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
 
     result = None
     if sys.platform == "win32":
-        raise NotImplementedError(
-            "The 'pip' field in runtime_env "
-            "is not currently supported on "
-            "Windows."
+        logger.warning(
+            "runtime environment support is experimental on Windows. "
+            "If you run into issues please file a report at "
+            "https://github.com/ray-project/ray/issues."
         )
-    elif isinstance(pip, str):
+    if isinstance(pip, str):
         # We have been given a path to a requirements.txt file.
         pip_list = _handle_local_pip_requirement_file(pip)
         result = dict(packages=pip_list, pip_check=False)
