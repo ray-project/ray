@@ -1,27 +1,19 @@
 import pytest
+import json
 from typing import TypeVar
 
 import ray
 from ray import serve
 from ray.experimental.dag import InputNode
-from ray.serve.pipeline.generate import generate_deployments_from_ray_dag
+from ray.serve.pipeline.generate import (
+    dagnode_to_json,
+    dagnode_from_json,
+    generate_deployments_from_ray_dag
+)
 from ray.serve.pipeline.tests.test_modules import Model, combine
 
 
 RayHandleLike = TypeVar("RayHandleLike")
-
-
-@ray.remote
-class Model:
-    def __init__(self, weight: int, ratio: float = None):
-        self.weight = weight
-        self.ratio = ratio or 1
-
-    def forward(self, input: int):
-        return self.ratio * self.weight * input
-
-    def __call__(self, request):
-        return self.forward(request)
 
 
 def _validate_consistent_output(

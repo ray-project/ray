@@ -1,6 +1,5 @@
 import ray
 from ray.experimental.dag.dag_node import DAGNode
-from ray.experimental.dag.input_node import InputNode
 
 from typing import Any, Dict, List, Optional, Tuple
 
