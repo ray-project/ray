@@ -49,7 +49,7 @@ Practical How-To Guides
         :classes: btn-link btn-block stretched-link
 
     ---
-    :img-top: /images/serve.png
+    :img-top: /images/serve.svg
 
     +++
     .. link-button:: tune-serve-integration-mnist
