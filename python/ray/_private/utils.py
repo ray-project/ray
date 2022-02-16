@@ -181,7 +181,7 @@ def random_string():
     return random_id
 
 
-def decode(byte_str: str, allow_none: bool = False, encode_type: str = "ascii"):
+def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
     """Make this unicode in Python 3, otherwise leave it as bytes.
 
     Args:
