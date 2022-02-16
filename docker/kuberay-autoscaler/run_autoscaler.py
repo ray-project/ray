@@ -5,12 +5,11 @@ import time
 
 import ray
 from ray import ray_constants
-from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray._private.ray_logging import setup_component_logger
 from ray._private.services import get_node_ip_address
 from ray.autoscaler._private.monitor import Monitor
 
-from autoscaling_config import generate_autoscaling_config
+from autoscaling_config import AutoscalingConfigProducer
 
 
 def setup_logging() -> None:
@@ -71,11 +70,10 @@ if __name__ == "__main__":
 
     head_ip = get_node_ip_address()
 
-    def config_reader():
-        return generate_autoscaling_config(
-            args.cluster_name,
-            args.cluster_namespace
-        )
+    autoscaling_config_producer = AutoscalingConfigProducer(
+        args.cluster_name,
+        args.cluster_namespace
+    )
 
     # K8s might not consider the Ray head pod to be `Running` at the moment that
     # this entrypoint code runs.
@@ -88,6 +86,6 @@ if __name__ == "__main__":
         redis_password=args.redis_password,
         # The `autoscaling_config` arg can be a dict or a `Callable: () -> dict`.
         # In this case, it's a callable.
-        autoscaling_config=config_reader,
+        autoscaling_config=autoscaling_config_producer,
         monitor_ip=head_ip,
     ).run()

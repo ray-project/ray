@@ -2,12 +2,12 @@ from contextlib import suppress
 import logging
 import math
 import os
+import requests
 from typing import Any, Dict, Optional
 
-import kubernetes
 import json
 
-from ray.autoscaler._private.providers import _get_node_provider
+from ray.autoscaler._private.kuberay import node_provider
 from ray.autoscaler._private.util import validate_config
 
 logger = logging.getLogger(__name__)
@@ -19,51 +19,26 @@ _HEAD_GROUP_NAME = "head-group"
 
 _GPU_WARNING_LOGGED = False
 
-_k8s_cr_client = None
 
+class AutoscalingConfigProducer():
+    def __init__(self, ray_cluster_name, ray_cluster_namespace):
+        self._headers, self._verify = node_provider.load_k8s_secrets()
+        self._ray_cr_url = node_provider.url_from_resource(
+            namespace=ray_cluster_namespace, path=f"requests/{ray_cluster_name}"
+        )
 
-def generate_autoscaling_config(ray_cluster_name: str,
-                                ray_cluster_namespace: str) -> Dict[str, Any]:
-    """Generates an autoscaling config by reading data from the RayCluster CR.
+    def __call__(self):
+        ray_cr = self._fetch_ray_cr_from_k8s()
+        autoscaling_config = _derive_autoscaling_config_from_ray_cr(ray_cr)
+        return autoscaling_config
 
-    Used to fetch the autoscaling config at the beginning of each autoscaler iteration.
-
-    In the context of Ray deployment on Kubernetes, the autoscaling config is an
-    internal interface carrying the strict subset of RayCluster CR data required
-    by the autoscaler to make scaling decisions.
-    In particular, the autoscaling config does not carry pod configuration data.
-
-    This function is the only public object in this file.
-    """
-    ray_cr = _fetch_ray_cr_from_k8s(ray_cluster_name, ray_cluster_namespace)
-    autoscaling_config = _derive_autoscaling_config_from_ray_cr(ray_cr)
-    return autoscaling_config
-
-
-def _fetch_ray_cr_from_k8s(ray_cluster_name: str,
-                           ray_cluster_namespace: str) -> Dict[str, Any]:
-    cr_client = _get_k8s_cr_client()
-    ray_cr = cr_client.get_namespaced_custom_object(
-        name=ray_cluster_name,
-        namespace=ray_cluster_namespace,
-        plural="rayclusters",
-        group="ray.io",
-        version="v1alpha1",
-    )
-    return ray_cr
-
-
-def _get_k8s_cr_client() -> kubernetes.client.CustomObjectsApi:
-    global _k8s_cr_client
-    if not _k8s_cr_client:
-        try:
-            # Convenience for local testing.
-            kubernetes.config.load_kube_config()
-        except kubernetes.config.config_exception.ConfigException:
-            # The typical code path used.
-            kubernetes.config.load_incluster_config()
-        _k8s_cr_client = kubernetes.client.CustomObjectsApi()
-    return _k8s_cr_client
+    def _fetch_ray_cr_from_k8s(self) -> Dict[str, Any]:
+        result = requests.get(
+            self._ray_cr_url, headers=self._headers, verify=self._verify
+        )
+        assert result.status_code == 200
+        ray_cr = result.json()
+        return ray_cr
 
 
 def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, Any]:
