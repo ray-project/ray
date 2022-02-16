@@ -22,6 +22,9 @@ spec:
     # rayNodeType: head # Not needed since it is under the headgroup
     # the following params are used to complete the ray start: ray start --head --block --redis-port=6379 ...
     rayStartParams:
+      # Flag "no-monitor" must be set when running the autoscaler in
+      # a separate container.
+      no-monitor: "true"
       port: '6379'
       object-manager-port: '9999'
       node-manager-port: '9998'
@@ -99,7 +102,7 @@ spec:
               name: ray-logs
         # The Ray autoscaler sidecar to the head pod
         - name: autoscaler
-          image: rayproject/kuberay-autoscaler
+          image: gekho/kuberay-autoscaler
           imagePullPolicy: Always
           env:
           - name: RAY_CLUSTER_NAMESPACE

@@ -1,9 +1,11 @@
 import argparse
 import logging
 import os
+import time
 
 import ray
 from ray import ray_constants
+from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray._private.ray_logging import setup_component_logger
 from ray._private.services import get_node_ip_address
 from ray.autoscaler._private.monitor import Monitor
@@ -71,9 +73,15 @@ if __name__ == "__main__":
 
     def config_reader():
         return generate_autoscaling_config(
-            args.ray_cluster_name,
-            args.ray_cluster_namespace
+            args.cluster_name,
+            args.cluster_namespace
         )
+
+    # K8s might not consider the Ray head pod to be `Running` at the moment that
+    # this entrypoint code runs.
+    # That can lead to a annoying artifact at the start of the autoscaler logs.
+    # Wait a bit to avoid that artifact.
+    time.sleep(5)
 
     Monitor(
         address=f"{head_ip}:6379",
