@@ -471,8 +471,8 @@ class Node:
         if not self._resource_spec:
             env_resources = {}
             required_cpu_instruction_sets_str = os.getenv(
-                ray_constants.CPU_INSTRUCTION_SETS_ENV,
-                ray_constants.CPU_INSTRUCTION_SETS,
+                ray_constants.CPU_INSTRUCTION_SETS_REQUIRED_ENV_VAR,
+                ray_constants.CPU_INSTRUCTION_SETS_DEFAULT_REQUIRED_LIST,
             )
             required_cpu_instruction_sets = [
                 x.strip() for x in required_cpu_instruction_sets_str.split(",")
