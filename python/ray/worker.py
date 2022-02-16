@@ -143,9 +143,6 @@ class Worker:
         # running on.
         self.ray_debugger_external = False
         self._load_code_from_local = False
-        # Used to toggle whether or not logs should be filtered to only those
-        # produced in the same job.
-        self.filter_logs_by_job = True
 
     @property
     def connected(self):
@@ -494,6 +491,20 @@ class Worker:
                     continue
 
                 if self.gcs_pubsub_enabled:
+                    data = msg
+                else:
+                    data = json.loads(ray._private.utils.decode(msg["data"]))
+
+                # Don't show logs from other drivers.
+                if data["job"] and data["job"] != job_id_hex:
+                    num_consecutive_messages_received = 0
+                    last_polling_batch_size = 0
+                    continue
+
+                data["localhost"] = localhost
+                global_worker_stdstream_dispatcher.emit(data)
+
+                if self.gcs_pubsub_enabled:
                     lagging = (
                         100 <= last_polling_batch_size < subscriber.last_batch_size
                     )
@@ -511,21 +522,6 @@ class Worker:
                         "logs to the driver, use "
                         "'ray.init(log_to_driver=False)'."
                     )
-
-                if self.gcs_pubsub_enabled:
-                    data = msg
-                else:
-                    data = json.loads(ray._private.utils.decode(msg["data"]))
-
-                # Don't show logs from other drivers.
-                if (
-                    self.filter_logs_by_job
-                    and data["job"]
-                    and job_id_hex != data["job"]
-                ):
-                    continue
-                data["localhost"] = localhost
-                global_worker_stdstream_dispatcher.emit(data)
 
         except (OSError, redis.exceptions.ConnectionError) as e:
             logger.error(f"print_logs: {e}")
@@ -835,8 +831,7 @@ def init(
             processes on all nodes will be directed to the driver.
         namespace (str): Namespace to use
         runtime_env (dict): The runtime environment to use for this job (see
-                :ref:`runtime-environments` for details).  This API is in beta
-                and may change before becoming stable.
+                :ref:`runtime-environments` for details).
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that

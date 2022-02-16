@@ -245,7 +245,7 @@ class ProxyManager:
                 ):
                     raise RuntimeError(
                         "Failed to create runtime_env for Ray client "
-                        f"server: {r.error_message}"
+                        f"server, it is caused by:\n{r.error_message}"
                     )
                 else:
                     assert False, f"Unknown status: {r.status}."
@@ -530,7 +530,7 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
         return self._call_inner_function(req, context, "Terminate")
 
     def GetObject(self, request, context=None):
-        return self._call_inner_function(request, context, "GetObject")
+        yield from self._call_inner_function(request, context, "GetObject")
 
     def PutObject(
         self, request: ray_client_pb2.PutRequest, context=None

@@ -84,6 +84,12 @@ GRPC_OPTIONS = [
 
 CLIENT_SERVER_MAX_THREADS = float(os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
 
+# Large objects are chunked into 64 MiB messages
+OBJECT_TRANSFER_CHUNK_SIZE = 64 * 2 ** 20
+
+# Warn the user if the object being transferred is larger than 2 GiB
+OBJECT_TRANSFER_WARNING_SIZE = 2 * 2 ** 30
+
 
 class ClientObjectRef(raylet.ObjectRef):
     def __init__(self, id: Union[bytes, Future]):
@@ -97,9 +103,6 @@ class ClientObjectRef(raylet.ObjectRef):
         else:
             raise TypeError("Unexpected type for id {}".format(id))
 
-    # NOTE: synchronization primitives like threading.Lock should not be used
-    # transitively by a destructor. Otherwise deadlocks can happen. See
-    # https://stackoverflow.com/questions/18774401/self-deadlock-due-to-garbage-collector-in-single-threaded-code
     def __del__(self):
         if self._worker is not None and self._worker.is_connected():
             try:
@@ -109,7 +112,8 @@ class ClientObjectRef(raylet.ObjectRef):
                 logger.info(
                     "Exception in ObjectRef is ignored in destructor. "
                     "To receive this exception in application code, call "
-                    "a method on the reference before its destructor runs."
+                    "a method on the actor reference before its destructor "
+                    "is run."
                 )
 
     def binary(self):
@@ -168,6 +172,8 @@ class ClientObjectRef(raylet.ObjectRef):
 
             if isinstance(resp, Exception):
                 data = resp
+            elif isinstance(resp, bytearray):
+                data = loads_from_server(resp)
             else:
                 obj = resp.get
                 data = None
@@ -204,9 +210,6 @@ class ClientActorRef(raylet.ActorID):
         else:
             raise TypeError("Unexpected type for id {}".format(id))
 
-    # NOTE: synchronization primitives like threading.Lock should not be used
-    # transitively by a destructor. Otherwise deadlocks can happen. See
-    # https://stackoverflow.com/questions/18774401/self-deadlock-due-to-garbage-collector-in-single-threaded-code
     def __del__(self):
         if self._worker is not None and self._worker.is_connected():
             try:
@@ -216,7 +219,8 @@ class ClientActorRef(raylet.ActorID):
                 logger.info(
                     "Exception from actor creation is ignored in destructor. "
                     "To receive this exception in application code, call "
-                    "a method on the reference before its destructor runs."
+                    "a method on the actor reference before its destructor "
+                    "is run."
                 )
 
     def binary(self):
@@ -857,10 +861,10 @@ class OrderedResponseCache:
                 # Request is for an id that has already been cleared from
                 # cache/acknowledged.
                 raise RuntimeError(
-                    "Attempting to access a cache entry that has already "
+                    "Attempting to accesss a cache entry that has already "
                     "cleaned up. The client has already acknowledged "
-                    f"receiving this response. (this_req_id={req_id}, "
-                    f"acknowledged={self.last_received})"
+                    f"receiving this response. ({req_id}, "
+                    f"{self.last_received})"
                 )
             if req_id in self.cache:
                 cached_resp = self.cache[req_id]

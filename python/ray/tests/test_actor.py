@@ -55,7 +55,6 @@ def test_caching_actors(shutdown_only, set_enable_auto_connect):
     assert ray.get(f.get_val.remote()) == 3
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_remote_function_within_actor(ray_start_10_cpus):
     # Make sure we can use remote funtions within actors.
 
