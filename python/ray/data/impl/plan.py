@@ -298,6 +298,7 @@ class AllToAllStage(Stage):
 
     def can_fuse(self, prev: Stage):
         context = DatasetContext.get_current()
+        # TODO(ekl) also support fusing shuffle stages to subsequent 1:1 stages.
         if not context.optimize_fuse_shuffle_stages:
             return False
         if not self.supports_block_udf:
@@ -306,7 +307,7 @@ class AllToAllStage(Stage):
             return False
         if prev.compute != "tasks":
             return False
-        if prev.ray_remote_args != {}:
+        if prev.ray_remote_args:
             return False
         return True
 
