@@ -164,8 +164,9 @@ class LogMonitor:
     def update_log_filenames(self):
         """Update the list of log files to monitor."""
         # output of user code is written here
-        log_file_paths = (glob.glob(f"{self.logs_dir}/worker*[.out|.err]") +
-                          glob.glob(f"{self.logs_dir}/java-worker*.log"))
+        log_file_paths = glob.glob(f"{self.logs_dir}/worker*[.out|.err]") + glob.glob(
+            f"{self.logs_dir}/java-worker*.log"
+        )
         # segfaults and other serious errors are logged here
         raylet_err_paths = glob.glob(f"{self.logs_dir}/raylet*.err")
         # monitor logs are needed to report autoscaler events

@@ -1149,7 +1149,7 @@ class ActorHandle:
         kwargs = kwargs or {}
         if self._ray_is_cross_language:
             list_args = cross_language.format_args(worker, args, kwargs)
-            function_descriptor = cross_language.get_function_descriptor_for_actor_method(
+            function_descriptor = cross_language.get_function_descriptor_for_actor_method(  # noqa: E501
                 self._ray_actor_language,
                 self._ray_actor_creation_function_descriptor,
                 method_name,

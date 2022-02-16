@@ -35,12 +35,6 @@ from ray.serve.utils import (
     get_random_letters,
     logger,
     msgpack_serialize,
-    wrap_to_ray_error,
-)
-from ray.serve.utils import (
-    format_actor_name,
-    get_random_letters,
-    logger,
 )
 from ray.serve.version import DeploymentVersion, VersionedReplica
 from ray.util.placement_group import PlacementGroup
