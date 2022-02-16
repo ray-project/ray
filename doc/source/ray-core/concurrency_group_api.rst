@@ -10,11 +10,6 @@ Besides setting the max concurrency overall for an asyncio actor, Ray allows met
 Defining Concurrency Groups
 ---------------------------
 
-You can define concurrency groups for asyncio actors using the ``concurrency_groups`` decorator argument:
-
-You can define concurrency groups for asyncio actors in Python and for concurrent
-actors in Java.
-
 This defines two concurrency groups, "io" with max concurrency = 2 and
 "compute" with max concurrency = 4.  The methods ``f1`` and ``f2`` are
 placed in the "io" group, and the methods ``f3`` and ``f4`` are placed
@@ -61,29 +56,29 @@ concurrency group, which has a default concurrency of 1000 in Python and
 
 .. tabbed:: Java
 
-    You can define concurrency groups for concurrency actors using the API ``setConcurrencyGroups()`` argument:
+    You can define concurrency groups for concurrent actors using the API ``setConcurrencyGroups()`` argument:
 
     .. code-block:: java
 
         class ConcurrentActor {
             public long f1() {
-            return Thread.currentThread().getId();
+                return Thread.currentThread().getId();
             }
 
             public long f2() {
-            return Thread.currentThread().getId();
+                return Thread.currentThread().getId();
             }
 
             public long f3(int a, int b) {
-            return Thread.currentThread().getId();
+                return Thread.currentThread().getId();
             }
 
             public long f4() {
-            return Thread.currentThread().getId();
+                return Thread.currentThread().getId();
             }
 
             public long f5() {
-            return Thread.currentThread().getId();
+                return Thread.currentThread().getId();
             }
         }
 
