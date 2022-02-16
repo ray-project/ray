@@ -1,4 +1,3 @@
-import asyncio
 import os
 import sys
 import json
@@ -9,13 +8,13 @@ import shutil
 from filelock import FileLock
 from typing import Optional, List, Dict, Tuple
 
+from ray._private.async_compat import asynccontextmanager, get_running_loop
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.utils import RuntimeEnv, check_output_cmd
 from ray._private.utils import (
     get_directory_size_bytes,
     try_to_create_directory,
-    asynccontextmanager,
 )
 
 default_logger = logging.getLogger(__name__)
@@ -213,7 +212,7 @@ class PipProcessor:
                     file.write(line + "\n")
 
         # Avoid blocking the event loop.
-        loop = asyncio.get_running_loop()
+        loop = get_running_loop()
         await loop.run_in_executor(None, _gen_requirements_txt)
 
         pip_install_cmd = [
@@ -316,7 +315,7 @@ class PipManager:
             pip_processor = PipProcessor(target_dir, runtime_env, logger)
             await pip_processor.run()
 
-        loop = asyncio.get_running_loop()
+        loop = get_running_loop()
         return await loop.run_in_executor(None, get_directory_size_bytes, target_dir)
 
     def modify_context(
