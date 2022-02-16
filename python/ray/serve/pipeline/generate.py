@@ -1,5 +1,6 @@
 from typing import Any, Dict, List
 import uuid
+import threading
 
 from ray.experimental.dag import (
     DAGNode,
@@ -12,12 +13,37 @@ from ray import serve
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
 
+
+class DeploymentIDGenerator(object):
+    """
+    Generate unique suffix for each given deployment_name requested for id.
+    By default uses deployment_name for the very first time, then append
+    monotonic increasing id to it.
+    """
+    __singleton_lock = threading.Lock()
+    __shared_state = dict()
+
+    @classmethod
+    def get_deployment_id(cls, deployment_name: str):
+        with cls.__singleton_lock:
+            if deployment_name not in cls.__shared_state:
+                cls.__shared_state[deployment_name] = 0
+                return deployment_name
+            else:
+                suffix_num = cls.__shared_state[deployment_name] + 1
+                cls.__shared_state[deployment_name] = suffix_num
+
+                return f"{deployment_name}_{suffix_num}"
+
+
+
 def transform_ray_dag_to_serve_dag(dag_node):
     if isinstance(dag_node, ClassNode):
         deployment_name = (
             dag_node.get_options().get("name", None)
             or dag_node._body.__name__
         )
+        deployment_name = DeploymentIDGenerator.get_deployment_id(deployment_name)
         # Clean up keys with default value
         ray_actor_options = {
             k: v for k, v in dag_node.get_options().items() if v
@@ -54,7 +80,7 @@ def transform_ray_dag_to_serve_dag(dag_node):
             dag_node.get_args(),
             dag_node.get_kwargs(),
             ray_actor_options,
-            other_args_to_resolve=None,
+            other_args_to_resolve={},
         )
         # deployments.append(new_deployment)
 

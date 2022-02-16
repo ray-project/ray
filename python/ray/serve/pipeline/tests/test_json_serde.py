@@ -172,6 +172,72 @@ RayHandleLike = TypeVar("RayHandleLike")
 
 
 def test_nested_deployment_node_json_serde(serve_instance):
+    # Ray DAG
+    """
+    (FunctionNode)(
+        body=ray.serve.pipeline.tests.test_modules.combine
+        args=[
+            (ClassMethodNode)(
+                body=ray.serve.pipeline.tests.test_modules.Model.forward()
+                args=[
+                    (InputNode)(
+                        body=__InputNode__
+                        args=[]
+                        kwargs={}
+                        options={}
+                        other_args_to_resolve={}
+                    )
+                ]
+                kwargs={}
+                options={}
+                other_args_to_resolve={
+                    parent_class_node:
+                        (ClassNode)(
+                            body=ray.serve.pipeline.tests.test_modules.Model
+                            args=[
+                                2,
+                            ]
+                            kwargs={}
+                            options={}
+                            other_args_to_resolve={}
+                        )
+                    prev_class_method_call: None
+                }
+            )
+            (ClassMethodNode)(
+                body=ray.serve.pipeline.tests.test_modules.Model.forward()
+                args=[
+                    (InputNode)(
+                        body=__InputNode__
+                        args=[]
+                        kwargs={}
+                        options={}
+                        other_args_to_resolve={}
+                    )
+                ]
+                kwargs={}
+                options={}
+                other_args_to_resolve={
+                    parent_class_node:
+                        (ClassNode)(
+                            body=ray.serve.pipeline.tests.test_modules.Model
+                            args=[
+                                3,
+                            ]
+                            kwargs={}
+                            options={}
+                            other_args_to_resolve={}
+                        )
+                    prev_class_method_call: None
+                }
+            )
+        ]
+        kwargs={}
+        options={}
+        other_args_to_resolve={}
+    )
+    """
+    # Transformed serve dag
     """
     (FunctionNode)(
         body=ray.serve.pipeline.tests.test_modules.combine
@@ -231,8 +297,15 @@ def test_nested_deployment_node_json_serde(serve_instance):
     )
     original_deployments = extract_deployments_from_serve_dag(original_serve_root_dag)
     deserialized_deployments = extract_deployments_from_serve_dag(deserialized_serve_root_dag_node)
-    print("a")
+    print(f"original_deployments: {original_deployments}")
+    print(f"deserialized_deployments: {deserialized_deployments}")
+    for model in original_deployments.values():
+        model.deploy()
 
+    print(ray.get(ray_dag.execute(1))) # == 5
+    print(ray.get(original_serve_root_dag.execute(1))) # == 5
+    print(ray.get(deserialized_serve_root_dag_node.execute(1))) # == 5
+    print("1")
 
 # def test_simple_deployment_method_node_json_serde(shared_ray_instance):
 #     """ """

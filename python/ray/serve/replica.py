@@ -123,8 +123,6 @@ def create_replica_wrapper(
                     # This allows deployments to define an async __init__
                     # method (required for FastAPI).
                     _callable = deployment_def.__new__(deployment_def)
-                    import ipdb
-                    ipdb.set_trace()
                     await sync_to_async(_callable.__init__)(*init_args, **init_kwargs)
 
                 # Setting the context again to update the servable_object.
