@@ -117,6 +117,10 @@ class Dataset(Generic[T]):
         self._stats.dataset_uuid = self._uuid
         assert isinstance(self._blocks, BlockList), self._blocks
 
+    @staticmethod
+    def copy(dataset: "Dataset[T]") -> "Dataset[T]":
+        return Dataset(dataset._blocks, dataset._epoch, dataset._stats)
+
     def map(
         self,
         fn: Union[CallableClass, Callable[[T], U]],
@@ -2443,9 +2447,15 @@ Dict[str, List[str]]]): The names of the columns
             def __next__(self) -> "Dataset[T]":
                 if times and self._i >= times:
                     raise StopIteration
-                self._ds._set_epoch(self._i)
+                i = self._i
                 self._i += 1
-                return lambda: self._ds.force_reads()
+
+                def _next():
+                    ds = Dataset.copy(self._ds)
+                    ds._set_epoch(i)
+                    return ds.force_reads()
+
+                return _next
 
         class Iterable:
             def __init__(self, ds: "Dataset[T]"):

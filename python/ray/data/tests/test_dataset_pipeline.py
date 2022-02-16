@@ -37,6 +37,43 @@ def test_incremental_take(shutdown_only):
     assert pipe.take(1) == [0]
 
 
+def test_pipeline_is_parallel(shutdown_only):
+    ray.init(num_cpus=4)
+    ds = ray.data.range(10)
+
+    @ray.remote(num_cpus=0)
+    class ParallelismTracker:
+        def __init__(self):
+            self.in_progress = 0
+            self.max_in_progress = 0
+
+        def inc(self):
+            self.in_progress += 1
+            if self.in_progress > self.max_in_progress:
+                self.max_in_progress = self.in_progress
+
+        def dec(self):
+            self.in_progress = 0
+
+        def get_max(self):
+            return self.max_in_progress
+
+    tracker = ParallelismTracker.remote()
+
+    def sleep(x):
+        ray.get(tracker.inc.remote())
+        time.sleep(0.1)
+        ray.get(tracker.dec.remote())
+        return x
+
+    pipe = ds.window(blocks_per_window=1)
+    for _ in range(4):
+        pipe = pipe.map(sleep)
+    for i, v in enumerate(pipe.iter_rows()):
+        print(i, v)
+    assert ray.get(tracker.get_max.remote()) > 1
+
+
 def test_epoch(ray_start_regular_shared):
     # Test dataset repeat.
     pipe = ray.data.range(5).map(lambda x: x * 2).repeat(3).map(lambda x: x * 2)
@@ -100,43 +137,6 @@ def test_basic_pipeline(ray_start_regular_shared):
     assert pipe.count() == 100
     pipe = ds.repeat(10)
     assert pipe.sum() == 450
-
-
-def test_pipeline_is_parallel(shutdown_only):
-    ray.init(num_cpus=4)
-    ds = ray.data.range(10)
-
-    @ray.remote(num_cpus=0)
-    class ParallelismTracker:
-        def __init__(self):
-            self.in_progress = 0
-            self.max_in_progress = 0
-
-        def inc(self):
-            self.in_progress += 1
-            if self.in_progress > self.max_in_progress:
-                self.max_in_progress = self.in_progress
-
-        def dec(self):
-            self.in_progress = 0
-
-        def get_max(self):
-            return self.max_in_progress
-
-    tracker = ParallelismTracker.remote()
-
-    def sleep(x):
-        ray.get(tracker.inc.remote())
-        time.sleep(0.1)
-        ray.get(tracker.dec.remote())
-        return x
-
-    pipe = ds.window(blocks_per_window=1)
-    for _ in range(4):
-        pipe = pipe.map(sleep)
-    for i, v in enumerate(pipe.iter_rows()):
-        print(i, v)
-    assert ray.get(tracker.get_max.remote()) > 1
 
 
 def test_window(ray_start_regular_shared):

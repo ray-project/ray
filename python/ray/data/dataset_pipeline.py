@@ -389,7 +389,7 @@ class DatasetPipeline(Generic[T]):
                             self._max_i = float("inf")
                 # Going through a repeat of the pipeline.
                 if self._i < self._max_i:
-                    res = self._results[self._i % len(self._results)]
+                    res = Dataset.copy(self._results[self._i % len(self._results)])
                     res._set_epoch(1 + self._i // len(self._results))
                     self._i += 1
                     return lambda: res
