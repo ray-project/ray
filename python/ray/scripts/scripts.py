@@ -20,6 +20,7 @@ from ray._private.gcs_utils import use_gcs_for_bootstrap
 import ray._private.services as services
 import ray.ray_constants as ray_constants
 import ray._private.utils
+from ray.util.annotations import PublicAPI
 from ray.autoscaler._private.commands import (
     attach_cluster,
     exec_cluster,
@@ -100,6 +101,7 @@ def cli(logging_level, logging_format):
     default=False,
     help="Disable the local cluster config cache.",
 )
+@PublicAPI
 def dashboard(cluster_config_file, cluster_name, port, remote_port, no_config_cache):
     """Port-forward a Ray cluster's dashboard to the local machine."""
     # Sleeping in a loop is preferable to `sleep infinity` because the latter
@@ -500,6 +502,7 @@ def debug(address):
     "safe to activate if the node is behind a firewall.",
 )
 @add_click_logging_options
+@PublicAPI
 def start(
     node_ip_address,
     address,
@@ -930,6 +933,7 @@ def start(
     ),
 )
 @add_click_logging_options
+@PublicAPI
 def stop(force, grace_period):
     """Stop Ray processes manually on the local machine."""
 
@@ -1126,6 +1130,7 @@ def stop(force, grace_period):
     ),
 )
 @add_click_logging_options
+@PublicAPI
 def up(
     cluster_config_file,
     min_workers,
@@ -1197,6 +1202,7 @@ def up(
     help="Retain the minimal amount of workers specified in the config.",
 )
 @add_click_logging_options
+@PublicAPI
 def down(cluster_config_file, yes, workers_only, cluster_name, keep_min_workers):
     """Tear down a Ray cluster."""
     teardown_cluster(
@@ -1280,6 +1286,7 @@ def monitor(cluster_config_file, lines, cluster_name):
     help="Port to forward. Use this multiple times to forward multiple ports.",
 )
 @add_click_logging_options
+@PublicAPI
 def attach(
     cluster_config_file,
     start,
@@ -1406,6 +1413,7 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
 )
 @click.argument("script_args", nargs=-1)
 @add_click_logging_options
+@PublicAPI
 def submit(
     cluster_config_file,
     screen,
@@ -1753,6 +1761,7 @@ def memory(
     default=ray_constants.REDIS_DEFAULT_PASSWORD,
     help="Connect to ray with redis_password.",
 )
+@PublicAPI
 def status(address, redis_password):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address(address)
