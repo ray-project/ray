@@ -418,6 +418,8 @@ class FunctionActorManager:
                         job_id=job_id,
                     )
                 warning_sent = True
+            # Kicks off importing in case a message is missed.
+            self._worker.import_thread._do_importing()
             time.sleep(0.001)
 
     def _publish_actor_class_to_key(self, key, actor_class_info):
