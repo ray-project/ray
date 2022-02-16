@@ -671,7 +671,7 @@ def test_cpu_instruction(shutdown_only):
             actor = ResourceActor.remote()
             result = actor.check_resource.remote(required_ins)
             assert not ray.get(result)
-    del os.environ[ray_constants.CPU_INSTRUCTION_SETS]
+    del os.environ[ray_constants.CPU_INSTRUCTION_SETS_REQUIRED_ENV_VAR]
 
 
 if __name__ == "__main__":
