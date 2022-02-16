@@ -198,9 +198,9 @@ NodeResources ResourceMapToNodeResources(
   return node_resources;
 }
 
-float NodeResources::CalculateCriticalResourceUtilization(bool cpu_only) const {
+float NodeResources::CalculateCriticalResourceUtilization() const {
   float highest = 0;
-  for (const auto &i : (cpu_only ? std::vector<size_t>{CPU} : std::vector<size_t>{CPU, MEM, OBJECT_STORE_MEM})) {
+  for (const auto &i : {CPU, MEM, OBJECT_STORE_MEM}) {
     if (i >= this->predefined_resources.size()) {
       continue;
     }

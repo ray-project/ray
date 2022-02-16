@@ -74,7 +74,8 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // tasks from being scheduled.
       const std::shared_ptr<internal::Work> &work = *work_it;
       RayTask task = work->task;
-      RAY_LOG(INFO) << "Scheduling pending task " << task.GetTaskSpecification().TaskId();
+      RAY_LOG(DEBUG) << "Scheduling pending task "
+                     << task.GetTaskSpecification().TaskId();
       std::string node_id_string =
           GetBestSchedulableNode(*work,
                                  /*requires_object_store_memory=*/false,
@@ -484,7 +485,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
 bool ClusterTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
                                       bool &is_infeasible) {
-  RAY_LOG(INFO) << "TrySpillback";
   std::string node_id_string =
       GetBestSchedulableNode(*work,
                              /*requires_object_store_memory=*/false,
@@ -1328,8 +1328,8 @@ void ClusterTaskManager::SpillWaitingTasks() {
     // feasible node, even if we have enough resources available locally for
     // placement.
     bool force_spillback = task_dependency_manager_.TaskDependenciesBlocked(task_id);
-    RAY_LOG(INFO) << "Attempting to spill back waiting task " << task_id
-                  << " to remote node. Force spillback? " << force_spillback;
+    RAY_LOG(DEBUG) << "Attempting to spill back waiting task " << task_id
+                   << " to remote node. Force spillback? " << force_spillback;
     bool is_infeasible;
     // TODO(swang): The policy currently does not account for the amount of
     // object store memory availability. Ideally, we should pick the node with
@@ -1429,7 +1429,6 @@ std::string ClusterTaskManager::GetBestSchedulableNode(const internal::Work &wor
     return self_node_id_.Binary();
   }
 
-  RAY_LOG(INFO) << "GetBestSchedulableNode " << work.task.GetTaskSpecification().TaskId();
   // This argument is used to set violation, which is an unsupported feature now.
   int64_t _unused;
   return cluster_resource_scheduler_->GetBestSchedulableNode(

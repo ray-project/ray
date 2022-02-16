@@ -40,6 +40,13 @@ int64_t SchedulingPolicy::HybridPolicyWithFilter(
     const ResourceRequest &resource_request, float spread_threshold, bool force_spillback,
     bool require_available, std::function<bool(int64_t)> is_node_available,
     NodeFilter node_filter) {
+  // Step 1: Generate the traversal order. We guarantee that the first node is local, to
+  // encourage local scheduling. The rest of the traversal order should be globally
+  // consistent, to encourage using "warm" workers.
+  std::vector<int64_t> round;
+  round.reserve(nodes_.size());
+  const auto local_it = nodes_.find(local_node_id_);
+  RAY_CHECK(local_it != nodes_.end());
   auto predicate = [node_filter, &is_node_available](
                        int64_t node_id, const NodeResources &node_resources) {
     if (!is_node_available(node_id)) {
@@ -56,37 +63,38 @@ int64_t SchedulingPolicy::HybridPolicyWithFilter(
     return !has_gpu;
   };
 
-  // Step 1: Generate the traversal order. We guarantee that the first node is local, to
-  // encourage local scheduling. The rest of the traversal order should be globally
-  // consistent, to encourage using "warm" workers.
-  std::vector<int64_t> round;
-  round.reserve(nodes_.size());
-  round.emplace_back(local_node_id_);
+  const auto &local_node_view = local_it->second.GetLocalView();
+  // If we should include local node at all, make sure it is at the front of the list
+  // so that
+  // 1. It's first in traversal order.
+  // 2. It's easy to avoid sorting it.
+  if (predicate(local_node_id_, local_node_view) && !force_spillback) {
+    round.push_back(local_node_id_);
+  }
 
+  const auto start_index = round.size();
   for (const auto &pair : nodes_) {
-    if (pair.first != local_node_id_) {
-      round.emplace_back(pair.first);
+    if (pair.first != local_node_id_ &&
+        predicate(pair.first, pair.second.GetLocalView())) {
+      round.push_back(pair.first);
     }
   }
-  // Sort all the nodes, making sure that the local node stays in front.
-  std::sort(round.begin() + 1, round.end());
+  // Sort all the nodes, making sure that if we added the local node in front, it stays in
+  // place.
+  std::sort(round.begin() + start_index, round.end());
 
   int64_t best_node_id = -1;
   float best_utilization_score = INFINITY;
   bool best_is_available = false;
 
   // Step 2: Perform the round robin.
-  size_t round_index = spread_threshold == 0 ? spread_scheduling_next_index_ : 0;
-  for (size_t i = 0; i < round.size(); ++i, ++round_index) {
-    const auto &node_id = round[round_index % round.size()];
+  auto round_it = round.begin();
+  for (; round_it != round.end(); round_it++) {
+    const auto &node_id = *round_it;
     const auto &it = nodes_.find(node_id);
     RAY_CHECK(it != nodes_.end());
     const auto &node = it->second;
-    if (node_id == local_node_id_ && force_spillback) {
-      continue;
-    }
-    if (!predicate(node_id, node.GetLocalView()) ||
-        !node.GetLocalView().IsFeasible(resource_request)) {
+    if (!node.GetLocalView().IsFeasible(resource_request)) {
       continue;
     }
 
@@ -101,14 +109,13 @@ int64_t SchedulingPolicy::HybridPolicyWithFilter(
     bool is_available = node.GetLocalView().IsAvailable(resource_request,
                                                         ignore_pull_manager_at_capacity);
     float critical_resource_utilization =
-        node.GetLocalView().CalculateCriticalResourceUtilization(spread_threshold == 0);
-    RAY_LOG(INFO) << "Node " << node_id << " is "
-                  << (is_available ? "available" : "not available") << " for request "
-                  << resource_request.DebugString()
-                  << " with critical resource utilization "
-                  << critical_resource_utilization << " based on local view "
-                  << node.GetLocalView().DebugString(StringIdMap()) << " "
-                  << spread_threshold;
+        node.GetLocalView().CalculateCriticalResourceUtilization();
+    RAY_LOG(DEBUG) << "Node " << node_id << " is "
+                   << (is_available ? "available" : "not available") << " for request "
+                   << resource_request.DebugString()
+                   << " with critical resource utilization "
+                   << critical_resource_utilization << " based on local view "
+                   << node.GetLocalView().DebugString(StringIdMap());
     if (critical_resource_utilization < spread_threshold) {
       critical_resource_utilization = 0;
     }
@@ -131,9 +138,6 @@ int64_t SchedulingPolicy::HybridPolicyWithFilter(
     }
 
     if (update_best_node) {
-      if (spread_threshold == 0) {
-        spread_scheduling_next_index_ = ((round_index + 1) % round.size());
-      }
       best_node_id = node_id;
       best_utilization_score = critical_resource_utilization;
       best_is_available = is_available;

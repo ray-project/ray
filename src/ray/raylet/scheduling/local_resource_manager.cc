@@ -524,7 +524,6 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
       resources_data.set_resources_available_changed(true);
       (*resources_data.mutable_resources_available())[label] =
           capacity.available.Double();
-      RAY_LOG(INFO) << "jjyao resource available change " << label << " " << capacity.available.Double();
     }
     if (capacity.total != last_capacity.total) {
       (*resources_data.mutable_resources_total())[label] = capacity.total.Double();

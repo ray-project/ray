@@ -14,10 +14,6 @@ from ray.data.block import (
 from ray.data.context import DatasetContext
 from ray.data.impl.block_list import BlockList
 
-import logging
-
-logger = logging.getLogger(__name__)
-
 
 class LazyBlockList(BlockList):
     """A BlockList that submits tasks lazily on-demand.
@@ -160,7 +156,6 @@ class LazyBlockList(BlockList):
                 if j >= len(self._block_partitions):
                     break
                 if not self._block_partitions[j]:
-                    logger.info(f"Read block {j} {self._num_blocks}")
                     self._block_partitions[j] = self._calls[j]()
             assert self._block_partitions[i], self._block_partitions
         return self._block_partitions[i]
