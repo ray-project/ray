@@ -17,6 +17,7 @@ kind --help
 # https://github.com/kubernetes-sigs/kind/issues/273#issuecomment-622180144
 #export KIND_EXPERIMENTAL_DOCKER_NETWORK=dind-network
 time kind create cluster --wait 120s --config ./ci/travis/kind.config.yaml
+shopt -s expand_aliases
 alias kubectl="docker run --network kind bitnami/kubectl:latest"
 kubectl cluster-info --context kind-kind
 kubectl get nodes
