@@ -11,10 +11,8 @@ _runtime_env = None
 def get_current_runtime_env():
     """Get the runtime env of the current job/worker.
 
-    If you use this API in driver or ray client, the job level runtime env will be
-    returned.
-    If you use this API in workers/actors, the worker level runtime env will be
-    returned.
+    If this API is called in driver or ray client, returns the job level runtime env.
+    If this API is called in workers/actors, returns the worker level runtime env.
 
     Returns:
         A dict of the current runtime env

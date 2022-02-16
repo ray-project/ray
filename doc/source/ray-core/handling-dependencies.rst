@@ -351,7 +351,7 @@ The runtime environment is inheritable, so it will apply to all tasks/actors wit
 
 If an actor or task specifies a new ``runtime_env``, it will override the parent’s ``runtime_env`` (i.e., the parent actor/task's ``runtime_env``, or the job's ``runtime_env`` if there is no parent actor or task).
 
-To merge from the parent runtime env in some specific cases, you can use the API ray.get_current_runtime_env() to get the parent runtime env and modify it by yourself. Example:
+To merge from the parent runtime env in some specific cases, you can use the API :ref:`ray.get_current_runtime_env() <runtime-env-apis>` to get the parent runtime env and modify it by yourself. Example:
 
 .. code-block:: python
 
