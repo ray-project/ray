@@ -581,19 +581,6 @@ def runtime_env_disable_URI_cache():
         yield
 
 
-@pytest.fixture
-def set_env_var(request):
-    param = getattr(request, "param", {})
-    keys = []
-
-    for k, v in param.items():
-        os.environ[k] = v
-        keys.append(k)
-    yield
-    for k in keys:
-        del os.environ[k]
-
-
 # Use to create virtualenv that clone from current python env.
 # The difference between this fixture and `pytest_virtual.virtual` is that
 # `pytest_virtual.virtual` will not inherit current python env's site-package.
