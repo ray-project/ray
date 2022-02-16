@@ -285,7 +285,8 @@ class _SyncSubscriber(_SubscriberBase):
                     if self._close.is_set():
                         fut.cancel()
                         return
-                    # GRPC has not replied, continue waiting.
+                    # GRPC has not replied, sleep then continue waiting.
+                    time.sleep(0.01)
                     continue
                 except grpc.RpcError as e:
                     if self._should_terminate_polling(e):

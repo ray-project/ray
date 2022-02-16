@@ -456,7 +456,7 @@ RAY_CONFIG(int64_t, max_object_report_batch_size, 2000)
 
 /// The time where the subscriber connection is timed out in milliseconds.
 /// This is for the pubsub module.
-RAY_CONFIG(uint64_t, subscriber_timeout_ms, 300000)
+RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
 
 // This is the minimum time an actor will remain in the actor table before
 // being garbage collected when a job finishes
