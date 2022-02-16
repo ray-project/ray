@@ -4,9 +4,15 @@ public interface RayServeReplica {
 
   Object handleRequest(Object requestMetadata, Object requestArgs);
 
-  Object reconfigure(Object userConfig);
+  default Object reconfigure(Object userConfig) {
+    return new DeploymentVersion(null, userConfig);
+  }
 
-  boolean checkHealth();
+  default boolean checkHealth() {
+    return true;
+  }
 
-  boolean prepareForShutdown();
+  default boolean prepareForShutdown() {
+    return true;
+  }
 }

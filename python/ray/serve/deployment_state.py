@@ -29,8 +29,14 @@ from ray.serve.constants import (
 )
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
-from ray.serve.utils import (format_actor_name, get_random_letters, logger,
-                             msgpack_serialize, wrap_to_ray_error)
+from ray.serve.utils import (
+    JavaActorHandleProxy,
+    format_actor_name,
+    get_random_letters,
+    logger,
+    msgpack_serialize,
+    wrap_to_ray_error,
+)
 from ray.serve.utils import (
     format_actor_name,
     get_random_letters,
@@ -157,6 +163,10 @@ class ActorReplicaWrapper:
             except ValueError:
                 self._actor_handle = None
 
+        if self._is_cross_language:
+            assert isinstance(self._actor_handle, JavaActorHandleProxy)
+            return self._actor_handle.handle
+
         return self._actor_handle
 
     @property
@@ -233,15 +243,21 @@ class ActorReplicaWrapper:
         )
 
         actor_def = deployment_info.actor_def
-        init_args = (self.deployment_name, self.replica_tag,
-                     deployment_info.replica_config.init_args,
-                     deployment_info.replica_config.init_kwargs,
-                     deployment_info.deployment_config.to_proto_bytes(),
-                     version, self._controller_name, self._controller_namespace, self._detached)
+        init_args = (
+            self.deployment_name,
+            self.replica_tag,
+            deployment_info.replica_config.init_args,
+            deployment_info.replica_config.init_kwargs,
+            deployment_info.deployment_config.to_proto_bytes(),
+            version,
+            self._controller_name,
+            self._controller_namespace,
+            self._detached,
+        )
+        # TODO(simon): unify the constructor arguments across language
         if deployment_info.deployment_config.deployment_language == "JAVA":
             self._is_cross_language = True
-            actor_def = ray.java_actor_class(
-                "io.ray.serve.RayServeWrappedReplica")
+            actor_def = ray.java_actor_class("io.ray.serve.RayServeWrappedReplica")
             init_args = (
                 # String deploymentName,
                 self.deployment_name,
@@ -265,13 +281,14 @@ class ActorReplicaWrapper:
             lifetime="detached" if self._detached else None,
             placement_group=self._placement_group,
             placement_group_capture_child_tasks=False,
-            **deployment_info.replica_config.ray_actor_options).remote(
-                *init_args)
+            **deployment_info.replica_config.ray_actor_options,
+        ).remote(*init_args)
 
+        # Perform auto method name translation for java handles.
         if self._is_cross_language:
-            self._allocated_obj_ref = self._actor_handle.isAllocated.remote()
-        else:
-            self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
+            self._actor_handle = JavaActorHandleProxy(self._actor_handle)
+
+        self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
             deployment_info.deployment_config.user_config
         )
@@ -347,8 +364,10 @@ class ActorReplicaWrapper:
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
         else:
             try:
+                # TODO(simon): fully implement reconfigure for Java replicas.
                 if self._is_cross_language:
                     return ReplicaStartupStatus.SUCCEEDED, None
+
                 deployment_config, version = ray.get(self._ready_obj_ref)
                 self._max_concurrent_queries = deployment_config.max_concurrent_queries
                 self._graceful_shutdown_timeout_s = (
@@ -377,8 +396,10 @@ class ActorReplicaWrapper:
         """
         try:
             handle = ray.get_actor(self._actor_name)
-            self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote(
-            ) if not self._is_cross_language else handle.prepareForShutdown.remote(
+            self._graceful_shutdown_ref = (
+                handle.prepare_for_shutdown.remote()
+                if not self._is_cross_language
+                else handle.prepareForShutdown.remote()
             )
         except ValueError:
             pass
@@ -412,9 +433,6 @@ class ActorReplicaWrapper:
               before the timeout).
             - ACTOR_CRASHED if the underlying actor crashed.
         """
-        if self._is_cross_language:
-            return True
-
         if self._health_check_ref is None:
             # There is no outstanding health check.
             response = ReplicaHealthCheckResponse.NONE

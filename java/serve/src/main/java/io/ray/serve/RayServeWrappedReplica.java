@@ -40,7 +40,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
     // Parse init args.
     Object[] initArgs = null;
     try {
-      initArgs = parseInitArgs(initArgsbytes, deploymentConfig);
+      initArgs = parseInitArgs(initArgsbytes);
     } catch (IOException e) {
       String errMsg =
           LogUtil.format(
@@ -63,18 +63,6 @@ public class RayServeWrappedReplica implements RayServeReplica {
         controllerName,
         null);
   }
-
-  //  Caused by: java.lang.RuntimeException: RayFunction io.ray.serve.RayServeWrappedReplica.<init>
-  // is overloaded, the signature can't be empty.
-  // (ServeController pid=70252)     at
-  // io.ray.runtime.functionmanager.FunctionManager$JobFunctionTable.getFunction(FunctionManager.java:183)
-  //  public RayServeWrappedReplica(
-  //      DeploymentInfo deploymentInfo,
-  //      String replicaTag,
-  //      String controllerName,
-  //      RayServeConfig rayServeConfig) {
-  //    init(deploymentInfo, replicaTag, controllerName, rayServeConfig);
-  //  }
 
   @SuppressWarnings("rawtypes")
   private void init(
@@ -136,7 +124,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
             });
   }
 
-  private Object[] parseInitArgs(byte[] initArgsbytes, DeploymentConfig deploymentConfig)
+  private Object[] parseInitArgs(byte[] initArgsbytes)
       throws IOException {
 
     if (initArgsbytes == null || initArgsbytes.length == 0) {

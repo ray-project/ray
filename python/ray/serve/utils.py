@@ -272,9 +272,10 @@ class JavaActorHandleProxy:
 
     def __init__(self, handle: ActorHandle):
         self.handle = handle
+        self._available_attrs = set(dir(self.handle))
 
     def __getattr__(self, key: str):
-        if hasattr(key):
+        if key in self._available_attrs:
             camel_case_key = key
         else:
             components = key.split("_")
