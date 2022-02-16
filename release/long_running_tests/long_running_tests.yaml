@@ -87,8 +87,8 @@
     compute_template: tpl_cpu_1.yaml
 
   run:
-    timeout: 86400
-    script: python workloads/many_logs.py --total-num-tasks=4 --log-lines-per-task=134217728 --log-line-size=512 2> logs
+    timeout: 3600
+    script: python workloads/many_logs.py --total-num-tasks=64 --log-lines-per-task=134217728 --log-line-size=512 2> logs
     long_running: True
   stable: false
 
