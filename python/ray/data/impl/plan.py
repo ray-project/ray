@@ -213,6 +213,7 @@ class ExecutionPlan:
 
 class Stage:
     """Represents a Dataset transform stage (e.g., map or shuffle)."""
+
     def __init__(self, name: str, num_blocks: Optional[int]):
         self.name = name
         self.num_blocks = num_blocks
@@ -234,6 +235,7 @@ class Stage:
 
 class OneToOneStage(Stage):
     """A stage that transforms blocks independently (e.g., map or filter)."""
+
     def __init__(
         self,
         name: str,
@@ -280,6 +282,7 @@ class OneToOneStage(Stage):
 
 class AllToAllStage(Stage):
     """A stage that transforms blocks holistically (e.g., shuffle)."""
+
     def __init__(
         self,
         name: str,

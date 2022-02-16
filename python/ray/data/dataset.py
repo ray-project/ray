@@ -2498,6 +2498,8 @@ Dict[str, List[str]]]): The names of the columns
         """
         from ray.data.dataset_pipeline import DatasetPipeline
 
+        # If optimizations are enabled, rewrite the read stage into a OneToOneStage
+        # to enable fusion with downstream map stages.
         ctx = DatasetContext.get_current()
         if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
             blocks, read_stage = self._plan._rewrite_read_stage()
@@ -2598,6 +2600,8 @@ Dict[str, List[str]]]): The names of the columns
         """
         from ray.data.dataset_pipeline import DatasetPipeline
 
+        # If optimizations are enabled, rewrite the read stage into a OneToOneStage
+        # to enable fusion with downstream map stages.
         ctx = DatasetContext.get_current()
         if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
             blocks, read_stage = self._plan._rewrite_read_stage()
