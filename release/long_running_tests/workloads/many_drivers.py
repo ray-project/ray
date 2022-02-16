@@ -93,8 +93,10 @@ previous_time = start_time
 
 parser = argparse.ArgumentParser(prog="Many Drivers long running tests")
 parser.add_argument(
-    "--iteration-num", type=int, help="How many iterations to run", required=False
-)
+    "--iteration-num",
+    type=int,
+    help="How many iterations to run",
+    required=False)
 parser.add_argument(
     "--smoke-test",
     action="store_true",

@@ -465,13 +465,13 @@ class S3SyncSessionController(SessionController):
         global_command_runner.wait_command(cid)
 
     def push(
-            self,
-            session_name: str,
-            source: Optional[str],
-            target: Optional[str],
-            config: Optional[str],
-            all_nodes: bool,
-            no_warning: bool = False,
+        self,
+        session_name: str,
+        source: Optional[str],
+        target: Optional[str],
+        config: Optional[str],
+        all_nodes: bool,
+        no_warning: bool = False,
     ):
         if source is None and target is None:
             self._push_local_dir(session_name)
@@ -1118,7 +1118,8 @@ def create_and_wait_for_session(
     # Trigger session start
     logger.info(f"Starting session {session_name} ({session_id})")
     session_url = anyscale_session_url(
-        project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"], session_id=session_id)
+        project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"], session_id=session_id
+    )
     logger.info(f"URL: {session_url}")
     logger.info(f"Link to session: {_format_link(session_url)}")
 
@@ -1175,7 +1176,9 @@ def run_session_command(sdk: AnyscaleSDK,
 
     logger.info(f"Running command in session {session_id}: \n" f"{full_cmd}")
     session_url = anyscale_session_url(
-        project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"], session_id=session_id)
+        project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"], session_id=session_id
+        
+    )
     logger.info(f"URL: {session_url}")
     logger.info(f"Link to session: {_format_link(session_url)}")
     result_queue.put(State(state_str, time.time(), None))
