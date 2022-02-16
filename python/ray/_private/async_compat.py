@@ -12,6 +12,14 @@ except ImportError:
     uvloop = None
 
 
+try:
+    # This function has been added in Python 3.7. Prior to Python 3.7,
+    # the low-level asyncio.ensure_future() function can be used instead.
+    from asyncio import create_task  # noqa: F401
+except AttributeError:
+    from asyncio import ensure_future as create_task  # noqa: F401
+
+
 if sys.version_info[:2] >= (3, 7):
     from asyncio import get_running_loop  # noqa: F401
 else:

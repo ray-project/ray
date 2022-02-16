@@ -7,7 +7,7 @@ import shutil
 
 from typing import Optional, List, Dict, Tuple
 
-from ray._private.async_compat import asynccontextmanager, get_running_loop
+from ray._private.async_compat import asynccontextmanager, create_task, get_running_loop
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.utils import RuntimeEnv, check_output_cmd
@@ -251,6 +251,7 @@ class PipProcessor:
 class PipManager:
     def __init__(self, resources_dir: str):
         self._pip_resources_dir = os.path.join(resources_dir, "pip")
+        self._creating_task = {}
         try_to_create_directory(self._pip_resources_dir)
 
     def _get_path_from_hash(self, hash: str) -> str:
@@ -281,6 +282,11 @@ class PipManager:
                 f"pip. Received protocol {protocol}, URI {uri}"
             )
 
+        # Cancel running create task.
+        task = self._creating_task.pop(hash, None)
+        if task is not None:
+            task.cancel()
+
         pip_env_path = self._get_path_from_hash(hash)
         local_dir_size = get_directory_size_bytes(pip_env_path)
         try:
@@ -304,11 +310,18 @@ class PipManager:
         protocol, hash = parse_uri(uri)
         target_dir = self._get_path_from_hash(hash)
 
-        pip_processor = PipProcessor(target_dir, runtime_env, logger)
-        await pip_processor.run()
+        async def _create_for_hash():
+            pip_processor = PipProcessor(target_dir, runtime_env, logger)
+            await pip_processor.run()
 
-        loop = get_running_loop()
-        return await loop.run_in_executor(None, get_directory_size_bytes, target_dir)
+            loop = get_running_loop()
+            return await loop.run_in_executor(
+                None, get_directory_size_bytes, target_dir
+            )
+
+        self._creating_task[hash] = task = create_task(_create_for_hash())
+        task.add_done_callback(lambda _: self._creating_task.pop(hash, None))
+        return await task
 
     def modify_context(
         self,
