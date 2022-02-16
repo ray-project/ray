@@ -18,7 +18,7 @@ from ray import tune
 from ray.rllib.agents import slateq
 from ray.rllib.agents import dqn
 from ray.rllib.agents.slateq.slateq import ALL_SLATEQ_STRATEGIES
-from ray.rllib.examples.env.recsim_recommender_system_envs import (
+from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
     InterestEvolutionRecSimEnv,
     InterestExplorationRecSimEnv,
     LongTermSatisfactionRecSimEnv,

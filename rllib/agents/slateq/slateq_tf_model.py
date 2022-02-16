@@ -65,9 +65,7 @@ class SlateQTFModel(TFModelV2):
 
         self.q_value_head = tf.keras.Model([self.user_in, self.docs_in], q_outs)
 
-    def get_q_values(
-        self, user: TensorType, docs: List[TensorType]
-    ) -> TensorType:
+    def get_q_values(self, user: TensorType, docs: List[TensorType]) -> TensorType:
         """Returns Q-values, 1 for each candidate document, given user and doc tensors.
 
         Args:
