@@ -1196,6 +1196,7 @@ std::string ClusterTaskManager::GetBestSchedulableNode(const internal::Work &wor
     return self_node_id_.Binary();
   }
 
+  RAY_LOG(INFO) << "GetBestSchedulableNode " << work.task.GetTaskSpecification().TaskId();
   // This argument is used to set violation, which is an unsupported feature now.
   int64_t _unused;
   return cluster_resource_scheduler_->GetBestSchedulableNode(
