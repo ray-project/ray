@@ -13,25 +13,10 @@ from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.utils import parse_import_path
 
-
-def dagnode_to_json(dag_node: DAGNode):
-    """JSON serialization is only used and enforced in ray serve from ray core
-    API authored DAGNode(s).
-    """
-    try:
-        # Base case if DAGNode inputs are JSON serializable
-        return json.dumps(dag_node)
-    except (TypeError, OverflowError):
-
-        if not isinstance(dag_node, DAGNode):
-            # TODO: (jiaodong) Figure out a nicer way to capture deeply nested args without hacking DAGNode class implementation
-            if isinstance(dag_node, Tuple):
-                elements = []
-                for ele in dag_node:
-                    elements.append(dagnode_to_json(ele))
-                return json.dumps(tuple(elements))
-        # Post-order JSON serialization
-        else:
+class DAGNodeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, DAGNode):
+            dag_node = obj
             args = dag_node.get_args()
             kwargs = dag_node.get_kwargs()
             options = dag_node.get_options()
@@ -60,11 +45,14 @@ def dagnode_to_json(dag_node: DAGNode):
                 "type": dag_node.__class__.__name__,
                 # TODO: (jiaodong) Support runtime_env with remote working_dir
                 "import_path": import_path,
-                "args": dagnode_to_json(args),
-                "kwargs": dagnode_to_json(kwargs),
+                "args": json.dumps(args, cls=DAGNodeEncoder),
+                "kwargs": json.dumps(kwargs, cls=DAGNodeEncoder),
             })
 
             return result_dict
+        else:
+            # Let the base class default method raise the TypeError
+            return json.JSONEncoder.default(self, obj)
 
 
 def dagnode_from_json(input_json: Dict[str, Any]) -> DAGNode:
