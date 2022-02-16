@@ -13,9 +13,10 @@
 # __quick_start_begin__
 from ray import tune
 
+
 # 1. Define an objective function.
 def objective(config):
-    score = config["a"] ** 2 + config["b"]
+    score = config["a"]**2 + config["b"]
     return {"score": score}
 
 
@@ -28,7 +29,9 @@ search_space = {
 # 3. Start a Tune run and print the best result.
 analysis = tune.run(objective, config=search_space)
 print(analysis.get_best_config(metric="score", mode="min"))
+
 # __quick_start_end__
+
 
 # __ml_quick_start_begin__
 def objective(step, alpha, beta):
