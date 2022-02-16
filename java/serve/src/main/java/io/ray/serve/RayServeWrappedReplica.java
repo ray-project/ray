@@ -65,10 +65,10 @@ public class RayServeWrappedReplica implements RayServeReplica {
   }
 
   public RayServeWrappedReplica(
-    DeploymentInfo deploymentInfo,
-    String replicaTag,
-    String controllerName,
-    RayServeConfig rayServeConfig) {
+      DeploymentInfo deploymentInfo,
+      String replicaTag,
+      String controllerName,
+      RayServeConfig rayServeConfig) {
     init(deploymentInfo, replicaTag, controllerName, rayServeConfig);
   }
 

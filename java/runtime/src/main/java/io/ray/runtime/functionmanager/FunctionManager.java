@@ -233,15 +233,20 @@ public class FunctionManager {
           final boolean isDefault = e instanceof Method && ((Method) e).isDefault();
           map.put(
               ImmutablePair.of(methodName, signature), ImmutablePair.of(rayFunction, isDefault));
-          // For cross language call java function without signature
-          final Pair<String, String> emptyDescriptor = ImmutablePair.of(methodName, "");
-          /// default method is not overloaded, so we should filter it.
-          if (map.containsKey(emptyDescriptor) && !map.get(emptyDescriptor).getRight()) {
-            map.put(
-                emptyDescriptor,
-                ImmutablePair.of(null, false)); // Mark this function as overloaded.
-          } else {
-            map.put(emptyDescriptor, ImmutablePair.of(rayFunction, isDefault));
+          // For cross language call java function with signature "{length_of_arguments}" or just
+          // empty ""
+          String[] xlang_signatures = {"", String.format("%s", type.getArgumentTypes().length)};
+          for (String xlang_signature : xlang_signatures) {
+            final Pair<String, String> emptyDescriptor =
+                ImmutablePair.of(methodName, xlang_signature);
+            /// default method is not overloaded, so we should filter it.
+            if (map.containsKey(emptyDescriptor) && !map.get(emptyDescriptor).getRight()) {
+              map.put(
+                  emptyDescriptor,
+                  ImmutablePair.of(null, false)); // Mark this function as overloaded.
+            } else {
+              map.put(emptyDescriptor, ImmutablePair.of(rayFunction, isDefault));
+            }
           }
         }
       } catch (Exception e) {
