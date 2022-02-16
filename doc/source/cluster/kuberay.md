@@ -25,7 +25,6 @@ Now you can deploy the Kuberay operator using
 ```shell
 ./ray/python/ray/autoscaler/kuberay/init-config.sh
 kubectl apply -k "ray/python/ray/autoscaler/kuberay/config/default"
-kubectl apply -f "ray/python/ray/autoscaler/kuberay/kuberay-autoscaler.yaml"
 ```
 
 You can verify that the operator has been deployed using
