@@ -1301,3 +1301,9 @@ def check_version_info(cluster_metadata):
             "    Python: " + version_info[1] + "\n"
         )
         raise RuntimeError(error_message)
+
+
+def maybe_enter_context(stack, *args):
+    for arg in args:
+        if arg is not None:
+            stack.enter_context(arg)

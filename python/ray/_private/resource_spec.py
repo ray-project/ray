@@ -355,7 +355,8 @@ def _get_gpu_info_string():
             gpu_dirs = os.listdir(proc_gpus_path)
             if len(gpu_dirs) > 0:
                 gpu_info_path = f"{proc_gpus_path}/{gpu_dirs[0]}/information"
-                info_str = open(gpu_info_path).read()
+                with open(gpu_info_path) as f:
+                    info_str = f.read()
                 return info_str
     return None
 
