@@ -99,7 +99,7 @@ def test_deploy_import(ray_start_stop, tmp_working_dir, class_name):  # noqa: F8
     assert resp.text == "94", resp.text
 
 
-def test_udeploy(ray_start_stop):
+def test_deploy(ray_start_stop):
     # Deploys two valid config files and checks that the deployments work
 
     request_url = "http://localhost:8000/"
