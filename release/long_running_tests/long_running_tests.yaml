@@ -84,7 +84,7 @@
   team: core
   cluster:
     app_config: app_config.yaml
-    compute_template: tpl_cpu_1.yaml
+    compute_template: tpl_cpu_4.yaml
 
   run:
     timeout: 3600
