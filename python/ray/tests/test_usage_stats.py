@@ -37,6 +37,20 @@ def shutdown_serve():
     serve.shutdown()
 
 
+def file_exists(temp_dir: Path):
+    for path in temp_dir.iterdir():
+        if usage_constants.USAGE_STATS_FILE in str(path):
+            return True
+    return False
+
+
+def read_file(temp_dir: Path, column: str):
+    usage_stats_file = temp_dir / usage_constants.USAGE_STATS_FILE
+    with usage_stats_file.open() as f:
+        result = json.load(f)
+        return result[column]
+
+
 def test_usage_lib_cluster_metadata_generation(monkeypatch, shutdown_only):
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
@@ -48,9 +62,11 @@ def test_usage_lib_cluster_metadata_generation(monkeypatch, shutdown_only):
         cluster_metadata = ray_usage_lib.get_cluster_metadata(
             ray.experimental.internal_kv.internal_kv_get_gcs_client(), num_retries=20
         )
-        # Session id is random.
-        meta.pop("session_id")
-        cluster_metadata.pop("session_id")
+        # Remove fields that are dynamically changed.
+        assert meta.pop("session_id")
+        assert meta.pop("session_start_timestamp_ms")
+        assert cluster_metadata.pop("session_id")
+        assert cluster_metadata.pop("session_start_timestamp_ms")
         assert meta == cluster_metadata
 
         """
@@ -74,7 +90,7 @@ def test_usage_lib_cluster_metadata_generation_usage_disabled(shutdown_only):
     assert len(meta) == 2
 
 
-def test_usage_lib_report_data(monkeypatch, shutdown_only, shutdown_serve):
+def test_usage_lib_report_data(monkeypatch, shutdown_only, shutdown_serve, tmp_path):
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
         ray.init(num_cpus=0)
@@ -90,18 +106,11 @@ def test_usage_lib_report_data(monkeypatch, shutdown_only, shutdown_serve):
         """
         Make sure writing to a file works as expected
         """
-        global_node = ray.worker._global_node
-        temp_dir = global_node.get_temp_dir_path()
         client = ray_usage_lib.UsageReportClient()
+        temp_dir = Path(tmp_path)
         client._write_usage_data(d, temp_dir)
 
-        def file_exists():
-            for path in pathlib.Path(temp_dir).iterdir():
-                if usage_constants.USAGE_STATS_FILE in str(path):
-                    return True
-            return False
-
-        wait_for_condition(file_exists)
+        wait_for_condition(lambda: file_exists(temp_dir))
 
         """
         Make sure report usage data works as expected
@@ -166,11 +175,35 @@ def test_usage_report_e2e(monkeypatch, shutdown_only, shutdown_serve):
             reporter.report_payload.remote(body)
             return True
 
+        """
+        Verify the usage stats are reported to the server.
+        """
+        print("Verifying usage stats report.")
         usage.deploy()
         # Since the interval is 1 second, there must have been
         # more than 5 requests sent within 30 seconds.
         wait_for_condition(lambda: ray.get(reporter.get.remote()) > 5, timeout=30)
         validate(instance=ray.get(reporter.get_payload.remote()), schema=schema)
+
+        """
+        Verify the usage_stats.json is updated.
+        """
+        print("Verifying usage stats write.")
+        global_node = ray.worker._global_node
+        temp_dir = pathlib.Path(global_node.get_session_dir_path())
+
+        assert file_exists(temp_dir)
+
+        timestamp_old = read_file(temp_dir, "usage_stats")["collect_timestamp_ms"]
+        success_old = read_file(temp_dir, "total_report_success")
+        # Test if the timestampe has been updated.
+        wait_for_condition(
+            lambda: timestamp_old
+            < read_file(temp_dir, "usage_stats")["collect_timestamp_ms"]
+        )
+        wait_for_condition(
+            lambda: success_old < read_file(temp_dir, "total_report_success")
+        )
 
 
 def test_usage_report_error_not_displayed_to_users(monkeypatch):
@@ -197,7 +230,7 @@ time.sleep(2)
         assert len(out.strip().split("\n")) <= 1
 
 
-def test_usage_report_disabled(monkeypatch):
+def test_usage_report_disabled(monkeypatch, shutdown_only):
     """
     Make sure usage report module is disabled when the env var is not set.
     It also verifies that the failure message is not printed (note that
@@ -234,6 +267,37 @@ def test_usage_report_disabled(monkeypatch):
 
         for c in contents:
             assert "Failed to report usage stats" not in c
+
+
+def test_usage_file_error_message(monkeypatch, shutdown_only):
+    """
+    Make sure the usage report file is generated with a proper
+    error message when the report is failed.
+    """
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+        ray.init(num_cpus=0)
+
+        global_node = ray.worker._global_node
+        temp_dir = pathlib.Path(global_node.get_session_dir_path())
+
+        assert file_exists(temp_dir)
+
+        error_message = read_file(temp_dir, "report_error")
+        failure_old = read_file(temp_dir, "total_report_failed")
+        report_success = read_file(temp_dir, "report_success")
+        # Test if the timestampe has been updated.
+        assert (
+            "HTTPConnectionPool(host='127.0.0.1', port=8000): "
+            "Max retries exceeded with url:"
+        ) in error_message
+        assert not report_success
+        wait_for_condition(
+            lambda: failure_old < read_file(temp_dir, "total_report_failed")
+        )
+        assert read_file(temp_dir, "total_report_success") == 0
 
 
 if __name__ == "__main__":
