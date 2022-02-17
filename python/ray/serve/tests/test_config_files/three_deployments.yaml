@@ -1,0 +1,61 @@
+deployments:
+
+  - name: shallow
+    version: None
+    prev_version: None
+    init_args: None
+    init_kwargs: None
+    import_path: "test_env.shallow_import.ShallowClass"
+    configurable:
+      num_replicas: 1
+      route_prefix: None
+      ray_actor_options: 
+        runtime_env:
+          py_modules:
+            - "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
+            - "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+      user_config: None
+      max_concurrent_queries: None
+      _autoscaling_config: None
+      _graceful_shutdown_wait_loop_s: None
+      _graceful_shutdown_timeout_s: None
+
+  - name: deep
+    version: None
+    prev_version: None
+    init_args: None
+    init_kwargs: None
+    import_path: "test_env.subdir1.subdir2.deep_import.DeepClass"
+    configurable:
+      num_replicas: 1
+      route_prefix: None
+      ray_actor_options: 
+        runtime_env:
+          py_modules:
+            - "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
+            - "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+      user_config: None
+      max_concurrent_queries: None
+      _autoscaling_config: None
+      _graceful_shutdown_wait_loop_s: None
+      _graceful_shutdown_timeout_s: None
+
+  - name: one
+    version: None
+    prev_version: None
+    init_args: None
+    init_kwargs: None
+    import_path: "test_module.test.one"
+    configurable:
+      num_replicas: 2
+      route_prefix: None
+      ray_actor_options: 
+        runtime_env:
+          py_modules:
+            - "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
+            - "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+      user_config: None
+      max_concurrent_queries: None
+      _autoscaling_config: None
+      _graceful_shutdown_wait_loop_s: None
+      _graceful_shutdown_timeout_s: None
