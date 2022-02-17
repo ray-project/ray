@@ -115,10 +115,6 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
-        # TODO: add optimizations:
-        # 1. task fusion of OneToOne
-        # 2. task fusion of OneToOne to AlltoAll
-        # 3. clear input blocks
         if self._out_blocks is None:
             self._optimize()
             blocks = self._in_blocks
@@ -186,6 +182,7 @@ class ExecutionPlan:
         [GetReadTasks -> MapBatches(DoRead -> Fn)].
         """
         # Generate the "GetReadTasks" stage blocks.
+        remote_args = self._in_blocks._read_remote_args
         blocks = []
         metadata = []
         for i, read_task in enumerate(self._in_blocks._read_tasks):
@@ -198,8 +195,7 @@ class ExecutionPlan:
             for tmp1 in read_task._read_fn():
                 yield tmp1
 
-        # TODO(ekl): add num_cpus properly here and make the read default num_cpus=1.
-        return block_list, OneToOneStage("read", block_fn, None, {})
+        return block_list, OneToOneStage("read", block_fn, "tasks", remote_args)
 
     def _fuse_one_to_one_stages(self) -> None:
         """Fuses compatible one-to-one stages."""
