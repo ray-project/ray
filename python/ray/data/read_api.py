@@ -45,6 +45,7 @@ from ray.data.datasource import (
     ParquetDatasource,
     BinaryDatasource,
     NumpyDatasource,
+    SnappyTextDatasource,
     ReadTask,
 )
 from ray.data.datasource.file_based_datasource import (
@@ -596,8 +597,18 @@ def read_binary_files(
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
+    try:
+        compression = arrow_open_stream_args.pop("compression", None)
+    except AttributeError:
+        compression = None
+
+    if compression is None or compression.lower() != "snappy":
+        source = BinaryDatasource()
+    else:
+        source = SnappyTextDatasource()
+
     return read_datasource(
-        BinaryDatasource(),
+        source,
         parallelism=parallelism,
         paths=paths,
         include_paths=include_paths,
