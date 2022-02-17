@@ -70,7 +70,9 @@ DEFAULT_CONFIG = with_common_config({
         # E.g.: action_space=MultiDiscrete([5, 5]) <- slate-size=2, num-docs=5,
         # but action distribution is Categorical(5*4) -> all possible unique slates.
         "type": "SlateEpsilonGreedy",
+        "warmup_timesteps": 20000,
         "epsilon_timesteps": 250000,
+        "final_epsilon": 0.01,
     },
     # Switch to greedy actions in evaluation workers.
     "evaluation_config": {
@@ -112,16 +114,16 @@ DEFAULT_CONFIG = with_common_config({
     "lr_q_model": 1e-3,  # Only relevant for framework=torch.
     # TODO: Unify torch and tf config settings:
     # Learning rate for adam optimizer for the q model.
-    "lr": 3e-4,  # Only relevant for framework=tf|tf2.
+    "lr": 0.00025,  # Only relevant for framework=tf|tf2.
     # Learning rate schedule.
     # In the format of [[timestep, value], [timestep, value], ...]
     # A schedule should normally start from timestep 0.
     "lr_schedule": None,  # Only relevant for framework=tf|tf2.
 
-    # Adam epsilon hyper parameter
+    # Adam epsilon hyper parameter.
     "adam_epsilon": 1e-8,
     # If not None, clip gradients during optimization at this value
-    "grad_clip": 40,
+    "grad_clip": None,
     # How many steps of the model to sample before learning starts.
     "learning_starts": 20000,
     # Update the replay buffer with this many samples at once. Note that

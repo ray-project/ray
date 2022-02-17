@@ -553,7 +553,6 @@ py_test(
     args = ["--yaml-dir=tuned_examples/sac" ,"--override-mean-reward=-850.0"]
 )
 
-
 py_test(
     name = "learning_tests_pendulum_sac_fake_gpus",
     main = "tests/run_regression_tests.py",
@@ -562,6 +561,17 @@ py_test(
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac-fake-gpus.yaml"],
     args = ["--yaml-dir=tuned_examples/sac"]
+)
+
+# SlateQ
+py_test(
+    name = "learning_tests_interest_evolution_10_candidates_recsim_env_slateq",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests", "learning_tests_discrete", "tf2_only"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/slateq/interest-evolution-10-candidates-recsim-env-slateq.yaml"],
+    args = ["--yaml-dir=tuned_examples/slateq"]
 )
 
 # TD3

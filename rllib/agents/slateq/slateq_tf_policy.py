@@ -102,9 +102,7 @@ def build_slateq_losses(
     # q_values.shape: [B, C]
     q_values = model.get_q_values(user_obs, doc_obs)
     # slate_q_values.shape: [B, S]
-    slate_q_values = tf.gather(
-        q_values, tf.cast(actions, dtype=tf.int32), batch_dims=-1
-    )
+    slate_q_values = tf1.batch_gather(q_values, tf.cast(actions, dtype=tf.int32))
     # Only get the Q from the clicked document.
     # replay_click_q.shape: [B]
     replay_click_q = tf.reduce_sum(
@@ -123,7 +121,10 @@ def build_slateq_losses(
     # Only compute the watch time reward of the clicked item.
     reward = tf.reduce_sum(input_tensor=item_reward * click_indicator, axis=1)
 
-    next_q_values = policy.target_model.get_q_values(user_next_obs, doc_next_obs)
+    # TODO: Find out, whether it's correct here to use obs, not next_obs!
+    # Dopamine uses obs, then next_obs only for the score.
+    # next_q_values = policy.target_model.get_q_values(user_next_obs, doc_next_obs)
+    next_q_values = policy.target_model.get_q_values(user_obs, doc_obs)
     scores, score_no_click = score_documents(user_next_obs, doc_next_obs)
 
     # next_q_values_slate.shape: [B, A, S]
@@ -166,20 +167,36 @@ def build_slateq_losses(
         name="",
     )
 
-    policy._q_loss = loss
-    policy._target = tf.reduce_mean(target)
+    policy._q_values = tf.reduce_mean(q_values)
     policy._q_clicked = tf.reduce_mean(q_clicked)
+    policy._scores = tf.reduce_mean(scores)
+    policy._score_no_click = tf.reduce_mean(score_no_click)
+    policy._slate_q_values = tf.reduce_mean(slate_q_values)
+    policy._replay_click_q = tf.reduce_mean(replay_click_q)
+    policy._bellman_reward = tf.reduce_mean(reward)
+    policy._target = tf.reduce_mean(target)
+    policy._next_q_target_slate = tf.reduce_mean(next_q_target_slate)
+    policy._next_q_target_max = tf.reduce_mean(next_q_target_max)
     policy._target_clicked = tf.reduce_mean(target_clicked)
+    policy._q_loss = loss
 
     return loss
 
 
 def build_slateq_stats(policy: Policy, batch) -> Dict[str, TensorType]:
     stats = {
-        "q_loss": policy._q_loss,
-        "target": policy._target,
+        "q_values": policy._q_values,
         "q_clicked": policy._q_clicked,
+        "scores": policy._scores,
+        "score_no_click": policy._score_no_click,
+        "slate_q_values": policy._slate_q_values,
+        "replay_click_q": policy._replay_click_q,
+        "bellman_reward": policy._bellman_reward,
+        "target": policy._target,
+        "next_q_target_slate": policy._next_q_target_slate,
+        "next_q_target_max": policy._next_q_target_max,
         "target_clicked": policy._target_clicked,
+        "q_loss": policy._q_loss,
     }
     return stats
 

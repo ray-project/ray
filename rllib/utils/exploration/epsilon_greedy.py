@@ -60,8 +60,10 @@ class EpsilonGreedy(Exploration):
         self.epsilon_schedule = from_config(
             Schedule, epsilon_schedule, framework=framework
         ) or PiecewiseSchedule(
-            endpoints=[(warmup_timesteps, initial_epsilon),
-                       (warmup_timesteps + epsilon_timesteps, final_epsilon)],
+            endpoints=[
+                (warmup_timesteps, initial_epsilon),
+                (warmup_timesteps + epsilon_timesteps, final_epsilon),
+            ],
             outside_value=final_epsilon,
             framework=self.framework,
         )
