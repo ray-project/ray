@@ -26,13 +26,15 @@ interest-evolution-recsim-env-slateq:
                 convert_to_discrete_action_space: false
                 seed: 0
 
+        use_huber: false
+
         exploration_config:
             warmup_timesteps: 20000
-            epsilon_timesteps: 250000
+            epsilon_timesteps: 50000
 
         replay_buffer_config:
             capacity: 1000000
 
-        lr: 0.0005
+        lr: 0.00025
 
         metrics_num_episodes_for_smoothing: 500

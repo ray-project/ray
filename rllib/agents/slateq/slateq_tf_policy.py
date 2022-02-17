@@ -156,7 +156,10 @@ def build_slateq_losses(
 
     def get_train_op():
         td_error = q_clicked - target_clicked
-        loss = huber_loss(td_error)
+        if policy.config["use_huber"]:
+            loss = huber_loss(td_error, delta=policy.config["huber_threshold"])
+        else:
+            loss = tf.math.square(td_error)
         loss = tf.reduce_mean(loss)
         return loss
 

@@ -87,6 +87,12 @@ DEFAULT_CONFIG = with_common_config({
     # Update the target by \tau * policy + (1-\tau) * target_policy.
     "tau": 1.0,
 
+    # If True, use huber loss instead of squared loss for critic network
+    # Conventionally, no need to clip gradients if using a huber loss
+    "use_huber": False,
+    # Threshold of a huber loss
+    "huber_threshold": 1.0,
+
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
