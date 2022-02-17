@@ -163,7 +163,6 @@ py_test_module_list(
     "test_client_terminate.py",
     "test_command_runner.py",
     "test_coordinator_server.py",
-    "test_dataclient_disconnect.py",
     "test_k8s_operator_unit_tests.py",
     "test_monitor.py",
     "test_response_cache.py",
@@ -171,6 +170,16 @@ py_test_module_list(
   size = "small",
   extra_srcs = SRCS,
   tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_dataclient_disconnect.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:serverless"],
   deps = ["//:ray_lib"],
 )
 
@@ -271,8 +280,9 @@ py_test(
 #    because they requires globs and it might be refactored in the future.
 py_test(
     name = "test_typing",
-    size = "small",
-    srcs = SRCS + ["test_typing.py"] + glob(["typing_files"]),
+    size = "medium",
+    srcs = SRCS + ["test_typing.py", "typing_files/check_typing_bad.py",
+                   "typing_files/check_typing_good.py"],
     tags = ["exclusive", "small_size_python_tests", "team:core"],
     deps = ["//:ray_lib"],
 )
@@ -314,7 +324,7 @@ py_test(
     name = "test_serve_ray_minimal",
     size = "small",
     srcs = SRCS + ["test_serve_ray_minimal.py"],
-    tags = ["exclusive", "small_size_python_tests", "team:serve"],
+    tags = ["exclusive", "python_tests", "team:serve"],
     deps = ["//:ray_lib"],
 )
 
