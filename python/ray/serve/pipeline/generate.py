@@ -189,6 +189,7 @@ def build_yaml(deployments: List[Deployment]) -> str:
                 ),
             ),
         )
+    rst = {"deployments": deployments_data}
 
     # requires python >= 3.6
-    return yaml.safe_dump(deployments_data, sort_keys=False)
+    return yaml.safe_dump(rst, sort_keys=False)

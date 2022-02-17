@@ -1,8 +1,12 @@
+from pathlib import Path
 import pytest
 import json
 import yaml
 from typing import TypeVar
 import requests
+import tempfile
+import os
+import subprocess
 
 import ray
 from ray import serve
@@ -183,7 +187,7 @@ def test_multiple_class_method_entrypoints_func_output(serve_instance):
 
 
 def test_multi_classmethod_entrypoint_generate_and_apply_yaml(serve_instance):
-    m1 = Model._bind(2)
+    m1 = Model.options(runtime_env={})._bind(2)
     m2 = Model._bind(3)
 
     m1_output = m1.forward._bind(InputNode())
@@ -208,10 +212,24 @@ def test_multi_classmethod_entrypoint_generate_and_apply_yaml(serve_instance):
     assert len(deserialized_deployments) == 3
     # Sample yaml file
     yaml_dump_str = build_yaml(deserialized_deployments)
-    print(yaml_dump_str)
-    loaded_yaml = yaml.safe_load(yaml_dump_str)
-    print(loaded_yaml)
-    print("a")
+    print(f"Generated YAML: \n{yaml_dump_str}")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # os.chdir(tmp_dir)
+        path = Path(tmp_dir)
+        yaml_file_path = path / "deployments.yaml"
+        with yaml_file_path.open(mode="w") as f:
+            loaded_yaml = yaml.safe_load(yaml_dump_str)
+            yaml.dump(loaded_yaml, f)
+
+        deployment_status = subprocess.check_output(
+            ["serve", "deploy", yaml_file_path]
+        )
+        assert deployment_status == b'Deployment succeeded!\n'
+
+    for _ in range(10):
+        resp = requests.get("http://127.0.0.1:8000/pipeline_root_name", params={"input": "1"})
+        print(f"Response: {resp.text}")
+        assert resp.text == "5"
 
 
 # def test_simple_function(serve_instance):
