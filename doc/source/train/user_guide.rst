@@ -430,7 +430,7 @@ The following ``TrainingCallback``\s are available and will log the intermediate
 3. :ref:`train-api-tbx-logger-callback`
 4. :ref:`train-api-mlflow-logger-callback`
 
-Example: Logging to MLflow and Tensorboard
+Example: Logging to MLflow and TensorBoard
 ++++++++++++++++++++++++++++++++++++++++++
 
 **Step 1: Install the necessary packages**
@@ -519,7 +519,7 @@ Here is an example:
 .. code-block:: python
 
     from ray import train
-    from train.train import Trainer, TrainingCallback
+    from ray.train import Trainer, TrainingCallback
     from typing import List, Dict
 
     import torch
@@ -821,7 +821,7 @@ Checkpoints can be loaded into the training function in 2 steps:
         print(trainer.latest_checkpoint)
         # {'epoch': 3, 'model_weights': OrderedDict([('bias', tensor([-0.3304])), ('weight', tensor([[-0.0197, -0.3704,  0.2944,  0.3117]]))]), '_timestamp': 1639117865}
 
-  .. tabbed:: TensorFlow
+.. tabbed:: TensorFlow
 
     .. code-block:: python
         :emphasize-lines: 16, 22, 23, 26, 27, 30
@@ -934,7 +934,7 @@ Ray Train provides native support for :ref:`Ray Datasets <datasets>` to support 
    worker will only load its assigned shard into memory rather than the entire ``Dataset``.
 3. **Pipelined Execution**: Ray Datasets also supports pipelining, meaning that data processing operations
    can be run concurrently with training. Training is no longer blocked on expensive data processing operations (such as global shuffling)
-   and this minimizes the amount of time your GPUs are idle. See :ref:`dataset-pipeline` for more information.
+   and this minimizes the amount of time your GPUs are idle. See :ref:`dataset-pipeline-api` for more information.
 
 To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Underneath the hood, Ray Train will automatically shard the given dataset.
 
@@ -1004,10 +1004,10 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
 
 Pipelined Execution
 ~~~~~~~~~~~~~~~~~~~
-For pipelined execution, you just need to convert your :ref:`Dataset <datasets>` into a :ref:`DatasetPipeline <dataset-pipeline>`.
+For pipelined execution, you just need to convert your :ref:`Dataset <datasets>` into a :ref:`DatasetPipeline <dataset-pipeline-api>`.
 All operations after this conversion will be executed in a pipelined fashion.
 
-See :ref:`dataset-pipeline` for more semantics on pipelining.
+See :ref:`dataset-pipeline-api` for more semantics on pipelining.
 
 Example: Per-Epoch Shuffle Pipeline
 +++++++++++++++++++++++++++++++++++
@@ -1113,7 +1113,7 @@ A couple caveats:
 * You should **not** call ``tune.report`` or ``tune.checkpoint_dir`` in your
   training function. Functional parity is achieved through ``train.report``,
   ``train.save_checkpoint``, and ``train.load_checkpoint``. This allows you to go
-  from Ray Train to Ray Train+RayTune without changing any code in the training
+  from Ray Train to Ray Train + Ray Tune without changing any code in the training
   function.
 
 

@@ -23,7 +23,6 @@ Search Algorithm Examples
 -------------------------
 
 - `Ax example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/ax_example.py>`__: Optimize a Hartmann function with `Ax <https://ax.dev>`_ with 4 parallel workers.
-- `HyperOpt Example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py>`__: Optimizes a basic function using the function-based API and the HyperOptSearch (SearchAlgorithm wrapper for HyperOpt TPE).
 - `Nevergrad example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/nevergrad_example.py>`__: Optimize a simple toy function with the gradient-free optimization package `Nevergrad <https://github.com/facebookresearch/nevergrad>`_ with 4 parallel workers.
 - `Bayesian Optimization example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bayesopt_example.py>`__: Optimize a simple toy function using `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_ with 4 parallel workers.
 

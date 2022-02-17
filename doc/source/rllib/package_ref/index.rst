@@ -2,8 +2,8 @@
 
 .. _rllib-reference-docs:
 
-RLlib API Reference
-===================
+Ray RLlib API
+=============
 
 .. tip:: We'd love to hear your feedback on using RLlib - `sign up to our forum and start asking questions <https://discuss.ray.io>`_!
 
