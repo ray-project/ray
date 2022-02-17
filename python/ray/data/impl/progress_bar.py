@@ -1,5 +1,4 @@
 from typing import List, Any
-import logging
 
 import ray
 from ray.ray_constants import env_integer
@@ -83,5 +82,4 @@ class ProgressBar:
             self._bar = None
 
     def __del__(self):
-        logging.info(f"dbg ProgressBar destructor.")
         self.close()
