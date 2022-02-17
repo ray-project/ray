@@ -23,7 +23,7 @@ spec:
     # the following params are used to complete the ray start: ray start --head --block --redis-port=6379 ...
     rayStartParams:
       # Flag "no-monitor" must be set when running the autoscaler in
-      # a separate container.
+      # a sidecar container.
       no-monitor: "true"
       port: '6379'
       object-manager-port: '9999'
