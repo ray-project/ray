@@ -1,7 +1,6 @@
 from contextlib import suppress
 import logging
 import math
-import os
 import requests
 from typing import Any, Dict, Optional
 
@@ -21,6 +20,17 @@ _GPU_WARNING_LOGGED = False
 
 
 class AutoscalingConfigProducer():
+    """Produces an autoscaling config by reading data from the RayCluster CR.
+
+    Used to fetch the autoscaling config at the beginning of each autoscaler iteration.
+
+    In the context of Ray deployment on Kubernetes, the autoscaling config is an
+    internal interface carrying the strict subset of RayCluster CR data required
+    by the autoscaler to make scaling decisions.
+    In particular, the autoscaling config does not carry pod configuration data.
+
+    This class is the only public object in this file.
+    """
     def __init__(self, ray_cluster_name, ray_cluster_namespace):
         self._headers, self._verify = node_provider.load_k8s_secrets()
         self._ray_cr_url = node_provider.url_from_resource(
