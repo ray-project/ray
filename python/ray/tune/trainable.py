@@ -644,26 +644,6 @@ class Trainable:
         """
         return False
 
-    def _update_resources(self, new_resources: Union[PlacementGroupFactory, Resources]):
-        """Internal version of ``update_resources``."""
-        self._trial_info.trial_resources = new_resources
-        return self.update_resources(new_resources)
-
-    def update_resources(self, new_resources: Union[PlacementGroupFactory, Resources]):
-        """Fires whenever Trainable resources are changed.
-
-        This method will be called before the checkpoint is loaded.
-
-        The current trial resources can also be obtained through
-        ``self.trial_resources``.
-
-        Args:
-            new_resources (PlacementGroupFactory|Resources):
-                Updated resources. Will be a PlacementGroupFactory if
-                trial uses placement groups and Resources otherwise.
-        """
-        return
-
     def _create_logger(
         self,
         config: Dict[str, Any],

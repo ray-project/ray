@@ -230,12 +230,8 @@ class ResourceChangingScheduler(TrialScheduler):
     :ref:`load and save checkpoints <tune-checkpoint-syncing>`
     (the latter preferably every iteration).
 
-    If the Trainable (class) API is used, when the resources of a
-    trial are updated with new values, the ``update_resources`` method in
-    the Trainable will be called. This method needs to be overwritten by the
-    user in order to let the trained model take advantage of newly allocated
-    resources. You can also obtain the current trial resources by calling
-    ``Trainable.trial_resources``.
+    If the Trainable (class) API is used, you can obtain the current trial
+    resources through the ``Trainable.trial_resources`` property.
 
     Cannot be used if ``reuse_actors`` is True in ``tune.run``. A ValueError
     will be raised in that case.
