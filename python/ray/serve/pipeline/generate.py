@@ -24,12 +24,12 @@ class DeploymentIDGenerator(object):
     By default uses deployment_name for the very first time, then append
     monotonic increasing id to it.
     """
-    __singleton_lock = threading.Lock()
+    __lock = threading.Lock()
     __shared_state = dict()
 
     @classmethod
     def get_deployment_id(cls, deployment_name: str):
-        with cls.__singleton_lock:
+        with cls.__lock:
             if deployment_name not in cls.__shared_state:
                 cls.__shared_state[deployment_name] = 0
                 return deployment_name

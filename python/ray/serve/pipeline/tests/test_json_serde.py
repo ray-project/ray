@@ -7,7 +7,7 @@ import ray
 from ray.serve.pipeline.json_serde import (
     DAGNodeEncoder,
     dagnode_from_json,
-    DAGNODE_TYPE_KEY
+    DAGNODE_TYPE_KEY,
 )
 from ray.serve.pipeline.tests.test_modules import (
     Model,
@@ -26,148 +26,143 @@ from ray import serve
 RayHandleLike = TypeVar("RayHandleLike")
 
 
-# def test_simple_function_node_json_serde(shared_ray_instance):
-#     """
-#     Test the following behavior
-#         1) Ray DAG node can go through full JSON serde cycle
-#         2) Ray DAG node and deserialized DAG node produces same output
+def test_simple_function_node_json_serde(serve_instance):
+    """
+    Test the following behavior
+        1) Ray DAG node can go through full JSON serde cycle
+        2) Ray DAG node and deserialized DAG node produces same output
 
-#     Against following test cases
-#         - Simple function with no args
-#         - Simple function with only args, all primitive types
-#         - Simple function with args + kwargs, all primitive types
-#     """
-#     original_dag_node = combine._bind(1, 2)
-#     json_serialized = json.dumps(original_dag_node, cls=DAGNodeEncoder)
-#     assert json_serialized == json.dumps(
-#         {
-#             DAGNODE_TYPE_KEY: "FunctionNode",
-#             "import_path": "ray.serve.pipeline.tests.test_modules.combine",
-#             "args": "[1, 2]",
-#             "kwargs": "{}",
-#         }
-#     )
-#     deserialized_dag_node = json.loads(
-#         json_serialized, object_hook=dagnode_from_json
-#     )
-#     assert ray.get(deserialized_dag_node.execute()) == ray.get(
-#         original_dag_node.execute()
-#     )
+    Against following test cases
+        - Simple function with no args
+        - Simple function with only args, all primitive types
+        - Simple function with args + kwargs, all primitive types
+    """
+    original_dag_node = combine._bind(1, 2)
+    json_serialized = json.dumps(original_dag_node, cls=DAGNodeEncoder)
+    assert json_serialized == json.dumps(
+        {
+            DAGNODE_TYPE_KEY: "FunctionNode",
+            "import_path": "ray.serve.pipeline.tests.test_modules.combine",
+            "args": "[1, 2]",
+            "kwargs": "{}",
+        }
+    )
+    deserialized_dag_node = json.loads(
+        json_serialized, object_hook=dagnode_from_json
+    )
+    assert ray.get(deserialized_dag_node.execute()) == ray.get(
+        original_dag_node.execute()
+    )
 
-#     original_dag_node = combine._bind(1, 2, kwargs_output=3)
-#     json_serialized = json.dumps(original_dag_node, cls=DAGNodeEncoder)
-#     assert json_serialized == json.dumps(
-#         {
-#             DAGNODE_TYPE_KEY: "FunctionNode",
-#             "import_path": "ray.serve.pipeline.tests.test_modules.combine",
-#             "args": "[1, 2]",
-#             "kwargs": '{"kwargs_output": 3}',
-#         }
-#     )
-#     deserialized_dag_node = json.loads(
-#         json_serialized, object_hook=dagnode_from_json
-#     )
-#     assert ray.get(deserialized_dag_node.execute()) == ray.get(
-#         original_dag_node.execute()
-#     )
+    original_dag_node = combine._bind(1, 2, kwargs_output=3)
+    json_serialized = json.dumps(original_dag_node, cls=DAGNodeEncoder)
+    assert json_serialized == json.dumps(
+        {
+            DAGNODE_TYPE_KEY: "FunctionNode",
+            "import_path": "ray.serve.pipeline.tests.test_modules.combine",
+            "args": "[1, 2]",
+            "kwargs": '{"kwargs_output": 3}',
+        }
+    )
+    deserialized_dag_node = json.loads(
+        json_serialized, object_hook=dagnode_from_json
+    )
+    assert ray.get(deserialized_dag_node.execute()) == ray.get(
+        original_dag_node.execute()
+    )
 
-#     original_dag_node = fn_hello._bind()
-#     json_serialized = json.dumps(original_dag_node, cls=DAGNodeEncoder)
-#     assert json_serialized == json.dumps(
-#         {
-#             DAGNODE_TYPE_KEY: "FunctionNode",
-#             "import_path": "ray.serve.pipeline.tests.test_modules.fn_hello",
-#             "args": "[]",
-#             "kwargs": "{}",
-#         }
-#     )
-#     deserialized_dag_node = json.loads(
-#         json_serialized, object_hook=dagnode_from_json
-#     )
-#     assert ray.get(deserialized_dag_node.execute()) == ray.get(
-#         original_dag_node.execute()
-#     )
-
-
-# def test_simple_class_node_json_serde(shared_ray_instance):
-#     """
-#     Test the following behavior
-#         1) Ray DAG node can go through full JSON serde cycle
-#         2) Ray DAG node and deserialized DAG node produces same actor instances
-#             with same method call output
-
-#     Against following test cases
-#         - Simple class with no args
-#         - Simple class with only args, all primitive typess
-#         - Simple class with args + kwargs, all primitive types
-#     """
-#     original_dag_node = ClassHello._bind()
-#     json_serialized = json.dumps(original_dag_node, cls=DAGNodeEncoder)
-#     assert json_serialized == json.dumps(
-#         {
-#             DAGNODE_TYPE_KEY: "ClassNode",
-#             "import_path": "ray.serve.pipeline.tests.test_modules.ClassHello",
-#             "args": "[]",
-#             "kwargs": "{}",
-#         }
-#     )
-#     deserialized_dag_node = json.loads(
-#         json_serialized, object_hook=dagnode_from_json
-#     )
-#     # Creates actor of ClassHello
-#     original_actor = original_dag_node.execute()
-#     deserialized_actor = deserialized_dag_node.execute()
-
-#     assert ray.get(original_actor.hello.remote()) == ray.get(
-#         deserialized_actor.hello.remote()
-#     )
-
-#     original_dag_node = Model._bind(1)
-#     json_serialized = json.dumps(original_dag_node, cls=DAGNodeEncoder)
-#     assert json_serialized == json.dumps(
-#         {
-#             DAGNODE_TYPE_KEY: "ClassNode",
-#             "import_path": "ray.serve.pipeline.tests.test_modules.Model",
-#             "args": "[1]",
-#             "kwargs": "{}",
-#         }
-#     )
-#     deserialized_dag_node = json.loads(
-#         json_serialized, object_hook=dagnode_from_json
-#     )
-#     # Creates actor of Model
-#     original_actor = original_dag_node.execute()
-#     deserialized_actor = deserialized_dag_node.execute()
-
-#     assert ray.get(original_actor.forward.remote(2)) == ray.get(
-#         deserialized_actor.forward.remote(2)
-#     )
-
-#     original_dag_node = Model._bind(1, ratio=0.5)
-#     json_serialized = json.dumps(original_dag_node, cls=DAGNodeEncoder)
-#     assert json_serialized == json.dumps(
-#         {
-#             DAGNODE_TYPE_KEY: "ClassNode",
-#             "import_path": "ray.serve.pipeline.tests.test_modules.Model",
-#             "args": "[1]",
-#             "kwargs": '{"ratio": 0.5}',
-#         }
-#     )
-#     deserialized_dag_node = json.loads(
-#         json_serialized, object_hook=dagnode_from_json
-#     )
-#     # Creates actor of Model
-#     original_actor = original_dag_node.execute()
-#     deserialized_actor = deserialized_dag_node.execute()
-
-#     assert ray.get(original_actor.forward.remote(2)) == ray.get(
-#         deserialized_actor.forward.remote(2)
-#     )
+    original_dag_node = fn_hello._bind()
+    json_serialized = json.dumps(original_dag_node, cls=DAGNodeEncoder)
+    assert json_serialized == json.dumps(
+        {
+            DAGNODE_TYPE_KEY: "FunctionNode",
+            "import_path": "ray.serve.pipeline.tests.test_modules.fn_hello",
+            "args": "[]",
+            "kwargs": "{}",
+        }
+    )
+    deserialized_dag_node = json.loads(
+        json_serialized, object_hook=dagnode_from_json
+    )
+    assert ray.get(deserialized_dag_node.execute()) == ray.get(
+        original_dag_node.execute()
+    )
 
 
-# def test_simple_class_method_node_json_serde(shared_ray_instance):
-#     """Not needed for demo, skip for now"""
-#     pass
+def test_simple_class_node_json_serde(serve_instance):
+    """
+    Test the following behavior
+        1) Ray DAG node can go through full JSON serde cycle
+        2) Ray DAG node and deserialized DAG node produces same actor instances
+            with same method call output
+
+    Against following test cases
+        - Simple class with no args
+        - Simple class with only args, all primitive typess
+        - Simple class with args + kwargs, all primitive types
+    """
+    original_dag_node = ClassHello._bind()
+    json_serialized = json.dumps(original_dag_node, cls=DAGNodeEncoder)
+    assert json_serialized == json.dumps(
+        {
+            DAGNODE_TYPE_KEY: "ClassNode",
+            "import_path": "ray.serve.pipeline.tests.test_modules.ClassHello",
+            "args": "[]",
+            "kwargs": "{}",
+        }
+    )
+    deserialized_dag_node = json.loads(
+        json_serialized, object_hook=dagnode_from_json
+    )
+    # Creates actor of ClassHello
+    original_actor = original_dag_node.execute()
+    deserialized_actor = deserialized_dag_node.execute()
+
+    assert ray.get(original_actor.hello.remote()) == ray.get(
+        deserialized_actor.hello.remote()
+    )
+
+    original_dag_node = Model._bind(1)
+    json_serialized = json.dumps(original_dag_node, cls=DAGNodeEncoder)
+    assert json_serialized == json.dumps(
+        {
+            DAGNODE_TYPE_KEY: "ClassNode",
+            "import_path": "ray.serve.pipeline.tests.test_modules.Model",
+            "args": "[1]",
+            "kwargs": "{}",
+        }
+    )
+    deserialized_dag_node = json.loads(
+        json_serialized, object_hook=dagnode_from_json
+    )
+    # Creates actor of Model
+    original_actor = original_dag_node.execute()
+    deserialized_actor = deserialized_dag_node.execute()
+
+    assert ray.get(original_actor.forward.remote(2)) == ray.get(
+        deserialized_actor.forward.remote(2)
+    )
+
+    original_dag_node = Model._bind(1, ratio=0.5)
+    json_serialized = json.dumps(original_dag_node, cls=DAGNodeEncoder)
+    assert json_serialized == json.dumps(
+        {
+            DAGNODE_TYPE_KEY: "ClassNode",
+            "import_path": "ray.serve.pipeline.tests.test_modules.Model",
+            "args": "[1]",
+            "kwargs": '{"ratio": 0.5}',
+        }
+    )
+    deserialized_dag_node = json.loads(
+        json_serialized, object_hook=dagnode_from_json
+    )
+    # Creates actor of Model
+    original_actor = original_dag_node.execute()
+    deserialized_actor = deserialized_dag_node.execute()
+
+    assert ray.get(original_actor.forward.remote(2)) == ray.get(
+        deserialized_actor.forward.remote(2)
+    )
 
 
 def test_nested_deployment_node_json_serde(serve_instance):
@@ -290,42 +285,30 @@ def test_nested_deployment_node_json_serde(serve_instance):
     original_serve_root_dag = ray_dag._apply_recursive(
         lambda node: transform_ray_dag_to_serve_dag(node)
     )
-    # json_serialized = json.dumps(original_serve_root_dag, indent=4, cls=DAGNodeEncoder)
-    # deserialized_serve_root_dag_node = json.loads(
-    #     json_serialized, object_hook=dagnode_from_json
-    # )
-    # original_deployments = extract_deployments_from_serve_dag(original_serve_root_dag)
-    # deserialized_deployments = extract_deployments_from_serve_dag(deserialized_serve_root_dag_node)
-    # print(f"original_deployments: {original_deployments}")
-    # print(f"deserialized_deployments: {deserialized_deployments}")
-    # for model in original_deployments:
-    #     model.deploy()
+    json_serialized = json.dumps(
+        original_serve_root_dag, indent=4, cls=DAGNodeEncoder
+    )
+    deserialized_serve_root_dag_node = json.loads(
+        json_serialized, object_hook=dagnode_from_json
+    )
+    # Deployment init_arg is (2,)
+    original_deployments = extract_deployments_from_serve_dag(
+        original_serve_root_dag
+    )
+    # Deployment init_arg is [InputNode..]
+    deserialized_deployments = extract_deployments_from_serve_dag(
+        deserialized_serve_root_dag_node
+    )
+    # Deploy deserilized version to ensure JSON serde correctness
+    for model in deserialized_deployments:
+        model.deploy()
 
-    # print(ray.get(ray_dag.execute(1))) # == 5
-    # print(ray.get(original_serve_root_dag.execute(1))) # == 5
-    # print(ray.get(deserialized_serve_root_dag_node.execute(1))) # == 5
-
-    deployments = extract_deployments_from_serve_dag(original_serve_root_dag)
-    serve_dag_root_json = json.dumps(original_serve_root_dag, cls=DAGNodeEncoder)
-    serve_dag_root_deployment = serve.deployment(
-        name="pipeline_root_name",
-    )("ray.serve.pipeline.dag_runner.DAGRunner")
-    serve_dag_root_deployment._init_args = (serve_dag_root_json,)
-    deployments.insert(0, serve_dag_root_deployment)
-
-    print(f">>>> deployments: {deployments}")
-    assert len(deployments) == 3
-    for deployment in deployments:
-        deployment.deploy()
-
-    import requests
-    resp = requests.get("http://127.0.0.1:8000/pipeline_root_name", params={"input": "1"})
-    print(f"resp.text: {resp.text}")
-
-
-# def test_simple_deployment_method_node_json_serde(shared_ray_instance):
-#     """ """
-#     pass
+    assert ray.get(ray_dag.execute(1)) == ray.get(
+        original_serve_root_dag.execute(1)
+    )
+    assert ray.get(ray_dag.execute(1)) == ray.get(
+        deserialized_serve_root_dag_node.execute(1)
+    )
 
 
 if __name__ == "__main__":

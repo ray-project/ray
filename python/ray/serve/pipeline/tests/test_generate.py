@@ -6,9 +6,9 @@ import ray
 from ray import serve
 from ray.experimental.dag import InputNode
 from ray.serve.pipeline.generate import (
-    dagnode_to_json,
-    dagnode_from_json,
-    generate_deployments_from_ray_dag
+    generate_deployments_from_ray_dag,
+    transform_ray_dag_to_serve_dag,
+    extract_deployments_from_serve_dag,
 )
 from ray.serve.pipeline.tests.test_modules import Model, combine
 
@@ -151,14 +151,27 @@ def test_multiple_class_method_entrypoints_func_output(serve_instance):
     m1_output = m1.forward._bind(InputNode())
     m2_output = m2.forward._bind(InputNode())
 
-    dag = combine._bind(m1_output, m2_output)
-    print(dag)
-    deployments = generate_deployments_from_ray_dag(dag, pipeline_root_name="pipeline")
+    ray_dag = combine._bind(m1_output, m2_output)
+    serve_root_dag = ray_dag._apply_recursive(
+        lambda node: transform_ray_dag_to_serve_dag(node)
+    )
+
+    deployments = extract_deployments_from_serve_dag(serve_root_dag)
+    serve_dag_root_json = json.dumps(serve_root_dag, cls=DAGNodeEncoder)
+    serve_dag_root_deployment = serve.deployment(
+        name="pipeline_root_name",
+    )("ray.serve.pipeline.dag_runner.DAGRunner")
+    serve_dag_root_deployment._init_args = (serve_dag_root_json,)
+    deployments.insert(0, serve_dag_root_deployment)
+
+    print(f">>>> deployments: {deployments}")
     assert len(deployments) == 3
     for deployment in deployments:
         deployment.deploy()
 
-    _validate_consistent_output(deployments[0], dag, "pipeline", input=1, output=6)
+    import requests
+    resp = requests.get("http://127.0.0.1:8000/pipeline_root_name", params={"input": "1"})
+    print(f"resp.text: {resp.text}")
 
 
 def test_simple_function(serve_instance):

@@ -45,7 +45,10 @@ class DAGNodeEncoder(json.JSONEncoder):
                 body = dag_node._body._func_or_class.__ray_actor_class__
                 other_args_to_resolve = {
                     "deployment_name": dag_node._deployment_name,
-                    "method_name": dag_node._method_name
+                    "method_name": dag_node._method_name,
+                    # TODO: (jiaodong) Support passing deployment handle
+                    "deployment_init_args": json.dumps(dag_node._body.init_args, cls=DAGNodeEncoder),
+                    "deployment_init_kwargs": json.dumps(dag_node._body.init_kwargs, cls=DAGNodeEncoder)
                 }
                 result_dict.update(other_args_to_resolve)
 
@@ -63,15 +66,15 @@ class DAGNodeEncoder(json.JSONEncoder):
             return json.JSONEncoder.default(self, obj)
 
 
-def dagnode_from_json(input_json: Dict[str, Any]) -> DAGNode:
+def dagnode_from_json(input_json: Any) -> DAGNode:
     """JSON serialization is only used and enforced in ray serve from ray core
     API authored DAGNode(s).
     """
     # Base case
-    if input_json == {} or input_json == []:
+    if DAGNODE_TYPE_KEY not in input_json:
         return input_json
-
     try:
+        # Check if input is JSON deserializable
         return json.loads(input_json)
     except Exception:
         if input_json[DAGNODE_TYPE_KEY] == InputNode.__name__:
@@ -104,13 +107,15 @@ def dagnode_from_json(input_json: Dict[str, Any]) -> DAGNode:
                 {},
             )
         elif input_json[DAGNODE_TYPE_KEY] == DeploymentMethodNode.__name__:
+            deployment_init_args = json.loads(input_json["deployment_init_args"], object_hook=dagnode_from_json)
+            deployment_init_kwargs = json.loads(input_json["deployment_init_kwargs"], object_hook=dagnode_from_json)
             return DeploymentMethodNode(
                 Deployment(
-                    module,
+                    input_json["import_path"],
                     input_json["deployment_name"],
                     DeploymentConfig(),
-                    init_args=args,
-                    init_kwargs=kwargs,
+                    init_args=tuple(deployment_init_args),
+                    init_kwargs=deployment_init_kwargs,
                     _internal=True
                 ),
                 input_json["deployment_name"],

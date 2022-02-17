@@ -17,5 +17,4 @@ class DAGRunner:
         data = int(request.query_params["input"])
         print(f"data received: {data}")
         ref = self.dag.execute(data)
-        print(f"ref: {ref}")
         return ray.get(ref)
