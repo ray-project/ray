@@ -34,7 +34,7 @@ class AutoscalingConfigProducer():
     def __init__(self, ray_cluster_name, ray_cluster_namespace):
         self._headers, self._verify = node_provider.load_k8s_secrets()
         self._ray_cr_url = node_provider.url_from_resource(
-            namespace=ray_cluster_namespace, path=f"requests/{ray_cluster_name}"
+            namespace=ray_cluster_namespace, path=f"rayclusters/{ray_cluster_name}"
         )
 
     def __call__(self):
