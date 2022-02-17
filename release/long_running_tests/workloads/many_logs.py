@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 @ray.remote
 def gen_logs(log_size, log_num):
     for _ in range(log_num):
-        logger.error("A" * log_size)
+        print("A" * log_size)
 
 
 ray.get(
