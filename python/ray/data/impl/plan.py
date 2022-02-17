@@ -136,6 +136,19 @@ class ExecutionPlan:
             self._out_stats.dataset_uuid = self._dataset_uuid
         return self._out_blocks
 
+    def clear(self) -> None:
+        """Clear all cached block references of this plan, including input blocks.
+
+        This will render the plan un-executable unless the root is a LazyBlockList."""
+        self._in_blocks.clear()
+        self._out_blocks = None
+        self._out_stats = None
+
+    def stats(self) -> DatasetStats:
+        """Return stats for this plan, forcing execution if needed."""
+        self.execute()
+        return self._out_stats
+
     def _optimize(self) -> None:
         """Apply stage fusion optimizations, updating this plan."""
         context = DatasetContext.get_current()
@@ -204,11 +217,6 @@ class ExecutionPlan:
             optimized_stages.append(prev_stage)
             prev_stage = None
         self._stages = optimized_stages
-
-    def stats(self) -> DatasetStats:
-        """Return stats for this plan, forcing execution if needed."""
-        self.execute()
-        return self._out_stats
 
 
 class Stage:
