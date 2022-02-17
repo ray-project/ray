@@ -6,8 +6,8 @@ import queue
 import threading
 import warnings
 import grpc
-
-from collections import OrderedDict
+import gc
+from collections import OrderedDict, deque
 from typing import Any, Callable, Dict, TYPE_CHECKING, Optional, Union
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -25,6 +25,13 @@ ResponseCallable = Callable[[Union[ray_client_pb2.DataResponse, Exception]], Non
 # Send an acknowledge on every 32nd response received
 ACKNOWLEDGE_BATCH_SIZE = 32
 
+
+_in_gc = False
+def _gc_callback(phase, info):
+    global _in_gc
+    _in_gc = (phase == "start")
+
+gc.callbacks.append(_gc_callback)
 
 class ChunkCollector:
     """
@@ -131,6 +138,7 @@ class DataClient:
 
         self.request_queue = queue.Queue()
         self.ready_data: Dict[int, Any] = {}
+        self._gc_queue = deque()
         # NOTE: Dictionary insertion is guaranteed to complete before lookup
         # and/or removal because of synchronization via the request_queue.
         self.asyncio_waiting_data: Dict[int, ResponseCallable] = {}
@@ -162,6 +170,24 @@ class DataClient:
 
     def _data_main(self) -> None:
         reconnecting = False
+        def get_next():
+            while True:
+                try:
+                    req = self.request_queue.get(False, timeout=1)
+                except queue.Empty:
+                    try:
+                        req = self._gc_queue.popleft()
+                        with self.lock:
+                            req_id = self._next_id()
+                            req.req_id = req_id
+                            self.outstanding_requests[req_id] = req
+                            self.request_queue.put(req)
+                    except IndexError:
+                        continue
+                if req is None:
+                    return req
+                yield req
+
         try:
             while not self.client_worker._in_shutdown:
                 stub = ray_client_pb2_grpc.RayletDataStreamerStub(
@@ -169,7 +195,7 @@ class DataClient:
                 )
                 metadata = self._metadata + [("reconnecting", str(reconnecting))]
                 resp_stream = stub.Datapath(
-                    iter(self.request_queue.get, None),
+                    get_next(),
                     metadata=metadata,
                     wait_for_ready=True,
                 )
@@ -200,12 +226,12 @@ class DataClient:
         if response.req_id in self.asyncio_waiting_data:
             can_remove = True
             try:
-                callback = self.asyncio_waiting_data[response.req_id]
+                callback = self.asyncio_waiting_data.get(response.req_id)
                 if isinstance(callback, ChunkCollector):
                     can_remove = callback(response)
                 elif callback:
                     callback(response)
-                if can_remove:
+                if can_remove and callback is not None:
                     # NOTE: calling del self.asyncio_waiting_data results
                     # in the destructor of ClientObjectRef running, which
                     # calls ReleaseObject(). So self.asyncio_waiting_data
@@ -368,11 +394,16 @@ class DataClient:
         req: ray_client_pb2.DataRequest,
         callback: Optional[ResponseCallable] = None,
     ) -> None:
+        if _in_gc is True:
+            assert req.WhichOneof("type") == "release"
+            assert callback is None
+
         with self.lock:
             self._check_shutdown()
             req_id = self._next_id()
             req.req_id = req_id
-            self.asyncio_waiting_data[req_id] = callback
+            if callback is not None:
+                self.asyncio_waiting_data[req_id] = callback
             self.outstanding_requests[req_id] = req
             self.request_queue.put(req)
 
