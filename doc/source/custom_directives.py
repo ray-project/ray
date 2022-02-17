@@ -157,6 +157,7 @@ CHILD_MOCK_MODULES = [
     "tensorflow.keras.callbacks",
 ]
 
+
 class ChildClassMock(mock.Mock):
     @classmethod
     def __getattr__(cls, name):
