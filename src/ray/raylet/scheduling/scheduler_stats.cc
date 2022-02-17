@@ -18,8 +18,10 @@
 namespace ray {
 namespace raylet {
 
-SchedulerStats::SchedulerStats(const ClusterTaskManager &cluster_task_manager)
-    : cluster_task_manager_(cluster_task_manager) {}
+SchedulerStats::SchedulerStats(const ClusterTaskManager &cluster_task_manager,
+                               const LocalTaskManager &local_task_manager)
+    : cluster_task_manager_(cluster_task_manager),
+      local_task_manager_(local_task_manager) {}
 
 void SchedulerStats::ComputeStats() {
   auto accumulator =
@@ -86,8 +88,8 @@ void SchedulerStats::ComputeStats() {
       cluster_task_manager_.tasks_to_schedule_.begin(),
       cluster_task_manager_.tasks_to_schedule_.end(), (size_t)0, per_work_accumulator);
   size_t num_tasks_to_dispatch = std::accumulate(
-      cluster_task_manager_.tasks_to_dispatch_.begin(),
-      cluster_task_manager_.tasks_to_dispatch_.end(), (size_t)0, per_work_accumulator);
+      local_task_manager_.tasks_to_dispatch_.begin(),
+      local_task_manager_.tasks_to_dispatch_.end(), (size_t)0, per_work_accumulator);
 
   /// Update the internal states.
   num_waiting_for_resource_ = num_waiting_for_resource;
@@ -110,7 +112,8 @@ void SchedulerStats::RecordMetrics() const {
   /// This method intentionally doesn't call ComputeStats() because
   /// that function is expensive. ComputeStats is called by ComputeAndReportDebugStr
   /// method and they are always periodically called by node manager.
-  stats::NumSpilledTasks.Record(metric_tasks_spilled_);
+  stats::NumSpilledTasks.Record(metric_tasks_spilled_ +
+                                local_task_manager_.num_task_spilled_);
   stats::NumInfeasibleSchedulingClasses.Record(
       cluster_task_manager_.infeasible_tasks_.size());
 
@@ -125,9 +128,9 @@ void SchedulerStats::RecordMetrics() const {
   /// Queued tasks.
   ray::stats::STATS_scheduler_tasks.Record(num_cancelled_tasks_, "Cancelled");
   ray::stats::STATS_scheduler_tasks.Record(
-      cluster_task_manager_.executing_task_args_.size(), "Executing");
+      local_task_manager_.executing_task_args_.size(), "Executing");
   ray::stats::STATS_scheduler_tasks.Record(
-      cluster_task_manager_.waiting_tasks_index_.size(), "Waiting");
+      local_task_manager_.waiting_tasks_index_.size(), "Waiting");
   ray::stats::STATS_scheduler_tasks.Record(num_tasks_to_dispatch_, "Dispatched");
   ray::stats::STATS_scheduler_tasks.Record(num_tasks_to_schedule_, "Received");
 
@@ -169,12 +172,12 @@ std::string SchedulerStats::ComputeAndReportDebugStr() {
          << num_worker_not_started_by_process_rate_limit_ << "\n";
   buffer << "num_tasks_waiting_for_workers: " << num_tasks_waiting_for_workers_ << "\n";
   buffer << "num_cancelled_tasks: " << num_cancelled_tasks_ << "\n";
-  buffer << "Waiting tasks size: " << cluster_task_manager_.waiting_tasks_index_.size()
+  buffer << "Waiting tasks size: " << local_task_manager_.waiting_tasks_index_.size()
          << "\n";
   buffer << "Number of executing tasks: "
-         << cluster_task_manager_.executing_task_args_.size() << "\n";
+         << local_task_manager_.executing_task_args_.size() << "\n";
   buffer << "Number of pinned task arguments: "
-         << cluster_task_manager_.pinned_task_arguments_.size() << "\n";
+         << local_task_manager_.pinned_task_arguments_.size() << "\n";
   buffer << "cluster_resource_scheduler state: "
          << cluster_task_manager_.cluster_resource_scheduler_->DebugString() << "\n";
   buffer << "Resource usage {\n";
@@ -183,7 +186,7 @@ std::string SchedulerStats::ComputeAndReportDebugStr() {
   // Only iterate upto this number to avoid excessive CPU usage.
   auto max_iteration = RayConfig::instance().worker_max_resource_analysis_iteration();
   uint32_t iteration = 0;
-  for (const auto &worker : cluster_task_manager_.worker_pool_.GetAllRegisteredWorkers(
+  for (const auto &worker : local_task_manager_.worker_pool_.GetAllRegisteredWorkers(
            /*filter_dead_workers*/ true)) {
     if (max_iteration < iteration++) {
       break;
@@ -215,7 +218,7 @@ std::string SchedulerStats::ComputeAndReportDebugStr() {
   buffer << "}\n";
   buffer << "Running tasks by scheduling class:\n";
 
-  for (const auto &pair : cluster_task_manager_.info_by_sched_cls_) {
+  for (const auto &pair : local_task_manager_.info_by_sched_cls_) {
     const auto &sched_cls = pair.first;
     const auto &info = pair.second;
     const auto &descriptor = TaskSpecification::GetSchedulingClassDescriptor(sched_cls);
