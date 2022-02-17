@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, Callable
+from typing import TYPE_CHECKING, Any, Dict, Callable, Optional
 
 if TYPE_CHECKING:
     import pyarrow
@@ -8,6 +8,7 @@ from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     _resolve_kwargs,
 )
+from pyarrow.fs import FileSystem
 
 
 class JSONDatasource(FileBasedDatasource):
@@ -20,7 +21,7 @@ class JSONDatasource(FileBasedDatasource):
     """
 
     # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
-    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
+    def _read_file(self, f: "pyarrow.NativeFile", path: str, filesystem: Optional["pyarrow.fs.FileSystem"], **reader_args):
         from pyarrow import json
 
         read_options = reader_args.pop(

@@ -164,7 +164,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             )
             for read_path in read_paths:
                 with fs.open_input_stream(read_path, **open_stream_args) as f:
-                    for data in read_stream(f, read_path, **reader_args):
+                    for data in read_stream(f, read_path, filesystem=fs, **reader_args):
                         output_buffer.add_block(data)
                         if output_buffer.has_next():
                             yield output_buffer.next()
@@ -202,15 +202,25 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         return None
 
     def _read_stream(
-        self, f: "pyarrow.NativeFile", path: str, **reader_args
+        self,
+        f: "pyarrow.NativeFile",
+        path: str,
+        filesystem: Optional["pyarrow.fs.FileSystem"],
+        **reader_args,
     ) -> Iterator[Block]:
         """Streaming read a single file, passing all kwargs to the reader.
 
         By default, delegates to self._read_file().
         """
-        yield self._read_file(f, path, **reader_args)
+        yield self._read_file(f, path, filesystem, **reader_args)
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args) -> Block:
+    def _read_file(
+        self,
+        f: "pyarrow.NativeFile",
+        path: str,
+        filesystem: Optional["pyarrow.fs.FileSystem"],
+        **reader_args,
+    ) -> Block:
         """Reads a single file, passing all kwargs to the reader.
 
         This method should be implemented by subclasses.

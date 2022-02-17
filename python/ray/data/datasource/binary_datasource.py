@@ -1,9 +1,13 @@
-from typing import TYPE_CHECKING
+from typing import (
+    TYPE_CHECKING,
+    Optional
+)
 
 if TYPE_CHECKING:
     import pyarrow
 
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from pyarrow.fs import FileSystem
 
 
 class BinaryDatasource(FileBasedDatasource):
@@ -15,7 +19,8 @@ class BinaryDatasource(FileBasedDatasource):
         ... [b"file_data", ...]
     """
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
+    def _read_file(self, f: "pyarrow.NativeFile", path: str, filesystem: Optional["pyarrow.fs.FileSystem"],
+                   **reader_args):
         include_paths = reader_args.pop("include_paths", False)
         data = f.readall()
         if include_paths:
