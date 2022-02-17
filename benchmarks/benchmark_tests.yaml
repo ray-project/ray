@@ -166,8 +166,8 @@
 
   run:
     timeout: 3600
-    prepare: python distributed/wait_cluster.py --num-nodes=251
-    script: python distributed/test_scheduling.py --total-num-task=3968000 --num-cpu-per-task=1 --task-duration-s=0 --total-num-actors=1 --num-actors-per-nodes=1
+    prepare: python distributed/wait_cluster.py --num-nodes=129
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1 --task-duration-s=0 --total-num-actors=1 --num-actors-per-nodes=1
 
 - name: scheduling_test_many_0s_tasks_many_nodes
   team: core
@@ -177,8 +177,8 @@
 
   run:
     timeout: 3600
-    prepare: python distributed/wait_cluster.py --num-nodes=129
-    script: python distributed/test_scheduling.py --total-num-task=3968000 --num-cpu-per-task=1 --task-duration-s=0 --total-num-actors=129 --num-actors-per-nodes=1
+    prepare: python distributed/wait_cluster.py --num-nodes=251
+    script: python distributed/test_scheduling.py --total-num-task=3968000 --num-cpu-per-task=1 --task-duration-s=0 --total-num-actors=251 --num-actors-per-nodes=1
 
 # TODO (yic: fix these tests)
 # - name: scheduling_test_many_5s_tasks_single_node
