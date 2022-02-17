@@ -106,35 +106,6 @@ def transform_ray_dag_to_serve_dag(dag_node, deployments=None):
     else:
         return dag_node
 
-def generate_deployments_from_ray_dag(
-    ray_dag_root: DAGNode,
-    pipeline_root_name=None
-):
-    """
-    ** Experimental **
-    Given a ray DAG with given root node, generate a list of deployments
-    for further iterative development.
-    """
-
-    deployments = []
-    serve_dag_root = ray_dag_root._apply_recursive(
-        lambda node: transform_ray_dag_to_serve_dag(node, deployments=deployments)
-    )
-    serve_dag_root_json = json.dumps(serve_dag_root, cls=DAGNodeEncoder)
-
-    pipeline_root_name = (
-        pipeline_root_name or f"serve_pipeline_root_{uuid.uuid4().hex}"
-    )
-
-    serve_dag_root_deployment = serve.deployment(
-        name="pipeline_root_name",
-    )("ray.serve.pipeline.dag_runner.DAGRunner")
-    serve_dag_root_deployment._init_args = (serve_dag_root_json,)
-
-    deployments.insert(0, serve_dag_root_deployment)
-
-    return deployments
-
 def extract_deployments_from_serve_dag(serve_dag_root: DAGNode) -> List[Deployment]:
     deployments = []
     def extractor(dag_node):
@@ -147,3 +118,16 @@ def extract_deployments_from_serve_dag(serve_dag_root: DAGNode) -> List[Deployme
     )
 
     return deployments
+
+def get_dag_runner_deployment(serve_dag_root, pipeline_root_name=None):
+    pipeline_root_name = (
+        pipeline_root_name or f"serve_pipeline_root_{uuid.uuid4().hex}"
+    )
+    serve_dag_root_json = json.dumps(serve_dag_root, cls=DAGNodeEncoder)
+
+    serve_dag_root_deployment = serve.deployment(
+        name="pipeline_root_name",
+    )("ray.serve.pipeline.dag_runner.DAGRunner")
+    serve_dag_root_deployment._init_args = (serve_dag_root_json,)
+
+    return serve_dag_root_deployment
