@@ -389,9 +389,6 @@ RAY_CONFIG(bool, enable_BlockTasksSpill, false)
 // Whether to use EvictTasks when spill required
 RAY_CONFIG(bool, enable_EvictTasks, false)
 
-// Whether to use EvictTasks when spill required
-RAY_CONFIG(bool, enable_BlockandEvictTasks, false)
-
 /// Maximum number of objects that can be fused into a single file.
 RAY_CONFIG(int64_t, max_fused_object_count, 2000)
 

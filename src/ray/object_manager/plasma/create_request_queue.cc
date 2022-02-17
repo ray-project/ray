@@ -194,7 +194,7 @@ Status CreateRequestQueue::ProcessRequests() {
           // should_spill_ is for EvictTasks. If there's no task to evict then the system
           RAY_LOG(INFO) << "Object creation of priority " << queue_it->first.first
                         << " blocked";
-          if (now - oom_start_time_ns_ >= grace_period_ns) {
+          if (now - oom_start_time_ns_ >= oom_grace_period_ns_) {
             // This is to handle when memory is fragmented
             // Trigger the fallback allocator.
             status =
@@ -252,8 +252,8 @@ Status CreateRequestQueue::ProcessRequests() {
 
   // If we make it here, then there is nothing left in the queue. It's safe to
   // run new tasks again.
-  if (!RayConfig::instance().enable_BlockandEvictTasks() ||
-      RayConfig::instance().enable_BlockTasks()) {
+  if (RayConfig::instance().enable_BlockTasks() && 
+		  !RayConfig::instance().enable_EvictTasks()) {
     RAY_LOG(DEBUG) << "[JAE_DEBUG] resetting object_creation_blocked_callback priority";
     RAY_UNUSED(on_object_creation_blocked_callback_(ray::Priority(), true, false));
   }

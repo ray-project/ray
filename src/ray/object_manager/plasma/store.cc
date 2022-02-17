@@ -184,7 +184,7 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(
     //LocalObject *lowest_pri_obj = object_lifecycle_mgr_.GetLowestPriObject();
     //lowest_priority = lowest_pri_obj->GetPriority();
 	ray::Priority p = object_lifecycle_mgr_.GetLowestPriObject();
-	int size = p.GetSize();
+	int size = p.GetDepth();
 	int i;
 	for(i=0; i<size; i++){
 		lowest_priority->SetScore(i, p.GetScore(i));

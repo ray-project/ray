@@ -31,7 +31,6 @@ using SpillObjectsCallback = std::function<bool()>;
 /// highest priority of a blocked object.
 using ObjectCreationBlockedCallback = std::function<void(const ray::Priority &priority, 
 		bool enable_BlockTasks, bool enable_EvictTasks)>;
-using ObjectEvictCallback = std::function<void(const ray::Priority &priority)>;
 
 using SetShouldSpillCallback = std::function<void(bool should_spill)>;
 

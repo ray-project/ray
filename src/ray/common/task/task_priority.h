@@ -48,7 +48,7 @@ struct Priority {
     return score[depth];
   }
 
-  int GetSize() {
+  int GetDepth() {
 	  return (int)score.size();
   }
 
