@@ -31,7 +31,7 @@ use std::{
     mem::ManuallyDrop,
     ops::{Deref, Drop},
     os::raw::c_char,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Mutex, RwLock, atomic::{AtomicU64, Ordering}},
 };
 
 use libloading::{Library, Symbol};
@@ -48,7 +48,7 @@ macro_rules! ray_info {
     }
 }
 
-lazy_static::lazy_static! {
+lazy_static! {
     static ref LIBRARIES: RwLock<Vec<Library>> = {
         RwLock::new(Vec::new())
     };
@@ -79,6 +79,8 @@ lazy_static::lazy_static! {
         RwLock::new(HashMap::new())
     };
 }
+
+static NUM_TASKS_EXECUTED: AtomicU64 = AtomicU64::new(0);
 
 // Prints each argument on a separate line
 //
@@ -124,6 +126,12 @@ impl<T> ObjectRef<T> {
 impl<T> Drop for ObjectRefInner<T> {
     fn drop(&mut self) {
         util::remove_local_ref(&self.id);
+    }
+}
+
+impl<T> std::fmt::Debug for ObjectRef<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        self.as_raw().fmt(f)
     }
 }
 
@@ -290,8 +298,8 @@ pub extern "C" fn rust_worker_execute(
     return_values: RaySlice,
 ) {
     if is_async {
-        let mut e = Arc::new(FiberEvent::new());
-        let e_ = e.clone();
+        let mut notifier = Arc::new(FiberEvent::new());
+        let notifier_ = notifier.clone();
 
         handle_async_startup();
 
@@ -309,13 +317,14 @@ pub extern "C" fn rust_worker_execute(
                     args_len,
                     return_values,
                 },
-                e_)
+                notifier_)
             );
 
         // Not sure if this is safe. When we call yield, are we sure
         // boost.asio is aware enough to save all of Rust's (or other lang's)
         // live state?
-        e.yield_and_await();
+        notifier.yield_and_await();
+        eprintln!("Number of tasks executed: {}", NUM_TASKS_EXECUTED.fetch_add(1, Ordering::Relaxed));
     } else {
         rust_worker_execute_internal(
             actor_ptr,

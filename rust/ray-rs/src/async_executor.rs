@@ -1,12 +1,17 @@
 pub use tokio::runtime::{EnterGuard as TokioHandleGuard, Handle as TokioHandle};
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
-use super::{ray_info, lazy_static, RwLock, FiberEvent, TaskData, Mutex, util, LIBRARIES, Arc, rust_worker_execute_async_internal};
+use super::{
+    ray_info, lazy_static, RwLock, FiberEvent, TaskData,
+    Mutex, util, LIBRARIES, Arc,
+    rust_worker_execute_async_internal
+};
 use std::{
     cell::RefCell,
     sync::atomic::{AtomicU64, Ordering},
     mem::drop, ops::Drop,
     collections::HashMap,
     marker::PhantomData,
+    os::raw::c_void,
 };
 
 use libloading::{Library, Symbol};
@@ -22,12 +27,13 @@ thread_local! {
     static LOCAL_TOKIO_GUARD: RefCell<Option<TokioHandleGuard<'static>>> = RefCell::new(None)
 }
 
+// TODO: convert these to unsafe?
 #[no_mangle] pub extern "C" fn tokio_dylib__extern_function____new_handle_uuid() -> u64 {
     UUID.fetch_add(1, Ordering::Relaxed)
 }
 
 #[no_mangle] pub extern "C" fn tokio_dylib__extern_function____register_handle(
-    h: *mut std::os::raw::c_void,
+    h: *mut c_void,
     uuid: u64
 ) {
     // This is not quite ffi safe?
@@ -38,6 +44,7 @@ thread_local! {
 
 #[no_mangle] pub extern "C" fn tokio_dylib__extern_function____on_thread_start(uuid: u64) {
     // Spin until the handle is initiated
+    // TODO: a better way? exponential backoff
     for i in 0..1000 {
         if let Some(handle) = &TOKIO_HANDLES.read().unwrap().get(&uuid) {
             LOCAL_TOKIO_GUARD.with(|ctx| {
@@ -51,15 +58,19 @@ thread_local! {
     }
 }
 
-/// Takes the `TokioHandleGuard` from inside the RefCell, dropping it
-/// and restoring the shared libs' thread_local tokio::runtime::context::CONTEXT
-/// to what it was previously
+/// Takes the `TokioHandleGuard` from inside the RefCell, dropping it and restoring the
+/// shared libs' `thread_local!` `tokio::runtime::context::CONTEXT` to its previous state
 #[no_mangle] pub extern "C" fn tokio_dylib__extern_function____on_thread_stop() {
     LOCAL_TOKIO_GUARD.with(|ctx| ctx.borrow_mut().take());
 }
 
+/// Deletes `tokio::runtime::Handle` from the lib's local cache.
+/// Needs to be run to prevent memory leak.
+// TODO: remove assert...?
 #[no_mangle] pub extern "C" fn tokio_dylib__extern_function____drop_handle(uuid: u64) {
-    assert!(TOKIO_HANDLES.write().unwrap().remove(&uuid).is_some());
+    if TOKIO_HANDLES.write().unwrap().remove(&uuid).is_none() {
+        eprintln!("UUID: {} not found in library's tokio::runtime::Handle cache", uuid);
+    }
 }
 
 #[no_mangle] pub extern "C" fn tokio_dylib__extern_function____eprintln_state() {
@@ -69,7 +80,7 @@ thread_local! {
 }
 
 #[derive(Clone)]
-struct TokioDylibContext<'a> {
+pub struct TokioDylibContext<'a> {
     lib_contexts: Vec<LibraryContext>,
     _phantom_data: PhantomData<&'a [Library]>,
 }
@@ -77,7 +88,7 @@ struct TokioDylibContext<'a> {
 #[derive(Clone)]
 struct LibraryContext {
     uuid: u64,
-    register_handle: Symbol<'static, extern "C" fn(*mut std::os::raw::c_void, u64)>,
+    register_handle: Symbol<'static, extern "C" fn(*mut c_void, u64)>,
     on_thread_start: Symbol<'static, extern "C" fn(u64)>,
     on_thread_stop: Symbol<'static, extern "C" fn()>,
     drop_handle: Symbol<'static, extern "C" fn(u64)>,
@@ -111,13 +122,11 @@ macro_rules! get_symbol {
 }
 
 impl<'a> TokioDylibContext<'a> {
-    /// We can only instantiate with a `'static` ref to the library to ensure that TokioDylibContext
-    /// has the `'static` lifetime
-    fn new(libs: &'static [Library]) -> Self {
+    fn new(libs: &'a [Library]) -> Self {
         let mut lib_contexts = Vec::with_capacity(libs.len());
         for lib in libs.iter() {
             let new_handle_uuid = get_symbol!("new_handle_uuid", lib, extern "C" fn() -> u64);
-            let register_handle = get_symbol!("register_handle", lib, extern "C" fn(*mut std::os::raw::c_void, u64));
+            let register_handle = get_symbol!("register_handle", lib, extern "C" fn(*mut c_void, u64));
             let on_thread_start = get_symbol!("on_thread_start", lib, extern "C" fn(u64));
             let on_thread_stop = get_symbol!("on_thread_stop", lib, extern "C" fn());
             let drop_handle = get_symbol!("drop_handle", lib, extern "C" fn(u64));
@@ -137,8 +146,16 @@ impl<'a> TokioDylibContext<'a> {
         }
         Self {
             lib_contexts,
-            _phantom_data: PhantomData,
+            _phantom_data: PhantomData::<&'a _>,
         }
+    }
+
+    /// The user must use `unsafe` code to coerce the lifetime of their [Library] slice to 'static and
+    /// manually check that it outlives the lifetime of the Tokio runtime they are registering the
+    /// handle from.
+    pub unsafe fn new_coerce_static<'b>(libs: &'b [Library]) -> Self {
+        let libs_ref: &'static _ = std::mem::transmute(libs);
+        Self::new(libs_ref)
     }
 
     pub fn on_thread_start(&self) {
@@ -163,9 +180,9 @@ impl<'a> TokioDylibContext<'a> {
     }
 
     /// Register the tokio handle from the given Tokio library
-    fn register_tokio_handle<T: Clone>(&self, handle: &T) {
+    pub fn register_tokio_handle<T: Clone>(&self, handle: &T) {
         let handle_boxed = Box::new(handle.clone());
-        let handle_ptr = Box::into_raw(handle_boxed) as *mut std::os::raw::c_void;
+        let handle_ptr = Box::into_raw(handle_boxed) as *mut c_void;
         for ctx in self.lib_contexts.iter() {
             let register_handle = &ctx.register_handle;
             register_handle(handle_ptr, ctx.uuid);
@@ -192,11 +209,15 @@ pub(crate) fn handle_async_startup() {
             *guard = Some(tx);
             std::thread::spawn(move || {
                 let libs = LIBRARIES.read().unwrap();
-                // We need to convince the compiler that the lifetime of the libraries
-                // from which the symbols are derived exceed that of our async executor
-                let libs_ref: &'static _ = unsafe { std::mem::transmute(&libs[..]) };
-                // Future: plug-and-play with async-rs etc
-                let ctx = TokioDylibContext::new(&libs_ref);
+
+                // Alternately (not public method):
+                // ```
+                // let libs_ref: &'static _ = unsafe { std::mem::transmute(&libs[..]) };
+                // let ctx = TokioDylibContext::new(&libs_ref);
+                // ```
+                let ctx = unsafe {
+                    TokioDylibContext::new_coerce_static(&libs[..])
+                };
 
                 let ctx_a = ctx.clone();
                 let ctx_b = ctx.clone();
