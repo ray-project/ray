@@ -69,12 +69,11 @@ parts:
       - file: rllib/index
         title: Ray RLlib
         sections:
-          - file: rllib/rllib-toc
           - file: rllib/core-concepts
           - file: rllib/rllib-training
           - file: rllib/rllib-env
-          - file: rllib/rllib-models
           - file: rllib/rllib-algorithms
+          - file: rllib/rllib-models
           - file: rllib/rllib-sample-collection
           - file: rllib/rllib-offline
           - file: rllib/rllib-concepts

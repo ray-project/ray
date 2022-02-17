@@ -1,11 +1,12 @@
 .. include:: we_are_hiring.rst
 
-RLlib Examples
-==============
+Examples
+========
 
 This page is an index of examples for the various use cases and features of RLlib.
 
-If any example is broken, or if you'd like to add an example to this page, feel free to raise an issue on our Github repository.
+If any example is broken, or if you'd like to add an example to this page,
+feel free to raise an issue on our Github repository.
 
 Tuned Examples
 --------------

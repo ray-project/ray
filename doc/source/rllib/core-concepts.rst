@@ -1,13 +1,43 @@
+.. include:: we_are_hiring.rst
 
-.. TODO: Deprecate this page (moved here from the old index (rllib in 60s) page).
+.. TODO: We need trainers, environments, algorithms, policies, models here. Likely in that order.
+    Execution plans are not a "core" concept for users. Sample batches should probably also be left out.
 
 .. _rllib-core-concepts:
 
+Key Concepts
+============
 
-RLlib Core Concepts
-===================
+On this page, we'll cover the key concepts to help you understand how RLlib works and how to use it.
+In RLlib you use `trainers` to train `algorithms` on `environments`.
+These algorithms use `policies` to select actions for your agents.
+We'll talk about each of these concepts and some others in detail
 
-In this section, we'll cover three key concepts in RLlib: Policies, Samples, and Trainers.
+
+Trainers
+--------
+
+Trainers bring all RLlib components together, making algorithms accessible via RLlib's Python API and its command line interface (CLI).
+They manage algorithm configuration, setup of the rollout workers and optimizer, and collection of training metrics.
+Trainers also implement the :ref:`Tune Trainable API <tune-60-seconds>` for easy experiment management.
+
+Example of three equivalent ways of interacting with the PPO trainer, all of which log results in ``~/ray_results``:
+
+.. code-block:: python
+
+    trainer = PPOTrainer(env="CartPole-v0", config={"train_batch_size": 4000})
+    while True:
+        print(trainer.train())
+
+.. code-block:: bash
+
+    rllib train --run=PPO --env=CartPole-v0 --config='{"train_batch_size": 4000}'
+
+.. code-block:: python
+
+    from ray import tune
+    tune.run(PPOTrainer, config={"env": "CartPole-v0", "train_batch_size": 4000})
+
 
 
 Policies

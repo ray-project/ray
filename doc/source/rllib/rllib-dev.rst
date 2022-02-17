@@ -114,3 +114,28 @@ The objects with the top 20 memory usage in the workers will be added as custom 
 
 .. image:: images/MemoryTrackingCallbacks.png
 
+
+Troubleshooting
+---------------
+
+If you encounter errors like
+`blas_thread_init: pthread_create: Resource temporarily unavailable` when using many workers,
+try setting ``OMP_NUM_THREADS=1``. Similarly, check configured system limits with
+`ulimit -a` for other resource limit errors.
+
+For debugging unexpected hangs or performance problems, you can run ``ray stack`` to dump
+the stack traces of all Ray workers on the current node, ``ray timeline`` to dump
+a timeline visualization of tasks to a file, and ``ray memory`` to list all object
+references in the cluster.
+
+TensorFlow 2.0
+~~~~~~~~~~~~~~
+
+RLlib supports both tf2.x as well as ``tf.compat.v1`` modes.
+Always use the ``ray.rllib.utils.framework.try_import_tf()`` utility function to import tensorflow.
+It returns three values:
+*  ``tf1``: The ``tf.compat.v1`` module or the installed tf1.x package (if the version is < 2.0).
+*  ``tf``: The installed tensorflow module as-is.
+*  ``tfv``: A convenience version int, whose values are either 1 or 2.
+
+`See here <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__ for a detailed example script.

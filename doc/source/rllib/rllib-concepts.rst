@@ -725,24 +725,3 @@ One of the primary motivations behind execution plans, beyond their conciseness,
 
 Check out the `PPO + DQN multi-agent workflow example <https://github.com/ray-project/ray/blob/master/rllib/examples/two_trainer_workflow.py>`__ for more details. One line to pay particular attention to in this example is the use of ``LocalIterator.duplicate()`` to clone the iterator of experiences into two separate iterators, which are filtered via ``SelectExperiences`` and then consumed by PPO and DQN sub-dataflows respectively.
 
-Trainers
---------
-
-Trainers are the boilerplate classes that put the above components together, making algorithms accessible via Python API and the command line. They manage algorithm configuration, setup of the rollout workers and optimizer, and collection of training metrics. Trainers also implement the :ref:`Tune Trainable API <tune-60-seconds>` for easy experiment management.
-
-Example of three equivalent ways of interacting with the PPO trainer, all of which log results in ``~/ray_results``:
-
-.. code-block:: python
-
-    trainer = PPOTrainer(env="CartPole-v0", config={"train_batch_size": 4000})
-    while True:
-        print(trainer.train())
-
-.. code-block:: bash
-
-    rllib train --run=PPO --env=CartPole-v0 --config='{"train_batch_size": 4000}'
-
-.. code-block:: python
-
-    from ray import tune
-    tune.run(PPOTrainer, config={"env": "CartPole-v0", "train_batch_size": 4000})
