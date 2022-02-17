@@ -34,6 +34,7 @@ def _gc_callback(phase, info):
 
 gc.callbacks.append(_gc_callback)
 
+
 class DataClient:
     def __init__(self, client_worker: "Worker", client_id: str, metadata: list):
         """Initializes a thread-safe datapath over a Ray Client gRPC channel.
