@@ -16,6 +16,7 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include "absl/time/clock.h"
 #include "boost/fiber/all.hpp"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
@@ -440,8 +441,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     periodical_runner_.RunFnPeriodically(
         [this] {
-          RAY_LOG(INFO) << "Event stats:\n"
-                        << io_service_.stats().StatsString() << "\n";
+          RAY_LOG(INFO) << "Event stats:\n" << io_service_.stats().StatsString() << "\n";
           RAY_LOG(INFO) << "Task stats:\n"
                         << task_execution_service_.stats().StatsString() << "\n";
         },
@@ -2915,7 +2915,12 @@ void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
                                rpc::LocalGCReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
   if (options_.gc_collect != nullptr) {
+    const auto start = absl::Now();
     options_.gc_collect();
+    const auto end = absl::Now();
+    if (end - start > absl::Seconds(10)) {
+      RAY_LOG(WARNING) << "dbg LocalGC taking too long: " << end - start;
+    }
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     send_reply_callback(Status::NotImplemented("GC callback not defined"), nullptr,
