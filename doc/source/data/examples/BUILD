@@ -1,5 +1,5 @@
 filegroup(
     name = "data_examples",
-    srcs = glob(["*.md"]),
+    srcs = glob(["*.ipynb"]),
     visibility = ["//doc:__subpackages__"]
 )
