@@ -108,7 +108,7 @@ class DataClient:
                 while self._gc_queue:
                     (gc_req, gc_callback) = self._gc_queue.popleft()
                     with self.lock:
-                        self.__push_request_to_queue(gc_req, gc_callback)
+                        self._push_request_to_queue(gc_req, gc_callback)
                 if req is None:
                     continue
                 yield req
