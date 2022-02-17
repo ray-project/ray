@@ -53,12 +53,8 @@ class DatasetContext:
         self.target_max_block_size = target_max_block_size
         self.enable_pandas_block = enable_pandas_block
         self.optimize_fuse_stages = optimize_fuse_stages
-        self.optimize_fuse_read_stages = (
-            optimize_fuse_stages and optimize_fuse_read_stages
-        )
-        self.optimize_fuse_shuffle_stages = (
-            optimize_fuse_stages and optimize_fuse_shuffle_stages
-        )
+        self.optimize_fuse_read_stages = optimize_fuse_read_stages
+        self.optimize_fuse_shuffle_stages = optimize_fuse_shuffle_stages
 
     @staticmethod
     def get_current() -> "DatasetContext":
