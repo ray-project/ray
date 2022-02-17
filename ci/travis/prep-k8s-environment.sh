@@ -19,8 +19,8 @@ kind --help
 time kind create cluster --wait 120s --config ./ci/travis/kind.config.yaml
 shopt -s expand_aliases
 alias kubectl='docker run --network kind -v ${HOME}/.kube:/.kube bitnami/kubectl:latest'
-docker run --network kind -v ${HOME}/.kube:/.kube --entrypoint /bin/sh bitnami/kubectl:latest ls .kube
-docker run --network kind -v ${HOME}/.kube:/.kube --entrypoint /bin/sh bitnami/kubectl:latest cat .kube/config
+docker run --network kind -v ${HOME}/.kube:/.kube -it --entrypoint /bin/sh bitnami/kubectl:latest ls .kube
+docker run --network kind -v ${HOME}/.kube:/.kube -it --entrypoint /bin/sh bitnami/kubectl:latest cat .kube/config
 kubectl version
 kubectl cluster-info --context kind-kind
 kubectl get nodes
