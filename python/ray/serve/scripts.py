@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import json
 import os
+from readline import redisplay
 
 import click
 
@@ -14,6 +15,7 @@ from ray.serve.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
+from ray.dashboard.modules.common import SubmissionClient
 
 
 @click.group(help="[EXPERIMENTAL] CLI for managing Serve instances on a Ray cluster.")
@@ -133,7 +135,7 @@ def deploy_path(deployment: str, options_json: str):
 @click.option(
     "--address",
     "-a",
-    default="http://localhost:8265/api/serve/deployments/",
+    default="http://localhost:8265",
     required=False,
     type=str,
     help="Address of the Ray dashboard to query.",
@@ -142,10 +144,14 @@ def deploy(config_fname: str, address: str):
     import yaml
     import requests
 
+    full_address = f"{address}/api/serve/deployments/"
+
     with open(config_fname, "r") as config:
         deployments = yaml.safe_load(config)["deployments"]
 
+    submission_client = SubmissionClient(address)
     for deployment in deployments:
+        # Refomat deployment dictionary into REST API format
         configurables = deployment["configurable"]
         del deployment["configurable"]
         deployment.update(configurables)
@@ -153,7 +159,14 @@ def deploy(config_fname: str, address: str):
             if isinstance(val, str) and val.lower() == "none":
                 deployment[key] = None
 
-    response = requests.put(address, json=deployments)
+        # Upload local working_dir if provided
+        ray_actor_options = deployment.get("ray_actor_options", None)
+        if ray_actor_options is not None:
+            runtime_env = ray_actor_options.get("runtime_env", None)
+            if runtime_env is not None:
+                submission_client._upload_working_dir_if_needed(runtime_env)
+
+    response = requests.put(full_address, json=deployments)
     if response.status_code == 200:
         print("Deployment succeeded!")
     else:
