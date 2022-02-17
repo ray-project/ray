@@ -35,7 +35,7 @@ py_test(
 py_test(
     name = "quick_start",
     size = "small",
-    srcs = ["source/data/examples/doc_code/quick_start.py"],
+    srcs = ["source/data/doc_code/quick_start.py"],
     tags = ["exclusive", "team:ml"]
 )
 
@@ -101,36 +101,36 @@ py_test(
 )
 
 
-# Directory: source/ray-core/examples/doc_code
+# Directory: source/ray-core/doc_code
 py_test(
     name = "doc_code_tf_example",
     size = "small",
-    main = "source/ray-core/examples/doc_code/tf_example.py",
-    srcs = ["source/ray-core/examples/doc_code/tf_example.py"],
+    main = "source/ray-core/doc_code/tf_example.py",
+    srcs = ["source/ray-core/doc_code/tf_example.py"],
     tags = ["exclusive", "tf", "team:ml"]
 )
 
 py_test(
     name = "doc_code_torch_example",
     size = "small",
-    main = "source/ray-core/examples/doc_code/torch_example.py",
-    srcs = ["source/ray-core/examples/doc_code/torch_example.py"],
+    main = "source/ray-core/doc_code/torch_example.py",
+    srcs = ["source/ray-core/doc_code/torch_example.py"],
     tags = ["exclusive", "pytorch", "team:ml"]
 )
 
 py_test(
     name = "doc_code_metrics_example",
     size = "small",
-    main = "source/ray-core/examples/doc_code/metrics_example.py",
-    srcs = ["source/ray-core/examples/doc_code/metrics_example.py"],
+    main = "source/ray-core/doc_code/metrics_example.py",
+    srcs = ["source/ray-core/doc_code/metrics_example.py"],
     tags = ["exclusive", "team:serve"]
 )
 
 py_test(
     name = "doc_code_runtime_env_example",
     size = "small",
-    main = "source/ray-core/examples/doc_code/runtime_env_example.py",
-    srcs = ["source/ray-core/examples/doc_code/runtime_env_example.py"],
+    main = "source/ray-core/doc_code/runtime_env_example.py",
+    srcs = ["source/ray-core/doc_code/runtime_env_example.py"],
     tags = ["exclusive", "post_wheel_build", "team:serve"]
 )
 
