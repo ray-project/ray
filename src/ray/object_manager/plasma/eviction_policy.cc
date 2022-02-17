@@ -26,7 +26,6 @@ namespace plasma {
 void LRUCache::Add(const ObjectID &key, int64_t size) {
   auto it = item_map_.find(key);
   RAY_CHECK(it == item_map_.end());
-  RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "] Cache Added :"<< key;
   // Note that it is important to use a list so the iterators stay valid.
   item_list_.emplace_front(key, size);
   item_map_.emplace(key, item_list_.begin());
@@ -38,7 +37,6 @@ int64_t LRUCache::Remove(const ObjectID &key) {
   if (it == item_map_.end()) {
     return -1;
   }
-  RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "] Cache Removed :"<< key;
   int64_t size = it->second->second;
   used_capacity_ -= size;
   item_list_.erase(it->second);
@@ -82,7 +80,8 @@ int64_t LRUCache::ChooseObjectsToEvict(int64_t num_bytes_required,
                                        std::vector<ObjectID> &objects_to_evict) {
   int64_t bytes_evicted = 0;
   auto it = item_list_.end();
-  RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "]";
+  RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "] num_bytes_required: "
+	  <<num_bytes_required;
   while (bytes_evicted < num_bytes_required && it != item_list_.begin()) {
     it--;
   RAY_LOG(DEBUG) << "[JAE_DEBUG]  objects to evict is " << it->first;

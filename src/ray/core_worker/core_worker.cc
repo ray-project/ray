@@ -1210,8 +1210,6 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
     if (status.ok()) {
-    RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__
-                   << "] Create() is called. Priority is not set this case";
       status = plasma_store_provider_->Create(metadata, data_size, *object_id,
                                               /* owner_address = */ rpc_address_,
                                               Priority(), data, created_by_worker);
@@ -1678,8 +1676,6 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
-    RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__
-                   << "] ExecuteTaskLocalMode is called. Priority is not set this case";
     returned_refs = ExecuteTaskLocalMode(task_spec);
   } else {
     returned_refs = task_manager_->AddPendingTask(task_spec.CallerAddress(), task_spec,
@@ -2163,8 +2159,6 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
       data_buffer = std::make_shared<LocalMemoryBuffer>(data_size);
       task_output_inlined_bytes += static_cast<int64_t>(data_size);
     } else {
-      RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__
-                     << "] CreateExisting is called. Priority set is: " << spec->GetPriority();
       RAY_RETURN_NOT_OK(CreateExisting(metadata, data_size, object_id, owner_address,
                                        spec->GetPriority(), &data_buffer,
                                        /*created_by_worker=*/true));

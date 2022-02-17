@@ -31,10 +31,9 @@ uint64_t CreateRequestQueue::AddRequest(const ray::TaskKey &task_id,
                                         size_t object_size) {
   auto req_id = next_req_id_++;
   fulfilled_requests_[req_id] = nullptr;
-  //auto taskId = task.GetTaskSpecification().GetTaskKey();
-  queue_.emplace(
-      task_id,
-      new CreateRequest(object_id, req_id, client, create_callback, object_size));
+  // auto taskId = task.GetTaskSpecification().GetTaskKey();
+  queue_.emplace(task_id, new CreateRequest(object_id, req_id, client, create_callback,
+                                            object_size));
   num_bytes_pending_ += object_size;
   return req_id;
 }
@@ -67,21 +66,21 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
   PlasmaObject result = {};
 
   // Immediately fulfill it using the fallback allocator.
-  PlasmaError error = create_callback(/*fallback_allocator=*/true, &result,
-                                      /*spilling_required=*/nullptr, 
-												nullptr, nullptr, nullptr);
+  PlasmaError error =
+      create_callback(/*fallback_allocator=*/true, &result,
+                      /*spilling_required=*/nullptr, nullptr, nullptr, nullptr);
   return {result, error};
 }
 
 Status CreateRequestQueue::ProcessRequest(bool fallback_allocator,
                                           std::unique_ptr<CreateRequest> &request,
                                           bool *spilling_required,
-										  bool *block_tasks_required,
-										  bool *evict_tasks_required,
-										  ray::Priority *lowest_pri) {
+                                          bool *block_tasks_required,
+                                          bool *evict_tasks_required,
+                                          ray::Priority *lowest_pri) {
   request->error =
       request->create_callback(fallback_allocator, &request->result, spilling_required,
-			  block_tasks_required, evict_tasks_required, lowest_pri);
+                               block_tasks_required, evict_tasks_required, lowest_pri);
   if (request->error == PlasmaError::OutOfMemory) {
     return Status::ObjectStoreFull("");
   } else {
@@ -96,9 +95,8 @@ Status CreateRequestQueue::ProcessFirstRequest() {
   if (queue_it != queue_.end()) {
     bool spilling_required = false;
     std::unique_ptr<CreateRequest> &request = queue_it->second;
-    auto status =
-        ProcessRequest(/*fallback_allocator=*/false, request, &spilling_required,
-				nullptr, nullptr, nullptr);
+    auto status = ProcessRequest(/*fallback_allocator=*/false, request,
+                                 &spilling_required, nullptr, nullptr, nullptr);
     if (spilling_required) {
       spill_objects_callback_();
     }
@@ -149,8 +147,8 @@ Status CreateRequestQueue::ProcessFirstRequest() {
   return Status::OK();
 }
 
-void CreateRequestQueue::SetShouldSpill(bool should_spill){
-	should_spill_ = should_spill;
+void CreateRequestQueue::SetShouldSpill(bool should_spill) {
+  should_spill_ = should_spill;
 }
 
 Status CreateRequestQueue::ProcessRequests() {
@@ -160,29 +158,14 @@ Status CreateRequestQueue::ProcessRequests() {
     auto queue_it = queue_.begin();
     bool spilling_required = false;
     bool block_tasks_required = false;
-	bool evict_tasks_required = false;
+    bool evict_tasks_required = false;
     std::unique_ptr<CreateRequest> &request = queue_it->second;
-	ray::Priority lowest_pri;
-	ray::TaskKey task_id = queue_it->first;
-    auto status = ProcessRequest(/*fallback_allocator=*/false, request,
-		   	&spilling_required, &block_tasks_required, &evict_tasks_required, &lowest_pri);
-	/*
-	if(!RayConfig::instance().enable_BlockandEvictTasks()){
-      if(RayConfig::instance().enable_BlockTasks() && block_tasks_required){
-        RAY_LOG(DEBUG) << "[JAE_DEBUG] calling object_creation_blocked_callback priority "
-		    << queue_it->first.first.score;
-	    on_object_creation_blocked_callback_(queue_it->first.first, true, false);
-      }
-	  if(RayConfig::instance().enable_EvictTasks() && evict_tasks_required){
-	    on_object_evict_callback_(queue_it->first.first);
-        if (!should_spill_) {
-          RAY_LOG(INFO) << "Object creation of priority " << queue_it->first.first << " blocked";
-          return Status::TransientObjectStoreFull("Waiting for higher priority tasks to finish");
-        }
-	  }
-	}
-	*/
-    if (!RayConfig::instance().enable_BlockTasks() && spilling_required) {
+    ray::Priority lowest_pri;
+    ray::TaskKey task_id = queue_it->first;
+    auto status =
+        ProcessRequest(/*fallback_allocator=*/true, request, &spilling_required,
+                       &block_tasks_required, &evict_tasks_required, &lowest_pri);
+    if (spilling_required) {
       spill_objects_callback_();
     }
     auto now = get_time_();
@@ -199,25 +182,40 @@ Status CreateRequestQueue::ProcessRequests() {
         oom_start_time_ns_ = now;
       }
 
-	  /*
-	  if(!spilling_required){
-        RAY_LOG(DEBUG) << "[JAE_DEBUG] JAE_HERE spilling_required is not called";
-		//spill_objects_callback_();
-	  }
-	  */
-      if(RayConfig::instance().enable_BlockTasks()){
+      if (RayConfig::instance().enable_BlockTasks()) {
         RAY_LOG(DEBUG) << "[JAE_DEBUG] calling object_creation_blocked_callback priority "
-	    << lowest_pri;
-	    on_object_creation_blocked_callback_(lowest_pri, true, false);
-      }
-	  if(RayConfig::instance().enable_EvictTasks()){
-        RAY_LOG(DEBUG) << "[JAE_DEBUG] calling object_evict_callback on priority "
-	    << queue_it->first.first.score;
-	    on_object_creation_blocked_callback_(queue_it->first.first, false, true);
-	  }
-      if (RayConfig::instance().enable_BlockTasks() && !should_spill_) {
-        RAY_LOG(INFO) << "Object creation of priority " << queue_it->first.first << " blocked";
-        return Status::TransientObjectStoreFull("Waiting for higher priority tasks to finish");
+                       << lowest_pri;
+        on_object_creation_blocked_callback_(lowest_pri, true, false);
+		if(!RayConfig::instance().enable_BlockTasksSpill()){
+		  spill_objects_callback_();
+		}
+        if (!should_spill_) {
+          // should_spill_ is set false in default.
+          // should_spill_ is for EvictTasks. If there's no task to evict then the system
+          RAY_LOG(INFO) << "Object creation of priority " << queue_it->first.first
+                        << " blocked";
+          if (now - oom_start_time_ns_ >= grace_period_ns) {
+            // This is to handle when memory is fragmented
+            // Trigger the fallback allocator.
+            status =
+                ProcessRequest(/*fallback_allocator=*/true, request,
+                               /*spilling_required=*/nullptr, nullptr, nullptr, nullptr);
+            if (!status.ok()) {
+              std::string dump = "";
+              if (dump_debug_info_callback_ && !logged_oom) {
+                dump = dump_debug_info_callback_();
+                logged_oom = true;
+              }
+              RAY_LOG(INFO) << "Out-of-memory: Failed to create object "
+                            << (request)->object_id << " of size "
+                            << (request)->object_size / 1024 / 1024 << "MB\n"
+                            << dump;
+            }
+            FinishRequest(queue_it);
+          }
+          return Status::TransientObjectStoreFull(
+              "Waiting for higher priority tasks to finish");
+        }
       }
 
       auto grace_period_ns = oom_grace_period_ns_;
@@ -254,7 +252,8 @@ Status CreateRequestQueue::ProcessRequests() {
 
   // If we make it here, then there is nothing left in the queue. It's safe to
   // run new tasks again.
-  if(!RayConfig::instance().enable_BlockandEvictTasks() || RayConfig::instance().enable_BlockTasks()){
+  if (!RayConfig::instance().enable_BlockandEvictTasks() ||
+      RayConfig::instance().enable_BlockTasks()) {
     RAY_LOG(DEBUG) << "[JAE_DEBUG] resetting object_creation_blocked_callback priority";
     RAY_UNUSED(on_object_creation_blocked_callback_(ray::Priority(), true, false));
   }
@@ -263,9 +262,9 @@ Status CreateRequestQueue::ProcessRequests() {
 }
 
 void CreateRequestQueue::FinishRequest(
-	absl::btree_map<ray::TaskKey, std::unique_ptr<CreateRequest>>::iterator queue_it) {
+    absl::btree_map<ray::TaskKey, std::unique_ptr<CreateRequest>>::iterator queue_it) {
   // Fulfill the request.
-  //auto &request = *(queue_it->second);
+  // auto &request = *(queue_it->second);
   auto it = fulfilled_requests_.find(queue_it->second->request_id);
   RAY_CHECK(it != fulfilled_requests_.end());
   RAY_CHECK(it->second == nullptr);

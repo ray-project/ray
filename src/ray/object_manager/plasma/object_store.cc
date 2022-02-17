@@ -52,15 +52,12 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
 }
 
 ray::Priority ObjectStore::GetLowestPriObject() {
+  // Return the lowest priority object in object_table
   auto it = object_table_.begin();
-  //TODO(Jae) segfault here not objects
   ray::Priority lowest_priority = it->second->GetPriority();
   it++;
-  RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "] Look for lowest pri size:" << object_table_.size();
-  RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "] pri:" << lowest_priority;
   for (; it != object_table_.end(); it++){
 	ray::Priority p = it->second->GetPriority();
-	RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "] pri:" << p;
     if(lowest_priority < p){
       lowest_priority = p;
 	}

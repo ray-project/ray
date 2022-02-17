@@ -50,9 +50,6 @@ def test_ray_pipeline():
 
     ray_pipeline_end = perf_counter()
 
-    del refs[1]
-    del refs
-
     return ray_pipeline_end - ray_pipeline_begin
 
 

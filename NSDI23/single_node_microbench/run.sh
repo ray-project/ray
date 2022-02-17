@@ -69,6 +69,7 @@ function PipelineTest()
 				do
 					echo -n -e "test_pipeline.py -w $w -o $o -os $os -ns $ns\n"
 					RAY_enable_BlockTasks=true python test_pipeline.py -w $w -o $o -os $os -r $RESULT_FILE -ns $ns
+					#RAY_object_spilling_threshold=0.1 python test_pipeline.py -w $w -o $o -os $os -r $RESULT_FILE -ns $ns
 					rm -rf /tmp/ray/*
 				done
 			done
@@ -88,8 +89,8 @@ popd
 
 #Scheduled
 #./../scripts/install_scheduler_ray.sh
-#PipelineTest $LOG_PATH/pipeline_scheduled.csv
-PipelineTest $LOG_PATH/pipeline_production.csv
-ShuffleTest $LOG_PATH/shuffle_scheduled.csv
-ScatterGatherTest $LOG_PATH/scatter_gather_scheduled.csv
-ParallelShuffleTest $LOG_PATH/parallel_shuffle_scheduled.csv
+PipelineTest $LOG_PATH/pipeline_scheduled.csv
+#PipelineTest $LOG_PATH/pipeline_production.csv
+#ShuffleTest $LOG_PATH/shuffle_scheduled.csv
+#ScatterGatherTest $LOG_PATH/scatter_gather_scheduled.csv
+#ParallelShuffleTest $LOG_PATH/parallel_shuffle_scheduled.csv

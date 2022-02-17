@@ -84,8 +84,6 @@ ray::Status ObjectBufferPool::CreateChunk(const ObjectID &object_id,
 
     // Release the buffer pool lock during the blocking create call.
     lock.unlock();
-    RAY_LOG(DEBUG)
-        << "[JAE_DEBUG] [" << __func__ << "] CreateAndSpillIfNeeded() called with dummy pri";
     Status s = store_client_.CreateAndSpillIfNeeded(
         object_id, owner_address, Priority(), object_size, nullptr, metadata_size, &data,
         plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet);

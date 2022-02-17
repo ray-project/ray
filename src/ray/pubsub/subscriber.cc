@@ -50,7 +50,6 @@ bool SubscriberChannel<KeyIdType>::Unsubscribe(const rpc::Address &publisher_add
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   const auto key_id = KeyIdType::FromBinary(key_id_binary);
 
-  RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "]";
   auto subscription_it = subscription_map_.find(publisher_id);
   if (subscription_it == subscription_map_.end()) {
     return false;

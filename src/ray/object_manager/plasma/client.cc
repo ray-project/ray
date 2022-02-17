@@ -380,7 +380,7 @@ Status PlasmaClient::Impl::TryCreateImmediately(
     fb::ObjectSource source, int device_num) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
-  RAY_LOG(DEBUG) << "[JAE_DEBUG]called plasma_create on conn " << store_conn_ << " with size "
+  RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
                  << data_size << " and metadata size " << metadata_size;
   RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, owner_address, ray::Priority(), data_size,
                                       metadata_size, source, device_num,

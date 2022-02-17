@@ -162,7 +162,6 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(
                    << ", data_size=" << object_info.data_size
                    << ", metadata_size=" << object_info.metadata_size;
   }
-  // TODO(Jae) Insert Priority to LocalObject at create
   const int64_t footprint_limit = allocator_.GetFootprintLimit();
   float allocated_percentage;
 
@@ -206,7 +205,6 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(
   return error;
 }
 
-// TODO(Jae) You stopped here
 PlasmaError PlasmaStore::CreateObject(const ray::ObjectInfo &object_info,
                                       fb::ObjectSource source,
                                       const std::shared_ptr<Client> &client,
@@ -389,7 +387,6 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     for (size_t i = 0; i < request->priority()->size(); i++) {
       priority.score.push_back(request->priority()->Get(i));
     }
-    // TODO(Jae) Went up the function calls to here. It seems this gets a dummy priority.
     // Check the log and remove this if it gets a correct value
     RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "] priority passed is " << priority;
     ray::TaskKey key(priority, ObjectID::FromRandom().TaskId());
