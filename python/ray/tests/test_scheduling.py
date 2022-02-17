@@ -286,8 +286,9 @@ def test_spread_scheduling_overrides_locality_aware_scheduling(ray_start_cluster
 
     # Test that task f() runs on the local node as well
     # even though remote node has the dependencies.
-    obj = non_local.remote()
-    assert {ray.get(f.remote(obj)) for _ in range(2)} == {
+    obj1 = non_local.remote()
+    obj2 = non_local.remote()
+    assert {ray.get(f.remote(obj1)), ray.get(f.remote(obj2))} == {
         local_node.unique_id,
         remote_node.unique_id,
     }

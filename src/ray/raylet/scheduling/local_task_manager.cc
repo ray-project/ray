@@ -1041,8 +1041,9 @@ std::string LocalTaskManager::GetBestSchedulableNode(const internal::Work &work,
                                                      bool *is_infeasible) {
   // If the local node is available, we should directly return it instead of
   // going through the full hybrid policy since we don't want spillback.
-  if ((work.grant_or_reject || work.is_selected_based_on_locality) && !force_spillback &&
-      IsLocallySchedulable(work.task)) {
+  if ((work.grant_or_reject || work.is_selected_based_on_locality ||
+       requires_object_store_memory) &&
+      !force_spillback && IsLocallySchedulable(work.task)) {
     *is_infeasible = false;
     return self_node_id_.Binary();
   }
