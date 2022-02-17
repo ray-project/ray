@@ -99,5 +99,5 @@
     compute_template: 12gpus_192cpus.yaml
 
   run:
-    timeout: 7200
+    timeout: 10800
     script: python performance_tests/run.py
