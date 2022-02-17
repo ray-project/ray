@@ -8,7 +8,23 @@ import time
 
 import ray
 from ray import tune
-from ray.rllib.examples.env import bandit_envs_recommender_system  # noqa: F401
+from ray.tune import register_env
+from ray.rllib.env.wrappers.recsim import (
+    MultiDiscreteToDiscreteActionWrapper,
+    RecSimObservationBanditWrapper,
+)
+from ray.rllib.examples.env.bandit_envs_recommender_system import (
+    ParametricRecSys,
+)
+
+# Because ParametricRecSys follows RecSim's API, we have to wrap it before
+# it can work with our Bandits agent.
+register_env(
+    "ParametricRecSysEnv",
+    lambda cfg: MultiDiscreteToDiscreteActionWrapper(
+        RecSimObservationBanditWrapper(ParametricRecSys(**cfg))
+    ),
+)
 
 if __name__ == "__main__":
     # Temp fix to avoid OMP conflict.

@@ -6,15 +6,18 @@ import gym
 import numpy as np
 from typing import Optional
 
-from ray.rllib.env.wrappers.recsim import (
-    MultiDiscreteToDiscreteActionWrapper,
-    RecSimObservationBanditWrapper,
-)
 from ray.rllib.utils.numpy import softmax
-from ray.tune import register_env
 
 
 class ParametricRecSys(gym.Env):
+    """A recommendation environment which generates items with visible features
+    randomly (parametric actions).
+    The environment can be configured to be multi-user, i.e. different models
+    will be learned independently for each user, by setting num_users_in_db
+    parameter.
+    To enable slate recommendation, the `slate_size` config parameter can be
+    set as > 1.
+    """
     def __init__(
         self,
         embedding_size: int = 20,
@@ -189,16 +192,6 @@ class ParametricRecSys(gym.Env):
             "doc": doc,
             "response": response,
         }
-
-
-# Because ParametricRecSys follows RecSim's API, we have to wrap it before
-# it can work with our Bandits agent.
-register_env(
-    "ParametricRecSysEnv",
-    lambda config: MultiDiscreteToDiscreteActionWrapper(
-        RecSimObservationBanditWrapper(ParametricRecSys(**config))
-    ),
-)
 
 
 if __name__ == "__main__":
