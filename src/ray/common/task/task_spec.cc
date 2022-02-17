@@ -175,7 +175,7 @@ int TaskSpecification::GetRuntimeEnvHash() const {
   if (RayConfig::instance().worker_resource_limits_enabled()) {
     required_resource = GetRequiredResources().GetResourceMap();
   }
-  WorkerCacheKey env = {SerializedRuntimeEnv(), required_resource};
+  WorkerCacheKey env = {SerializedRuntimeEnv(), required_resource, IsActorCreationTask()};
   return env.IntHash();
 }
 
@@ -447,9 +447,10 @@ std::string TaskSpecification::CallSiteString() const {
 
 WorkerCacheKey::WorkerCacheKey(
     const std::string serialized_runtime_env,
-    const absl::flat_hash_map<std::string, double> &required_resources)
+    const absl::flat_hash_map<std::string, double> &required_resources, bool is_actor)
     : serialized_runtime_env(serialized_runtime_env),
-      required_resources(std::move(required_resources)) {}
+      required_resources(std::move(required_resources)),
+      is_actor(is_actor) {}
 
 bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
   // FIXME we should compare fields
@@ -457,7 +458,8 @@ bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
 }
 
 bool WorkerCacheKey::EnvIsEmpty() const {
-  return IsRuntimeEnvEmpty(serialized_runtime_env) && required_resources.empty();
+  return IsRuntimeEnvEmpty(serialized_runtime_env) && required_resources.empty() &&
+         !is_actor;
 }
 
 std::size_t WorkerCacheKey::Hash() const {
@@ -469,6 +471,7 @@ std::size_t WorkerCacheKey::Hash() const {
       hash_ = 0;
     } else {
       boost::hash_combine(hash_, serialized_runtime_env);
+      boost::hash_combine(hash_, is_actor);
 
       std::vector<std::pair<std::string, double>> resource_vars(
           required_resources.begin(), required_resources.end());
