@@ -2,7 +2,7 @@ interest-evolution-recsim-env-slateq:
     env: ray.rllib.examples.env.recommender_system_envs_with_recsim.InterestEvolutionRecSimEnv
     run: SlateQ
     stop:
-        episode_reward_mean: 160.0
+        episode_reward_mean: 170.0
         timesteps_total: 1000000
     config:
         framework: tf2
@@ -16,8 +16,8 @@ interest-evolution-recsim-env-slateq:
                 # Each step, sample `num_candidates` documents using the env-internal
                 # document sampler model (a logic that creates n documents to select
                 # the slate from).
-                resample_documents: false
-                num_candidates: 10
+                resample_documents: true
+                num_candidates: 50
                 # How many documents to recommend (out of `num_candidates`) each
                 # timestep?
                 slate_size: 2
@@ -28,9 +28,14 @@ interest-evolution-recsim-env-slateq:
                 seed: 0
 
         exploration_config:
-            epsilon_timesteps: 2500000
+            warmup_timesteps: 20000
+            epsilon_timesteps: 50000
+            final_epsilon: 0.01
 
-        grad_clip: 10.0
+        replay_buffer_config:
+            capacity: 1000000
+
+        grad_clip: 20.0
 
         num_workers: 0
         num_gpus: 0
@@ -39,5 +44,5 @@ interest-evolution-recsim-env-slateq:
 
         lr: 0.00025
 
-        target_network_update_freq: 1000
+        target_network_update_freq: 800
         tau: 1.0
