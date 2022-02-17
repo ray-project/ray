@@ -40,6 +40,7 @@ mod test {
             ray::init_inner(
                 true,
                 Some(rust_worker_execute),
+                Some(internal::set_async_result),
                 Some((c_args.len() as std::os::raw::c_int, c_args.as_ptr())),
             );
         }
@@ -120,8 +121,32 @@ mod test {
     //     try_shutdown();
     // }
 
-    #[test]
-    fn test_append_string_tokio() {
+    // #[test]
+    // fn test_append_string_tokio() {
+    //     try_init();
+    //     {
+    //         // Remote async with more than one thread requires
+    //         let handle = new_string_tokio.remote_async(String::from("Hello"));
+    //
+    //         let now = std::time::Instant::now();
+    //         // Next step: define tasks with closures etc...
+    //         let mut obj_refs: Vec<_> = (0..0)//100_000)
+    //             .map(|i| append_tokio.remote(&handle, format!(" World X {}", i)))
+    //             .collect();
+    //
+    //         obj_refs.iter().for_each(|obj_ref| {
+    //             let obj = get(&obj_ref);
+    //             // println!("{:?} {:?}", obj, now.elapsed().as_millis());
+    //         });
+    //
+    //         let obj = get(&append_tokio.remote(&handle, format!(" World X {}", "MAX")));
+    //         println!("{:?} {:?}", obj, now.elapsed().as_millis());
+    //     }
+    //     try_shutdown();
+    // }
+
+    #[tokio::test]
+    async fn test_append_string_tokio_get_async() {
         try_init();
         {
             // Remote async with more than one thread requires
@@ -129,17 +154,25 @@ mod test {
 
             let now = std::time::Instant::now();
             // Next step: define tasks with closures etc...
-            let mut obj_refs: Vec<_> = (0..25_000)
+            let mut obj_refs: Vec<_> = (0..0)//100_000)
                 .map(|i| append_tokio.remote(&handle, format!(" World X {}", i)))
                 .collect();
 
             obj_refs.iter().for_each(|obj_ref| {
-                let obj = get(&obj_ref);
+                // let obj = get_async(&obj_ref);
                 // println!("{:?} {:?}", obj, now.elapsed().as_millis());
             });
 
-            let obj = get(&append_tokio.remote(&handle, format!(" World X {}", "MAX")));
-            println!("{:?} {:?}", obj, now.elapsed().as_millis());
+            let now = std::time::Instant::now();
+            let id = append_tokio.remote(&handle, format!(" World X {}", "MAX"));
+            let obj = get_async(&id);
+            println!(
+                "trying to get: {:?}. [{} ms elapsed so far]",
+                id,
+                now.elapsed().as_millis()
+            );
+
+            println!("{:?} {:?}", obj.await, now.elapsed().as_millis());
         }
         try_shutdown();
     }

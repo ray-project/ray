@@ -26,7 +26,7 @@ namespace {
 // and unmarshall data to/from C-ABI callback (or maybe this is much simpler if
 // they are simply `std::function<void()>`)
 static c_worker_ExecuteCallback c_worker_execute;
-// static c_worker_ExecuteAsyncCallback c_worker_execute_async;
+static c_worker_SetAsyncResultCallback c_worker_set_async_result;
 static ray::core::CoreWorkerOptions stored_worker_options;
 static Config stored_config;
 static void* current_actor_ptr = nullptr;
@@ -38,10 +38,10 @@ int c_worker_RegisterExecutionCallback(const c_worker_ExecuteCallback callback) 
     return 1;
 }
 
-// int c_worker_RegisterExecutionAsyncCallback(const c_worker_ExecuteAsyncCallback callback) {
-//     c_worker_execute_async = callback;
-//     return 1;
-// }
+int c_worker_RegisterSetAsyncResultCallback(const c_worker_SetAsyncResultCallback callback) {
+    c_worker_set_async_result = callback;
+    return 1;
+}
 
 // We assume that the byte array is properly allocated, i.e.
 // has len == ID::Size()
@@ -162,24 +162,15 @@ ray::Status ExecutionCallback(
     assert (false);
   }
 
-  // if (ray::core::CoreWorkerProcess::GetCoreWorker().GetWorkerContext().CurrentActorIsAsync()) {
-  //   // Put the args buffers into a global hashmap so that they are still referenced.
-  //   //
-  //   // The `current_actor_ptr` should actually
-  //   // c_worker_execute_async(
-  //   //   &current_actor_ptr,
-  //   //   task_type, fd_list,
-  //   //   args_array_list.data(), args_array_list.size(),
-  //   //   execute_return_value_list
-  //   // );
-  // } else {
-    c_worker_execute(
-      &current_actor_ptr,
-      task_type, fd_list,
-      args_array_list.data(), args_array_list.size(),
-      execute_return_value_list
-    );
-  // }
+  bool is_async = ray::core::CoreWorkerProcess::GetCoreWorker().GetWorkerContext().CurrentActorIsAsync();
+
+  c_worker_execute(
+    is_async,
+    &current_actor_ptr,
+    task_type, fd_list,
+    args_array_list.data(), args_array_list.size(),
+    execute_return_value_list
+  );
 
   for (auto arg: args_array_list) {
     c_worker_DeallocateDataValue(arg);
@@ -226,10 +217,6 @@ ray::Status ExecutionCallback(
   }
   return ray::Status::OK();
 };
-
-void c_worker_HandleAsyncReturn() {
-
-}
 
 RAY_EXPORT void c_worker_Initialize() {
   ray::core::CoreWorkerOptions options = stored_worker_options;
@@ -593,6 +580,25 @@ RAY_EXPORT int c_worker_Get(const char* const object_ids[], int object_ids_size,
     objects[i] = rv;
   }
   return 0;
+}
+
+
+void SetDataValueResult(std::shared_ptr<ray::RayObject> obj, ObjectID object_id, void *future) {
+  auto rv = new DataValue();
+  rv->data = RayBufferToDataBuffer(obj->GetData());
+  // rv->meta = RayBufferToDataBuffer(results[i]->GetMetadata());
+  auto error_code = c_worker_set_async_result(future, rv);
+  if (error_code != 0) {
+      RAY_LOG(FATAL) << "Failed to get async" << object_id;
+      RAY_CHECK(1 == 0);
+  }
+}
+
+RAY_EXPORT void c_worker_GetAsync(const char *object_id, void *future_object) {
+  auto object_id_obj = ByteArrayToId<ray::ObjectID>(object_id);
+  std::vector<std::shared_ptr<ray::RayObject>> results;
+  ray::core::CoreWorkerProcess::GetCoreWorker().GetAsync(
+      object_id_obj, SetDataValueResult, future_object);
 }
 
 RAY_EXPORT int c_worker_Put(char **object_ids, int timeout, const DataValue **objects, int objects_size) {

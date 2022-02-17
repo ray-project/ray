@@ -50,7 +50,7 @@ typedef struct DataValue {
 /// \param[out] return_values Generated ID of the object.
 /// \return Status.
 
-typedef void (*c_worker_ExecuteCallback)(void **actor_ptr, int task_type,
+typedef void (*c_worker_ExecuteCallback)(bool is_async, void **actor_ptr, int task_type,
                                          RaySlice ray_function_info,
                                          const DataValue* const args[], size_t args_len,
                                          RaySlice return_values);
@@ -58,6 +58,13 @@ typedef void (*c_worker_ExecuteCallback)(void **actor_ptr, int task_type,
 ///
 /// \param[in]
 int c_worker_RegisterExecutionCallback(const c_worker_ExecuteCallback callback);
+
+typedef int (*c_worker_SetAsyncResultCallback)(void * future_object, DataValue *data_value);
+
+/// Register the language-worker's `set_async_result` callback to the `c_worker`
+///
+/// \param[in]
+int c_worker_RegisterSetAsyncResultCallback(const c_worker_SetAsyncResultCallback callback);
 
 /**
 * AllocateDataValue merely wraps
@@ -86,8 +93,8 @@ void c_worker_RemoveLocalRef(const char* id);
 //
 // TODO: Why is result a list? Do we ever create more than one actor...?
 int c_worker_CreateActor(const char *create_fn_name, const bool *input_is_ref,
-                                    const DataValue* const input_values[], const char **input_refs,
-                                    int num_input_value, char **result, bool is_async);
+                         const DataValue* const input_values[], const char **input_refs,
+                         int num_input_value, char **result, bool is_async);
 
 int c_worker_SubmitTask(int task_type, /*optional*/ const char *actor_id,
                         const char *method_name, const bool *input_is_ref,
@@ -96,6 +103,8 @@ int c_worker_SubmitTask(int task_type, /*optional*/ const char *actor_id,
                         int num_returns, char **object_ids);
 
 int c_worker_Get(const char* const object_ids[], int object_ids_size, int timeout, DataValue **objects);
+
+void c_worker_GetAsync(const char *object_id, void *future_object);
 
 int c_worker_Put(char **object_ids, int timeout, const DataValue **objects, int objects_size);
 

@@ -10,8 +10,7 @@ include!(concat!(env!("OUT_DIR"), "/ray_rs_sys_bindgen.rs"));
 include!(env!("BAZEL_BINDGEN_SOURCE"));
 
 use c_vec::CVec;
-use std::ffi::CString;
-use std::os::raw::*;
+use std::{ffi::CString, os::raw::*};
 
 // #[cfg(not(feature = "bazel"))]
 // mod proto;
@@ -68,6 +67,7 @@ struct LaunchConfig {
 }
 
 pub type MaybeExecuteCallback = c_worker_ExecuteCallback;
+pub type MaybeSetAsyncResultCallback = c_worker_SetAsyncResultCallback;
 
 pub extern "C" fn rust_worker_execute_dummy(
     _task_type: RayInt,
@@ -78,12 +78,15 @@ pub extern "C" fn rust_worker_execute_dummy(
 ) {
 }
 
+pub extern "C" fn set_async_result_dummy(_fut_obj: *mut c_void, _dv: *mut DataValue) {}
+
 pub mod ray {
     use super::*;
     pub use proto::TaskType;
     pub fn init_inner(
         is_driver: bool,
         f: MaybeExecuteCallback,
+        g: MaybeSetAsyncResultCallback,
         // d: MaybeBufferDestructor,
         argc_v: Option<(c_int, *const *const c_char)>,
     ) {
@@ -92,6 +95,7 @@ pub mod ray {
             let mut head_args = CString::new("").unwrap();
 
             c_worker_RegisterExecutionCallback(f);
+            c_worker_RegisterSetAsyncResultCallback(g);
             // c_worker_RegisterBufferDestructor(d);
 
             let (argc, argv) = argc_v.unwrap_or((0, std::ptr::null()));
@@ -158,9 +162,81 @@ pub mod util {
 pub mod internal {
     use super::*;
     use protobuf::ProtobufEnum;
+    use std::{
+        future::Future,
+        pin::Pin,
+        sync::{Arc, Mutex},
+        task::{Context, Poll, Waker},
+    };
 
     pub fn parse_task_type(i: i32) -> proto::TaskType {
         ray::TaskType::from_i32(i).expect("Rust worker could not parse task type")
+    }
+
+    pub extern "C" fn set_async_result(
+        ptr_to_shared: *mut c_void,
+        // Instantiate with the
+        d_value: *mut DataValue,
+    ) -> i32 {
+        // Decrease ref_count of shared by dropping it
+        let shared = unsafe { Arc::from_raw(ptr_to_shared as *const Mutex<Shared>) };
+        let guard = shared.lock();
+        if let Ok(mut s) = guard {
+            s.d_value = d_value;
+            s.completed = true;
+            // If we were too slow to make the first poll, wake the waker
+            // as the task has been parked.
+            if let Some(waker) = s.waker.take() {
+                waker.wake();
+            }
+            return 0;
+        } else {
+            return 1;
+        }
+    }
+
+    pub struct DataValueFuture {
+        shared: Arc<Mutex<Shared>>,
+    }
+
+    impl DataValueFuture {
+        fn new(id: &ObjectID) -> Self {
+            let shared = Arc::new(Mutex::new(Shared {
+                d_value: std::ptr::null_mut(),
+                completed: false,
+                waker: None,
+            }));
+            unsafe {
+                c_worker_GetAsync(id.as_ptr(), Arc::into_raw(shared.clone()) as *mut c_void);
+            }
+
+            DataValueFuture { shared }
+        }
+    }
+
+    // Since we are doing a callback within the same binary
+    // (rust_worker), this is FFI-safe...
+    struct Shared {
+        d_value: *mut DataValue,
+        waker: Option<Waker>,
+        completed: bool,
+    }
+
+    impl Future for DataValueFuture {
+        type Output = DataValue;
+        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            let mut s = self.shared.lock().unwrap();
+            if s.completed {
+                Poll::Ready(unsafe { *s.d_value })
+            } else {
+                s.waker = Some(cx.waker().clone());
+                Poll::Pending
+            }
+        }
+    }
+
+    pub fn get_async(id: &ObjectID) -> DataValueFuture {
+        DataValueFuture::new(id)
     }
 
     // One can use Vec<&'a[u8]> in the function signature instead since SubmitTask is synchronous?
@@ -371,7 +447,12 @@ pub mod test {
 
     #[test]
     fn test_put_get_raw() {
-        ray::init_inner(true, Some(rust_worker_execute_dummy), None);
+        ray::init_inner(
+            true,
+            Some(rust_worker_execute_dummy),
+            Some(set_async_result_dummy),
+            None,
+        );
         unsafe {
             // Create data
             let mut data_vec = vec![1u8, 2];

@@ -1,5 +1,7 @@
 // TODO: Load as prelude?
-use ray_rs::{load_code_paths_from_raw_c_cmdline, ray, rust_worker_execute};
+use ray_rs::{
+    internal::set_async_result, load_code_paths_from_raw_c_cmdline, ray, rust_worker_execute,
+};
 use std::ffi::CString;
 use std::os::raw::*;
 
@@ -20,6 +22,7 @@ fn main() {
     ray::init_inner(
         false,
         Some(rust_worker_execute),
+        Some(set_async_result),
         Some((c_args.len() as c_int, c_args.as_ptr())),
     );
     ray::run();

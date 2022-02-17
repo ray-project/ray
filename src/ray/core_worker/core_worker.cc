@@ -3062,24 +3062,24 @@ void CoreWorker::YieldFiberAndAwait(FiberEvent &event) {
 }
 
 void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
-                          void *python_future) {
+                          void *language_worker_future) {
   auto fallback_callback =
       std::bind(&CoreWorker::PlasmaCallback, this, success_callback,
                 std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
 
-  memory_store_->GetAsync(object_id, [python_future, success_callback, fallback_callback,
+  memory_store_->GetAsync(object_id, [language_worker_future, success_callback, fallback_callback,
                                       object_id](std::shared_ptr<RayObject> ray_object) {
     if (ray_object->IsInPlasmaError()) {
-      fallback_callback(ray_object, object_id, python_future);
+      fallback_callback(ray_object, object_id, language_worker_future);
     } else {
-      success_callback(ray_object, object_id, python_future);
+      success_callback(ray_object, object_id, language_worker_future);
     }
   });
 }
 
 void CoreWorker::PlasmaCallback(SetResultCallback success,
                                 std::shared_ptr<RayObject> ray_object, ObjectID object_id,
-                                void *py_future) {
+                                void *language_worker_future) {
   RAY_CHECK(ray_object->IsInPlasmaError());
 
   // First check if the object is available in local plasma store.
@@ -3091,18 +3091,18 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
     if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok()) {
       RAY_CHECK(vec.size() > 0)
           << "Failed to get local object but Raylet notified object is local.";
-      return success(vec.front(), object_id, py_future);
+      return success(vec.front(), object_id, language_worker_future);
     }
   }
 
   // Object is not available locally. We now add the callback to listener queue.
   {
     absl::MutexLock lock(&plasma_mutex_);
-    auto plasma_arrived_callback = [this, success, object_id, py_future]() {
+    auto plasma_arrived_callback = [this, success, object_id, language_worker_future]() {
       // This callback is invoked on the io_service_ event loop, so it cannot call
       // blocking call like Get(). We used GetAsync here, which should immediate call
       // PlasmaCallback again with object available locally.
-      GetAsync(object_id, success, py_future);
+      GetAsync(object_id, success, language_worker_future);
     };
 
     async_plasma_callbacks_[object_id].push_back(plasma_arrived_callback);

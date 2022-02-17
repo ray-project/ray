@@ -480,6 +480,12 @@ pub fn get<R: serde::de::DeserializeOwned>(id: &ObjectRef<R>) -> R {
     rmp_serde::from_read_ref::<_, R>(buf).unwrap()
 }
 
+pub async fn get_async<R: serde::de::DeserializeOwned>(id: &ObjectRef<R>) -> R {
+    let dv = ray_rs_sys::internal::get_async(id.as_raw()).await;
+    let buf = ray_rs_sys::dv_as_slice(dv);
+    rmp_serde::from_read_ref::<_, R>(buf).unwrap()
+}
+
 // #[macro_export]
 // macro_rules! remote_actor {
 //
