@@ -11,6 +11,7 @@ py_test(
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
     tags = ["exclusive", "team:ml", "py37"],
+    data = ["//doc/source/ray-core/examples:core_examples"],
     args = ["--path", "doc/source/ray-core/examples/dask_xgboost/dask_xgboost.ipynb",
             "--smoke-test", "--address ''", "--num-actors 4", "--cpus-per-actor 1", "--num-actors-inference 4",
             "--cpus-per-actor-inference 1"]
@@ -23,6 +24,7 @@ py_test(
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
     tags = ["exclusive", "team:ml", "py37"],
+    data = ["//doc/source/ray-core/examples:core_examples"],
     args = ["--path", "doc/source/ray-core/examples/modin_xgboost/modin_xgboost.ipynb",
             "--smoke-test", "--address ''", "--num-actors 4",
             "--cpus-per-actor 1", "--num-actors-inference 4",
@@ -53,6 +55,7 @@ py_test(
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
     tags = ["exclusive", "team:ml", "py37", "datasets_train"],
+    data = ["//doc/source/data/examples:data_examples"],
     args = ["--path", "doc/source/ray-core/examples/datasets_train/datasets_train.ipynb",
             "--smoke-test", "--num-workers=2", "--use-gpu"]
 )
@@ -63,6 +66,7 @@ py_test(
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
     args = ["--path", "doc/source/ray-core/examples/plot_hyperparameter.ipynb"],
+    data = ["//doc/source/ray-core/examples:core_examples"],
     tags = ["exclusive", "team:ml"]
 )
 
@@ -72,6 +76,7 @@ py_test(
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
     args = ["--path", "doc/source/ray-core/examples/plot_parameter_server.ipynb"],
+    data = ["//doc/source/ray-core/examples:core_examples"],
     tags = ["exclusive", "team:ml"]
 )
 
@@ -81,6 +86,7 @@ py_test(
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
     args = ["--path", "doc/source/ray-core/examples/plot_pong_example.ipynb"],
+    data = ["//doc/source/ray-core/examples:core_examples"],
     tags = ["exclusive", "team:ml"]
 )
 
@@ -90,6 +96,7 @@ py_test(
     srcs = ["test_myst_doc.py"],
     size = "small",
     args = ["--path", "doc/source/ray-core/examples/progress_bar.ipynb"],
+    data = ["//doc/source/ray-core/examples:core_examples"],
     tags = ["exclusive", "team:ml"]
 )
 
