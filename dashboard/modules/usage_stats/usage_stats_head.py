@@ -22,9 +22,11 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         self.session_dir = dashboard_head.session_dir
         self.client = ray_usage_lib.UsageReportClient()
         # The total number of report succeeded.
-        self.report_success = 0
+        self.total_success = 0
         # The total number of report failed.
-        self.report_failed = 0
+        self.total_failed = 0
+        # The seq number of report. It increments whenever a new report is sent.
+        self.seq_no = 0
 
     @async_loop_forever(ray_usage_lib._usage_stats_report_interval_s())
     async def _report_usage(self):
@@ -38,40 +40,31 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             usage_stats.json won't be written.
         """
         try:
-            data = ray_usage_lib.generate_report_data(self.cluster_metadata)
-            error_message = None
+            data = ray_usage_lib.generate_report_data(
+                self.cluster_metadata,
+                self.total_success,
+                self.total_failed,
+                self.seq_no,
+            )
+            error = None
             try:
                 await self.client.report_usage_data_async(
                     ray_usage_lib._usage_stats_report_url(), data
                 )
             except Exception as e:
-                logger.info(
-                    "Usage report request failed. "
-                    "It won't affect any of Ray operations, except "
-                    "the usage stats won't be reported to "
-                    f"{ray_usage_lib._usage_stats_report_url()}. "
-                    f"Error message: {e}"
-                )
-                error_message = str(e)
-                self.report_failed += 1
+                logger.info(f"Usage report request failed. {e}")
+                error = str(e)
+                self.total_failed += 1
             else:
-                self.report_success += 1
+                self.total_success += 1
+            finally:
+                self.seq_no += 1
 
-            data = ray_usage_lib.generate_write_data(
-                data, error_message, self.report_success, self.report_failed
-            )
+            data = ray_usage_lib.generate_write_data(data, error)
             await self.client.write_usage_data_async(data, self.session_dir)
 
         except Exception as e:
-            logger.info(
-                "Usage report failed due to unexpected error. "
-                f"It won't affect any of Ray operations. Error message: {e}"
-            )
-
-        # Add a random offset to remove sample bias.
-        await asyncio.sleep(
-            random.randint(0, ray_usage_lib._usage_stats_report_interval_s())
-        )
+            logger.info(f"Usage report failed: {e}")
 
     async def run(self, server):
         if not ray_usage_lib._usage_stats_enabled():
@@ -79,6 +72,10 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             return
         else:
             logger.info("Usage reporting is disabled.")
+            # Add a random offset before the first report to remove sample bias.
+            await asyncio.sleep(
+                random.randint(0, ray_usage_lib._usage_stats_report_interval_s())
+            )
             await asyncio.gather(self._report_usage())
 
     @staticmethod
