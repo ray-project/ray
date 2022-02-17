@@ -5,7 +5,6 @@ import subprocess
 import sys
 
 import pytest
-from ray.serve.scripts import deploy
 import requests
 
 import ray
@@ -110,8 +109,7 @@ def test_deploy(ray_start_stop):
     # Needed to call serve.list_deployments()
     ray.init(address="auto", namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE)
     serve.start(detached=True)
-    
-    
+
     deployment_status = subprocess.check_output(
         ["serve", "deploy", "test_config_files/three_deployments.yaml"]
     )
