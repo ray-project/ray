@@ -226,7 +226,7 @@ class PipProcessor:
         logger.info("Installing python requirements to %s", virtualenv_path)
         await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env={})
 
-    async def run(self):
+    async def _run(self):
         path = self._target_dir
         logger = self._logger
         pip_packages = self._runtime_env.pip_packages()
@@ -246,6 +246,9 @@ class PipProcessor:
             shutil.rmtree(path, ignore_errors=True)
             logger.exception("Failed to install pip packages.")
             raise
+
+    def __await__(self):
+        return self._run().__await__()
 
 
 class PipManager:
@@ -311,8 +314,7 @@ class PipManager:
         target_dir = self._get_path_from_hash(hash)
 
         async def _create_for_hash():
-            pip_processor = PipProcessor(target_dir, runtime_env, logger)
-            await pip_processor.run()
+            await PipProcessor(target_dir, runtime_env, logger)
 
             loop = get_running_loop()
             return await loop.run_in_executor(
