@@ -42,7 +42,6 @@ class DAGNodeEncoder(json.JSONEncoder):
             elif isinstance(dag_node, FunctionNode):
                 body = dag_node._body
             elif isinstance(dag_node, DeploymentMethodNode):
-                body = dag_node._body._func_or_class.__ray_actor_class__
                 other_args_to_resolve = {
                     "deployment_name": dag_node._deployment_name,
                     "method_name": dag_node._method_name,
@@ -50,7 +49,19 @@ class DAGNodeEncoder(json.JSONEncoder):
                     "deployment_init_args": json.dumps(dag_node._body.init_args, cls=DAGNodeEncoder),
                     "deployment_init_kwargs": json.dumps(dag_node._body.init_kwargs, cls=DAGNodeEncoder)
                 }
-                result_dict.update(other_args_to_resolve)
+                if isinstance(dag_node._body._func_or_class, str):
+                    # We're processing a deserilized JSON node where import_path
+                    # is dag_node body.
+                    result_dict.update(other_args_to_resolve)
+                    result_dict.update({
+                        "import_path": dag_node._body._func_or_class,
+                        "args": json.dumps(args, cls=DAGNodeEncoder),
+                        "kwargs": json.dumps(kwargs, cls=DAGNodeEncoder)
+                    })
+                    return result_dict
+                else:
+                    body = dag_node._body._func_or_class.__ray_actor_class__
+                    result_dict.update(other_args_to_resolve)
 
             # TODO:(jiaodong) Maybe use cache for idential objects
             result_dict.update({

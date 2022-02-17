@@ -1,21 +1,21 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, OrderedDict
 import uuid
 import threading
 import json
+from importlib_metadata import version
+import yaml
 
 from ray.experimental.dag import (
     DAGNode,
     ClassNode,
     ClassMethodNode,
-    FunctionNode
+    FunctionNode,
 )
 from ray.serve.api import Deployment, DeploymentConfig
 from ray import serve
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
-from ray.serve.pipeline.json_serde import (
-    DAGNodeEncoder
-)
+from ray.serve.pipeline.json_serde import DAGNodeEncoder
 
 
 class DeploymentIDGenerator(object):
@@ -24,6 +24,7 @@ class DeploymentIDGenerator(object):
     By default uses deployment_name for the very first time, then append
     monotonic increasing id to it.
     """
+
     __lock = threading.Lock()
     __shared_state = dict()
 
@@ -40,14 +41,14 @@ class DeploymentIDGenerator(object):
                 return f"{deployment_name}_{suffix_num}"
 
 
-
 def transform_ray_dag_to_serve_dag(dag_node, deployments=None):
     if isinstance(dag_node, ClassNode):
         deployment_name = (
-            dag_node.get_options().get("name", None)
-            or dag_node._body.__name__
+            dag_node.get_options().get("name", None) or dag_node._body.__name__
         )
-        deployment_name = DeploymentIDGenerator.get_deployment_id(deployment_name)
+        deployment_name = DeploymentIDGenerator.get_deployment_id(
+            deployment_name
+        )
         # Clean up keys with default value
         ray_actor_options = {
             k: v for k, v in dag_node.get_options().items() if v
@@ -71,9 +72,7 @@ def transform_ray_dag_to_serve_dag(dag_node, deployments=None):
             dag_node._body,
             deployment_name,
             DeploymentConfig(),
-            init_args=tuple(
-                init_args
-            ),  # replace DeploymentNode with handle
+            init_args=tuple(init_args),  # replace DeploymentNode with handle
             init_kwargs=dag_node.get_kwargs(),
             ray_actor_options=ray_actor_options,
             _internal=True,
@@ -106,18 +105,20 @@ def transform_ray_dag_to_serve_dag(dag_node, deployments=None):
     else:
         return dag_node
 
-def extract_deployments_from_serve_dag(serve_dag_root: DAGNode) -> List[Deployment]:
+
+def extract_deployments_from_serve_dag(
+    serve_dag_root: DAGNode,
+) -> List[Deployment]:
     deployments = []
+
     def extractor(dag_node):
         if isinstance(dag_node, DeploymentMethodNode):
             deployments.append(dag_node._body)
 
-
-    serve_dag_root._apply_recursive(
-        lambda node: extractor(node)
-    )
+    serve_dag_root._apply_recursive(lambda node: extractor(node))
 
     return deployments
+
 
 def get_dag_runner_deployment(serve_dag_root, pipeline_root_name=None):
     pipeline_root_name = (
@@ -131,3 +132,63 @@ def get_dag_runner_deployment(serve_dag_root, pipeline_root_name=None):
     serve_dag_root_deployment._init_args = (serve_dag_root_json,)
 
     return serve_dag_root_deployment
+
+
+def build_yaml(deployments: List[Deployment]) -> str:
+    """
+    Given a serve transformed and extracted list of deployments, generate
+    a build file from it.
+
+    Sample yaml file:
+
+    deployments:
+      - name: shallow
+        version: None
+        prev_version: None
+        init_args: None
+        init_kwargs: None
+        import_path: "test_env.shallow_import.ShallowClass"
+        configurable:
+            num_replicas: 3
+            route_prefix: None
+            ray_actor_options:
+                runtime_env:
+                py_modules:
+                    - "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
+                    - "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+            user_config: None
+            max_concurrent_queries: None
+            _autoscaling_config: None
+            _graceful_shutdown_wait_loop_s: None
+            _graceful_shutdown_timeout_s: None
+    """
+    deployments_data = []
+    for d in deployments:
+        assert isinstance(d._func_or_class, str), (
+            "Deployment body for build_yaml() must be an import_path as "
+            f"string, got type: {type(d._func_or_class)}"
+        )
+
+        deployments_data.append(
+            dict(
+                name=d.name,
+                version=d.version,
+                prev_version=d.prev_version,
+                init_args=d.init_args,
+                init_kwargs=d.init_kwargs,
+                import_path=d._func_or_class,
+                configurable=dict(
+                    num_replicas=d.num_replicas,
+                    route_prefix=d.route_prefix,
+                    ray_actor_optoins=d._ray_actor_options,
+                    user_config=d.user_config,
+                    max_concurrent_queries=d.max_concurrent_queries,
+                    _autoscaling_config=d._config.autoscaling_config,
+                    _graceful_shutdown_wait_loop_s=d._config.graceful_shutdown_wait_loop_s,
+                    _graceful_shutdown_timeout_s=d._config.graceful_shutdown_timeout_s,
+                ),
+            ),
+        )
+
+    # requires python >= 3.6
+    return yaml.safe_dump(deployments_data, sort_keys=False)

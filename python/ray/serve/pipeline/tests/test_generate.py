@@ -1,5 +1,6 @@
 import pytest
 import json
+import yaml
 from typing import TypeVar
 import requests
 
@@ -10,9 +11,10 @@ from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
     get_dag_runner_deployment,
+    build_yaml,
 )
 from ray.serve.pipeline.tests.test_modules import Model, combine
-from ray.serve.pipeline.json_serde import DAGNodeEncoder
+from ray.serve.pipeline.json_serde import DAGNodeEncoder, dagnode_from_json
 
 RayHandleLike = TypeVar("RayHandleLike")
 
@@ -44,7 +46,8 @@ def test_simple_single_class(serve_instance):
     assert len(deployments) == 1
     deployments[0].deploy()
     _validate_consistent_output(
-        deployments[0], ray_dag, "Model", input=1, output=0.6)
+        deployments[0], ray_dag, "Model", input=1, output=0.6
+    )
 
 
 def test_single_class_with_ray_options(serve_instance):
@@ -59,7 +62,9 @@ def test_single_class_with_ray_options(serve_instance):
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 1
     deployments[0].deploy()
-    _validate_consistent_output(deployments[0], ray_dag, deployments[0].name, input=1, output=0.6)
+    _validate_consistent_output(
+        deployments[0], ray_dag, deployments[0].name, input=1, output=0.6
+    )
 
     deployment = serve.get_deployment(deployments[0].name)
     assert deployment.ray_actor_options == {
@@ -68,6 +73,7 @@ def test_single_class_with_ray_options(serve_instance):
         "max_concurrency": 50,
         "runtime_env": {},
     }
+
 
 # def test_single_class_with_deployment_options(serve_instance):
 #     """Test user provided name in .options() overrides class name as
@@ -174,6 +180,38 @@ def test_multiple_class_method_entrypoints_func_output(serve_instance):
         resp = requests.get("http://127.0.0.1:8000/pipeline_root_name", params={"input": "1"})
         print(f"Response: {resp.text}")
         assert resp.text == "5"
+
+
+def test_multi_classmethod_entrypoint_generate_and_apply_yaml(serve_instance):
+    m1 = Model._bind(2)
+    m2 = Model._bind(3)
+
+    m1_output = m1.forward._bind(InputNode())
+    m2_output = m2.forward._bind(InputNode())
+
+    ray_dag = combine._bind(m1_output, m2_output)
+    serve_root_dag = ray_dag._apply_recursive(
+        lambda node: transform_ray_dag_to_serve_dag(node)
+    )
+
+    json_serialized = json.dumps(serve_root_dag, indent=4, cls=DAGNodeEncoder)
+    deserialized_serve_root_dag_node = json.loads(
+        json_serialized, object_hook=dagnode_from_json
+    )
+    deserialized_deployments = extract_deployments_from_serve_dag(
+        deserialized_serve_root_dag_node
+    )
+    serve_dag_root_deployment = get_dag_runner_deployment(
+        deserialized_serve_root_dag_node
+    )
+    deserialized_deployments.append(serve_dag_root_deployment)
+    assert len(deserialized_deployments) == 3
+    # Sample yaml file
+    yaml_dump_str = build_yaml(deserialized_deployments)
+    print(yaml_dump_str)
+    loaded_yaml = yaml.safe_load(yaml_dump_str)
+    print(loaded_yaml)
+    print("a")
 
 
 # def test_simple_function(serve_instance):
