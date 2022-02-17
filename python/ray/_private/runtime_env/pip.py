@@ -214,12 +214,22 @@ class PipProcessor:
         loop = get_running_loop()
         await loop.run_in_executor(None, _gen_requirements_txt)
 
+        # pip options
+        #
+        # --disable-pip-version-check
+        #   Don't periodically check PyPI to determine whether a new version
+        #   of pip is available for download.
+        #
+        # --no-cache-dir
+        #   Disable the cache, the pip runtime env is a one-time installation,
+        #   and we don't need to handle the pip cache broken.
         pip_install_cmd = [
             python,
             "-m",
             "pip",
             "install",
             "--disable-pip-version-check",
+            "--no-cache-dir",
             "-r",
             pip_requirements_file,
         ]
