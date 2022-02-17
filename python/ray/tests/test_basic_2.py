@@ -24,6 +24,8 @@ if client_test_enabled():
 else:
     import ray
 
+_WIN32 = os.name == "nt"
+
 logger = logging.getLogger(__name__)
 
 
@@ -504,6 +506,7 @@ def test_actor_pass_by_ref(ray_start_regular_shared):
         ray.get(a.f.remote(error.remote()))
 
 
+@pytest.mark.skipif(_WIN32, reason="Flakey")
 def test_actor_recursive(ray_start_regular_shared):
     @ray.remote
     class Actor:
