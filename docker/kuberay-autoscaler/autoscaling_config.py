@@ -25,9 +25,11 @@ class AutoscalingConfigProducer:
     Used to fetch the autoscaling config at the beginning of each autoscaler iteration.
 
     In the context of Ray deployment on Kubernetes, the autoscaling config is an
-    internal interface carrying the strict subset of RayCluster CR data required
-    by the autoscaler to make scaling decisions.
-    In particular, the autoscaling config does not carry pod configuration data.
+    internal interface.
+
+    The autoscaling config carries the strict subset of RayCluster CR data required by
+    the autoscaler to make scaling decisions; in particular, the autoscaling config does
+    not carry pod configuration data.
 
     This class is the only public object in this file.
     """
