@@ -415,13 +415,12 @@ void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitResourceReportBroadcasting(const GcsInitData &gcs_init_data) {
   grpc_based_resource_broadcaster_ = std::make_unique<GrpcBasedResourceBroadcaster>(
-      raylet_client_pool_,
-      [this](rpc::ResourceUsageBroadcastData &buffer) {
-    gcs_resource_manager_->GetResourceUsageBatchForBroadcast(buffer);
+      raylet_client_pool_, [this](rpc::ResourceUsageBroadcastData &buffer) {
+        gcs_resource_manager_->GetResourceUsageBatchForBroadcast(buffer);
       });
 
-    grpc_based_resource_broadcaster_->Initialize(gcs_init_data);
-    grpc_based_resource_broadcaster_->Start();
+  grpc_based_resource_broadcaster_->Initialize(gcs_init_data);
+  grpc_based_resource_broadcaster_->Start();
 }
 
 void GcsServer::InitStatsHandler() {
