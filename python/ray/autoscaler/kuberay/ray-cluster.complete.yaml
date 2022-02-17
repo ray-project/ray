@@ -102,7 +102,7 @@ spec:
               name: ray-logs
         # The Ray autoscaler sidecar to the head pod
         - name: autoscaler
-          image: gekho/kuberay-autoscaler
+          image: rayproject/kuberay-autoscaler
           imagePullPolicy: Always
           env:
           - name: RAY_CLUSTER_NAMESPACE
