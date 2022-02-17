@@ -176,17 +176,13 @@ class DataClient:
         reconnecting = False
 
         def get_next():
-            end = False
-            while not end:
+            while True:
                 try:
                     req = self.request_queue.get(timeout=1)
                     if req is None:
-                        end = True
+                        return None
                 except queue.Empty:
                     req = None
-
-                if end is True:
-                    return None
 
                 while self._gc_queue:
                     gc_req = self._gc_queue.popleft()
@@ -195,7 +191,8 @@ class DataClient:
                         gc_req.req_id = req_id
                         self.outstanding_requests[req_id] = gc_req
                         self.request_queue.put(gc_req)
-
+                if req is None:
+                    continue
                 yield req
 
         try:
