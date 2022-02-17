@@ -40,6 +40,9 @@ class JobStatus(str, Enum):
 class JobStatusInfo:
     status: JobStatus
     message: Optional[str] = None
+    # TODO(architkulkarni): Populate this field with e.g. Runtime env setup failure,
+    # Internal error, user script error
+    error_type: Optional[str] = None
 
     def __post_init__(self):
         if self.message is None:
@@ -65,7 +68,6 @@ class JobData:
     end_time: int = None
     metadata: Optional[Dict[str, str]] = None
     runtime_env: Optional[Dict[str, Any]] = None
-    namespace: Optional[str] = None
 
 
 class JobDataStorageClient:

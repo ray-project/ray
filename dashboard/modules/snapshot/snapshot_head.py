@@ -142,9 +142,9 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                     "status_message": None
                     if status_info is None
                     else status_info.message,
+                    "error_type": status_info.error_type,
                     "start_time": job_data.start_time,
                     "end_time": job_data.end_time,
-                    "namespace": job_data.namespace,
                     "metadata": job_data.metadata,
                     "runtime_env": job_data.runtime_env,
                 }

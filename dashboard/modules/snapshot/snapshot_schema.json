@@ -80,7 +80,10 @@
                     "status": {
                       "type": ["string", "null"]
                     },
-                    "status_message": {
+                    "statusMessage": {
+                      "type": ["string", "null"]
+                    },
+                    "errorType": {
                       "type": ["string", "null"]
                     },
                     "startTime": {
@@ -88,9 +91,6 @@
                     },
                     "endTime": {
                       "type": ["integer", "null"]
-                    },
-                    "namespace": {
-                      "type": ["string", "null"]
                     },
                     "metadata": {
                       "type": "object"

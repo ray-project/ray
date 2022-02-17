@@ -81,7 +81,7 @@ def test_successful_job_status(
                 # TODO(architkulkarni): Disable automatic camelcase.
                 assert entry["runtimeEnv"] == {"envVars": {"RAYTest123": "123"}}
                 assert entry["metadata"] == {"rayTest456": "456"}
-                assert entry["namespace"] is None
+                assert entry["errorType"] is None
                 assert abs(entry["startTime"] - start_time_s) <= 2
                 if entry["status"] == "SUCCEEDED":
                     job_succeeded = True
@@ -142,7 +142,7 @@ def test_failed_job_status(
                 # TODO(architkulkarni): Disable automatic camelcase.
                 assert entry["runtimeEnv"] == {"envVars": {"RAYTest456": "456"}}
                 assert entry["metadata"] == {"rayTest789": "789"}
-                assert entry["namespace"] is None
+                assert entry["errorType"] is None
                 assert abs(entry["startTime"] - start_time_s) <= 2
                 if entry["status"] == "FAILED":
                     job_failed = True
