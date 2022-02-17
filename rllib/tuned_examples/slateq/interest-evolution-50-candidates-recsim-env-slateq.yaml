@@ -3,7 +3,7 @@ interest-evolution-recsim-env-slateq:
     run: SlateQ
     stop:
         episode_reward_mean: 159.5
-        timesteps_total: 120000
+        timesteps_total: 1000000
     config:
         framework: tf2
         # eager_tracing: true  # true by default
@@ -28,11 +28,11 @@ interest-evolution-recsim-env-slateq:
 
         exploration_config:
             warmup_timesteps: 20000
-            epsilon_timesteps: 50000
+            epsilon_timesteps: 250000
 
         replay_buffer_config:
             capacity: 1000000
 
-        lr: 0.001
+        lr: 0.0005
 
         metrics_num_episodes_for_smoothing: 500
