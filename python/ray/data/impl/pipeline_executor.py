@@ -11,29 +11,12 @@ if TYPE_CHECKING:
     from ray.data.dataset_pipeline import DatasetPipeline
 
 
-<<<<<<< HEAD
 def pipeline_stage(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
     try:
         prev = set_progress_bars(False)
         return fn()
     finally:
         set_progress_bars(prev)
-=======
-# Temporarily use an actor here to avoid ownership issues with tasks:
-# https://github.com/ray-project/ray/issues/20554
-@ray.remote(num_cpus=0, placement_group=None)
-class _StageRunner:
-    def run(self, fn: Callable[[], Dataset[T]], context: DatasetContext) -> Dataset[T]:
-        DatasetContext._set_current(context)
-        try:
-            prev = set_progress_bars(False)
-            # Force eager evaluation of all blocks in the pipeline stage. This
-            # prevents resource deadlocks due to overlapping stage execution
-            # (e.g., task -> actor stage).
-            return fn().fully_executed()
-        finally:
-            set_progress_bars(prev)
->>>>>>> a9147bb62c1503bb8d01937b39c7790b09fe2f62
 
 
 class PipelineExecutor:

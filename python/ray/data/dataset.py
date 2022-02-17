@@ -128,7 +128,7 @@ class Dataset(Generic[T]):
 
     @staticmethod
     def copy(dataset: "Dataset[T]") -> "Dataset[T]":
-        return Dataset(dataset._blocks, dataset._epoch, dataset._stats)
+        return Dataset(dataset._plan, dataset._epoch, dataset._lazy)
 
     def map(
         self,
