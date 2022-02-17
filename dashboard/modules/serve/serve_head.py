@@ -25,38 +25,37 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
             return serve.get_deployment(name)
         except KeyError:
             return None
-    
+
     def _create_deployment_object(self, params):
         if "import_path" not in params.keys():
             raise ValueError("An import path must be specified for each deployment.")
         if "name" not in params.keys():
             raise ValueError("A name must be specified for every deployment.")
-        
+
         import_path = params["import_path"]
         del params["import_path"]
 
         for key in list(params.keys()):
             if params[key] is None:
                 del params[key]
-        
+
         return serve.deployment(**params)(import_path)
-    
+
     def _get_deployment_dict(self, deployment: Deployment):
         return dict(
-           name=deployment.name,
-           version=deployment.version,
-           prev_version=deployment.prev_version,
-           func_or_class=deployment.func_or_class,
-           num_replicas=deployment.num_replicas,
-           user_config=deployment.user_config,
-           max_concurrent_queries=deployment.max_concurrent_queries,
-           route_prefix=deployment.route_prefix,
-           ray_actor_options=deployment.ray_actor_options,
-           init_args=deployment.init_args,
-           init_kwargs=deployment.init_kwargs,
-           url=deployment.url
+            name=deployment.name,
+            version=deployment.version,
+            prev_version=deployment.prev_version,
+            func_or_class=deployment.func_or_class,
+            num_replicas=deployment.num_replicas,
+            user_config=deployment.user_config,
+            max_concurrent_queries=deployment.max_concurrent_queries,
+            route_prefix=deployment.route_prefix,
+            ray_actor_options=deployment.ray_actor_options,
+            init_args=deployment.init_args,
+            init_kwargs=deployment.init_kwargs,
+            url=deployment.url,
         )
-
 
     @routes.get("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
@@ -78,7 +77,9 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
                 text=f"Deployment {name} does not exist.",
                 status=aiohttp.web.HTTPNotFound.status_code,
             )
-        return Response(text=json.dumps(str(deployment)), content_type="application/json")
+        return Response(
+            text=json.dumps(str(deployment)), content_type="application/json"
+        )
 
     @routes.delete("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
@@ -117,7 +118,6 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
             all_deployments[name].delete()
 
         return Response()
-
 
     async def run(self, server):
         pass

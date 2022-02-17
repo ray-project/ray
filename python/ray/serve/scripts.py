@@ -144,7 +144,7 @@ def deploy(config_fname: str, address: str):
 
     with open(config_fname, "r") as config:
         deployments = yaml.safe_load(config)["deployments"]
-    
+
     for deployment in deployments:
         configurables = deployment["configurable"]
         del deployment["configurable"]
@@ -180,7 +180,7 @@ def run(config_fname: str, address: str):
 
     with open(config_fname, "r") as config:
         deployment_data_list = yaml.safe_load(config)["deployments"]
-    
+
     deployments = []
     for deployment_data in deployment_data_list:
         configurables = deployment_data["configurable"]
@@ -194,9 +194,9 @@ def run(config_fname: str, address: str):
             val = deployment_data[key]
             if isinstance(val, str) and val.lower() == "none":
                 del deployment_data[key]
-        
+
         deployments.append(serve.deployment(**deployment_data)(import_path))
-    
+
     deploy_group(deployments)
     print("Group deployed successfully!")
 
@@ -224,7 +224,7 @@ def info(address: str):
         print("Serve instance info:\n")
         deployments = response.json()
         for name, status in deployments.items():
-            print(f"Deployment \"{name}\": ")
+            print(f'Deployment "{name}": ')
             print(status, "\n")
     else:
         print("Failed to acquire serve instance info!")
