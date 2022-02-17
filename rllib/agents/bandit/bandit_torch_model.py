@@ -217,7 +217,8 @@ class ParametricLinearModel(TorchModelV2, nn.Module):
         self._cur_ctx = None
 
     def _check_inputs(self, x):
-        assert x.ndim == 3, "ERROR: "
+        assert x.ndim == 3, \
+            f"ERROR: Inputs ({x}) must have 3 dimensions (B x num-items x features)."
         return x
 
     @override(ModelV2)
