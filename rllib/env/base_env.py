@@ -204,7 +204,7 @@ class BaseEnv:
         Returns:
             All agent ids for each the environment.
         """
-        return {_DUMMY_AGENT_ID}
+        return {}
 
     @PublicAPI
     def try_render(self, env_id: Optional[EnvID] = None) -> None:
@@ -313,7 +313,7 @@ class BaseEnv:
             True if the observations are contained within their respective
                 spaces. False otherwise.
         """
-        self._space_contains(self.observation_space, x)
+        return self._space_contains(self.observation_space, x)
 
     @PublicAPI
     def action_space_contains(self, x: MultiEnvDict) -> bool:
@@ -340,8 +340,15 @@ class BaseEnv:
         """
         agents = set(self.get_agent_ids())
         for multi_agent_dict in x.values():
-            for agent_id, obs in multi_agent_dict:
-                if (agent_id not in agents) or (not space[agent_id].contains(obs)):
+            for agent_id, obs in multi_agent_dict.items():
+                # this is for the case where we have a single agent
+                # and we're checking a Vector env thats been converted to
+                # a BaseEnv
+                if agent_id == _DUMMY_AGENT_ID:
+                    if not space.contains(obs):
+                        return False
+                # for the MultiAgent env case
+                elif (agent_id not in agents) or (not space[agent_id].contains(obs)):
                     return False
 
         return True

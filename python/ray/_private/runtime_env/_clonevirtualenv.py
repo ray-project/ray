@@ -1,26 +1,4 @@
 #!/usr/bin/env python
-"""
-Copyright (c) 2011, Edward George, based on code contained within the
-virtualenv project.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-"""
 
 from __future__ import with_statement
 
@@ -34,15 +12,15 @@ import subprocess
 import sys
 import itertools
 
-__version__ = '0.5.7'
+__version__ = "0.5.7"
 
 
 logger = logging.getLogger()
 
 
-env_bin_dir = 'bin'
-if sys.platform == 'win32':
-    env_bin_dir = 'Scripts'
+env_bin_dir = "bin"
+if sys.platform == "win32":
+    env_bin_dir = "Scripts"
 
 
 class UserError(Exception):
@@ -63,41 +41,45 @@ def _dirmatch(path, matchwith):
     False
     """
     matchlen = len(matchwith)
-    if (path.startswith(matchwith)
-        and path[matchlen:matchlen + 1] in [os.sep, '']):
+    if path.startswith(matchwith) and path[matchlen : matchlen + 1] in [os.sep, ""]:
         return True
     return False
 
 
 def _virtualenv_sys(venv_path):
     "obtain version and path info from a virtualenv."
-    executable = os.path.join(venv_path, env_bin_dir, 'python')
+    executable = os.path.join(venv_path, env_bin_dir, "python")
     # Must use "executable" as the first argument rather than as the
     # keyword argument "executable" to get correct value from sys.path
-    p = subprocess.Popen([executable,
-        '-c', 'import sys;'
-              'print ("%d.%d" % (sys.version_info.major, sys.version_info.minor));'
-              'print ("\\n".join(sys.path));'],
+    p = subprocess.Popen(
+        [
+            executable,
+            "-c",
+            "import sys;"
+            'print ("%d.%d" % (sys.version_info.major, sys.version_info.minor));'
+            'print ("\\n".join(sys.path));',
+        ],
         env={},
-        stdout=subprocess.PIPE)
+        stdout=subprocess.PIPE,
+    )
     stdout, err = p.communicate()
     assert not p.returncode and stdout
-    lines = stdout.decode('utf-8').splitlines()
+    lines = stdout.decode("utf-8").splitlines()
     return lines[0], list(filter(bool, lines[1:]))
 
 
 def clone_virtualenv(src_dir, dst_dir):
     if not os.path.exists(src_dir):
-        raise UserError('src dir %r does not exist' % src_dir)
+        raise UserError("src dir %r does not exist" % src_dir)
     if os.path.exists(dst_dir):
-        raise UserError('dest dir %r exists' % dst_dir)
-    #sys_path = _virtualenv_syspath(src_dir)
-    logger.info('cloning virtualenv \'%s\' => \'%s\'...' %
-            (src_dir, dst_dir))
-    shutil.copytree(src_dir, dst_dir, symlinks=True,
-            ignore=shutil.ignore_patterns('*.pyc'))
+        raise UserError("dest dir %r exists" % dst_dir)
+    # sys_path = _virtualenv_syspath(src_dir)
+    logger.info("cloning virtualenv '%s' => '%s'..." % (src_dir, dst_dir))
+    shutil.copytree(
+        src_dir, dst_dir, symlinks=True, ignore=shutil.ignore_patterns("*.pyc")
+    )
     version, sys_path = _virtualenv_sys(dst_dir)
-    logger.info('fixing scripts in bin...')
+    logger.info("fixing scripts in bin...")
     fixup_scripts(src_dir, dst_dir, version)
 
     has_old = lambda s: any(i for i in s if _dirmatch(i, src_dir))
@@ -105,19 +87,20 @@ def clone_virtualenv(src_dir, dst_dir):
     if has_old(sys_path):
         # only need to fix stuff in sys.path if we have old
         # paths in the sys.path of new python env. right?
-        logger.info('fixing paths in sys.path...')
+        logger.info("fixing paths in sys.path...")
         fixup_syspath_items(sys_path, src_dir, dst_dir)
     v_sys = _virtualenv_sys(dst_dir)
     remaining = has_old(v_sys[1])
     assert not remaining, v_sys
     fix_symlink_if_necessary(src_dir, dst_dir)
 
+
 def fix_symlink_if_necessary(src_dir, dst_dir):
-    #sometimes the source virtual environment has symlinks that point to itself
-    #one example is $OLD_VIRTUAL_ENV/local/lib points to $OLD_VIRTUAL_ENV/lib
-    #this function makes sure
-    #$NEW_VIRTUAL_ENV/local/lib will point to $NEW_VIRTUAL_ENV/lib
-    #usually this goes unnoticed unless one tries to upgrade a package though pip, so this bug is hard to find.
+    # sometimes the source virtual environment has symlinks that point to itself
+    # one example is $OLD_VIRTUAL_ENV/local/lib points to $OLD_VIRTUAL_ENV/lib
+    # this function makes sure
+    # $NEW_VIRTUAL_ENV/local/lib will point to $NEW_VIRTUAL_ENV/lib
+    # usually this goes unnoticed unless one tries to upgrade a package though pip, so this bug is hard to find.
     logger.info("scanning for internal symlinks that point to the original virtual env")
     for dirpath, dirnames, filenames in os.walk(dst_dir):
         for a_file in itertools.chain(filenames, dirnames):
@@ -126,7 +109,7 @@ def fix_symlink_if_necessary(src_dir, dst_dir):
                 target = os.path.realpath(full_file_path)
                 if target.startswith(src_dir):
                     new_target = target.replace(src_dir, dst_dir)
-                    logger.debug('fixing symlink in %s' % (full_file_path,))
+                    logger.debug("fixing symlink in %s" % (full_file_path,))
                     os.remove(full_file_path)
                     os.symlink(new_target, full_file_path)
 
@@ -134,35 +117,40 @@ def fix_symlink_if_necessary(src_dir, dst_dir):
 def fixup_scripts(old_dir, new_dir, version, rewrite_env_python=False):
     bin_dir = os.path.join(new_dir, env_bin_dir)
     root, dirs, files = next(os.walk(bin_dir))
-    pybinre = re.compile(r'pythonw?([0-9]+(\.[0-9]+(\.[0-9]+)?)?)?$')
+    pybinre = re.compile(r"pythonw?([0-9]+(\.[0-9]+(\.[0-9]+)?)?)?$")
     for file_ in files:
         filename = os.path.join(root, file_)
-        if file_ in ['python', 'python%s' % version, 'activate_this.py']:
+        if file_ in ["python", "python%s" % version, "activate_this.py"]:
             continue
-        elif file_.startswith('python') and pybinre.match(file_):
+        elif file_.startswith("python") and pybinre.match(file_):
             # ignore other possible python binaries
             continue
-        elif file_.endswith('.pyc'):
+        elif file_.endswith(".pyc"):
             # ignore compiled files
             continue
-        elif file_ == 'activate' or file_.startswith('activate.'):
+        elif file_ == "activate" or file_.startswith("activate."):
             fixup_activate(os.path.join(root, file_), old_dir, new_dir)
         elif os.path.islink(filename):
             fixup_link(filename, old_dir, new_dir)
         elif os.path.isfile(filename):
-            fixup_script_(root, file_, old_dir, new_dir, version,
-                rewrite_env_python=rewrite_env_python)
+            fixup_script_(
+                root,
+                file_,
+                old_dir,
+                new_dir,
+                version,
+                rewrite_env_python=rewrite_env_python,
+            )
 
 
-def fixup_script_(root, file_, old_dir, new_dir, version,
-                  rewrite_env_python=False):
-    old_shebang = '#!%s/bin/python' % os.path.normcase(os.path.abspath(old_dir))
-    new_shebang = '#!%s/bin/python' % os.path.normcase(os.path.abspath(new_dir))
-    env_shebang = '#!/usr/bin/env python'
+def fixup_script_(root, file_, old_dir, new_dir, version, rewrite_env_python=False):
+    old_shebang = "#!%s/bin/python" % os.path.normcase(os.path.abspath(old_dir))
+    new_shebang = "#!%s/bin/python" % os.path.normcase(os.path.abspath(new_dir))
+    env_shebang = "#!/usr/bin/env python"
 
     filename = os.path.join(root, file_)
-    with open(filename, 'rb') as f:
-        if f.read(2) != b'#!':
+    with open(filename, "rb") as f:
+        if f.read(2) != b"#!":
             # no shebang
             return
         f.seek(0)
@@ -173,17 +161,17 @@ def fixup_script_(root, file_, old_dir, new_dir, version,
         return
 
     def rewrite_shebang(version=None):
-        logger.debug('fixing %s' % filename)
+        logger.debug("fixing %s" % filename)
         shebang = new_shebang
         if version:
             shebang = shebang + version
-        shebang = (shebang + '\n').encode('utf-8')
-        with open(filename, 'wb') as f:
+        shebang = (shebang + "\n").encode("utf-8")
+        with open(filename, "wb") as f:
             f.write(shebang)
             f.writelines(lines[1:])
 
     try:
-        bang = lines[0].decode('utf-8').strip()
+        bang = lines[0].decode("utf-8").strip()
     except UnicodeDecodeError:
         # binary file
         return
@@ -191,23 +179,24 @@ def fixup_script_(root, file_, old_dir, new_dir, version,
     # This takes care of the scheme in which shebang is of type
     # '#!/venv/bin/python3' while the version of system python
     # is of type 3.x e.g. 3.5.
-    short_version = bang[len(old_shebang):]
+    short_version = bang[len(old_shebang) :]
 
-    if not bang.startswith('#!'):
+    if not bang.startswith("#!"):
         return
     elif bang == old_shebang:
         rewrite_shebang()
-    elif (bang.startswith(old_shebang)
-          and bang[len(old_shebang):] == version):
+    elif bang.startswith(old_shebang) and bang[len(old_shebang) :] == version:
         rewrite_shebang(version)
-    elif (bang.startswith(old_shebang)
-          and short_version
-          and bang[len(old_shebang):] == short_version):
+    elif (
+        bang.startswith(old_shebang)
+        and short_version
+        and bang[len(old_shebang) :] == short_version
+    ):
         rewrite_shebang(short_version)
     elif rewrite_env_python and bang.startswith(env_shebang):
         if bang == env_shebang:
             rewrite_shebang()
-        elif bang[len(env_shebang):] == version:
+        elif bang[len(env_shebang) :] == version:
             rewrite_shebang(version)
     else:
         # can't do anything
@@ -215,22 +204,21 @@ def fixup_script_(root, file_, old_dir, new_dir, version,
 
 
 def fixup_activate(filename, old_dir, new_dir):
-    logger.debug('fixing %s' % filename)
-    with open(filename, 'rb') as f:
-        data = f.read().decode('utf-8')
+    logger.debug("fixing %s" % filename)
+    with open(filename, "rb") as f:
+        data = f.read().decode("utf-8")
 
     data = data.replace(old_dir, new_dir)
-    with open(filename, 'wb') as f:
-        f.write(data.encode('utf-8'))
+    with open(filename, "wb") as f:
+        f.write(data.encode("utf-8"))
 
 
 def fixup_link(filename, old_dir, new_dir, target=None):
-    logger.debug('fixing %s' % filename)
+    logger.debug("fixing %s" % filename)
     if target is None:
         target = os.readlink(filename)
 
-    origdir = os.path.dirname(os.path.abspath(filename)).replace(
-        new_dir, old_dir)
+    origdir = os.path.dirname(os.path.abspath(filename)).replace(new_dir, old_dir)
     if not os.path.isabs(target):
         target = os.path.abspath(os.path.join(origdir, target))
         rellink = True
@@ -242,7 +230,7 @@ def fixup_link(filename, old_dir, new_dir, target=None):
             # keep relative links, but don't keep original in case it
             # traversed up out of, then back into the venv.
             # so, recreate a relative link from absolute.
-            target = target[len(origdir):].lstrip(os.sep)
+            target = target[len(origdir) :].lstrip(os.sep)
         else:
             target = target.replace(old_dir, new_dir, 1)
 
@@ -270,54 +258,53 @@ def fixup_syspath_items(syspath, old_dir, new_dir):
         root, dirs, files = next(os.walk(path))
         for file_ in files:
             filename = os.path.join(root, file_)
-            if filename.endswith('.pth'):
+            if filename.endswith(".pth"):
                 fixup_pth_file(filename, old_dir, new_dir)
-            elif filename.endswith('.egg-link'):
+            elif filename.endswith(".egg-link"):
                 fixup_egglink_file(filename, old_dir, new_dir)
 
 
 def fixup_pth_file(filename, old_dir, new_dir):
-    logger.debug('fixup_pth_file %s' % filename)
+    logger.debug("fixup_pth_file %s" % filename)
 
-    with open(filename, 'r') as f:
+    with open(filename, "r") as f:
         lines = f.readlines()
 
     has_change = False
 
     for num, line in enumerate(lines):
-        line = (line.decode('utf-8') if hasattr(line, 'decode') else line).strip()
+        line = (line.decode("utf-8") if hasattr(line, "decode") else line).strip()
 
-        if not line or line.startswith('#') or line.startswith('import '):
+        if not line or line.startswith("#") or line.startswith("import "):
             continue
         elif _dirmatch(line, old_dir):
             lines[num] = line.replace(old_dir, new_dir, 1)
             has_change = True
 
     if has_change:
-        with open(filename, 'w') as f:
+        with open(filename, "w") as f:
             payload = os.linesep.join([l.strip() for l in lines]) + os.linesep
             f.write(payload)
 
 
 def fixup_egglink_file(filename, old_dir, new_dir):
-    logger.debug('fixing %s' % filename)
-    with open(filename, 'rb') as f:
-        link = f.read().decode('utf-8').strip()
+    logger.debug("fixing %s" % filename)
+    with open(filename, "rb") as f:
+        link = f.read().decode("utf-8").strip()
     if _dirmatch(link, old_dir):
         link = link.replace(old_dir, new_dir, 1)
-        with open(filename, 'wb') as f:
-            link = (link + '\n').encode('utf-8')
+        with open(filename, "wb") as f:
+            link = (link + "\n").encode("utf-8")
             f.write(link)
 
 
 def main():
-    parser = optparse.OptionParser("usage: %prog [options]"
-        " /path/to/existing/venv /path/to/cloned/venv")
-    parser.add_option('-v',
-            action="count",
-            dest='verbose',
-            default=False,
-            help='verbosity')
+    parser = optparse.OptionParser(
+        "usage: %prog [options]" " /path/to/existing/venv /path/to/cloned/venv"
+    )
+    parser.add_option(
+        "-v", action="count", dest="verbose", default=False, help="verbosity"
+    )
     options, args = parser.parse_args()
     try:
         old_dir, new_dir = args
@@ -326,9 +313,8 @@ def main():
         parser.error("not enough arguments given.")
     old_dir = os.path.realpath(old_dir)
     new_dir = os.path.realpath(new_dir)
-    loglevel = (logging.WARNING, logging.INFO, logging.DEBUG)[min(2,
-            options.verbose)]
-    logging.basicConfig(level=loglevel, format='%(message)s')
+    loglevel = (logging.WARNING, logging.INFO, logging.DEBUG)[min(2, options.verbose)]
+    logging.basicConfig(level=loglevel, format="%(message)s")
     try:
         clone_virtualenv(old_dir, new_dir)
     except UserError:
@@ -336,5 +322,5 @@ def main():
         parser.error(str(e))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
