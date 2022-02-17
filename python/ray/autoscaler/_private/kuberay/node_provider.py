@@ -122,9 +122,7 @@ def url_from_resource(namespace: str, path: str) -> str:
     elif path.startswith("rayclusters"):
         api_group = "/apis/ray.io/v1alpha1"
     else:
-        raise NotImplementedError(
-            "Tried to access unknown entity at {}".format(path)
-        )
+        raise NotImplementedError("Tried to access unknown entity at {}".format(path))
     return (
         "https://kubernetes.default:443"
         + api_group
@@ -213,8 +211,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
                 group_spec = spec
                 break
         assert (
-            group_index is not None and
-            group_spec is not None
+            group_index is not None and group_spec is not None
         ), f"Could not find the worker group with name {group_name}."
         return group_index, group_spec
 
@@ -233,9 +230,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
                 )
             )
             if len(pods["items"]) == replicas:
-                logger.info(
-                    f"Adjusted to {replicas} replicas."
-                )
+                logger.info(f"Adjusted to {replicas} replicas.")
                 break
             else:
                 logger.info(
