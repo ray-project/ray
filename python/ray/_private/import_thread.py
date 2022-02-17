@@ -49,6 +49,8 @@ class ImportThread:
         self.imported_collision_identifiers = defaultdict(int)
         # Keep track of the number of imports that we've imported.
         self.num_imported = 0
+        # Protects writes to self.num_imported.
+        self._lock = threading.Lock()
 
     def start(self):
         """Start the import thread."""
@@ -92,18 +94,20 @@ class ImportThread:
             self.subscriber.close()
 
     def _do_importing(self):
+        self.subscriber.subscribe()
         while True:
-            export_key = ray._private.function_manager.make_export_key(
-                self.num_imported + 1, self.worker.current_job_id
-            )
-            key = self.gcs_client.internal_kv_get(
-                export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE
-            )
-            if key is not None:
-                self._process_key(key)
-                self.num_imported += 1
-            else:
-                break
+            with self._lock:
+                export_key = ray._private.function_manager.make_export_key(
+                    self.num_imported + 1, self.worker.current_job_id
+                )
+                key = self.gcs_client.internal_kv_get(
+                    export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE
+                )
+                if key is not None:
+                    self._process_key(key)
+                    self.num_imported += 1
+                else:
+                    break
 
     def _get_import_info_for_collision_detection(self, key):
         """Retrieve the collision identifier, type, and name of the import."""

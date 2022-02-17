@@ -1,6 +1,7 @@
 import asyncio
 from collections import deque
 import logging
+import queue
 import random
 import threading
 from typing import Optional, Tuple
@@ -243,8 +244,10 @@ class _SyncSubscriber(_SubscriberBase):
         self._channel = pubsub_channel_type
         # Protects multi-threaded read and write of self._queue.
         self._lock = threading.Lock()
-        # A queue of received PubMessage.
+        # A buffer for received PubMessage.
         self._queue = deque()
+        # Allows waiting on poll result or subscriber close event.
+        self._results = queue.Queue()
         # Indicates whether the subscriber has closed.
         self._close = threading.Event()
 
@@ -254,11 +257,10 @@ class _SyncSubscriber(_SubscriberBase):
         Before the registration, published messages in the channel will not be
         saved for the subscriber.
         """
-        with self._lock:
-            if self._close.is_set():
-                return
-            req = self._subscribe_request(self._channel)
-            self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+        if self._close.is_set():
+            return
+        req = self._subscribe_request(self._channel)
+        self._stub.GcsSubscriberCommandBatch(req, timeout=30)
 
     def _poll_locked(self, timeout=None) -> None:
         assert self._lock.locked()
@@ -268,37 +270,34 @@ class _SyncSubscriber(_SubscriberBase):
             if self._close.is_set():
                 return
 
+            def process_result(f):
+                self._results.put(f)
+
             fut = self._stub.GcsSubscriberPoll.future(
                 self._poll_request(), timeout=timeout
             )
-            # Wait for result to become available, or cancel if the
-            # subscriber has closed.
-            while True:
-                try:
-                    # Use 1s timeout to check for subscriber closing
-                    # periodically.
-                    fut.result(timeout=1)
-                    break
-                except grpc.FutureTimeoutError:
-                    # Subscriber has closed. Cancel inflight request and
-                    # return from polling.
-                    if self._close.is_set():
-                        fut.cancel()
-                        return
-                    # GRPC has not replied, continue waiting.
-                    continue
-                except grpc.RpcError as e:
-                    if self._should_terminate_polling(e):
-                        return
-                    raise
-
-            if fut.done():
+            fut.add_done_callback(process_result)
+            self._lock.release()
+            f = self._results.get()
+            self._lock.acquire()
+            if f is None:
+                # Subscriber has closed. Cancel inflight request and
+                # return from polling.
+                fut.cancel()
+                return
+            assert fut is f
+            assert fut.done()
+            try:
                 self._last_batch_size = len(fut.result().pub_messages)
                 for msg in fut.result().pub_messages:
                     if msg.channel_type != self._channel:
                         logger.warn(f"Ignoring message from unsubscribed channel {msg}")
                         continue
                     self._queue.append(msg)
+            except grpc.RpcError as e:
+                if self._should_terminate_polling(e):
+                    return
+                raise
 
     def close(self) -> None:
         """Closes the subscriber and its active subscription."""
@@ -307,6 +306,8 @@ class _SyncSubscriber(_SubscriberBase):
         if self._close.is_set():
             return
         self._close.set()
+        # Terminate inflight polls.
+        self._results.put(None)
         req = self._unsubscribe_request(channels=[self._channel])
         try:
             self._stub.GcsSubscriberCommandBatch(req, timeout=5)
