@@ -310,9 +310,8 @@ class DataClient:
         return data
 
     def _push_request_to_queue(
-            self,
-            req: ray_client_pb2.DataRequest,
-            callback: Optional[ResponseCallable]):
+        self, req: ray_client_pb2.DataRequest, callback: Optional[ResponseCallable]
+    ):
         req_id = self._next_id()
         req.req_id = req_id
         if callback is not None:
