@@ -156,6 +156,7 @@ def test_default_config_cluster(ray_start_cluster_enabled):
     ray.get([task.remote() for _ in range(2)])
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows.")
 def test_spilling_not_done_for_pinned_object(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
