@@ -1,4 +1,6 @@
 import urllib
+import mock
+import sys
 
 # Note: the scipy import has to stay here, it's used implicitly down the line
 import scipy.stats  # noqa: F401
@@ -6,8 +8,7 @@ import scipy.linalg  # noqa: F401
 
 __all__ = [
     "fix_xgb_lgbm_docs",
-    "MOCK_MODULES",
-    "CHILD_MOCK_MODULES",
+    "mock_modules",
     "update_context",
 ]
 
@@ -155,3 +156,18 @@ CHILD_MOCK_MODULES = [
     "pytorch_lightning.utilities",
     "tensorflow.keras.callbacks",
 ]
+
+class ChildClassMock(mock.Mock):
+    @classmethod
+    def __getattr__(cls, name):
+        return mock.Mock
+
+
+def mock_modules():
+    for mod_name in MOCK_MODULES:
+        sys.modules[mod_name] = mock.Mock()
+
+    sys.modules["tensorflow"].VERSION = "9.9.9"
+
+    for mod_name in CHILD_MOCK_MODULES:
+        sys.modules[mod_name] = ChildClassMock()

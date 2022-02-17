@@ -6,23 +6,8 @@ sys.path.insert(0, os.path.abspath("."))
 from custom_directives import *
 from datetime import datetime
 
-# These lines added to enable Sphinx to work without installing Ray.
-import mock
-
-
-class ChildClassMock(mock.Mock):
-    @classmethod
-    def __getattr__(cls, name):
-        return mock.Mock
-
-
-for mod_name in MOCK_MODULES:
-    sys.modules[mod_name] = mock.Mock()
-
-sys.modules["tensorflow"].VERSION = "9.9.9"
-
-for mod_name in CHILD_MOCK_MODULES:
-    sys.modules[mod_name] = ChildClassMock()
+# Mocking modules allows Sphinx to work without installing Ray.
+mock_modules()
 
 assert (
     "ray" not in sys.modules
