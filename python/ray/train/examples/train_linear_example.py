@@ -6,7 +6,9 @@ import torch.nn as nn
 import ray.train as train
 from ray.train import Trainer
 from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback, PrintCallback
-from ray.train.callbacks.results_preprocessors.average import AverageResultsPreprocessor
+from ray.train.callbacks.results_preprocessors.aggregate import (
+    AggregateResultsPreprocessor,
+)
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -87,6 +89,10 @@ def train_func(config):
     return results
 
 
+def average_loss_equal_weight(intermediate_results):
+    return np.nanmean([result.get("loss", np.nan) for result in intermediate_results])
+
+
 def train_linear(num_workers=2, use_gpu=False, epochs=3):
     trainer = Trainer(backend="torch", num_workers=num_workers, use_gpu=use_gpu)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
@@ -94,7 +100,15 @@ def train_linear(num_workers=2, use_gpu=False, epochs=3):
     results = trainer.run(
         train_func,
         config,
-        preprocessors=[AverageResultsPreprocessor({"loss": "batch_size"})],
+        results_preprocessors=[
+            AggregateResultsPreprocessor(
+                aggregators={
+                    "average_loss": ("loss", "batch_size"),
+                    "average_loss_func_equal_weight": average_loss_equal_weight,
+                },
+                aggregate_default_metrics=False,
+            )
+        ],
         callbacks=[JsonLoggerCallback(), TBXLoggerCallback(), PrintCallback()],
     )
     trainer.shutdown()

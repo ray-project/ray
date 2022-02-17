@@ -2,7 +2,9 @@ from ray.train.callbacks.results_preprocessors.index import IndexedResultsPrepro
 from ray.train.callbacks.results_preprocessors.keys import (
     ExcludedKeysResultsPreprocessor,
 )
-from ray.train.callbacks.results_preprocessors.average import AverageResultsPreprocessor
+from ray.train.callbacks.results_preprocessors.aggregate import (
+    AggregateResultsPreprocessor,
+)
 from ray.train.callbacks.results_preprocessors.preprocessor import (
     SequentialResultsPreprocessor,
     ResultsPreprocessor,
@@ -13,5 +15,5 @@ __all__ = [
     "IndexedResultsPreprocessor",
     "ResultsPreprocessor",
     "SequentialResultsPreprocessor",
-    "AverageResultsPreprocessor",
+    "AggregateResultsPreprocessor",
 ]
