@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Any, Dict, Optional
-from unittest.mock import DEFAULT, Mock, patch
+from unittest import mock
 
 import pytest
 import yaml
@@ -180,13 +180,14 @@ def test_autoscaling_config(
     expected_log_warning: Optional[str],
 ):
     ray_cr_in["metadata"]["namespace"] = "default"
-    with patch("autoscaling_config.logger") as mock_logger:
+    with mock.patch("autoscaling_config.logger") as mock_logger:
         if expected_error:
             with pytest.raises(expected_error, match=expected_error_message):
                 _derive_autoscaling_config_from_ray_cr(ray_cr_in)
         else:
-            assert _derive_autoscaling_config_from_ray_cr(
-                ray_cr_in) == expected_config_out
+            assert (
+                _derive_autoscaling_config_from_ray_cr(ray_cr_in) == expected_config_out
+            )
             if expected_log_warning:
                 mock_logger.warning.assert_called_with(expected_log_warning)
             else:

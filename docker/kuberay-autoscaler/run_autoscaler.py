@@ -71,8 +71,7 @@ if __name__ == "__main__":
     head_ip = get_node_ip_address()
 
     autoscaling_config_producer = AutoscalingConfigProducer(
-        args.cluster_name,
-        args.cluster_namespace
+        args.cluster_name, args.cluster_namespace
     )
 
     # K8s might not consider the Ray head pod to be `Running` at the moment that

@@ -19,7 +19,7 @@ _HEAD_GROUP_NAME = "head-group"
 _GPU_WARNING_LOGGED = False
 
 
-class AutoscalingConfigProducer():
+class AutoscalingConfigProducer:
     """Produces an autoscaling config by reading data from the RayCluster CR.
 
     Used to fetch the autoscaling config at the beginning of each autoscaler iteration.
@@ -31,6 +31,7 @@ class AutoscalingConfigProducer():
 
     This class is the only public object in this file.
     """
+
     def __init__(self, ray_cluster_name, ray_cluster_namespace):
         self._headers, self._verify = node_provider.load_k8s_secrets()
         self._ray_cr_url = node_provider.url_from_resource(
@@ -52,9 +53,7 @@ class AutoscalingConfigProducer():
 
 
 def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, Any]:
-    provider_config = _generate_provider_config(
-        ray_cr["metadata"]["namespace"]
-    )
+    provider_config = _generate_provider_config(ray_cr["metadata"]["namespace"])
 
     available_node_types = _generate_available_node_types_from_ray_cr_spec(
         ray_cr["spec"]
@@ -120,8 +119,9 @@ def _generate_legacy_autoscaling_config_fields() -> Dict[str, Any]:
     }
 
 
-def _generate_available_node_types_from_ray_cr_spec(ray_cr_spec: Dict[
-        str, Any]) -> Dict[str, Any]:
+def _generate_available_node_types_from_ray_cr_spec(
+    ray_cr_spec: Dict[str, Any]
+) -> Dict[str, Any]:
     """Formats autoscaler "available_node_types" field based on the Ray CR's group
     specs.
     """
@@ -137,8 +137,9 @@ def _generate_available_node_types_from_ray_cr_spec(ray_cr_spec: Dict[
     }
 
 
-def _node_type_from_group_spec(group_spec: Dict[str, Any],
-                               is_head: bool) -> Dict[str, Any]:
+def _node_type_from_group_spec(
+    group_spec: Dict[str, Any], is_head: bool
+) -> Dict[str, Any]:
     """Converts CR group spec to autoscaler node type."""
     if is_head:
         # The head node type has no workers because the head is not a worker.
@@ -206,7 +207,8 @@ def _get_ray_resources_from_group_spec(
 
 def _get_num_cpus(
     ray_start_params: Dict[str, str],
-    k8s_resource_limits: Dict[str, str], group_name: str
+    k8s_resource_limits: Dict[str, str],
+    group_name: str,
 ) -> int:
     if "num_cpus" in ray_start_params:
         return int(ray_start_params["num_cpus"])
@@ -226,8 +228,9 @@ def _get_num_cpus(
         )
 
 
-def _get_memory(ray_start_params: Dict[str, str],
-                k8s_resource_limits: Dict[str, Any]) -> Optional[int]:
+def _get_memory(
+    ray_start_params: Dict[str, str], k8s_resource_limits: Dict[str, Any]
+) -> Optional[int]:
     """Get memory resource annotation from ray_start_params, if it is set there.
 
     TODO, maybe: Consider container resource limits as in
@@ -241,7 +244,7 @@ def _get_memory(ray_start_params: Dict[str, str],
 def _get_num_gpus(
     ray_start_params: Dict[str, str],
     k8s_resource_limits: Dict[str, Any],
-    group_name: str
+    group_name: str,
 ) -> Optional[int]:
     """Read the number of GPUs from the Ray start params.
 
@@ -271,8 +274,9 @@ def _get_num_gpus(
     return None
 
 
-def _get_custom_resources(ray_start_params: Dict[str, Any],
-                          group_name: str) -> Dict[str, int]:
+def _get_custom_resources(
+    ray_start_params: Dict[str, Any], group_name: str
+) -> Dict[str, int]:
     if "resources" not in ray_start_params:
         return {}
     resources_string = ray_start_params["resources"]
