@@ -176,21 +176,26 @@ class DataClient:
         reconnecting = False
 
         def get_next():
-            while True:
+            end = False
+            while not end:
                 try:
-                    req = self.request_queue.get(False, timeout=1)
+                    req = self.request_queue.get(timeout=1)
+                    if req is None:
+                        end = True
                 except queue.Empty:
-                    try:
-                        req = self._gc_queue.popleft()
-                        with self.lock:
-                            req_id = self._next_id()
-                            req.req_id = req_id
-                            self.outstanding_requests[req_id] = req
-                            self.request_queue.put(req)
-                    except IndexError:
-                        continue
-                if req is None:
-                    return req
+                    req = None
+
+                if end is True:
+                    return None
+
+                while self._gc_queue:
+                    gc_req = self._gc_queue.popleft()
+                    with self.lock:
+                        req_id = self._next_id()
+                        gc_req.req_id = req_id
+                        self.outstanding_requests[req_id] = gc_req
+                        self.request_queue.put(gc_req)
+
                 yield req
 
         try:
@@ -402,6 +407,8 @@ class DataClient:
         if _in_gc is True:
             assert req.WhichOneof("type") == "release"
             assert callback is None
+            self._gc_queue.append(req)
+            return
 
         with self.lock:
             self._check_shutdown()
