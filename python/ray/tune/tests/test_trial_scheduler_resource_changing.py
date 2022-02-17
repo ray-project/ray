@@ -253,13 +253,13 @@ class TestUniformResourceAllocationAddBundles(TestUniformResourceAllocation):
         trial3.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial2, scheduler, PlacementGroupFactory([{}] +[{"CPU": 2, "GPU": 2}] * 2)
+            trial2, scheduler, PlacementGroupFactory([{}] + [{"CPU": 2, "GPU": 2}] * 2)
         )
 
         trial2.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{}] +[{"CPU": 2, "GPU": 2}] * 4)
+            trial1, scheduler, PlacementGroupFactory([{}] + [{"CPU": 2, "GPU": 2}] * 4)
         )
 
     def testAllocateFreeResourcesWithIncreaseByTimes(self):
@@ -532,7 +532,7 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         trial4.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{}] +[{"CPU": 2, "GPU": 2}] * 2)
+            trial1, scheduler, PlacementGroupFactory([{}] + [{"CPU": 2, "GPU": 2}] * 2)
         )
         decision = scheduler.on_trial_result(
             self.trial_runner, trial2, {"metric": 1.1, "training_iteration": 4}
@@ -543,7 +543,7 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         self._allocateAndAssertNewResources(
             trial2,
             scheduler,
-            PlacementGroupFactory([{}] +[{"CPU": 2, "GPU": 2}] * 2),
+            PlacementGroupFactory([{}] + [{"CPU": 2, "GPU": 2}] * 2),
             metric=1.1,
         )
         trial2.status = Trial.TERMINATED
