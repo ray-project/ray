@@ -114,7 +114,7 @@ class may or may not be decorated with ``@serve.deployment``.
     type=str,
     help="JSON string for the deployments options",
 )
-def deploy_import(deployment: str, options_json: str):
+def deploy_path(deployment: str, options_json: str):
     deployment_cls = import_attr(deployment)
     if not isinstance(deployment_cls, Deployment):
         deployment_cls = serve.deployment(deployment_cls)
