@@ -76,18 +76,19 @@ class DatasetReader(InputReader):
 
     Examples:
         config = {
-            "input"="dataset",
-            "input_config"={
+            "input": "dataset",
+            "input_config": {
                 "format": "json",
+                # A single data file, a directory, or anything
+                # that ray.data.dataset recognizes.
                 "path": "/tmp/sample_batches/",
                 # By default, parallelism=num_workers.
                 "parallelism": 3,
+                # Dataset allocates 0.5 CPU for each reader by default.
+                # Adjust this value based on the size of your offline dataset.
                 "num_cpus_per_read_task": 0.5,
             }
         }
-
-    `path` may be a single data file, a directory, or anything
-        that ray.data.dataset recognizes.
     """
 
     @PublicAPI
