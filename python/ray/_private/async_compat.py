@@ -2,7 +2,6 @@
 This file should only be imported from Python 3.
 It will raise SyntaxError when importing from Python 2.
 """
-import sys
 import asyncio
 import inspect
 
@@ -16,13 +15,13 @@ try:
     # This function has been added in Python 3.7. Prior to Python 3.7,
     # the low-level asyncio.ensure_future() function can be used instead.
     from asyncio import create_task  # noqa: F401
-except AttributeError:
+except ImportError:
     from asyncio import ensure_future as create_task  # noqa: F401
 
 
-if sys.version_info[:2] >= (3, 7):
+try:
     from asyncio import get_running_loop  # noqa: F401
-else:
+except ImportError:
     from asyncio import _get_running_loop as get_running_loop  # noqa: F401
 
 
