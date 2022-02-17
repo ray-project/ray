@@ -663,7 +663,7 @@ def start(
         http_options = HTTPOptions()
 
     controller = ServeController.options(
-        num_cpus=1 if dedicated_cpu else 0,
+        num_cpus=(1 if dedicated_cpu else 0),
         name=controller_name,
         lifetime="detached" if detached else None,
         max_restarts=-1,

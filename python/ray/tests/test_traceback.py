@@ -38,6 +38,9 @@ def scrub_traceback(ex):
     # These are used to coloring the string.
     ex = re.sub("\\x1b\[36m", "", ex)
     ex = re.sub("\\x1b\[39m", "", ex)
+    # When running bazel test with pytest 6.x, the module name becomes
+    # "python.ray.tests.test_traceback" instead of just "test_traceback"
+    ex = re.sub(r"python\.ray\.tests\.test_traceback", "test_traceback", ex)
     # Clean up object address.
     ex = re.sub("object at .*>", "object at ADDRESS>", ex)
     return ex
