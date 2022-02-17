@@ -295,7 +295,6 @@ SUITES = {
     "serve-nightly": SERVE_NIGHTLY_TESTS,
     "core-daily": CORE_DAILY_TESTS,
     "core-scalability": CORE_SCALABILITY_TESTS_DAILY,
-    "core-redis-ha": CORE_REDIS_HA_TESTS_DAILY,
     "nightly": {**NIGHTLY_TESTS, **USER_TESTS},
     "core-scheduling-daily": CORE_SCHEDULING_DAILY,
     "weekly": WEEKLY_TESTS,
