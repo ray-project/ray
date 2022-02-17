@@ -31,7 +31,8 @@ GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_create_delete_size_equal(tmpdir, ray_start_regular):
+@pytest.mark.asyncio
+async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     """Tests that `create` and `delete_uri` return the same size for a URI."""
 
     # Create an arbitrary nonempty directory to upload.
@@ -50,7 +51,7 @@ def test_create_delete_size_equal(tmpdir, ray_start_regular):
 
     manager = WorkingDirManager(tmpdir)
 
-    created_size_bytes = manager.create(uri, {}, RuntimeEnvContext())
+    created_size_bytes = await manager.create(uri, {}, RuntimeEnvContext())
     deleted_size_bytes = manager.delete_uri(uri)
     assert created_size_bytes == deleted_size_bytes
 

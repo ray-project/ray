@@ -318,6 +318,16 @@ def run(
             "removing this argument from your call to `tune.run()`"
         )
 
+    # Starting deprecation in ray 1.10.
+    if os.environ.get("TUNE_TRIAL_RESULT_WAIT_TIME_S") is not None:
+        warnings.warn("`TUNE_TRIAL_RESULT_WAIT_TIME_S` is deprecated.")
+
+    if os.environ.get("TUNE_TRIAL_STARTUP_GRACE_PERIOD") is not None:
+        warnings.warn("`TUNE_TRIAL_STARTUP_GRACE_PERIOD` is deprecated.")
+
+    if os.environ.get("TUNE_PLACEMENT_GROUP_WAIT_S") is not None:
+        warnings.warn("`TUNE_PLACEMENT_GROUP_WAIT_S` is deprecated.")
+
     # NO CODE IS TO BE ADDED ABOVE THIS COMMENT
     # remote_run_kwargs must be defined before any other
     # code is ran to ensure that at this point,

@@ -446,7 +446,7 @@ class Trainable:
             self.storage_client.sync_up(
                 checkpoint_dir, self._storage_path(checkpoint_dir)
             )
-            self.storage_client.wait()
+            self.storage_client.wait_or_retry()
 
     def save_to_object(self):
         """Saves the current model state to a Python object.
@@ -493,7 +493,7 @@ class Trainable:
                 os.path.join(self.remote_checkpoint_dir, rel_checkpoint_dir),
                 os.path.join(self.logdir, rel_checkpoint_dir),
             )
-            self.storage_client.wait()
+            self.storage_client.wait_or_retry()
 
         # Ensure TrialCheckpoints are converted
         if isinstance(checkpoint_path, TrialCheckpoint):
@@ -562,6 +562,7 @@ class Trainable:
         else:
             if self.uses_cloud_checkpointing:
                 self.storage_client.delete(self._storage_path(checkpoint_dir))
+                self.storage_client.wait_or_retry()
 
         if os.path.exists(checkpoint_dir):
             shutil.rmtree(checkpoint_dir)

@@ -207,7 +207,7 @@ def kill_process_by_name(name, SIGKILL=False):
                 p.terminate()
 
 
-def run_string_as_driver(driver_script: str, env: Dict = None):
+def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "utf-8"):
     """Run a driver as a separate process.
 
     Args:
@@ -235,13 +235,13 @@ def run_string_as_driver(driver_script: str, env: Dict = None):
         env=env,
     )
     with proc:
-        output = proc.communicate(driver_script.encode("ascii"))[0]
+        output = proc.communicate(driver_script.encode(encoding=encode))[0]
         if proc.returncode:
-            print(ray._private.utils.decode(output))
+            print(ray._private.utils.decode(output, encode_type=encode))
             raise subprocess.CalledProcessError(
                 proc.returncode, proc.args, output, proc.stderr
             )
-        out = ray._private.utils.decode(output)
+        out = ray._private.utils.decode(output, encode_type=encode)
     return out
 
 
@@ -549,15 +549,6 @@ def put_object(obj, use_ray_put):
         return ray.put(obj)
     else:
         return _put.remote(obj)
-
-
-def put_unpinned_object(obj):
-    value = ray.worker.global_worker.get_serialization_context().serialize(obj)
-    return ray.ObjectRef(
-        ray.worker.global_worker.core_worker.put_serialized_object(
-            value, pin_object=False
-        )
-    )
 
 
 def wait_until_server_available(address, timeout_ms=5000, retry_interval_ms=100):
@@ -1186,8 +1177,10 @@ def get_and_run_node_killer(
 def chdir(d: str):
     old_dir = os.getcwd()
     os.chdir(d)
-    yield
-    os.chdir(old_dir)
+    try:
+        yield
+    finally:
+        os.chdir(old_dir)
 
 
 def test_get_directory_size_bytes():
