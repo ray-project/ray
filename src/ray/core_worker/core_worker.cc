@@ -1407,7 +1407,7 @@ static std::vector<std::string> GetUrisFromRuntimeEnv(
 std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(
     const std::string &serialized_runtime_env,
     std::vector<std::string> *runtime_env_uris) {
-  std::shared_ptr<rpc::RuntimeEnv> parent_runtime_env;
+  std::shared_ptr<const rpc::RuntimeEnv> parent_runtime_env;
   std::string parent_serialized_runtime_env;
   if (options_.worker_type == WorkerType::DRIVER) {
     parent_runtime_env = job_runtime_env_;
