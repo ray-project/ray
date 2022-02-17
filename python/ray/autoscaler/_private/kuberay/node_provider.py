@@ -92,7 +92,7 @@ def make_node_tags(labels: Dict[str, str], status_tag: str) -> Dict[str, str]:
 
 def load_k8s_secrets() -> Tuple[Dict[str, str], str]:
     """
-    Loads secrets needed to access K8s resources from the file system.
+    Loads secrets needed to access K8s resources.
 
     Returns:
         headers (dict): Headers with K8s access token
