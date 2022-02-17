@@ -679,7 +679,7 @@ Contextual Bandits
 ~~~~~~~~~~~~~~~~~~
 
 The Multi-armed bandit (MAB) problem provides a simplified RL setting that
-involves learning to act under one situation only, i.e. the observation/state is fixed.
+involves learning to act under one situation only, i.e. the context (observation/state) and arms (actions/items-to-select) are both fixed.
 Contextual bandit is an extension of the MAB problem, where at each
 round the agent has access not only to a set of bandit arms/actions but also
 to a context (state) associated with this iteration. The context changes
