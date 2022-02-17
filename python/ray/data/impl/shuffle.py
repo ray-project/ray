@@ -116,14 +116,14 @@ def _shuffle_map(
     stats = BlockExecStats.builder()
     if block_udf:
         # TODO(ekl) note that this effectively disables block splitting.
-        pieces = list(block_udf(block))
-        if len(pieces) > 1:
-            builder = BlockAccessor.for_block(pieces[0]).builder()
-            for p in pieces:
-                builder.add_block(p)
+        blocks = list(block_udf(block))
+        if len(blocks) > 1:
+            builder = BlockAccessor.for_block(blocks[0]).builder()
+            for b in blocks:
+                builder.add_block(b)
             block = builder.build()
         else:
-            block = pieces[0]
+            block = blocks[0]
     block = BlockAccessor.for_block(block)
 
     # Randomize the distribution of records to blocks.

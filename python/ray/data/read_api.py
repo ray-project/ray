@@ -279,6 +279,8 @@ def read_datasource(
         metadata.append(task.get_metadata())
 
     block_list = LazyBlockList(calls, metadata)
+    # TODO(ekl) consider refactoring LazyBlockList to take read_tasks explicitly.
+    block_list._read_tasks = read_tasks
 
     # Get the schema from the first block synchronously.
     if metadata and metadata[0].schema is None:
