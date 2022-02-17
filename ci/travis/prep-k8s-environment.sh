@@ -17,10 +17,11 @@ kind --help
 # https://github.com/kubernetes-sigs/kind/issues/273#issuecomment-622180144
 #export KIND_EXPERIMENTAL_DOCKER_NETWORK=dind-network
 time kind create cluster --wait 120s --config ./ci/travis/kind.config.yaml
+docker ps
+docker network ls
+cat ~/.kube/config
 shopt -s expand_aliases
 alias kubectl='docker run --network kind -v ${HOME}/.kube:/.kube bitnami/kubectl:latest'
-docker run --network kind -v ${HOME}/.kube:/.kube -it --entrypoint /bin/sh bitnami/kubectl:latest ls .kube
-docker run --network kind -v ${HOME}/.kube:/.kube -it --entrypoint /bin/sh bitnami/kubectl:latest cat .kube/config
 kubectl version
 kubectl cluster-info --context kind-kind
 kubectl get nodes
