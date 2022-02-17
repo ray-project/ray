@@ -998,6 +998,14 @@ def test_tensors_in_tables_to_tf(ray_start_regular_shared, pipelined):
     np.testing.assert_array_equal(arr, combined_iterations)
 
 
+def test_empty_shuffle(ray_start_regular_shared):
+    ds = ray.data.range(100, parallelism=100)
+    ds = ds.filter(lambda x: x)
+    ds = ds.map_batches(lambda x: x)
+    ds = ds.random_shuffle()  # Would prev. crash with AssertionError: pyarrow.Table.
+    ds.show()
+
+
 def test_empty_dataset(ray_start_regular_shared):
     ds = ray.data.range(0)
     assert ds.count() == 0
@@ -3178,9 +3186,7 @@ def test_random_shuffle(shutdown_only, pipelined):
         with pytest.raises(RuntimeError):
             ds = ds.map(lambda x: x).take(999)
     else:
-        # Source dataset should be unusable if not pipelining.
-        with pytest.raises(ValueError):
-            ds = ds.map(lambda x: x).take(999)
+        ds = ds.map(lambda x: x).take(999)
     r2 = range(100).random_shuffle(_move=True).take(999)
     assert r1 != r2, (r1, r2)
 
