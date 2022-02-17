@@ -138,7 +138,8 @@ sac-halfcheetahbulletenv-v0:
 a3c-pongdeterministic-v4:
     env: PongDeterministic-v4
     run: A3C
-    frameworks: [ "tf", "tf2", "torch" ]
+    # TODO(sven, jungong): fix A3C on torch and re-enable.
+    frameworks: [ "tf", "tf2" ]
     stop:
         time_total_s: 3600
     config:
