@@ -27,11 +27,15 @@ ACKNOWLEDGE_BATCH_SIZE = 32
 
 
 _in_gc = False
+
+
 def _gc_callback(phase, info):
     global _in_gc
-    _in_gc = (phase == "start")
+    _in_gc = phase == "start"
+
 
 gc.callbacks.append(_gc_callback)
+
 
 class ChunkCollector:
     """
@@ -170,6 +174,7 @@ class DataClient:
 
     def _data_main(self) -> None:
         reconnecting = False
+
         def get_next():
             while True:
                 try:
