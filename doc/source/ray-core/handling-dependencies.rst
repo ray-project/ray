@@ -601,8 +601,8 @@ the error message in detail.
     a = A.options(runtime_env=bad_env).remote()
     ray.get(a.f.remote())
 
-You can also enable runtime_env debugging logs by setting an environment variable ``RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED=1``. 
-It will print the full runtime_env setup log messages to the driver.
-The same information can be found from the log file ``runtime_env*.log`` from the log directory. 
+You can also enable ``runtime_env`` debugging log streaming by setting an environment variable ``RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED=1`` before starting Ray on the head node (e.g. with ``ray start --head``). 
+This will print the full ``runtime_env`` setup log messages to the driver (the script that calls ``ray.init()``).
 
-Look :ref:`Logging Directory Structure <logging-directory-structure>` for more details.
+Regardless of the value of this environment variable, the same information can be found in the log file ``runtime_env_setup-[job_id].log`` from the log directory. 
+See :ref:`Logging Directory Structure <logging-directory-structure>` for more details.
