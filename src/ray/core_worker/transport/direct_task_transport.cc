@@ -122,8 +122,8 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
 void CoreWorkerDirectTaskSubmitter::ReturnWorker(const rpc::WorkerAddress addr,
                                                  bool was_error, bool worker_exiting,
                                                  const SchedulingKey &scheduling_key) {
-  RAY_LOG(INFO) << "Returning worker " << addr.worker_id << " to raylet "
-                << addr.raylet_id;
+  RAY_LOG(DEBUG) << "Returning worker " << addr.worker_id << " to raylet "
+                 << addr.raylet_id;
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
   auto &lease_entry = worker_to_lease_entry_[addr];
@@ -344,9 +344,9 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   const TaskID task_id = resource_spec.TaskId();
-  RAY_LOG(INFO) << "Requesting lease from raylet "
-                << NodeID::FromBinary(raylet_address->raylet_id()) << " for task "
-                << task_id << " " << resource_spec.GetName();
+  RAY_LOG(DEBUG) << "Requesting lease from raylet "
+                 << NodeID::FromBinary(raylet_address->raylet_id()) << " for task "
+                 << task_id;
 
   lease_client->RequestWorkerLease(
       resource_spec.GetMessage(),
@@ -421,8 +421,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             // We got a lease for a worker. Add the lease client state and try to
             // assign work to the worker.
             rpc::WorkerAddress addr(reply.worker_address());
-            RAY_LOG(INFO) << "Lease granted to task " << task_id << " from raylet "
-                          << addr.raylet_id << " for worker " << addr.worker_id;
+            RAY_LOG(DEBUG) << "Lease granted to task " << task_id << " from raylet "
+                           << addr.raylet_id << " with worker " << addr.worker_id;
 
             auto resources_copy = reply.resource_mapping();
 
@@ -492,8 +492,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
     const rpc::WorkerAddress &addr, rpc::CoreWorkerClientInterface &client,
     const SchedulingKey &scheduling_key, const TaskSpecification &task_spec,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
-  RAY_LOG(INFO) << "Pushing task " << task_spec.TaskId() << " " << task_spec.GetName()
-                << " to worker " << addr.worker_id << " of raylet " << addr.raylet_id;
+  RAY_LOG(DEBUG) << "Pushing task " << task_spec.TaskId() << " to worker "
+                 << addr.worker_id << " of raylet " << addr.raylet_id;
   auto task_id = task_spec.TaskId();
   auto request = std::make_unique<rpc::PushTaskRequest>();
   bool is_actor = task_spec.IsActorTask();

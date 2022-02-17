@@ -273,7 +273,7 @@ def read_datasource(
     for i, task in enumerate(read_tasks):
         calls.append(
             lambda i=i, task=task, resources=next(resource_iter): remote_read.options(
-                **ray_remote_args, resources=resources, name=f"jjyao-read-{i}"
+                **ray_remote_args, resources=resources
             ).remote(i, task, stats_actor)
         )
         metadata.append(task.get_metadata())

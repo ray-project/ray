@@ -1120,7 +1120,7 @@ void ClusterTaskManager::SpillWaitingTasks() {
                        << " has blocked dependencies, but no other node has resources, "
                           "keeping the task local";
       } else {
-        RAY_LOG(INFO) << "Keeping waiting task " << task_id << " local";
+        RAY_LOG(DEBUG) << "Keeping waiting task " << task_id << " local";
       }
       // We should keep the task local. Note that an earlier task in the queue
       // may have different resource requirements and could actually be
@@ -1196,7 +1196,6 @@ std::string ClusterTaskManager::GetBestSchedulableNode(const internal::Work &wor
     return self_node_id_.Binary();
   }
 
-  RAY_LOG(INFO) << "GetBestSchedulableNode " << work.task.GetTaskSpecification().TaskId();
   // This argument is used to set violation, which is an unsupported feature now.
   int64_t _unused;
   return cluster_resource_scheduler_->GetBestSchedulableNode(
