@@ -14,9 +14,9 @@
 
 #include "ray/raylet/scheduling/scheduling_policy.h"
 
-#include "ray/util/container_util.h"
-
 #include <functional>
+
+#include "ray/util/container_util.h"
 
 namespace ray {
 
@@ -38,10 +38,9 @@ bool DoesNodeHaveGPUs(const NodeResources &resources) {
 }
 }  // namespace
 
-int64_t SchedulingPolicy::SpreadPolicy(
-      const ResourceRequest &resource_request,
-      bool force_spillback, bool require_available,
-      std::function<bool(int64_t)> is_node_available) {
+int64_t SchedulingPolicy::SpreadPolicy(const ResourceRequest &resource_request,
+                                       bool force_spillback, bool require_available,
+                                       std::function<bool(int64_t)> is_node_available) {
   std::vector<int64_t> round;
   round.reserve(nodes_.size());
   for (const auto &pair : nodes_) {
@@ -66,7 +65,8 @@ int64_t SchedulingPolicy::SpreadPolicy(
     return node_id;
   }
 
-  return HybridPolicy(resource_request, 0, force_spillback, require_available, is_node_available);
+  return HybridPolicy(resource_request, 0, force_spillback, require_available,
+                      is_node_available);
 }
 
 int64_t SchedulingPolicy::HybridPolicyWithFilter(

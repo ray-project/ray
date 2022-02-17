@@ -68,10 +68,9 @@ class SchedulingPolicy {
 
   /// Round robin among available nodes.
   /// If there are no available nodes, fallback to hybrid policy.
-  int64_t SpreadPolicy(
-      const ResourceRequest &resource_request,
-      bool force_spillback, bool require_available,
-      std::function<bool(int64_t)> is_node_available);
+  int64_t SpreadPolicy(const ResourceRequest &resource_request, bool force_spillback,
+                       bool require_available,
+                       std::function<bool(int64_t)> is_node_available);
 
  private:
   /// Identifier of local node.

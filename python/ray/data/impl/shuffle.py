@@ -15,7 +15,6 @@ from ray.data.impl.util import _get_spread_resources_iter
 T = TypeVar("T")
 
 
-
 def simple_shuffle(
     input_blocks: BlockList,
     block_udf: Optional[Callable[[Block], Iterable[Block]]],

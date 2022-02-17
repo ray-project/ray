@@ -169,8 +169,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
   if (scheduling_strategy.scheduling_strategy_case() ==
       rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy) {
     best_node_id = scheduling_policy_->SpreadPolicy(
-        resource_request,
-        force_spillback, force_spillback,
+        resource_request, force_spillback, force_spillback,
         [this](auto node_id) { return this->NodeAlive(node_id); });
   } else {
     // TODO (Alex): Setting require_available == force_spillback is a hack in order to
