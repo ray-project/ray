@@ -22,6 +22,7 @@ class TestBandits(unittest.TestCase):
             # Use a simple bandit-friendly env.
             "env": SimpleContextualBandit,
             "num_envs_per_worker": 2,  # Test batched inference.
+            "num_workers": 2,  # Test distributed bandits.
         }
 
         num_iterations = 5

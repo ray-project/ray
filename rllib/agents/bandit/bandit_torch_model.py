@@ -68,18 +68,24 @@ class OnlineLinearRegression(nn.Module):
 
         Args:
             x: Input feature tensor of shape
-                (batch_size, num_items, feature_dim)
+                (batch_size, [num_items]?, feature_dim)
         """
         # Fold batch and num-items dimensions into one dim.
-        B, C, F = x.shape
-        x_folded_batch = x.reshape([-1, F])
+        if len(x.shape) == 3:
+            B, C, F = x.shape
+            x_folded_batch = x.reshape([-1, F])
+        # Only batch and feature dims.
+        else:
+            x_folded_batch = x
 
         projections = self.covariance @ x_folded_batch.T
         batch_dots = (x_folded_batch * projections.T).sum(dim=-1)
         batch_dots = batch_dots.sqrt()
 
         # Restore original B and C dimensions.
-        return batch_dots.reshape([B, C])
+        if len(x.shape) == 3:
+            batch_dots = batch_dots.reshape([B, C])
+        return batch_dots
 
     def forward(self, x, sample_theta=False):
         """Predict scores on input batch using the underlying linear model.
@@ -105,12 +111,8 @@ class OnlineLinearRegression(nn.Module):
             "Feature dimensions of weights ({}) and context ({}) do not "
             "match!".format(self.d, x.shape[-1])
         )
-        if y:
-            assert torch.is_tensor(y) and y.numel() == 1, (
-                "Target should be a tensor;"
-                "Only online learning with a batch size of 1 is "
-                "supported for now!"
-            )
+        if y is not None:
+            assert torch.is_tensor(y), f"ERROR: Target should be a tensor, but is {y}!"
         return x if y is None else (x, y)
 
 
@@ -217,8 +219,9 @@ class ParametricLinearModel(TorchModelV2, nn.Module):
         self._cur_ctx = None
 
     def _check_inputs(self, x):
-        assert x.ndim == 3, \
-            f"ERROR: Inputs ({x}) must have 3 dimensions (B x num-items x features)."
+        assert (
+            x.ndim == 3
+        ), f"ERROR: Inputs ({x}) must have 3 dimensions (B x num-items x features)."
         return x
 
     @override(ModelV2)
@@ -238,10 +241,11 @@ class ParametricLinearModel(TorchModelV2, nn.Module):
         else:
             return scores
 
-    def partial_fit(self, x, y, arm):
+    def partial_fit(self, x, y, arms):
         x = x["item"]
-        action_id = arm.item()
-        self.arm.partial_fit(x[:, action_id], y)
+        for i, arm in enumerate(arms):
+            action_id = arm.item()
+            self.arm.partial_fit(x[[i], action_id], y[[i]])
 
     @override(ModelV2)
     def value_function(self):

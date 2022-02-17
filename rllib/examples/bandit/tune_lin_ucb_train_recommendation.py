@@ -18,7 +18,7 @@ if __name__ == "__main__":
 
     config = {
         "env": ParametricItemRecoEnv,
-        "num_envs_per_worker": 1,  # Test with batched inference.
+        "num_envs_per_worker": 2,  # Test with batched inference.
     }
 
     # Actual training_iterations will be 10 * timesteps_per_iteration
@@ -53,4 +53,3 @@ if __name__ == "__main__":
     plt.title("Episode reward mean")
     plt.xlabel("Training steps")
     plt.show()
-    time.sleep(10)
