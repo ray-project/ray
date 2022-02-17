@@ -162,6 +162,7 @@ def _shuffle_map(
 
 
 def _shuffle_reduce(*mapper_outputs: List[Block]) -> (Block, BlockMetadata):
+    logger.info("jjyao _shuffle_reduce start")
     stats = BlockExecStats.builder()
     builder = DelegatingBlockBuilder()
     for block in mapper_outputs:
@@ -175,4 +176,5 @@ def _shuffle_reduce(*mapper_outputs: List[Block]) -> (Block, BlockMetadata):
         input_files=None,
         exec_stats=stats.build(),
     )
+    logger.info("jjyao _shuffle_reduce end")
     return new_block, new_metadata

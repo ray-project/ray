@@ -28,9 +28,11 @@ std::pair<rpc::Address, bool> LocalityAwareLeasePolicy::GetBestNodeForTask(
 
   if (auto node_id = GetBestNodeIdForTask(spec)) {
     if (auto addr = node_addr_factory_(node_id.value())) {
+      RAY_LOG(INFO) << "GetBestNodeForTask " << spec.GetName() << " " << node_id.value();
       return std::make_pair(addr.value(), true);
     }
   }
+  RAY_LOG(INFO) << "GetBestNodeForTask fallback " << spec.GetName();
   return std::make_pair(fallback_rpc_address_, false);
 }
 
@@ -46,6 +48,7 @@ absl::optional<NodeID> LocalityAwareLeasePolicy::GetBestNodeIdForTask(
   for (const ObjectID &object_id : object_ids) {
     if (auto locality_data = locality_data_provider_->GetLocalityData(object_id)) {
       for (const NodeID &node_id : locality_data->nodes_containing_object) {
+        RAY_LOG(INFO) << "Node containing data " << spec.GetName() << " " << node_id;
         auto &bytes = bytes_local_table[node_id];
         bytes += locality_data->object_size;
         // Update max, if needed.
