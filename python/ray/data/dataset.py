@@ -72,7 +72,8 @@ from ray.data.impl.stats import DatasetStats
 from ray.data.impl.compute import cache_wrapper, CallableClass
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
+from ray.data.impl.shuffle import simple_shuffle
+from ray.data.impl.fast_repartition import fast_repartition
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
@@ -462,74 +463,34 @@ class Dataset(Generic[T]):
 
         if shuffle:
 
-            def do_shuffle(blocks, clear_input_blocks: bool):
-                # TODO: implement clear_input_blocks
-                return simple_shuffle(blocks, num_blocks)
+            def do_shuffle(block_list, clear_input_blocks: bool, block_udf):
+                if clear_input_blocks:
+                    blocks = block_list.copy()
+                    block_list.clear()
+                else:
+                    blocks = block_list
+                return simple_shuffle(blocks, block_udf, num_blocks)
 
             plan = self._plan.with_stage(
-                AllToAllStage("repartition", num_blocks, do_shuffle)
-            )
-            return Dataset(plan, self._epoch, self._lazy)
-
-        def do_fast(blocks, clear_input_blocks: bool):
-            # TODO: this won't work in lazy mode since it references `self`.
-            # TODO: implement clear_input_blocks.
-            # Compute the (n-1) indices needed for an equal split of the data.
-            count = self.count()
-            indices = []
-            cur_idx = 0
-            for _ in range(num_blocks - 1):
-                cur_idx += count / num_blocks
-                indices.append(int(cur_idx))
-            assert len(indices) < num_blocks, (indices, num_blocks)
-            if indices:
-                splits = self.split_at_indices(indices)
-            else:
-                splits = [self]
-            # TODO(ekl) include stats for the split tasks. We may also want to
-            # consider combining the split and coalesce tasks as an optimization.
-
-            # Coalesce each split into a single block.
-            reduce_task = cached_remote_fn(_shuffle_reduce).options(num_returns=2)
-            reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
-            reduce_out = [
-                reduce_task.remote(*s.get_internal_block_refs())
-                for s in splits
-                if s.num_blocks() > 0
-            ]
-            del splits  # Early-release memory.
-            new_blocks, new_metadata = zip(*reduce_out)
-            new_blocks, new_metadata = list(new_blocks), list(new_metadata)
-            new_metadata = reduce_bar.fetch_until_complete(new_metadata)
-            reduce_bar.close()
-
-            # Handle empty blocks.
-            if len(new_blocks) < num_blocks:
-                from ray.data.impl.arrow_block import ArrowBlockBuilder
-                from ray.data.impl.pandas_block import PandasBlockBuilder
-                from ray.data.impl.simple_block import SimpleBlockBuilder
-
-                num_empties = num_blocks - len(new_blocks)
-                dataset_format = self._dataset_format()
-                if dataset_format == "arrow":
-                    builder = ArrowBlockBuilder()
-                elif dataset_format == "pandas":
-                    builder = PandasBlockBuilder()
-                else:
-                    builder = SimpleBlockBuilder()
-                empty_block = builder.build()
-                empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
-                    input_files=None, exec_stats=None
-                )  # No stats for empty block.
-                empty_blocks, empty_metadata = zip(
-                    *[(ray.put(empty_block), empty_meta) for _ in range(num_empties)]
+                AllToAllStage(
+                    "repartition", num_blocks, do_shuffle, supports_block_udf=True
                 )
-                new_blocks += empty_blocks
-                new_metadata += empty_metadata
+            )
 
-            return BlockList(new_blocks, new_metadata), {}
+        else:
 
-        plan = self._plan.with_stage(AllToAllStage("repartition", num_blocks, do_fast))
+            def do_fast_repartition(block_list, clear_input_blocks: bool, _):
+                if clear_input_blocks:
+                    blocks = block_list.copy()
+                    block_list.clear()
+                else:
+                    blocks = block_list
+                return fast_repartition(blocks, num_blocks)
+
+            plan = self._plan.with_stage(
+                AllToAllStage("repartition", num_blocks, do_fast_repartition)
+            )
+
         return Dataset(plan, self._epoch, self._lazy)
 
     def random_shuffle(
@@ -538,7 +499,7 @@ class Dataset(Generic[T]):
         seed: Optional[int] = None,
         num_blocks: Optional[int] = None,
         _spread_resource_prefix: Optional[str] = None,
-        _move: bool = False,
+        _move: bool = False,  # TODO: deprecate.
     ) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
 
@@ -563,18 +524,18 @@ class Dataset(Generic[T]):
             The shuffled dataset.
         """
 
-        def do_shuffle(block_list, clear_input_blocks: bool):
+        def do_shuffle(block_list, clear_input_blocks: bool, block_udf):
             num_blocks = block_list.executed_num_blocks()  # Blocking.
             if num_blocks == 0:
                 return block_list, {}
-            # TODO: implement clear_input_blocks instead.
-            if _move:
+            if _move or clear_input_blocks:
                 blocks = block_list.copy()
                 block_list.clear()
             else:
                 blocks = block_list
             new_blocks, stage_info = simple_shuffle(
                 blocks,
+                block_udf,
                 num_blocks,
                 random_shuffle=True,
                 random_seed=seed,
@@ -583,7 +544,9 @@ class Dataset(Generic[T]):
             return new_blocks, stage_info
 
         plan = self._plan.with_stage(
-            AllToAllStage("random_shuffle", num_blocks, do_shuffle)
+            AllToAllStage(
+                "random_shuffle", num_blocks, do_shuffle, supports_block_udf=True
+            )
         )
         return Dataset(plan, self._epoch, self._lazy)
 
@@ -1005,7 +968,8 @@ class Dataset(Generic[T]):
                 )
                 _epoch_warned = True
         dataset_stats = DatasetStats(
-            stages={"union": []}, parent=[d._plan.stats() for d in datasets]
+            stages={"union": []},
+            parent=[d._plan.stats() for d in datasets],
         )
         dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
@@ -1409,11 +1373,15 @@ class Dataset(Generic[T]):
             A new, sorted dataset.
         """
 
-        def do_sort(blocks, keep_input_blocks: bool):
-            # TODO: implement clear_input_blocks
+        def do_sort(block_list, clear_input_blocks: bool, block_udf):
             # Handle empty dataset.
-            if blocks.initial_num_blocks() == 0:
-                return blocks, {}
+            if block_list.initial_num_blocks() == 0:
+                return block_list, {}
+            if clear_input_blocks:
+                blocks = block_list.copy()
+                block_list.clear()
+            else:
+                blocks = block_list
             if isinstance(key, list):
                 if not key:
                     raise ValueError("`key` must be a list of non-zero length")
@@ -1449,10 +1417,12 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
-        def do_zip_all(blocks, keep_input_blocks: bool):
-            # TODO: implement clear_input_blocks
-            blocks1 = blocks.get_blocks()
+        def do_zip_all(block_list, clear_input_blocks: bool, block_udf):
+            blocks1 = block_list.get_blocks()
             blocks2 = other.get_internal_block_refs()
+
+            if clear_input_blocks:
+                block_list.clear()
 
             if len(blocks1) != len(blocks2):
                 # TODO(ekl) consider supporting if num_rows are equal.
@@ -1477,6 +1447,9 @@ class Dataset(Generic[T]):
                 res, meta = do_zip_fn.remote(b1, b2)
                 blocks.append(res)
                 metadata.append(meta)
+
+            # Early release memory.
+            del blocks1, blocks2
 
             # TODO(ekl) it might be nice to have a progress bar here.
             metadata = ray.get(metadata)

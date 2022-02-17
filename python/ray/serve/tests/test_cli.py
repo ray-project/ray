@@ -7,8 +7,10 @@ import sys
 import pytest
 import requests
 
+import ray
 from ray import serve
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
+from ray.dashboard.optional_utils import RAY_INTERNAL_DASHBOARD_NAMESPACE
 
 
 @pytest.fixture
@@ -59,7 +61,7 @@ class DecoratedA(A):
 
 
 @pytest.mark.parametrize("class_name", ["A", "DecoratedA"])
-def test_deploy(ray_start_stop, tmp_working_dir, class_name):  # noqa: F811
+def test_deploy_import(ray_start_stop, tmp_working_dir, class_name):  # noqa: F811
     subprocess.check_output(["serve", "start"])
     subprocess.check_output(
         [
@@ -70,7 +72,7 @@ def test_deploy(ray_start_stop, tmp_working_dir, class_name):  # noqa: F811
                     "working_dir": tmp_working_dir,
                 }
             ),
-            "deploy",
+            "deploy-path",
             f"ray.serve.tests.test_cli.{class_name}",
             "--options-json",
             json.dumps(
@@ -94,6 +96,48 @@ def test_deploy(ray_start_stop, tmp_working_dir, class_name):  # noqa: F811
     resp = requests.get("http://127.0.0.1:8000/B")
     resp.raise_for_status()
     assert resp.text == "94", resp.text
+
+
+def test_deploy(ray_start_stop):
+    # Deploys two valid config files and checks that the deployments work
+
+    request_url = "http://localhost:8000/"
+    deployment_success_message = b"Deployment succeeded!\n"
+
+    subprocess.check_output(["serve", "start"])
+
+    # Needed to call serve.list_deployments()
+    ray.init(address="auto", namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE)
+    serve.start(detached=True)
+
+    deployment_status = subprocess.check_output(
+        ["serve", "deploy", "test_config_files/three_deployments.yaml"]
+    )
+
+    assert deployment_status == deployment_success_message
+    expected_deployments = ["shallow", "deep", "one"]
+    expected_responses = ["Hello shallow world!", "Hello deep world!", "2"]
+    running_deployments = serve.list_deployments()
+
+    assert set(running_deployments.keys()) == set(expected_deployments)
+    assert running_deployments["shallow"].num_replicas == 1
+
+    for deployment, response in zip(expected_deployments, expected_responses):
+        assert requests.get(f"{request_url}{deployment}").text == response
+
+    deployment_status = subprocess.check_output(
+        ["serve", "deploy", "test_config_files/two_deployments.yaml"]
+    )
+
+    assert deployment_status == deployment_success_message
+    expected_deployments = ["shallow", "one"]
+    expected_responses = ["Hello shallow world!", "2"]
+    running_deployments = serve.list_deployments()
+    assert set(running_deployments.keys()) == set(expected_deployments)
+    assert running_deployments["shallow"].num_replicas == 3
+
+    for deployment, response in zip(expected_deployments, expected_responses):
+        assert requests.get(f"{request_url}{deployment}").text == response
 
 
 if __name__ == "__main__":
