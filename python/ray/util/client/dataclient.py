@@ -106,12 +106,9 @@ class DataClient:
                     req = None
 
                 while self._gc_queue:
-                    gc_req = self._gc_queue.popleft()
+                    (gc_req, gc_callback) = self._gc_queue.popleft()
                     with self.lock:
-                        req_id = self._next_id()
-                        gc_req.req_id = req_id
-                        self.outstanding_requests[req_id] = gc_req
-                        self.request_queue.put(gc_req)
+                        self.__push_request_to_queue(gc_req, gc_callback)
                 if req is None:
                     continue
                 yield req
@@ -312,25 +309,29 @@ class DataClient:
 
         return data
 
+    def _push_request_to_queue(
+            self,
+            req: ray_client_pb2.DataRequest,
+            callback: Optional[ResponseCallable]):
+        req_id = self._next_id()
+        req.req_id = req_id
+        if callback is not None:
+            self.asyncio_waiting_data[req_id] = callback
+        self.outstanding_requests[req_id] = req
+        self.request_queue.put(req)
+
     def _async_send(
         self,
         req: ray_client_pb2.DataRequest,
         callback: Optional[ResponseCallable] = None,
     ) -> None:
         if _in_gc is True:
-            assert req.WhichOneof("type") == "release"
-            assert callback is None
-            self._gc_queue.append(req)
+            self._gc_queue.append((req, callback))
             return
 
         with self.lock:
             self._check_shutdown()
-            req_id = self._next_id()
-            req.req_id = req_id
-            if callback is not None:
-                self.asyncio_waiting_data[req_id] = callback
-            self.outstanding_requests[req_id] = req
-            self.request_queue.put(req)
+            self._push_request_to_queue(req, callback)
 
     # Must hold self.lock when calling this function.
     def _check_shutdown(self):
