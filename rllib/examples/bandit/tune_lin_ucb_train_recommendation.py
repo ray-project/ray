@@ -8,7 +8,7 @@ import time
 
 import ray
 from ray import tune
-from ray.rllib.examples.env.bandit_envs_recommender_system import ParametricRecSys
+from ray.rllib.examples.env import bandit_envs_recommender_system  # noqa: F401
 
 if __name__ == "__main__":
     # Temp fix to avoid OMP conflict.

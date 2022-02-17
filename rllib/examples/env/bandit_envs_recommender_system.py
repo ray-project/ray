@@ -4,7 +4,7 @@
 """
 import gym
 import numpy as np
-from typing import List, Optional
+from typing import Optional
 
 from ray.rllib.env.wrappers.recsim import (
     MultiDiscreteToDiscreteActionWrapper,
