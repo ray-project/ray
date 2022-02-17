@@ -38,6 +38,10 @@ class DistributeResources:
     trial has currently, the scheduler will skip the update process
     internally (same with None).
 
+    If you wish to implement your own resource distribution logic,
+    you can do so by extending this class, as it provides several
+    generic methods. You can also implement a function instead.
+
     Args:
         add_bundles (bool): If True, create new bundles from free resources.
             Otherwise, spread them among base_trial_resource bundles.
