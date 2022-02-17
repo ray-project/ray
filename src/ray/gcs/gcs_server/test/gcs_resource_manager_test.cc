@@ -36,17 +36,21 @@ class GcsResourceManagerTest : public ::testing::Test {
 };
 
 TEST_F(GcsResourceManagerTest, TestBasic) {
-  // Add node resources.
-  auto node_id = NodeID::FromRandom();
   const std::string cpu_resource = "CPU";
   absl::flat_hash_map<std::string, double> resource_map;
   resource_map[cpu_resource] = 10;
-  ResourceSet resource_set(resource_map);
-  gcs_resource_manager_->UpdateResourceCapacity(node_id, resource_map);
+
+  auto node = Mocker::GenNodeInfo();
+  node->mutable_resources_total()->insert(resource_map.begin(), resource_map.end());
+  // Add node resources.
+  gcs_resource_manager_->OnNodeAdd(*node);
 
   // Get and check cluster resources.
   const auto &cluster_resource = gcs_resource_manager_->GetClusterResources();
   ASSERT_EQ(1, cluster_resource.size());
+
+  const auto &node_id = NodeID::FromBinary(node->node_id());
+  ResourceSet resource_set(resource_map);
 
   // Test `AcquireResources`.
   ASSERT_TRUE(gcs_resource_manager_->AcquireResources(node_id, resource_set));

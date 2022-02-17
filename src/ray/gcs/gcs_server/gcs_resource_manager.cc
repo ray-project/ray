@@ -325,21 +325,6 @@ void GcsResourceManager::SetAvailableResources(const NodeID &node_id,
   cluster_scheduling_resources_[node_id]->SetAvailableResources(ResourceSet(resources));
 }
 
-void GcsResourceManager::UpdateResourceCapacity(
-    const NodeID &node_id,
-    const absl::flat_hash_map<std::string, double> &changed_resources) {
-  auto iter = cluster_scheduling_resources_.find(node_id);
-  if (iter != cluster_scheduling_resources_.end()) {
-    SchedulingResources &scheduling_resources = *iter->second;
-    for (const auto &entry : changed_resources) {
-      scheduling_resources.UpdateResourceCapacity(entry.first, entry.second);
-    }
-  } else {
-    cluster_scheduling_resources_.emplace(
-        node_id, std::make_shared<SchedulingResources>(ResourceSet(changed_resources)));
-  }
-}
-
 void GcsResourceManager::DeleteResources(
     const NodeID &node_id, const std::vector<std::string> &deleted_resources) {
   auto iter = cluster_scheduling_resources_.find(node_id);
