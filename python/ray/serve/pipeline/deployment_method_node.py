@@ -58,7 +58,9 @@ class DeploymentMethodNode(DAGNode):
     def _execute_impl(self, *args):
         """Executor of ClassMethodNode by ray.remote()"""
         # Execute with bound args.
-        return self._deployment_handle.options(**self._bound_options).remote(
+        method_body = getattr(self._deployment_handle, self._method_name)
+
+        return method_body.options(**self._bound_options).remote(
             *self._bound_args,
             **self._bound_kwargs,
         )

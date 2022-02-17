@@ -1,3 +1,4 @@
+from flask import request
 import pytest
 import json
 from typing import TypeVar
@@ -16,13 +17,11 @@ from ray.serve.pipeline.tests.test_modules import (
 )
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
-    extract_deployments_from_serve_dag
+    extract_deployments_from_serve_dag,
+    generate_deployments_from_ray_dag,
 )
 from ray.experimental.dag import InputNode
-
-@ray.remote
-def func():
-    return "hello"
+from ray import serve
 
 RayHandleLike = TypeVar("RayHandleLike")
 
@@ -291,21 +290,38 @@ def test_nested_deployment_node_json_serde(serve_instance):
     original_serve_root_dag = ray_dag._apply_recursive(
         lambda node: transform_ray_dag_to_serve_dag(node)
     )
-    json_serialized = json.dumps(original_serve_root_dag, indent=4, cls=DAGNodeEncoder)
-    deserialized_serve_root_dag_node = json.loads(
-        json_serialized, object_hook=dagnode_from_json
-    )
-    original_deployments = extract_deployments_from_serve_dag(original_serve_root_dag)
-    deserialized_deployments = extract_deployments_from_serve_dag(deserialized_serve_root_dag_node)
-    print(f"original_deployments: {original_deployments}")
-    print(f"deserialized_deployments: {deserialized_deployments}")
-    for model in original_deployments.values():
-        model.deploy()
+    # json_serialized = json.dumps(original_serve_root_dag, indent=4, cls=DAGNodeEncoder)
+    # deserialized_serve_root_dag_node = json.loads(
+    #     json_serialized, object_hook=dagnode_from_json
+    # )
+    # original_deployments = extract_deployments_from_serve_dag(original_serve_root_dag)
+    # deserialized_deployments = extract_deployments_from_serve_dag(deserialized_serve_root_dag_node)
+    # print(f"original_deployments: {original_deployments}")
+    # print(f"deserialized_deployments: {deserialized_deployments}")
+    # for model in original_deployments:
+    #     model.deploy()
 
-    print(ray.get(ray_dag.execute(1))) # == 5
-    print(ray.get(original_serve_root_dag.execute(1))) # == 5
-    print(ray.get(deserialized_serve_root_dag_node.execute(1))) # == 5
-    print("1")
+    # print(ray.get(ray_dag.execute(1))) # == 5
+    # print(ray.get(original_serve_root_dag.execute(1))) # == 5
+    # print(ray.get(deserialized_serve_root_dag_node.execute(1))) # == 5
+
+    deployments = extract_deployments_from_serve_dag(original_serve_root_dag)
+    serve_dag_root_json = json.dumps(original_serve_root_dag, cls=DAGNodeEncoder)
+    serve_dag_root_deployment = serve.deployment(
+        name="pipeline_root_name",
+    )("ray.serve.pipeline.dag_runner.DAGRunner")
+    serve_dag_root_deployment._init_args = (serve_dag_root_json,)
+    deployments.insert(0, serve_dag_root_deployment)
+
+    print(f">>>> deployments: {deployments}")
+    assert len(deployments) == 3
+    for deployment in deployments:
+        deployment.deploy()
+
+    import requests
+    resp = requests.get("http://127.0.0.1:8000/pipeline_root_name", params={"input": "1"})
+    print(f"resp.text: {resp.text}")
+
 
 # def test_simple_deployment_method_node_json_serde(shared_ray_instance):
 #     """ """

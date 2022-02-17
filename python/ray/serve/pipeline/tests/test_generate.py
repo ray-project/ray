@@ -157,8 +157,6 @@ def test_multiple_class_method_entrypoints_func_output(serve_instance):
     assert len(deployments) == 3
     for deployment in deployments:
         deployment.deploy()
-    import ipdb
-    ipdb.set_trace()
 
     _validate_consistent_output(deployments[0], dag, "pipeline", input=1, output=6)
 

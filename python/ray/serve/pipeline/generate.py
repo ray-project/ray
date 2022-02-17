@@ -1,6 +1,7 @@
 from typing import Any, Dict, List
 import uuid
 import threading
+import json
 
 from ray.experimental.dag import (
     DAGNode,
@@ -12,6 +13,9 @@ from ray.serve.api import Deployment, DeploymentConfig
 from ray import serve
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
+from ray.serve.pipeline.json_serde import (
+    DAGNodeEncoder
+)
 
 
 class DeploymentIDGenerator(object):
@@ -37,7 +41,7 @@ class DeploymentIDGenerator(object):
 
 
 
-def transform_ray_dag_to_serve_dag(dag_node):
+def transform_ray_dag_to_serve_dag(dag_node, deployments=None):
     if isinstance(dag_node, ClassNode):
         deployment_name = (
             dag_node.get_options().get("name", None)
@@ -82,7 +86,8 @@ def transform_ray_dag_to_serve_dag(dag_node):
             ray_actor_options,
             other_args_to_resolve={},
         )
-        # deployments.append(new_deployment)
+        if deployments:
+            deployments.append(new_deployment)
 
         return deployment_node
     elif isinstance(dag_node, ClassMethodNode):
@@ -113,8 +118,9 @@ def generate_deployments_from_ray_dag(
 
     deployments = []
     serve_dag_root = ray_dag_root._apply_recursive(
-        lambda node: transform_ray_dag_to_serve_dag(node)
+        lambda node: transform_ray_dag_to_serve_dag(node, deployments=deployments)
     )
+    serve_dag_root_json = json.dumps(serve_dag_root, cls=DAGNodeEncoder)
 
     pipeline_root_name = (
         pipeline_root_name or f"serve_pipeline_root_{uuid.uuid4().hex}"
@@ -122,18 +128,18 @@ def generate_deployments_from_ray_dag(
 
     serve_dag_root_deployment = serve.deployment(
         name="pipeline_root_name",
-    )("ray.serve.pipeline.generate.DAGRunner")
-    serve_dag_root_deployment._init_args = (serve_dag_root,)
+    )("ray.serve.pipeline.dag_runner.DAGRunner")
+    serve_dag_root_deployment._init_args = (serve_dag_root_json,)
 
     deployments.insert(0, serve_dag_root_deployment)
 
     return deployments
 
-def extract_deployments_from_serve_dag(serve_dag_root: DAGNode) -> Dict[str, Deployment]:
-    deployments = {}
+def extract_deployments_from_serve_dag(serve_dag_root: DAGNode) -> List[Deployment]:
+    deployments = []
     def extractor(dag_node):
         if isinstance(dag_node, DeploymentMethodNode):
-            deployments[dag_node._deployment_name] = dag_node._body
+            deployments.append(dag_node._body)
 
 
     serve_dag_root._apply_recursive(

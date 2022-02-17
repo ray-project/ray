@@ -1,5 +1,4 @@
 import asyncio
-import imp
 import logging
 import pickle
 import inspect
