@@ -628,6 +628,9 @@ COMMON_CONFIG: TrainerConfigDict = {
     # training iteration.
     "_disable_execution_plan_api": False,
 
+    # If True, disable the environment pre-checking module.
+    "disable_env_checking": False,
+
     # === Deprecated keys ===
     # Uses the sync samples optimizer instead of the multi-gpu one. This is
     # usually slower, but you might want to try it if you run into issues with

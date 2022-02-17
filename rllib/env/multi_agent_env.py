@@ -178,7 +178,11 @@ class MultiAgentEnv(gym.Env):
             if agent_ids is None:
                 agent_ids = self.get_agent_ids()
             samples = self.action_space.sample()
-            return {agent_id: samples[agent_id] for agent_id in agent_ids}
+            return {
+                agent_id: samples[agent_id]
+                for agent_id in agent_ids
+                if agent_id != "__all__"
+            }
         logger.warning("action_space_sample() has not been implemented")
         del agent_ids
         return {}
