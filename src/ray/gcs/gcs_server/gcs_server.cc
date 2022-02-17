@@ -418,11 +418,10 @@ void GcsServer::InitResourceReportBroadcasting(const GcsInitData &gcs_init_data)
       raylet_client_pool_,
       [this](rpc::ResourceUsageBroadcastData &buffer) {
     gcs_resource_manager_->GetResourceUsageBatchForBroadcast(buffer);
-      };
+      });
 
     grpc_based_resource_broadcaster_->Initialize(gcs_init_data);
     grpc_based_resource_broadcaster_->Start();
-}
 }
 
 void GcsServer::InitStatsHandler() {
