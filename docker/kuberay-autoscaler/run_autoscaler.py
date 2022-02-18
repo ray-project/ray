@@ -74,9 +74,10 @@ if __name__ == "__main__":
         args.cluster_name, args.cluster_namespace
     )
 
-    # K8s might not consider the Ray head pod to be `Running` at the moment that
-    # this entrypoint code runs.
-    # That can lead to a annoying artifact at the start of the autoscaler logs.
+    # When the entrypoint code reaches here,
+    # the GCS might not have collected information on the head node itself.
+    # That can lead to a annoying artifact at the start of the autoscaler logs:
+    # a status message showing no nodes at all connected to the Ray cluster.
     # Wait a bit to avoid that artifact.
     time.sleep(5)
 
