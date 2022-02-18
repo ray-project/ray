@@ -63,6 +63,7 @@ from xgboost_ray import RayDMatrix, RayParams, train, predict
 import ray
 from ray import tune
 from ray.util.dask import ray_dask_get
+
 # -
 
 # Next, let's parse some arguments. This will be used for executing the ``.py``
@@ -183,6 +184,7 @@ print(train_df, eval_df)
 # The ``ray_params`` variable expects a ``RayParams`` object that contains
 # Ray-specific settings, such as the number of workers.
 
+
 def train_xgboost(config, train_df, test_df, target_column, ray_params):
     train_set = RayDMatrix(train_df, target_column)
     test_set = RayDMatrix(test_df, target_column)
@@ -240,7 +242,8 @@ print(f"Results: {evals_result}")
 # ## Hyperparameter optimization
 #
 # If we are not content with the results obtained with default XGBoost
-# parameters, we can use [Ray Tune](https://docs.ray.io/en/latest/tune/index.html) for cutting-edge
+# parameters, we can use [Ray Tune](https://docs.ray.io/en/latest/tune/index.html)
+# for cutting-edge
 # distributed hyperparameter tuning. XGBoost-Ray automatically integrates
 # with Ray Tune, meaning we can use the same training function as before.
 #
@@ -256,9 +259,11 @@ print(f"Results: {evals_result}")
 # returned.
 #
 # By default, Tune will use simple random search. However, Tune also
-# provides various [search algorithms](https://docs.ray.io/en/latest/tune/api_docs/suggestion.html) and
+# provides various
+# [search algorithms](https://docs.ray.io/en/latest/tune/api_docs/suggestion.html) and
 # [schedulers](https://docs.ray.io/en/latest/tune/api_docs/schedulers.html)
 # to further improve the optimization process.
+
 
 def tune_xgboost(train_df, test_df, target_column):
     # Set XGBoost config.

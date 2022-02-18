@@ -61,6 +61,7 @@ from modin.experimental.sklearn.model_selection import train_test_split
 from xgboost_ray import RayDMatrix, RayParams, train, predict
 
 import ray
+
 # -
 
 # Next, let's parse some arguments. This will be used for executing the ``.py``
@@ -172,6 +173,7 @@ print(df_train, df_validation)
 #
 # The ``ray_params`` variable expects a ``RayParams`` object that contains
 # Ray-specific settings, such as the number of workers.
+
 
 def train_xgboost(config, train_df, test_df, target_column, ray_params):
     train_set = RayDMatrix(train_df, target_column)
