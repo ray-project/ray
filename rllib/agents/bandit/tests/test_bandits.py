@@ -19,40 +19,49 @@ class TestBandits(unittest.TestCase):
     def test_bandit_lin_ts_compilation(self):
         """Test whether a BanditLinTSTrainer can be built on all frameworks."""
         config = {
-            # Use a simple bandit friendly env.
+            # Use a simple bandit-friendly env.
             "env": SimpleContextualBandit,
+            "num_envs_per_worker": 2,  # Test batched inference.
+            "num_workers": 2,  # Test distributed bandits.
         }
 
         num_iterations = 5
 
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = bandit.BanditLinTSTrainer(config=config)
-            results = None
-            for i in range(num_iterations):
-                results = trainer.train()
-                check_train_results(results)
-                print(results)
-            # Force good learning behavior (this is a very simple env).
-            self.assertTrue(results["episode_reward_mean"] == 10.0)
+            for train_batch_size in [1, 10]:
+                config["train_batch_size"] = train_batch_size
+                trainer = bandit.BanditLinTSTrainer(config=config)
+                results = None
+                for i in range(num_iterations):
+                    results = trainer.train()
+                    check_train_results(results)
+                    print(results)
+                # Force good learning behavior (this is a very simple env).
+                self.assertTrue(results["episode_reward_mean"] == 10.0)
+                trainer.stop()
 
     def test_bandit_lin_ucb_compilation(self):
         """Test whether a BanditLinUCBTrainer can be built on all frameworks."""
         config = {
-            # Use a simple bandit friendly env.
+            # Use a simple bandit-friendly env.
             "env": SimpleContextualBandit,
+            "num_envs_per_worker": 2,  # Test batched inference.
         }
 
         num_iterations = 5
 
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = bandit.BanditLinUCBTrainer(config=config)
-            results = None
-            for i in range(num_iterations):
-                results = trainer.train()
-                check_train_results(results)
-                print(results)
-            # Force good learning behavior (this is a very simple env).
-            self.assertTrue(results["episode_reward_mean"] == 10.0)
+            for train_batch_size in [1, 10]:
+                config["train_batch_size"] = train_batch_size
+                trainer = bandit.BanditLinUCBTrainer(config=config)
+                results = None
+                for i in range(num_iterations):
+                    results = trainer.train()
+                    check_train_results(results)
+                    print(results)
+                # Force good learning behavior (this is a very simple env).
+                self.assertTrue(results["episode_reward_mean"] == 10.0)
+                trainer.stop()
 
     def test_deprecated_locations(self):
         """Tests, whether importing from old contrib dir fails gracefully.

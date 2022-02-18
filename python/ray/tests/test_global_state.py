@@ -1,3 +1,4 @@
+import os
 import pytest
 
 try:
@@ -92,30 +93,31 @@ def test_global_state_actor_table(ray_start_regular):
     @ray.remote
     class Actor:
         def ready(self):
-            pass
+            return os.getpid()
 
     # actor table should be empty at first
     assert len(ray.state.actors()) == 0
 
     # actor table should contain only one entry
+    def get_actor_table_data(field):
+        return list(ray.state.actors().values())[0][field]
+
     a = Actor.remote()
-    ray.get(a.ready.remote())
+    pid = ray.get(a.ready.remote())
     assert len(ray.state.actors()) == 1
+    assert get_actor_table_data("Pid") == pid
 
     # actor table should contain only this entry
     # even when the actor goes out of scope
     del a
 
-    def get_state():
-        return list(ray.state.actors().values())[0]["State"]
-
     dead_state = convert_actor_state(gcs_utils.ActorTableData.DEAD)
     for _ in range(10):
-        if get_state() == dead_state:
+        if get_actor_table_data("State") == dead_state:
             break
         else:
             time.sleep(0.5)
-    assert get_state() == dead_state
+    assert get_actor_table_data("State") == dead_state
 
 
 def test_global_state_worker_table(ray_start_regular):
