@@ -114,11 +114,15 @@ spec:
             # The autoscaler uses this env variable to determine which Ray CR to interact with.
             # TODO: Match with CR name automatically via operator, Helm, and/or Kustomize.
             value: raycluster-complete
-          command: ["/bin/sh", "-c"]
+          command: ["/home/ray/anaconda3/bin/python"]
           args:
-            - |-
-              $HOME/anaconda3/bin/python /home/ray/run_autoscaler_with_retries.py \
-              --cluster-name "$RAY_CLUSTER_NAME" --cluster-namespace "$RAY_CLUSTER_NAMESPACE" --redis-password 5241590000000000
+          - "/home/ray/run_autoscaler_with_retries.py"
+          - "--cluster-name"
+          - "$(RAY_CLUSTER_NAME)"
+          - "--cluster-namespace"
+          - "$(RAY_CLUSTER_NAMESPACE)"
+          - "--redis-password"
+          - "5241590000000000"
           resources:
             limits:
               cpu: 500m
