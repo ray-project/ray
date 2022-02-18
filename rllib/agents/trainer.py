@@ -1017,6 +1017,9 @@ class Trainer(Trainable):
                 logdir=self.logdir,
             )
 
+        # Run any callbacks after trainer initialization is done.
+        self.callbacks.on_trainer_init(trainer=self)
+
     # TODO: Deprecated: In your sub-classes of Trainer, override `setup()`
     #  directly and call super().setup() from within it if you would like the
     #  default setup behavior plus some own setup logic.
@@ -1873,7 +1876,7 @@ class Trainer(Trainable):
             config=config,
             policy_state=policy_state,
             policy_mapping_fn=policy_mapping_fn,
-            policies_to_train=list(policies_to_train),
+            policies_to_train=list(policies_to_train) if policies_to_train else None,
         )
 
         def fn(worker: RolloutWorker):
