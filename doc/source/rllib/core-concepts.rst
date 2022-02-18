@@ -110,7 +110,7 @@ Here is an example of creating a set of rollout workers and using them gather ex
 
 .. code-block:: python
 
-    # Setup policy and rollout workers
+    # Setup policy and rollout workers.
     env = gym.make("CartPole-v0")
     policy = CustomPolicy(env.observation_space, env.action_space, {})
     workers = WorkerSet(
