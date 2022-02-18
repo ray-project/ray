@@ -1,7 +1,9 @@
-.. include:: we_are_hiring.rst
+.. include:: /_includes/rllib_announcement.rst
 
-RLlib Algorithms
-================
+.. include:: /_includes/rllib_we_are_hiring.rst
+
+Algorithms
+==========
 
 .. tip::
 
@@ -738,15 +740,6 @@ Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob
    :end-before: __sphinx_doc_end__
 
 
-.. |tensorflow| image:: images/tensorflow.png
-    :class: inline-figure
-    :width: 24
-
-.. |pytorch| image:: images/pytorch.png
-    :class: inline-figure
-    :width: 24
-
-
 .. _alphazero:
 
 Single-Player Alpha Zero (contrib/AlphaZero)
@@ -949,3 +942,13 @@ using the state entropy as "intrinsic rewards".
 
 This exploration objective can be used with both model-free and model-based RL algorithms. 
 RE3 uses a randomly initialized encoder to get the state’s latent representation, thus taking away the complexity of training the representation learning method. The encoder weights are fixed during the entire duration of the training process. 
+
+.. |tensorflow| image:: images/tensorflow.png
+    :class: inline-figure
+    :width: 24
+
+.. |pytorch| image:: images/pytorch.png
+    :class: inline-figure
+    :width: 24
+
+.. include:: /_includes/rllib_announcement_bottom.rst
