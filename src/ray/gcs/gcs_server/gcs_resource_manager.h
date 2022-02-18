@@ -174,7 +174,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   void DeleteResources(const NodeID &node_id,
                        const std::vector<std::string> &deleted_resources);
 
-    /// The runner to run function periodically.
+  /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
