@@ -100,6 +100,9 @@ class GcsServer {
   /// Initialize gcs resource manager.
   void InitGcsResourceManager(const GcsInitData &gcs_init_data);
 
+  /// Initialize synchronization service
+  void InitRaySync(const GcsInitData &gcs_init_data);
+
   /// Initialize gcs resource scheduler.
   void InitGcsResourceScheduler();
 
@@ -129,12 +132,6 @@ class GcsServer {
 
   // Init RuntimeENv manager
   void InitRuntimeEnvManager();
-
-  /// Initialize resource report polling.
-  void InitResourceReportPolling(const GcsInitData &gcs_init_data);
-
-  /// Initialize resource report broadcasting.
-  void InitResourceReportBroadcasting(const GcsInitData &gcs_init_data);
 
   /// Install event listeners.
   void InstallEventListeners();
@@ -212,10 +209,8 @@ class GcsServer {
   /// Stats handler and service.
   std::unique_ptr<rpc::StatsHandler> stats_handler_;
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
-  /// Resource report poller.
-  std::unique_ptr<GcsResourceReportPoller> gcs_resource_report_poller_;
-  /// Resource report broadcaster.
-  std::unique_ptr<GrpcBasedResourceBroadcaster> grpc_based_resource_broadcaster_;
+  // Synchronization service for ray.
+  std::unique_ptr<sync::RaySync> ray_sync_;
   /// The gcs worker manager.
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   /// Worker info service.

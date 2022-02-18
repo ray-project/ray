@@ -45,32 +45,6 @@ void GrpcBasedResourceBroadcaster::Initialize(const GcsInitData &gcs_init_data) 
   }
 }
 
-void GrpcBasedResourceBroadcaster::Start() {
-  broadcast_thread_.reset(new std::thread{[this]() {
-    SetThreadName("resource_report_broadcaster");
-    boost::asio::io_service::work work(broadcast_service_);
-
-    broadcast_service_.run();
-    RAY_LOG(DEBUG)
-        << "GCSResourceReportBroadcaster has stopped. This should only happen if "
-           "the cluster has stopped";
-  }});
-  ticker_.RunFnPeriodically(
-      [this] { SendBroadcast(); }, broadcast_period_ms_,
-      "GrpcBasedResourceBroadcaster.deadline_timer.pull_resource_report");
-}
-
-void GrpcBasedResourceBroadcaster::Stop() {
-  if (broadcast_thread_ != nullptr) {
-    // TODO (Alex): There's technically a race condition here if we start and stop the
-    // thread in rapid succession.
-    broadcast_service_.stop();
-    if (broadcast_thread_->joinable()) {
-      broadcast_thread_->join();
-    }
-  }
-}
-
 void GrpcBasedResourceBroadcaster::HandleNodeAdded(const rpc::GcsNodeInfo &node_info) {
   rpc::Address address;
   address.set_raylet_id(node_info.node_id());
