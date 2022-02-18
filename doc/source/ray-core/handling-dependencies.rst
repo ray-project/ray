@@ -349,43 +349,43 @@ Inheritance
 
 The runtime environment is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor once set, unless it is overridden by explicitly specifying a runtime environment for the child task/actor.
 
-1. By default, all actors and tasks inherit the parent's runtime_env.
+1. By default, all actors and tasks inherit the current runtime env.
 
 .. code-block:: python
 
-  # Parent's `runtime_env`
-  {"pip": ["requests", "chess"]}
+  # Current `runtime_env`
+  ray.init(runtime_env={"pip": ["requests", "chess"]})
 
   # Create child actor
   ChildActor.remote()
 
-  # Child's actual `runtime_env` (inherit from parent's)
+  # ChildActor's actual `runtime_env` (inherit from current runtime env)
   {"pip": ["requests", "chess"]}
 
-2. However, if you specify runtime_env for task/actor, it will override the parents' runtime env.
+2. However, if you specify runtime_env for task/actor, it will override current runtime env.
 
 .. code-block:: python
 
-  # Parent's `runtime_env`
-  {"pip": ["requests", "chess"]}
+  # Current `runtime_env`
+  ray.init(runtime_env={"pip": ["requests", "chess"]})
 
   # Create child actor
   ChildActor.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote()
 
-  # Child's actual `runtime_env` (specify runtime_env overrides)
+  # ChildActor's actual `runtime_env` (specify runtime_env overrides)
   {"env_vars": {"A": "a", "B": "b"}}
 
-3. If you'd like to still use parent's runtime environment, you can use the API :ref:`ray.get_current_runtime_env() <runtime-env-apis>` to get the parent runtime env and modify it by yourself.
+3. If you'd like to still use current runtime env, you can use the API :ref:`ray.get_current_runtime_env() <runtime-env-apis>` to get the current runtime env and modify it by yourself.
 
 .. code-block:: python
 
-  # Parent's `runtime_env`
-  {"pip": ["requests", "chess"]}
+  # Current `runtime_env`
+  ray.init(runtime_env={"pip": ["requests", "chess"]})
 
   # Child updates `runtime_env`
   Actor.options(runtime_env=ray.get_current_runtime_env().update({"env_vars": {"A": "a", "B": "b"}}))
 
-  # Child's actual `runtime_env` (merged with parent's)
+  # Child's actual `runtime_env` (merged with current runtime env)
   {"pip": ["requests", "chess"],
   "env_vars": {"A": "a", "B": "b"}}
 

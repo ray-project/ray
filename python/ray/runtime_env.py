@@ -3,8 +3,6 @@ import ray
 from ray.util.annotations import PublicAPI
 from ray._private.client_mode_hook import client_mode_hook
 
-_runtime_env = None
-
 
 @PublicAPI(stability="beta")
 @client_mode_hook(auto_init=False)
@@ -26,8 +24,5 @@ def get_current_runtime_env():
     >>> Actor.options(runtime_env=ray.get_current_runtime_env().update(
         {"env_vars": {"A": "a", "B": "b"}}))
     """
-    global _runtime_env
-    if _runtime_env is None:
-        _runtime_env = dict(ray.get_runtime_context().runtime_env)
 
-    return _runtime_env
+    return dict(ray.get_runtime_context().runtime_env)
