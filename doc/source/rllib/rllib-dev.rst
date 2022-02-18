@@ -130,15 +130,27 @@ the stack traces of all Ray workers on the current node, ``ray timeline`` to dum
 a timeline visualization of tasks to a file, and ``ray memory`` to list all object
 references in the cluster.
 
-TensorFlow 2.0
+TensorFlow 2.x
 ~~~~~~~~~~~~~~
 
-RLlib supports both tf2.x as well as ``tf.compat.v1`` modes.
+It is now recommended to use framework=tf2 and eager_tracing=True (in case you are developing with TensorFlow)
+for maximum performance and support.
+We will however continue to support framework=tf (static-graph) for the foreseeable future.
+
+For debugging purposes, you should use ``framework=tf2`` with ``eager_tracing=False``.
+All ``tf.Tensor`` values will then be visible and printable when executing your code.
+However, some slowdown is to be expected in this config mode.
+
+Older TensorFlow versions
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+RLlib supports both TensorFlow 2.x as well as ``tf.compat.v1`` modes.
 Always use the ``ray.rllib.utils.framework.try_import_tf()`` utility function to import tensorflow.
 It returns three values:
+
 *  ``tf1``: The ``tf.compat.v1`` module or the installed tf1.x package (if the version is < 2.0).
 *  ``tf``: The installed tensorflow module as-is.
-*  ``tfv``: A convenience version int, whose values are either 1 or 2.
+*  ``tfv``: A version integer, whose value is either 1 or 2.
 
 `See here <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__ for a detailed example script.
 

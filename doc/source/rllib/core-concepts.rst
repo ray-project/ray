@@ -126,9 +126,11 @@ Here is an example of creating a set of rollout workers and using them gather ex
         # Improve the policy using the T1 batch
         policy.learn_on_batch(T1)
 
-        # Broadcast weights to the policy evaluation workers
+        # The local worker acts as a "parameter server" here.
+        # We put the weights of its `policy` into the Ray object store once (`ray.put`)...
         weights = ray.put({"default_policy": policy.get_weights()})
         for w in workers.remote_workers():
+            # ... so that we can broacast these weights to all rollout-workers once.
             w.set_weights.remote(weights)
 
 Sample Batches
@@ -155,9 +157,10 @@ Since all values are kept in arrays, this allows for efficient encoding and tran
         't': np.ndarray((200,), dtype=int64, min=0.0, max=34.0, mean=9.14)
     }
 
-In `multi-agent mode <rllib-concepts.html#policies-in-multi-agent>`__, sample batches are collected separately for each individual policy.
-
-
+In `multi-agent mode <rllib-concepts.html#policies-in-multi-agent>`__,
+sample batches are collected separately for each individual policy.
+These batches are wrapped up together in a ``MultiAgentBatch``,
+serving as a container for the individual agents' sample batches.
 
 
 Execution Plans
