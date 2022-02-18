@@ -279,11 +279,25 @@ def _get_num_gpus(
 def _get_custom_resources(
     ray_start_params: Dict[str, Any], group_name: str
 ) -> Dict[str, int]:
+    """Format custom resources based on the `resources` Ray start param.
+
+    For the current prototype, the value of the `resources` field must
+    be formatted as follows:
+    '"{\"Custom1\": 1, \"Custom2\": 5}"'.
+
+    We intend to provide a better interface soon.
+
+    This method first converts the input to a correctly formatted
+    json string and then loads that json string to a dict.
+    """
     if "resources" not in ray_start_params:
         return {}
     resources_string = ray_start_params["resources"]
     try:
+        # Drop the extra pair of quotes and remove the backslash escapes.
+        # resources_json should be a json string.
         resources_json = resources_string[1:-1].replace("\\", "")
+        # Load a dict from the json string.
         resources = json.loads(resources_json)
         assert isinstance(resources, dict)
         for key, value in resources.items():
