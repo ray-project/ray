@@ -18,11 +18,11 @@ from ray._private.runtime_env.packaging import (
     parse_uri,
 )
 from ray.dashboard.modules.job.common import (
+    JobStatus,
     JobSubmitRequest,
     JobSubmitResponse,
     JobStopResponse,
-    JobStatusInfo,
-    JobStatusResponse,
+    JobData,
     JobLogsResponse,
     uri_to_http_components,
 )
@@ -320,17 +320,19 @@ class JobSubmissionClient:
         else:
             self._raise_error(r)
 
-    def get_job_status(
+    def get_job_data(
         self,
         job_id: str,
-    ) -> JobStatusInfo:
+    ) -> JobData:
         r = self._do_request("GET", f"/api/jobs/{job_id}")
 
         if r.status_code == 200:
-            response = JobStatusResponse(**r.json())
-            return JobStatusInfo(status=response.status, message=response.message)
+            return JobData(**r.json())
         else:
             self._raise_error(r)
+
+    def get_job_status(self, job_id: str) -> JobStatus:
+        return self.get_job_data(job_id).status
 
     def get_job_logs(self, job_id: str) -> str:
         r = self._do_request("GET", f"/api/jobs/{job_id}/logs")
