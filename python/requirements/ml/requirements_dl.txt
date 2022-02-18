@@ -3,7 +3,7 @@
 
 
 # If you make changes to this file, please also change `requirements_ml_docker.txt`!
-
+grpcio >= 1.28.1, <= 1.43.0
 
 # TODO(amogkam): Remove after https://github.com/tensorflow/tensorflow/issues/52922 is fixed.
 keras==2.6.0
