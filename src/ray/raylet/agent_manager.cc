@@ -21,6 +21,7 @@
 #include "ray/util/event_label.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
+#include "ray/util/util.h"
 
 namespace ray {
 namespace raylet {
@@ -123,7 +124,9 @@ void AgentManager::StartAgent() {
           << RayConfig::instance().agent_max_restart_count()
           << " times. Agent won't be restarted.";
       if (RayConfig::instance().raylet_shares_fate_with_agent()) {
-        RAY_CHECK(false) << "Raylet shares fate with agent.";
+        RAY_LOG(ERROR) << "Agent has failed and raylet shares fate with agent. Raylet "
+                          "will exit immediately.";
+        QuickExit();
       }
     }
   });
