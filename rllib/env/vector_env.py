@@ -1,9 +1,9 @@
 import logging
 import gym
 import numpy as np
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union, Set
 
-from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID
 from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
 from ray.rllib.utils.typing import (
     EnvActionType,
@@ -12,6 +12,7 @@ from ray.rllib.utils.typing import (
     EnvObsType,
     EnvType,
     MultiEnvDict,
+    AgentID,
 )
 
 logger = logging.getLogger(__name__)
@@ -355,3 +356,20 @@ class VectorEnvWrapper(BaseEnv):
     @PublicAPI
     def action_space(self) -> gym.Space:
         return self._action_space
+
+    @override(BaseEnv)
+    @PublicAPI
+    def action_space_sample(self, agent_id: list = None) -> MultiEnvDict:
+        del agent_id
+        return {0: {_DUMMY_AGENT_ID: self._action_space.sample()}}
+
+    @override(BaseEnv)
+    @PublicAPI
+    def observation_space_sample(self, agent_id: list = None) -> MultiEnvDict:
+        del agent_id
+        return {0: {_DUMMY_AGENT_ID: self._observation_space.sample()}}
+
+    @override(BaseEnv)
+    @PublicAPI
+    def get_agent_ids(self) -> Set[AgentID]:
+        return {_DUMMY_AGENT_ID}

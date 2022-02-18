@@ -132,6 +132,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
         open_stream_args: Optional[Dict[str, Any]] = None,
+        # TODO(ekl) deprecate this once read fusion is available.
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **reader_args,
     ) -> List[ReadTask]:
