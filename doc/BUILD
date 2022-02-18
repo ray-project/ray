@@ -52,7 +52,7 @@ py_test(
 py_test(
     name = "datasets_train",
     size = "medium",
-    srcs = ["source/ray-core/examples/datasets_train/datasets_train.py"],
+    srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
     tags = ["exclusive", "team:ml", "py37", "datasets_train"],
     args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
 )
