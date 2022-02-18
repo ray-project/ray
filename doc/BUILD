@@ -52,12 +52,9 @@ py_test(
 py_test(
     name = "datasets_train",
     size = "medium",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
+    srcs = ["source/ray-core/examples/datasets_train/datasets_train.py"],
     tags = ["exclusive", "team:ml", "py37", "datasets_train"],
-    data = ["//doc/source/data/examples:data_examples"],
-    args = ["--path", "doc/source/ray-core/examples/datasets_train/datasets_train.ipynb",
-            "--smoke-test", "--num-workers=2", "--use-gpu"]
+    args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
 )
 
 py_test(
