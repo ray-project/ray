@@ -6,7 +6,6 @@ import tempfile
 
 import jupytext
 
-
 parser = argparse.ArgumentParser(
     description="Run a jupytext parsable markdown file.")
 
