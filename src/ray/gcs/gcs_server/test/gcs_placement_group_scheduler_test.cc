@@ -42,7 +42,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
     gcs_resource_manager_ =
-        std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr, true);
+        std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr);
     gcs_resource_scheduler_ =
         std::make_shared<gcs::GcsResourceScheduler>(*gcs_resource_manager_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);

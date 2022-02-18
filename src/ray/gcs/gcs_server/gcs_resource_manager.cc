@@ -133,8 +133,10 @@ void GcsResourceManager::HandleDeleteResources(
       for (const auto &resource_name : resource_names) {
         node_resource_change.add_deleted_resources(resource_name);
       }
-      absl::MutexLock guard(&resource_buffer_mutex_);
-      resources_buffer_proto_.add_batch()->mutable_change()->Swap(&node_resource_change);
+      {
+        absl::MutexLock guard(&resource_buffer_mutex_);
+        resources_buffer_proto_.add_batch()->mutable_change()->Swap(&node_resource_change);
+      }
 
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     };
