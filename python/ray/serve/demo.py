@@ -3,8 +3,9 @@ import torch
 from ray.serve.demo_model import Summer
 
 adder = Summer(2)
-torch.save(adder, "summer.pth")
+torch.save(adder, "/tmp/summer.pth")
 
+1/0
 #####################################################
 from ray import serve
 from ray.serve.model_wrappers import (

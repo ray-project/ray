@@ -8,7 +8,11 @@ class Ndarray(BaseModel):
     array: Union[List[float], List[List[float]], List[List[List[float]]]]
 
 
-def serve_api_resolver(payload: Ndarray) -> DataBatchType:
+# def serve_api_resolver(payload: Ndarray) -> DataBatchType:
+#     return np.array(payload.array)
+
+
+def serve_api_resolver_2(payload: Ndarray) -> DataBatchType:
     return np.array(payload.array)
 
 

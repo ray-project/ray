@@ -49,9 +49,7 @@ def test_simple_single_class(serve_instance):
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 1
     deployments[0].deploy()
-    _validate_consistent_output(
-        deployments[0], ray_dag, "Model", input=1, output=0.6
-    )
+    _validate_consistent_output(deployments[0], ray_dag, "Model", input=1, output=0.6)
 
 
 def test_single_class_with_ray_options(serve_instance):
@@ -181,17 +179,28 @@ def test_multiple_class_method_entrypoints_func_output(serve_instance):
         deployment.deploy()
 
     for _ in range(10):
-        resp = requests.get("http://127.0.0.1:8000/pipeline_root_name", params={"input": "1"})
+        resp = requests.get(
+            "http://127.0.0.1:8000/pipeline_root_name", params={"input": "1"}
+        )
         print(f"Response: {resp.text}")
         assert resp.text == "5"
 
 
 def test_multi_classmethod_entrypoint_generate_and_apply_yaml(serve_instance):
-    m1 = Model.options(runtime_env={})._bind(2)
-    m2 = Model._bind(3)
+    from ray.serve.model_wrappers import TorchModelWrapper
 
-    m1_output = m1.forward._bind(InputNode())
-    m2_output = m2.forward._bind(InputNode())
+    import os
+
+    assert os.path.exists(
+        "/tmp/summer.pth"
+    ), "Run python/ray/serve/demo.py to generate the /tmp/summer.pth"
+
+    m1 = TorchModelWrapper._bind("/tmp/summer.pth")
+    m2 = TorchModelWrapper._bind("/tmp/summer.pth")
+
+    # TODO: input_schema should be moved to InputNode
+    m1_output = m1.__call__._bind(InputNode())
+    m2_output = m2.__call__._bind(InputNode())
 
     ray_dag = combine._bind(m1_output, m2_output)
     serve_root_dag = ray_dag._apply_recursive(
@@ -206,7 +215,8 @@ def test_multi_classmethod_entrypoint_generate_and_apply_yaml(serve_instance):
         deserialized_serve_root_dag_node
     )
     serve_dag_root_deployment = get_dag_runner_deployment(
-        deserialized_serve_root_dag_node
+        deserialized_serve_root_dag_node,
+        input_schema="ray.serve.http_adapters.serve_api_resolver_2",
     )
     deserialized_deployments.append(serve_dag_root_deployment)
     assert len(deserialized_deployments) == 3
@@ -221,15 +231,15 @@ def test_multi_classmethod_entrypoint_generate_and_apply_yaml(serve_instance):
             loaded_yaml = yaml.safe_load(yaml_dump_str)
             yaml.dump(loaded_yaml, f)
 
-        deployment_status = subprocess.check_output(
-            ["serve", "deploy", yaml_file_path]
-        )
-        assert deployment_status == b'Deployment succeeded!\n'
+        deployment_status = subprocess.check_output(["serve", "deploy", yaml_file_path])
+        assert deployment_status == b"Deployment succeeded!\n"
 
     for _ in range(10):
-        resp = requests.get("http://127.0.0.1:8000/pipeline_root_name", params={"input": "1"})
+        resp = requests.post(
+            "http://127.0.0.1:8000/pipeline_root_name", json={"array": [1, 1]}
+        )
         print(f"Response: {resp.text}")
-        assert resp.text == "5"
+        assert resp.json() == [3.0, 3.0, 3.0, 3.0]
 
 
 # def test_simple_function(serve_instance):

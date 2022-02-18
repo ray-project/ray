@@ -68,23 +68,23 @@ class ModelWrapper:
         input_schema: Union[None, str, Callable[[Any], DataBatchType]] = None,
     ) -> None:
         self.model = model_cls.load_from_checkpoint(checkpoint)
-        if input_schema is None:
-            from ray.serve.http_adapters import serve_api_resolver
+        # if input_schema is None:
+        #     from ray.serve.http_adapters import serve_api_resolver
 
-            input_schema = serve_api_resolver
-        elif isinstance(input_schema, str):
-            input_schema = import_attr(input_schema)
-        assert callable(input_schema), "input schema must be callable"
+        #     input_schema = serve_api_resolver
+        # elif isinstance(input_schema, str):
+        #     input_schema = import_attr(input_schema)
+        # assert callable(input_schema), "input schema must be callable"
 
-        self.app = FastAPI()
+        # self.app = FastAPI()
         # self.app.add_api_route("/", self.handle_request, methods=["POST"])
 
-        @self.app.post("/")
-        @serve.batch(max_batch_size=8, batch_wait_timeout_s=3)
-        async def handle_request(inp=Depends(input_schema)):
-            # TODO(simon): implement custom JSON encoder for FastAPI to handle common type
-            print(f"Got batch size of {len(inp)}")
-            return self.model.predict(inp)
+        # @self.app.post("/")
+        # @serve.batch(max_batch_size=8, batch_wait_timeout_s=3)
+        # async def handle_request(inp=Depends(input_schema)):
+        # TODO(simon): implement custom JSON encoder for FastAPI to handle common type
+        # print(f"Got batch size of {len(inp)}")
+        # return self.model.predict(inp)
 
         # Inject the input schema as FastAPI dependencies
         # sig = inspect.signature(self.handle_request.__func__)
@@ -98,21 +98,28 @@ class ModelWrapper:
 
         # # Build FastAPI app
 
-    async def __call__(self, request: starlette.requests.Request):
-        sender = ASGIHTTPSender()
-        await self.app(request.scope, receive=request.receive, send=sender)
-        return sender.build_asgi_response()
+    # async def __call__(self, request: starlette.requests.Request):
+    #     sender = ASGIHTTPSender()
+    #     await self.app(request.scope, receive=request.receive, send=sender)
+    #     return sender.build_asgi_response()
+
+    async def __call__(self, data_batch):
+        return self.model.predict(data_batch)
 
 
-@serve.deployment
+# @serve.deployment
+import ray
+
+
+@ray.remote
 class TorchModelWrapper(ModelWrapper):
     def __init__(
         self,
         checkpoint_uri: str,
-        input_schema: str = "ray.serve.http_adapters.serve_api_resolver",
+        # input_schema: str = "ray.serve.http_adapters.serve_api_resolver",
     ) -> None:
         super().__init__(
             TorchModel,
             TorchCheckpoint.from_uri(checkpoint_uri),
-            input_schema=input_schema,
+            # input_schema=input_schema,
         )

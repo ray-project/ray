@@ -46,13 +46,9 @@ def transform_ray_dag_to_serve_dag(dag_node, deployments=None):
         deployment_name = (
             dag_node.get_options().get("name", None) or dag_node._body.__name__
         )
-        deployment_name = DeploymentIDGenerator.get_deployment_id(
-            deployment_name
-        )
+        deployment_name = DeploymentIDGenerator.get_deployment_id(deployment_name)
         # Clean up keys with default value
-        ray_actor_options = {
-            k: v for k, v in dag_node.get_options().items() if v
-        }
+        ray_actor_options = {k: v for k, v in dag_node.get_options().items() if v}
         if ray_actor_options.get("placement_group") == "default":
             del ray_actor_options["placement_group"]
         if ray_actor_options.get("placement_group_bundle_index") == -1:
@@ -120,16 +116,19 @@ def extract_deployments_from_serve_dag(
     return deployments
 
 
-def get_dag_runner_deployment(serve_dag_root, pipeline_root_name=None):
-    pipeline_root_name = (
-        pipeline_root_name or f"serve_pipeline_root_{uuid.uuid4().hex}"
-    )
+def get_dag_runner_deployment(
+    serve_dag_root,
+    pipeline_root_name=None,
+    input_schema="ray.serve.http_adapters.serve_api_resolver",
+):
+    pipeline_root_name = pipeline_root_name or f"serve_pipeline_root_{uuid.uuid4().hex}"
     serve_dag_root_json = json.dumps(serve_dag_root, cls=DAGNodeEncoder)
 
     serve_dag_root_deployment = serve.deployment(
         name="pipeline_root_name",
     )("ray.serve.pipeline.dag_runner.DAGRunner")
     serve_dag_root_deployment._init_args = (serve_dag_root_json,)
+    serve_dag_root_deployment._init_kwargs = {"input_schema": input_schema}
 
     return serve_dag_root_deployment
 
@@ -180,7 +179,7 @@ def build_yaml(deployments: List[Deployment]) -> str:
                 configurable=dict(
                     num_replicas=d.num_replicas,
                     route_prefix=d.route_prefix,
-                    ray_actor_optoins=d._ray_actor_options,
+                    ray_actor_options=d._ray_actor_options,
                     user_config=d.user_config,
                     max_concurrent_queries=d.max_concurrent_queries,
                     _autoscaling_config=d._config.autoscaling_config,
