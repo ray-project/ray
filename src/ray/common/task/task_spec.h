@@ -373,8 +373,6 @@ class WorkerCacheKey {
   const absl::flat_hash_map<std::string, double> required_resources;
   /// Whether the worker is for an actor.
   const bool is_actor;
-  /// Whether the worker is for a GPU task.
-  const bool is_gpu_task;
   /// The cached hash of the worker's environment.  This is set to 0
   /// for unspecified or empty environments.
   mutable std::size_t hash_ = 0;
