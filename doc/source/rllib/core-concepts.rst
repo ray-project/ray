@@ -110,7 +110,7 @@ Here is an example of creating a set of rollout workers and using them gather ex
 
 .. code-block:: python
 
-    # Setup policy and rollout workers
+    # Setup policy and rollout workers.
     env = gym.make("CartPole-v0")
     policy = CustomPolicy(env.observation_space, env.action_space, {})
     workers = WorkerSet(
@@ -119,15 +119,19 @@ Here is an example of creating a set of rollout workers and using them gather ex
         num_workers=10)
 
     while True:
-        # Gather a batch of samples
+        # Gather a batch of samples.
         T1 = SampleBatch.concat_samples(
             ray.get([w.sample.remote() for w in workers.remote_workers()]))
 
-        # Improve the policy using the T1 batch
+        # Improve the policy using the T1 batch.
         policy.learn_on_batch(T1)
 
+<<<<<<< HEAD
         # The local worker acts as a "parameter server" here.
         # We put the weights of its `policy` into the Ray object store once (`ray.put`)...
+=======
+        # Broadcast weights to the policy evaluation workers.
+>>>>>>> b649de914d10bed31cd81ed060ceac5676208307
         weights = ray.put({"default_policy": policy.get_weights()})
         for w in workers.remote_workers():
             # ... so that we can broacast these weights to all rollout-workers once.
