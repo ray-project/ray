@@ -222,9 +222,12 @@ def info(address: str):
     response = requests.get(address)
     if response.status_code == 200:
         print("Serve instance info:\n")
-        deployments = response.json()
+        deployments = response.json()["deployments"]
         for name, status in deployments.items():
             print(f'Deployment "{name}": ')
             print(status, "\n")
+        
+        print("Deployment Statuses: \n")
+        print(response.json()["statuses"])
     else:
         print("Failed to acquire serve instance info!")
