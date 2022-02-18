@@ -79,11 +79,11 @@ class UsageStatsToReport:
     os: str
     collect_timestamp_ms: int
     session_start_timestamp_ms: int
-    # The total number of sucessful reports for the lifetime of the cluster.
+    # The total number of successful reports for the lifetime of the cluster.
     total_success: int
     # The total number of failed reports for the lifetime of the cluster.
     total_failed: int
-    # The sequnence number of the report. It increments wheneve new report is sent.
+    # The sequence number of the report.
     seq_number: int
 
 

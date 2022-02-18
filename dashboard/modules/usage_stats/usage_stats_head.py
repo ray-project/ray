@@ -28,7 +28,6 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         # The seq number of report. It increments whenever a new report is sent.
         self.seq_no = 0
 
-    @async_loop_forever(ray_usage_lib._usage_stats_report_interval_s())
     async def _report_usage(self):
         if not ray_usage_lib._usage_stats_enabled():
             return
@@ -66,17 +65,22 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         except Exception as e:
             logger.info(f"Usage report failed: {e}")
 
+    @async_loop_forever(ray_usage_lib._usage_stats_report_interval_s())
+    async def periodically_report_usage(self):
+        await self._report_usage()
+
     async def run(self, server):
         if not ray_usage_lib._usage_stats_enabled():
             logger.info("Usage reporting is disabled.")
             return
         else:
-            logger.info("Usage reporting is disabled.")
+            logger.info("Usage reporting is enabled.")
+            await self._report_usage()
             # Add a random offset before the first report to remove sample bias.
             await asyncio.sleep(
                 random.randint(0, ray_usage_lib._usage_stats_report_interval_s())
             )
-            await asyncio.gather(self._report_usage())
+            await asyncio.gather(self.periodically_report_usage())
 
     @staticmethod
     def is_minimal_module():
