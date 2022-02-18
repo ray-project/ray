@@ -172,10 +172,13 @@ uint64_t TaskSpecification::AttemptNumber() const { return message_->attempt_num
 
 int TaskSpecification::GetRuntimeEnvHash() const {
   absl::flat_hash_map<std::string, double> required_resource;
-  if (RayConfig::instance().worker_resource_limits_enabled()) {
+  if (RayConfig::instance().worker_resource_limits_enabled() ||
+      RayConfig::instance().isolate_workers_across_resource_types()) {
     required_resource = GetRequiredResources().GetResourceMap();
   }
-  WorkerCacheKey env = {SerializedRuntimeEnv(), required_resource, IsActorCreationTask()};
+  WorkerCacheKey env = {
+      SerializedRuntimeEnv(), required_resource,
+      IsActorCreationTask() && RayConfig::instance().isolate_workers_across_task_types()};
   return env.IntHash();
 }
 
