@@ -208,9 +208,9 @@ class MixInMultiAgentReplayBuffer(MultiAgentReplayBuffer):
                     return int(np.floor(product))
 
             max_num_new = round_up_or_down(num_items, 1 - self.replay_ratio)
-            # if num_samples * self.replay_ratio is not not round,
+            # if num_samples * self.replay_ratio is not round,
             # we need one more sample with a probability of
-            # (num_items*self.replay_ratio)%1
+            # (num_items*self.replay_ratio) % 1
 
             _buffer = self.replay_buffers[_policy_id]
             output_batches = self.last_added_batches[_policy_id][:max_num_new]
