@@ -119,7 +119,7 @@ Here is an example of creating a set of rollout workers and using them gather ex
         num_workers=10)
 
     while True:
-        # Gather a batch of samples
+        # Gather a batch of samples.
         T1 = SampleBatch.concat_samples(
             ray.get([w.sample.remote() for w in workers.remote_workers()]))
 
