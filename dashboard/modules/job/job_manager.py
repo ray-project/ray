@@ -15,7 +15,7 @@ import ray
 from ray.exceptions import RuntimeEnvSetupError
 import ray.ray_constants as ray_constants
 from ray.actor import ActorHandle
-from ray.job_submission import JobStatus, JobStatusInfo
+from ray.job_submission import JobStatus
 from ray.dashboard.modules.job.common import (
     JobData,
     JobDataStorageClient,
@@ -192,15 +192,13 @@ class JobSupervisor:
         3) Handle concurrent events of driver execution and
         """
         curr_status = self._job_data_client.get_status(self._job_id)
-        assert (
-            curr_status.status == JobStatus.PENDING
-        ), "Run should only be called once."
+        assert curr_status == JobStatus.PENDING, "Run should only be called once."
 
         if _start_signal_actor:
             # Block in PENDING state until start signal received.
             await _start_signal_actor.wait.remote()
 
-        self._job_data_client.put_status(self._job_id, JobStatusInfo(JobStatus.RUNNING))
+        self._job_data_client.put_status(self._job_id, JobStatus.RUNNING)
 
         try:
             # Set JobConfig for the child process (runtime_env, metadata).
@@ -257,8 +255,7 @@ class JobSupervisor:
                     else:
                         message = None
                     self._job_data_client.put_status(
-                        self._job_id,
-                        JobStatusInfo(status=JobStatus.FAILED, message=message),
+                        self._job_id, JobStatus.FAILED, message=message
                     )
         except Exception:
             logger.error(
@@ -302,7 +299,7 @@ class JobManager:
         """
         all_jobs = self._job_data_client.get_all_jobs()
         for job_id, job_data in all_jobs.items():
-            if not job_data.status_info.status.is_terminal():
+            if not job_data.status.is_terminal():
                 create_task(self._monitor_job(job_id))
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
@@ -327,12 +324,8 @@ class JobManager:
                 logger.error(f"Failed to get job supervisor for job {job_id}.")
                 self._job_data_client.put_status(
                     job_id,
-                    JobStatusInfo(
-                        status=JobStatus.FAILED,
-                        message=(
-                            "Unexpected error occurred: Failed to get job supervisor."
-                        ),
-                    ),
+                    JobStatus.FAILED,
+                    message="Unexpected error occurred: Failed to get job supervisor.",
                 )
                 is_alive = False
 
@@ -342,7 +335,7 @@ class JobManager:
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
                 is_alive = False
-                if self._job_data_client.get_status(job_id).status.is_terminal():
+                if self._job_data_client.get_status(job_id).is_terminal():
                     # If the job is already in a terminal state, then the actor
                     # exiting is expected.
                     pass
@@ -350,10 +343,8 @@ class JobManager:
                     logger.info(f"Failed to set up runtime_env for job {job_id}.")
                     self._job_data_client.put_status(
                         job_id,
-                        JobStatusInfo(
-                            status=JobStatus.FAILED,
-                            message=(f"runtime_env setup failed: {e}"),
-                        ),
+                        JobStatus.FAILED,
+                        message=f"runtime_env setup failed: {e}",
                     )
                 else:
                     logger.warning(
@@ -361,10 +352,8 @@ class JobManager:
                     )
                     self._job_data_client.put_status(
                         job_id,
-                        JobStatusInfo(
-                            status=JobStatus.FAILED,
-                            message=f"Unexpected error occurred: {e}",
-                        ),
+                        JobStatus.FAILED,
+                        message=f"Unexpected error occurred: {e}",
                     )
 
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
@@ -442,7 +431,7 @@ class JobManager:
 
         logger.info(f"Starting job with job_id: {job_id}")
         job_data = JobData(
-            JobStatusInfo(JobStatus.PENDING),
+            status=JobStatus.PENDING,
             start_time=int(time.time()),
             metadata=metadata,
             runtime_env=runtime_env,
@@ -472,10 +461,8 @@ class JobManager:
         except Exception as e:
             self._job_data_client.put_status(
                 job_id,
-                JobStatusInfo(
-                    status=JobStatus.FAILED,
-                    message=f"Failed to start job supervisor: {e}.",
-                ),
+                JobStatus.FAILED,
+                message=f"Failed to start job supervisor: {e}.",
             )
 
         return job_id
@@ -498,6 +485,10 @@ class JobManager:
         """Get latest status of a job."""
         return self._job_data_client.get_status(job_id)
 
+    def get_job_data(self, job_id: str) -> Optional[JobData]:
+        """Get latest data of a job."""
+        return self._job_data_client.get_data(job_id)
+
     def get_job_logs(self, job_id: str) -> str:
         """Get all logs produced by a job."""
         return self._log_client.get_logs(job_id)
@@ -511,7 +502,7 @@ class JobManager:
             if line is None:
                 # Return if the job has exited and there are no new log lines.
                 status = self.get_job_status(job_id)
-                if status.status not in {JobStatus.PENDING, JobStatus.RUNNING}:
+                if status not in {JobStatus.PENDING, JobStatus.RUNNING}:
                     return
 
                 await asyncio.sleep(self.LOG_TAIL_SLEEP_S)

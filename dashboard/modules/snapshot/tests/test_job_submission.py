@@ -77,7 +77,7 @@ def test_successful_job_status(
         ].items():
             if entry["status"] is not None:
                 assert entry["status"] in {"PENDING", "RUNNING", "SUCCEEDED"}
-                assert entry["statusMessage"] is not None
+                assert entry["message"] is not None
                 # TODO(architkulkarni): Disable automatic camelcase.
                 assert entry["runtimeEnv"] == {"envVars": {"RAYTest123": "123"}}
                 assert entry["metadata"] == {"rayTest456": "456"}
@@ -138,7 +138,7 @@ def test_failed_job_status(
         ].items():
             if entry["status"] is not None:
                 assert entry["status"] in {"PENDING", "RUNNING", "FAILED"}
-                assert entry["statusMessage"] is not None
+                assert entry["message"] is not None
                 # TODO(architkulkarni): Disable automatic camelcase.
                 assert entry["runtimeEnv"] == {"envVars": {"RAYTest456": "456"}}
                 assert entry["metadata"] == {"rayTest789": "789"}

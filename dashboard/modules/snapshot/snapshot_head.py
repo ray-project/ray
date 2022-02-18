@@ -16,7 +16,7 @@ from ray.experimental.internal_kv import (
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray._private.runtime_env.validation import ParsedRuntimeEnv
-from ray.job_submission import JobStatusInfo
+from ray.job_submission import JobData
 from ray.dashboard.modules.job.common import (
     JobDataStorageClient,
     JOB_ID_METADATA_KEY,
@@ -94,11 +94,11 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             success=True, message="hello", snapshot=snapshot
         )
 
-    def _get_job_status(self, metadata: Dict[str, str]) -> Optional[JobStatusInfo]:
+    def _get_job_data(self, metadata: Dict[str, str]) -> Optional[JobData]:
         # If a job submission ID has been added to a job, the status is
         # guaranteed to be returned.
         job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
-        return self._job_data_client.get_status(job_submission_id)
+        return self._job_data_client.get_data(job_submission_id)
 
     async def get_job_info(self):
         """Return info for each job.  Here a job is a Ray driver."""
@@ -116,10 +116,10 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                     job_table_entry.config.runtime_env_info.serialized_runtime_env
                 ),
             }
-            status = self._get_job_status(metadata)
+            data = self._get_job_data(metadata)
             entry = {
-                "status": None if status is None else status.status,
-                "status_message": None if status is None else status.message,
+                "status": None if data is None else data.status,
+                "status_message": None if data is None else data.message,
                 "is_dead": job_table_entry.is_dead,
                 "start_time": job_table_entry.start_time,
                 "end_time": job_table_entry.end_time,
@@ -136,13 +136,10 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         for job_submission_id, job_data in self._job_data_client.get_all_jobs().items():
             if job_data is not None:
-                status_info = job_data.status_info
                 entry = {
-                    "status": None if status_info is None else status_info.status,
-                    "status_message": None
-                    if status_info is None
-                    else status_info.message,
-                    "error_type": status_info.error_type,
+                    "status": job_data.status,
+                    "message": job_data.message,
+                    "error_type": job_data.error_type,
                     "start_time": job_data.start_time,
                     "end_time": job_data.end_time,
                     "metadata": job_data.metadata,

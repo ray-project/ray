@@ -1,7 +1,7 @@
 from dataclasses import dataclass, replace
 from enum import Enum
 import time
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple
 import pickle
 
 from ray import ray_constants
@@ -37,12 +37,19 @@ class JobStatus(str, Enum):
 
 
 @dataclass
-class JobStatusInfo:
+class JobData:
     status: JobStatus
+
     message: Optional[str] = None
     # TODO(architkulkarni): Populate this field with e.g. Runtime env setup failure,
     # Internal error, user script error
     error_type: Optional[str] = None
+    start_time: Optional[int] = None
+    # The time when a job moves into a terminal state.  A Unix timestamp in seconds.
+    end_time: Optional[int] = None
+    # Arbitrary user-provided metadata.
+    metadata: Optional[Dict[str, str]] = None
+    runtime_env: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         if self.message is None:
@@ -59,15 +66,6 @@ class JobStatusInfo:
                 self.message = "Job finished successfully."
             elif self.status == JobStatus.FAILED:
                 self.message = "Job failed."
-
-
-@dataclass
-class JobData:
-    status_info: JobStatusInfo
-    start_time: int
-    end_time: int = None
-    metadata: Optional[Dict[str, str]] = None
-    runtime_env: Optional[Dict[str, Any]] = None
 
 
 class JobDataStorageClient:
@@ -99,39 +97,29 @@ class JobDataStorageClient:
         else:
             return pickle.loads(pickled_data)
 
-    def put_status(self, job_id: str, status: Union[JobStatus, JobStatusInfo]):
+    def put_status(self, job_id: str, status: JobStatus, message: Optional[str] = None):
         """Puts or updates job status.  Sets end_time if status is terminal."""
-
-        if isinstance(status, JobStatus):
-            status_info = JobStatusInfo(status=status)
-        elif isinstance(status, JobStatusInfo):
-            status_info = status
-        else:
-            assert False, "status must be JobStatus or JobStatusInfo."
 
         old_data = self.get_data(job_id)
 
         if old_data is not None:
-            if (
-                status_info.status != old_data.status_info.status
-                and old_data.status_info.status.is_terminal()
-            ):
+            if status != old_data.status and old_data.status.is_terminal():
                 assert False, "Attempted to change job status from a terminal state."
-            new_data = replace(old_data, status_info=status_info)
+            new_data = replace(old_data, status=status, message=message)
         else:
-            new_data = JobData(status_info=status_info)
+            new_data = JobData(status=status, message=message)
 
-        if status_info.status.is_terminal():
+        if status.is_terminal():
             new_data.end_time = int(time.time())
 
         self.put_data(job_id, new_data)
 
-    def get_status(self, job_id: str) -> Optional[JobStatusInfo]:
+    def get_status(self, job_id: str) -> Optional[JobStatus]:
         job_data = self.get_data(job_id)
         if job_data is None:
             return None
         else:
-            return job_data.status_info
+            return job_data.status
 
     def get_all_jobs(self) -> Dict[str, JobData]:
         raw_job_ids_with_prefixes = _internal_kv_list(
@@ -231,12 +219,6 @@ class JobSubmitResponse:
 @dataclass
 class JobStopResponse:
     stopped: bool
-
-
-@dataclass
-class JobStatusResponse:
-    status: JobStatus
-    message: Optional[str]
 
 
 # TODO(jiaodong): Support log streaming #19415

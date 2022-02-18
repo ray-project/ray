@@ -80,14 +80,14 @@
                     "status": {
                       "type": ["string", "null"]
                     },
-                    "statusMessage": {
+                    "message": {
                       "type": ["string", "null"]
                     },
                     "errorType": {
                       "type": ["string", "null"]
                     },
                     "startTime": {
-                      "type": "integer"
+                      "type": ["integer", "null"]
                     },
                     "endTime": {
                       "type": ["integer", "null"]
@@ -100,8 +100,7 @@
                     }
                   },
                   "required": [
-                    "status",
-                    "startTime"
+                    "status"
                   ]
                 }
               }
