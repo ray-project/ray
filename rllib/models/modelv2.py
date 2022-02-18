@@ -445,11 +445,12 @@ def _unpack_obs(obs: TensorType, space: Space, tensorlib: Any = tf) -> TensorStr
                     return -1
                 elif isinstance(v, int):
                     return v
+                elif v.value is None:
+                    return -1
                 else:
                     return v.value
 
             batch_dims = [get_value(v) for v in obs.shape[:-1]]
-            batch_dims = [-1 if v is None else v for v in batch_dims]
         else:
             batch_dims = list(obs.shape[:-1])
         if isinstance(space, gym.spaces.Tuple):
