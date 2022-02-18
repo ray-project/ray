@@ -59,7 +59,7 @@ async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
     status = job_manager.get_job_status(job_id)
     if start_signal_actor:
         for _ in range(10):
-            assert status.status == JobStatus.PENDING
+            assert status == JobStatus.PENDING
             logs = job_manager.get_job_logs(job_id)
             assert logs == ""
             await asyncio.sleep(0.01)
@@ -75,29 +75,30 @@ async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
 
 
 def check_job_succeeded(job_manager, job_id):
-    status = job_manager.get_job_status(job_id)
-    if status.status == JobStatus.FAILED:
-        raise RuntimeError(f"Job failed! {status.message}")
-    assert status.status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.SUCCEEDED}
-    return status.status == JobStatus.SUCCEEDED
+    data = job_manager.get_job_data(job_id)
+    status = data.status
+    if status == JobStatus.FAILED:
+        raise RuntimeError(f"Job failed! {data.message}")
+    assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.SUCCEEDED}
+    return status == JobStatus.SUCCEEDED
 
 
 def check_job_failed(job_manager, job_id):
     status = job_manager.get_job_status(job_id)
-    assert status.status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.FAILED}
-    return status.status == JobStatus.FAILED
+    assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.FAILED}
+    return status == JobStatus.FAILED
 
 
 def check_job_stopped(job_manager, job_id):
     status = job_manager.get_job_status(job_id)
-    assert status.status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.STOPPED}
-    return status.status == JobStatus.STOPPED
+    assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.STOPPED}
+    return status == JobStatus.STOPPED
 
 
 def check_job_running(job_manager, job_id):
     status = job_manager.get_job_status(job_id)
-    assert status.status in {JobStatus.PENDING, JobStatus.RUNNING}
-    return status.status == JobStatus.RUNNING
+    assert status in {JobStatus.PENDING, JobStatus.RUNNING}
+    return status == JobStatus.RUNNING
 
 
 def check_subprocess_cleaned(pid):
@@ -172,10 +173,10 @@ class TestShellScriptExecution:
         job_id = job_manager.submit_job(entrypoint=run_cmd)
 
         def cleaned_up():
-            status = job_manager.get_job_status(job_id)
-            if status.status != JobStatus.FAILED:
+            data = job_manager.get_job_data(job_id)
+            if data.status != JobStatus.FAILED:
                 return False
-            if "Exception: Script failed with exception !" not in status.message:
+            if "Exception: Script failed with exception !" not in data.message:
                 return False
 
             return job_manager._get_actor_for_job(job_id) is None
@@ -273,9 +274,9 @@ class TestRuntimeEnv:
             entrypoint=run_cmd, runtime_env={"working_dir": "path_not_exist"}
         )
 
-        status = job_manager.get_job_status(job_id)
-        assert status.status == JobStatus.FAILED
-        assert "path_not_exist is not a valid URI" in status.message
+        data = job_manager.get_job_data(job_id)
+        assert data.status == JobStatus.FAILED
+        assert "path_not_exist is not a valid URI" in data.message
 
     async def test_failed_runtime_env_setup(self, job_manager):
         """Ensure job status is correctly set as failed if job has a valid
@@ -290,8 +291,8 @@ class TestRuntimeEnv:
             check_job_failed, job_manager=job_manager, job_id=job_id
         )
 
-        status = job_manager.get_job_status(job_id)
-        assert "runtime_env setup failed" in status.message
+        data = job_manager.get_job_data(job_id)
+        assert "runtime_env setup failed" in data.message
 
     async def test_pass_metadata(self, job_manager):
         def dict_to_str(d):
@@ -512,7 +513,7 @@ class TestTailLogs:
 
             # TODO(edoakes): check we get no logs before actor starts (not sure
             # how to timeout the iterator call).
-            assert job_manager.get_job_status(job_id).status == JobStatus.PENDING
+            assert job_manager.get_job_status(job_id) == JobStatus.PENDING
 
             # Signal job to start.
             ray.get(start_signal_actor.send.remote())
