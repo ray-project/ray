@@ -168,10 +168,6 @@ bool TaskSpecification::HasRuntimeEnv() const {
   return !IsRuntimeEnvEmpty(SerializedRuntimeEnv());
 }
 
-bool TaskSpecification::IsUsingGPUs() const {
-  return GetRequiredResources().GetResource("GPU") > 0;
-}
-
 uint64_t TaskSpecification::AttemptNumber() const { return message_->attempt_number(); }
 
 int TaskSpecification::GetRuntimeEnvHash() const {
@@ -182,7 +178,8 @@ int TaskSpecification::GetRuntimeEnvHash() const {
   WorkerCacheKey env = {
       SerializedRuntimeEnv(), required_resource,
       IsActorCreationTask() && RayConfig::instance().isolate_workers_across_task_types(),
-      IsUsingGPUs() && RayConfig::instance().isolate_workers_across_resource_types()};
+      GetRequiredResources().GetResource("GPU") > 0 &&
+          RayConfig::instance().isolate_workers_across_resource_types()};
   return env.IntHash();
 }
 
