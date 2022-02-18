@@ -394,18 +394,6 @@ void GcsResourceManager::GetResourceUsageBatchForBroadcast(
   resources_buffer_.erase(beg, ptr);
 }
 
-void GcsResourceManager::GetResourceUsageBatchForBroadcast_Locked(
-    rpc::ResourceUsageBatchData &buffer) {
-  auto beg = resources_buffer_.begin();
-  auto ptr = beg;
-  for (size_t cnt = 0;
-       cnt < max_broadcasting_batch_size_ && cnt < resources_buffer_.size();
-       ++ptr, ++cnt) {
-    buffer.add_batch()->Swap(&ptr->second);
-  }
-  resources_buffer_.erase(beg, ptr);
-}
-
 void GcsResourceManager::UpdatePlacementGroupLoad(
     const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) {
   placement_group_load_ = absl::make_optional(placement_group_load);
