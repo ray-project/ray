@@ -322,7 +322,14 @@ const absl::flat_hash_map<NodeID, std::shared_ptr<SchedulingResources>>
 
 void GcsResourceManager::SetAvailableResources(const NodeID &node_id,
                                                const ResourceSet &resources) {
-  cluster_scheduling_resources_[node_id]->SetAvailableResources(ResourceSet(resources));
+  auto iter = cluster_scheduling_resources_.find(node_id);
+  if (iter != cluster_scheduling_resources_.end()) {
+    iter->second->SetAvailableResources(ResourceSet(resources));
+  } else {
+    RAY_LOG(WARNING)
+        << "Skip the setting of available resources of node " << node_id
+        << " as it does not exist, maybe it is not registered yet or is already dead.";
+  }
 }
 
 void GcsResourceManager::UpdateResourceCapacity(

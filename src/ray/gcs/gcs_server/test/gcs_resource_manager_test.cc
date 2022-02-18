@@ -86,6 +86,25 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
   ASSERT_EQ(get_all_reply2.resource_usage_data().batch().size(), 0);
 }
 
+TEST_F(GcsResourceManagerTest, TestSetAvailableResourcesWhenNodeDead) {
+  auto node = Mocker::GenNodeInfo();
+  node->mutable_resources_total()->insert({"CPU", 10});
+
+  gcs_resource_manager_->OnNodeAdd(*node);
+  ASSERT_EQ(gcs_resource_manager_->GetClusterResources().size(), 1);
+
+  auto node_id = NodeID::FromBinary(node->node_id());
+  gcs_resource_manager_->OnNodeDead(node_id);
+  ASSERT_EQ(gcs_resource_manager_->GetClusterResources().size(), 0);
+
+  rpc::ResourcesData resources_data;
+  resources_data.set_node_id(node->node_id());
+  resources_data.mutable_resources_available()->insert({"CPU", 5});
+  resources_data.set_resources_available_changed(true);
+  gcs_resource_manager_->UpdateFromResourceReport(resources_data);
+  ASSERT_EQ(gcs_resource_manager_->GetClusterResources().size(), 0);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
