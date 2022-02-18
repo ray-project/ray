@@ -49,7 +49,7 @@
 #
 #    # File manager to use to transfer files to and from the cluster.
 #    # Can be any of [sdk, client, job].
-#    file_manager: job
+#    file_manager: sdk
 #
 #    # If you want to wait for nodes to be ready, you can specify this here:
 #    wait_for_nodes:
@@ -146,7 +146,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -174,7 +174,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -201,7 +201,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -229,7 +229,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -257,7 +257,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -285,7 +285,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -313,7 +313,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -341,7 +341,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: xgboost_tests
 
@@ -372,7 +372,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -400,7 +400,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -428,7 +428,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -458,7 +458,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -487,7 +487,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -515,7 +515,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -635,7 +635,7 @@
     timeout: 1200
     script: python workloads/test_bookkeeping_overhead.py
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -662,7 +662,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -685,7 +685,7 @@
     script: python workloads/test_long_running_large_checkpoints.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -717,7 +717,7 @@
       timeout: 1200
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: nightly
@@ -757,7 +757,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -780,7 +780,7 @@
     timeout: 600
     script: python workloads/test_result_throughput_single_node.py
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: tune_tests
 
@@ -808,7 +808,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   alert: tune_tests
 
