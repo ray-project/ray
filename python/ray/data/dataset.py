@@ -2498,29 +2498,59 @@ Dict[str, List[str]]]): The names of the columns
         """
         from ray.data.dataset_pipeline import DatasetPipeline
 
+        # If optimizations are enabled, rewrite the read stage into a OneToOneStage
+        # to enable fusion with downstream map stages.
+        ctx = DatasetContext.get_current()
+        if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
+            blocks, read_stage = self._plan._rewrite_read_stage()
+            outer_stats = DatasetStats(stages={}, parent=None)
+        else:
+            blocks = self._plan.execute()
+            read_stage = None
+            outer_stats = self._plan.stats()
+
         if times is not None and times < 1:
             raise ValueError("`times` must be >= 1, got {}".format(times))
+        uuid = self._get_uuid()
 
         class Iterator:
-            def __init__(self, ds: "Dataset[T]"):
-                self._ds = ds
+            def __init__(self, blocks):
+                self._blocks = blocks
                 self._i = 0
 
             def __next__(self) -> "Dataset[T]":
                 if times and self._i >= times:
                     raise StopIteration
-                self._ds._set_epoch(self._i)
+                epoch = self._i
+                blocks = self._blocks
                 self._i += 1
-                return lambda: self._ds.fully_executed()
+
+                def gen():
+                    ds = Dataset(
+                        ExecutionPlan(blocks, outer_stats, dataset_uuid=uuid),
+                        epoch,
+                        lazy=False,
+                    )
+                    ds._set_uuid(uuid)
+                    return ds
+
+                return gen
 
         class Iterable:
-            def __init__(self, ds: "Dataset[T]"):
-                self._ds = ds
+            def __init__(self, blocks):
+                self._blocks = blocks
 
             def __iter__(self):
-                return Iterator(self._ds)
+                return Iterator(self._blocks)
 
-        return DatasetPipeline(Iterable(self), length=times or float("inf"))
+        pipe = DatasetPipeline(Iterable(blocks), length=times or float("inf"))
+        if read_stage:
+            pipe = pipe.foreach_window(
+                lambda ds, read_stage=read_stage: Dataset(
+                    ds._plan.with_stage(read_stage), ds._epoch, True
+                )
+            )
+        return pipe
 
     def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
         raise DeprecationWarning(
@@ -2576,8 +2606,16 @@ Dict[str, List[str]]]): The names of the columns
         """
         from ray.data.dataset_pipeline import DatasetPipeline
 
-        blocks = self._plan.execute()
-        outer_stats = self._plan.stats()
+        # If optimizations are enabled, rewrite the read stage into a OneToOneStage
+        # to enable fusion with downstream map stages.
+        ctx = DatasetContext.get_current()
+        if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
+            blocks, read_stage = self._plan._rewrite_read_stage()
+            outer_stats = DatasetStats(stages={}, parent=None)
+        else:
+            blocks = self._plan.execute()
+            read_stage = None
+            outer_stats = self._plan.stats()
 
         class Iterator:
             def __init__(self, splits, epoch):
@@ -2607,7 +2645,14 @@ Dict[str, List[str]]]): The names of the columns
                 return Iterator(self._splits, self._epoch)
 
         it = Iterable(blocks, self._epoch)
-        return DatasetPipeline(it, length=len(it._splits))
+        pipe = DatasetPipeline(it, length=len(it._splits))
+        if read_stage:
+            pipe = pipe.foreach_window(
+                lambda ds, read_stage=read_stage: Dataset(
+                    ds._plan.with_stage(read_stage), ds._epoch, True
+                )
+            )
+        return pipe
 
     @DeveloperAPI
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:

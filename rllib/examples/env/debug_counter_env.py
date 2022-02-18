@@ -34,6 +34,7 @@ class DebugCounterEnv(gym.Env):
 class MultiAgentDebugCounterEnv(MultiAgentEnv):
     def __init__(self, config):
         super().__init__()
+        self._skip_env_checking = True
         self.num_agents = config["num_agents"]
         self.base_episode_len = config.get("base_episode_len", 103)
         # Actions are always:

@@ -18,6 +18,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/scheduling/internal.h"
+#include "ray/raylet/scheduling/local_task_manager.h"
 
 namespace ray {
 namespace raylet {
@@ -29,13 +30,9 @@ class SchedulerResourceReporter {
       const absl::flat_hash_map<SchedulingClass,
                                 std::deque<std::shared_ptr<internal::Work>>>
           &tasks_to_schedule,
-      const absl::flat_hash_map<SchedulingClass,
-                                std::deque<std::shared_ptr<internal::Work>>>
-          &tasks_to_dispatch,
       const absl::flat_hash_map<
           SchedulingClass, std::deque<std::shared_ptr<internal::Work>>> &infeasible_tasks,
-      const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
-          &backlog_tracker);
+      const LocalTaskManager &local_task_manager);
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending resource usage of raylet to gcs. In particular, this should fill in
