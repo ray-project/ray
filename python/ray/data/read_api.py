@@ -252,6 +252,8 @@ def read_datasource(
         # Note that the too many workers warning triggers at 4x subscription,
         # so we go at 0.5 to avoid the warning message.
         ray_remote_args["num_cpus"] = 0.5
+    if "scheduling_strategy" not in ray_remote_args:
+        ray_remote_args["scheduling_strategy"] = "SPREAD"
     remote_read = cached_remote_fn(remote_read)
 
     if _spread_resource_prefix is not None:
@@ -277,6 +279,8 @@ def read_datasource(
         metadata.append(task.get_metadata())
 
     block_list = LazyBlockList(calls, metadata)
+    # TODO(ekl) consider refactoring LazyBlockList to take read_tasks explicitly.
+    block_list._read_tasks = read_tasks
 
     # Get the schema from the first block synchronously.
     if metadata and metadata[0].schema is None:

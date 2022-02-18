@@ -36,6 +36,7 @@ torch, _ = try_import_torch()
 
 class SimpleEnv(Env):
     def __init__(self, config):
+        self._skip_env_checking = True
         if config.get("simplex_actions", False):
             self.action_space = Simplex((2,))
         else:
@@ -168,6 +169,7 @@ class TestSAC(unittest.TestCase):
         """Tests SAC loss function results across all frameworks."""
         config = sac.DEFAULT_CONFIG.copy()
         # Run locally.
+        config["seed"] = 42
         config["num_workers"] = 0
         config["learning_starts"] = 0
         config["twin_q"] = False
