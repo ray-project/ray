@@ -79,6 +79,8 @@ if __name__ == "__main__":
     # That can lead to a annoying artifact at the start of the autoscaler logs:
     # a status message showing no nodes at all connected to the Ray cluster.
     # Wait a bit to avoid that artifact.
+    # TODO (Dmitri): Fix StandardAutoscaler.summary() to avoid the issue
+    # and remove the sleep.
     time.sleep(5)
 
     Monitor(
