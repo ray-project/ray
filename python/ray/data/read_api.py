@@ -251,6 +251,11 @@ def read_datasource(
     remote_read = cached_remote_fn(remote_read)
 
     if _spread_resource_prefix is not None:
+        if context.optimize_fuse_stages:
+            raise DeprecationWarning(
+                "_spread_resource_prefix is not supported when optimize_fuse_stages "
+                "is enabled. Tasks are spread by default."
+            )
         # Use given spread resource prefix for round-robin resource-based
         # scheduling.
         nodes = ray.nodes()
