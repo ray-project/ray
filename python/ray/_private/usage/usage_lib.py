@@ -306,7 +306,7 @@ class UsageReportClient:
         It uses a thread pool to implement asynchronous write.
         https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.run_in_executor
         """
-        loop = asyncio.get_running_loop()
+        loop = asyncio.get_event_loop()
         with ThreadPoolExecutor(max_workers=1) as executor:
             await loop.run_in_executor(executor, self._write_usage_data, data, dir_path)
 
@@ -317,6 +317,6 @@ class UsageReportClient:
         instead of using dedicated library such as httpx
         since that's too heavy dependency.
         """
-        loop = asyncio.get_running_loop()
+        loop = asyncio.get_event_loop()
         with ThreadPoolExecutor(max_workers=1) as executor:
             await loop.run_in_executor(executor, self._report_usage_data, url, data)
