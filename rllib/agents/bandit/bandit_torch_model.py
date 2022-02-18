@@ -41,6 +41,7 @@ class OnlineLinearRegression(nn.Module):
         )
 
     def partial_fit(self, x, y):
+        # TODO: Handle batch of data rather than individual points
         x, y = self._check_inputs(x, y)
         x = x.squeeze(0)
         y = y.item()
@@ -61,31 +62,19 @@ class OnlineLinearRegression(nn.Module):
         theta = self.dist.sample()
         return theta
 
-    def get_ucbs(self, x: torch.Tensor):
+    def get_ucbs(self, x):
         """Calculate upper confidence bounds using covariance matrix according
         to algorithm 1: LinUCB
         (http://proceedings.mlr.press/v15/chu11a/chu11a.pdf).
 
         Args:
-            x: Input feature tensor of shape
-                (batch_size, [num_items]?, feature_dim)
+            x (torch.Tensor): Input feature tensor of shape
+                (batch_size, feature_dim)
         """
-        # Fold batch and num-items dimensions into one dim.
-        if len(x.shape) == 3:
-            B, C, F = x.shape
-            x_folded_batch = x.reshape([-1, F])
-        # Only batch and feature dims.
-        else:
-            x_folded_batch = x
 
-        projections = self.covariance @ x_folded_batch.T
-        batch_dots = (x_folded_batch * projections.T).sum(dim=-1)
-        batch_dots = batch_dots.sqrt()
-
-        # Restore original B and C dimensions.
-        if len(x.shape) == 3:
-            batch_dots = batch_dots.reshape([B, C])
-        return batch_dots
+        projections = self.covariance @ x.T
+        batch_dots = (x * projections.T).sum(dim=1)
+        return batch_dots.sqrt()
 
     def forward(self, x, sample_theta=False):
         """Predict scores on input batch using the underlying linear model.
@@ -104,15 +93,19 @@ class OnlineLinearRegression(nn.Module):
 
     def _check_inputs(self, x, y=None):
         assert x.ndim in [2, 3], (
-            "Input context tensor must be 2 (no batch) or 3 dimensional (where the"
-            " first dimension is the batch size)."
+            "Input context tensor must be 2 or 3 dimensional, where the"
+            " first dimension is batch size"
         )
-        assert x.shape[-1] == self.d, (
+        assert x.shape[1] == self.d, (
             "Feature dimensions of weights ({}) and context ({}) do not "
-            "match!".format(self.d, x.shape[-1])
+            "match!".format(self.d, x.shape[1])
         )
-        if y is not None:
-            assert torch.is_tensor(y), f"ERROR: Target should be a tensor, but is {y}!"
+        if y:
+            assert torch.is_tensor(y) and y.numel() == 1, (
+                "Target should be a tensor;"
+                "Only online learning with a batch size of 1 is "
+                "supported for now!"
+            )
         return x if y is None else (x, y)
 
 
@@ -157,14 +150,13 @@ class DiscreteLinearModel(TorchModelV2, nn.Module):
         else:
             return scores
 
-    def partial_fit(self, x, y, arms):
-        for i, arm in enumerate(arms):
-            assert (
-                0 <= arm.item() < len(self.arms)
-            ), "Invalid arm: {}. It should be 0 <= arm < {}".format(
-                arm.item(), len(self.arms)
-            )
-            self.arms[arm].partial_fit(x[[i]], y[[i]])
+    def partial_fit(self, x, y, arm):
+        assert (
+            0 <= arm.item() < len(self.arms)
+        ), "Invalid arm: {}. It should be 0 <= arm < {}".format(
+            arm.item(), len(self.arms)
+        )
+        self.arms[arm].partial_fit(x, y)
 
     @override(ModelV2)
     def value_function(self):
@@ -219,16 +211,22 @@ class ParametricLinearModel(TorchModelV2, nn.Module):
         self._cur_ctx = None
 
     def _check_inputs(self, x):
-        assert (
-            x.ndim == 3
-        ), f"ERROR: Inputs ({x}) must have 3 dimensions (B x num-items x features)."
+        if x.ndim == 3 and x.size()[0] != 1:
+            # Just a test batch, slice to index 0.
+            if torch.all(x == 0.0):
+                x = x[0:1]
+            # An actual batch -> Error.
+            else:
+                raise ValueError("Only batch size of 1 is supported for now.")
         return x
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         x = input_dict["obs"]["item"]
         x = self._check_inputs(x)
+        x.squeeze_(dim=0)  # Remove the batch dimension
         scores = self.predict(x)
+        scores.unsqueeze_(dim=0)  # Add the batch dimension
         return scores, state
 
     def predict(self, x, sample_theta=False, use_ucb=False):
@@ -241,11 +239,10 @@ class ParametricLinearModel(TorchModelV2, nn.Module):
         else:
             return scores
 
-    def partial_fit(self, x, y, arms):
+    def partial_fit(self, x, y, arm):
         x = x["item"]
-        for i, arm in enumerate(arms):
-            action_id = arm.item()
-            self.arm.partial_fit(x[[i], action_id], y[[i]])
+        action_id = arm.item()
+        self.arm.partial_fit(x[:, action_id], y)
 
     @override(ModelV2)
     def value_function(self):
@@ -261,7 +258,11 @@ class ParametricLinearModelUCB(ParametricLinearModel):
     def forward(self, input_dict, state, seq_lens):
         x = input_dict["obs"]["item"]
         x = self._check_inputs(x)
-        scores = super().predict(x, sample_theta=False, use_ucb=True)
+        x.squeeze_(dim=0)  # Remove the batch dimension
+        scores = super(ParametricLinearModelUCB, self).predict(
+            x, sample_theta=False, use_ucb=True
+        )
+        scores.unsqueeze_(dim=0)  # Add the batch dimension
         return scores, state
 
 
@@ -269,5 +270,9 @@ class ParametricLinearModelThompsonSampling(ParametricLinearModel):
     def forward(self, input_dict, state, seq_lens):
         x = input_dict["obs"]["item"]
         x = self._check_inputs(x)
-        scores = super().predict(x, sample_theta=True, use_ucb=False)
+        x.squeeze_(dim=0)  # Remove the batch dimension
+        scores = super(ParametricLinearModelThompsonSampling, self).predict(
+            x, sample_theta=True, use_ucb=False
+        )
+        scores.unsqueeze_(dim=0)  # Add the batch dimension
         return scores, state
