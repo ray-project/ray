@@ -1592,7 +1592,7 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
                       /*dynamic_options=*/{}, TaskID::FromRandom(JobID::Nil()),
                       ExampleRuntimeEnvInfoFromString("mock_runtime_env_2"));
 
-  const WorkerCacheKey env1 = {"mock_runtime_env_1", {}, false};
+  const WorkerCacheKey env1 = {"mock_runtime_env_1", {}, false, false};
   const int runtime_env_hash_1 = env1.IntHash();
 
   // Push worker with runtime env 1.

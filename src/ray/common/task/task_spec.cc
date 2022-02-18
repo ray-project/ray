@@ -168,17 +168,21 @@ bool TaskSpecification::HasRuntimeEnv() const {
   return !IsRuntimeEnvEmpty(SerializedRuntimeEnv());
 }
 
+bool TaskSpecification::IsUsingGPUs() const {
+  return GetRequiredResources().GetResource("GPU") > 0;
+}
+
 uint64_t TaskSpecification::AttemptNumber() const { return message_->attempt_number(); }
 
 int TaskSpecification::GetRuntimeEnvHash() const {
   absl::flat_hash_map<std::string, double> required_resource;
-  if (RayConfig::instance().worker_resource_limits_enabled() ||
-      RayConfig::instance().isolate_workers_across_resource_types()) {
+  if (RayConfig::instance().worker_resource_limits_enabled()) {
     required_resource = GetRequiredResources().GetResourceMap();
   }
   WorkerCacheKey env = {
       SerializedRuntimeEnv(), required_resource,
-      IsActorCreationTask() && RayConfig::instance().isolate_workers_across_task_types()};
+      IsActorCreationTask() && RayConfig::instance().isolate_workers_across_task_types(),
+      IsUsingGPUs() && RayConfig::instance().isolate_workers_across_resource_types()};
   return env.IntHash();
 }
 
@@ -450,10 +454,11 @@ std::string TaskSpecification::CallSiteString() const {
 
 WorkerCacheKey::WorkerCacheKey(
     const std::string serialized_runtime_env,
-    const absl::flat_hash_map<std::string, double> &required_resources, bool is_actor)
+    const absl::flat_hash_map<std::string, double> &required_resources, bool is_actor,
+    bool is_gpu)
     : serialized_runtime_env(serialized_runtime_env),
       required_resources(std::move(required_resources)),
-      is_actor(is_actor) {}
+      is_actor(is_actor), is_gpu(is_gpu) {}
 
 bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
   // FIXME we should compare fields
@@ -462,7 +467,7 @@ bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
 
 bool WorkerCacheKey::EnvIsEmpty() const {
   return IsRuntimeEnvEmpty(serialized_runtime_env) && required_resources.empty() &&
-         !is_actor;
+         !is_actor && !is_gpu;
 }
 
 std::size_t WorkerCacheKey::Hash() const {
@@ -475,6 +480,7 @@ std::size_t WorkerCacheKey::Hash() const {
     } else {
       boost::hash_combine(hash_, serialized_runtime_env);
       boost::hash_combine(hash_, is_actor);
+      boost::hash_combine(hash_, is_gpu);
 
       std::vector<std::pair<std::string, double>> resource_vars(
           required_resources.begin(), required_resources.end());
