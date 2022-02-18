@@ -210,7 +210,12 @@ def read_datasource(
     pa = _lazy_import_pyarrow()
     if pa:
         partitioning = read_args.get("dataset_kwargs", {}).get("partitioning", None)
-        force_local = force_local or isinstance(partitioning, pa.dataset.Partitioning)
+        if isinstance(partitioning, pa.dataset.Partitioning):
+            logger.info(
+                "Forcing local metadata resolution since the provided partitioning "
+                f"{partitioning} is not serializable."
+            )
+            force_local = True
 
     if force_local:
         read_tasks = datasource.prepare_read(parallelism, **read_args)
