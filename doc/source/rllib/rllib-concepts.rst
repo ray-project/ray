@@ -1,3 +1,5 @@
+.. include:: /_includes/rllib_announcement.rst
+
 .. include:: /_includes/rllib_we_are_hiring.rst
 
 RLlib Concepts and Custom Algorithms
@@ -725,3 +727,4 @@ One of the primary motivations behind execution plans, beyond their conciseness,
 
 Check out the `PPO + DQN multi-agent workflow example <https://github.com/ray-project/ray/blob/master/rllib/examples/two_trainer_workflow.py>`__ for more details. One line to pay particular attention to in this example is the use of ``LocalIterator.duplicate()`` to clone the iterator of experiences into two separate iterators, which are filtered via ``SelectExperiences`` and then consumed by PPO and DQN sub-dataflows respectively.
 
+.. include:: /_includes/rllib_announcement_bottom.rst

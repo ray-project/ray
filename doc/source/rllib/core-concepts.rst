@@ -1,3 +1,5 @@
+.. include:: /_includes/rllib_announcement.rst
+
 .. include:: /_includes/rllib_we_are_hiring.rst
 
 .. TODO: We need trainers, environments, algorithms, policies, models here. Likely in that order.
@@ -108,3 +110,5 @@ RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distribu
     Synchronous Sampling (e.g., A2C, PG, PPO)
 
 RLlib uses `Ray actors <actors.html>`__ to scale training from a single core to many thousands of cores in a cluster. You can `configure the parallelism <rllib-training.html#specifying-resources>`__ used for training by changing the ``num_workers`` parameter. Check out our `scaling guide <rllib-training.html#scaling-guide>`__ for more details here.
+
+.. include:: /_includes/rllib_announcement_bottom.rst

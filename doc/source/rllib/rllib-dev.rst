@@ -1,3 +1,5 @@
+.. include:: /_includes/rllib_announcement.rst
+
 .. include:: /_includes/rllib_we_are_hiring.rst
 
 Contributing to RLlib
@@ -139,3 +141,5 @@ It returns three values:
 *  ``tfv``: A convenience version int, whose values are either 1 or 2.
 
 `See here <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__ for a detailed example script.
+
+.. include:: /_includes/rllib_announcement_bottom.rst

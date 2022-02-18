@@ -1,3 +1,5 @@
+.. include:: /_includes/rllib_announcement.rst
+
 .. include:: /_includes/rllib_we_are_hiring.rst
 
 RLlib Offline Datasets
@@ -262,3 +264,5 @@ The interface for a custom output writer is as follows:
 .. autoclass:: ray.rllib.offline.OutputWriter
     :members:
     :noindex:
+
+.. include:: /_includes/rllib_announcement_bottom.rst

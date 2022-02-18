@@ -1,3 +1,5 @@
+.. include:: /_includes/rllib_announcement.rst
+
 .. include:: /_includes/rllib_we_are_hiring.rst
 
 RLlib Sample Collection and Trajectory Views
@@ -338,3 +340,5 @@ The above two examples add a "next_action" view to the postprocessed SampleBatch
 used by the Policy for training. It will not feed the "next_action"
 to the Model's ``compute_action`` calls (it can't b/c the next action is of course not known
 at that point).
+
+.. include:: /_includes/rllib_announcement_bottom.rst
