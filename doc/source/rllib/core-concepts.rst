@@ -126,12 +126,8 @@ Here is an example of creating a set of rollout workers and using them gather ex
         # Improve the policy using the T1 batch.
         policy.learn_on_batch(T1)
 
-<<<<<<< HEAD
         # The local worker acts as a "parameter server" here.
         # We put the weights of its `policy` into the Ray object store once (`ray.put`)...
-=======
-        # Broadcast weights to the policy evaluation workers.
->>>>>>> b649de914d10bed31cd81ed060ceac5676208307
         weights = ray.put({"default_policy": policy.get_weights()})
         for w in workers.remote_workers():
             # ... so that we can broacast these weights to all rollout-workers once.
