@@ -21,8 +21,13 @@ class NumpyDatasource(FileBasedDatasource):
 
     """
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str, filesystem: Optional["pyarrow.fs.FileSystem"]
-                   , **reader_args):
+    def _read_file(
+        self,
+        f: "pyarrow.NativeFile",
+        path: str,
+        filesystem: Optional["pyarrow.fs.FileSystem"],
+        **reader_args
+    ):
         from ray.data.extensions import TensorArray
         import pyarrow as pa
 

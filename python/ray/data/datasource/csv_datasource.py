@@ -21,7 +21,11 @@ class CSVDatasource(FileBasedDatasource):
     """
 
     def _read_stream(
-        self, f: "pyarrow.NativeFile", path: str, filesystem: Optional["pyarrow.fs.FileSystem"], **reader_args
+        self,
+        f: "pyarrow.NativeFile",
+        path: str,
+        filesystem: Optional["pyarrow.fs.FileSystem"],
+        **reader_args
     ) -> Iterator[Block]:
         import pyarrow
         from pyarrow import csv
