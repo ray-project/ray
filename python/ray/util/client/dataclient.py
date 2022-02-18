@@ -97,18 +97,26 @@ class DataClient:
         reconnecting = False
 
         def get_next():
+            eof = False
             while True:
                 try:
                     req = self.request_queue.get(timeout=1)
                     if req is None:
-                        return None
+                        eof = True
                 except queue.Empty:
                     req = None
 
-                while self._gc_queue:
-                    (gc_req, gc_callback) = self._gc_queue.popleft()
-                    with self.lock:
-                        self._push_request_to_queue(gc_req, gc_callback)
+                with self.lock:
+                    while self._gc_queue:
+                        (gc_req, gc_callback) = self._gc_queue.popleft()
+                        if not self._in_shutdown:
+                            self._push_request_to_queue(gc_req, gc_callback)
+                        elif gc_callback is not None:
+                            gc_callback(ConnectionError("Client is shutdown"))
+
+                if eof is True:
+                    return None
+
                 if req is None:
                     continue
                 yield req
@@ -155,7 +163,7 @@ class DataClient:
                 # calls ReleaseObject(). So self.asyncio_waiting_data
                 # is accessed without holding self.lock. Holding the
                 # lock shouldn't be necessary either.
-                callback = self.asyncio_waiting_data.pop(response.req_id, None)
+                callback = self.asyncio_waiting_data.pop(response.req_id)
                 if callback:
                     callback(response)
             except Exception:
@@ -209,6 +217,10 @@ class DataClient:
         for callback in callbacks:
             if callback:
                 callback(err)
+        while self._gc_queue:
+            (_, gc_callback) = self._gc_queue.popleft()
+            if gc_callback is not None:
+                gc_callback(err)
         # Since self._in_shutdown is set to True, no new item
         # will be added to self.asyncio_waiting_data
 
@@ -314,8 +326,7 @@ class DataClient:
     ):
         req_id = self._next_id()
         req.req_id = req_id
-        if callback is not None:
-            self.asyncio_waiting_data[req_id] = callback
+        self.asyncio_waiting_data[req_id] = callback
         self.outstanding_requests[req_id] = req
         self.request_queue.put(req)
 
@@ -324,7 +335,11 @@ class DataClient:
         req: ray_client_pb2.DataRequest,
         callback: Optional[ResponseCallable] = None,
     ) -> None:
+        # Requets are sent in data thread when it comes from GC
+        # to avoid deadlock of accessing lock/queue.
         if _in_gc is True:
+            if self._in_shutdown:
+                raise ConnectionError("Client is shutdown")
             self._gc_queue.append((req, callback))
             return
 
