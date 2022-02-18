@@ -2,8 +2,8 @@
 
 .. include:: /_includes/rllib_we_are_hiring.rst
 
-Contributing to RLlib
-=====================
+How To Contribute to RLlib
+==========================
 
 Development Install
 -------------------

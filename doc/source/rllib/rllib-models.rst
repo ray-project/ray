@@ -2,8 +2,8 @@
 
 .. include:: /_includes/rllib_we_are_hiring.rst
 
-RLlib Models, Preprocessors, and Action Distributions
-=====================================================
+Models, Preprocessors, and Action Distributions
+===============================================
 
 The following diagram provides a conceptual overview of data flow between different components in RLlib.
 We start with an ``Environment``, which - given an action - produces an observation.

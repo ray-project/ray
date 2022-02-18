@@ -2,8 +2,8 @@
 
 .. include:: /_includes/rllib_we_are_hiring.rst
 
-RLlib Environments
-==================
+Environments
+============
 
 RLlib works with several different types of environments, including `OpenAI Gym <https://gym.openai.com/>`__, user-defined, multi-agent, and also batched environments.
 

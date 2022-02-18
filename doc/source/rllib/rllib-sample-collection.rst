@@ -2,8 +2,8 @@
 
 .. include:: /_includes/rllib_we_are_hiring.rst
 
-RLlib Sample Collection and Trajectory Views
-============================================
+Sample Collections and Trajectory Views
+=======================================
 
 The SampleCollector Class is Used to Store and Retrieve Temporary Data
 ----------------------------------------------------------------------

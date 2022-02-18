@@ -73,12 +73,14 @@ parts:
           - file: rllib/rllib-training
           - file: rllib/rllib-env
           - file: rllib/rllib-algorithms
-          - file: rllib/rllib-models
-          - file: rllib/rllib-sample-collection
-          - file: rllib/rllib-offline
-          - file: rllib/rllib-concepts
+          - file: rllib/user-guides
+            sections:
+              - file: rllib/rllib-models
+              - file: rllib/rllib-concepts
+              - file: rllib/rllib-sample-collection
+              - file: rllib/rllib-offline
+              - file: rllib/rllib-dev
           - file: rllib/rllib-examples
-          - file: rllib/rllib-dev
       - file: workflows/concepts
         title: Ray Workflows
         sections:

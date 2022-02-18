@@ -7,7 +7,8 @@
 RLlib: Industry-Grade Reinforcement Learning
 ============================================
 
-.. figure:: images/rllib-index-header.svg
+.. image:: images/rllib-logo.png
+    :align: center
 
 **RLlib** is an open-source library for reinforcement learning (RL), offering support for
 production-level, highly distributed RL workloads while maintaining
@@ -37,7 +38,10 @@ and many others.
 RLlib in 60 seconds
 -------------------
 
-It'll only take a few steps to get your first RLlib workload up and running on your laptop:
+.. figure:: images/rllib-index-header.svg
+
+
+It only takes a few steps to get your first RLlib workload up and running on your laptop:
 
 **TensorFlow or PyTorch**:
 

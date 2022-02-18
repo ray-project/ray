@@ -2,8 +2,8 @@
 
 .. include:: /_includes/rllib_we_are_hiring.rst
 
-RLlib Training APIs
-===================
+Training APIs
+=============
 
 Getting Started
 ---------------
