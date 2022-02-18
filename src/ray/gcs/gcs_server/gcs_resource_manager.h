@@ -127,14 +127,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
 
   std::string DebugString() const;
 
-  /// Update the total resources and available resources of the specified node.
-  ///
-  /// \param node_id Id of a node.
-  /// \param changed_resources Changed resources of a node.
-  void UpdateResourceCapacity(
-      const NodeID &node_id,
-      const absl::flat_hash_map<std::string, double> &changed_resources);
-
   /// Add resources changed listener.
   void AddResourcesChangedListener(std::function<void()> listener);
 
