@@ -8,7 +8,7 @@ import ray
 from ray.rllib.agents.dqn.dqn_tf_policy import clip_gradients
 from ray.rllib.agents.sac.sac_tf_policy import TargetNetworkMixin
 from ray.rllib.agents.slateq.slateq_tf_model import SlateQTFModel
-from ray.rllib.models.modelv2 import ModelV2, restore_original_dimensions
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule
@@ -85,9 +85,7 @@ def build_slateq_losses(
 
     # Q-value computations.
     # ---------------------
-    observation = restore_original_dimensions(
-        train_batch[SampleBatch.OBS], policy.observation_space, tensorlib=tf
-    )
+    observation = train_batch[SampleBatch.OBS]
     # user.shape: [B, E]
     user_obs = observation["user"]
     # doc.shape: [B, C, E]
@@ -96,7 +94,9 @@ def build_slateq_losses(
     actions = train_batch[SampleBatch.ACTIONS]
 
     # click_indicator.shape: [B, S]
-    click_indicator = tf.stack([k["click"][:, 1] for k in observation["response"]], 1)
+    click_indicator = tf.cast(
+        tf.stack([k["click"] for k in observation["response"]], 1), tf.float32
+    )
     # item_reward.shape: [B, S]
     item_reward = tf.stack([k["watch_time"] for k in observation["response"]], 1)
     # q_values.shape: [B, C]
@@ -111,9 +111,8 @@ def build_slateq_losses(
 
     # Target computations.
     # --------------------
-    next_obs = restore_original_dimensions(
-        train_batch[SampleBatch.NEXT_OBS], policy.observation_space, tensorlib=tf
-    )
+    next_obs = train_batch[SampleBatch.NEXT_OBS]
+
     # user.shape: [B, E]
     user_next_obs = next_obs["user"]
     # doc.shape: [B, C, E]
@@ -161,12 +160,12 @@ def build_slateq_losses(
         else:
             loss = tf.math.square(td_error)
         loss = tf.reduce_mean(loss)
-        return loss
+        return loss, tf.reduce_mean(tf.abs(td_error))
 
-    loss = tf.cond(
+    loss, mean_td_error = tf.cond(
         pred=tf.greater(tf.reduce_sum(input_tensor=clicked), 0),
         true_fn=get_train_op,
-        false_fn=lambda: tf.constant(0.0),
+        false_fn=lambda: (tf.constant(0.0), tf.constant(0.0)),
         name="",
     )
 
@@ -183,6 +182,8 @@ def build_slateq_losses(
     policy._next_q_target_max = tf.reduce_mean(next_q_target_max)
     policy._target_clicked = tf.reduce_mean(target_clicked)
     policy._q_loss = loss
+    policy._mean_td_error = mean_td_error
+    policy._mean_actions = tf.reduce_mean(actions)
 
     return loss
 
@@ -201,8 +202,19 @@ def build_slateq_stats(policy: Policy, batch) -> Dict[str, TensorType]:
         "next_q_target_slate": policy._next_q_target_slate,
         "next_q_target_max": policy._next_q_target_max,
         "target_clicked": policy._target_clicked,
+        "td_error": policy._mean_td_error,
         "q_loss": policy._q_loss,
+        "mean_actions": policy._mean_actions,
     }
+    # if hasattr(policy, "_mean_grads_0"):
+    #    stats.update({"mean_grads_0": policy._mean_grads_0})
+    #    stats.update({"mean_grads_1": policy._mean_grads_1})
+    #    stats.update({"mean_grads_2": policy._mean_grads_2})
+    #    stats.update({"mean_grads_3": policy._mean_grads_3})
+    #    stats.update({"mean_grads_4": policy._mean_grads_4})
+    #    stats.update({"mean_grads_5": policy._mean_grads_5})
+    #    stats.update({"mean_grads_6": policy._mean_grads_6})
+    #    stats.update({"mean_grads_7": policy._mean_grads_7})
     return stats
 
 
@@ -212,9 +224,7 @@ def action_distribution_fn(
     """Determine which action to take."""
 
     # First, we transform the observation into its unflattened form.
-    observation = restore_original_dimensions(
-        input_dict[SampleBatch.CUR_OBS], policy.observation_space, tensorlib=tf
-    )
+    observation = input_dict[SampleBatch.OBS]
     # user.shape: [B, E]
     user_obs = observation["user"]
     doc_obs = list(observation["doc"].values())

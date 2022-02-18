@@ -46,7 +46,7 @@ class SlateEpsilonGreedy(EpsilonGreedy):
         )
         random_actions = tf.gather(all_slates, random_indices)
 
-        chose_random = (
+        choose_random = (
             tf.random.uniform(
                 tf.stack([batch_size]), minval=0, maxval=1, dtype=tf.float32
             )
@@ -58,7 +58,7 @@ class SlateEpsilonGreedy(EpsilonGreedy):
             pred=tf.constant(explore, dtype=tf.bool)
             if isinstance(explore, bool)
             else explore,
-            true_fn=(lambda: tf.where(chose_random, random_actions, exploit_action)),
+            true_fn=(lambda: tf.where(choose_random, random_actions, exploit_action)),
             false_fn=lambda: exploit_action,
         )
 

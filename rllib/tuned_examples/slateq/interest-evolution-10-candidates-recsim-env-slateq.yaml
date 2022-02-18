@@ -2,11 +2,10 @@ interest-evolution-recsim-env-slateq:
     env: ray.rllib.examples.env.recommender_system_envs_with_recsim.InterestEvolutionRecSimEnv
     run: SlateQ
     stop:
-        episode_reward_mean: 159.5
+        episode_reward_mean: 160.0
         timesteps_total: 120000
     config:
         framework: tf2
-        # eager_tracing: true  # true by default
 
         # RLlib/RecSim wrapper specific settings:
         env_config:
@@ -26,6 +25,9 @@ interest-evolution-recsim-env-slateq:
                 convert_to_discrete_action_space: false
                 seed: 0
 
+        #learning_starts: 100 #TODO
+        _disable_preprocessor_api: true #TODO
+
         exploration_config:
             warmup_timesteps: 20000
             epsilon_timesteps: 50000
@@ -34,5 +36,7 @@ interest-evolution-recsim-env-slateq:
             capacity: 1000000
 
         lr: 0.00025
+
+        target_network_update_freq: 3200
 
         metrics_num_episodes_for_smoothing: 500

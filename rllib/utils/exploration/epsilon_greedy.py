@@ -61,6 +61,7 @@ class EpsilonGreedy(Exploration):
             Schedule, epsilon_schedule, framework=framework
         ) or PiecewiseSchedule(
             endpoints=[
+                (0, initial_epsilon),
                 (warmup_timesteps, initial_epsilon),
                 (warmup_timesteps + epsilon_timesteps, final_epsilon),
             ],

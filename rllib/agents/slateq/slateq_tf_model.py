@@ -36,7 +36,7 @@ class SlateQTFModel(TFModelV2):
             obs_space, action_space, None, model_config, name
         )
 
-        self.orig_obs_space = obs_space.original_space
+        self.orig_obs_space = obs_space
         self.embedding_size = self.orig_obs_space["doc"]["0"].shape[0]
         self.num_candidates = len(self.orig_obs_space["doc"])
         assert self.orig_obs_space["user"].shape[0] == self.embedding_size

@@ -83,7 +83,7 @@ DEFAULT_CONFIG = with_common_config({
     # not affect learning, only the length of iterations.
     "timesteps_per_iteration": 1000,
     # Update the target network every `target_network_update_freq` steps.
-    "target_network_update_freq": 800,
+    "target_network_update_freq": 3200,
     # Update the target by \tau * policy + (1-\tau) * target_policy.
     "tau": 1.0,
 

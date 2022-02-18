@@ -344,12 +344,21 @@ def clip_gradients(
     if not hasattr(policy, "q_func_vars"):
         policy.q_func_vars = policy.model.variables()
 
-    return minimize_and_clip(
+    grads_and_vars = minimize_and_clip(
         optimizer,
         loss,
         var_list=policy.q_func_vars,
         clip_val=policy.config["grad_clip"],
     )
+    policy._mean_grads_0 = tf.reduce_mean(grads_and_vars[0][0])
+    policy._mean_grads_1 = tf.reduce_mean(grads_and_vars[1][0])
+    policy._mean_grads_2 = tf.reduce_mean(grads_and_vars[2][0])
+    policy._mean_grads_3 = tf.reduce_mean(grads_and_vars[3][0])
+    policy._mean_grads_4 = tf.reduce_mean(grads_and_vars[4][0])
+    policy._mean_grads_5 = tf.reduce_mean(grads_and_vars[5][0])
+    policy._mean_grads_6 = tf.reduce_mean(grads_and_vars[6][0])
+    policy._mean_grads_7 = tf.reduce_mean(grads_and_vars[7][0])
+    return grads_and_vars
 
 
 def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
