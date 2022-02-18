@@ -458,7 +458,8 @@ WorkerCacheKey::WorkerCacheKey(
     bool is_gpu)
     : serialized_runtime_env(serialized_runtime_env),
       required_resources(std::move(required_resources)),
-      is_actor(is_actor), is_gpu(is_gpu) {}
+      is_actor(is_actor),
+      is_gpu(is_gpu) {}
 
 bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
   // FIXME we should compare fields
