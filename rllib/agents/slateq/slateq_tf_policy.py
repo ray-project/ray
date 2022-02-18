@@ -177,6 +177,7 @@ def build_slateq_losses(
     policy._slate_q_values = tf.reduce_mean(slate_q_values)
     policy._replay_click_q = tf.reduce_mean(replay_click_q)
     policy._bellman_reward = tf.reduce_mean(reward)
+    policy._next_q_values = tf.reduce_mean(next_q_values)
     policy._target = tf.reduce_mean(target)
     policy._next_q_target_slate = tf.reduce_mean(next_q_target_slate)
     policy._next_q_target_max = tf.reduce_mean(next_q_target_max)
@@ -195,6 +196,7 @@ def build_slateq_stats(policy: Policy, batch) -> Dict[str, TensorType]:
         "slate_q_values": policy._slate_q_values,
         "replay_click_q": policy._replay_click_q,
         "bellman_reward": policy._bellman_reward,
+        "next_q_values": policy._next_q_values,
         "target": policy._target,
         "next_q_target_slate": policy._next_q_target_slate,
         "next_q_target_max": policy._next_q_target_max,
