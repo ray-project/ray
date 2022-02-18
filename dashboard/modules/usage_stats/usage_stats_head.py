@@ -63,6 +63,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             await self.client.write_usage_data_async(data, self.session_dir)
 
         except Exception as e:
+            logger.exception(e)
             logger.info(f"Usage report failed: {e}")
 
     @async_loop_forever(ray_usage_lib._usage_stats_report_interval_s())

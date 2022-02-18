@@ -65,6 +65,30 @@ def print_dashboard_log():
     pprint(contents)
 
 
+def test_usage_report_error_not_displayed_to_users(monkeypatch, shutdown_only):
+    """
+    Make sure when the incorrect URL is set, the error message is not printed to users.
+    """
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+        script = """
+import ray
+import time
+
+ray.init(num_cpus=0)
+# Wait long enough
+time.sleep(2)
+        """
+        out = run_string_as_driver(script)
+        # Only the basic message;
+        # View the Ray dashboard at http://127.0.0.1:8265
+        # should be displayed. No more output should be displayed although
+        # the usage stats report fail.
+        assert len(out.strip().split("\n")) <= 1
+
+
 def test_usage_lib_cluster_metadata_generation(monkeypatch, shutdown_only):
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
@@ -251,30 +275,6 @@ def test_usage_report_e2e(monkeypatch, shutdown_only):
         wait_for_condition(
             lambda: success_old < read_file(temp_dir, "usage_stats")["total_success"]
         )
-
-
-def test_usage_report_error_not_displayed_to_users(monkeypatch, shutdown_only):
-    """
-    Make sure when the incorrect URL is set, the error message is not printed to users.
-    """
-    with monkeypatch.context() as m:
-        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
-        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        script = """
-import ray
-import time
-
-ray.init(num_cpus=0)
-# Wait long enough
-time.sleep(2)
-        """
-        out = run_string_as_driver(script)
-        # Only the basic message;
-        # View the Ray dashboard at http://127.0.0.1:8265
-        # should be displayed. No more output should be displayed although
-        # the usage stats report fail.
-        assert len(out.strip().split("\n")) <= 1
 
 
 def test_usage_report_disabled(monkeypatch, shutdown_only):
