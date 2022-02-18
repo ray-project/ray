@@ -1413,7 +1413,6 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
 )
 @click.argument("script_args", nargs=-1)
 @add_click_logging_options
-@PublicAPI
 def submit(
     cluster_config_file,
     screen,
