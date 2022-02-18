@@ -21,7 +21,7 @@ docker ps
 docker network ls
 cat ~/.kube/config
 shopt -s expand_aliases
-alias kubectl='docker run --network kind -v ${HOME}/.kube/config:/.kube/config --env KUBECONFIG=/.kube/config bitnami/kubectl:latest'
+alias kubectl='docker run --network kind --mount type=bind,src=${HOME}/.kube/config,dst=/.kube/config --env KUBECONFIG=/.kube/config bitnami/kubectl:latest'
 kubectl version
 kubectl cluster-info --context kind-kind
 kubectl get nodes
