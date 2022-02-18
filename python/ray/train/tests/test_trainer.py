@@ -125,7 +125,7 @@ class KillCallback(TrainingCallback):
 
     def handle_result(self, results):
         print(results)
-        assert all(r["loss"] == 1 for r in results)
+        # assert all(r["loss"] == 1 for r in results)
         if self.counter == self.fail_on:
             ray.kill(self.worker_group.workers[0].actor)
             time.sleep(3)
