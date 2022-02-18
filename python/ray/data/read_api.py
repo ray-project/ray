@@ -246,6 +246,8 @@ def read_datasource(
 
     if ray_remote_args is None:
         ray_remote_args = {}
+    if "scheduling_strategy" not in ray_remote_args:
+        ray_remote_args["scheduling_strategy"] = "SPREAD"
     remote_read = cached_remote_fn(remote_read)
 
     if _spread_resource_prefix is not None:

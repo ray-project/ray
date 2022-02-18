@@ -203,8 +203,7 @@ Now we can have a simple polling loop that checks the job status until it reache
         start = time.time()
         timeout = 5
         while time.time() - start <= timeout:
-            status_info = client.get_job_status(job_id)
-            status = status_info.status
+            status = client.get_job_status(job_id)
             print(f"status: {status}")
             if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
                 break
