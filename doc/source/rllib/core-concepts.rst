@@ -123,7 +123,7 @@ Here is an example of creating a set of rollout workers and using them gather ex
         T1 = SampleBatch.concat_samples(
             ray.get([w.sample.remote() for w in workers.remote_workers()]))
 
-        # Improve the policy using the T1 batch
+        # Improve the policy using the T1 batch.
         policy.learn_on_batch(T1)
 
         # Broadcast weights to the policy evaluation workers
