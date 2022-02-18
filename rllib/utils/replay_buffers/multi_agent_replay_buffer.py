@@ -1,43 +1,47 @@
 import collections
 from typing import Any, Dict, Optional
-
-import numpy as np
+from enum import Enum
 
 import ray
-from ray.rllib import SampleBatch
-from ray.rllib.execution.buffers.replay_buffer import logger, _ALL_POLICIES
+from ray.rllib.execution.buffers.replay_buffer import  _ALL_POLICIES
 from ray.rllib.policy.rnn_sequencing import \
     timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override, ExperimentalAPI
-from ray.rllib.utils.replay_buffers.prioritized_replay_buffer import \
-    PrioritizedReplayBuffer
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
+from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
+from ray.rllib.utils.from_config import from_config
+
+
+@ExperimentalAPI
+class ReplayMode(Enum):
+    LOCKSTEP = 0
+    INDEPENDENT = 1
 
 
 @ExperimentalAPI
 class MultiAgentReplayBuffer(ReplayBuffer):
-    """A replay buffer shard storing data for all policies (in multiagent setup).
+    """A replay buffer shard for multiagent setups.
 
-    Ray actors are single-threaded, so for scalability, multiple replay actors
-    may be created to increase parallelism."""
+    This buffer is meant to be run in parallel to distribute experiences
+    across `num_shards` shards. Unlike simpler buffers, it holds a set of
+    buffers - one for each policy ID.
+    """
 
     def __init__(
         self,
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         num_shards: int = 1,
-        learning_starts: int = 1000,
         replay_batch_size: int = 1,
-        prioritized_replay_alpha: float = 0.6,
-        prioritized_replay_beta: float = 0.4,
-        prioritized_replay_eps: float = 1e-6,
+        learning_starts: int = 1000,
         replay_mode: str = "independent",
         replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
         replay_zero_init_states: bool = True,
+        underlying_buffer_config: dict = None,
         **kwargs
     ):
         """Initializes a MultiAgentReplayBuffer instance.
@@ -50,67 +54,74 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             learning_starts: Number of timesteps after which a call to
                 `replay()` will yield samples (before that, `replay()` will
                 return None).
-            capacity: The capacity of the buffer. Note that when
-                `replay_sequence_length` > 1, this is the number of sequences
-                (not single timesteps) stored.
+            capacity: Max number of total timesteps in all policy buffers.
+                After reaching this number, older samples will be
+                dropped to make space for new ones.
             replay_batch_size: The batch size to be sampled (in timesteps).
                 Note that if `replay_sequence_length` > 1,
                 `self.replay_batch_size` will be set to the number of
                 sequences sampled (B).
-            prioritized_replay_alpha: Alpha parameter for a prioritized
-                replay buffer. Use 0.0 for no prioritization.
-            prioritized_replay_beta: Beta parameter for a prioritized
-                replay buffer.
-            prioritized_replay_eps: Epsilon parameter for a prioritized
-                replay buffer.
-            replay_mode: One of "independent" or "lockstep". Determined,
-                whether in the multiagent case, sampling is done across all
-                agents/policies equally.
+            replay_mode: One of "independent" or "lockstep". Determines,
+                whether batches are sampled independently or to an equal
+                amount.
             replay_sequence_length: The sequence length (T) of a single
-                sample. If > 1, we will sample B x T from this buffer.
+                sample. If > 1, we will sample B x T from this buffer. This
+                only has an effect if storage_unit is 'timesteps'.
             replay_burn_in: The burn-in length in case
                 `replay_sequence_length` > 0. This is the number of timesteps
                 each sequence overlaps with the previous one to generate a
                 better internal state (=state after the burn-in), instead of
-                starting from 0.0 each RNN rollout.
+                starting from 0.0 each RNN rollout. This only has an effect
+                if storage_unit is 'timesteps'.
             replay_zero_init_states: Whether the initial states in the
                 buffer (if replay_sequence_length > 0) are alwayas 0.0 or
                 should be updated with the previous train_batch state outputs.
+            underlying_buffer_config: A config that contains all necessary
+                constructor arguments and arguments for methods to call on
+                the underlying buffers.
             **kwargs: Forward compatibility kwargs.
         """
         shard_capacity = capacity // num_shards
-        ReplayBuffer.__init__(self, shard_capacity, storage_unit)
+        ReplayBuffer.__init__(self, capacity, storage_unit)
 
-        self.replay_starts = learning_starts // num_shards
+        # If the user provides an underlying buffer config, we use to
+        # instantiate and interact with underlying buffers
+        self.underlying_buffer_config = underlying_buffer_config
+        if self.underlying_buffer_config is not None:
+            self.underlying_buffer_call_args = self.underlying_buffer_config
+        else:
+            self.underlying_buffer_call_args = {}
+
         self.replay_batch_size = replay_batch_size
-        self.prioritized_replay_beta = prioritized_replay_beta
-        self.prioritized_replay_eps = prioritized_replay_eps
+        self.replay_starts = learning_starts // num_shards
         self.replay_mode = replay_mode
         self.replay_sequence_length = replay_sequence_length
         self.replay_burn_in = replay_burn_in
         self.replay_zero_init_states = replay_zero_init_states
 
-        if replay_sequence_length > 1:
-            self.replay_batch_size = int(
-                max(1, replay_batch_size // replay_sequence_length)
-            )
-            logger.info(
-                "Since replay_sequence_length={} and replay_batch_size={}, "
-                "we will replay {} sequences at a time.".format(
-                    replay_sequence_length, replay_batch_size,
-                    self.replay_batch_size
-                )
-            )
-
-        if replay_mode not in ["lockstep", "independent"]:
+        if replay_mode == "lockstep" or replay_mode == ReplayMode.LOCKSTEP:
+            self.replay_mode = ReplayMode.LOCKSTEP
+        elif replay_mode == "independent" or replay_mode == \
+            ReplayMode.INDEPENDENT:
+            self.replay_mode = ReplayMode.INDEPENDENT
+        else:
             raise ValueError("Unsupported replay mode: {}".format(replay_mode))
 
-        def new_buffer():
-            if prioritized_replay_alpha == 0.0:
-                return ReplayBuffer(self.capacity)
-            else:
-                return PrioritizedReplayBuffer(
-                    self.capacity, alpha=prioritized_replay_alpha
+        if self.underlying_buffer_config:
+            ctor_args = {**{"capacity": shard_capacity,
+                            "storage_unit": storage_unit},
+                         **self.underlying_buffer_config}
+
+            def new_buffer():
+                return from_config(self.underlying_buffer_config["type"],
+                                   ctor_args)
+        else:
+            # Default case
+            def new_buffer():
+                self.underlying_buffer_call_args = {}
+                return ReplayBuffer(
+                    self.capacity,
+                    storage_unit=storage_unit,
                 )
 
         self.replay_buffers = collections.defaultdict(new_buffer)
@@ -118,26 +129,11 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         # Metrics.
         self.add_batch_timer = TimerStat()
         self.replay_timer = TimerStat()
-        self.update_priorities_timer = TimerStat()
         self._num_added = 0
-
-
-    @staticmethod
-    def get_instance_for_testing():
-        """Return a MultiAgentReplayBuffer instance that has been previously
-        instantiated.
-
-        Returns:
-            _local_replay_buffer: The lastly instantiated
-            MultiAgentReplayBuffer.
-
-        """
-        global _local_replay_buffer
-        return _local_replay_buffer
 
     @ExperimentalAPI
     @override(ReplayBuffer)
-    def add(self, batch: SampleBatchType) -> None:
+    def add(self, batch: SampleBatchType, **kwargs) -> None:
         """Adds a batch to the appropriate policy's replay buffer.
 
         Turns the batch into a MultiAgentBatch of the DEFAULT_POLICY_ID if
@@ -146,6 +142,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         Args:
             batch (SampleBatchType): The batch to be added.
+            **kwargs: Forward compatibility kwargs.
         """
         # Make a copy so the replay buffer doesn't pin plasma memory.
         batch = batch.copy()
@@ -156,44 +153,40 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             # Lockstep mode: Store under _ALL_POLICIES key (we will always
             # only sample from all policies at the same time).
             if self.replay_mode == "lockstep":
-                # Note that prioritization is not supported in this mode.
                 for s in batch.timeslices(self.replay_sequence_length):
-                    self.replay_buffers[_ALL_POLICIES].add(s, weight=None)
+                    self.replay_buffers[_ALL_POLICIES].add(s, **kwargs)
             else:
                 assert type(batch) == MultiAgentBatch
                 for policy_id, sample_batch in batch.policy_batches.items():
-                    self._add_to_policy_buffer(policy_id, sample_batch)
+                    self._add_to_underlying_buffer(policy_id, sample_batch,
+                                                   **kwargs)
         self._num_added += batch.count
 
-    # Utility method that reduces code redundancy for child classes
-    def _add_to_policy_buffer(self, policy_id: PolicyID, batch:
-            SampleBatchType) -> None:
-        if self.replay_sequence_length == 1:
-            timeslices = batch.timeslices(1)
-        else:
-            timeslices = timeslice_along_seq_lens_with_overlap(
-                sample_batch=batch,
-                zero_pad_max_seq_len=self.replay_sequence_length,
-                pre_overlap=self.replay_burn_in,
-                zero_init_states=self.replay_zero_init_states,
-            )
-        for time_slice in timeslices:
-            # If SampleBatch has prio-replay weights, average
-            # over these to use as a weight for the entire
-            # sequence.
-            if "weights" in time_slice and len(
-                time_slice["weights"]):
-                weight = np.mean(time_slice["weights"])
+    def _add_to_underlying_buffer(self, policy_id: PolicyID, batch:
+            SampleBatchType, **kwargs) -> None:
+        """Utility method that reduces code redundancy for child classes"""
+        # Merge kwargs, overwriting standard call arguments
+        kwargs = {**self.underlying_buffer_call_args, **kwargs}
+        if self._storage_unit is StorageUnit.TIMESTEPS:
+            if self.replay_sequence_length == 1:
+                timeslices = batch.timeslices(1)
             else:
-                weight = None
-            self.replay_buffers[policy_id].add(time_slice,
-                                               weight=weight)
+                timeslices = timeslice_along_seq_lens_with_overlap(
+                    sample_batch=batch,
+                    zero_pad_max_seq_len=self.replay_sequence_length,
+                    pre_overlap=self.replay_burn_in,
+                    zero_init_states=self.replay_zero_init_states,
+                )
+            for time_slice in timeslices:
+                self.replay_buffers[policy_id].add(time_slice, **kwargs)
+        else:
+            self.replay_buffers[policy_id].add(batch, **kwargs)
 
     @ExperimentalAPI
     @override(ReplayBuffer)
-    def sample(self, num_items: int, policy_id: Optional[PolicyID] = None) \
-        -> Optional[SampleBatchType]:
-        """Samples `num_items` batches from a policy's buffer
+    def sample(self, num_items: int, policy_id: Optional[PolicyID] = None,
+               **kwargs) -> Optional[SampleBatchType]:
+        """Samples `num_items` multi agent batches from policy's buffers.
 
         If less than `num_items` records are in the policy's buffer,
         some samples in the results may be repeated to fulfil the batch size
@@ -205,12 +198,10 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         Returns:
             Concatenated batch of items. None if buffer is empty.
+            **kwargs: Forward compatibility kwargs.
         """
-        if self._fake_batch:
-            if not isinstance(self._fake_batch, MultiAgentBatch):
-                self._fake_batch = SampleBatch(
-                    self._fake_batch).as_multi_agent()
-            return self._fake_batch
+        # Merge kwargs, overwriting standard call arguments
+        kwargs = {**self.underlying_buffer_call_args, **kwargs}
 
         if self._num_added < self.replay_starts:
             return None
@@ -220,42 +211,18 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             if self.replay_mode == "lockstep":
                 assert (
                     policy_id is None
-                ), "`policy_id` specifier not allowed in `locksetp` mode!"
-                return self.replay_buffers[_ALL_POLICIES].sample(
-                    self.replay_batch_size, beta=self.prioritized_replay_beta
-                )
+                ), "`policy_id` specifier not allowed in `lockstep` mode!"
+                return self.replay_buffers[_ALL_POLICIES].sample(num_items,
+                                                                 **kwargs)
             elif policy_id is not None:
-                return self.replay_buffers[policy_id].sample(
-                    self.replay_batch_size, beta=self.prioritized_replay_beta
-                )
+                return self.replay_buffers[policy_id].sample(num_items,
+                                                             **kwargs)
             else:
                 samples = {}
                 for policy_id, replay_buffer in self.replay_buffers.items():
-                    samples[policy_id] = replay_buffer.sample(
-                        self.replay_batch_size,
-                        beta=self.prioritized_replay_beta
-                    )
+                    samples[policy_id] = replay_buffer.sample(num_items,
+                                                              **kwargs)
                 return MultiAgentBatch(samples, self.replay_batch_size)
-
-    @ExperimentalAPI
-    def update_priorities(self, prio_dict: Dict) -> None:
-        """Updates the priorities of underlying replay buffers.
-
-        Computes new priorities from td_errors and prioritized_replay_eps.
-        These priorities are used to update underlying replay buffers per
-        policy_id.
-
-        Args:
-            prio_dict (Dict): A dictionary containing td_errors for
-            batches saved in underlying replay buffers.
-        """
-        with self.update_priorities_timer:
-            for policy_id, (batch_indexes, td_errors) in prio_dict.items():
-                new_priorities = np.abs(
-                    td_errors) + self.prioritized_replay_eps
-                self.replay_buffers[policy_id].update_priorities(
-                    batch_indexes, new_priorities
-                )
 
     @ExperimentalAPI
     @override(ReplayBuffer)
@@ -272,9 +239,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         stat = {
             "add_batch_time_ms": round(1000 * self.add_batch_timer.mean, 3),
             "replay_time_ms": round(1000 * self.replay_timer.mean, 3),
-            "update_priorities_time_ms": round(
-                1000 * self.update_priorities_timer.mean, 3
-            ),
         }
         for policy_id, replay_buffer in self.replay_buffers.items():
             stat.update(
@@ -312,3 +276,4 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
 
 ReplayActor = ray.remote(num_cpus=0)(MultiAgentReplayBuffer)
+

@@ -20,7 +20,7 @@ class ReservoirBuffer(ReplayBuffer):
     the full paper.
     """
     def __init__(self, capacity: int = 10000, storage_unit: str =
-            "timesteps"):
+            "timesteps", **kwargs):
         """Initializes a ReservoirBuffer instance.
 
         Args:
@@ -54,7 +54,7 @@ class ReservoirBuffer(ReplayBuffer):
             # Eviction of older samples has already started (buffer is "full")
             self._eviction_started = True
             idx = random.randint(0, self._num_add_calls - 1)
-            if idx < self.capacity:
+            if idx < len(self._storage):
                 self._num_evicted += 1
                 self._evicted_hit_stats.push(self._hit_count[idx])
                 self._hit_count[idx] = 0
@@ -63,12 +63,6 @@ class ReservoirBuffer(ReplayBuffer):
                 assert batch.count > 0, batch
                 warn_replay_capacity(item=batch,
                                      num_items=self.capacity / batch.count)
-
-    @ExperimentalAPI
-    @override(ReplayBuffer)
-    def sample(self, num_items: int, **kwargs) -> Optional[SampleBatchType]:
-        """Samples `num_items` timesteps from this buffer."""
-        raise NotImplementedError
 
     @ExperimentalAPI
     @override(ReplayBuffer)

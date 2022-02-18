@@ -31,7 +31,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         # Seq-len=1.
         buffer = PrioritizedReplayBuffer(capacity=100, alpha=0.1)
         for _ in range(200):
-            buffer.add(self._generate_data(), weight=None)
+            buffer.add(self._generate_data())
         assert len(buffer._storage) == 100, len(buffer._storage)
         assert buffer.stats()["added_count"] == 200, buffer.stats()
         # Test get_state/set_state.
@@ -46,8 +46,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         for _ in range(40):
             buffer.add(
                 SampleBatch.concat_samples(
-                    [self._generate_data() for _ in range(5)]),
-                weight=None,
+                    [self._generate_data() for _ in range(5)])
             )
         assert len(buffer._storage) == 20, len(buffer._storage)
         assert buffer.stats()["added_count"] == 200, buffer.stats()
@@ -274,7 +273,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         num_records = 5
         for i in range(num_records):
             data = self._generate_data()
-            buffer.add(data, float(np.random.rand()))
+            buffer.add(data, weight=float(np.random.rand()))
             self.assertTrue(len(buffer) == i + 1)
             self.assertTrue(buffer._next_idx == i + 1)
         # Test get_state/set_state.
@@ -324,7 +323,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
 
         # Add some batches with sequences of low priority
         for batch in batches:
-            buffer.add(batch, 0.01)
+            buffer.add(batch, weight=0.01)
 
         # Add two high priority sequences
         buffer.add(SampleBatch(
@@ -335,7 +334,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
                 SampleBatch.DONES: 4 * [np.random.choice([False, True])],
                 SampleBatch.SEQ_LENS: [2, 2],
                 "batch_id": 4 * [4],
-            }), 1)
+            }), weight=1)
 
         num_sampled_dict = {_id: 0 for _id in range(1, 5)}
         num_samples = 200
@@ -384,7 +383,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         assert np.allclose(
             np.array(list(num_sampled_dict.values())) / num_samples,
             [0, 0, 0, 0.5, 0.5],
-            atol=0.2)
+            atol=0.25)
 
     def test_episodes_unit(self):
         """Tests adding, sampling, and eviction of episodes."""
@@ -405,7 +404,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
 
         # Add some batches with episodes of low priority
         for batch in batches:
-            buffer.add(batch, 0.01)
+            buffer.add(batch, weight=0.01)
 
         # Add two high priority episodes
         buffer.add(SampleBatch(
@@ -416,7 +415,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
                 SampleBatch.DONES: [False, True, False, True],
                 SampleBatch.SEQ_LENS: [2, 2],
                 SampleBatch.EPS_ID: [3, 3, 4, 4],
-            }), 1)
+            }), weight=1)
 
         num_sampled_dict = {_id: 0 for _id in range(5)}
         num_samples = 200
@@ -443,7 +442,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
                 SampleBatch.DONES: [False, True, False, False],
                 SampleBatch.SEQ_LENS: [2, 2],
                 SampleBatch.EPS_ID: [5, 5, 6, 6],
-            }), 1)
+            }), weight=1)
 
         num_sampled_dict = {_id: 0 for _id in range(7)}
         num_samples = 200
@@ -469,7 +468,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
                 SampleBatch.SEQ_LENS: [4],
                 SampleBatch.EPS_ID: 4 * [7]
             }
-        ), 0.01)
+        ), weight=0.01)
 
         # After adding 1 more batch, eviction has started with 24
         # timesteps added in total, 2 of which were discarded

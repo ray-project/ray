@@ -29,6 +29,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         alpha: float = 1.0,
+        **kwargs
     ):
         """Initializes a PrioritizedReplayBuffer instance.
 
@@ -68,18 +69,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         ReplayBuffer._add_single_batch(self, item)
 
-    @ExperimentalAPI
-    @override(ReplayBuffer)
-    def add(self, batch: SampleBatchType, weight: float) -> None:
-        """Add a batch of experiences.
-
-        Args:
-            batch: SampleBatch to add to this buffer's storage.
-            weight: The weight of the added sample used in subsequent sampling
-                steps.
-        """
-        ReplayBuffer.add(self, batch, weight=weight)
-
 
     def _sample_proportional(self, num_items: int) -> List[int]:
         res = []
@@ -92,7 +81,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
     @ExperimentalAPI
     @override(ReplayBuffer)
-    def sample(self, num_items: int, beta: float) -> Optional[SampleBatchType]:
+    def sample(self, num_items: int, beta: float, **kwargs) -> Optional[SampleBatchType]:
         """Sample `num_items` items from this buffer, including prio. weights.
 
         If less than `num_items` records are in this buffer, some samples in
@@ -103,6 +92,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             num_items: Number of items to sample from this buffer.
             beta: To what degree to use importance weights
                 (0 - no corrections, 1 - full correction).
+            **kwargs: Forward compatibility kwargs.
 
         Returns:
             Concatenated batch of items including "weights" and
