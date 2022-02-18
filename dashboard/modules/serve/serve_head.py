@@ -8,7 +8,7 @@ import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as optional_utils
 
 from ray import serve
-from ray.serve.api import Deployment, deploy_group
+from ray.serve.api import Deployment, deploy_group, get_deployment_statuses
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -60,12 +60,25 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployments(self, req: Request) -> Response:
-        dict_response = {
+        deployment_info = {
             name: self._get_deployment_dict(deployment)
             for name, deployment in serve.list_deployments().items()
         }
 
-        return Response(text=json.dumps(dict_response), content_type="application/json")
+        statuses = get_deployment_statuses()
+        status_info = dict()
+        for deployment_name, deployment_status in statuses.items():
+            status_info[deployment_name] = {
+                "Status": deployment_status.status.name,
+                "Message": deployment_status.message
+            }
+
+        response = {
+            "deployments": deployment_info,
+            "statuses": status_info
+        }
+
+        return Response(text=json.dumps(response), content_type="application/json")
 
     @routes.get("/api/serve/deployments/{name}")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
