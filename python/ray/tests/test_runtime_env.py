@@ -458,6 +458,8 @@ success_retry_number = 3
 runtime_env_retry_times = 0
 
 
+# This plugin can make runtime env creation failed before the retry times
+# increased to `success_retry_number`.
 class MyPlugin(RuntimeEnvPlugin):
     @staticmethod
     def validate(runtime_env_dict: dict) -> str:
@@ -489,6 +491,7 @@ def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
 
     runtime_env_retry_times = int(set_runtime_env_retry_times)
     if runtime_env_retry_times >= success_retry_number:
+        # Enough retry times
         output = ray.get(
             f.options(
                 runtime_env={"plugins": {MY_PLUGIN_CLASS_PATH: {"key": "value"}}}
@@ -496,6 +499,7 @@ def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
         )
         assert output == "ok"
     else:
+        # No enough retry times
         with pytest.raises(
             RuntimeEnvSetupError, match=f"Fault injection {runtime_env_retry_times}"
         ):
