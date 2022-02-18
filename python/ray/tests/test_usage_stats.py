@@ -48,6 +48,23 @@ def read_file(temp_dir: Path, column: str):
         return result[column]
 
 
+def print_dashboard_log():
+    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    log_dir_path = session_path / "logs"
+
+    paths = list(log_dir_path.iterdir())
+
+    contents = None
+    for path in paths:
+        if "dashboard.log" in str(path):
+            with open(str(path), "r") as f:
+                contents = f.readlines()
+    from pprint import pprint
+
+    pprint(contents)
+
+
 def test_usage_lib_cluster_metadata_generation(monkeypatch, shutdown_only):
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
@@ -208,7 +225,11 @@ def test_usage_report_e2e(monkeypatch, shutdown_only):
         print("Verifying usage stats report.")
         # Since the interval is 1 second, there must have been
         # more than 5 requests sent within 30 seconds.
-        wait_for_condition(lambda: ray.get(reporter.get.remote()) > 5, timeout=30)
+        try:
+            wait_for_condition(lambda: ray.get(reporter.get.remote()) > 5, timeout=30)
+        except Exception:
+            print_dashboard_log()
+            raise
         validate(instance=ray.get(reporter.get_payload.remote()), schema=schema)
 
         """
@@ -218,7 +239,7 @@ def test_usage_report_e2e(monkeypatch, shutdown_only):
         global_node = ray.worker._global_node
         temp_dir = pathlib.Path(global_node.get_session_dir_path())
 
-        wait_for_condition(lambda: file_exists(temp_dir))
+        wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
 
         timestamp_old = read_file(temp_dir, "usage_stats")["collect_timestamp_ms"]
         success_old = read_file(temp_dir, "usage_stats")["total_success"]
@@ -232,7 +253,7 @@ def test_usage_report_e2e(monkeypatch, shutdown_only):
         )
 
 
-def test_usage_report_error_not_displayed_to_users(monkeypatch):
+def test_usage_report_error_not_displayed_to_users(monkeypatch, shutdown_only):
     """
     Make sure when the incorrect URL is set, the error message is not printed to users.
     """
@@ -308,8 +329,11 @@ def test_usage_file_error_message(monkeypatch, shutdown_only):
 
         global_node = ray.worker._global_node
         temp_dir = pathlib.Path(global_node.get_session_dir_path())
-
-        wait_for_condition(lambda: file_exists(temp_dir))
+        try:
+            wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
+        except Exception:
+            print_dashboard_log()
+            raise
 
         error_message = read_file(temp_dir, "error")
         failure_old = read_file(temp_dir, "usage_stats")["total_failed"]
