@@ -659,7 +659,7 @@ py_test(
 py_test(
     name = "test_bandits",
     tags = ["team:ml", "trainers_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/bandit/tests/test_bandits.py"],
 )
 
