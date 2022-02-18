@@ -58,7 +58,7 @@ from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.plan import ExecutionPlan
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.stats import DatasetStats, get_or_create_stats_actor
-from ray.data.impl.util import _get_spread_resources_iter, _lazy_import_pyarrow
+from ray.data.impl.util import _get_spread_resources_iter, _lazy_import_pyarrow_dataset
 
 T = TypeVar("T")
 
@@ -207,10 +207,10 @@ def read_datasource(
     """
     # TODO(ekl) remove this feature flag.
     force_local = "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ
-    pa = _lazy_import_pyarrow()
-    if pa:
+    pa_ds = _lazy_import_pyarrow_dataset()
+    if pa_ds:
         partitioning = read_args.get("dataset_kwargs", {}).get("partitioning", None)
-        if isinstance(partitioning, pa.dataset.Partitioning):
+        if isinstance(partitioning, pa_ds.Partitioning):
             logger.info(
                 "Forcing local metadata resolution since the provided partitioning "
                 f"{partitioning} is not serializable."

@@ -13,19 +13,19 @@ _VERSION_VALIDATED = False
 
 
 LazyModule = Union[None, bool, ModuleType]
-_pyarrow: LazyModule = None
+_pyarrow_dataset: LazyModule = None
 
 
-def _lazy_import_pyarrow() -> LazyModule:
-    global _pyarrow
-    if _pyarrow is None:
+def _lazy_import_pyarrow_dataset() -> LazyModule:
+    global _pyarrow_dataset
+    if _pyarrow_dataset is None:
         try:
-            import pyarrow as _pyarrow
+            from pyarrow import dataset as _pyarrow_dataset
         except ModuleNotFoundError:
             # If module is not found, set _pyarrow to False so we won't
             # keep trying to import it on every _lazy_import_pyarrow() call.
-            _pyarrow = False
-    return _pyarrow
+            _pyarrow_dataset = False
+    return _pyarrow_dataset
 
 
 def _check_pyarrow_version():
