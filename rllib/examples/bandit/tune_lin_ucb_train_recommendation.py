@@ -6,19 +6,15 @@ import os
 import pandas as pd
 import time
 
-import ray
 from ray import tune
 from ray.rllib.examples.env.bandit_envs_recommender_system import ParametricItemRecoEnv
 
 if __name__ == "__main__":
-    # Temp fix to avoid OMP conflict.
+    # Temp fix to avoid OMP conflict
     os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
-
-    ray.init()
 
     config = {
         "env": ParametricItemRecoEnv,
-        "num_envs_per_worker": 2,  # Test with batched inference.
     }
 
     # Actual training_iterations will be 10 * timesteps_per_iteration
