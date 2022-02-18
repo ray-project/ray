@@ -1,4 +1,4 @@
-.. include:: we_are_hiring.rst
+.. include:: /_includes/rllib_we_are_hiring.rst
 
 RLlib Environments
 ==================

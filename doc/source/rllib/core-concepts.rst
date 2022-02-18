@@ -1,4 +1,4 @@
-.. include:: we_are_hiring.rst
+.. include:: /_includes/rllib_we_are_hiring.rst
 
 .. TODO: We need trainers, environments, algorithms, policies, models here. Likely in that order.
     Execution plans are not a "core" concept for users. Sample batches should probably also be left out.
