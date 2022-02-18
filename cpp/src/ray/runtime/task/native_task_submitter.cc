@@ -56,13 +56,14 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
   TaskOptions options{};
   options.name = call_options.name;
   options.resources = call_options.resources;
-  std::optional<std::vector<rpc::ObjectReference>> return_refs;
+  std::vector<rpc::ObjectReference> return_refs;
   if (invocation.task_type == TaskType::ACTOR_TASK) {
-    return_refs = core_worker.SubmitActorTask(
+    std::optional<std::vector<rpc::ObjectReference>> return_refs_optional = core_worker.SubmitActorTask(
         invocation.actor_id, BuildRayFunction(invocation), invocation.args, options);
-    if (!return_refs.has_value()) {
+    if (!return_refs_optional.has_value()) {
       return ObjectID::Nil();
     }
+    return_refs = return_refs_optional.value();
   } else {
     BundleID bundle_id = GetBundleID(call_options);
     rpc::SchedulingStrategy scheduling_strategy;
@@ -76,11 +77,14 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
           bundle_id.second);
       placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
     }
-    return_refs = core_worker.SubmitTask(BuildRayFunction(invocation), invocation.args,
-                                         options, 1, false, scheduling_strategy, "");
+    auto status = core_worker.SubmitTask(BuildRayFunction(invocation), invocation.args,
+                                         options, 1, false, scheduling_strategy, "", &return_refs);
+    if (!status.ok()) {
+      throw RayException("SubmitTask error");
+    }
   }
   std::vector<ObjectID> return_ids;
-  for (const auto &ref : return_refs.value()) {
+  for (const auto &ref : return_refs) {
     return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
   }
   return return_ids[0];

@@ -677,14 +677,13 @@ class PlacementGroupInfoAccessor {
   virtual Status SyncCreatePlacementGroup(
       const ray::PlacementGroupSpecification &placement_group_spec);
 
-  /// Add bundles for the placement group asynchronously.
+  /// Add bundles for the placement group synchronously.
   ///
   /// \param placement_group_id Id of the placement group to add bundles.
   /// \param bundles The bundles will be added.
-  virtual Status AsyncAddPlacementGroupBundles(
+  virtual Status SyncAddPlacementGroupBundles(
       const ray::PlacementGroupID &placement_group_id,
-      const std::vector<std::unordered_map<std::string, double>> &bundles,
-      const StatusCallback &callback);
+      const std::vector<std::unordered_map<std::string, double>> &bundles);
 
   /// Subscribe to placement group bundles changed notification.
   ///

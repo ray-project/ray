@@ -1768,13 +1768,9 @@ Status CoreWorker::AddPlacementGroupBundles(
       std::make_shared<std::promise<Status>>();
   RAY_LOG(DEBUG) << "Submitting add placement group bundes request to GCS: "
                  << placement_group_id;
-  RAY_UNUSED(gcs_client_->PlacementGroups().AsyncAddPlacementGroupBundles(
-      placement_group_id, bundles,
-      [status_promise](const Status &status) { status_promise->set_value(status); }));
-  auto status_future = status_promise->get_future();
-  if (status_future.wait_for(std::chrono::seconds(
-          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
-      std::future_status::ready) {
+  const auto status = gcs_client_->PlacementGroups().SyncAddPlacementGroupBundles(
+      placement_group_id, bundles);
+  if (status.IsTimedOut()) {
     std::ostringstream stream;
     stream << "There was timeout in adding bundles for the placement group: "
            << placement_group_id
@@ -1782,8 +1778,9 @@ Status CoreWorker::AddPlacementGroupBundles(
               "because GCS server is dead or there's a high load there.";
     RAY_LOG(ERROR) << stream.str();
     return Status::TimedOut(stream.str());
-  }
-  return status_future.get();
+  } else {
+    return status;
+  } 
 }
 
 Status CoreWorker::ValidatePlacementGroupBundleIndex(
@@ -1819,7 +1816,7 @@ Status CoreWorker::ValidatePlacementGroupBundleIndex(
       std::ostringstream error_msg;
       error_msg << "Invalid bundle index: " << bundle_index << " in ["
                 << valid_bundle_indexes_str.str()
-                << "] when adding resource constraint for placement group: "
+                << "] when adding resource constraint through placement group: "
                 << placement_group_id;
       return Status::Invalid(error_msg.str());
     }

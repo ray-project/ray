@@ -1048,12 +1048,10 @@ Status PlacementGroupInfoAccessor::SyncCreatePlacementGroup(
   return status;
 }
 
-Status PlacementGroupInfoAccessor::AsyncAddPlacementGroupBundles(
+Status PlacementGroupInfoAccessor::SyncAddPlacementGroupBundles(
     const ray::PlacementGroupID &placement_group_id,
-    const std::vector<std::unordered_map<std::string, double>> &bundles,
-    const StatusCallback &callback) {
+    const std::vector<std::unordered_map<std::string, double>> &bundles) {
   RAY_LOG(DEBUG) << "Adding bundles for the placement group: " << placement_group_id;
-  RAY_CHECK(callback);
   rpc::AddPlacementGroupBundlesRequest request;
   request.set_placement_group_id(placement_group_id.Binary());
   for (size_t i = 0; i < bundles.size(); i++) {
@@ -1063,22 +1061,16 @@ Status PlacementGroupInfoAccessor::AsyncAddPlacementGroupBundles(
     message_bundle->CopyFrom(new_bundle);
   }
 
-  client_impl_->GetGcsRpcClient().AddPlacementGroupBundles(
-      request, [placement_group_id, callback](
-                   const Status &, const rpc::AddPlacementGroupBundlesReply &reply) {
-        auto status =
-            reply.status().code() == (int)StatusCode::OK
-                ? Status()
-                : Status(StatusCode(reply.status().code()), reply.status().message());
-        if (status.ok()) {
-          RAY_LOG(INFO) << "Finished add placement group bundles. placement group id = "
+  rpc::AddPlacementGroupBundlesReply reply;
+  auto status = client_impl_->GetGcsRpcClient().SyncAddPlacementGroupBundles(
+      request, &reply, GetGcsTimeoutMs());
+  if (status.ok()) {
+    RAY_LOG(INFO) << "Finished add placement group bundles. placement group id = "
                         << placement_group_id;
-        } else {
-          RAY_LOG(ERROR) << "Placement group id = " << placement_group_id
+  } else {
+    RAY_LOG(ERROR) << "Placement group id = " << placement_group_id
                          << " failed to add bundles, cause " << status.message();
-        }
-        callback(status);
-      });
+  }
   return Status::OK();
 }
 

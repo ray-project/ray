@@ -72,7 +72,7 @@ class PlacementGroup:
             f"{len(self.bundle_cache)}")
 
         return bundle_reservation_check.options(
-            placement_group=self, resources={
+            placement_group=self, placement_group_bundle_index=self.max_bundle_index, resources={
                 BUNDLE_RESOURCE_LABEL: 0.001
             }).remote(self)
 
@@ -112,9 +112,10 @@ class PlacementGroup:
         self._fill_bundle_cache_if_needed()
         return len(self.bundle_cache)
 
-    def _fill_bundle_cache_if_needed(self) -> None:
+    def _fill_bundle_cache_if_needed(self, bundles_changed=False) -> None:
         if not self.bundle_cache or bundles_changed:
             self.bundle_cache = _get_bundle_cache(self.id)
+            self.max_bundle_index = len(self.bundle_cache) - 1
 
 
 def validate_bundles(bundles: List[Dict[str, float]]):
