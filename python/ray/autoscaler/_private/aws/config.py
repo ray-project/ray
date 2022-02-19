@@ -594,7 +594,6 @@ def _check_ami(config):
     for key, node_type in config["available_node_types"].items():
         node_config = node_type["node_config"]
         node_ami = node_config.get("ImageId", "").lower()
-
         if node_ami in ["", "latest_dlami"]:
             if not default_ami:
                 cli_logger.abort(
