@@ -260,7 +260,8 @@ def test_usage_report_disabled(monkeypatch, shutdown_only):
     the invalid report url is given as an env var).
     """
     with monkeypatch.context() as m:
-        m.setenv("RAY_USAGE_STATS_ENABLED", "0")
+        # It is disabled by default.
+        # m.setenv("RAY_USAGE_STATS_ENABLED", "0")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
         ray.init(num_cpus=0)
