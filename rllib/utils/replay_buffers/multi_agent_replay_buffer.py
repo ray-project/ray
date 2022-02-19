@@ -1,9 +1,10 @@
+import logging
 import collections
 from typing import Any, Dict, Optional
 from enum import Enum
 
 import ray
-from ray.rllib.execution.buffers.replay_buffer import  _ALL_POLICIES
+from ray.rllib.execution.buffers.replay_buffer import _ALL_POLICIES
 from ray.rllib.policy.rnn_sequencing import \
     timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -13,12 +14,34 @@ from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
 from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
 from ray.rllib.utils.from_config import from_config
+from ray.util.debug import log_once
+
+logger = logging.getLogger(__name__)
 
 
 @ExperimentalAPI
 class ReplayMode(Enum):
     LOCKSTEP = 0
     INDEPENDENT = 1
+
+
+def merge_dicts_with_warning(args_on_init, args_on_call):
+    """Merge argument dicts, overwriting args_on_call with warning.
+
+    The MultiAgentReplayBuffer supports setting standard arguments for calls
+    of methods of the underlying buffers. These arguments can be
+    overwritten. Such overwrites trigger a warning to the user.
+    """
+    for arg_name, arg_value in args_on_call.items():
+        if arg_name in args_on_init:
+            if log_once("overwrite_argument_{}".format((str(arg_name)))):
+                logger.warning("Replay Buffer was initialized to have "
+                               "underlying buffers methods called with "
+                               "argument `{}={}`, but was subsequently called "
+                               "with `{}={}`.".format(
+                    arg_name, args_on_init[arg_name], arg_name, arg_value,
+                ))
+    return {**args_on_init, **args_on_call}
 
 
 @ExperimentalAPI
@@ -163,10 +186,12 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         self._num_added += batch.count
 
     def _add_to_underlying_buffer(self, policy_id: PolicyID, batch:
-            SampleBatchType, **kwargs) -> None:
-        """Utility method that reduces code redundancy for child classes"""
+    SampleBatchType, **kwargs) -> None:
+        """Utility method that reduces code redundancy for child classes."""
         # Merge kwargs, overwriting standard call arguments
-        kwargs = {**self.underlying_buffer_call_args, **kwargs}
+        kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args,
+                                          kwargs)
+
         if self._storage_unit is StorageUnit.TIMESTEPS:
             if self.replay_sequence_length == 1:
                 timeslices = batch.timeslices(1)
@@ -186,7 +211,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
     @override(ReplayBuffer)
     def sample(self, num_items: int, policy_id: Optional[PolicyID] = None,
                **kwargs) -> Optional[SampleBatchType]:
-        """Samples `num_items` multi agent batches from policy's buffers.
+        """Samples a MultiAgentBatch of `num_items` per one policy's buffer.
 
         If less than `num_items` records are in the policy's buffer,
         some samples in the results may be repeated to fulfil the batch size
@@ -201,7 +226,8 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             **kwargs: Forward compatibility kwargs.
         """
         # Merge kwargs, overwriting standard call arguments
-        kwargs = {**self.underlying_buffer_call_args, **kwargs}
+        kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args,
+                                          kwargs)
 
         if self._num_added < self.replay_starts:
             return None
@@ -276,4 +302,3 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
 
 ReplayActor = ray.remote(num_cpus=0)(MultiAgentReplayBuffer)
-

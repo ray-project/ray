@@ -9,7 +9,7 @@ from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import \
     MultiAgentReplayBuffer
 from ray.rllib.utils.replay_buffers.prioritized_replay_buffer import \
     PrioritizedReplayBuffer
-from ray.rllib.utils.replay_buffers.reservoir_buffer import ReservoirBuffer
+from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 
 
 def get_batch_id(batch, policy_id=DEFAULT_POLICY_ID):
@@ -17,7 +17,7 @@ def get_batch_id(batch, policy_id=DEFAULT_POLICY_ID):
         "batch_id"][0]
 
 
-class TestMultiAgentReplayBuffers(unittest.TestCase):
+class TestMultiAgentReplayBuffer(unittest.TestCase):
     batch_id = 0
 
     def _add_sample_batch_to_buffer(self, buffer, batch_size, num_batches=5,
@@ -65,8 +65,9 @@ class TestMultiAgentReplayBuffers(unittest.TestCase):
         for i in range(num_batches):
             # genera a few policy batches
             policy_batches = {idx: _generate_data(idx) for idx,
-                                                        _ in enumerate(range(
-                num_policies))}
+                                                           _ in
+                              enumerate(range(
+                                  num_policies))}
             self.batch_id += 1
             batch = MultiAgentBatch(policy_batches, 1)
             buffer.add(batch, **kwargs)
@@ -184,7 +185,7 @@ class TestMultiAgentReplayBuffers(unittest.TestCase):
         num_sampled_dict = {_id: 0 for _id in range(num_policies)}
         num_samples = 200
         for i in range(num_samples):
-            num_items = np.random.randint(0,5)
+            num_items = np.random.randint(0, 5)
             for _id, batch in buffer.sample(
                 num_items=num_items).policy_batches.items():
                 num_sampled_dict[_id] += 1
@@ -194,34 +195,20 @@ class TestMultiAgentReplayBuffers(unittest.TestCase):
             len(num_sampled_dict) * [200],
             atol=0.1)
 
-    def test_basic_functionality_with_different_underlying_buffers(self):
-        """Test this the buffer with different underlying buffers."""
+    def test_with_underlying_replaybuffer(self):
+        """Test this the buffer with different underlying buffers.
 
-        prioritized_replay_buffer_config = {
-            "type": PrioritizedReplayBuffer,
-            "alpha": 0.6,
-            "beta": 0.4,
-        }
-
-        batch_size = 5
-        buffer_size = 15
-
-        buffer = MultiAgentReplayBuffer(capacity=buffer_size,
-                                        replay_mode="lockstep",
-                                        learning_starts=0,
-                                        num_shards=1,
-                                        underlying_buffer_config=prioritized_replay_buffer_config)
-
-        self._add_sample_batch_to_buffer(buffer, batch_size=batch_size,
-                                         num_batches=2)
-        buffer.sample(5)
-
+        Test if we can initialize a simple underlying buffer without
+        additional arguments and lockstep sampling.
+        """
+        # Test with ReplayBuffer, no args for c'tor, add and sample
         reservoir_buffer_config = {
-            "type": ReservoirBuffer
+            "type": ReplayBuffer
         }
 
-        batch_size = 5
+        num_policies = 2
         buffer_size = 15
+        num_batches = 1
 
         buffer = MultiAgentReplayBuffer(capacity=buffer_size,
                                         replay_mode="lockstep",
@@ -229,9 +216,55 @@ class TestMultiAgentReplayBuffers(unittest.TestCase):
                                         num_shards=1,
                                         underlying_buffer_config=reservoir_buffer_config)
 
-        self._add_sample_batch_to_buffer(buffer, batch_size=batch_size,
-                                         num_batches=2)
-        buffer.sample(5)
+        self._add_multi_agent_batch_to_buffer(buffer,
+                                              num_policies=num_policies - 1,
+                                              num_batches=num_batches)
+        # Only test if we can sample and if samples belong to a single policy
+        sample = buffer.sample(2)
+        assert len(sample) == 1
+        assert len(sample.policy_batches) == 1
+
+        self._add_multi_agent_batch_to_buffer(buffer,
+                                              num_policies=num_policies,
+                                              num_batches=num_batches)
+
+        # Only test if we can sample from multiple policies
+        sample = buffer.sample(2)
+        assert len(sample) == 1
+        assert len(sample.policy_batches) == 2
+
+    def test_with_underlying_prioritized_replay_buffer(self):
+        """Test this the buffer with different underlying buffers.
+
+        Test if we can initialize a more complex underlying buffer with
+        additional arguments and independent sampling.
+        """
+        # Test with PrioritizedReplayBuffer, args for c'tor, add and sample
+        prioritized_replay_buffer_config = {
+            "type": PrioritizedReplayBuffer,
+            "alpha": 0.6,
+            "beta": 0.4,
+        }
+
+        num_policies = 2
+        buffer_size = 15
+        num_batches = 1
+
+        buffer = MultiAgentReplayBuffer(capacity=buffer_size,
+                                        replay_mode="independent",
+                                        learning_starts=0,
+                                        num_shards=1,
+                                        underlying_buffer_config=prioritized_replay_buffer_config)
+
+        self._add_multi_agent_batch_to_buffer(buffer,
+                                              num_policies=num_policies,
+                                              num_batches=num_batches)
+
+        # Only test if we can sample from multiple policies
+        sample = buffer.sample(2)
+        assert len(sample) == 1
+        assert len(sample.policy_batches) == 2
+
 
 if __name__ == "__main__":
     import pytest
