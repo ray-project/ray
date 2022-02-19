@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#pragma once
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -50,12 +51,11 @@ class GrpcBasedResourceBroadcaster {
   void HandleNodeRemoved(const rpc::GcsNodeInfo &node_info) LOCKS_EXCLUDED(mutex_);
 
   std::string DebugString();
+  void SendBroadcast(rpc::ResourceUsageBroadcastData batch);
 
  private:
   // The sequence number of the next broadcast to send.
   int64_t seq_no_;
-  // Timer tick to send the next broadcast round.
-  PeriodicalRunner ticker_;
 
   // The shared, thread safe pool of raylet clients, which we use to minimize connections.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
@@ -70,7 +70,6 @@ class GrpcBasedResourceBroadcaster {
   /// The set of nodes and their addresses which are subscribed to resource usage changes.
   absl::flat_hash_map<NodeID, rpc::Address> nodes_ GUARDED_BY(mutex_);
 
-  void SendBroadcast();
 
   friend class GrpcBasedResourceBroadcasterTest;
 };

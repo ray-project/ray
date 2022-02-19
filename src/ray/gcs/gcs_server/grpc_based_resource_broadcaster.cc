@@ -21,8 +21,6 @@ namespace gcs {
 
 GrpcBasedResourceBroadcaster::GrpcBasedResourceBroadcaster(
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-    std::function<void(rpc::ResourceUsageBroadcastData &)>
-        get_resource_usage_batch_for_broadcast,
     std::function<void(const rpc::Address &,
                        std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &,
                        const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &)>
@@ -30,12 +28,8 @@ GrpcBasedResourceBroadcaster::GrpcBasedResourceBroadcaster(
 
     )
     : seq_no_(absl::GetCurrentTimeNanos()),
-      ticker_(broadcast_service_),
       raylet_client_pool_(raylet_client_pool),
-      get_resource_usage_batch_for_broadcast_(get_resource_usage_batch_for_broadcast),
-      send_batch_(send_batch),
-      broadcast_period_ms_(
-          RayConfig::instance().raylet_report_resources_period_milliseconds()) {}
+      send_batch_(send_batch) {}
 
 GrpcBasedResourceBroadcaster::~GrpcBasedResourceBroadcaster() {}
 
@@ -76,10 +70,7 @@ std::string GrpcBasedResourceBroadcaster::DebugString() {
   return absl::StrCat("GrpcBasedResourceBroadcaster:\n- Tracked nodes: ", node_num);
 }
 
-void GrpcBasedResourceBroadcaster::SendBroadcast() {
-  rpc::ResourceUsageBroadcastData batch;
-  get_resource_usage_batch_for_broadcast_(batch);
-
+void GrpcBasedResourceBroadcaster::SendBroadcast(rpc::ResourceUsageBroadcastData batch) {
   if (batch.batch_size() == 0) {
     return;
   }

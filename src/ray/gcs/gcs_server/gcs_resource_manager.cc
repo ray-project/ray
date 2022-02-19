@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/ray_sync.h"
 
 #include "ray/common/ray_config.h"
 #include "ray/stats/metric_defs.h"
@@ -83,7 +84,7 @@ void GcsResourceManager::HandleUpdateResources(
       node_resource_change.set_node_id(node_id.Binary());
       node_resource_change.mutable_updated_resources()->insert(changed_resources->begin(),
                                                                changed_resources->end());
-      ray_sync_->Update(std::move(node_resource_change));
+      ray_sync_.Update(std::move(node_resource_change));
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       RAY_LOG(DEBUG) << "Finished updating resources, node id = " << node_id;
     };
@@ -130,7 +131,7 @@ void GcsResourceManager::HandleDeleteResources(
       for (const auto &resource_name : resource_names) {
         node_resource_change.add_deleted_resources(resource_name);
       }
-      ray_sync_->Update(std::move(node_resource_change));
+      ray_sync_.Update(std::move(node_resource_change));
 
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     };
@@ -166,14 +167,14 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   } else {
     if (node_resource_usages_.count(node_id) == 0 || data.resources_available_changed()) {
       const auto &resource_changed =
-          MapFromProtobuf(resources_data.resources_available());
+          MapFromProtobuf(data.resources_available());
       SetAvailableResources(node_id, ResourceSet(resource_changed));
     }
   }
 
   UpdateNodeResourceUsage(node_id, data);
 
-  ray_sync_->Update(data);
+  ray_sync_.Update(data);
 }
 
 void GcsResourceManager::HandleReportResourceUsage(
