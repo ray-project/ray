@@ -1,24 +1,25 @@
 import aiohttp.web
 from aiohttp.web import Request, Response
 import dataclasses
+from functools import wraps
 import logging
-from typing import Any
+from typing import Any, Callable
 import json
 import traceback
 from dataclasses import dataclass
 
 import ray
 import ray.dashboard.utils as dashboard_utils
-import ray.dashboard.optional_utils as optional_utils
+import ray.dashboard.optional_utils as dashboard_optional_utils
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.runtime_env.packaging import package_exists, upload_package_to_gcs
 from ray.dashboard.modules.job.common import (
     CURRENT_VERSION,
     http_uri_components_to_uri,
-    JobStatusInfo,
+    JobData,
     JobSubmitRequest,
     JobSubmitResponse,
     JobStopResponse,
-    JobStatusResponse,
     JobLogsResponse,
     VersionResponse,
     validate_request_type,
@@ -28,7 +29,47 @@ from ray.dashboard.modules.job.job_manager import JobManager
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-routes = optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
+
+RAY_INTERNAL_JOBS_NAMESPACE = "_ray_internal_jobs"
+
+
+def _init_ray_and_catch_exceptions(f: Callable) -> Callable:
+    @wraps(f)
+    async def check(self, *args, **kwargs):
+        try:
+            if not ray.is_initialized():
+                try:
+                    if use_gcs_for_bootstrap():
+                        address = self._dashboard_head.gcs_address
+                        redis_pw = None
+                        logger.info(f"Connecting to ray with address={address}")
+                    else:
+                        ip, port = self._dashboard_head.redis_address
+                        redis_pw = self._dashboard_head.redis_password
+                        address = f"{ip}:{port}"
+                        logger.info(
+                            f"Connecting to ray with address={address}, "
+                            f"redis_pw={redis_pw}"
+                        )
+                    ray.init(
+                        address=address,
+                        namespace=RAY_INTERNAL_JOBS_NAMESPACE,
+                        _redis_password=redis_pw,
+                    )
+                except Exception as e:
+                    ray.shutdown()
+                    raise e from None
+
+            return await f(self, *args, **kwargs)
+        except Exception as e:
+            logger.exception(f"Unexpected error in handler: {e}")
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
+
+    return check
 
 
 class JobHead(dashboard_utils.DashboardHeadModule):
@@ -71,7 +112,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/packages/{protocol}/{package_name}")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @_init_ray_and_catch_exceptions
     async def get_package(self, req: Request) -> Response:
         package_uri = http_uri_components_to_uri(
             protocol=req.match_info["protocol"],
@@ -87,7 +128,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         return Response()
 
     @routes.put("/api/packages/{protocol}/{package_name}")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @_init_ray_and_catch_exceptions
     async def upload_package(self, req: Request):
         package_uri = http_uri_components_to_uri(
             protocol=req.match_info["protocol"],
@@ -105,7 +146,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         return Response(status=aiohttp.web.HTTPOk.status_code)
 
     @routes.post("/api/jobs/")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @_init_ray_and_catch_exceptions
     async def submit_job(self, req: Request) -> Response:
         result = await self._parse_and_validate_request(req, JobSubmitRequest)
         # Request parsing failed, returned with Response object.
@@ -141,7 +182,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.post("/api/jobs/{job_id}/stop")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @_init_ray_and_catch_exceptions
     async def stop_job(self, req: Request) -> Response:
         job_id = req.match_info["job_id"]
         if not self.job_exists(job_id):
@@ -164,8 +205,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/jobs/{job_id}")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
-    async def get_job_status(self, req: Request) -> Response:
+    @_init_ray_and_catch_exceptions
+    async def get_job_data(self, req: Request) -> Response:
         job_id = req.match_info["job_id"]
         if not self.job_exists(job_id):
             return Response(
@@ -173,14 +214,13 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPNotFound.status_code,
             )
 
-        status: JobStatusInfo = self._job_manager.get_job_status(job_id)
-        resp = JobStatusResponse(status=status.status, message=status.message)
+        data: JobData = self._job_manager.get_job_data(job_id)
         return Response(
-            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
+            text=json.dumps(dataclasses.asdict(data)), content_type="application/json"
         )
 
     @routes.get("/api/jobs/{job_id}/logs")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @_init_ray_and_catch_exceptions
     async def get_job_logs(self, req: Request) -> Response:
         job_id = req.match_info["job_id"]
         if not self.job_exists(job_id):
@@ -195,7 +235,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/jobs/{job_id}/logs/tail")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @_init_ray_and_catch_exceptions
     async def tail_job_logs(self, req: Request) -> Response:
         job_id = req.match_info["job_id"]
         if not self.job_exists(job_id):

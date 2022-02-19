@@ -1,6 +1,7 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple, Union
+import time
+from typing import Any, Dict, Optional, Tuple
 import pickle
 
 from ray import ray_constants
@@ -36,9 +37,19 @@ class JobStatus(str, Enum):
 
 
 @dataclass
-class JobStatusInfo:
+class JobData:
     status: JobStatus
+
     message: Optional[str] = None
+    # TODO(architkulkarni): Populate this field with e.g. Runtime env setup failure,
+    # Internal error, user script error
+    error_type: Optional[str] = None
+    start_time: Optional[int] = None
+    # The time when a job moves into a terminal state.  A Unix timestamp in seconds.
+    end_time: Optional[int] = None
+    # Arbitrary user-provided metadata.
+    metadata: Optional[Dict[str, str]] = None
+    runtime_env: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         if self.message is None:
@@ -57,43 +68,73 @@ class JobStatusInfo:
                 self.message = "Job failed."
 
 
-class JobStatusStorageClient:
+class JobDataStorageClient:
     """
-    Handles formatting of status storage key given job id.
+    Interface to put and get job data from the Internal KV store.
     """
 
-    JOB_STATUS_KEY_PREFIX = "_ray_internal_job_status"
-    JOB_STATUS_KEY = f"{JOB_STATUS_KEY_PREFIX}_{{job_id}}"
+    JOB_DATA_KEY_PREFIX = "_ray_internal_job_data_"
+    JOB_DATA_KEY = f"{JOB_DATA_KEY_PREFIX}{{job_id}}"
 
     def __init__(self):
         assert _internal_kv_initialized()
 
-    def put_status(self, job_id: str, status: Union[JobStatus, JobStatusInfo]):
-        if isinstance(status, JobStatus):
-            status = JobStatusInfo(status=status)
-        elif not isinstance(status, JobStatusInfo):
-            assert False, "status must be JobStatus or JobStatusInfo."
-
+    def put_data(self, job_id: str, data: JobData):
         _internal_kv_put(
-            self.JOB_STATUS_KEY.format(job_id=job_id),
-            pickle.dumps(status),
+            self.JOB_DATA_KEY.format(job_id=job_id),
+            pickle.dumps(data),
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
 
-    def get_status(self, job_id: str) -> Optional[JobStatusInfo]:
-        pickled_status = _internal_kv_get(
-            self.JOB_STATUS_KEY.format(job_id=job_id),
+    def get_data(self, job_id: str) -> Optional[JobData]:
+        # raise ValueError
+        pickled_data = _internal_kv_get(
+            self.JOB_DATA_KEY.format(job_id=job_id),
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
-        if pickled_status is None:
+        if pickled_data is None:
             return None
         else:
-            return pickle.loads(pickled_status)
+            return pickle.loads(pickled_data)
 
-    def get_all_jobs(self) -> Dict[str, JobStatusInfo]:
-        raw_job_ids = _internal_kv_list(self.JOB_STATUS_KEY_PREFIX)
-        job_ids = [job_id.decode() for job_id in raw_job_ids]
-        return {job_id: self.get_status(job_id) for job_id in job_ids}
+    def put_status(self, job_id: str, status: JobStatus, message: Optional[str] = None):
+        """Puts or updates job status.  Sets end_time if status is terminal."""
+
+        old_data = self.get_data(job_id)
+
+        if old_data is not None:
+            if status != old_data.status and old_data.status.is_terminal():
+                assert False, "Attempted to change job status from a terminal state."
+            new_data = replace(old_data, status=status, message=message)
+        else:
+            new_data = JobData(status=status, message=message)
+
+        if status.is_terminal():
+            new_data.end_time = int(time.time())
+
+        self.put_data(job_id, new_data)
+
+    def get_status(self, job_id: str) -> Optional[JobStatus]:
+        job_data = self.get_data(job_id)
+        if job_data is None:
+            return None
+        else:
+            return job_data.status
+
+    def get_all_jobs(self) -> Dict[str, JobData]:
+        raw_job_ids_with_prefixes = _internal_kv_list(
+            self.JOB_DATA_KEY_PREFIX, namespace=ray_constants.KV_NAMESPACE_JOB
+        )
+        job_ids_with_prefixes = [
+            job_id.decode() for job_id in raw_job_ids_with_prefixes
+        ]
+        job_ids = []
+        for job_id_with_prefix in job_ids_with_prefixes:
+            assert job_id_with_prefix.startswith(
+                self.JOB_DATA_KEY_PREFIX
+            ), "Unexpected format for internal_kv key for Job submission"
+            job_ids.append(job_id_with_prefix[len(self.JOB_DATA_KEY_PREFIX) :])
+        return {job_id: self.get_data(job_id) for job_id in job_ids}
 
 
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
@@ -178,12 +219,6 @@ class JobSubmitResponse:
 @dataclass
 class JobStopResponse:
     stopped: bool
-
-
-@dataclass
-class JobStatusResponse:
-    status: JobStatus
-    message: Optional[str]
 
 
 # TODO(jiaodong): Support log streaming #19415

@@ -136,6 +136,7 @@ class GlobalState:
             "StartTime": actor_table_data.start_time,
             "EndTime": actor_table_data.end_time,
             "DeathCause": actor_table_data.death_cause,
+            "Pid": actor_table_data.pid,
         }
         return actor_info
 

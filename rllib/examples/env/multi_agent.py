@@ -27,6 +27,7 @@ class BasicMultiAgent(MultiAgentEnv):
     def __init__(self, num):
         super().__init__()
         self.agents = [MockEnv(25) for _ in range(num)]
+        self._agent_ids = set(range(num))
         self.dones = set()
         self.observation_space = gym.spaces.Discrete(2)
         self.action_space = gym.spaces.Discrete(2)
@@ -59,6 +60,7 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
     def __init__(self):
         super().__init__()
         self.agents = [MockEnv(3), MockEnv(5)]
+        self._agent_ids = set(range(len(self.agents)))
         self.dones = set()
         self.last_obs = {}
         self.last_rew = {}
@@ -77,7 +79,7 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
         self.i = 0
         for i, a in enumerate(self.agents):
             self.last_obs[i] = a.reset()
-            self.last_rew[i] = None
+            self.last_rew[i] = 0
             self.last_done[i] = False
             self.last_info[i] = {}
         obs_dict = {self.i: self.last_obs[self.i]}
@@ -111,6 +113,7 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
     def __init__(self):
         super().__init__()
         self.agents = {}
+        self._agent_ids = set()
         self.agentID = 0
         self.dones = set()
         self.observation_space = gym.spaces.Discrete(2)
@@ -121,15 +124,16 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
         # Spawn a new agent into the current episode.
         agentID = self.agentID
         self.agents[agentID] = MockEnv(25)
+        self._agent_ids.add(agentID)
         self.agentID += 1
         return agentID
 
     def reset(self):
         self.agents = {}
+        self._agent_ids = set()
         self.spawn()
         self.resetted = True
         self.dones = set()
-
         obs = {}
         for i, a in self.agents.items():
             obs[i] = a.reset()
@@ -175,6 +179,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         else:
             # Observations are all zeros
             self.agents = [MockEnv(5) for _ in range(num)]
+        self._agent_ids = set(range(num))
         self.dones = set()
         self.last_obs = {}
         self.last_rew = {}
@@ -194,7 +199,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         self.i = 0
         for i, a in enumerate(self.agents):
             self.last_obs[i] = a.reset()
-            self.last_rew[i] = None
+            self.last_rew[i] = 0
             self.last_done[i] = False
             self.last_info[i] = {}
         obs_dict = {self.i: self.last_obs[self.i]}
