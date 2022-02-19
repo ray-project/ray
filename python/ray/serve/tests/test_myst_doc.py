@@ -8,6 +8,7 @@ import jupytext
 
 parser = argparse.ArgumentParser(
     description="Run a jupytext parsable markdown file.")
+
 parser.add_argument(
     "--path",
     help="path to the markdown file",

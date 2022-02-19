@@ -1,7 +1,9 @@
-.. include:: we_are_hiring.rst
+.. include:: /_includes/rllib_announcement.rst
 
-RLlib Models, Preprocessors, and Action Distributions
-=====================================================
+.. include:: /_includes/rllib_we_are_hiring.rst
+
+Models, Preprocessors, and Action Distributions
+===============================================
 
 The following diagram provides a conceptual overview of data flow between different components in RLlib.
 We start with an ``Environment``, which - given an action - produces an observation.
@@ -711,3 +713,5 @@ To do this, you need both a custom model that implements the autoregressive patt
 .. note::
 
    Not all algorithms support autoregressive action distributions; see the `algorithm overview table <rllib-algorithms.html#available-algorithms-overview>`__ for more information.
+
+.. include:: /_includes/rllib_announcement_bottom.rst
