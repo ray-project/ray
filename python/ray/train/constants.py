@@ -27,6 +27,10 @@ DETAILED_AUTOFILLED_KEYS = {DATE, HOSTNAME, NODE_IP, PID, TIME_TOTAL_S}
 # new results after signaling the training function to continue.
 RESULT_FETCH_TIMEOUT = 0.2
 
+# Time to wait for remaining workers to return results before marking them dead
+# once any worker in the training run has already failed.
+REMAINING_WORKERS_WAIT_TIMEOUT = 10
+
 # Default filename for JSON logger
 RESULT_FILE_JSON = "results.json"
 

@@ -725,7 +725,7 @@ class TrainingIterator:
                 "training from latest checkpoint."
             )
             logger.debug(
-                "Latest checkpoint:" f" {self._checkpoint_manager.latest_checkpoint}"
+                f"Latest checkpoint: {self._checkpoint_manager.latest_checkpoint}"
             )
             self._start_training(
                 self._train_func,

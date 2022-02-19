@@ -71,7 +71,7 @@ class Backend(metaclass=Singleton):
         worker_group.shutdown()
         logger.info("Restarting all training workers.")
         worker_group.start()
-        logger.info("Setting up distributed backend on restarted workers.")
+        logger.info("Setting up distributed backend on all workers.")
         self.on_start(worker_group, backend_config)
 
     @staticmethod
