@@ -652,10 +652,10 @@ class TrialRunner:
 
         trials = load_trials_from_experiment_checkpoint(runner_state)
         for trial in sorted(trials, key=lambda t: t.last_update_time, reverse=True):
-            if run_errored_only and trial.status == Trial.ERROR:
+            if trial.status == Trial.ERROR:
                 new_trial = trial.reset()
                 self.add_trial(new_trial)
-            else:
+            elif not run_errored_only:
                 self.add_trial(trial)
 
     def update_pending_trial_resources(
