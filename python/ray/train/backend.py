@@ -188,9 +188,8 @@ class BackendExecutor:
         except RayActorError as exc:
             logger.exception(str(exc))
             logger.warning(
-                "Failure occurred during failure handling of a "
-                "previous failure. Restarting all workers and "
-                "continuing from latest checkpoint."
+                "Failure occurred during startup. Restarting all workers and "
+                "attempting to startup again."
             )
             self._increment_failures()
             self._restart()
