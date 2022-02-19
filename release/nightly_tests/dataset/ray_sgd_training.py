@@ -24,11 +24,7 @@ from ray.train.callbacks import MLflowLoggerCallback, TBXLoggerCallback
 
 def read_dataset(path: str) -> ray.data.Dataset:
     print(f"reading data from {path}")
-    return (
-        ray.data.read_parquet(path, _spread_resource_prefix="node:")
-        .repartition(400)
-        .random_shuffle(_spread_resource_prefix="node:")
-    )
+    return ray.data.read_parquet(path).repartition(400).random_shuffle()
 
 
 class DataPreprocessor:
@@ -547,7 +543,7 @@ if __name__ == "__main__":
         num_gpus = 1 if use_gpu else 0
         shards = (
             train_dataset.repeat(num_epochs)
-            .random_shuffle_each_window(_spread_resource_prefix="node:")
+            .random_shuffle_each_window()
             .split(num_workers)
         )
         del train_dataset
@@ -568,9 +564,7 @@ if __name__ == "__main__":
         exit()
 
     # Random global shuffle
-    train_dataset_pipeline = train_dataset.repeat().random_shuffle_each_window(
-        _spread_resource_prefix="node:"
-    )
+    train_dataset_pipeline = train_dataset.repeat().random_shuffle_each_window()
     del train_dataset
 
     datasets = {"train_dataset": train_dataset_pipeline, "test_dataset": test_dataset}

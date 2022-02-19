@@ -144,9 +144,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
  private:
   /// Helper method to get the best node for running the task.
-  std::string GetBestSchedulableNode(const internal::Work &work,
-                                     bool requires_object_store_memory,
-                                     bool force_spillback, bool *is_infeasible);
+  std::string GetBestSchedulableNode(const internal::Work &work, bool *is_infeasible);
 
   void TryScheduleInfeasibleTask();
 
