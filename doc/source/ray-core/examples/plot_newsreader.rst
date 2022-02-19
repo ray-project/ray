@@ -15,7 +15,7 @@ To run this example, you will need to install `NPM`_ and a few python dependenci
   pip install flask-cors
 
 
-Navigate to the ``ray/doc/source/ray-core/_examples/newsreader`` directory and start the Flask server.
+Navigate to the ``ray/doc/source/ray-core/examples/newsreader`` directory and start the Flask server.
 
 .. code-block:: bash
 
@@ -44,12 +44,12 @@ Star some of the articles in the channel. Each time you star an article, you
 can see the Flask server responding in its terminal. 
 
 Now we will view our database. Navigate back to the 
-``ray/doc/source/ray-core/_examples/newsreader`` directory. Access the database by running
+``ray/doc/source/ray-core/examples/newsreader`` directory. Access the database by running
 ``sqlite3 newsreader.db`` in the terminal. This will start a sqlite session.
 View all the articles in the ``news`` table by running ``SELECT * FROM news;``.
 For more details on commands in sqlite, you can run `.help` in 
 the database.
 
 .. _`frontend`: https://github.com/saqueib/qreader
-.. _`code for this example`: https://github.com/ray-project/ray/tree/master/doc/source/ray-core/_examples/newsreader
+.. _`code for this example`: https://github.com/ray-project/ray/tree/master/doc/source/ray-core/examples/newsreader
 .. _`NPM`: https://docs.npmjs.com/downloading-and-installing-node-js-and-npm
