@@ -13,9 +13,9 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
-#include "ray/gcs/gcs_server/ray_sync.h"
 
 #include "ray/common/ray_config.h"
+#include "ray/gcs/gcs_server/ray_sync.h"
 #include "ray/stats/metric_defs.h"
 
 namespace ray {
@@ -166,8 +166,7 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
     UpdateNodeNormalTaskResources(node_id, data);
   } else {
     if (node_resource_usages_.count(node_id) == 0 || data.resources_available_changed()) {
-      const auto &resource_changed =
-          MapFromProtobuf(data.resources_available());
+      const auto &resource_changed = MapFromProtobuf(data.resources_available());
       SetAvailableResources(node_id, ResourceSet(resource_changed));
     }
   }

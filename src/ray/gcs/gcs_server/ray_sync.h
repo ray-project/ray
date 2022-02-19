@@ -13,25 +13,24 @@
 // limitations under the License.
 #pragma once
 
-
 #include <memory>
 #include <type_traits>
-#include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
-#include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
+
 #include "ray/common/asio/periodical_runner.h"
+#include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
+#include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 
 namespace ray {
 namespace sync {
 
 class RaySync {
  public:
-  RaySync(instrumented_io_context& main_thread,
+  RaySync(instrumented_io_context &main_thread,
           std::unique_ptr<::ray::gcs::GrpcBasedResourceBroadcaster> braodcaster,
           std::unique_ptr<::ray::gcs::GcsResourceReportPoller> poller)
-      : 
-      ticker_(main_thread),
-      broadcaster_(std::move(braodcaster)), 
-      poller_(std::move(poller)) {}
+      : ticker_(main_thread),
+        broadcaster_(std::move(braodcaster)),
+        poller_(std::move(poller)) {}
 
   void Start() {
     poller_->Start();
@@ -41,21 +40,20 @@ class RaySync {
       broadcast_service_.run();
     });
     ticker_.RunFnPeriodically(
-      [this] { 
-        auto beg = resources_buffer_.begin();
-        auto ptr = beg;
-        static auto max_batch = RayConfig::instance().resource_broadcast_batch_size();
-        for (size_t cnt = resources_buffer_proto_.batch().size();
-            cnt <  max_batch && cnt < resources_buffer_.size();
-            ++ptr, ++cnt) {
-          resources_buffer_proto_.add_batch()->mutable_data()->Swap(&ptr->second);
-        }
-        resources_buffer_.erase(beg, ptr);        
-        broadcaster_->SendBroadcast(std::move(resources_buffer_proto_)); 
-        resources_buffer_proto_.Clear();
-      }, 
-      RayConfig::instance().raylet_report_resources_period_milliseconds(),
-      "RaySyncer.deadline_timer.report_resource_report");
+        [this] {
+          auto beg = resources_buffer_.begin();
+          auto ptr = beg;
+          static auto max_batch = RayConfig::instance().resource_broadcast_batch_size();
+          for (size_t cnt = resources_buffer_proto_.batch().size();
+               cnt < max_batch && cnt < resources_buffer_.size(); ++ptr, ++cnt) {
+            resources_buffer_proto_.add_batch()->mutable_data()->Swap(&ptr->second);
+          }
+          resources_buffer_.erase(beg, ptr);
+          broadcaster_->SendBroadcast(std::move(resources_buffer_proto_));
+          resources_buffer_proto_.Clear();
+        },
+        RayConfig::instance().raylet_report_resources_period_milliseconds(),
+        "RaySyncer.deadline_timer.report_resource_report");
   }
 
   void Stop() {
@@ -72,22 +70,21 @@ class RaySync {
   template <typename T>
   void Update(T update) {
     static_assert(std::is_same_v<T, rpc::NodeResourceChange> ||
-                  std::is_same_v<T, rpc::ResourcesData>, "unknown type");
+                      std::is_same_v<T, rpc::ResourcesData>,
+                  "unknown type");
 
     if constexpr (std::is_same_v<T, rpc::NodeResourceChange>) {
       resources_buffer_proto_.add_batch()->mutable_change()->Swap(&update);
     } else if constexpr (std::is_same_v<T, rpc::ResourcesData>) {
-      if (update.should_global_gc() ||
-          update.resources_total_size() > 0 ||
-          update.resources_available_changed() ||
-          update.resource_load_changed()) {
+      if (update.should_global_gc() || update.resources_total_size() > 0 ||
+          update.resources_available_changed() || update.resource_load_changed()) {
         update.clear_resource_load();
         update.clear_resource_load_by_shape();
         update.clear_resources_normal_task();
-        auto& orig = resources_buffer_[update.node_id()];
+        auto &orig = resources_buffer_[update.node_id()];
         orig.Swap(&update);
       }
-    } 
+    }
   }
 
   void AddNode(const rpc::GcsNodeInfo &node_info) {

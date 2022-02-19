@@ -20,12 +20,12 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/gcs/gcs_server/gcs_resource_manager.h"
-#include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/pubsub/publisher.h"
@@ -414,7 +414,7 @@ void GcsServer::InitRaySync(const GcsInitData &gcs_init_data) {
   */
   auto on_update = [this](const rpc::ResourcesData &report) {
     main_service_.dispatch(
-        [this, report] () mutable {
+        [this, report]() mutable {
           gcs_resource_manager_->UpdateFromResourceReport(std::move(report));
         },
         "UpdateResourceReport");
@@ -428,10 +428,9 @@ void GcsServer::InitRaySync(const GcsInitData &gcs_init_data) {
   auto grpc_based_resource_broadcaster =
       std::make_unique<GrpcBasedResourceBroadcaster>(raylet_client_pool_);
 
-  ray_sync_ = std::make_unique<sync::RaySync>(
-    main_service_,
-    std::move(grpc_based_resource_broadcaster),
-    std::move(gcs_resource_report_poller));
+  ray_sync_ = std::make_unique<sync::RaySync>(main_service_,
+                                              std::move(grpc_based_resource_broadcaster),
+                                              std::move(gcs_resource_report_poller));
   ray_sync_->Start();
 }
 

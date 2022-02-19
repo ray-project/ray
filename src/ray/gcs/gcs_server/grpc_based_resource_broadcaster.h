@@ -70,7 +70,6 @@ class GrpcBasedResourceBroadcaster {
   /// The set of nodes and their addresses which are subscribed to resource usage changes.
   absl::flat_hash_map<NodeID, rpc::Address> nodes_ GUARDED_BY(mutex_);
 
-
   friend class GrpcBasedResourceBroadcasterTest;
 };
 }  // namespace gcs
