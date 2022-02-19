@@ -12,6 +12,9 @@ from ray.data.impl.compute import get_compute
 from ray.data.impl.stats import DatasetStats
 from ray.data.impl.lazy_block_list import LazyBlockList
 
+# Scheduling strategy can be inherited from prev stage if not specified.
+INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
+
 
 class ExecutionPlan:
     """A lazy execution plan for a Dataset."""
@@ -257,7 +260,11 @@ class OneToOneStage(Stage):
             return False
         if prev.compute != self.compute:
             return False
-        if prev.ray_remote_args != self.ray_remote_args:
+        for key in INHERITABLE_REMOTE_ARGS:
+            remote_args = self.ray_remote_args.copy()
+            if key in prev.ray_remote_args:
+                remote_args[key] = prev.ray_remote_args[key]
+        if prev.ray_remote_args != remote_args:
             return False
         return True
 
@@ -271,7 +278,7 @@ class OneToOneStage(Stage):
                 for tmp2 in fn2(tmp1):
                     yield tmp2
 
-        return OneToOneStage(name, block_fn, self.compute, self.ray_remote_args)
+        return OneToOneStage(name, block_fn, prev.compute, prev.ray_remote_args)
 
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
