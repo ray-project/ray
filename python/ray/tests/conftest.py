@@ -604,3 +604,13 @@ def cloned_virtualenv():
     )
     yield venv
     venv.teardown()
+
+
+@pytest.fixture
+def set_runtime_env_retry_times(request):
+    runtime_env_retry_times = getattr(request, "param", "0")
+    try:
+        os.environ["RUNTIME_ENV_RETRY_TIMES"] = runtime_env_retry_times
+        yield runtime_env_retry_times
+    finally:
+        del os.environ["RUNTIME_ENV_RETRY_TIMES"]

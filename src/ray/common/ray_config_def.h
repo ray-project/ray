@@ -288,9 +288,6 @@ RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
 RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
 // The number of concurrent polls to polls to GCS.
 RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
-// Feature flag to use grpc instead of redis for resource broadcast.
-// TODO(ekl) broken as of https://github.com/ray-project/ray/issues/16858
-RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 // Feature flag to enable grpc based pubsub in GCS.
 RAY_CONFIG(bool, gcs_grpc_based_pubsub, true)
 // The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
