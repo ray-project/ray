@@ -8,11 +8,11 @@ To run this example, you will need to install Ray on your local machine to use t
 
 You can view the `code for this example`_.
 
-.. _`code for this example`: https://github.com/ray-project/ray/tree/master/doc/source/ray-core/_examples/lm
+.. _`code for this example`: https://github.com/ray-project/ray/tree/master/doc/source/ray-core/examples/lm
 
 
 To use Ray cluster launcher on AWS, install boto (``pip install boto3``) and configure your AWS credentials in ``~/.aws/credentials`` as described on the  :ref:`Automatic Cluster Setup page <cluster-cloud>`.
-We provide an `example config file <https://github.com/ray-project/ray/tree/master/doc/source/ray-core/_examples/lm/lm-cluster.yaml>`__ (``lm-cluster.yaml``).
+We provide an `example config file <https://github.com/ray-project/ray/tree/master/doc/source/ray-core/examples/lm/lm-cluster.yaml>`__ (``lm-cluster.yaml``).
 
 In the example config file, we use an ``m5.xlarge`` on-demand instance as the head node, and use ``p3.2xlarge`` GPU spot instances as the worker nodes. We set the minimal number of workers to 1 and maximum workers to 2 in the config, which can be modified according to your own demand.
 
@@ -50,12 +50,12 @@ files from a local path:
 Preprocessing Data
 ------------------
 
-Once the cluster is started, you can then SSH into the head node using ``ray attach lm-cluster.yaml`` and download or preprocess the data on EFS for training. We can run ``preprocess.sh`` (`code <https://github.com/ray-project/ray/tree/master/doc/source/ray-core/_examples/lm/preprocess.sh>`_) to do this, which adapts instructions from `the RoBERTa tutorial <https://github.com/pytorch/fairseq/blob/master/examples/roberta/README.pretraining.md>`__.
+Once the cluster is started, you can then SSH into the head node using ``ray attach lm-cluster.yaml`` and download or preprocess the data on EFS for training. We can run ``preprocess.sh`` (`code <https://github.com/ray-project/ray/tree/master/doc/source/ray-core/examples/lm/preprocess.sh>`_) to do this, which adapts instructions from `the RoBERTa tutorial <https://github.com/pytorch/fairseq/blob/master/examples/roberta/README.pretraining.md>`__.
 
 Training
 --------
 
-We provide ``ray_train.py`` (`code <https://github.com/ray-project/ray/tree/master/doc/source/ray-core/_examples/lm/ray_train.py>`__) as an entrypoint to the Fairseq library. Since we are training the model on spot instances, we provide fault-tolerance in ``ray_train.py`` by checkpointing and restarting when a node fails. The code will also check whether there are new resources available after checkpointing. If so, the program will make use of them by restarting and resizing.
+We provide ``ray_train.py`` (`code <https://github.com/ray-project/ray/tree/master/doc/source/ray-core/examples/lm/ray_train.py>`__) as an entrypoint to the Fairseq library. Since we are training the model on spot instances, we provide fault-tolerance in ``ray_train.py`` by checkpointing and restarting when a node fails. The code will also check whether there are new resources available after checkpointing. If so, the program will make use of them by restarting and resizing.
 
 Two main components of ``ray_train.py`` are a ``RayDistributedActor`` class and a function ``run_fault_tolerant_loop()``. The ``RayDistributedActor`` sets proper arguments for different ray actor processes, adds a checkpoint hook to enable the process to make use of new available GPUs, and calls the ``main`` of Fairseq:
 
@@ -256,7 +256,7 @@ In ``ray_train.py``, we also define a set of helper functions. ``add_ray_args()`
 
 
 
-To start training, run `following commands <https://github.com/ray-project/ray/tree/master/doc/source/ray-core/_examples/lm/ray_train.sh>`__ (``ray_train.sh``) on the head machine:
+To start training, run `following commands <https://github.com/ray-project/ray/tree/master/doc/source/ray-core/examples/lm/ray_train.sh>`__ (``ray_train.sh``) on the head machine:
 
 .. code-block:: bash
 

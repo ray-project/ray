@@ -1,19 +1,28 @@
-# flake8: noqa: E501
-"""
-XGBoost-Ray with Dask
-======================
+# ---
+# jupyter:
+#   jupytext:
+#     text_representation:
+#       extension: .py
+#       format_name: light
+#       format_version: '1.5'
+#       jupytext_version: 1.13.6
+#   kernelspec:
+#     display_name: Python 3
+#     language: python
+#     name: python3
+# ---
 
-This notebook includes an example workflow using
-`XGBoost-Ray <https://docs.ray.io/en/latest/xgboost-ray.html>`_ and
-`Dask <https://docs.dask.org/en/latest/>`_ for distributed model training,
-hyperparameter optimization, and prediction.
-"""
-
-###############################################################################
-# Cluster Setup
-# -------------
+# # XGBoost-Ray with Dask
 #
-# First, we'll set up our Ray Cluster. The provided ``dask_xgboost.yaml``
+#
+# This notebook includes an example workflow using
+# [XGBoost-Ray](https://docs.ray.io/en/latest/xgboost-ray.html) and
+# [Dask](https://docs.dask.org/en/latest/) for distributed model training,
+# hyperparameter optimization, and prediction.
+#
+# ## Cluster Setup
+#
+# First, we'll set up our Ray Cluster. The provided `dask_xgboost.yaml`
 # cluster config can be used to set up an AWS cluster with 64 CPUs.
 #
 # The following steps assume you are in a directory with both
@@ -21,31 +30,29 @@ hyperparameter optimization, and prediction.
 #
 # **Step 1:** Bring up the Ray cluster.
 #
-# .. code-block:: bash
-#
-#     $ pip install ray boto3
-#     $ ray up dask_xgboost.yaml
-#
+# ```bash
+# pip install ray boto3
+# ray up dask_xgboost.yaml
+# ```
 # **Step 2:** Move ``dask_xgboost.ipynb`` to the cluster and start Jupyter.
 #
-# .. code-block:: bash
-#
-#     $ ray rsync_up dask_xgboost.yaml "./dask_xgboost.ipynb" \
-#       "~/dask_xgboost.ipynb"
-#     $ ray exec dask_xgboost.yaml --port-forward=9999 "jupyter notebook \
-#       --port=9999"
+# ```bash
+# ray rsync_up dask_xgboost.yaml "./dask_xgboost.ipynb" \
+#     "~/dask_xgboost.ipynb"
+# ray exec dask_xgboost.yaml --port-forward=9999 "jupyter notebook \
+#     --port=9999"
+# ```
 #
 # You can then access this notebook at the URL that is output:
 # ``http://localhost:9999/?token=<token>``
-
-###############################################################################
-# Python Setup
-# ------------
+#
+# ## Python Setup
 #
 # First, we'll import all the libraries we'll be using. This step also helps us
 # verify that the environment is configured correctly. If any of the imports
 # are missing, an exception will be raised.
 
+# +
 import argparse
 import time
 
@@ -57,8 +64,8 @@ import ray
 from ray import tune
 from ray.util.dask import ray_dask_get
 
-###############################################################################
-#
+# -
+
 # Next, let's parse some arguments. This will be used for executing the ``.py``
 # file, but not for the ``.ipynb``. If you are using the interactive notebook,
 # you can directly override the arguments manually.
@@ -96,8 +103,7 @@ parser.add_argument(
 # Ignore -f from ipykernel_launcher
 args, _ = parser.parse_known_args()
 
-###############################################################################
-#  Override these arguments as needed:
+# Override these arguments as needed:
 
 address = args.address
 smoke_test = args.smoke_test
@@ -106,17 +112,15 @@ cpus_per_actor = args.cpus_per_actor
 num_actors_inference = args.num_actors_inference
 cpus_per_actor_inference = args.cpus_per_actor_inference
 
-###############################################################################
-# Connecting to the Ray cluster
-# -----------------------------
+# ## Connecting to the Ray cluster
+#
 # Now, let's connect our Python script to this newly deployed Ray cluster!
 
 if not ray.is_initialized():
     ray.init(address=address)
 
-###############################################################################
-# Data Preparation
-# -----------------
+# ## Data Preparation
+#
 # We will use the `HIGGS dataset from the UCI Machine Learning dataset
 # repository <https://archive.ics.uci.edu/ml/datasets/HIGGS>`_. The HIGGS
 # dataset consists of 11,000,000 samples and 28 attributes, which is large
@@ -138,8 +142,7 @@ else:
 colnames = [LABEL_COLUMN] + ["feature-%02d" % i for i in range(1, 29)]
 dask.config.set(scheduler=ray_dask_get)
 
-###############################################################################
-
+# +
 load_data_start_time = time.time()
 
 data = dd.read_csv(FILE_URL, names=colnames)
@@ -149,8 +152,8 @@ data = data.persist()
 load_data_end_time = time.time()
 load_data_duration = load_data_end_time - load_data_start_time
 print(f"Dataset loaded in {load_data_duration} seconds.")
+# -
 
-###############################################################################
 # With the connection established, we can now create the Dask dataframe.
 #
 # We will split the data into a training set and a evaluation set using a 80-20
@@ -160,9 +163,9 @@ train_df, eval_df = data.random_split([0.8, 0.2])
 train_df, eval_df = train_df.persist(), eval_df.persist()
 print(train_df, eval_df)
 
-###############################################################################
-# Distributed Training
-# --------------------
+
+# ## Distributed Training
+#
 # The ``train_xgboost`` function contains all of the logic necessary for
 # training using XGBoost-Ray.
 #
@@ -210,13 +213,13 @@ def train_xgboost(config, train_df, test_df, target_column, ray_params):
     return bst, evals_result
 
 
-###############################################################################
 # We can now pass our Dask dataframes and run the function. We will use
 # ``RayParams`` to specify that the number of actors and CPUs to train with.
 #
 # The dataset has to be downloaded onto the cluster, which may take a few
 # minutes.
 
+# +
 # standard XGBoost config for classification
 config = {
     "tree_method": "approx",
@@ -233,18 +236,20 @@ bst, evals_result = train_xgboost(
 )
 print(f"Results: {evals_result}")
 
-###############################################################################
-# Hyperparameter optimization
-# ---------------------------
+
+# -
+
+# ## Hyperparameter optimization
+#
 # If we are not content with the results obtained with default XGBoost
-# parameters, we can use `Ray Tune
-# <https://docs.ray.io/en/latest/tune/index.html>`_ for cutting-edge
+# parameters, we can use [Ray Tune](https://docs.ray.io/en/latest/tune/index.html)
+# for cutting-edge
 # distributed hyperparameter tuning. XGBoost-Ray automatically integrates
 # with Ray Tune, meaning we can use the same training function as before.
 #
 # In this workflow, we will tune three hyperparameters - ``eta``, ``subsample``
-# and ``max_depth``. We are using `Tune's samplers to define the search
-# space <https://docs.ray.io/en/latest/tune/user-guide.html#search-space-grid-random>`_.
+# and ``max_depth``. We are using [Tune's samplers to define the search
+# space](https://docs.ray.io/en/latest/tune/user-guide.html#search-space-grid-random).
 #
 # The experiment configuration is done through ``tune.run``. We set the amount
 # of resources each trial (hyperparameter combination) requires by using the
@@ -254,9 +259,9 @@ print(f"Results: {evals_result}")
 # returned.
 #
 # By default, Tune will use simple random search. However, Tune also
-# provides various `search algorithms
-# <https://docs.ray.io/en/latest/tune/api_docs/suggestion.html>`_ and
-# `schedulers <https://docs.ray.io/en/latest/tune/api_docs/schedulers.html>`_
+# provides various
+# [search algorithms](https://docs.ray.io/en/latest/tune/api_docs/suggestion.html) and
+# [schedulers](https://docs.ray.io/en/latest/tune/api_docs/schedulers.html)
 # to further improve the optimization process.
 
 
@@ -304,14 +309,12 @@ def tune_xgboost(train_df, test_df, target_column):
     return analysis.best_config
 
 
-###############################################################################
 # Hyperparameter optimization may take some time to complete.
 
 tune_xgboost(train_df, eval_df, LABEL_COLUMN)
 
-###############################################################################
-# Prediction
-# ----------
+# ## Prediction
+#
 # With the model trained, we can now predict on unseen data. For the
 # purposes of this example, we will use the same dataset for prediction as
 # for training.
@@ -319,6 +322,7 @@ tune_xgboost(train_df, eval_df, LABEL_COLUMN)
 # Since prediction is naively parallelizable, distributing it over multiple
 # actors can measurably reduce the amount of time needed.
 
+# +
 inference_df = RayDMatrix(data, ignore=[LABEL_COLUMN, "partition"])
 results = predict(
     bst,
