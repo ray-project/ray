@@ -4,7 +4,6 @@ ipython
 tblib
 
 # If you make changes to anything below this line, please also change `requirements_dl.txt`!
-grpcio >= 1.28.1, <= 1.43.0
 
 # TODO(amogkam): Remove after https://github.com/tensorflow/tensorflow/issues/52922 is fixed.
 keras==2.6.0
