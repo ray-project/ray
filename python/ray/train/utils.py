@@ -11,7 +11,7 @@ from ray.exceptions import RayActorError
 from ray.types import ObjectRef
 from ray.util.ml_utils.util import find_free_port
 
-from ray.train.constants import REMAINING_WORKERS_WAIT_TIMEOUT
+from ray.train.constants import REMAINING_WORKERS_GRACE_PERIOD_S
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -41,7 +41,9 @@ def check_for_failure(remote_values: List[ObjectRef]) -> Tuple[bool, List[int]]:
         # This is to avoid situations where the remaining workers
         # are alive, but hanging on collective calls because other
         # workers have failed.
-        timeout = REMAINING_WORKERS_WAIT_TIMEOUT if at_least_one_failed_worker else None
+        timeout = (
+            REMAINING_WORKERS_GRACE_PERIOD_S if at_least_one_failed_worker else None
+        )
         finished, unfinished = ray.wait(unfinished, timeout=timeout)
 
         if at_least_one_failed_worker and len(unfinished) > 0:
