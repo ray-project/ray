@@ -42,6 +42,11 @@ def check_for_failure(remote_values: List[ObjectRef]) -> Tuple[bool, List[int]]:
                 logger.exception(str(exc))
                 failed_actor_rank = remote_values.index(object_ref)
                 logger.info(f"Worker {failed_actor_rank} has failed.")
+                logger.warning(
+                    "Failure has occurred during training. "
+                    "Triggering Ray Train failure handling logic. "
+                    "Training will restart from latest checkpoint."
+                )
                 dead_worker_indexes.append(failed_actor_rank)
     if len(dead_worker_indexes) > 0:
         return False, dead_worker_indexes

@@ -67,8 +67,11 @@ class Backend(metaclass=Singleton):
 
         By default, restart all workers.
         """
+        logger.info("Shutting down all training workers.")
         worker_group.shutdown()
+        logger.info("Restarting all training workers.")
         worker_group.start()
+        logger.info("Setting up distributed backend on restarted workers.")
         self.on_start(worker_group, backend_config)
 
     @staticmethod
@@ -184,6 +187,11 @@ class BackendExecutor:
             self._backend.on_start(self.worker_group, self._backend_config)
         except RayActorError as exc:
             logger.exception(str(exc))
+            logger.warning(
+                "Failure occurred during failure handling of a "
+                "previous failure. Restarting all workers and "
+                "continuing from latest checkpoint."
+            )
             self._increment_failures()
             self._restart()
 
@@ -560,6 +568,11 @@ class BackendExecutor:
                     self.worker_group, failed_worker_indexes, self._backend_config
                 )
             except RayActorError as exc:
+                logger.warning(
+                    "Failure occurred during handling of another "
+                    "failure. Restarting all workers and "
+                    "continuing training from latest checkpoint."
+                )
                 logger.exception(str(exc))
                 self._restart()
             raise TrainingWorkerError

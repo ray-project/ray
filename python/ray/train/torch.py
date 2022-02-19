@@ -55,7 +55,7 @@ class TorchConfig(BackendConfig):
 
     backend: Optional[str] = None
     init_method: str = "env"
-    timeout_s: int = 1800
+    timeout_s: int = 15
 
     @property
     def backend_cls(self):

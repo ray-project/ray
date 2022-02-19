@@ -720,6 +720,13 @@ class TrainingIterator:
             return func()
         except TrainingWorkerError:
             # Workers have already been restarted.
+            logger.info(
+                "Workers have been successfully restarted. Resuming "
+                "training from latest checkpoint."
+            )
+            logger.debug(
+                "Latest checkpoint:" f" {self._checkpoint_manager.latest_checkpoint}"
+            )
             self._start_training(
                 self._train_func,
                 self._run_dir,

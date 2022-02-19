@@ -19,6 +19,7 @@ from ray.train.examples.train_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
 from ray.train.examples.train_linear_example import train_func as linear_train_func
+from ray.train.tests.test_trainer import KillCallback
 
 
 @pytest.fixture
@@ -70,6 +71,24 @@ def test_torch_linear(ray_start_2_cpus, num_workers):
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
     trainer.start()
     results = trainer.run(linear_train_func, config)
+    trainer.shutdown()
+
+    assert len(results) == num_workers
+
+    for result in results:
+        assert len(result) == epochs
+        assert result[-1]["loss"] < result[0]["loss"]
+
+
+def test_torch_linear_failure(ray_start_2_cpus):
+    num_workers = 2
+    epochs = 3
+
+    trainer = Trainer("torch", num_workers=num_workers)
+    config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
+    trainer.start()
+    kill_callback = KillCallback(fail_on=1, trainer=trainer)
+    results = trainer.run(linear_train_func, config, callbacks=[kill_callback])
     trainer.shutdown()
 
     assert len(results) == num_workers
