@@ -25,6 +25,7 @@ class ReplayMode(Enum):
     INDEPENDENT = 1
 
 
+@ExperimentalAPI
 def merge_dicts_with_warning(args_on_init, args_on_call):
     """Merge argument dicts, overwriting args_on_call with warning.
 
@@ -154,6 +155,11 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         self.replay_timer = TimerStat()
         self._num_added = 0
 
+    def __len__(self) -> int:
+        """Returns the number of items currently stored in this buffer."""
+        return sum([len(buffer._storage) for buffer in
+                    self.replay_buffers.values()])
+
     @ExperimentalAPI
     @override(ReplayBuffer)
     def add(self, batch: SampleBatchType, **kwargs) -> None:
@@ -179,7 +185,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 for s in batch.timeslices(self.replay_sequence_length):
                     self.replay_buffers[_ALL_POLICIES].add(s, **kwargs)
             else:
-                assert type(batch) == MultiAgentBatch
                 for policy_id, sample_batch in batch.policy_batches.items():
                     self._add_to_underlying_buffer(policy_id, sample_batch,
                                                    **kwargs)

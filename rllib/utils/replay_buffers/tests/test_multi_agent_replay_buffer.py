@@ -181,7 +181,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
                 assert __id == _id
 
         # Sample without specifying the policy should yield the same number
-        # of batches from each policy, concatenated from a number of samples
+        # of batches from each policy
         num_sampled_dict = {_id: 0 for _id in range(num_policies)}
         num_samples = 200
         for i in range(num_samples):
@@ -238,6 +238,8 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
 
         Test if we can initialize a more complex underlying buffer with
         additional arguments and independent sampling.
+        This does not test updating priorities and using weights as
+        implemented in MultiAgentPrioritizedReplayBuffer.
         """
         # Test with PrioritizedReplayBuffer, args for c'tor, add and sample
         prioritized_replay_buffer_config = {
@@ -264,6 +266,36 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
         sample = buffer.sample(2)
         assert len(sample) == 1
         assert len(sample.policy_batches) == 2
+
+    def test_set_get_state(self):
+        num_policies = 2
+        buffer_size = 15
+        num_batches = 1
+
+        buffer = MultiAgentReplayBuffer(capacity=buffer_size,
+                                        replay_mode="independent",
+                                        learning_starts=0,
+                                        num_shards=1)
+
+        self._add_multi_agent_batch_to_buffer(buffer,
+                                              num_policies=num_policies,
+                                              num_batches=num_batches)
+
+        state = buffer.get_state()
+
+        another_buffer = MultiAgentReplayBuffer(capacity=buffer_size,
+                                                replay_mode="independent",
+                                                learning_starts=0,
+                                                num_shards=1)
+
+        another_buffer.set_state(state)
+
+        # State is equal to set of states of underlying buffers
+        for _id, _buffer in buffer.replay_buffers.items():
+            assert _buffer.get_state() == \
+                   another_buffer.replay_buffers[_id].get_state()
+
+        assert buffer._num_added == another_buffer._num_added
 
 
 if __name__ == "__main__":
