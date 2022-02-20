@@ -1,6 +1,7 @@
 import itertools
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
+from types import ModuleType
 
 from ray.remote_function import DEFAULT_REMOTE_FUNCTION_CPUS
 import ray.ray_constants as ray_constants
@@ -9,6 +10,22 @@ logger = logging.getLogger(__name__)
 
 MIN_PYARROW_VERSION = (4, 0, 1)
 _VERSION_VALIDATED = False
+
+
+LazyModule = Union[None, bool, ModuleType]
+_pyarrow_dataset: LazyModule = None
+
+
+def _lazy_import_pyarrow_dataset() -> LazyModule:
+    global _pyarrow_dataset
+    if _pyarrow_dataset is None:
+        try:
+            from pyarrow import dataset as _pyarrow_dataset
+        except ModuleNotFoundError:
+            # If module is not found, set _pyarrow to False so we won't
+            # keep trying to import it on every _lazy_import_pyarrow() call.
+            _pyarrow_dataset = False
+    return _pyarrow_dataset
 
 
 def _check_pyarrow_version():
