@@ -1,11 +1,13 @@
 # flake8: noqa
 # fmt: off
-
+#
 # __serve_example_begin__
+#
 # This brief example shows how to create, deploy, and expose access to
 # deployment models, using the simple Ray Serve deployment APIs.
 # Once deployed, you can access deployment via two methods:
 # ServerHandle API and HTTP
+#
 import os
 from random import random
 
