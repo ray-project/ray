@@ -26,8 +26,8 @@ from ray._private.runtime_env.py_modules import PyModulesManager
 from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.plugin import decode_plugin_uri
-from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.runtime_env.uri_cache import URICache
+from ray.runtime_env import RuntimeEnv
 
 default_logger = logging.getLogger(__name__)
 
@@ -122,7 +122,7 @@ class RuntimeEnvAgent(
         async def _setup_runtime_env(
             serialized_runtime_env, serialized_allocated_resource_instances
         ):
-            runtime_env = RuntimeEnv(serialized_runtime_env=serialized_runtime_env)
+            runtime_env = RuntimeEnv.deserialize(serialized_runtime_env)
             allocated_resource: dict = json.loads(
                 serialized_allocated_resource_instances or "{}"
             )

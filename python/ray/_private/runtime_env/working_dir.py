@@ -4,7 +4,6 @@ from typing import Any, Dict, Optional
 from pathlib import Path
 
 from ray.experimental.internal_kv import _internal_kv_initialized
-from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package,
@@ -18,6 +17,7 @@ from ray._private.runtime_env.packaging import (
     upload_package_if_needed,
 )
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray.runtime_env import RuntimeEnv
 
 default_logger = logging.getLogger(__name__)
 

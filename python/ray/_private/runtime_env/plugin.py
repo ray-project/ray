@@ -3,7 +3,7 @@ from abc import ABC, abstractstaticmethod
 from typing import Tuple
 from ray.util.annotations import DeveloperAPI
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.utils import RuntimeEnv
+from ray.runtime_env import RuntimeEnv
 
 
 # TODO(SongGuyang): This function exists in both C++ and Python.

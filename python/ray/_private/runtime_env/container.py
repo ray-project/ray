@@ -5,7 +5,7 @@ import logging
 from typing import Optional
 
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.utils import RuntimeEnv
+from ray.runtime_env import RuntimeEnv
 
 default_logger = logging.getLogger(__name__)
 

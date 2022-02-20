@@ -16,8 +16,8 @@ from ray._private.runtime_env.packaging import (
     upload_package_if_needed,
 )
 from ray._private.utils import get_directory_size_bytes
-from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.utils import try_to_create_directory
+from ray.runtime_env import RuntimeEnv
 
 default_logger = logging.getLogger(__name__)
 

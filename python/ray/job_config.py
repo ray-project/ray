@@ -87,12 +87,12 @@ class JobConfig:
         # TODO(edoakes): this is really unfortunate, but JobConfig is imported
         # all over the place so this causes circular imports. We should remove
         # this dependency and pass in a validated runtime_env instead.
-        from ray._private.runtime_env.validation import ParsedRuntimeEnv
+        from ray.runtime_env import RuntimeEnv
 
         eager_install = self.runtime_env.get("eager_install", True)
         if not isinstance(eager_install, bool):
             raise TypeError("eager_install must be a boolean.")
-        return ParsedRuntimeEnv(self.runtime_env), eager_install
+        return RuntimeEnv(**self.runtime_env), eager_install
 
     def get_proto_job_config(self):
         """Return the protobuf structure of JobConfig."""

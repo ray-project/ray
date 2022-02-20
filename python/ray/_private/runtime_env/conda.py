@@ -15,7 +15,7 @@ from pathlib import Path
 
 import ray
 
-from ray._private.runtime_env.utils import RuntimeEnv
+from ray.runtime_env import RuntimeEnv
 from ray._private.runtime_env.conda_utils import (
     get_conda_activate_commands,
     create_conda_env_if_needed,

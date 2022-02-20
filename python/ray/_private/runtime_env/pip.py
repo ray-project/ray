@@ -12,8 +12,8 @@ from typing import Optional, List, Dict, Tuple
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
-from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray.runtime_env import RuntimeEnv
 
 default_logger = logging.getLogger(__name__)
 

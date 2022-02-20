@@ -1,7 +1,7 @@
 import ray.worker
 import logging
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
+from ray.runtime_env import RuntimeEnv
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -170,7 +170,7 @@ class RuntimeContext(object):
             The runtime env dict currently using by this worker.
         """
 
-        return ParsedRuntimeEnv.deserialize(self.get_runtime_env_string())
+        return RuntimeEnv.deserialize(self.get_runtime_env_string())
 
     @property
     def current_actor(self):
