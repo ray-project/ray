@@ -46,7 +46,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   explicit GcsResourceManager(instrumented_io_context &main_io_service,
                               std::shared_ptr<GcsPublisher> gcs_publisher,
                               std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                              sync::RaySync &ray_sync);
+                              // TODO(iycheng): Remove sync from GcsResourceManager
+                              sync::RaySync *ray_sync = nullptr);
 
   virtual ~GcsResourceManager() {}
 
@@ -196,7 +197,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   uint64_t counts_[CountType::CountType_MAX] = {0};
 
   // Resource syncer
-  sync::RaySync &ray_sync_;
+  sync::RaySync *ray_sync_;
 };
 
 }  // namespace gcs

@@ -23,7 +23,7 @@ namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
     instrumented_io_context &main_io_service, std::shared_ptr<GcsPublisher> gcs_publisher,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage, sync::RaySync &ray_sync)
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage, sync::RaySync* ray_sync)
     : periodical_runner_(main_io_service),
       gcs_publisher_(gcs_publisher),
       gcs_table_storage_(gcs_table_storage),
@@ -84,7 +84,7 @@ void GcsResourceManager::HandleUpdateResources(
       node_resource_change.set_node_id(node_id.Binary());
       node_resource_change.mutable_updated_resources()->insert(changed_resources->begin(),
                                                                changed_resources->end());
-      ray_sync_.Update(std::move(node_resource_change));
+      ray_sync_->Update(std::move(node_resource_change));
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       RAY_LOG(DEBUG) << "Finished updating resources, node id = " << node_id;
     };
@@ -131,7 +131,7 @@ void GcsResourceManager::HandleDeleteResources(
       for (const auto &resource_name : resource_names) {
         node_resource_change.add_deleted_resources(resource_name);
       }
-      ray_sync_.Update(std::move(node_resource_change));
+      ray_sync_->Update(std::move(node_resource_change));
 
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     };
@@ -173,7 +173,7 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
 
   UpdateNodeResourceUsage(node_id, data);
 
-  ray_sync_.Update(data);
+  ray_sync_->Update(data);
 }
 
 void GcsResourceManager::HandleReportResourceUsage(
