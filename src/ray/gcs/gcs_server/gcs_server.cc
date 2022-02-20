@@ -427,7 +427,7 @@ void GcsServer::InitRaySync(const GcsInitData &gcs_init_data) {
 
   auto grpc_based_resource_broadcaster =
       std::make_unique<GrpcBasedResourceBroadcaster>(raylet_client_pool_);
-
+  grpc_based_resource_broadcaster->Initialize(gcs_init_data);
   ray_sync_ = std::make_unique<sync::RaySync>(main_service_,
                                               std::move(grpc_based_resource_broadcaster),
                                               std::move(gcs_resource_report_poller));
