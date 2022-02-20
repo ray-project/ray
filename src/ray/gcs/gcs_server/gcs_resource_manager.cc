@@ -23,7 +23,7 @@ namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
     instrumented_io_context &main_io_service, std::shared_ptr<GcsPublisher> gcs_publisher,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage, sync::RaySync* ray_sync)
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage, sync::RaySync *ray_sync)
     : periodical_runner_(main_io_service),
       gcs_publisher_(gcs_publisher),
       gcs_table_storage_(gcs_table_storage),
