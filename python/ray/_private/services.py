@@ -2000,15 +2000,16 @@ def build_rust_worker_command(rust_worker_options, bootstrap_address,
     """
 
     command = [
+        # "valgrind", "--log-file=/home/jonch/Desktop/valgrind.txt", "--error-limit=no", "--undef-value-errors=no",
         DEFAULT_RUST_WORKER_EXECUTABLE,
-        f"--ray_plasma_store_socket_name={plasma_store_name}",
-        f"--ray_raylet_socket_name={raylet_name}",
-        "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--ray_address={bootstrap_address}",
-        f"--ray_redis_password={redis_password}",
-        f"--ray_session_dir={session_dir}",
-        f"--ray_logs_dir={log_dir}",
-        f"--ray_node_ip_address={node_ip_address}",
+        f"--plasma_store_socket_name={plasma_store_name}",
+        f"--raylet_socket_name={raylet_name}",
+        "--node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--address={bootstrap_address}",
+        f"--gcs_password={redis_password}",
+        f"--session_dir={session_dir}",
+        f"--logs_dir={log_dir}",
+        f"--node_ip_address={node_ip_address}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 

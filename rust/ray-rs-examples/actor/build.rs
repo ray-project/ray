@@ -40,7 +40,7 @@ fn main() {
     out_dir.pop();
 
     println!(
-        "cargo:rustc-env=RAY_RUST_LIBRARY_PATHS=--ray_code_search_path={}/libactor.so",
+        "cargo:rustc-env=RAY_RUST_LIBRARY_PATHS=--code_search_path={}/libactor.so",
         out_dir.to_str().unwrap(),
     );
 

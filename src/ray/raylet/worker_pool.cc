@@ -283,8 +283,10 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
         code_search_path = code_search_path_str;
         if (language == Language::JAVA) {
           code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
-        } else if (language == Language::CPP || language == Language::RUST) {
+        } else if (language == Language::CPP) {
           code_search_path_str = "--ray_code_search_path=" + code_search_path_str;
+        } else if (language == Language::RUST) {
+          code_search_path_str = "--code_search_path=" + code_search_path_str;
         } else {
           RAY_LOG(FATAL) << "Unknown language " << Language_Name(language);
         }

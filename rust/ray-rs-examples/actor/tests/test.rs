@@ -23,12 +23,12 @@ mod test {
             let env_var = std::env::var("RAY_RUST_LIBRARY_PATHS").unwrap();
             let mut args = vec![
                 CString::new("").unwrap(),
-                CString::new("--ray_code_search_path=").unwrap(),
+                CString::new("--code_search_path=").unwrap(),
             ];
 
-            if env_var.starts_with("--ray_code_search_path=") {
+            if env_var.starts_with("--code_search_path=") {
                 args[1] = CString::new(env_var.clone()).unwrap();
-                let (_, path_str) = env_var.split_at("--ray_code_search_path=".len());
+                let (_, path_str) = env_var.split_at("--code_search_path=".len());
                 let paths = path_str.split(":").collect::<Vec<&str>>();
                 println!("{:?}", paths);
                 load_libraries_from_paths(&paths);

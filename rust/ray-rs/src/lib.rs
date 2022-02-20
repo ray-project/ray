@@ -16,8 +16,9 @@ pub use ray_rs_sys::*;
 pub mod remote_functions;
 pub use remote_functions::*;
 
+#[cfg(feature = "async")]
 mod async_executor;
-use async_executor::{ASYNC_RUNTIME_SENDER, handle_async_startup};
+#[cfg(feature = "async")]
 pub use async_executor::*;
 
 pub use std::ffi::CString;
@@ -91,8 +92,8 @@ pub fn load_code_paths_from_raw_c_cmdline(argc: i32, argv: *mut *mut c_char) {
 
     for ptr in slice {
         let arg = unsafe { std::ffi::CStr::from_ptr(*ptr).to_str().unwrap() };
-        if arg.starts_with("--ray_code_search_path=") {
-            let (_, path_str) = arg.clone().split_at("--ray_code_search_path=".len());
+        if arg.starts_with("--code_search_path=") {
+            let (_, path_str) = arg.clone().split_at("--code_search_path=".len());
             let paths = path_str.split(":").collect();
             load_libraries_from_paths(&paths);
         }

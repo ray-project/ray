@@ -5,26 +5,26 @@
 #include "absl/flags/parse.h"
 #include "absl/strings/str_split.h"
 
-ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
+ABSL_FLAG(std::string, address, "", "The address of the Ray cluster to connect to.");
 /// absl::flags does not provide a IsDefaultValue method, so use a non-empty dummy default
 /// value to support empty redis password.
-ABSL_FLAG(std::string, ray_redis_password, "absl::flags dummy default value",
-          "Prevents external clients without the password from connecting to Redis "
+ABSL_FLAG(std::string, gcs_password, "absl::flags dummy default value",
+          "Prevents external clients without the password from connecting to GCS "
           "if provided.");
-ABSL_FLAG(std::string, ray_code_search_path, "",
+ABSL_FLAG(std::string, code_search_path, "",
           "A list of directories or files of dynamic libraries that specify the "
           "search path for user code. Only searching the top level under a directory. "
           "':' is used as the separator.");
-ABSL_FLAG(std::string, ray_job_id, "", "Assigned job id.");
-ABSL_FLAG(int32_t, ray_node_manager_port, 0, "The port to use for the node manager.");
-ABSL_FLAG(std::string, ray_raylet_socket_name, "",
+ABSL_FLAG(std::string, job_id, "", "Assigned job id.");
+ABSL_FLAG(int32_t, node_manager_port, 0, "The port to use for the node manager.");
+ABSL_FLAG(std::string, raylet_socket_name, "",
           "It will specify the socket name used by the raylet if provided.");
-ABSL_FLAG(std::string, ray_plasma_store_socket_name, "",
+ABSL_FLAG(std::string, plasma_store_socket_name, "",
           "It will specify the socket name used by the plasma store if provided.");
-ABSL_FLAG(std::string, ray_session_dir, "", "The path of this session.");
-ABSL_FLAG(std::string, ray_logs_dir, "", "Logs dir for workers.");
-ABSL_FLAG(std::string, ray_node_ip_address, "", "The ip address for this node.");
-ABSL_FLAG(std::string, ray_head_args, "",
+ABSL_FLAG(std::string, session_dir, "", "The path of this session.");
+ABSL_FLAG(std::string, logs_dir, "", "Logs dir for workers.");
+ABSL_FLAG(std::string, node_ip_address, "", "The ip address for this node.");
+ABSL_FLAG(std::string, head_args, "",
           "The command line args to be appended as parameters of the `ray start` "
           "command. It takes effect only if Ray head is started by a driver. Run `ray "
           "start --help` for details.");
@@ -58,49 +58,49 @@ void InitOptions(Config* config,
     // Parse config from command line.
     absl::ParseCommandLine(argc, argv);
 
-    if (!FLAGS_ray_code_search_path.CurrentValue().empty()) {
+    if (!FLAGS_code_search_path.CurrentValue().empty()) {
       // Code search path like this "/path1/xxx.so:/path2".
-      config->code_search_path = absl::StrSplit(FLAGS_ray_code_search_path.CurrentValue(), ':',
+      config->code_search_path = absl::StrSplit(FLAGS_code_search_path.CurrentValue(), ':',
                                         absl::SkipEmpty());
     }
-    if (!FLAGS_ray_address.CurrentValue().empty()) {
-      auto pos = FLAGS_ray_address.CurrentValue().find(':');
-      auto adr = FLAGS_ray_address.CurrentValue();
+    if (!FLAGS_address.CurrentValue().empty()) {
+      auto pos = FLAGS_address.CurrentValue().find(':');
+      auto adr = FLAGS_address.CurrentValue();
       RAY_CHECK(pos != std::string::npos);
 
       config->redis_ip = adr.substr(0, pos);
       config->redis_port = std::stoi(adr.substr(pos + 1, adr.length()));
     }
-    // Don't rewrite `ray_redis_password` when it is not set in the command line.
-    if (FLAGS_ray_redis_password.CurrentValue() !=
-        FLAGS_ray_redis_password.DefaultValue()) {
-      config->redis_password = FLAGS_ray_redis_password.CurrentValue();
+    // Don't rewrite `redis_password` when it is not set in the command line.
+    if (FLAGS_gcs_password.CurrentValue() !=
+        FLAGS_gcs_password.DefaultValue()) {
+      config->redis_password = FLAGS_gcs_password.CurrentValue();
     }
-    if (!FLAGS_ray_job_id.CurrentValue().empty()) {
-      options->job_id = ray::JobID::FromHex(FLAGS_ray_job_id.CurrentValue());
+    if (!FLAGS_job_id.CurrentValue().empty()) {
+      options->job_id = ray::JobID::FromHex(FLAGS_job_id.CurrentValue());
     } else {
       options->job_id = ray::JobID::Nil();
     }
-    options->node_manager_port = absl::GetFlag<int32_t>(FLAGS_ray_node_manager_port);
-    if (!FLAGS_ray_raylet_socket_name.CurrentValue().empty()) {
-      options->raylet_socket = FLAGS_ray_raylet_socket_name.CurrentValue();
+    options->node_manager_port = absl::GetFlag<int32_t>(FLAGS_node_manager_port);
+    if (!FLAGS_raylet_socket_name.CurrentValue().empty()) {
+      options->raylet_socket = FLAGS_raylet_socket_name.CurrentValue();
     }
-    if (!FLAGS_ray_plasma_store_socket_name.CurrentValue().empty()) {
-      options->store_socket = FLAGS_ray_plasma_store_socket_name.CurrentValue();
+    if (!FLAGS_plasma_store_socket_name.CurrentValue().empty()) {
+      options->store_socket = FLAGS_plasma_store_socket_name.CurrentValue();
     }
-    if (!FLAGS_ray_session_dir.CurrentValue().empty()) {
-      config->session_dir = FLAGS_ray_session_dir.CurrentValue();
+    if (!FLAGS_session_dir.CurrentValue().empty()) {
+      config->session_dir = FLAGS_session_dir.CurrentValue();
     }
-    if (!FLAGS_ray_logs_dir.CurrentValue().empty()) {
+    if (!FLAGS_logs_dir.CurrentValue().empty()) {
       options->enable_logging = true;
-      options->log_dir = FLAGS_ray_logs_dir.CurrentValue();
+      options->log_dir = FLAGS_logs_dir.CurrentValue();
     }
-    if (!FLAGS_ray_node_ip_address.CurrentValue().empty()) {
-      options->node_ip_address = FLAGS_ray_node_ip_address.CurrentValue();
+    if (!FLAGS_node_ip_address.CurrentValue().empty()) {
+      options->node_ip_address = FLAGS_node_ip_address.CurrentValue();
     }
-    if (!FLAGS_ray_head_args.CurrentValue().empty()) {
+    if (!FLAGS_head_args.CurrentValue().empty()) {
       std::vector<std::string> args =
-          absl::StrSplit(FLAGS_ray_head_args.CurrentValue(), ' ', absl::SkipEmpty());
+          absl::StrSplit(FLAGS_head_args.CurrentValue(), ' ', absl::SkipEmpty());
       config->head_args.insert(config->head_args.end(), args.begin(), args.end());
     }
     options->startup_token = absl::GetFlag<int64_t>(FLAGS_startup_token);
