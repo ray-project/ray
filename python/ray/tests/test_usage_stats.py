@@ -104,6 +104,10 @@ def test_usage_lib_cluster_metadata_generation_usage_disabled(shutdown_only):
     assert len(meta) == 2
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Test depends on runtime env feature not supported on Windows.",
+)
 def test_usage_lib_report_data(monkeypatch, shutdown_only, tmp_path):
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
@@ -164,6 +168,10 @@ def test_usage_lib_report_data(monkeypatch, shutdown_only, tmp_path):
         assert json.loads(r.text) is True
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Test depends on runtime env feature not supported on Windows.",
+)
 def test_usage_report_e2e(monkeypatch, shutdown_only):
     """
     Test usage report works e2e with env vars.
