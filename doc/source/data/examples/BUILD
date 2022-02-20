@@ -1,5 +1,5 @@
 filegroup(
-    name = "tune_tutorials",
+    name = "data_examples",
     srcs = glob(["*.ipynb"]),
     visibility = ["//doc:__subpackages__"]
 )
