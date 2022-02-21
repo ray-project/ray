@@ -22,18 +22,20 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
 
     def _add_sample_batch_to_buffer(self, buffer, batch_size, num_batches=5,
                                     **kwargs):
+        self.eps_id = 0
         def _generate_data():
+            self.eps_id += 1
             return SampleBatch(
                 {
-                    "obs_t": [np.random.random((4,))],
-                    "action": [np.random.choice([0, 1])],
-                    "reward": [np.random.rand()],
-                    "obs_tp1": [np.random.random((4,))],
-                    "done": [np.random.choice([False, True])],
-                    "batch_id": [self.batch_id],
-                    "eps_id": [self.batch_id],
-                    "t": [0],
-                    "agent_index": [0],
+                    SampleBatch.T: [0, 1],
+                    SampleBatch.ACTIONS: 2 * [np.random.choice([0, 1])],
+                    SampleBatch.REWARDS: 2 * [np.random.rand()],
+                    SampleBatch.OBS: 2 * [np.random.random((4,))],
+                    SampleBatch.NEXT_OBS: 2 * [np.random.random((4,))],
+                    SampleBatch.DONES: 2 * [np.random.choice([False, True])],
+                    SampleBatch.EPS_ID: 2 * [self.eps_id],
+                    SampleBatch.AGENT_INDEX: 2 * [0],
+                    "batch_id": 2 * [self.batch_id],
                 }
             )
 
@@ -44,22 +46,28 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
             buffer.add(batch, **kwargs)
 
     def _add_multi_agent_batch_to_buffer(self, buffer, num_policies,
-                                         num_batches=5, **kwargs):
+                                         num_batches=5, seq_lens=False,
+                                         **kwargs):
 
         def _generate_data(policy_id):
             batch = SampleBatch(
                 {
-                    "obs_t": [np.random.random((4,))],
-                    "action": [np.random.choice([0, 1])],
-                    "reward": [np.random.rand()],
-                    "obs_tp1": [np.random.random((4,))],
-                    "done": [np.random.choice([False, True])],
-                    "batch_id": [self.batch_id],
-                    "eps_id": [self.batch_id],
-                    "t": [0],
-                    "policy_id": [policy_id]
+                    SampleBatch.T: [0, 1],
+                    SampleBatch.ACTIONS: 2 * [np.random.choice([0, 1])],
+                    SampleBatch.REWARDS: 2 * [np.random.rand()],
+                    SampleBatch.OBS: 2 * [np.random.random((4,))],
+                    SampleBatch.NEXT_OBS: 2 * [np.random.random((4,))],
+                    SampleBatch.DONES: [False, True],
+                    SampleBatch.EPS_ID: 2 * [self.batch_id],
+                    SampleBatch.AGENT_INDEX: 2 * [0],
+                    SampleBatch.SEQ_LENS: [2],
+                    "batch_id": 2 * [self.batch_id],
+                    "policy_id": 2 * [policy_id]
                 }
             )
+            if not seq_lens:
+                del batch[SampleBatch.SEQ_LENS]
+            self.batch_id += 1
             return batch
 
         for i in range(num_batches):
@@ -68,17 +76,17 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
                                                            _ in
                               enumerate(range(
                                   num_policies))}
-            self.batch_id += 1
             batch = MultiAgentBatch(policy_batches, 1)
             buffer.add(batch, **kwargs)
 
-    def test_lockstep_mode_single_policy(self):
+    def test_lockstep_mode(self):
         """Test the lockstep mode by only adding SampleBatches.
 
         Such SampleBatches are converted to MultiAgent Batches as if there
         was only one policy."""
+        self.batch_id = 0
         batch_size = 5
-        buffer_size = 15
+        buffer_size = 30
 
         buffer = MultiAgentReplayBuffer(capacity=buffer_size,
                                         replay_mode="lockstep",
@@ -107,53 +115,48 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
             len(num_sampled_dict) * [1 / 3],
             atol=0.1)
 
-    def test_lockstep_mode_multiple_policies(self):
-        """Test the lockstep mode by adding batches from multiple policies."""
+    def test_independent_mode_sequences_storage_unit(self):
+        """Test the independent mode with sequences as a storage unit.
 
-        num_batches = 3
+        Such SampleBatches are converted to MultiAgent Batches as if there
+        was only one policy."""
         buffer_size = 15
-        num_policies = 2
-        # Test lockstep mode with different policy ids using MultiAgentBatches
-
         self.batch_id = 0
 
         buffer = MultiAgentReplayBuffer(capacity=buffer_size,
-                                        replay_mode="lockstep",
+                                        replay_mode="independent",
+                                        storage_unit="sequences",
                                         learning_starts=0,
                                         num_shards=1)
 
+        # Test add/sample
         self._add_multi_agent_batch_to_buffer(buffer,
-                                              num_policies=num_policies,
-                                              num_batches=num_batches)
+                                              num_policies=2,
+                                              num_batches=1,
+                                              seq_lens=True)
 
-        self._add_multi_agent_batch_to_buffer(buffer,
-                                              num_policies=num_policies - 1,
-                                              num_batches=num_batches)
+        # Sampling from it now should yield the first batch
+        assert get_batch_id(buffer.sample(1), 0) == 0
 
-        # With uneven distribution of batches per policy, we want all
-        # policies to be in each batch
-        num_sampled_dict = {_id: 0 for _id in range(num_policies)}
+        self._add_multi_agent_batch_to_buffer(buffer, num_policies=2,
+                                              num_batches=2,
+                                              seq_lens=True)
+
+        # Sampling from it now should yield each batch that went into a
+        # multiagent batch 1/6th of the time
+        num_sampled_dict = {_id: 0 for _id in range(self.batch_id)}
         num_samples = 200
         for i in range(num_samples):
-            for _id in buffer.sample(1).policy_batches.keys():
-                num_sampled_dict[_id] += 1
-        assert np.allclose(
-            np.array(list(num_sampled_dict.values())),
-            len(num_sampled_dict) * [200],
-            atol=0.1)
-
-        # With uneven distribution of batches per policy, we want our first
-        # batch ids to be sampled three times as often
-        num_sampled_dict = {_id: 0 for _id in range(self.batch_id)}
-        for i in range(num_samples):
-            policy_batches = list(buffer.sample(1).policy_batches.values())
-            for batch in policy_batches:
-                _id = int(batch["batch_id"])
-                num_sampled_dict[_id] += 1
+            sample = buffer.sample(1)
+            # Count one of both policy batches
+            _id = get_batch_id(sample, np.random.choice([0, 1]))
+            num_sampled_dict[_id] += 1
+            # See if a random batch has the desired sequence length of two
+            assert len(sample.policy_batches[np.random.choice([0, 1])]) == 2
         assert np.allclose(
             np.array(list(num_sampled_dict.values())) / num_samples,
-            num_batches * [1 / 2] + num_batches * [1 / 6],
-            atol=0.2)
+            len(num_sampled_dict) * [1 / 6],
+            atol=0.1)
 
     def test_independent_mode_multiple_policies(self):
         """Test the lockstep mode by adding batches from multiple policies."""
@@ -195,45 +198,47 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
             len(num_sampled_dict) * [200],
             atol=0.1)
 
-    def test_with_underlying_replaybuffer(self):
+    def test_lockstep_with_underlying_replay_buffer(self):
         """Test this the buffer with different underlying buffers.
 
         Test if we can initialize a simple underlying buffer without
         additional arguments and lockstep sampling.
         """
         # Test with ReplayBuffer, no args for c'tor, add and sample
-        reservoir_buffer_config = {
+        replay_buffer_config = {
             "type": ReplayBuffer
         }
 
         num_policies = 2
-        buffer_size = 15
-        num_batches = 1
+        buffer_size = 200
+        num_batches = 20
 
         buffer = MultiAgentReplayBuffer(capacity=buffer_size,
                                         replay_mode="lockstep",
                                         learning_starts=0,
                                         num_shards=1,
-                                        underlying_buffer_config=reservoir_buffer_config)
+                                        underlying_buffer_config=replay_buffer_config)
 
         self._add_multi_agent_batch_to_buffer(buffer,
                                               num_policies=num_policies - 1,
                                               num_batches=num_batches)
+
         # Only test if we can sample and if samples belong to a single policy
         sample = buffer.sample(2)
-        assert len(sample) == 1
+        assert len(sample) == 2
         assert len(sample.policy_batches) == 1
 
         self._add_multi_agent_batch_to_buffer(buffer,
                                               num_policies=num_policies,
                                               num_batches=num_batches)
 
-        # Only test if we can sample from multiple policies
-        sample = buffer.sample(2)
-        assert len(sample) == 1
+        # Only test if we can sample from multiple policies, out of 100
+        # samples, some should be of each policy
+        sample = buffer.sample(100)
+        assert len(sample) == 100
         assert len(sample.policy_batches) == 2
 
-    def test_with_underlying_prioritized_replay_buffer(self):
+    def test_independent_with_underlying_prioritized_replay_buffer(self):
         """Test this the buffer with different underlying buffers.
 
         Test if we can initialize a more complex underlying buffer with

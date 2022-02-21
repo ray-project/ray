@@ -74,7 +74,8 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             num_shards: The number of buffer shards that exist in total
                 (including this one).
             storage_unit: Either 'timesteps', 'sequences' or
-                'episodes'. Specifies how experiences are stored.
+                'episodes'. Specifies how experiences are stored. If they
+                are stored in episodes, replay_sequence_length is ignored.
             learning_starts: Number of timesteps after which a call to
                 `replay()` will yield samples (before that, `replay()` will
                 return None).
@@ -125,6 +126,11 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         if replay_mode == "lockstep" or replay_mode == ReplayMode.LOCKSTEP:
             self.replay_mode = ReplayMode.LOCKSTEP
+            if self._storage_unit in [StorageUnit.EPISODES,
+                                      StorageUnit.SEQUENCES]:
+                raise ValueError("MultiAgentReplayBuffer does not support "
+                                 "lockstep mode with storage unit `episodes`"
+                                 "or `sequences`.")
         elif replay_mode == "independent" or replay_mode == \
             ReplayMode.INDEPENDENT:
             self.replay_mode = ReplayMode.INDEPENDENT
@@ -166,7 +172,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         """Adds a batch to the appropriate policy's replay buffer.
 
         Turns the batch into a MultiAgentBatch of the DEFAULT_POLICY_ID if
-        it is not a MultiAgentBatch. Subsequently adds the individual policy
+        it is not a MultiAgentBatch. Subsequently, adds the individual policy
         batches to the storage.
 
         Args:
@@ -181,22 +187,37 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         with self.add_batch_timer:
             # Lockstep mode: Store under _ALL_POLICIES key (we will always
             # only sample from all policies at the same time).
-            if self.replay_mode == "lockstep":
+            if self.replay_mode == ReplayMode.LOCKSTEP:
                 for s in batch.timeslices(self.replay_sequence_length):
-                    self.replay_buffers[_ALL_POLICIES].add(s, **kwargs)
+                    self._add_to_underlying_buffer(_ALL_POLICIES, s, **kwargs)
             else:
                 for policy_id, sample_batch in batch.policy_batches.items():
                     self._add_to_underlying_buffer(policy_id, sample_batch,
                                                    **kwargs)
         self._num_added += batch.count
 
+    @ExperimentalAPI
     def _add_to_underlying_buffer(self, policy_id: PolicyID, batch:
     SampleBatchType, **kwargs) -> None:
-        """Utility method that reduces code redundancy for child classes."""
+        """Add a batch of experiences to the underlying buffer of a policy.
+        
+        If the storage unit is `timesteps`, cut the batch into timeslices 
+        before adding them to the appropriate buffer. Otherwise, let the 
+        underlying buffer decide how slice batches.
+        
+        Args:
+            policy_id: ID of the policy that corresponds to the underlying 
+            buffer
+            batch: Batch to add to the underlying buffer
+            **kwargs: Forward compatibility kwargs.
+        """
         # Merge kwargs, overwriting standard call arguments
         kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args,
                                           kwargs)
 
+        # For the storage unit `timesteps`, the underlying buffer will
+        # simply store the samples how they arrive. For sequences and
+        # episodes, the underlying buffer may split them itself.
         if self._storage_unit is StorageUnit.TIMESTEPS:
             if self.replay_sequence_length == 1:
                 timeslices = batch.timeslices(1)
@@ -239,7 +260,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         with self.replay_timer:
             # Lockstep mode: Sample from all policies at the same time an
             # equal amount of steps.
-            if self.replay_mode == "lockstep":
+            if self.replay_mode == ReplayMode.LOCKSTEP:
                 assert (
                     policy_id is None
                 ), "`policy_id` specifier not allowed in `lockstep` mode!"
