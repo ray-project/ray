@@ -273,6 +273,10 @@ class UsageReportClient:
         temp = dir_path / f"{usage_constant.USAGE_STATS_FILE}.tmp"
         with temp.open(mode="w") as json_file:
             json_file.write(json.dumps(asdict(data)))
+        if sys.platform == "win32":
+            # Windows 32 doesn't support atomic renaming, so we should delete
+            # the file first.
+            destination.unlink(missing_ok=True)
         temp.rename(destination)
 
     def _report_usage_data(self, url: str, data: UsageStatsToReport) -> None:
