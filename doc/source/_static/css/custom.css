@@ -17,6 +17,18 @@
     }
 }
 
+.bottom-right-promo-banner {
+    position: fixed;
+    bottom: 100px;
+    right: 20px;
+    width: 270px;
+}
+@media (max-width: 1500px) {
+    .bottom-right-promo-banner {
+        display: none;
+    }
+}
+
 /*Extends the docstring signature box.*/
 .rst-content dl:not(.docutils) dt {
   display: block;

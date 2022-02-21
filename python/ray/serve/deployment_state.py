@@ -1543,14 +1543,11 @@ class DeploymentStateManager:
 
     def get_running_replica_infos(
         self,
-        filter_tag: Optional[str] = None,
     ) -> Dict[str, List[RunningReplicaInfo]]:
-        replicas = {}
-        for deployment_name, deployment_state in self._deployment_states.items():
-            if filter_tag is None or deployment_name == filter_tag:
-                replicas[deployment_name] = deployment_state.get_running_replica_infos()
-
-        return replicas
+        return {
+            name: deployment_state.get_running_replica_infos()
+            for name, deployment_state in self._deployment_states.items()
+        }
 
     def get_deployment_configs(
         self, filter_tag: Optional[str] = None, include_deleted: Optional[bool] = False

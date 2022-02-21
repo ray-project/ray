@@ -1485,12 +1485,16 @@ def run_test_config(
     if state_json is None:
         state_json = "/tmp/release_test_state.json"
 
+    custom_env_vars = {
+        "RAY_lineage_pinning_enabled": "1",
+    }
     env_vars = {
         "RAY_ADDRESS": os.environ.get("RAY_ADDRESS", "auto"),
         "TEST_OUTPUT_JSON": results_json,
         "TEST_STATE_JSON": state_json,
         "IS_SMOKE_TEST": "1" if smoke_test else "0",
     }
+    env_vars.update(custom_env_vars)
 
     with open(os.path.join(local_dir, ".anyscale.yaml"), "wt") as f:
         f.write(f"project_id: {project_id}")
@@ -1500,7 +1504,10 @@ def run_test_config(
     # Unfortunately, there currently seems to be no great way to
     # transfer files with the Anyscale SDK.
     # So we use the session controller instead.
-    sdk = AnyscaleSDK(auth_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"])
+    sdk = AnyscaleSDK(
+        auth_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"],
+        host=GLOBAL_CONFIG["ANYSCALE_HOST"],
+    )
 
     get_auth_api_client(
         cli_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"],
@@ -1665,6 +1672,8 @@ def run_test_config(
     # When running the test script in client mode, the finish command is a
     # completed local process.
     def _process_finished_client_command(returncode: int, logs: str):
+        if returncode != 0:
+            raise RuntimeError(f"Client returned non-success status: {returncode}")
         if upload_artifacts:
             saved_artifacts = pull_artifacts_and_store_in_cloud(
                 temp_dir=temp_dir,
