@@ -58,7 +58,7 @@ class PipProcessor:
     def __init__(
         self,
         target_dir: str,
-        runtime_env: "RuntimeEnv",
+        runtime_env: "RuntimeEnv",  # noqa: F821
         logger: Optional[logging.Logger] = default_logger,
     ):
         try:
@@ -270,7 +270,7 @@ class PipManager:
         """
         return os.path.join(self._pip_resources_dir, hash)
 
-    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:
+    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
         """Return the pip URI from the RuntimeEnv if it exists, else None."""
         pip_uri = runtime_env.pip_uri()
         if pip_uri != "":
@@ -303,7 +303,7 @@ class PipManager:
     async def create(
         self,
         uri: str,
-        runtime_env: "RuntimeEnv",
+        runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
@@ -322,7 +322,7 @@ class PipManager:
     def modify_context(
         self,
         uri: str,
-        runtime_env: "RuntimeEnv",
+        runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):

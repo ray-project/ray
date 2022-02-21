@@ -138,9 +138,7 @@ def _parse_proto_plugin_runtime_env(
     if runtime_env.python_runtime_env.HasField("plugin_runtime_env"):
         plugins: Dict[str, Any] = {}
         for plugin in runtime_env.python_runtime_env.plugin_runtime_env.plugins:
-            plugins[plugin.class_path] = dict(
-                json.loads(plugin.config)
-            )
+            plugins[plugin.class_path] = dict(json.loads(plugin.config))
         if plugins:
             runtime_env_dict["plugins"] = plugins
 
@@ -329,7 +327,7 @@ class RuntimeEnv(dict):
         return plugin_uris
 
     @classmethod
-    def deserialize(cls, serialized_runtime_env: str) -> "RuntimeEnv":
+    def deserialize(cls, serialized_runtime_env: str) -> "RuntimeEnv":  # noqa: F821
         proto_runtime_env = json_format.Parse(serialized_runtime_env, ProtoRuntimeEnv())
         return cls.from_proto(proto_runtime_env)
 

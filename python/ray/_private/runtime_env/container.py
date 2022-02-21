@@ -51,7 +51,7 @@ class ContainerManager:
 
     async def setup(
         self,
-        runtime_env: "RuntimeEnv",
+        runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):

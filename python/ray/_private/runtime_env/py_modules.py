@@ -125,7 +125,7 @@ class PyModulesManager:
     async def create(
         self,
         uri: str,
-        runtime_env: "RuntimeEnv",
+        runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:

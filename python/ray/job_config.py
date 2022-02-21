@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 import uuid
 
 import ray._private.gcs_utils as gcs_utils
@@ -53,7 +53,9 @@ class JobConfig:
         return self.get_proto_job_config().SerializeToString()
 
     def set_runtime_env(
-        self, runtime_env: Optional[Dict[str, Any]], validate: bool = False
+        self,
+        runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]], # noqa: F821
+        validate: bool = False,
     ) -> None:
         """Modify the runtime_env of the JobConfig.
 

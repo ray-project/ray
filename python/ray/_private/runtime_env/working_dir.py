@@ -102,7 +102,7 @@ class WorkingDirManager:
 
         return local_dir_size
 
-    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:
+    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
         working_dir_uri = runtime_env.working_dir()
         if working_dir_uri != "":
             return working_dir_uri
