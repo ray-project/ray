@@ -25,8 +25,6 @@ interest-evolution-recsim-env-slateq:
                 convert_to_discrete_action_space: false
                 seed: 0
 
-        _disable_preprocessor_api: true
-
         exploration_config:
             warmup_timesteps: 20000
             epsilon_timesteps: 50000

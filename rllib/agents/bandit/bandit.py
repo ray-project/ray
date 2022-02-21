@@ -20,7 +20,7 @@ DEFAULT_CONFIG = with_common_config({
     "rollout_fragment_length": 1,
     "train_batch_size": 1,
 
-    # Bandits can't afford to do one timestep per iteration as it is extremely
+    # Bandits cant afford to do one timestep per iteration as it is extremely
     # slow because of metrics collection overhead. This setting means that the
     # agent will be trained for 100 times in one iteration of Rllib
     "timesteps_per_iteration": 100,
