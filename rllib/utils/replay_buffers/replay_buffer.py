@@ -141,6 +141,11 @@ class ReplayBuffer:
         else:
             self._storage[self._next_idx] = item
 
+        # Eviction of older samples has already started (buffer is "full").
+        if self._eviction_started:
+            self._evicted_hit_stats.push(self._hit_count[self._next_idx])
+            self._hit_count[self._next_idx] = 0
+
         # Wrap around storage as a circular buffer once we hit capacity.
         if self._num_timesteps_added_wrap >= self.capacity:
             self._eviction_started = True
@@ -149,10 +154,6 @@ class ReplayBuffer:
         else:
             self._next_idx += 1
 
-        # Eviction of older samples has already started (buffer is "full").
-        if self._eviction_started:
-            self._evicted_hit_stats.push(self._hit_count[self._next_idx])
-            self._hit_count[self._next_idx] = 0
 
     @ExperimentalAPI
     def sample(self, num_items: int, **kwargs) -> Optional[SampleBatchType]:

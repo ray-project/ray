@@ -1,5 +1,6 @@
 from typing import Any, Dict, Optional
 import random
+import numpy as np
 
 # Import ray before psutil will make sure we use psutil's bundled version
 import ray  # noqa F401
@@ -49,20 +50,18 @@ class ReservoirBuffer(ReplayBuffer):
         # Update add counts.
         self._num_add_calls += 1
         # Update our timesteps counts.
-        self._num_timesteps_added += batch.count
-        self._num_timesteps_added_wrap += batch.count
 
         if self._num_timesteps_added < self.capacity:
             ReplayBuffer.add(self, batch)
         else:
             # Eviction of older samples has already started (buffer is "full")
-            self._eviction_started = True
             idx = random.randint(0, self._num_add_calls - 1)
             if idx < len(self._storage):
                 self._num_evicted += 1
                 self._evicted_hit_stats.push(self._hit_count[idx])
                 self._hit_count[idx] = 0
-                self._storage[idx] = batch
+                self._next_idx = idx
+                ReplayBuffer.add(self, batch)
 
                 assert batch.count > 0, batch
                 warn_replay_capacity(item=batch,
