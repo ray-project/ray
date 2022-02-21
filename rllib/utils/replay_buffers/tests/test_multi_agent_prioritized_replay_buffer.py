@@ -7,8 +7,6 @@ from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, \
 
 from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer \
     import MultiAgentPrioritizedReplayBuffer
-from ray.rllib.utils.replay_buffers.tests.test_multi_agent_replay_buffer \
-    import get_batch_id
 from ray.rllib.utils.test_utils import check
 
 
@@ -20,15 +18,15 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
     def _generate_data(self):
         return SampleBatch(
             {
-                "obs_t": [np.random.random((4,))],
-                "action": [np.random.choice([0, 1])],
-                "reward": [np.random.rand()],
-                "obs_tp1": [np.random.random((4,))],
-                "done": [np.random.choice([False, True])],
+                SampleBatch.T: [np.random.random((4,))],
+                SampleBatch.ACTIONS: [np.random.choice([0, 1])],
+                SampleBatch.REWARDS: [np.random.rand()],
+                SampleBatch.OBS: [np.random.random((4,))],
+                SampleBatch.NEXT_OBS: [np.random.random((4,))],
+                SampleBatch.DONES: [np.random.choice([False, True])],
+                SampleBatch.EPS_ID: [self.batch_id],
+                SampleBatch.AGENT_INDEX: [0],
                 "batch_id": [self.batch_id],
-                "eps_id": [self.batch_id],
-                "t": [0],
-                "agent_index": [0],
             }
         )
 
