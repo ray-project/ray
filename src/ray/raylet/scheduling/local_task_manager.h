@@ -210,8 +210,7 @@ class LocalTaskManager {
   uint64_t MaxRunningTasksPerSchedulingClass(SchedulingClass sched_cls_id) const;
 
   /// Helper method to get the best node for running the task.
-  std::string GetBestSchedulableNode(const internal::Work &work,
-                                     bool requires_object_store_memory,
+  std::string GetBestSchedulableNode(const internal::Work &work, bool spill_waiting_task,
                                      bool force_spillback, bool *is_infeasible);
 
   /// Recompute the debug stats.

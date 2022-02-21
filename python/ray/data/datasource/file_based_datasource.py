@@ -511,13 +511,14 @@ class _S3FileSystemWrapper:
         return _S3FileSystemWrapper._reconstruct, self._fs.__reduce__()
 
 
-def _wrap_s3_filesystem_workaround(kwargs: dict) -> dict:
+def _wrap_arrow_serialization_workaround(kwargs: dict) -> dict:
     if "filesystem" in kwargs:
         kwargs["filesystem"] = _wrap_s3_serialization_workaround(kwargs["filesystem"])
+
     return kwargs
 
 
-def _unwrap_s3_filesystem_workaround(kwargs: dict) -> dict:
+def _unwrap_arrow_serialization_workaround(kwargs: dict) -> dict:
     if isinstance(kwargs.get("filesystem"), _S3FileSystemWrapper):
         kwargs["filesystem"] = kwargs["filesystem"].unwrap()
     return kwargs
