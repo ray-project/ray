@@ -66,7 +66,7 @@ def build_slateq_losses(
     _,
     train_batch: SampleBatch,
 ) -> TensorType:
-    """Constructs the choice- and Q-value losses for the SlateQTorchPolicy.
+    """Constructs the Q-value losse for the SlateQTorchPolicy.
 
     Args:
         policy: The Policy to calculate the loss for.
@@ -88,6 +88,7 @@ def build_slateq_losses(
     observation = train_batch[SampleBatch.OBS]
     # user.shape: [B, E]
     user_obs = observation["user"]
+    batch_size = user_obs.get_shape().as_list()[0]
     # doc.shape: [B, C, E]
     doc_obs = list(observation["doc"].values())
     # action.shape: [B, S]
@@ -131,7 +132,6 @@ def build_slateq_losses(
     # scores_slate.shape [B, A, S]
     scores_slate = tf.gather(scores, policy.slates, axis=1)
     # score_no_click_slate.shape: [B, A]
-    batch_size = user_next_obs.get_shape().as_list()[0]
     score_no_click_slate = tf.reshape(
         tf.tile(score_no_click, tf.shape(input=policy.slates)[:1]), [batch_size, -1]
     )
@@ -228,7 +228,6 @@ def action_distribution_fn(
     # user.shape: [B, E]
     user_obs = observation["user"]
     doc_obs = list(observation["doc"].values())
-    slate_size = len(policy.action_space.nvec)
 
     # Compute scores per candidate.
     scores, score_no_click = score_documents(user_obs, doc_obs)
@@ -237,13 +236,13 @@ def action_distribution_fn(
 
     with tf.name_scope("select_slate"):
         per_slate_q_values = get_per_slate_q_values(
-            policy.slates, slate_size, score_no_click, scores, q_values
+            policy.slates, score_no_click, scores, q_values
         )
     model.slates = policy.slates
     return per_slate_q_values, Categorical, []
 
 
-def get_per_slate_q_values(slates, slate_size, s_no_click, s, q):
+def get_per_slate_q_values(slates, s_no_click, s, q):
     slate_q_values = tf.gather(s * q, slates, axis=1)
     slate_scores = tf.gather(s, slates, axis=1)
     slate_normalizer = tf.reduce_sum(
@@ -338,7 +337,7 @@ def rmsprop_optimizer(
     if policy.config["framework"] in ["tf2", "tfe"]:
         return tf.keras.optimizers.RMSprop(
             learning_rate=policy.cur_lr,
-            epsilon=0.00001,
+            epsilon=config["rmsprop_epsilon"],
             decay=0.95,
             momentum=0.0,
             centered=True,
@@ -346,7 +345,7 @@ def rmsprop_optimizer(
     else:
         return tf1.train.RMSPropOptimizer(
             learning_rate=policy.cur_lr,
-            epsilon=0.00001,
+            epsilon=config["rmsprop_epsilon"],
             decay=0.95,
             momentum=0.0,
             centered=True,

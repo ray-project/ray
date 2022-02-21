@@ -30,7 +30,7 @@ interest-evolution-recsim-env-slateq:
             epsilon_timesteps: 50000
 
         replay_buffer_config:
-            capacity: 1000000
+            capacity: 100000
 
         lr: 0.00025
 
