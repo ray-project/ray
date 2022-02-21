@@ -329,9 +329,14 @@ def test_usage_file_error_message(monkeypatch, shutdown_only):
             "Max retries exceeded with url:"
         ) in error_message
         assert not report_success
-        wait_for_condition(
-            lambda: failure_old < read_file(temp_dir, "usage_stats")["total_failed"]
-        )
+        try:
+            wait_for_condition(
+                lambda: failure_old < read_file(temp_dir, "usage_stats")["total_failed"]
+            )
+        except Exception:
+            print_dashboard_log()
+            read_file(temp_dir, "usage_stats")["total_failed"]
+            raise
         assert read_file(temp_dir, "usage_stats")["total_success"] == 0
 
 
