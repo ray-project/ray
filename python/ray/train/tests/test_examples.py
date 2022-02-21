@@ -1,6 +1,7 @@
 import pytest
 
 import ray
+from ray.autoscaler._private.fake_multi_node.test_utils import DockerCluster
 from ray.train import Trainer
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
@@ -27,7 +28,6 @@ def ray_start_2_cpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
-
 
 @pytest.mark.parametrize("num_workers", [1, 2])
 def test_tensorflow_mnist(ray_start_2_cpus, num_workers):

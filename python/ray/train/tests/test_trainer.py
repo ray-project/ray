@@ -668,7 +668,6 @@ def test_horovod_simple(ray_start_2_cpus):
 
     assert result == list(range(num_workers))
 
-
 def test_init_failure(ray_start_2_cpus):
     with pytest.raises(TypeError):
         Trainer(5, num_workers=2)
