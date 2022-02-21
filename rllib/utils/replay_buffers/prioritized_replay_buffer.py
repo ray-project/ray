@@ -59,6 +59,14 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     @ExperimentalAPI
     @override(ReplayBuffer)
     def _add_single_batch(self, item: SampleBatchType, **kwargs):
+        """Add a single item of experiences to self._storage with a weight.
+
+        An item is either one or more timesteps, a sequence or an episode.
+
+        Args:
+            item: The item to be added.
+            **kwargs: Forward compatibility kwargs.
+        """
         weight = kwargs.get('weight', None)
 
         if weight is None:
@@ -68,7 +76,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self._it_min[self._next_idx] = weight ** self._alpha
 
         ReplayBuffer._add_single_batch(self, item)
-
 
     def _sample_proportional(self, num_items: int) -> List[int]:
         res = []

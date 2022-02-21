@@ -20,6 +20,8 @@ class TestReplayBuffer(unittest.TestCase):
                     {
                         SampleBatch.T: [np.random.random((4,))],
                         SampleBatch.ACTIONS: [np.random.choice([0, 1])],
+                        SampleBatch.OBS: [np.random.random((4,))],
+                        SampleBatch.NEXT_OBS: [np.random.random((4,))],
                         SampleBatch.REWARDS: [np.random.rand()],
                         SampleBatch.DONES: [np.random.choice([False, True])],
                         "batch_id": [self.batch_id],

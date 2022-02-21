@@ -19,11 +19,12 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
     def _generate_data(self):
         return SampleBatch(
             {
-                "obs_t": [np.random.random((4,))],
-                "action": [np.random.choice([0, 1])],
-                "reward": [np.random.rand()],
-                "obs_tp1": [np.random.random((4,))],
-                "done": [np.random.choice([False, True])],
+                SampleBatch.T: [np.random.random((4,))],
+                SampleBatch.ACTIONS: [np.random.choice([0, 1])],
+                SampleBatch.REWARDS: [np.random.rand()],
+                SampleBatch.OBS:  [np.random.random((4,))],
+                SampleBatch.NEXT_OBS: [np.random.random((4,))],
+                SampleBatch.DONES: [np.random.choice([False, True])],
             }
         )
 

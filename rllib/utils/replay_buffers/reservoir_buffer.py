@@ -37,7 +37,11 @@ class ReservoirBuffer(ReplayBuffer):
     @ExperimentalAPI
     @override(ReplayBuffer)
     def add(self, batch: SampleBatchType, **kwargs) -> None:
-        """Adds a batch of experiences.
+        """Adds a batch of experiences to this buffer.
+
+        Also splits experiences into chunks of timesteps, sequences
+        or episodes, depending on self._storage_unit. Calls
+        self._add_single_batch.
 
         Args:
             batch: SampleBatch to add to this buffer's storage.

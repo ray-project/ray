@@ -87,7 +87,11 @@ class ReplayBuffer:
 
     @ExperimentalAPI
     def add(self, batch: SampleBatchType, **kwargs) -> None:
-        """Adds a batch of experiences.
+        """Adds a batch of experiences to this buffer.
+
+        Also splits experiences into chunks of timesteps, sequences
+        or episodes, depending on self._storage_unit. Calls
+        self._add_single_batch.
 
         Args:
             batch: SampleBatch to add to this buffer's storage.
@@ -120,7 +124,14 @@ class ReplayBuffer:
 
     @ExperimentalAPI
     def _add_single_batch(self, item: SampleBatchType, **kwargs):
-        # Update our timesteps counts.
+        """Add a single item of experiences to self._storage.
+
+        An item is either one or more timesteps, a sequence or an episode.
+
+        Args:
+            item: The item to be added.
+            **kwargs: Forward compatibility kwargs.
+        """
         self._num_timesteps_added += item.count
         self._num_timesteps_added_wrap += item.count
 
