@@ -1,11 +1,14 @@
-.. include:: we_are_hiring.rst
+.. include:: /_includes/rllib_announcement.rst
 
-RLlib Examples
-==============
+.. include:: /_includes/rllib_we_are_hiring.rst
+
+Examples
+========
 
 This page is an index of examples for the various use cases and features of RLlib.
 
-If any example is broken, or if you'd like to add an example to this page, feel free to raise an issue on our Github repository.
+If any example is broken, or if you'd like to add an example to this page,
+feel free to raise an issue on our Github repository.
 
 Tuned Examples
 --------------
@@ -220,3 +223,5 @@ Community Examples
    Example of training in StarCraft2 maps with RLlib / multi-agent.
 - `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
+
+.. include:: /_includes/rllib_announcement_bottom.rst

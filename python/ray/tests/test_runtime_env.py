@@ -24,6 +24,8 @@ from ray._private.runtime_env.utils import (
     check_output_cmd,
 )
 from ray._private.runtime_env.uri_cache import URICache
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
 
 def test_get_wheel_filename():
@@ -532,6 +534,63 @@ async def test_check_output_cmd():
         await check_output_cmd(["ls", "--abc"], logger=_FakeLogger())
     # Make sure the exception has cmd trace info.
     assert "cmd[5]" in str(e.value)
+
+
+MY_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env.MyPlugin"
+success_retry_number = 3
+runtime_env_retry_times = 0
+
+
+# This plugin can make runtime env creation failed before the retry times
+# increased to `success_retry_number`.
+class MyPlugin(RuntimeEnvPlugin):
+    @staticmethod
+    def validate(runtime_env_dict: dict) -> str:
+        return runtime_env_dict["plugins"][MY_PLUGIN_CLASS_PATH]
+
+    @staticmethod
+    def modify_context(
+        uri: str, plugin_config_dict: dict, ctx: RuntimeEnvContext
+    ) -> None:
+        global runtime_env_retry_times
+        runtime_env_retry_times += 1
+        if runtime_env_retry_times != success_retry_number:
+            raise ValueError(f"Fault injection {runtime_env_retry_times}")
+        pass
+
+
+@pytest.mark.parametrize(
+    "set_runtime_env_retry_times",
+    [
+        str(success_retry_number - 1),
+        str(success_retry_number),
+    ],
+    indirect=True,
+)
+def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
+    @ray.remote
+    def f():
+        return "ok"
+
+    runtime_env_retry_times = int(set_runtime_env_retry_times)
+    if runtime_env_retry_times >= success_retry_number:
+        # Enough retry times
+        output = ray.get(
+            f.options(
+                runtime_env={"plugins": {MY_PLUGIN_CLASS_PATH: {"key": "value"}}}
+            ).remote()
+        )
+        assert output == "ok"
+    else:
+        # No enough retry times
+        with pytest.raises(
+            RuntimeEnvSetupError, match=f"Fault injection {runtime_env_retry_times}"
+        ):
+            ray.get(
+                f.options(
+                    runtime_env={"plugins": {MY_PLUGIN_CLASS_PATH: {"key": "value"}}}
+                ).remote()
+            )
 
 
 if __name__ == "__main__":
