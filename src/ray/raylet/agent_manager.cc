@@ -124,8 +124,10 @@ void AgentManager::StartAgent() {
           << RayConfig::instance().agent_max_restart_count()
           << " times. Agent won't be restarted.";
       if (RayConfig::instance().raylet_shares_fate_with_agent()) {
-        RAY_LOG(ERROR) << "Agent has failed and raylet shares fate with agent. Raylet "
-                          "will exit immediately.";
+        RAY_LOG(ERROR) << "Raylet exits immediately because the ray agent has failed. "
+                          "Raylet fate shares with the agent. It can happen because the "
+                          "Ray agent is unexpectedly killed or failed. See "
+                          "`dashboard_agent.log` for the root cause.";
         QuickExit();
       }
     }
