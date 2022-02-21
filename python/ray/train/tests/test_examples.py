@@ -29,6 +29,7 @@ def ray_start_2_cpus():
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
+
 @pytest.mark.parametrize("num_workers", [1, 2])
 def test_tensorflow_mnist(ray_start_2_cpus, num_workers):
     num_workers = num_workers
