@@ -54,12 +54,12 @@ DEFAULT_CONFIG = with_common_config({
     # TODO: Unify torch and tf config settings:
     # Dense-layer setup for each the n (document) candidate Q-network stacks.
     "fcnet_hiddens_per_candidate": [256, 32],  # Only relevant for framework=tf|tf2.
-    # NOTE: The torch default model used does NOT build a separate Q-value stack
-    # per candidate document. Instead, only a single stack is generated. This leads
-    # to SlateQ with framework="torch" not learning as well as its "tf" counterpart.
-    # TODO: Fix the framework="torch" implementation of SlateQ by making it 100%
-    #  analogous to "tf|tf2".
-    "hiddens": [256, 64, 32],  # Only relevant for framework=torch.
+    ## NOTE: The torch default model used does NOT build a separate Q-value stack
+    ## per candidate document. Instead, only a single stack is generated. This leads
+    ## to SlateQ with framework="torch" not learning as well as its "tf" counterpart.
+    ## TODO: Fix the framework="torch" implementation of SlateQ by making it 100%
+    ##  analogous to "tf|tf2".
+    #"hiddens": [256, 64, 32],  # Only relevant for framework=torch.
 
     # === Exploration Settings ===
     "exploration_config": {
@@ -158,6 +158,9 @@ DEFAULT_CONFIG = with_common_config({
     # TODO: Unify torch and tf configs.
     # Use double_q correction to avoid overestimation of target Q-values.
     "double_q": True,  # Only relevant for `slateq_strategy="QL"` and framework="torch".
+
+    # Switch on no-preprocessors for easier Q-model coding.
+    "_disable_preprocessor_api": True,
 })
 # __sphinx_doc_end__
 # fmt: on
@@ -192,15 +195,8 @@ class SlateQTrainer(Trainer):
         if config["framework"] == "tf":
             raise ValueError(
                 "SlateQ is currently not supported for TensorFlow static graph "
-                "(framework=tf)! Try `framework=tf2` instead.")
-        elif config["framework"] == "torch":
-            logger.warning(
-                "SlateQ with framework==torch currently uses a limited Q-model for "
-                "learning Q-values per candidate. This causes it to learn slowly. "
-                "Try framework==tf2 instead.")
-        else:
-            # Switch on no-preprocessors for easier Q-model coding.
-            config["_disable_preprocessor_api"] = True
+                "(framework=tf)! Try `framework=tf2` instead."
+            )
 
         if config["slateq_strategy"] not in ALL_SLATEQ_STRATEGIES:
             raise ValueError(

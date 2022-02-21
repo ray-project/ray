@@ -8,7 +8,7 @@ from typing import Dict, List, Tuple, Type
 
 import ray
 from ray.rllib.agents.sac.sac_torch_policy import TargetNetworkMixin
-from ray.rllib.agents.slateq.slateq_torch_model import SlateQModel
+from ray.rllib.agents.slateq.slateq_torch_model import SlateQTorchModel
 from ray.rllib.models.modelv2 import ModelV2, restore_original_dimensions
 from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical,
@@ -42,28 +42,22 @@ def build_slateq_model_and_distribution(
     Returns:
         Tuple consisting of 1) Q-model and 2) an action distribution class.
     """
-    model = SlateQModel(
+    model = SlateQTorchModel(
         obs_space,
         action_space,
         model_config=config["model"],
         name="slateq_model",
-        user_embedding_size=obs_space.original_space["user"].shape[0],
-        doc_embedding_size=obs_space.original_space["doc"]["0"].shape[0],
-        num_docs=len(obs_space.original_space["doc"].spaces),
-        q_hiddens=config["hiddens"],
-        double_q=config["double_q"],
+        fcnet_hiddens_per_candidate=config["fcnet_hiddens_per_candidate"],
+        #double_q=config["double_q"],
     )
 
-    policy.target_model = SlateQModel(
+    policy.target_model = SlateQTorchModel(
         obs_space,
         action_space,
         model_config=config["model"],
         name="target_slateq_model",
-        user_embedding_size=obs_space.original_space["user"].shape[0],
-        doc_embedding_size=obs_space.original_space["doc"]["0"].shape[0],
-        num_docs=len(obs_space.original_space["doc"].spaces),
-        q_hiddens=config["hiddens"],
-        double_q=config["double_q"],
+        fcnet_hiddens_per_candidate=config["fcnet_hiddens_per_candidate"],
+        #double_q=config["double_q"],
     )
 
     return model, TorchCategorical

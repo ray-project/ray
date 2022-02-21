@@ -122,23 +122,29 @@ class UserChoiceModel(nn.Module):
         return s
 
 
-class SlateQModel(TorchModelV2, nn.Module):
-    """The SlateQ model class.
+class SlateQTorchModel(TorchModelV2, nn.Module):
+    """Initializes a SlateQTFModel instance.
 
-    It includes both the user choice model and the Q-value model.
+    Model includes both the user choice model and the Q-value model.
+
+    For the Q-value model, each document candidate receives one full Q-value
+    stack, defined by `fcnet_hiddens_per_candidate`. The input to each of these
+    Q-value stacks is always {[user] concat [document[i]] for i in document_candidates}.
+
+    Extra model kwargs:
+        fcnet_hiddens_per_candidate: List of layer-sizes for each(!) of the
+            candidate documents.
     """
 
     def __init__(
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
+        num_outputs: int,
         model_config: ModelConfigDict,
         name: str,
         *,
-        user_embedding_size: int,
-        doc_embedding_size: int,
-        num_docs: int,
-        q_hiddens: Sequence[int],
+        fcnet_hiddens_per_candidate: Sequence[int] = (256, 32),
         double_q: bool = True,
     ):
         """Initializes a SlateQModel instance.
@@ -150,7 +156,8 @@ class SlateQModel(TorchModelV2, nn.Module):
                 specific features).
             num_docs: The number of docs to select a slate from. Note that the slate
                 size is inferred from the action space.
-            q_hiddens: The list of hidden layer sizes for the QValueModel.
+            fcnet_hiddens_per_candidate: List of layer-sizes for each(!) of the
+                candidate documents.
             double_q: Whether "double Q-learning" is applied in the loss function.
         """
         nn.Module.__init__(self)
@@ -159,12 +166,27 @@ class SlateQModel(TorchModelV2, nn.Module):
             obs_space,
             action_space,
             # This required parameter (num_outputs) seems redundant: it has no
-            # real imact, and can be set arbitrarily. TODO: fix this.
+            # real impact, and can be set arbitrarily. TODO: fix this.
             num_outputs=0,
             model_config=model_config,
             name=name,
         )
         self.choice_model = UserChoiceModel()
+
+        self.embedding_size = self.obs_space["doc"]["0"].shape[0]
+        self.num_candidates = len(self.orig_obs_space["doc"])
+        assert self.obs_space["user"].shape[0] == self.embedding_size
+
+        # Setup the Q head output (i.e., model for get_q_values)
+        self.user_in = tf.keras.layers.Input(
+            shape=(self.embedding_size,), name="user_in"
+        )
+        self.docs_in = tf.keras.layers.Input(
+            shape=(self.embedding_size * self.num_candidates,), name="docs_in"
+        )
+
+        self.num_outputs = num_outputs
+
         self.q_model = QValueModel(user_embedding_size + doc_embedding_size, q_hiddens)
         self.slate_size = len(action_space.nvec)
         self.double_q = double_q
