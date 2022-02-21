@@ -141,8 +141,8 @@ def _parse_proto_plugin_runtime_env(
             plugins[plugin.class_path] = dict(
                 json.loads(plugin.config)
             )
-    if plugins:
-        runtime_env_dict["plugins"] = plugins
+        if plugins:
+            runtime_env_dict["plugins"] = plugins
 
 
 class RuntimeEnv(dict):
