@@ -239,7 +239,6 @@ def test_usage_report_e2e(monkeypatch, shutdown_only):
             print_dashboard_log()
             raise
         validate(instance=ray.get(reporter.get_payload.remote()), schema=schema)
-
         """
         Verify the usage_stats.json is updated.
         """
@@ -259,6 +258,7 @@ def test_usage_report_e2e(monkeypatch, shutdown_only):
         wait_for_condition(
             lambda: success_old < read_file(temp_dir, "usage_stats")["total_success"]
         )
+        assert read_file(temp_dir, "success")
 
 
 def test_usage_report_disabled(monkeypatch, shutdown_only):
