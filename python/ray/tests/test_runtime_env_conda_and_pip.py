@@ -48,7 +48,7 @@ def test_get_conda_dict_with_ray_inserted_m1_wheel(monkeypatch):
     monkeypatch.setattr(platform, "machine", lambda: "arm64")
 
     input_conda = {"dependencies": ["blah", "pip", {"pip": ["pip_pkg"]}]}
-    runtime_env = RuntimeEnv(conda=input_conda).serialize()
+    runtime_env = RuntimeEnv(conda=input_conda)
     output_conda = _get_conda_dict_with_ray_inserted(runtime_env)
     # M1 wheels are not uploaded to AWS S3.  So rather than have an S3 URL
     # inserted as a dependency, we should just have the string "ray==1.9.0".

@@ -3,7 +3,6 @@ from abc import ABC, abstractstaticmethod
 from typing import Tuple
 from ray.util.annotations import DeveloperAPI
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray.runtime_env import RuntimeEnv
 
 
 # TODO(SongGuyang): This function exists in both C++ and Python.
@@ -40,7 +39,7 @@ class RuntimeEnvPlugin(ABC):
         """
         raise NotImplementedError()
 
-    def create(uri: str, runtime_env: RuntimeEnv, ctx: RuntimeEnvContext) -> float:
+    def create(uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext) -> float:
         """Create and install the runtime environment.
 
         Gets called in the runtime env agent at install time. The URI can be
@@ -59,7 +58,7 @@ class RuntimeEnvPlugin(ABC):
         return 0
 
     def modify_context(
-        uri: str, runtime_env: RuntimeEnv, ctx: RuntimeEnvContext
+        uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext
     ) -> None:
         """Modify context to change worker startup behavior.
 

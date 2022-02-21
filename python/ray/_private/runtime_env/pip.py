@@ -13,7 +13,6 @@ from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
-from ray.runtime_env import RuntimeEnv
 
 default_logger = logging.getLogger(__name__)
 
@@ -59,7 +58,7 @@ class PipProcessor:
     def __init__(
         self,
         target_dir: str,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",
         logger: Optional[logging.Logger] = default_logger,
     ):
         try:
@@ -271,7 +270,7 @@ class PipManager:
         """
         return os.path.join(self._pip_resources_dir, hash)
 
-    def get_uri(self, runtime_env: RuntimeEnv) -> Optional[str]:
+    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:
         """Return the pip URI from the RuntimeEnv if it exists, else None."""
         pip_uri = runtime_env.pip_uri()
         if pip_uri != "":
@@ -304,7 +303,7 @@ class PipManager:
     async def create(
         self,
         uri: str,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
@@ -323,7 +322,7 @@ class PipManager:
     def modify_context(
         self,
         uri: str,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):

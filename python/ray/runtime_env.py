@@ -219,12 +219,18 @@ class RuntimeEnv(dict):
         self.__proto_runtime_env = None
 
         runtime_env = kwgs
-        runtime_env["py_modules"] = py_modules
-        runtime_env["working_dir"] = working_dir
-        runtime_env["pip"] = pip
-        runtime_env["conda"] = conda
-        runtime_env["container"] = container
-        runtime_env["env_vars"] = env_vars
+        if py_modules is not None:
+            runtime_env["py_modules"] = py_modules
+        if working_dir is not None:
+            runtime_env["working_dir"] = working_dir
+        if pip is not None:
+            runtime_env["pip"] = pip
+        if conda is not None:
+            runtime_env["conda"] = conda
+        if container is not None:
+            runtime_env["container"] = container
+        if env_vars is not None:
+            runtime_env["env_vars"] = env_vars
 
         # Blindly trust that the runtime_env has already been validated.
         # This is dangerous and should only be used internally (e.g., on the

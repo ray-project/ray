@@ -15,7 +15,6 @@ from pathlib import Path
 
 import ray
 
-from ray.runtime_env import RuntimeEnv
 from ray._private.runtime_env.conda_utils import (
     get_conda_activate_commands,
     create_conda_env_if_needed,
@@ -225,7 +224,7 @@ def get_uri(runtime_env: Dict) -> Optional[str]:
 
 
 def _get_conda_dict_with_ray_inserted(
-    runtime_env: RuntimeEnv, logger: Optional[logging.Logger] = default_logger
+    runtime_env: "RuntimeEnv", logger: Optional[logging.Logger] = default_logger
 ) -> Dict[str, Any]:
     """Returns the conda spec with the Ray and `python` dependency inserted."""
     conda_dict = json.loads(runtime_env.conda_config())
@@ -269,7 +268,7 @@ class CondaManager:
         """
         return os.path.join(self._resources_dir, hash)
 
-    def get_uri(self, runtime_env: RuntimeEnv) -> Optional[str]:
+    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:
         """Return the conda URI from the RuntimeEnv if it exists, else None."""
         conda_uri = runtime_env.conda_uri()
         if conda_uri != "":
@@ -302,7 +301,7 @@ class CondaManager:
     async def create(
         self,
         uri: Optional[str],
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
@@ -332,7 +331,7 @@ class CondaManager:
     def modify_context(
         self,
         uri: str,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):

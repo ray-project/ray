@@ -17,7 +17,6 @@ from ray._private.runtime_env.packaging import (
     upload_package_if_needed,
 )
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
-from ray.runtime_env import RuntimeEnv
 
 default_logger = logging.getLogger(__name__)
 
@@ -103,7 +102,7 @@ class WorkingDirManager:
 
         return local_dir_size
 
-    def get_uri(self, runtime_env: RuntimeEnv) -> Optional[str]:
+    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:
         working_dir_uri = runtime_env.working_dir()
         if working_dir_uri != "":
             return working_dir_uri

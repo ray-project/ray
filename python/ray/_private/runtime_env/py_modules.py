@@ -17,7 +17,6 @@ from ray._private.runtime_env.packaging import (
 )
 from ray._private.utils import get_directory_size_bytes
 from ray._private.utils import try_to_create_directory
-from ray.runtime_env import RuntimeEnv
 
 default_logger = logging.getLogger(__name__)
 
@@ -126,7 +125,7 @@ class PyModulesManager:
     async def create(
         self,
         uri: str,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:

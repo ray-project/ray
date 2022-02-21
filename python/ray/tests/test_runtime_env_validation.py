@@ -244,14 +244,9 @@ class TestParsedRuntimeEnv:
         sys.platform == "win32", reason="Pip option not supported on Windows."
     )
     def test_serialization(self):
-        env1 = RuntimeEnv(
-            pip=["requests"], env_vars={"hi1": "hi1", "hi2": "hi2"}
-        )
+        env1 = RuntimeEnv(pip=["requests"], env_vars={"hi1": "hi1", "hi2": "hi2"})
 
-        env2 = RuntimeEnv(
-            env_vars={"hi2": "hi2", "hi1": "hi1"},
-            pip=["requests"]
-        )
+        env2 = RuntimeEnv(env_vars={"hi2": "hi2", "hi1": "hi1"}, pip=["requests"])
 
         assert env1 == env2
 
@@ -287,7 +282,7 @@ class TestParsedRuntimeEnv:
         assert "_ray_commit" in result
 
         # Should not override if passed.
-        result = RuntimeEnv(conda="env_name", _ray_commit="Blah"})
+        result = RuntimeEnv(conda="env_name", _ray_commit="Blah")
         assert result["_ray_commit"] == "Blah"
 
     def test_inject_current_ray(self):

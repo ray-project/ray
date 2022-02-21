@@ -5,7 +5,6 @@ import logging
 from typing import Optional
 
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray.runtime_env import RuntimeEnv
 
 default_logger = logging.getLogger(__name__)
 
@@ -52,7 +51,7 @@ class ContainerManager:
 
     async def setup(
         self,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):

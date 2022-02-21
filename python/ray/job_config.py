@@ -121,7 +121,7 @@ class JobConfig:
 
     def runtime_env_has_uris(self):
         """Whether there are uris in runtime env or not"""
-        return self._validate_runtime_env()[0].get_proto_runtime_env().has_uris()
+        return self._validate_runtime_env()[0].has_uris()
 
     def get_serialized_runtime_env(self) -> str:
         """Return the JSON-serialized parsed runtime env dict"""
