@@ -74,8 +74,11 @@ class Actor(object):
 for _ in range(5):
     for i in range(num_nodes):
         assert (ray.get(
-            f._remote(args=[], kwargs={{}}, resources={{str(i): 1}})) == 1)
-        actor = Actor._remote(args=[], kwargs={{}}, resources={{str(i): 1}})
+            f._remote(args=[],
+            kwargs={{}},
+            resources={{str(i): 1}})) == 1)
+        actor = Actor._remote(
+            args=[], kwargs={{}}, resources={{str(i): 1}})
         assert ray.get(actor.method.remote()) == 1
 
 # Tests datasets doesn't leak workers.
@@ -89,7 +92,7 @@ print("success")
 
 @ray.remote
 def run_driver():
-    output = run_string_as_driver(driver_script)
+    output = run_string_as_driver(driver_script, encode="utf-8")
     assert "success" in output
 
 

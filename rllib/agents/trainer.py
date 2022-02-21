@@ -628,6 +628,9 @@ COMMON_CONFIG: TrainerConfigDict = {
     # training iteration.
     "_disable_execution_plan_api": False,
 
+    # If True, disable the environment pre-checking module.
+    "disable_env_checking": False,
+
     # === Deprecated keys ===
     # Uses the sync samples optimizer instead of the multi-gpu one. This is
     # usually slower, but you might want to try it if you run into issues with
@@ -912,6 +915,7 @@ class Trainer(Trainable):
                 trainer_config=self.config,
                 num_workers=self.config["num_workers"],
                 local_worker=True,
+                logdir=self.logdir,
             )
 
             # Function defining one single training iteration's behavior.
@@ -1001,18 +1005,22 @@ class Trainer(Trainable):
 
             self.config["evaluation_config"] = eval_config
 
+            env_id = self._register_if_needed(eval_config.get("env"), eval_config)
+            env_creator = self._get_env_creator_from_env_id(env_id)
+
             # Create a separate evaluation worker set for evaluation.
             # If evaluation_num_workers=0, use the evaluation set's local
             # worker for evaluation, otherwise, use its remote workers
             # (parallelized evaluation).
             self.evaluation_workers: WorkerSet = WorkerSet(
-                env_creator=self.env_creator,
+                env_creator=env_creator,
                 validate_env=None,
                 policy_class=self.get_default_policy_class(self.config),
                 trainer_config=eval_config,
                 num_workers=self.config["evaluation_num_workers"],
                 # Don't even create a local worker if num_workers > 0.
                 local_worker=False,
+                logdir=self.logdir,
             )
 
     # TODO: Deprecated: In your sub-classes of Trainer, override `setup()`
@@ -1735,9 +1743,14 @@ class Trainer(Trainable):
             state = [np.stack(s) for s in state]
 
         input_dict = {SampleBatch.OBS: obs_batch}
-        if prev_action:
+
+        # prev_action and prev_reward can be None, np.ndarray, or tensor-like structure.
+        # Explicitly check for None here to avoid the error message "The truth value of
+        # an array with more than one element is ambiguous.", when np arrays are passed
+        # as arguments.
+        if prev_action is not None:
             input_dict[SampleBatch.PREV_ACTIONS] = prev_action
-        if prev_reward:
+        if prev_reward is not None:
             input_dict[SampleBatch.PREV_REWARDS] = prev_reward
         if info:
             input_dict[SampleBatch.INFOS] = info

@@ -6,6 +6,11 @@ import sys
 
 import yaml
 
+# If you update or reorganize the periodic tests, please ensure the
+# relevant portions of the Ray release instructions (go/release-ray)
+# (in particular, running periodic tests and collecting release logs)
+# are up to date.  If you need access, please contact @zhe-thoughts.
+
 # Env variables:
 
 # RAY_REPO          Repo to use for finding the wheel
@@ -88,7 +93,7 @@ CORE_NIGHTLY_TESTS = {
         "inference",
         "shuffle_data_loader",
         "pipelined_training_50_gb",
-        "pipelined_ingestion_1500_gb_15_windows",
+        "pipelined_ingestion_1500_gb",
         "datasets_preprocess_ingest",
         "datasets_ingest_400G",
         SmokeTest("datasets_ingest_train_infer"),

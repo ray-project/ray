@@ -222,11 +222,8 @@ def traced_eager_policy(eager_policy_cls):
         def apply_gradients(self, grads: ModelGradients) -> None:
             """Traced version of Policy.apply_gradients."""
 
-            print("Eager-tracing-policy: inside `apply_gradients()`.")
-
             # Create a traced version of `self._apply_gradients_helper`.
             if self._traced_apply_gradients_helper is False and not self._no_tracing:
-                print("... tracing")
                 self._apply_gradients_helper = convert_eager_inputs(
                     tf.function(
                         super(TracedEagerPolicy, self)._apply_gradients_helper,
@@ -238,7 +235,6 @@ def traced_eager_policy(eager_policy_cls):
 
             # Now that the helper method is traced, call super's
             # `apply_gradients()` (which will call the traced helper).
-            print("... calling super")
             return super(TracedEagerPolicy, self).apply_gradients(grads)
 
     TracedEagerPolicy.__name__ = eager_policy_cls.__name__ + "_traced"

@@ -37,6 +37,7 @@
 #include "ray/util/filesystem.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/runtime_env_common.pb.h"
 
 namespace {
 

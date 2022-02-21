@@ -185,7 +185,6 @@ ray_files += [
     "ray/autoscaler/local/defaults.yaml",
     "ray/autoscaler/kubernetes/defaults.yaml",
     "ray/autoscaler/_private/_kubernetes/kubectl-rsync.sh",
-    "ray/autoscaler/staroid/defaults.yaml",
     "ray/autoscaler/ray-schema.json",
 ]
 
@@ -203,7 +202,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
         "data": [
             "pandas",
-            "pyarrow>=4.0.1",
+            "pyarrow >= 4.0.1, < 7.0.0",
             "fsspec",
         ],
         "default": [
@@ -246,7 +245,7 @@ if setup_spec.type == SetupType.RAY:
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gym",
+        "gym<0.22",
         "lz4",
         # matplotlib (dependency of scikit-image) 3.4.3 breaks docker build
         # Todo: Remove this when safe?
@@ -280,6 +279,7 @@ if setup_spec.type == SetupType.RAY:
         "aioredis < 2",
         "aiosignal",
         "frozenlist",
+        "virtualenv",  # For pip runtime env.
     ]
 
 

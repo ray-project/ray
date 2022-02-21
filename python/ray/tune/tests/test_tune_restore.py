@@ -105,13 +105,6 @@ def _run(local_dir, driver_semaphore, trainer_semaphore):
 
 
 class TuneInterruptionTest(unittest.TestCase):
-    def setUp(self) -> None:
-        # Wait up to five seconds for placement groups when starting a trial
-        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
-        # Block for results even when placement groups are pending
-        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
-        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
-
     def testExperimentInterrupted(self):
         local_dir = tempfile.mkdtemp()
         # Unix platforms may default to "fork", which is problematic with
@@ -214,11 +207,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
     def setUp(self):
         self.logdir = tempfile.mkdtemp()
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
-        # Wait up to 1.5 seconds for placement groups when starting a trial
-        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "1.5"
-        # Block for results even when placement groups are pending
-        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
-        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
 
         # Change back to local_mode=True after this is resolved:
         # https://github.com/ray-project/ray/issues/13932

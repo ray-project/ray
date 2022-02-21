@@ -334,17 +334,17 @@ TEST_F(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest) {
   bool is_infeasible;
   rpc::SchedulingStrategy scheduling_strategy;
   scheduling_strategy.mutable_spread_scheduling_strategy();
-  std::string node_id = resource_scheduler.GetBestSchedulableNode(
+  std::string node_id_1 = resource_scheduler.GetBestSchedulableNode(
       resource_request, scheduling_strategy, false, false, false, &violations,
       &is_infeasible);
-  ASSERT_EQ(node_id, local_node_id);
   absl::flat_hash_map<std::string, double> resource_available({{"CPU", 9}});
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
-      local_node_id, resource_total, resource_available);
-  node_id = resource_scheduler.GetBestSchedulableNode(resource_request,
-                                                      scheduling_strategy, false, false,
-                                                      false, &violations, &is_infeasible);
-  ASSERT_EQ(node_id, remote_node_id);
+      node_id_1, resource_total, resource_available);
+  std::string node_id_2 = resource_scheduler.GetBestSchedulableNode(
+      resource_request, scheduling_strategy, false, false, false, &violations,
+      &is_infeasible);
+  ASSERT_EQ((std::set<std::string>{node_id_1, node_id_2}),
+            (std::set<std::string>{local_node_id, remote_node_id}));
 }
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
@@ -1197,6 +1197,18 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 750 * 1024 * 1024);
     ASSERT_EQ(total["object_store_memory"], 1000 * 1024 * 1024);
+    ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
+                  .GetLocalResources()
+                  .predefined_resources[OBJECT_STORE_MEM]
+                  .available[0]
+                  .Double(),
+              750 * 1024 * 1024);
+    ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
+                  .GetLocalResources()
+                  .predefined_resources[OBJECT_STORE_MEM]
+                  .total[0]
+                  .Double(),
+              1000 * 1024 * 1024);
   }
 
   used_object_store_memory = 450 * 1024 * 1024;
@@ -1206,6 +1218,18 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     auto available = data.resources_available();
     auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 550 * 1024 * 1024);
+    ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
+                  .GetLocalResources()
+                  .predefined_resources[OBJECT_STORE_MEM]
+                  .available[0]
+                  .Double(),
+              550 * 1024 * 1024);
+    ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
+                  .GetLocalResources()
+                  .predefined_resources[OBJECT_STORE_MEM]
+                  .total[0]
+                  .Double(),
+              1000 * 1024 * 1024);
   }
 
   used_object_store_memory = 0;
@@ -1215,6 +1239,18 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     auto available = data.resources_available();
     auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 1000 * 1024 * 1024);
+    ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
+                  .GetLocalResources()
+                  .predefined_resources[OBJECT_STORE_MEM]
+                  .available[0]
+                  .Double(),
+              1000 * 1024 * 1024);
+    ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
+                  .GetLocalResources()
+                  .predefined_resources[OBJECT_STORE_MEM]
+                  .total[0]
+                  .Double(),
+              1000 * 1024 * 1024);
   }
 
   used_object_store_memory = 9999999999;
@@ -1224,6 +1260,18 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     auto available = data.resources_available();
     auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 0);
+    ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
+                  .GetLocalResources()
+                  .predefined_resources[OBJECT_STORE_MEM]
+                  .available[0]
+                  .Double(),
+              0);
+    ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
+                  .GetLocalResources()
+                  .predefined_resources[OBJECT_STORE_MEM]
+                  .total[0]
+                  .Double(),
+              1000 * 1024 * 1024);
   }
 }
 
