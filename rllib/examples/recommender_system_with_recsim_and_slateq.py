@@ -37,6 +37,12 @@ parser.add_argument(
     ),
 )
 parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.",
+)
+parser.add_argument(
     "--env",
     type=str,
     default="interest-evolution",
@@ -130,6 +136,7 @@ def main():
             if args.env == "interest-exploration"
             else LongTermSatisfactionRecSimEnv
         ),
+        "framework": args.framework,
         "hiddens": [
             1024,
             1024,
