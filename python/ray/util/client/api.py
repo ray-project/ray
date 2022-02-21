@@ -287,6 +287,14 @@ class ClientAPI:
         """
         return ClientWorkerPropertyAPI(self.worker).build_runtime_context()
 
+    def get_current_runtime_env(self):
+        """Get the runtime env of the current client/driver.
+
+        Returns:
+            A dict of current runtime env.
+        """
+        return dict(self.get_runtime_context().runtime_env)
+
     # Client process isn't assigned any GPUs.
     def get_gpu_ids(self) -> list:
         return []

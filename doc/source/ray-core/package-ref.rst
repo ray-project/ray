@@ -211,13 +211,14 @@ Runtime Context APIs
 .. _runtime-env-apis:
 
 Runtime Env APIs
-----------------
 
 .. autoclass:: ray.runtime_env.RuntimeEnvConfig
     :members:
 
 .. autoclass:: ray.runtime_env.RuntimeEnv
     :members:
+
+.. autofunction:: ray.runtime_env.get_current_runtime_env
 
 .. _package-ref-debugging-apis:
 
