@@ -2655,7 +2655,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_R"],
     size = "large",
     srcs = ["examples/recommender_system_with_recsim_and_slateq.py"],
-    args = ["--stop-iters=2", "--framework=tf2", "--use-tune", "--num-cpus=5", "--random-test-episodes=10", "--env-num-candidates=100", "--env-slate-size=2"],
+    args = ["--stop-iters=2", "--framework=tf2", "--use-tune", "--random-test-episodes=10", "--env-num-candidates=50", "--env-slate-size=2"],
 )
 
 py_test(

@@ -192,12 +192,14 @@ class SlateQTrainer(Trainer):
         if config["framework"] == "tf":
             raise ValueError(
                 "SlateQ is currently not supported for TensorFlow static graph "
-                "(framework=tf)! Try `framework=tf2` instead.")
+                "(framework=tf)! Try `framework=tf2` instead."
+            )
         elif config["framework"] == "torch":
             logger.warning(
                 "SlateQ with framework==torch currently uses a limited Q-model for "
                 "learning Q-values per candidate. This causes it to learn slowly. "
-                "Try framework==tf2 instead.")
+                "Try framework==tf2 instead."
+            )
         else:
             # Switch on no-preprocessors for easier Q-model coding.
             config["_disable_preprocessor_api"] = True

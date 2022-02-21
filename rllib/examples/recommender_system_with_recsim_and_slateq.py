@@ -111,9 +111,9 @@ parser.add_argument(
     help="Init Ray in local mode for easier debugging.",
 )
 parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=2000)
-parser.add_argument("--stop-reward", type=float, default=200.0)
-parser.add_argument("--stop-timesteps", type=int, default=4000000)
+parser.add_argument("--stop-iters", type=int, default=200)
+parser.add_argument("--stop-reward", type=float, default=160.0)
+parser.add_argument("--stop-timesteps", type=int, default=150000)
 
 
 def main():
@@ -137,27 +137,9 @@ def main():
             else LongTermSatisfactionRecSimEnv
         ),
         "framework": args.framework,
-        "hiddens": [
-            1024,
-            1024,
-        ],
         "num_gpus": args.num_gpus,
         "num_workers": args.num_workers,
         "env_config": env_config,
-        "lr_choice_model": 0.003,
-        "lr_q_model": 0.003,
-        "rollout_fragment_length": 4,
-        "exploration_config": {
-            "epsilon_timesteps": 50000,
-            "final_epsilon": 0.02,
-        },
-        "target_network_update_freq": 1,
-        "tau": 5e-3,
-        "evaluation_interval": 1,
-        "evaluation_num_workers": 4,
-        "evaluation_duration": 200,
-        "evaluation_duration_unit": "episodes",
-        "evaluation_parallel_to_training": True,
     }
 
     # Perform a test run on the env with a random agent to see, what
