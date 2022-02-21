@@ -136,10 +136,13 @@ def _parse_proto_plugin_runtime_env(
 ):
     """Parse plugin runtime env protobuf to runtime env dict."""
     if runtime_env.python_runtime_env.HasField("plugin_runtime_env"):
+        plugins: Dict[str, Any] = {}
         for plugin in runtime_env.python_runtime_env.plugin_runtime_env.plugins:
-            runtime_env_dict["plugins"][plugin.class_path] = dict(
+            plugins[plugin.class_path] = dict(
                 json.loads(plugin.config)
             )
+    if plugins:
+        runtime_env_dict["plugins"] = plugins
 
 
 class RuntimeEnv(dict):
@@ -276,7 +279,6 @@ class RuntimeEnv(dict):
             self["_inject_current_ray"] = runtime_env["_inject_current_ray"]
         elif "RAY_RUNTIME_ENV_LOCAL_DEV_MODE" in os.environ:
             self["_inject_current_ray"] = True
-
         if "plugins" in runtime_env:
             self["plugins"] = dict()
             for class_path, plugin_field in runtime_env["plugins"].items():
@@ -332,6 +334,7 @@ class RuntimeEnv(dict):
         return cls.from_proto(proto_runtime_env)
 
     def serialize(self) -> str:
+
         return json.dumps(
             json.loads(json_format.MessageToJson(self._proto_runtime_env)),
             sort_keys=True,
