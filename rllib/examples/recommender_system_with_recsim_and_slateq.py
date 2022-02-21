@@ -60,6 +60,7 @@ parser.add_argument(
         "Default value: QL. Ignored when using Tune."
     ),
 )
+parser.add_argument("--learning-starts", type=int, default=20000)
 parser.add_argument(
     "--random-test-episodes",
     type=int,
@@ -140,6 +141,7 @@ def main():
         "num_gpus": args.num_gpus,
         "num_workers": args.num_workers,
         "env_config": env_config,
+        "learning_starts": args.learning_starts,
     }
 
     # Perform a test run on the env with a random agent to see, what
@@ -176,8 +178,6 @@ def main():
             "episode_reward_mean": args.stop_reward,
         }
 
-        time_signature = datetime.now().strftime("%Y-%m-%d_%H_%M_%S")
-        name = f"SlateQ/{args.run}-seed{args.env_seed}-{time_signature}"
         if args.run == "SlateQ":
             config.update(
                 {
@@ -187,7 +187,6 @@ def main():
         results = tune.run(
             args.run,
             stop=stop,
-            name=name,
             config=config,
             num_samples=args.tune_num_samples,
             verbose=2,

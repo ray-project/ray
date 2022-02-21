@@ -36,10 +36,9 @@ class SlateQTFModel(TFModelV2):
             obs_space, action_space, None, model_config, name
         )
 
-        self.orig_obs_space = obs_space
-        self.embedding_size = self.orig_obs_space["doc"]["0"].shape[0]
-        self.num_candidates = len(self.orig_obs_space["doc"])
-        assert self.orig_obs_space["user"].shape[0] == self.embedding_size
+        self.embedding_size = self.obs_space["doc"]["0"].shape[0]
+        self.num_candidates = len(self.obs_space["doc"])
+        assert self.obs_space["user"].shape[0] == self.embedding_size
 
         # Setup the Q head output (i.e., model for get_q_values)
         self.user_in = tf.keras.layers.Input(
