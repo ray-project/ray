@@ -157,6 +157,15 @@ py_test(
 )
 
 py_test(
+    name = "doc_code_faq",
+    size = "small",
+    main = "source/tune/doc_code/faq.py",
+    srcs = ["source/tune/doc_code/faq.py"],
+    tags = ["exclusive", "team:ml"]
+)
+
+
+py_test(
     name = "hyperopt_example",
     size = "small",
     main = "test_myst_doc.py",
