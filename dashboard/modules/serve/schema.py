@@ -197,7 +197,7 @@ class DeploymentConfig(BaseModel):
             )
 
 
-class ReplicaResources(BaseModel):
+class RayActorOptions(BaseModel):
     num_cpus: float = Field(
         default=None,
         description=(
@@ -255,7 +255,7 @@ class FullDeploymentConfig(BaseModel):
     )
     app_config: AppConfig = Field(...)
     deployment_config: DeploymentConfig = Field(...)
-    replica_resources: ReplicaResources = Field(...)
+    ray_actor_options: RayActorOptions = Field(...)
 
     @validator("runtime_env")
     def runtime_env_contains_remote_uris(cls, v):

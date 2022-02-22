@@ -4,7 +4,7 @@ import pytest
 from ray.dashboard.modules.serve.schema import (
     AppConfig,
     DeploymentConfig,
-    ReplicaResources,
+    RayActorOptions,
     FullDeploymentConfig,
     ServeInstanceConfig,
 )
@@ -104,11 +104,11 @@ class TestDeploymentConfig:
         DeploymentConfig(route_prefix=None)
 
 
-class TestReplicaResources:
-    def test_valid_replica_resources(self):
-        # Ensure a valid ReplicaResources can be generated
+class TestRayActorOptions:
+    def test_valid_ray_actor_options(self):
+        # Ensure a valid RayActorOptions can be generated
 
-        replica_resources = {
+        ray_actor_options = {
             "num_cpus": 0.2,
             "num_gpus": 50,
             "memory": 3,
@@ -117,16 +117,16 @@ class TestReplicaResources:
             "accelerator_type": NVIDIA_TESLA_V100,
         }
 
-        ReplicaResources.parse_obj(replica_resources)
+        RayActorOptions.parse_obj(ray_actor_options)
 
-    def test_gt_zero_replica_resources(self):
+    def test_gt_zero_ray_actor_options(self):
         # Ensure ValidationError is raised when any fields that must be greater
         # than zero is set to zero.
 
         gt_zero_fields = ["num_cpus", "num_gpus", "memory", "object_store_memory"]
         for field in gt_zero_fields:
             with pytest.raises(ValidationError):
-                ReplicaResources.parse_obj({field: 0})
+                RayActorOptions.parse_obj({field: 0})
 
 
 class TestFullDeploymentConfig:
@@ -163,7 +163,7 @@ class TestFullDeploymentConfig:
                 "_health_check_period_s": 11,
                 "_health_check_timeout_s": 11,
             },
-            "replica_resources": {
+            "ray_actor_options": {
                 "num_cpus": 3,
                 "num_gpus": 4.2,
                 "memory": 5,
@@ -197,7 +197,7 @@ class TestFullDeploymentConfig:
                 "_health_check_period_s": None,
                 "_health_check_timeout_s": None,
             },
-            "replica_resources": {
+            "ray_actor_options": {
                 "num_cpus": None,
                 "num_gpus": None,
                 "memory": None,
@@ -262,7 +262,7 @@ class TestServeInstanceConfig:
                         "_health_check_period_s": 11,
                         "_health_check_timeout_s": 11,
                     },
-                    "replica_resources": {
+                    "ray_actor_options": {
                         "num_cpus": 3,
                         "num_gpus": 4.2,
                         "memory": 5,
@@ -292,7 +292,7 @@ class TestServeInstanceConfig:
                         "_health_check_period_s": None,
                         "_health_check_timeout_s": None,
                     },
-                    "replica_resources": {
+                    "ray_actor_options": {
                         "num_cpus": None,
                         "num_gpus": None,
                         "memory": None,
