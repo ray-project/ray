@@ -8,6 +8,7 @@ import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.NodeInfo;
+import io.ray.runtime.generated.Common;
 import io.ray.runtime.generated.Gcs;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
 import io.ray.runtime.placementgroup.PlacementGroupUtils;
@@ -161,6 +162,20 @@ public class GcsClient {
       throw new RuntimeException("Received invalid protobuf data from GCS.");
     }
     return nodeInfo;
+  }
+
+  public byte[] getActorAddress(ActorId actorId) {
+    byte[] serializedActorInfo = globalStateAccessor.getActorInfo(actorId);
+    if (serializedActorInfo == null) {
+      return null;
+    }
+
+    try {
+      Gcs.ActorTableData actorTableData = Gcs.ActorTableData.parseFrom(serializedActorInfo);
+      return actorTableData.getAddress().toByteArray();
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException("Received invalid protobuf data from GCS.");
+    }
   }
 
   /** Destroy global state accessor when ray native runtime will be shutdown. */
