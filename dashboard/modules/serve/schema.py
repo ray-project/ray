@@ -1,6 +1,6 @@
 from enum import Enum
 from pydantic import BaseModel, Field, validator
-from typing import Tuple, List, Dict
+from typing import Union, Tuple, List, Dict
 
 
 class SupportedLanguage(str, Enum):
@@ -12,7 +12,7 @@ class SupportedLanguage(str, Enum):
 
 
 class AppConfig(BaseModel):
-    init_args: Tuple = Field(
+    init_args: Union[Tuple, List] = Field(
         default=None,
         description=("The application's init_args. Only works with Python 3 "
                      "applications.")
@@ -29,7 +29,10 @@ class AppConfig(BaseModel):
                      "MyClassOrFunction.\" This is equivalent to "
                      "\"from module.submodule_1...submodule_n import "
                      "MyClassOrFunction\". Only works with Python 3 "
-                     "applications.")
+                     "applications."),
+        # This regex checks that there is at least one character, followed by
+        # a dot, followed by at least one more character.
+        regex=".+\..+"
     )
     language: SupportedLanguage = Field(
         ...,
@@ -56,7 +59,7 @@ class AppConfig(BaseModel):
 
         for attribute in required_attributes[v]:
             if attribute not in values or values[attribute] is None:
-                raise ValueError(f"{attribute} must be defined in the "
+                raise ValueError(f"{attribute} must be specified in the "
                                  f"{v.value} language.")
         
         supported_attributes = required_attributes[v].union(optional_attributes[v])
@@ -98,7 +101,7 @@ class DeploymentConfig(BaseModel):
                      "reconfigure method. This can be updated dynamically "
                      "without restarting replicas")
     )
-    _autoscaling_config: Dict = Field(
+    autoscaling_config: Dict = Field(
         default=None,
         description=("[EXPERIMENTAL] Config specifying autoscaling "
                      "parameters for the deployment's number of replicas. "
@@ -106,27 +109,27 @@ class DeploymentConfig(BaseModel):
                      "replicas; the number of replicas will be fixed at "
                      "num_replicas.")
     )
-    _graceful_shutdown_wait_loop_s: float = Field(
+    graceful_shutdown_wait_loop_s: float = Field(
         default=None,
         description=("Duration that deployment replicas will wait until there "
                      "is no more work to be done before shutting down. Uses a "
                      "default if null."),
         ge=0
     )
-    _graceful_shutdown_timeout_s: float = Field(
+    graceful_shutdown_timeout_s: float = Field(
         default=None,
         description=("Serve controller waits for this duration before "
                      "forcefully killing the replica for shutdown. Uses a "
                      "default if null."),
         ge=0
     )
-    _health_check_period_s: float = Field(
+    health_check_period_s: float = Field(
         default=None,
         description=("Frequency at which the controller will health check "
                      "replicas. Uses a default if null."),
         gt=0
     )
-    _health_check_timeout_s: float = Field(
+    health_check_timeout_s: float = Field(
         default=None,
         description=("Timeout that the controller will wait for a response "
                      "from the replica's health check before marking it "
