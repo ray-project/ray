@@ -242,7 +242,8 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         If less than `num_items` records are in the policy's buffer,
         some samples in the results may be repeated to fulfil the batch size
-        `num_items` request.
+        `num_items` request. Returns an empty batch if there are no items in
+        the buffer.
 
         Args:
             num_items: Number of items to sample from a policy's buffer.
