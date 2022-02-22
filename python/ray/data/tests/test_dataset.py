@@ -1577,6 +1577,40 @@ def test_union(ray_start_regular_shared):
     assert ds2.count() == 210
 
 
+def test_split_small(ray_start_regular_shared):
+    x = [Counter.remote() for _ in range(10)]
+    data = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]
+    fail = []
+
+    for m in [1, 2, 7]:
+        ds = ray.data.from_items(data, parallelism=m)
+        for n in [1, 2, 3, 4, 10]:
+            for locality_hints in [None, x[:n]]:
+                for equal in [True, False]:
+                    splits = ds.split(n, equal=equal, locality_hints=locality_hints)
+                    assert len(splits) == n
+                    outs = []
+                    out = []
+                    for s in splits:
+                        outs.append(s.take())
+                        out.extend(s.take())
+                    if equal:
+                        lens = set([len(s) for s in outs])
+                        limit = len(data) - (len(data) % n)
+                        if len(out) != limit or len(set(out)) != limit or len(lens) != 1:
+                            print("FAIL", m, n, equal, locality_hints)
+                            print(outs)
+                            fail.append((m, n, equal, locality_hints))
+                    else:
+                        expected = data
+                        if sorted(out) != data:
+                            print("FAIL", m, n, equal, locality_hints)
+                            print(outs)
+                            fail.append((m, n, equal, locality_hints))
+
+    assert not fail, fail
+
+
 def test_split_at_indices(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=3)
 

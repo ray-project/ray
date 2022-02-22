@@ -588,6 +588,9 @@ class Dataset(Generic[T]):
                 f"The length of locality_hints {len(locality_hints)} "
                 "doesn't equal the number of splits {n}."
             )
+            if len(set(locality_hints)) != len(locality_hints):
+                raise ValueError(
+                    "locality_hints must not contain duplicate actor handles")
 
         blocks = self._plan.execute()
         stats = self._plan.stats()
@@ -622,7 +625,7 @@ class Dataset(Generic[T]):
             leftovers = []
             for split in splits:
                 size = counts_cache[split._get_uuid()]
-                if size == target_size:
+                if size == target_size or target_size == 0:
                     new_splits.append(split)
                     continue
                 split_indices = list(range(target_size, size, target_size))
