@@ -6,6 +6,7 @@ import os
 import pandas as pd
 import time
 
+import ray
 from ray import tune
 from ray.tune import register_env
 from ray.rllib.env.wrappers.recsim import (
