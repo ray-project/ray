@@ -191,3 +191,22 @@ class ReplicaResources(BaseModel):
         default=None,
         description=("")
     )
+
+
+class FullDeploymentConfig(BaseModel):
+    name: str = Field(
+        ...,
+        description=("Globally-unique name identifying this deployment.")
+    )
+    runtime_env: dict = Field(
+        default=None,
+        description=("This deployment's runtime_env. working_dir and "
+                     "py_modules may contain only remote URIs.")
+    )
+    namespace: str = Field(
+        default="serve",
+        description=("This deployment's namespace.")
+    )
+    app_config: AppConfig = Field(...)
+    deployment_config: DeploymentConfig = Field(...)
+    replica_resources: ReplicaResources = Field(...)
