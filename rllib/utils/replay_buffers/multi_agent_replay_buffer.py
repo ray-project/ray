@@ -12,6 +12,7 @@ from ray.rllib.utils.annotations import override, ExperimentalAPI
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
 from ray.rllib.utils.from_config import from_config
 from ray.util.debug import log_once
@@ -21,8 +22,8 @@ logger = logging.getLogger(__name__)
 
 @ExperimentalAPI
 class ReplayMode(Enum):
-    LOCKSTEP = 0
-    INDEPENDENT = 1
+    LOCKSTEP = "lockstep"
+    INDEPENDENT = "independent"
 
 
 @ExperimentalAPI
@@ -124,15 +125,14 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         self.replay_burn_in = replay_burn_in
         self.replay_zero_init_states = replay_zero_init_states
 
-        if replay_mode == "lockstep" or replay_mode == ReplayMode.LOCKSTEP:
+        if replay_mode in ["lockstep", ReplayMode.LOCKSTEP]:
             self.replay_mode = ReplayMode.LOCKSTEP
             if self._storage_unit in [StorageUnit.EPISODES,
                                       StorageUnit.SEQUENCES]:
                 raise ValueError("MultiAgentReplayBuffer does not support "
                                  "lockstep mode with storage unit `episodes`"
                                  "or `sequences`.")
-        elif replay_mode == "independent" or replay_mode == \
-            ReplayMode.INDEPENDENT:
+        elif replay_mode in ["independent", ReplayMode.INDEPENDENT]:
             self.replay_mode = ReplayMode.INDEPENDENT
         else:
             raise ValueError("Unsupported replay mode: {}".format(replay_mode))
@@ -185,12 +185,13 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         batch = batch.as_multi_agent()
 
         with self.add_batch_timer:
-            # Lockstep mode: Store under _ALL_POLICIES key (we will always
-            # only sample from all policies at the same time).
             if self.replay_mode == ReplayMode.LOCKSTEP:
-                for s in batch.timeslices(self.replay_sequence_length):
-                    self._add_to_underlying_buffer(_ALL_POLICIES, s, **kwargs)
+                # Lockstep mode: Store under _ALL_POLICIES key (we will always
+                # only sample from all policies at the same time).
+                # This means storing a MultiAgentBatch to the underlying buffer
+                self._add_to_underlying_buffer(_ALL_POLICIES, batch, **kwargs)
             else:
+                # Store independent SampleBatches
                 for policy_id, sample_batch in batch.policy_batches.items():
                     self._add_to_underlying_buffer(policy_id, sample_batch,
                                                    **kwargs)
@@ -208,7 +209,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         Args:
             policy_id: ID of the policy that corresponds to the underlying 
             buffer
-            batch: Batch to add to the underlying buffer
+            batch: SampleBatch to add to the underlying buffer
             **kwargs: Forward compatibility kwargs.
         """
         # Merge kwargs, overwriting standard call arguments
@@ -245,10 +246,11 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         Args:
             num_items: Number of items to sample from a policy's buffer.
-            policy_id: ID of the policy that created the experiences we sample
+            policy_id: ID of the policy that created the experiences we sample.
+                If none is given, sample from all policies.
 
         Returns:
-            Concatenated batch of items. None if buffer is empty.
+            Concatenated MultiAgentBatch of items.
             **kwargs: Forward compatibility kwargs.
         """
         # Merge kwargs, overwriting standard call arguments
@@ -264,17 +266,20 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 assert (
                     policy_id is None
                 ), "`policy_id` specifier not allowed in `lockstep` mode!"
+                # In lockstep mode we sample MultiAgentBatches
                 return self.replay_buffers[_ALL_POLICIES].sample(num_items,
-                                                                 **kwargs)
+                                                                   **kwargs)
             elif policy_id is not None:
-                return self.replay_buffers[policy_id].sample(num_items,
-                                                             **kwargs)
+                sample = self.replay_buffers[policy_id].sample(num_items,
+                                                               **kwargs)
+                return MultiAgentBatch({policy_id: sample}, sample.count)
             else:
                 samples = {}
                 for policy_id, replay_buffer in self.replay_buffers.items():
                     samples[policy_id] = replay_buffer.sample(num_items,
                                                               **kwargs)
-                return MultiAgentBatch(samples, self.replay_batch_size)
+                return MultiAgentBatch(samples, sum([s.count for s in
+                                                     samples.values()]))
 
     @ExperimentalAPI
     @override(ReplayBuffer)

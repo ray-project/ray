@@ -177,10 +177,10 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
                                               num_policies=num_policies,
                                               num_batches=num_batches)
 
-        # Sample 4 SampleBatches from only one policy and put it into a
-        # MultiAgentBatch
+        # Sample 4 SampleBatches from only one policy
         for _id in range(num_policies):
-            for __id in buffer.sample(4, policy_id=_id)["policy_id"]:
+            for __id in buffer.sample(4, policy_id=_id).policy_batches[_id][
+                "policy_id"]:
                 assert __id == _id
 
         # Sample without specifying the policy should yield the same number
@@ -269,7 +269,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
 
         # Only test if we can sample from multiple policies
         sample = buffer.sample(2)
-        assert len(sample) == 1
+        assert len(sample) == 4
         assert len(sample.policy_batches) == 2
 
     def test_set_get_state(self):

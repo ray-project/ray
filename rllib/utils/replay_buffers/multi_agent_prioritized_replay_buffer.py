@@ -142,7 +142,7 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
         Args:
             policy_id: ID of the policy that corresponds to the underlying 
             buffer
-            batch: Batch to add to the underlying buffer
+            batch: SampleBatch to add to the underlying buffer
             **kwargs: Forward compatibility kwargs.
         """
         # For the storage unit `timesteps`, the underlying buffer will
@@ -162,21 +162,30 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
                 # If SampleBatch has prio-replay weights, average
                 # over these to use as a weight for the entire
                 # sequence.
-                if "weights" in time_slice and len(time_slice["weights"]):
-                    weight = np.mean(time_slice["weights"])
+                if self.replay_mode is ReplayMode.INDEPENDENT:
+                    if "weights" in time_slice and len(time_slice["weights"]):
+                        weight = np.mean(time_slice["weights"])
+                    else:
+                        weight = None
+
+                    if "weight" in kwargs and weight is not None:
+                        if log_once("overwrite_weight"):
+                            logger.warning("Adding batches with column "
+                                            "`weights` to this buffer while "
+                                           "providing weights as a call argument "
+                                           "to the add method results in the "
+                                           "column being overwritten."
+                            )
+
+                    kwargs = {"weight": weight, **kwargs}
                 else:
-                    weight = None
+                    if "weight" in kwargs:
+                        if log_once("lockstep_no_weight_allowed"):
+                            logger.warning("Settings weights for batches in "
+                                           "lockstep mode is not allowed."
+                                           "Weights are being ignored.")
 
-                if "weight" in kwargs and weight is not None:
-                    if log_once("overwrite_weight"):
-                        logger.warning("Adding batches with column "
-                                        "`weights` to this buffer while "
-                                       "providing weights as a call argument "
-                                       "to the add method results in the "
-                                       "column being overwritten."
-                        )
-
-                kwargs = {"weight": weight, **kwargs}
+                    kwargs = {**kwargs, "weight": None}
                 self.replay_buffers[policy_id].add(time_slice, **kwargs)
         else:
             self.replay_buffers[policy_id].add(batch, **kwargs)

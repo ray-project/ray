@@ -1,8 +1,8 @@
 import unittest
 import numpy as np
 
-from rllib.policy.sample_batch import SampleBatch
-from rllib.utils.replay_buffers.reservoir_buffer import ReservoirBuffer
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.replay_buffers.reservoir_buffer import ReservoirBuffer
 
 
 class TestReservoirBuffer(unittest.TestCase):

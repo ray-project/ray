@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 
 @ExperimentalAPI
 class StorageUnit(Enum):
-    TIMESTEPS = 0
-    SEQUENCES = 1
-    EPISODES = 2
+    TIMESTEPS = "timesteps"
+    SEQUENCES = "sequences"
+    EPISODES = "episodes"
 
 
 @ExperimentalAPI
@@ -94,7 +94,7 @@ class ReplayBuffer:
         self._add_single_batch.
 
         Args:
-            batch: SampleBatch to add to this buffer's storage.
+            batch: Batch to add to this buffer's storage.
             **kwargs: Forward compatibility kwargs.
         """
         assert batch.count > 0, batch
@@ -123,13 +123,13 @@ class ReplayBuffer:
                                     "dropped.")
 
     @ExperimentalAPI
-    def _add_single_batch(self, item: SampleBatchType, **kwargs):
-        """Add a single item of experiences to self._storage.
+    def _add_single_batch(self, item: SampleBatchType, **kwargs) -> None:
+        """Add a SampleBatch of experiences to self._storage.
 
         An item is either one or more timesteps, a sequence or an episode.
 
         Args:
-            item: The item to be added.
+            item: The batch to be added.
             **kwargs: Forward compatibility kwargs.
         """
         self._num_timesteps_added += item.count

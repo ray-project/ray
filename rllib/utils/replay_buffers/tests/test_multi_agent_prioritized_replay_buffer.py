@@ -8,6 +8,7 @@ from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, \
 from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer \
     import MultiAgentPrioritizedReplayBuffer
 from ray.rllib.utils.test_utils import check
+from ray.rllib.execution.buffers.replay_buffer import _ALL_POLICIES
 
 
 class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
@@ -16,17 +17,19 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
     beta = 1.0
 
     def _generate_data(self):
+        self.batch_id += 1
         return SampleBatch(
             {
-                SampleBatch.T: [np.random.random((4,))],
-                SampleBatch.ACTIONS: [np.random.choice([0, 1])],
-                SampleBatch.REWARDS: [np.random.rand()],
-                SampleBatch.OBS: [np.random.random((4,))],
-                SampleBatch.NEXT_OBS: [np.random.random((4,))],
-                SampleBatch.DONES: [np.random.choice([False, True])],
-                SampleBatch.EPS_ID: [self.batch_id],
-                SampleBatch.AGENT_INDEX: [0],
-                "batch_id": [self.batch_id],
+                SampleBatch.T: [0, 1],
+                SampleBatch.ACTIONS: 2 * [np.random.choice([0, 1])],
+                SampleBatch.REWARDS: 2 * [np.random.rand()],
+                SampleBatch.OBS: 2 * [np.random.random((4,))],
+                SampleBatch.NEXT_OBS: 2 * [np.random.random((4,))],
+                SampleBatch.DONES: 2 * [False, True],
+                SampleBatch.SEQ_LENS: [2],
+                SampleBatch.EPS_ID: 2 * [self.batch_id],
+                SampleBatch.AGENT_INDEX: 2 * [self.batch_id],
+                "batch_id": 2 * [self.batch_id],
             }
         )
 
@@ -35,7 +38,6 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
 
         for i in range(num_batches):
             data = [self._generate_data() for _ in range(batch_size)]
-            self.batch_id += 1
             batch = SampleBatch.concat_samples(data)
             buffer.add(batch, **kwargs)
 
@@ -45,14 +47,15 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
         def _generate_data(policy_id):
             batch = SampleBatch(
                 {
-                    "obs_t": [np.random.random((4,))],
-                    "action": [np.random.choice([0, 1])],
-                    "reward": [np.random.rand()],
-                    "obs_tp1": [np.random.random((4,))],
-                    "done": [np.random.choice([False, True])],
+                    SampleBatch.T: [0],
+                    SampleBatch.ACTIONS: [np.random.choice([0, 1])],
+                    SampleBatch.REWARDS: [np.random.rand()],
+                    SampleBatch.OBS: [np.random.random((4,))],
+                    SampleBatch.NEXT_OBS: [np.random.random((4,))],
+                    SampleBatch.DONES: [np.random.choice([False, True])],
+                    SampleBatch.EPS_ID: [self.batch_id],
+                    SampleBatch.AGENT_INDEX: [self.batch_id],
                     "batch_id": [self.batch_id],
-                    "eps_id": [self.batch_id],
-                    "t": [0],
                     "policy_id": [policy_id]
                 }
             )
@@ -60,13 +63,60 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
 
         for i in range(num_batches):
             # genera a few policy batches
-            policy_batches = {idx: _generate_data(idx) for idx,
-                                                           _ in
-                              enumerate(range(
-                                  num_policies))}
+            policy_batches = {idx: _generate_data(idx) for idx in range(
+                num_policies)}
             self.batch_id += 1
             batch = MultiAgentBatch(policy_batches, 1)
             buffer.add(batch, **kwargs)
+
+    def test_policy_id_of_multi_agent_batches_independent(self):
+        """Test if indepent sampling yields a multi agent batch with the
+        correct policy id."""
+        self.batch_id = 0
+
+        # Test lockstep mode with different policy ids using MultiAgentBatches
+        buffer = MultiAgentPrioritizedReplayBuffer(capacity=10,
+                                                   replay_mode="independent",
+                                                   learning_starts=0,
+                                                   num_shards=1)
+
+        self._add_multi_agent_batch_to_buffer(buffer,
+                                              num_policies=1,
+                                              num_batches=1)
+
+        mabatch = buffer.sample(1)
+        assert list(mabatch.policy_batches.keys())[0] == 0
+
+    def test_lockstep_mode(self):
+        """Test the lockstep mode by adding batches from multiple policies."""
+        self.batch_id = 0
+
+        num_policies = 4
+        num_batches = 13
+        buffer_size = 15
+
+        # Test lockstep mode with different policy ids using MultiAgentBatches
+        buffer = MultiAgentPrioritizedReplayBuffer(capacity=buffer_size,
+                                                   replay_mode="lockstep",
+                                                   learning_starts=0,
+                                                   num_shards=1)
+
+
+        self._add_multi_agent_batch_to_buffer(buffer,
+                                              num_policies=num_policies,
+                                              num_batches=num_batches)
+
+        _id, _buffer = next(buffer.replay_buffers.items().__iter__())
+        assert _id == _ALL_POLICIES
+        assert len(buffer) == num_batches
+
+        # Add batches until the buffer is full
+        self._add_multi_agent_batch_to_buffer(buffer,
+                                              num_policies=num_policies,
+                                              num_batches=num_batches)
+
+        assert _id == _ALL_POLICIES
+        assert len(buffer) == buffer_size
 
     def test_independent_mode(self):
         """Test the lockstep mode by adding batches from multiple policies."""
@@ -82,6 +132,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
                                                    learning_starts=0,
                                                    num_shards=1)
 
+
         self._add_multi_agent_batch_to_buffer(buffer,
                                               num_policies=num_policies,
                                               num_batches=num_batches)
@@ -89,7 +140,8 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
         # Sample 4 SampleBatches from only one policy and put it into a
         # MultiAgentBatch
         for _id in range(num_policies):
-            for __id in buffer.sample(4, policy_id=_id)["policy_id"]:
+            for __id in buffer.sample(4, policy_id=_id).policy_batches[_id][
+                "policy_id"]:
                 assert __id == _id
 
         # Sample without specifying the policy should yield approx. the same
@@ -116,6 +168,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
                                                    prioritized_replay_alpha=self.alpha,
                                                    prioritized_replay_beta=self.beta,
                                                    replay_mode="independent",
+                                                   replay_sequence_length=2,
                                                    learning_starts=0,
                                                    num_shards=1)
 
@@ -126,11 +179,14 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
             assert len(buffer) == i + 1
 
         # Fetch records, their indices and weights.
-        batch = buffer.sample(3).policy_batches[DEFAULT_POLICY_ID]
-        weights = batch["weights"]
-        indices = batch["batch_indexes"]
-        check(weights, np.ones(shape=(3,)))
-        assert 3 == len(indices)
+        mabatch = buffer.sample(3)
+        assert type(mabatch) == MultiAgentBatch
+        samplebatch = mabatch.policy_batches[DEFAULT_POLICY_ID]
+
+        weights = samplebatch["weights"]
+        indices = samplebatch["batch_indexes"]
+        check(weights, np.ones(shape=(6,)))
+        assert 6 == len(indices)
         assert len(buffer) == num_batches
         policy_buffer = buffer.replay_buffers[DEFAULT_POLICY_ID]
         assert policy_buffer._next_idx == num_batches
@@ -144,10 +200,13 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
         # Expect to sample almost only index 1
         # (which still has a weight of 1.0).
         for _ in range(10):
-            batch = buffer.sample(1000).policy_batches[
+            mabatch = buffer.sample(1000)
+            assert type(mabatch) == MultiAgentBatch
+            samplebatch = mabatch.policy_batches[
                 DEFAULT_POLICY_ID]
-            indices = batch["batch_indexes"]
-            self.assertTrue(970 < np.sum(indices) < 1100)
+            assert type(mabatch) == MultiAgentBatch
+            indices = samplebatch["batch_indexes"]
+            self.assertTrue(1900 < np.sum(indices) < 2200)
         # Test get_state/set_state.
         state = buffer.get_state()
         new_buffer = MultiAgentPrioritizedReplayBuffer(capacity=buffer_size,
@@ -158,9 +217,9 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
                                                        num_shards=1)
         new_buffer.set_state(state)
         batch = new_buffer.sample(1000).policy_batches[
-                DEFAULT_POLICY_ID]
+            DEFAULT_POLICY_ID]
         indices = batch["batch_indexes"]
-        self.assertTrue(970 < np.sum(indices) < 1100)
+        self.assertTrue(1900 < np.sum(indices) < 2200)
 
 
 if __name__ == "__main__":

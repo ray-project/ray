@@ -59,7 +59,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     @ExperimentalAPI
     @override(ReplayBuffer)
     def _add_single_batch(self, item: SampleBatchType, **kwargs):
-        """Add a single item of experiences to self._storage with a weight.
+        """Add a batch of experiences to self._storage with weight.
 
         An item is either one or more timesteps, a sequence or an episode.
 
@@ -102,7 +102,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            Concatenated batch of items including "weights" and
+            Concatenated SampleBatch of items including "weights" and
             "batch_indexes" fields denoting IS of each sampled
             transition and original idxes in buffer of sampled experiences.
         """

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 import random
 import numpy as np
 
@@ -8,8 +8,8 @@ import psutil  # noqa E402
 
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
-from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
+from ray.rllib.utils.typing import SampleBatchType
 
 
 @ExperimentalAPI
@@ -37,35 +37,43 @@ class ReservoirBuffer(ReplayBuffer):
 
     @ExperimentalAPI
     @override(ReplayBuffer)
-    def add(self, batch: SampleBatchType, **kwargs) -> None:
-        """Adds a batch of experiences to this buffer.
+    def _add_single_batch(self, item: SampleBatchType, **kwargs) -> None:
+        """Add a SampleBatch of experiences to self._storage.
 
-        Also splits experiences into chunks of timesteps, sequences
-        or episodes, depending on self._storage_unit. Calls
-        self._add_single_batch.
+        An item is either one or more timesteps, a sequence or an episode.
 
         Args:
-            batch: SampleBatch to add to this buffer's storage.
+            item: The batch to be added.
+            **kwargs: Forward compatibility kwargs.
         """
+        self._num_timesteps_added += item.count
+        self._num_timesteps_added_wrap += item.count
+
         # Update add counts.
         self._num_add_calls += 1
         # Update our timesteps counts.
 
         if self._num_timesteps_added < self.capacity:
-            ReplayBuffer.add(self, batch)
+            self._storage.append(item)
+            self._est_size_bytes += item.size_bytes()
         else:
             # Eviction of older samples has already started (buffer is "full")
+            self._eviction_started = True
             idx = random.randint(0, self._num_add_calls - 1)
             if idx < len(self._storage):
                 self._num_evicted += 1
                 self._evicted_hit_stats.push(self._hit_count[idx])
                 self._hit_count[idx] = 0
+                # This is a bit of a hack: ReplayBuffer always inserts at
+                # self._next_idx
                 self._next_idx = idx
-                ReplayBuffer.add(self, batch)
+                self._evicted_hit_stats.push(self._hit_count[idx])
+                self._hit_count[idx] = 0
+                self._storage[idx] = item
 
-                assert batch.count > 0, batch
-                warn_replay_capacity(item=batch,
-                                     num_items=self.capacity / batch.count)
+                assert item.count > 0, item
+                warn_replay_capacity(item=item,
+                                     num_items=self.capacity / item.count)
 
     @ExperimentalAPI
     @override(ReplayBuffer)
