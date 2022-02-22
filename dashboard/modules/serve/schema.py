@@ -133,3 +133,61 @@ class DeploymentConfig(BaseModel):
                      "unhealthy. Uses a default if null."),
         gt=0
     )
+
+
+class ReplicaResources(BaseModel):
+    num_cpus: float = Field(
+        default=None,
+        description=("The number of CPUs required by the deployment's "
+                     "application per replica. This is the same as a ray "
+                     "actor's num_cpus. Uses a default if null."),
+        gt=0
+    )
+    num_gpus: float = Field(
+        default=None,
+        description=("The number of GPUs required by the deployment's "
+                     "application per replica. This is the same as a ray "
+                     "actor's num_gpus. Uses a default if null."),
+        gt=0
+    )
+    memory: float = Field(
+        default=None,
+        description=("Restrict the heap memory usage of each replica. Uses a "
+                     "default if null."),
+        gt=0
+    )
+    object_store_memory: float = Field(
+        default=None,
+        description=("Restrict the object store memory used per replica when "
+                     "creating objects. Uses a default if null."),
+        gt=0
+    )
+    resources: Dict = Field(
+        default=None,
+        description=("The custom resources required by each replica.")
+    )
+    accelerator_type: str = Field(
+        default=None,
+        description=("Forces replicas to run on nodes with the specified "
+                     "accelerator type.")
+    )
+    max_concurrency: int = Field(
+        default=None,
+        description=("")
+    )
+    max_task_retries: int = Field(
+        default=None,
+        description=("")
+    )
+    max_pending_calls: int = Field(
+        default=None,
+        description=("")
+    )
+    placement_group_bundle_index: int = Field(
+        default=None,
+        description=("")
+    )
+    placement_group_capture_child_tasks: bool = Field(
+        default=None,
+        description=("")
+    )
