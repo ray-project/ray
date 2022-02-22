@@ -318,7 +318,7 @@ class AllToAllStage(Stage):
             return False
         if prev.compute != "tasks":
             return False
-        if prev.ray_remote_args:
+        if any(k not in INHERITABLE_REMOTE_ARGS for k in prev.ray_remote_args):
             return False
         return True
 
