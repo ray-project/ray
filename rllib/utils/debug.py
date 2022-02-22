@@ -119,8 +119,10 @@ def update_global_seed_if_necessary(
             elif loose_version == LooseVersion("1.6.0"):
                 torch._set_deterministic(True)
             else:
-                logging.warning(f"Your PyTorch version {torch.__version__} is too old to enable "
-                                f"deterministic operations. Use version >= 1.6.0 for this feature.")
+                logging.warning(
+                    f"Your PyTorch version {torch.__version__} is too old to enable "
+                    f"deterministic operations. Use version >= 1.6.0 for this feature."
+                )
         # This is only for Convolution no problem.
         torch.backends.cudnn.deterministic = True
     elif framework == "tf2" or framework == "tfe":
