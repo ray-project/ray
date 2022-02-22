@@ -10,10 +10,17 @@ from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_AGENT_STEPS_SAMPLED, \
-    WORKER_UPDATE_TIMER
-from ray.rllib.utils.typing import TrainerConfigDict, PartialTrainerConfigDict, \
-    EnvType, ResultDict
+from ray.rllib.utils.metrics import (
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_SAMPLED,
+    WORKER_UPDATE_TIMER,
+)
+from ray.rllib.utils.typing import (
+    TrainerConfigDict,
+    PartialTrainerConfigDict,
+    EnvType,
+    ResultDict,
+)
 import ray.train as train
 from ray.train import Trainer as train_trainer
 from ray.tune.logger import Logger
@@ -83,13 +90,15 @@ class PGTrainer(Trainer):
         num_env_steps = 0
         num_agent_steps = 0
         while (not self._by_agent_steps and num_env_steps < batch_size) or (
-            self._by_agent_steps and num_agent_steps < batch_size):
+            self._by_agent_steps and num_agent_steps < batch_size
+        ):
             new_sample_batches = synchronous_parallel_sample(self.workers)
             sample_batches.extend(new_sample_batches)
             num_env_steps += sum(len(s) for s in new_sample_batches)
             num_agent_steps += sum(
-                len(s) if isinstance(s, SampleBatch) else s.agent_steps() for s in
-                new_sample_batches)
+                len(s) if isinstance(s, SampleBatch) else s.agent_steps()
+                for s in new_sample_batches
+            )
         self._counters[NUM_ENV_STEPS_SAMPLED] += num_env_steps
         self._counters[NUM_AGENT_STEPS_SAMPLED] += num_agent_steps
 

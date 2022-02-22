@@ -133,6 +133,7 @@ if __name__ == "__main__":
             else:
                 try:
                     import rayportal
+
                     with rayportal.auto_attach():
                         trials = run_experiments(experiments, resume=False, verbose=2)
                 finally:
