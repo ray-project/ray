@@ -90,3 +90,24 @@ class TestDeploymentConfig:
 
         # Should not raise an error
         DeploymentConfig.parse_obj(deployment_config)
+    
+    def test_route_prefix(self):
+        # route_prefix must start with a "/"
+        with pytest.raises(ValueError):
+            DeploymentConfig(route_prefix="hello/world")
+
+        # route_prefix must end with a "/"
+        with pytest.raises(ValueError):
+            DeploymentConfig(route_prefix="/hello/world/")
+        
+        # route_prefix cannot contain wildcards, meaning it can't have
+        # "{" or "}"
+        with pytest.raises(ValueError):
+            DeploymentConfig(route_prefix="/hello/{adjective}/world/")
+        
+        # Ensure a valid route_prefix works
+        DeploymentConfig(route_prefix="/hello/wonderful/world")
+
+        # Ensure route_prefix of "\" works
+        DeploymentConfig(route_prefix="/")
+

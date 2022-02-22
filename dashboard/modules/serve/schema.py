@@ -32,7 +32,7 @@ class AppConfig(BaseModel):
                      "applications."),
         # This regex checks that there is at least one character, followed by
         # a dot, followed by at least one more character.
-        regex=".+\..+"
+        regex=r".+\..+"
     )
     language: SupportedLanguage = Field(
         ...,
@@ -136,6 +136,27 @@ class DeploymentConfig(BaseModel):
                      "unhealthy. Uses a default if null."),
         gt=0
     )
+
+    @validator("route_prefix")
+    def route_prefix_format(cls, v):
+        """
+        The route_prefix
+        1. must start with a / character
+        2. must not end with a / character (unless the entire prefix is just /)
+        3. cannot contain wildcards (must not have "{" or "}")
+        """
+
+        if len(v) < 1 or v[0] != "/":
+            raise ValueError(f"Got \"{v}\" for route_prefix. Route prefix "
+                             "must start with \"/\".")
+        if v[-1] == "/" and len(v) > 1:
+            raise ValueError(f"Got \"{v}\" for route_prefix. Route prefix "
+                             "cannot end with \"/\" unless the "
+                             "entire prefix is just \"/\".")
+        if "{" in v or "}" in v:
+            raise ValueError(f"Got \"{v}\" for route_prefix. Route prefix "
+                             "cannot contain wildcards, so it cannot "
+                             "contain \"{\" or \"}\".")
 
 
 class ReplicaResources(BaseModel):
