@@ -86,7 +86,35 @@ class TestRayActorOptions:
         RayActorOptions.parse_obj(ray_actor_options)
 
 
-class TestFullDeploymentConfig:
+class TestDeploymentConfig:
+    def get_minimal_deployment_config(self):
+        # Generate a DeploymentConfig with the fewest possible attributes set
+
+        return {
+            "name": "deep",
+            "init_args": None,
+            "init_kwargs": None,
+            "import_path": "my_module.MyClass",
+            "num_replicas": None,
+            "route_prefix": None,
+            "max_concurrent_queries": None,
+            "user_config": None,
+            "autoscaling_config": None,
+            "graceful_shutdown_wait_loop_s": None,
+            "graceful_shutdown_timeout_s": None,
+            "health_check_period_s": None,
+            "health_check_timeout_s": None,
+            "ray_actor_options": {
+                "runtime_env": None,
+                "num_cpus": None,
+                "num_gpus": None,
+                "memory": None,
+                "object_store_memory": None,
+                "resources": None,
+                "accelerator_type": None,
+            },
+        }
+
     def test_valid_deployment_config(self):
         # Ensure a valid FullDeploymentConfig can be generated
 
@@ -133,29 +161,10 @@ class TestFullDeploymentConfig:
         # value error is raised.
 
         # Python requires an import path
-        deployment_config = {
-            "name": "deep",
-            "init_args": [1, 2],
-            "init_kwargs": {"threshold": 0.5, "version": "abcd"},
-            "num_replicas": None,
-            "route_prefix": None,
-            "max_concurrent_queries": None,
-            "user_config": None,
-            "autoscaling_config": None,
-            "graceful_shutdown_wait_loop_s": None,
-            "graceful_shutdown_timeout_s": None,
-            "health_check_period_s": None,
-            "health_check_timeout_s": None,
-            "ray_actor_options": {
-                "runtime_env": None,
-                "num_cpus": None,
-                "num_gpus": None,
-                "memory": None,
-                "object_store_memory": None,
-                "resources": None,
-                "accelerator_type": None,
-            },
-        }
+        deployment_config = self.get_minimal_deployment_config()
+        deployment_config["init_args"] = [1, 2]
+        deployment_config["init_kwargs"] = {"threshold": 0.5}
+        del deployment_config["import_path"]
 
         with pytest.raises(ValueError, match="must be specified"):
             DeploymentConfig.parse_obj(deployment_config)
@@ -175,30 +184,7 @@ class TestFullDeploymentConfig:
         # Ensure ValidationError is raised when any fields that must be greater
         # than zero is set to zero.
 
-        deployment_config = {
-            "name": "deep",
-            "init_args": None,
-            "init_kwargs": None,
-            "import_path": "my_module.MyClass",
-            "num_replicas": None,
-            "route_prefix": None,
-            "max_concurrent_queries": None,
-            "user_config": None,
-            "autoscaling_config": None,
-            "graceful_shutdown_wait_loop_s": None,
-            "graceful_shutdown_timeout_s": None,
-            "health_check_period_s": None,
-            "health_check_timeout_s": None,
-            "ray_actor_options": {
-                "runtime_env": None,
-                "num_cpus": None,
-                "num_gpus": None,
-                "memory": None,
-                "object_store_memory": None,
-                "resources": None,
-                "accelerator_type": None,
-            },
-        }
+        deployment_config = self.get_minimal_deployment_config()
 
         gt_zero_fields = [
             "num_replicas",
@@ -216,30 +202,7 @@ class TestFullDeploymentConfig:
         # Ensure ValidationError is raised when any fields that must be greater
         # than or equal to zero is set to -1.
 
-        deployment_config = {
-            "name": "deep",
-            "init_args": None,
-            "init_kwargs": None,
-            "import_path": "my_module.MyClass",
-            "num_replicas": None,
-            "route_prefix": None,
-            "max_concurrent_queries": None,
-            "user_config": None,
-            "autoscaling_config": None,
-            "graceful_shutdown_wait_loop_s": None,
-            "graceful_shutdown_timeout_s": None,
-            "health_check_period_s": None,
-            "health_check_timeout_s": None,
-            "ray_actor_options": {
-                "runtime_env": None,
-                "num_cpus": None,
-                "num_gpus": None,
-                "memory": None,
-                "object_store_memory": None,
-                "resources": None,
-                "accelerator_type": None,
-            },
-        }
+        deployment_config = self.get_minimal_deployment_config()
 
         ge_zero_fields = [
             "graceful_shutdown_wait_loop_s",
@@ -255,30 +218,7 @@ class TestFullDeploymentConfig:
     def test_route_prefix(self):
         # Ensure that route_prefix is validated
 
-        deployment_config = {
-            "name": "deep",
-            "init_args": None,
-            "init_kwargs": None,
-            "import_path": "my_module.MyClass",
-            "num_replicas": None,
-            "route_prefix": None,
-            "max_concurrent_queries": None,
-            "user_config": None,
-            "autoscaling_config": None,
-            "graceful_shutdown_wait_loop_s": None,
-            "graceful_shutdown_timeout_s": None,
-            "health_check_period_s": None,
-            "health_check_timeout_s": None,
-            "ray_actor_options": {
-                "runtime_env": None,
-                "num_cpus": None,
-                "num_gpus": None,
-                "memory": None,
-                "object_store_memory": None,
-                "resources": None,
-                "accelerator_type": None,
-            },
-        }
+        deployment_config = self.get_minimal_deployment_config()
 
         # route_prefix must start with a "/"
         deployment_config["route_prefix"] = "hello/world"
