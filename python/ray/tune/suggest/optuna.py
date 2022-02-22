@@ -122,7 +122,7 @@ class OptunaSearch(Searcher):
             for multi-objective optimization with Optuna<2.9.0, and
             ``TPESampler`` in every other case.
 
-            ..warning::
+            .. warning::
                 Please note that with Optuna 2.10.0 and earlier
                 default ``MOTPESampler``/``TPESampler`` suffer
                 from performance issues when dealing with a large number of
@@ -141,7 +141,7 @@ class OptunaSearch(Searcher):
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate.
 
-            ..warning::
+            .. warning::
                 When using ``evaluated_rewards``, the search space ``space``
                 must be provided as a :class:`dict` with parameter names as
                 keys and ``optuna.distributions`` instances as values. The
