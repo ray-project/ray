@@ -2091,7 +2091,15 @@ class Trainer(Trainable):
             )
             +
             # In case our I/O reader/writer requires conmpute resources.
-            get_offline_io_resource_bundles(cf),
+            get_offline_io_resource_bundles(cf) +
+            # For our train integration POC
+            [
+                {
+                    "CPU": cf.get("num_cpus_for_driver", 1)
+                    * max(cf.get("num_gpus", 1), 1),
+                    "GPU": cf.get("num_gpus", 0) if not cf["_fake_gpus"] else 0,
+                }
+            ],
             strategy=config.get("placement_strategy", "PACK"),
         )
 
