@@ -218,6 +218,7 @@ class ReplicaConfig:
             "args",
             "kwargs",
             "max_concurrency",
+            "max_restarts",
             "max_task_retries",
             "name",
             "namespace",
