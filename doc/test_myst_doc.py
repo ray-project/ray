@@ -1,4 +1,5 @@
-"""Execute a jupytext markdown notebook."""
+"""Convert a jupytext-compliant format in to a python script
+and execute it with parsed arguments."""
 
 import subprocess
 import argparse
@@ -7,10 +8,10 @@ import sys
 
 import jupytext
 
-parser = argparse.ArgumentParser(description="Run a jupytext parsable markdown file.")
+parser = argparse.ArgumentParser(description="Run a jupytext parsable file.")
 parser.add_argument(
     "--path",
-    help="path to the markdown file",
+    help="path to the jupytext-compatible file",
 )
 
 if __name__ == "__main__":
