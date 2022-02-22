@@ -2,7 +2,6 @@ from pydantic import ValidationError
 import pytest
 
 from ray.dashboard.modules.serve.schema import (
-    SupportedLanguage,
     AppConfig,
     DeploymentConfig,
     ReplicaResources,
@@ -147,7 +146,7 @@ class TestReplicaResources:
 class TestFullDeploymentConfig:
 
     def test_valid_full_deployment_config(self):
-        # Ensure a valid Full Deployment Config can be generated
+        # Ensure a valid FullDeploymentConfig can be generated
 
         full_deployment_config = {
             "name": "shallow",
@@ -239,3 +238,81 @@ class TestFullDeploymentConfig:
             FullDeploymentConfig.parse_obj(full_deployment_config)
     
 
+class TestServeInstanceConfig:
+    
+    def test_valid_serve_instance_config(self):
+        # Ensure a valid ServeInstanceConfig can be generated
+
+        serve_instance_config = {
+            "deployments": [
+                {
+                    "name": "shallow",
+                    "runtime_env": {
+                        "working_dir": "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
+                        "py_modules": [
+                            "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip",
+                        ]
+                    },
+                    "namespace": "serve",
+                    "app_config": {
+                        "language": "python_3.10",
+                        "init_args": [4, "glue"],
+                        "init_kwargs": {
+                            "fuel": "diesel"
+                        },
+                        "import_path": "test_env.shallow_import.ShallowClass"
+                    },
+                    "deployment_config": {
+                        "num_replicas": 2,
+                        "route_prefix": "/shallow",
+                        "max_concurrent_queries": 32,
+                        "user_config": None,
+                        "_autoscaling_config": None,
+                        "_graceful_shutdown_wait_loop_s": 17,
+                        "_graceful_shutdown_timeout_s": 49,
+                        "_health_check_period_s": 11,
+                        "_health_check_timeout_s": 11
+                    },
+                    "replica_resources": {
+                        "num_cpus": 3,
+                        "num_gpus": 4.2,
+                        "memory": 5,
+                        "object_store_memory": 3,
+                        "resources": {"custom_asic": 8},
+                        "accelerator_type": NVIDIA_TESLA_P4,
+                    }
+                },
+                {
+                    "name": "deep",
+                    "runtime_env": None,
+                    "namespace": "serve",
+                    "app_config": {
+                        "language": "python_3.8",
+                        "init_args": None,
+                        "init_kwargs": None,
+                        "import_path": "test_env.subdir1.subdir2.deep_import.DeepClass"
+                    },
+                    "deployment_config": {
+                        "num_replicas": None,
+                        "route_prefix": None,
+                        "max_concurrent_queries": None,
+                        "user_config": None,
+                        "_autoscaling_config": None,
+                        "_graceful_shutdown_wait_loop_s": None,
+                        "_graceful_shutdown_timeout_s": None,
+                        "_health_check_period_s": None,
+                        "_health_check_timeout_s": None
+                    },
+                    "replica_resources": {
+                        "num_cpus": None,
+                        "num_gpus": None,
+                        "memory": None,
+                        "object_store_memory": None,
+                        "resources": None,
+                        "accelerator_type": None,
+                    }
+                }
+            ]
+        }
+
+        ServeInstanceConfig.parse_obj(serve_instance_config)
