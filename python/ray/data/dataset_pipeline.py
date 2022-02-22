@@ -22,6 +22,7 @@ from ray.data.impl.pipeline_executor import (
 from ray.data.row import TableRow
 from ray.data.impl import progress_bar
 from ray.data.impl.stats import DatasetPipelineStats
+from ray.data.impl.progress_bar import Signal
 from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
@@ -67,10 +68,11 @@ class DatasetPipeline(Generic[T]):
     def __init__(
         self,
         base_iterable: Iterable[Callable[[], Dataset[T]]],
-        stages: List[Callable[[Dataset[Any]], Dataset[Any]]] = None,
+        stages: List[Callable[[Dataset[Any], bool], Dataset[Any]]] = None,
         length: int = None,
         progress_bars: bool = progress_bar._enabled,
         _executed: List[bool] = None,
+        signal: Optional[Signal] = None,
     ):
         """Construct a DatasetPipeline (internal API).
 
@@ -87,6 +89,11 @@ class DatasetPipeline(Generic[T]):
         # This variable is shared across all pipelines descending from this.
         self._executed = _executed or [False]
         self._stats = DatasetPipelineStats()
+        # Whether to keep executing the pipeline.
+        # This variable is shared across all pipelines descending from this.
+        if signal is None:
+            signal = Signal()
+        self._signal = signal
 
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
         """Return a local row iterator over the data in the pipeline.
@@ -632,6 +639,7 @@ class DatasetPipeline(Generic[T]):
             self._length,
             self._progress_bars,
             _executed=self._executed,
+            signal=self._signal,
         )
 
     def foreach_dataset(self, *a, **kw) -> None:

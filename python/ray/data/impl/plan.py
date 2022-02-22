@@ -2,6 +2,7 @@ from ray.data.block import Block
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.compute import get_compute
 from ray.data.impl.stats import DatasetStats
+from ray.data.impl.progress_bar import Signal
 
 from typing import Callable, Tuple, Optional, Union, TYPE_CHECKING
 import uuid
@@ -70,7 +71,11 @@ class ExecutionPlan:
         else:
             return None
 
-    def execute(self, clear_input_blocks: bool = True) -> BlockList:
+    def execute(
+        self,
+        clear_input_blocks: bool = True,
+        signal: Optional[Signal] = None,
+    ) -> BlockList:
         # TODO: add optimizations:
         # 1. task fusion of OneToOne
         # 2. task fusion of OneToOne to AlltoAll
@@ -80,7 +85,7 @@ class ExecutionPlan:
             stats = self._in_stats
             for stage in self._stages:
                 stats_builder = stats.child_builder(stage.name)
-                blocks, stage_info = stage(blocks, clear_input_blocks)
+                blocks, stage_info = stage(blocks, clear_input_blocks, signal=signal)
                 if stage_info:
                     stats = stats_builder.build_multistage(stage_info)
                 else:
@@ -125,11 +130,18 @@ class OneToOneStage(Stage):
         self.ray_remote_args = ray_remote_args
 
     def __call__(
-        self, blocks: BlockList, clear_input_blocks: bool
+        self,
+        blocks: BlockList,
+        clear_input_blocks: bool,
+        signal: Optional[Signal] = None,
     ) -> Tuple[BlockList, dict]:
         compute = get_compute(self.compute)
         blocks = compute.apply(
-            self.block_fn, self.ray_remote_args, blocks, clear_input_blocks
+            self.block_fn,
+            self.ray_remote_args,
+            blocks,
+            clear_input_blocks,
+            signal=signal,
         )
         assert isinstance(blocks, BlockList), blocks
         return blocks, {}
@@ -150,8 +162,12 @@ class AllToAllStage(Stage):
         self.block_udf = block_udf
 
     def __call__(
-        self, blocks: BlockList, clear_input_blocks: bool
+        self,
+        blocks: BlockList,
+        clear_input_blocks: bool,
+        signal: Optional[Signal] = None,
     ) -> Tuple[BlockList, dict]:
+        # TODO(swang): Use the signal to interrupt execution if needed.
         blocks, stage_info = self.fn(blocks, clear_input_blocks, self.block_udf)
         assert isinstance(blocks, BlockList), blocks
         return blocks, stage_info

@@ -71,7 +71,7 @@ from ray.data.impl.plan import ExecutionPlan, OneToOneStage, AllToAllStage
 from ray.data.impl.stats import DatasetStats
 from ray.data.impl.compute import cache_wrapper, CallableClass
 from ray.data.impl.output_buffer import BlockOutputBuffer
-from ray.data.impl.progress_bar import ProgressBar
+from ray.data.impl.progress_bar import ProgressBar, Signal
 from ray.data.impl.shuffle import simple_shuffle
 from ray.data.impl.fast_repartition import fast_repartition
 from ray.data.impl.sort import sort_impl
@@ -111,6 +111,7 @@ class Dataset(Generic[T]):
         plan: ExecutionPlan,
         epoch: int,
         lazy: bool,
+        signal: Optional[Signal] = None,
     ):
         """Construct a Dataset (internal API).
 
@@ -122,13 +123,16 @@ class Dataset(Generic[T]):
         self._uuid = uuid4().hex
         self._epoch = epoch
         self._lazy = lazy
+        if signal is None:
+            signal = Signal()
+        self._signal = signal
 
         if not lazy:
-            self._plan.execute(clear_input_blocks=False)
+            self._plan.execute(clear_input_blocks=False, signal=self._signal)
 
     @staticmethod
     def copy(dataset: "Dataset[T]") -> "Dataset[T]":
-        return Dataset(dataset._plan, dataset._epoch, dataset._lazy)
+        return Dataset(dataset._plan, dataset._epoch, dataset._lazy, dataset._signal)
 
     def map(
         self,
@@ -191,7 +195,7 @@ class Dataset(Generic[T]):
         plan = self._plan.with_stage(
             OneToOneStage("map", transform, compute, ray_remote_args)
         )
-        return Dataset(plan, self._epoch, self._lazy)
+        return Dataset(plan, self._epoch, self._lazy, self._signal)
 
     def map_batches(
         self,
@@ -301,7 +305,7 @@ class Dataset(Generic[T]):
         plan = self._plan.with_stage(
             OneToOneStage("map_batches", transform, compute, ray_remote_args)
         )
-        return Dataset(plan, self._epoch, self._lazy)
+        return Dataset(plan, self._epoch, self._lazy, self._signal)
 
     def add_column(
         self,
@@ -395,7 +399,7 @@ class Dataset(Generic[T]):
         plan = self._plan.with_stage(
             OneToOneStage("flat_map", transform, compute, ray_remote_args)
         )
-        return Dataset(plan, self._epoch, self._lazy)
+        return Dataset(plan, self._epoch, self._lazy, self._signal)
 
     def filter(
         self,
@@ -438,9 +442,14 @@ class Dataset(Generic[T]):
         plan = self._plan.with_stage(
             OneToOneStage("filter", transform, compute, ray_remote_args)
         )
-        return Dataset(plan, self._epoch, self._lazy)
+        return Dataset(plan, self._epoch, self._lazy, self._signal)
 
-    def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset[T]":
+    def repartition(
+        self,
+        num_blocks: int,
+        *,
+        shuffle: bool = False,
+    ) -> "Dataset[T]":
         """Repartition the dataset into exactly this number of blocks.
 
         This is a blocking operation. After repartitioning, all blocks in the
@@ -495,7 +504,7 @@ class Dataset(Generic[T]):
                 AllToAllStage("repartition", num_blocks, do_fast_repartition)
             )
 
-        return Dataset(plan, self._epoch, self._lazy)
+        return Dataset(plan, self._epoch, self._lazy, self._signal)
 
     def random_shuffle(
         self,
@@ -552,10 +561,14 @@ class Dataset(Generic[T]):
                 "random_shuffle", num_blocks, do_shuffle, supports_block_udf=True
             )
         )
-        return Dataset(plan, self._epoch, self._lazy)
+        return Dataset(plan, self._epoch, self._lazy, self._signal)
 
     def split(
-        self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
+        self,
+        n: int,
+        *,
+        equal: bool = False,
+        locality_hints: Optional[List[Any]] = None,
     ) -> List["Dataset[T]"]:
         """Split the dataset into ``n`` disjoint pieces.
 
@@ -761,6 +774,7 @@ class Dataset(Generic[T]):
                         ),
                         self._epoch,
                         self._lazy,
+                        self._signal,
                     )
                     for blocks in np.array_split(block_refs, n)
                     if not equal or len(blocks) > 0
@@ -872,13 +886,17 @@ class Dataset(Generic[T]):
                     ),
                     self._epoch,
                     self._lazy,
+                    self._signal,
                 )
                 for actor in locality_hints
             ],
             n,
         )
 
-    def split_at_indices(self, indices: List[int]) -> List["Dataset[T]"]:
+    def split_at_indices(
+        self,
+        indices: List[int],
+    ) -> List["Dataset[T]"]:
         """Split the dataset at the given indices (like np.split).
 
         Examples:
@@ -982,6 +1000,7 @@ class Dataset(Generic[T]):
             ),
             max_epoch,
             self._lazy,
+            self._signal,
         )
 
     def groupby(self, key: Optional[KeyFn]) -> "GroupedDataset[T]":
@@ -1396,7 +1415,7 @@ class Dataset(Generic[T]):
             return sort_impl(blocks, key, descending)
 
         plan = self._plan.with_stage(AllToAllStage("sort", None, do_sort))
-        return Dataset(plan, self._epoch, self._lazy)
+        return Dataset(plan, self._epoch, self._lazy, self._signal)
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
@@ -1461,7 +1480,7 @@ class Dataset(Generic[T]):
             return blocks, {}
 
         plan = self._plan.with_stage(AllToAllStage("zip", None, do_zip_all))
-        return Dataset(plan, self._epoch, self._lazy)
+        return Dataset(plan, self._epoch, self._lazy, self._signal)
 
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.
@@ -1876,7 +1895,7 @@ class Dataset(Generic[T]):
                 )
             )
 
-        progress = ProgressBar("Write Progress", len(write_results))
+        progress = ProgressBar("Write Progress", len(write_results), self._signal)
         try:
             progress.block_until_complete(write_results)
             datasource.on_write_complete(ray.get(write_results))
@@ -2530,7 +2549,9 @@ Dict[str, List[str]]]): The names of the columns
             def __iter__(self):
                 return Iterator(self._ds)
 
-        return DatasetPipeline(Iterable(self), length=times or float("inf"))
+        return DatasetPipeline(
+            Iterable(self), length=times or float("inf"), signal=self._signal
+        )
 
     def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
         raise DeprecationWarning(
@@ -2588,6 +2609,7 @@ Dict[str, List[str]]]): The names of the columns
 
         blocks = self._plan.execute()
         outer_stats = self._plan.stats()
+        signal = self._signal
 
         class Iterator:
             def __init__(self, splits, epoch):
@@ -2602,7 +2624,10 @@ Dict[str, List[str]]]): The names of the columns
 
                 def gen():
                     ds = Dataset(
-                        ExecutionPlan(blocks, outer_stats), self._epoch, lazy=False
+                        ExecutionPlan(blocks, outer_stats),
+                        self._epoch,
+                        lazy=False,
+                        signal=signal,
                     )
                     return ds
 
@@ -2617,7 +2642,7 @@ Dict[str, List[str]]]): The names of the columns
                 return Iterator(self._splits, self._epoch)
 
         it = Iterable(blocks, self._epoch)
-        return DatasetPipeline(it, length=len(it._splits))
+        return DatasetPipeline(it, length=len(it._splits), signal=self._signal)
 
     @DeveloperAPI
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
@@ -2641,7 +2666,7 @@ Dict[str, List[str]]]): The names of the columns
         doesn't read blocks from the datasource until the first transform.
         """
         blocks = self.get_internal_block_refs()
-        bar = ProgressBar("Force reads", len(blocks))
+        bar = ProgressBar("Force reads", len(blocks), self._signal)
         bar.block_until_complete(blocks)
         return self
 
@@ -2656,7 +2681,9 @@ Dict[str, List[str]]]): The names of the columns
         return self
 
     def _split(
-        self, index: int, return_right_half: bool
+        self,
+        index: int,
+        return_right_half: bool,
     ) -> ("Dataset[T]", "Dataset[T]"):
         get_num_rows = cached_remote_fn(_get_num_rows)
         split_block = cached_remote_fn(_split_block, num_returns=4)
@@ -2700,6 +2727,7 @@ Dict[str, List[str]]]): The names of the columns
             ),
             self._epoch,
             self._lazy,
+            self._signal,
         )
         if return_right_half:
             right = Dataset(
@@ -2709,6 +2737,7 @@ Dict[str, List[str]]]): The names of the columns
                 ),
                 self._epoch,
                 self._lazy,
+                self._signal,
             )
         else:
             right = None

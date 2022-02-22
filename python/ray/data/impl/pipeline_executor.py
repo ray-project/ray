@@ -40,11 +40,21 @@ class PipelineExecutor:
 
         if self._pipeline._progress_bars:
             self._bars = [
-                ProgressBar("Stage {}".format(i), length, position=i)
+                ProgressBar(
+                    "Stage {}".format(i), length, self._pipeline._signal, position=i
+                )
                 for i in range(len(self._stages))
             ]
         else:
             self._bars = None
+
+    def __del__(self):
+        executed = [f for f in self._stages if f is not None]
+        if executed:
+            self._pipeline._signal.set()
+            pending = [f for f in self._stages if not f.cancel()]
+            concurrent.futures.wait(pending)
+            self._pool.shutdown()
 
     def __iter__(self):
         return self
@@ -55,6 +65,7 @@ class PipelineExecutor:
 
         while output is None:
             if all(s is None for s in self._stages):
+                self._pool.shutdown()
                 raise StopIteration
 
             # Wait for any completed stages.
