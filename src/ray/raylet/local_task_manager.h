@@ -268,6 +268,12 @@ class LocalTaskManager : public ILocalTaskManager {
                    std::vector<std::unique_ptr<RayObject>> args);
   void ReleaseTaskArgs(const TaskID &task_id);
 
+  // The only reason a task becomes infeasible is because the
+  // related placement group has been removed. In this case,
+  // we should cancel all pending tasks.
+  void CancelInfeasiblePlacementGroupTasks(
+      std::deque<std::shared_ptr<internal::Work>> &tasks);
+
  private:
   const NodeID &self_node_id_;
   /// Responsible for resource tracking/view of the cluster.

@@ -281,10 +281,10 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       info_by_sched_cls_.erase(scheduling_class);
     }
     if (is_infeasible) {
-      // TODO(scv119): fail the request.
-      // Call CancelTask
-      tasks_to_dispatch_.erase(shapes_it++);
-    } else if (dispatch_queue.empty()) {
+      CancelInfeasiblePlacementGroupTasks(dispatch_queue);
+    }
+
+    if (dispatch_queue.empty()) {
       tasks_to_dispatch_.erase(shapes_it++);
     } else {
       shapes_it++;
@@ -776,6 +776,24 @@ bool LocalTaskManager::CancelTask(
   }
 
   return false;
+}
+
+void LocalTaskManager::CancelInfeasiblePlacementGroupTasks(
+    std::deque<std::shared_ptr<internal::Work>> &tasks) {
+  for (auto work_it = tasks.begin(); work_it != tasks.end(); work_it++) {
+    if ((*work_it)->GetState() != internal::WorkStatus::WAITING) {
+      // Only cancel waiting tasks.
+      continue;
+    }
+    RAY_LOG(DEBUG) << "Canceling infeasible task "
+                   << (*work_it)->task.GetTaskSpecification().TaskId();
+    ReplyCancelled(
+        *work_it,
+        rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
+        "Task/Actor cancelled, the related placement group has been removed.");
+    (*work_it)->SetStateCancelled();
+    tasks.erase(work_it);
+  }
 }
 
 bool LocalTaskManager::AnyPendingTasksForResourceAcquisition(
