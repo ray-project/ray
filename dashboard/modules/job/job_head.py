@@ -16,7 +16,7 @@ from ray._private.runtime_env.packaging import package_exists, upload_package_to
 from ray.dashboard.modules.job.common import (
     CURRENT_VERSION,
     http_uri_components_to_uri,
-    JobData,
+    JobInfo,
     JobSubmitRequest,
     JobSubmitResponse,
     JobStopResponse,
@@ -206,7 +206,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/jobs/{job_id}")
     @_init_ray_and_catch_exceptions
-    async def get_job_data(self, req: Request) -> Response:
+    async def get_job_info(self, req: Request) -> Response:
         job_id = req.match_info["job_id"]
         if not self.job_exists(job_id):
             return Response(
@@ -214,7 +214,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPNotFound.status_code,
             )
 
-        data: JobData = self._job_manager.get_job_data(job_id)
+        data: JobInfo = self._job_manager.get_job_info(job_id)
         return Response(
             text=json.dumps(dataclasses.asdict(data)), content_type="application/json"
         )
