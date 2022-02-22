@@ -7,6 +7,7 @@ import os
 import sys
 import signal
 import time
+from typing import Any, Callable, Dict, Union
 import traceback
 import json
 from multiprocessing.synchronize import Event
@@ -139,11 +140,11 @@ class Monitor:
 
     def __init__(
         self,
-        address,
-        autoscaling_config,
-        redis_password=None,
-        prefix_cluster_info=False,
-        monitor_ip=None,
+        address: str,
+        autoscaling_config: Union[str, Callable[[], Dict[str, Any]]],
+        redis_password: Optional[str] = None,
+        prefix_cluster_info: bool = False,
+        monitor_ip: Optional[str] = None,
         stop_event: Optional[Event] = None,
     ):
         if not use_gcs_for_bootstrap():
