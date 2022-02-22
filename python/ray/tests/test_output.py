@@ -365,31 +365,6 @@ def test_output():
         assert len(lines) == 2, lines
 
 
-def test_usage_report_error_not_displayed_to_users():
-    """
-    Make sure when the incorrect URL is set, the error message is not printed to users.
-    """
-    # Use subprocess to execute the __main__ below.
-    outputs = subprocess.check_output(
-        [sys.executable, __file__, "_ray_instance"],
-        stderr=subprocess.STDOUT,
-        env={
-            "RAY_USAGE_STATS_ENABLED": "1",
-            "RAY_USAGE_STATS_REPORT_URL": "http://127.0.0.1:8000",
-            "RAY_USAGE_STATS_REPORT_INTERVAL_S": "1",
-        },
-    ).decode()
-    lines = outputs.split("\n")
-    for line in lines:
-        print(line)
-    if os.environ.get("RAY_MINIMAL") == "1":
-        # Without "View the Ray dashboard"
-        assert len(lines) == 1, lines
-    else:
-        # With "View the Ray dashboard"
-        assert len(lines) == 2, lines
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 # TODO: fix this test to support minimal installation
 @pytest.mark.skipif(
