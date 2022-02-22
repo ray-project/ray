@@ -253,9 +253,6 @@ class FullDeploymentConfig(BaseModel):
             "py_modules may contain only remote URIs."
         ),
     )
-    namespace: str = Field(
-        default="serve", description=("This deployment's namespace.")
-    )
     app_config: AppConfig = Field(...)
     deployment_config: DeploymentConfig = Field(...)
     replica_resources: ReplicaResources = Field(...)

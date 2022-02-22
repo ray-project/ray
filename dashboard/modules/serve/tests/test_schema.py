@@ -147,7 +147,6 @@ class TestFullDeploymentConfig:
                     ),
                 ],
             },
-            "namespace": "serve",
             "app_config": {
                 "init_args": [4, "glue"],
                 "init_kwargs": {"fuel": "diesel"},
@@ -182,7 +181,6 @@ class TestFullDeploymentConfig:
         full_deployment_config = {
             "name": "shallow",
             "runtime_env": None,
-            "namespace": "serve",
             "app_config": {
                 "init_args": None,
                 "init_kwargs": None,
@@ -248,7 +246,6 @@ class TestServeInstanceConfig:
                             ),
                         ],
                     },
-                    "namespace": "serve",
                     "app_config": {
                         "init_args": [4, "glue"],
                         "init_kwargs": {"fuel": "diesel"},
@@ -277,7 +274,6 @@ class TestServeInstanceConfig:
                 {
                     "name": "deep",
                     "runtime_env": None,
-                    "namespace": "serve",
                     "app_config": {
                         "init_args": None,
                         "init_kwargs": None,
