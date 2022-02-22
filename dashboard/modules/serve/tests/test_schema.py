@@ -293,7 +293,7 @@ class TestServeInstanceConfig:
                         "init_args": None,
                         "init_kwargs": None,
                         "import_path": (
-                            "test_env.subdir1.subdir2." "deep_import.DeepClass"
+                            "test_env.subdir1.subdir2.deep_import.DeepClass"
                         ),
                     },
                     "deployment_config": {

@@ -16,13 +16,13 @@ class AppConfig(BaseModel):
     init_args: Union[Tuple, List] = Field(
         default=None,
         description=(
-            "The application's init_args. Only works with Python 3 " "applications."
+            "The application's init_args. Only works with Python 3 applications."
         ),
     )
     init_kwargs: Dict = Field(
         default=None,
         description=(
-            "The application's init_args. Only works with Python 3 " "applications."
+            "The application's init_args. Only works with Python 3 applications."
         ),
     )
     import_path: str = Field(
@@ -216,7 +216,7 @@ class ReplicaResources(BaseModel):
     memory: float = Field(
         default=None,
         description=(
-            "Restrict the heap memory usage of each replica. Uses a " "default if null."
+            "Restrict the heap memory usage of each replica. Uses a default if null."
         ),
         gt=0,
     )
@@ -234,7 +234,7 @@ class ReplicaResources(BaseModel):
     accelerator_type: str = Field(
         default=None,
         description=(
-            "Forces replicas to run on nodes with the specified " "accelerator type."
+            "Forces replicas to run on nodes with the specified accelerator type."
         ),
     )
     max_concurrency: int = Field(default=None, description=(""))
