@@ -780,9 +780,10 @@ bool LocalTaskManager::CancelTask(
 
 void LocalTaskManager::CancelInfeasiblePlacementGroupTasks(
     std::deque<std::shared_ptr<internal::Work>> &tasks) {
-  for (auto work_it = tasks.begin(); work_it != tasks.end(); work_it++) {
+  for (auto work_it = tasks.begin(); work_it != tasks.end();) {
     if ((*work_it)->GetState() != internal::WorkStatus::WAITING) {
       // Only cancel waiting tasks.
+      ++work_it;
       continue;
     }
     RAY_LOG(DEBUG) << "Canceling infeasible task "
@@ -792,7 +793,7 @@ void LocalTaskManager::CancelInfeasiblePlacementGroupTasks(
         rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
         "Task/Actor cancelled, the related placement group has been removed.");
     (*work_it)->SetStateCancelled();
-    tasks.erase(work_it);
+    work_it = tasks.erase(work_it);
   }
 }
 
