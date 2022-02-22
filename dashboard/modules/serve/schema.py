@@ -1,6 +1,6 @@
 from enum import Enum
 from pydantic import BaseModel, Field, validator
-from typing import Tuple, Dict
+from typing import Tuple, List, Dict
 
 
 class SupportedLanguage(str, Enum):
@@ -210,3 +210,7 @@ class FullDeploymentConfig(BaseModel):
     app_config: AppConfig = Field(...)
     deployment_config: DeploymentConfig = Field(...)
     replica_resources: ReplicaResources = Field(...)
+
+
+class ServeInstanceConfig(BaseModel):
+    deployments: List[FullDeploymentConfig] = Field(...)
