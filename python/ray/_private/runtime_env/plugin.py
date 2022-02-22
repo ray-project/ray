@@ -40,7 +40,7 @@ class RuntimeEnvPlugin(ABC):
         raise NotImplementedError()
 
     def create(
-        uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext # noqa: F821
+        uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext  # noqa: F821
     ) -> float:
         """Create and install the runtime environment.
 

@@ -82,9 +82,11 @@ def _parse_proto_conda_runtime_env(
 ):
     """Parse conda runtime env protobuf to runtime env dict."""
     if runtime_env.python_runtime_env.HasField("conda_runtime_env"):
-        runtime_env_dict["conda"] = json.loads(
-            runtime_env.python_runtime_env.conda_runtime_env.config
-        )
+        conda_runtime_env = runtime_env.python_runtime_env.conda_runtime_env
+        if conda_runtime_env.HasField("conda_env_name"):
+            runtime_env_dict["conda"] = conda_runtime_env.conda_env_name
+        else:
+            runtime_env_dict["conda"] = json.loads(conda_runtime_env.config)
 
 
 def _build_proto_container_runtime_env(

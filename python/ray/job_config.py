@@ -54,7 +54,7 @@ class JobConfig:
 
     def set_runtime_env(
         self,
-        runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]], # noqa: F821
+        runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]],  # noqa: F821
         validate: bool = False,
     ) -> None:
         """Modify the runtime_env of the JobConfig.
@@ -94,6 +94,8 @@ class JobConfig:
         eager_install = self.runtime_env.get("eager_install", True)
         if not isinstance(eager_install, bool):
             raise TypeError("eager_install must be a boolean.")
+        if isinstance(self.runtime_env, RuntimeEnv):
+            return self.runtime_env, eager_install
         return RuntimeEnv(**self.runtime_env), eager_install
 
     def get_proto_job_config(self):
