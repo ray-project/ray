@@ -215,7 +215,9 @@ class PlasmaStore {
   // Start listening for clients.
   void DoAccept();
 
-  void PrintDebugDump() const LOCKS_EXCLUDED(mutex_);
+  void RecordMetrics() const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void PrintAndRecordDebugDump() const LOCKS_EXCLUDED(mutex_);
 
   std::string GetDebugDump() const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

@@ -49,7 +49,9 @@ def _resolve(directory, result_fname):
 
 def load_results_to_df(directory, result_name="result.json"):
     exp_directories = [
-        dirpath for dirpath, dirs, files in os.walk(directory) for f in files
+        dirpath
+        for dirpath, dirs, files in os.walk(directory)
+        for f in files
         if f == result_name
     ]
     data = [_resolve(d, result_name) for d in exp_directories]
@@ -65,9 +67,7 @@ def generate_plotly_dim_dict(df, field):
         dim_dict["values"] = column
     elif is_string_dtype(column):
         texts = column.unique()
-        dim_dict["values"] = [
-            np.argwhere(texts == x).flatten()[0] for x in column
-        ]
+        dim_dict["values"] = [np.argwhere(texts == x).flatten()[0] for x in column]
         dim_dict["tickvals"] = list(range(len(texts)))
         dim_dict["ticktext"] = texts
     else:

@@ -54,3 +54,7 @@ An `ObjectID` contains 2 parts:
   1 <= idx <= num_return_objects is reserved for the task's return objects, while
   idx > num_return_objects is available for the task's put objects.
 - `TaskID`: 24 bytes to indicate the ID of the task to which this object belongs.
+  Note: For `ray.put()` IDs only, the first byte of the `TaskID` is zeroed out
+  and `n` is added to the `TaskID`'s unique bytes, where `n` is the number of
+  times that task has executed so far. For task returns, the unique bytes are
+  identical to the parent task.

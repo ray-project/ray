@@ -18,6 +18,7 @@
 #include <sstream>
 
 #include "ray/common/ray_config.h"
+#include "ray/common/runtime_env_common.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -61,12 +62,31 @@ SchedulingClass TaskSpecification::GetSchedulingClass(
 }
 
 const BundleID TaskSpecification::PlacementGroupBundleId() const {
-  return std::make_pair(PlacementGroupID::FromBinary(message_->placement_group_id()),
-                        message_->placement_group_bundle_index());
+  if (message_->scheduling_strategy().scheduling_strategy_case() ==
+      rpc::SchedulingStrategy::SchedulingStrategyCase::
+          kPlacementGroupSchedulingStrategy) {
+    return std::make_pair(
+        PlacementGroupID::FromBinary(message_->scheduling_strategy()
+                                         .placement_group_scheduling_strategy()
+                                         .placement_group_id()),
+        message_->scheduling_strategy()
+            .placement_group_scheduling_strategy()
+            .placement_group_bundle_index());
+  } else {
+    return std::make_pair(PlacementGroupID::Nil(), -1);
+  }
 }
 
 bool TaskSpecification::PlacementGroupCaptureChildTasks() const {
-  return message_->placement_group_capture_child_tasks();
+  if (message_->scheduling_strategy().scheduling_strategy_case() ==
+      rpc::SchedulingStrategy::SchedulingStrategyCase::
+          kPlacementGroupSchedulingStrategy) {
+    return message_->scheduling_strategy()
+        .placement_group_scheduling_strategy()
+        .placement_group_capture_child_tasks();
+  } else {
+    return false;
+  }
 }
 
 void TaskSpecification::ComputeResources() {
@@ -145,8 +165,10 @@ std::string TaskSpecification::SerializedRuntimeEnv() const {
 }
 
 bool TaskSpecification::HasRuntimeEnv() const {
-  return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv().empty());
+  return !IsRuntimeEnvEmpty(SerializedRuntimeEnv());
 }
+
+uint64_t TaskSpecification::AttemptNumber() const { return message_->attempt_number(); }
 
 int TaskSpecification::GetRuntimeEnvHash() const {
   absl::flat_hash_map<std::string, double> required_resource;
@@ -435,8 +457,7 @@ bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
 }
 
 bool WorkerCacheKey::EnvIsEmpty() const {
-  return (serialized_runtime_env == "" || serialized_runtime_env == "{}") &&
-         required_resources.empty();
+  return IsRuntimeEnvEmpty(serialized_runtime_env) && required_resources.empty();
 }
 
 std::size_t WorkerCacheKey::Hash() const {

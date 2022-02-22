@@ -231,7 +231,7 @@ class ClientCallManager {
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request, const ClientCallback<Reply> &callback,
       std::string call_name, int64_t method_timeout_ms = -1) {
-    auto stats_handle = main_service_.RecordStart(call_name);
+    auto stats_handle = main_service_.stats().RecordStart(call_name);
     if (method_timeout_ms == -1) {
       method_timeout_ms = call_timeout_ms_;
     }
@@ -260,7 +260,7 @@ class ClientCallManager {
   /// objects.
   void PollEventsFromCompletionQueue(int index) {
     SetThreadName("client.poll" + std::to_string(index));
-    void *got_tag;
+    void *got_tag = nullptr;
     bool ok = false;
     // Keep reading events from the `CompletionQueue` until it's shutdown.
     // NOTE(edoakes): we use AsyncNext here because for some unknown reason,
@@ -278,7 +278,11 @@ class ClientCallManager {
         // cases (e.g., test_wait will hang on shutdown without this check).
         break;
       } else if (status != grpc::CompletionQueue::TIMEOUT) {
+        // NOTE: CompletionQueue::TIMEOUT and gRPC deadline exceeded are different.
+        // If the client deadline is exceeded, event is obtained at this block.
         auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
+        // Refresh the tag.
+        got_tag = nullptr;
         tag->GetCall()->SetReturnStatus();
         std::shared_ptr<StatsHandle> stats_handle = tag->GetCall()->GetStatsHandle();
         RAY_CHECK(stats_handle != nullptr);

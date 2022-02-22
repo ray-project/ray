@@ -9,19 +9,22 @@ import grpc
 
 
 def connect(
-        conn_str: str,
-        secure: bool = False,
-        metadata: List[Tuple[str, str]] = None,
-        connection_retries: int = 3,
-        job_config: JobConfig = None,
-        namespace: str = None,
-        *,
-        ignore_version: bool = False,
-        _credentials: Optional[grpc.ChannelCredentials] = None,
-        ray_init_kwargs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    conn_str: str,
+    secure: bool = False,
+    metadata: List[Tuple[str, str]] = None,
+    connection_retries: int = 3,
+    job_config: JobConfig = None,
+    namespace: str = None,
+    *,
+    ignore_version: bool = False,
+    _credentials: Optional[grpc.ChannelCredentials] = None,
+    ray_init_kwargs: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     if ray.is_connected():
-        raise RuntimeError("Ray Client is already connected. Maybe you called "
-                           'ray.init("ray://<address>") twice by accident?')
+        raise RuntimeError(
+            "Ray Client is already connected. Maybe you called "
+            'ray.init("ray://<address>") twice by accident?'
+        )
     # Enable the same hooks that RAY_CLIENT_MODE does, as calling
     # ray.init("ray://<address>") is specifically for using client mode.
     _set_client_hook_status(True)
@@ -39,7 +42,8 @@ def connect(
         namespace=namespace,
         ignore_version=ignore_version,
         _credentials=_credentials,
-        ray_init_kwargs=ray_init_kwargs)
+        ray_init_kwargs=ray_init_kwargs,
+    )
     return conn
 
 

@@ -1,10 +1,10 @@
 .. _datasets_tensor_support:
 
-Dataset Tensor Support
-======================
+Working with Tensors
+====================
 
 Tables with tensor columns
---------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Datasets supports tables with fixed-shape tensor columns, where each element in the column is a tensor (n-dimensional array) with the same shape. As an example, this allows you to use Pandas and Ray Datasets to read, write, and manipulate e.g., images. All conversions between Pandas, Arrow, and Parquet, and all application of aggregations/operations to the underlying image ndarrays are taken care of by Ray Datasets.
 

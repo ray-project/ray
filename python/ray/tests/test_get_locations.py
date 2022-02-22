@@ -49,8 +49,7 @@ def test_get_locations_inlined(ray_start_regular):
         assert location["object_size"] > 0
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_spilled_locations(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
@@ -77,8 +76,7 @@ def test_spilled_locations(ray_start_cluster):
         assert location["object_size"] > 0
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_get_locations_multi_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     # head node
@@ -86,14 +84,12 @@ def test_get_locations_multi_nodes(ray_start_cluster):
     ray.init(cluster.address)
     # add 1 worker node
     cluster.add_node(
-        num_cpus=0,
-        resources={"custom": 1},
-        object_store_memory=75 * 1024 * 1024)
+        num_cpus=0, resources={"custom": 1}, object_store_memory=75 * 1024 * 1024
+    )
     cluster.wait_for_nodes()
 
     all_node_ids = list(map(lambda node: node["NodeID"], ray.nodes()))
-    driver_node_id = ray.runtime_context.get_runtime_context().get()[
-        "node_id"].hex()
+    driver_node_id = ray.runtime_context.get_runtime_context().get()["node_id"].hex()
     all_node_ids.remove(driver_node_id)
     worker_node_id = all_node_ids[0]
 
@@ -132,4 +128,4 @@ def test_location_pending(ray_start_cluster):
     assert location["node_ids"] == []
     # TODO(chenshen): this is a result of converting int -1 to unsigned int;
     # should be fix by https://github.com/ray-project/ray/issues/16321
-    assert location["object_size"] == 2**64 - 1
+    assert location["object_size"] == 2 ** 64 - 1

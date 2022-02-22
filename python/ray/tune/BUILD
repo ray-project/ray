@@ -135,6 +135,14 @@ py_test(
 )
 
 py_test(
+    name = "test_integration_comet",
+    size = "small",
+    srcs = ["tests/test_integration_comet.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_I"],
+)
+
+py_test(
     name = "test_integration_docker",
     size = "small",
     srcs = ["tests/test_integration_docker.py"],
@@ -183,6 +191,14 @@ py_test(
 )
 
 py_test(
+    name = "test_multinode_sync",
+    size = "large",
+    srcs = ["tests/test_multinode_sync.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "multinode"],
+)
+
+py_test(
     name = "test_progress_reporter",
     size = "medium",
     srcs = ["tests/test_progress_reporter.py"],
@@ -216,7 +232,7 @@ py_test(
 
 py_test(
     name = "test_sample",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_sample.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_S"],
@@ -315,7 +331,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_trial_scheduler_pbt.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "flaky", "tests_dir_T"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
 
 py_test(
@@ -562,15 +578,6 @@ py_test(
 )
 
 py_test(
-    name = "hyperopt_example",
-    size = "medium",
-    srcs = ["examples/hyperopt_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "hyperopt_conditional_search_space_example",
     size = "medium",
     srcs = ["examples/hyperopt_conditional_search_space_example.py"],
@@ -578,7 +585,6 @@ py_test(
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
-
 
 py_test(
     name = "lightgbm_example",
@@ -864,6 +870,15 @@ py_test(
 #     tags = ["team:ml", "exclusive", "example"],
 #     args = ["--model SqueezeNet1.0", "--smoke-test"]
 # )
+
+py_test(
+    name = "tune_comet_example",
+    size = "medium",
+    srcs = ["examples/tune_comet_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--mock-api"]
+)
 
 py_test(
     name = "tune_mnist_keras",

@@ -47,11 +47,10 @@ Horovod
   Simple example for Horovod (with TensorFlow)
 
 
-Iterator API Examples
----------------------
-
+Logger/Callback Examples
+------------------------
 * :doc:`/train/examples/mlflow_fashion_mnist_example`:
-  Example for using the Iterator API for custom MLFlow integration.
+  Example for logging training to MLflow via the ``MLflowLoggerCallback``
 
 Ray Datasets Integration Examples
 ---------------------------------

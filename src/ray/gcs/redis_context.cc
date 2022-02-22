@@ -16,7 +16,7 @@
 
 #include <sstream>
 
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
 
 extern "C" {

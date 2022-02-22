@@ -157,6 +157,9 @@ class PullManager {
   /// there are object sizes missing.
   bool HasPullsQueued() const;
 
+  /// Record the internal metrics.
+  void RecordMetrics() const;
+
   std::string DebugString() const;
 
   /// Returns the number of bytes of quota remaining. When this is less than zero,

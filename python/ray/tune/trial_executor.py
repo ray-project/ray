@@ -4,7 +4,6 @@ import logging
 from typing import Dict, List, Optional
 import warnings
 
-from ray.tune.resources import Resources
 from ray.util.annotations import DeveloperAPI
 from ray.tune.trial import Trial, Checkpoint
 
@@ -15,14 +14,21 @@ logger = logging.getLogger(__name__)
 # A warning is printed to inform users of TrialExecutor deprecation.
 class _WarnOnDirectInheritanceMeta(type):
     def __new__(mcls, name, bases, module, **kwargs):
-        if name not in ("RayTrialExecutor", "_MockTrialExecutor",
-                        "TrialExecutor") and "TrialExecutor" in tuple(
-                            base.__name__ for base in bases):
+        if (
+            name
+            not in (
+                "RayTrialExecutor",
+                "_MockTrialExecutor",
+                "TrialExecutor",
+            )
+            and "TrialExecutor" in tuple(base.__name__ for base in bases)
+        ):
             deprecation_msg = (
                 f"{name} inherits from TrialExecutor, which is being "
                 "deprecated. "
                 "RFC: https://github.com/ray-project/ray/issues/17593. "
-                "Please reach out on the Ray Github if you have any concerns.")
+                "Please reach out on the Ray Github if you have any concerns."
+            )
             warnings.warn(deprecation_msg, DeprecationWarning)
         cls = super().__new__(mcls, name, bases, module, **kwargs)
         return cls
@@ -37,8 +43,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
     """
 
     def __init__(self):
-        """Initializes a new TrialExecutor.
-        """
+        """Initializes a new TrialExecutor."""
         self._cached_trial_state = {}
         self._trials_to_cache = set()
 
@@ -56,8 +61,9 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         if trial.status == status:
             logger.debug("Trial %s: Status %s unchanged.", trial, trial.status)
         else:
-            logger.debug("Trial %s: Changing status from %s to %s.", trial,
-                         trial.status, status)
+            logger.debug(
+                "Trial %s: Changing status from %s to %s.", trial, trial.status, status
+            )
         trial.set_status(status)
         if status in [Trial.TERMINATED, Trial.ERROR]:
             self._trials_to_cache.add(trial)
@@ -73,11 +79,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         return self._cached_trial_state
 
     @abstractmethod
-    def has_resources(self, resources: Resources) -> bool:
-        """Returns whether this runner has at least the specified resources."""
-        pass
-
-    @abstractmethod
     def start_trial(self, trial: Trial) -> bool:
         """Starts the trial restoring from checkpoint if checkpoint is provided.
 
@@ -90,10 +91,9 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         pass
 
     @abstractmethod
-    def stop_trial(self,
-                   trial: Trial,
-                   error: bool = False,
-                   error_msg: Optional[str] = None) -> None:
+    def stop_trial(
+        self, trial: Trial, error: bool = False, error_msg: Optional[str] = None
+    ) -> None:
         """Stops the trial.
 
         Stops this trial, releasing all allocating resources.
@@ -126,19 +126,10 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
             logger.exception("Error pausing runner.")
             self.set_status(trial, Trial.ERROR)
 
-    def unpause_trial(self, trial: Trial) -> None:
-        """Sets PAUSED trial to pending to allow scheduler to start."""
-        assert trial.status == Trial.PAUSED, trial.status
-        self.set_status(trial, Trial.PENDING)
-
-    def resume_trial(self, trial: Trial) -> None:
-        """Resumes PAUSED trials. This is a blocking call."""
-        assert trial.status == Trial.PAUSED, trial.status
-        self.start_trial(trial)
-
     @abstractmethod
-    def reset_trial(self, trial: Trial, new_config: Dict,
-                    new_experiment_tag: str) -> bool:
+    def reset_trial(
+        self, trial: Trial, new_config: Dict, new_experiment_tag: str
+    ) -> bool:
         """Tries to invoke `Trainable.reset()` to reset trial.
 
         Args:
@@ -151,11 +142,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         Returns:
             True if `reset` is successful else False.
         """
-        pass
-
-    @abstractmethod
-    def get_running_trials(self) -> List[Trial]:
-        """Returns all running trials."""
         pass
 
     def on_step_begin(self, trials: List[Trial]) -> None:
@@ -180,45 +166,12 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         pass
 
     @abstractmethod
-    def get_next_available_trial(self) -> Optional[Trial]:
-        """Blocking call that waits until one result is ready.
-
-        Returns:
-            Trial object that is ready for intermediate processing.
-        """
-        pass
-
-    @abstractmethod
-    def get_next_failed_trial(self) -> Optional[Trial]:
-        """Non-blocking call that detects and returns one failed trial.
-
-        Returns:
-            A Trial object that is ready for failure processing. None if
-            no failure detected.
-        """
-        pass
-
-    @abstractmethod
-    def fetch_result(self, trial: Trial) -> List[Trial]:
-        """Fetches one result for the trial.
-
-        Assumes the trial is running.
-
-        Returns:
-            Result object for the trial.
-        """
-        pass
-
-    @abstractmethod
     def debug_string(self) -> str:
         """Returns a human readable message for printing to the console."""
         pass
 
     @abstractmethod
-    def restore(self,
-                trial: Trial,
-                checkpoint: Optional[Checkpoint] = None,
-                block: bool = False) -> None:
+    def restore(self, trial: Trial) -> None:
         """Restores training state from a checkpoint.
 
         If checkpoint is None, try to restore from trial.checkpoint.
@@ -226,8 +179,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
 
         Args:
             trial (Trial): Trial to be restored.
-            checkpoint (Checkpoint): Checkpoint to restore from.
-            block (bool): Whether or not to block on restore before returning.
 
         Returns:
             False if error occurred, otherwise return True.
@@ -235,10 +186,9 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         pass
 
     @abstractmethod
-    def save(self,
-             trial,
-             storage: str = Checkpoint.PERSISTENT,
-             result: Optional[Dict] = None) -> Checkpoint:
+    def save(
+        self, trial, storage: str = Checkpoint.PERSISTENT, result: Optional[Dict] = None
+    ) -> Checkpoint:
         """Saves training state of this trial to a checkpoint.
 
         If result is None, this trial's last result will be used.
@@ -278,10 +228,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
                 providing TrialRunner directly here.
         """
         pass
-
-    def in_staging_grace_period(self) -> bool:
-        """Returns True if trials have recently been staged."""
-        return False
 
     def set_max_pending_trials(self, max_pending: int) -> None:
         """Set the maximum number of allowed pending trials."""

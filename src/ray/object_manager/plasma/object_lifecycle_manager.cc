@@ -15,10 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "absl/time/clock.h"
-
-#include "ray/common/ray_config.h"
 #include "ray/object_manager/plasma/object_lifecycle_manager.h"
+
+#include "absl/time/clock.h"
+#include "ray/common/ray_config.h"
 
 namespace plasma {
 using namespace flatbuf;
@@ -268,6 +268,8 @@ int64_t ObjectLifecycleManager::GetNumBytesUnsealed() const {
 int64_t ObjectLifecycleManager::GetNumObjectsUnsealed() const {
   return stats_collector_.GetNumObjectsUnsealed();
 }
+
+void ObjectLifecycleManager::RecordMetrics() const { stats_collector_.RecordMetrics(); }
 
 void ObjectLifecycleManager::GetDebugDump(std::stringstream &buffer) const {
   return stats_collector_.GetDebugDump(buffer);

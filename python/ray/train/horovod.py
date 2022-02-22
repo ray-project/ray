@@ -37,6 +37,7 @@ class HorovodConfig(BackendConfig):
         placement_group_timeout_s (int): Timeout parameter for Ray
             Placement Group creation. Currently unused.
     """
+
     nics: Optional[Set[str]] = None
     verbose: int = 1
     key: Optional[str] = None
@@ -53,7 +54,8 @@ class HorovodConfig(BackendConfig):
             message="Timed out waiting for {activity}. Please "
             "check connectivity between servers. You "
             "may need to increase the --start-timeout "
-            "parameter if you have too many servers.")
+            "parameter if you have too many servers.",
+        )
 
     def __post_init__(self):
         if self.ssh_str and not os.path.exists(self.ssh_identity_file):
@@ -93,7 +95,8 @@ class HorovodWorkerWrapper:
             def remote(self, func, *args, **kwargs):
                 _ = None
                 return w.actor._BaseWorkerMixin__execute.remote(
-                    func, _, *args, **kwargs)
+                    func, _, *args, **kwargs
+                )
 
         return ExecuteHandle()
 
@@ -101,8 +104,7 @@ class HorovodWorkerWrapper:
 class HorovodBackend(Backend):
     share_cuda_visible_devices: bool = True
 
-    def on_start(self, worker_group: WorkerGroup,
-                 backend_config: HorovodConfig):
+    def on_start(self, worker_group: WorkerGroup, backend_config: HorovodConfig):
 
         # TODO(matt): Implement placement group strategies in BackendExecutor.
 
@@ -111,9 +113,10 @@ class HorovodBackend(Backend):
         for rank in range(len(worker_group)):
             worker_node_id = worker_group.workers[rank].metadata.node_id
             setup_futures.append(
-                worker_group.execute_single_async(rank, init_env_vars, rank,
-                                                  len(worker_group),
-                                                  worker_node_id))
+                worker_group.execute_single_async(
+                    rank, init_env_vars, rank, len(worker_group), worker_node_id
+                )
+            )
         ray.get(setup_futures)
 
         # Use Horovod Ray Coordinator
@@ -132,8 +135,10 @@ class HorovodBackend(Backend):
         setup_futures = []
         for rank, local_cross_env_var in all_info.items():
             setup_futures.append(
-                worker_group.execute_single_async(rank, update_env_vars,
-                                                  local_cross_env_var))
+                worker_group.execute_single_async(
+                    rank, update_env_vars, local_cross_env_var
+                )
+            )
         ray.get(setup_futures)
 
         coordinator_envs = self.coordinator.establish_rendezvous()
@@ -142,7 +147,8 @@ class HorovodBackend(Backend):
         nics = detect_nics(
             backend_config,
             all_host_names=list(self.coordinator.hostnames),
-            node_workers=node_workers)
+            node_workers=node_workers,
+        )
         coordinator_envs.update(nics_to_env_var(nics))
 
         worker_group.execute(update_env_vars, coordinator_envs)

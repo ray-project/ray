@@ -8,6 +8,7 @@ import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.LocalModeWorkerContext;
+import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.object.LocalModeObjectStore;
 import io.ray.runtime.task.LocalModeTaskExecutor;
@@ -80,6 +81,11 @@ public class RayDevRuntime extends AbstractRayRuntime {
   @Override
   public <T extends BaseActorHandle> Optional<T> getActor(String name, String namespace) {
     return (Optional<T>) ((LocalModeTaskSubmitter) taskSubmitter).getActor(name);
+  }
+
+  @Override
+  public GcsClient getGcsClient() {
+    throw new UnsupportedOperationException("Ray doesn't have gcs client in local mode.");
   }
 
   @Override

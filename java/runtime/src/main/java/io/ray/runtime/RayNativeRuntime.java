@@ -8,6 +8,7 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.UniqueId;
+import io.ray.api.options.ActorLifetime;
 import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.NativeWorkerContext;
@@ -42,6 +43,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private boolean startRayHead = false;
 
+  private GcsClient gcsClient;
+
   /**
    * In Java, GC runs in a standalone thread, and we can't control the exact timing of garbage
    * collection. By using this lock, when {@link NativeObjectStore#nativeRemoveLocalReference} is
@@ -54,9 +57,9 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     super(rayConfig);
   }
 
-  private void updateSessionDir(GcsClient gcsClient) {
+  private void updateSessionDir() {
     // Fetch session dir from GCS.
-    final String sessionDir = gcsClient.getInternalKV("@namespace_session:session_dir");
+    final String sessionDir = getGcsClient().getInternalKV("session", "session_dir");
     Preconditions.checkNotNull(sessionDir);
     rayConfig.setSessionDir(sessionDir);
   }
@@ -64,21 +67,20 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   @Override
   public void start() {
     try {
-      if (rayConfig.workerMode == WorkerType.DRIVER && rayConfig.getRedisAddress() == null) {
+      if (rayConfig.workerMode == WorkerType.DRIVER && rayConfig.getBootstrapAddress() == null) {
         // Set it to true before `RunManager.startRayHead` so `Ray.shutdown()` can still kill
         // Ray processes even if `Ray.init()` failed.
         startRayHead = true;
         RunManager.startRayHead(rayConfig);
       }
-      Preconditions.checkNotNull(rayConfig.getRedisAddress());
+      Preconditions.checkNotNull(rayConfig.getBootstrapAddress());
 
       // In order to remove redis dependency in Java lang, we use a temp dir to load library
       // instead of getting session dir from redis.
       if (rayConfig.workerMode == WorkerType.DRIVER) {
         String tmpDir = "/tmp/ray/".concat(String.valueOf(System.currentTimeMillis()));
         JniUtils.loadLibrary(tmpDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
-        gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
-        updateSessionDir(gcsClient);
+        updateSessionDir();
         Preconditions.checkNotNull(rayConfig.sessionDir);
       } else {
         // Expose ray ABI symbols which may be depended by other shared
@@ -86,18 +88,17 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         // See BUILD.bazel:libcore_worker_library_java.so
         Preconditions.checkNotNull(rayConfig.sessionDir);
         JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
-        gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
       }
 
       if (rayConfig.workerMode == WorkerType.DRIVER) {
-        GcsNodeInfo nodeInfo = gcsClient.getNodeToConnectForDriver(rayConfig.nodeIp);
+        GcsNodeInfo nodeInfo = getGcsClient().getNodeToConnectForDriver(rayConfig.nodeIp);
         rayConfig.rayletSocketName = nodeInfo.getRayletSocketName();
         rayConfig.objectStoreSocketName = nodeInfo.getObjectStoreSocketName();
         rayConfig.nodeManagerPort = nodeInfo.getNodeManagerPort();
       }
 
       if (rayConfig.workerMode == WorkerType.DRIVER && rayConfig.getJobId() == JobId.NIL) {
-        rayConfig.setJobId(gcsClient.nextJobId());
+        rayConfig.setJobId(getGcsClient().nextJobId());
       }
       int numWorkersPerProcess =
           rayConfig.workerMode == WorkerType.DRIVER ? 1 : rayConfig.numWorkersPerProcess;
@@ -126,6 +127,10 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
           runtimeEnvInfoBuilder.setSerializedRuntimeEnv("{}");
         }
         jobConfigBuilder.setRuntimeEnvInfo(runtimeEnvInfoBuilder.build());
+        jobConfigBuilder.setDefaultActorLifetime(
+            rayConfig.defaultActorLifetime == ActorLifetime.DETACHED
+                ? JobConfig.ActorLifetime.DETACHED
+                : JobConfig.ActorLifetime.NON_DETACHED);
         serializedJobConfig = jobConfigBuilder.build().toByteArray();
       }
 
@@ -231,6 +236,18 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     LOGGER.info("Actor {} is exiting.", runtimeContext.getCurrentActorId());
     throw new RayIntentionalSystemExitException(
         String.format("Actor %s is exiting.", runtimeContext.getCurrentActorId()));
+  }
+
+  @Override
+  public GcsClient getGcsClient() {
+    if (gcsClient == null) {
+      synchronized (this) {
+        if (gcsClient == null) {
+          gcsClient = new GcsClient(rayConfig.getBootstrapAddress(), rayConfig.redisPassword);
+        }
+      }
+    }
+    return gcsClient;
   }
 
   @Override

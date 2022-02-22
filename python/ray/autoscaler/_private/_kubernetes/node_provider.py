@@ -6,10 +6,15 @@ from uuid import uuid4
 from kubernetes.client.rest import ApiException
 
 from ray.autoscaler._private.command_runner import KubernetesCommandRunner
-from ray.autoscaler._private._kubernetes import core_api, log_prefix, \
-    extensions_beta_api
-from ray.autoscaler._private._kubernetes.config import bootstrap_kubernetes, \
-    fillout_resources_kubernetes
+from ray.autoscaler._private._kubernetes import (
+    core_api,
+    log_prefix,
+    extensions_beta_api,
+)
+from ray.autoscaler._private._kubernetes.config import (
+    bootstrap_kubernetes,
+    fillout_resources_kubernetes,
+)
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import NODE_KIND_HEAD
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
@@ -18,14 +23,13 @@ from ray.autoscaler.tags import TAG_RAY_NODE_KIND
 logger = logging.getLogger(__name__)
 
 MAX_TAG_RETRIES = 3
-DELAY_BEFORE_TAG_RETRY = .5
+DELAY_BEFORE_TAG_RETRY = 0.5
 
 RAY_COMPONENT_LABEL = "cluster.ray.io/component"
 
 
 def head_service_selector(cluster_name: str) -> Dict[str, str]:
-    """Selector for Operator-configured head service.
-    """
+    """Selector for Operator-configured head service."""
     return {RAY_COMPONENT_LABEL: f"{cluster_name}-ray-head"}
 
 
@@ -48,24 +52,26 @@ class KubernetesNodeProvider(NodeProvider):
         # Match pods that are in the 'Pending' or 'Running' phase.
         # Unfortunately there is no OR operator in field selectors, so we
         # have to match on NOT any of the other phases.
-        field_selector = ",".join([
-            "status.phase!=Failed",
-            "status.phase!=Unknown",
-            "status.phase!=Succeeded",
-            "status.phase!=Terminating",
-        ])
+        field_selector = ",".join(
+            [
+                "status.phase!=Failed",
+                "status.phase!=Unknown",
+                "status.phase!=Succeeded",
+                "status.phase!=Terminating",
+            ]
+        )
 
         tag_filters[TAG_RAY_CLUSTER_NAME] = self.cluster_name
         label_selector = to_label_selector(tag_filters)
         pod_list = core_api().list_namespaced_pod(
-            self.namespace,
-            field_selector=field_selector,
-            label_selector=label_selector)
+            self.namespace, field_selector=field_selector, label_selector=label_selector
+        )
 
         # Don't return pods marked for deletion,
         # i.e. pods with non-null metadata.DeletionTimestamp.
         return [
-            pod.metadata.name for pod in pod_list.items
+            pod.metadata.name
+            for pod in pod_list.items
             if pod.metadata.deletion_timestamp is None
         ]
 
@@ -100,8 +106,10 @@ class KubernetesNodeProvider(NodeProvider):
                 return
             except ApiException as e:
                 if e.status == 409:
-                    logger.info(log_prefix + "Caught a 409 error while setting"
-                                " node tags. Retrying...")
+                    logger.info(
+                        log_prefix + "Caught a 409 error while setting"
+                        " node tags. Retrying..."
+                    )
                     time.sleep(DELAY_BEFORE_TAG_RETRY)
                     continue
                 else:
@@ -133,8 +141,9 @@ class KubernetesNodeProvider(NodeProvider):
             head_selector = head_service_selector(self.cluster_name)
             pod_spec["metadata"]["labels"].update(head_selector)
 
-        logger.info(log_prefix + "calling create_namespaced_pod "
-                    "(count={}).".format(count))
+        logger.info(
+            log_prefix + "calling create_namespaced_pod " "(count={}).".format(count)
+        )
         new_nodes = []
         for _ in range(count):
             pod = core_api().create_namespaced_pod(self.namespace, pod_spec)
@@ -142,8 +151,10 @@ class KubernetesNodeProvider(NodeProvider):
 
         new_svcs = []
         if service_spec is not None:
-            logger.info(log_prefix + "calling create_namespaced_service "
-                        "(count={}).".format(count))
+            logger.info(
+                log_prefix + "calling create_namespaced_service "
+                "(count={}).".format(count)
+            )
 
             for new_node in new_nodes:
 
@@ -151,21 +162,24 @@ class KubernetesNodeProvider(NodeProvider):
                 metadata["name"] = new_node.metadata.name
                 service_spec["metadata"] = metadata
                 service_spec["spec"]["selector"] = {"ray-node-uuid": node_uuid}
-                svc = core_api().create_namespaced_service(
-                    self.namespace, service_spec)
+                svc = core_api().create_namespaced_service(self.namespace, service_spec)
                 new_svcs.append(svc)
 
         if ingress_spec is not None:
-            logger.info(log_prefix + "calling create_namespaced_ingress "
-                        "(count={}).".format(count))
+            logger.info(
+                log_prefix + "calling create_namespaced_ingress "
+                "(count={}).".format(count)
+            )
             for new_svc in new_svcs:
                 metadata = ingress_spec.get("metadata", {})
                 metadata["name"] = new_svc.metadata.name
                 ingress_spec["metadata"] = metadata
                 ingress_spec = _add_service_name_to_service_port(
-                    ingress_spec, new_svc.metadata.name)
+                    ingress_spec, new_svc.metadata.name
+                )
                 extensions_beta_api().create_namespaced_ingress(
-                    self.namespace, ingress_spec)
+                    self.namespace, ingress_spec
+                )
 
     def terminate_node(self, node_id):
         logger.info(log_prefix + "calling delete_namespaced_pod")
@@ -173,8 +187,10 @@ class KubernetesNodeProvider(NodeProvider):
             core_api().delete_namespaced_pod(node_id, self.namespace)
         except ApiException as e:
             if e.status == 404:
-                logger.warning(log_prefix + f"Tried to delete pod {node_id},"
-                               " but the pod was not found (404).")
+                logger.warning(
+                    log_prefix + f"Tried to delete pod {node_id},"
+                    " but the pod was not found (404)."
+                )
             else:
                 raise
         try:
@@ -193,16 +209,19 @@ class KubernetesNodeProvider(NodeProvider):
         for node_id in node_ids:
             self.terminate_node(node_id)
 
-    def get_command_runner(self,
-                           log_prefix,
-                           node_id,
-                           auth_config,
-                           cluster_name,
-                           process_runner,
-                           use_internal_ip,
-                           docker_config=None):
-        return KubernetesCommandRunner(log_prefix, self.namespace, node_id,
-                                       auth_config, process_runner)
+    def get_command_runner(
+        self,
+        log_prefix,
+        node_id,
+        auth_config,
+        cluster_name,
+        process_runner,
+        use_internal_ip,
+        docker_config=None,
+    ):
+        return KubernetesCommandRunner(
+            log_prefix, self.namespace, node_id, auth_config, process_runner
+        )
 
     @staticmethod
     def bootstrap_config(cluster_config):
@@ -227,12 +246,11 @@ def _add_service_name_to_service_port(spec, svc_name):
                 raise ValueError(
                     "The value of serviceName must be set to "
                     "${RAY_POD_NAME}. It is automatically replaced "
-                    "when using the autoscaler.")
+                    "when using the autoscaler."
+                )
 
     elif isinstance(spec, list):
-        spec = [
-            _add_service_name_to_service_port(item, svc_name) for item in spec
-        ]
+        spec = [_add_service_name_to_service_port(item, svc_name) for item in spec]
 
     elif isinstance(spec, str):
         # The magic string ${RAY_POD_NAME} is replaced with

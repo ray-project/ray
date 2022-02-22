@@ -193,20 +193,13 @@ class NodeResourceInstances {
 };
 
 struct Node {
-  Node(const NodeResources &resources)
-      : last_reported_(resources), local_view_(resources) {}
+  Node(const NodeResources &resources) : local_view_(resources) {}
 
   NodeResources *GetMutableLocalView() { return &local_view_; }
 
   const NodeResources &GetLocalView() const { return local_view_; }
 
  private:
-  /// The resource information according to the last heartbeat reported by
-  /// this node.
-  /// NOTE(swang): For the local node, this field should be ignored because
-  /// we do not receive heartbeats from ourselves and the local view is
-  /// therefore always the most up-to-date.
-  NodeResources last_reported_;
   /// Our local view of the remote node's resources. This may be dirty
   /// because it includes any resource requests that we allocated to this
   /// node through spillback since our last heartbeat tick. This view will

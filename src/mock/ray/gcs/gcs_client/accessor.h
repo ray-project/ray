@@ -28,14 +28,19 @@ class MockActorInfoAccessor : public ActorInfoAccessor {
               (const MultiItemCallback<rpc::ActorTableData> &callback), (override));
   MOCK_METHOD(Status, AsyncGetByName,
               (const std::string &name, const std::string &ray_namespace,
-               const OptionalItemCallback<rpc::ActorTableData> &callback),
+               const OptionalItemCallback<rpc::ActorTableData> &callback,
+               int64_t timeout_ms),
               (override));
   MOCK_METHOD(Status, AsyncListNamedActors,
               (bool all_namespaces, const std::string &ray_namespace,
-               const ItemCallback<std::vector<rpc::NamedActorInfo>> &callback),
+               const OptionalItemCallback<std::vector<rpc::NamedActorInfo>> &callback,
+               int64_t timeout_ms),
               (override));
   MOCK_METHOD(Status, AsyncRegisterActor,
-              (const TaskSpecification &task_spec, const StatusCallback &callback),
+              (const TaskSpecification &task_spec, const StatusCallback &callback,
+               int64_t timeout_ms),
+              (override));
+  MOCK_METHOD(Status, SyncRegisterActor, (const TaskSpecification &task_spec),
               (override));
   MOCK_METHOD(Status, AsyncKillActor,
               (const ActorID &actor_id, bool force_kill, bool no_restart,
@@ -78,45 +83,6 @@ class MockJobInfoAccessor : public JobInfoAccessor {
   MOCK_METHOD(void, AsyncResubscribe, (bool is_pubsub_server_restarted), (override));
   MOCK_METHOD(Status, AsyncGetNextJobID, (const ItemCallback<JobID> &callback),
               (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
-class MockTaskInfoAccessor : public TaskInfoAccessor {
- public:
-  MOCK_METHOD(Status, AsyncAdd,
-              (const std::shared_ptr<rpc::TaskTableData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncGet,
-              (const TaskID &task_id,
-               const OptionalItemCallback<rpc::TaskTableData> &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncAddTaskLease,
-              (const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncGetTaskLease,
-              (const TaskID &task_id,
-               const OptionalItemCallback<rpc::TaskLeaseData> &callback),
-              (override));
-  MOCK_METHOD(
-      Status, AsyncSubscribeTaskLease,
-      (const TaskID &task_id,
-       (const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe),
-       const StatusCallback &done),
-      (override));
-  MOCK_METHOD(Status, AsyncUnsubscribeTaskLease, (const TaskID &task_id), (override));
-  MOCK_METHOD(Status, AttemptTaskReconstruction,
-              (const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(void, AsyncResubscribe, (bool is_pubsub_server_restarted), (override));
-  MOCK_METHOD(bool, IsTaskLeaseUnsubscribed, (const TaskID &task_id), (override));
 };
 
 }  // namespace gcs
@@ -264,28 +230,23 @@ namespace gcs {
 
 class MockPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
  public:
-  MOCK_METHOD(Status, AsyncCreatePlacementGroup,
-              (const PlacementGroupSpecification &placement_group_spec,
-               const StatusCallback &callback),
-              (override));
+  MOCK_METHOD(Status, SyncCreatePlacementGroup,
+              (const PlacementGroupSpecification &placement_group_spec), (override));
   MOCK_METHOD(Status, AsyncGet,
               (const PlacementGroupID &placement_group_id,
                const OptionalItemCallback<rpc::PlacementGroupTableData> &callback),
               (override));
   MOCK_METHOD(Status, AsyncGetByName,
               (const std::string &placement_group_name, const std::string &ray_namespace,
-               const OptionalItemCallback<rpc::PlacementGroupTableData> &callback),
+               const OptionalItemCallback<rpc::PlacementGroupTableData> &callback,
+               int64_t timeout_ms),
               (override));
   MOCK_METHOD(Status, AsyncGetAll,
               (const MultiItemCallback<rpc::PlacementGroupTableData> &callback),
               (override));
-  MOCK_METHOD(Status, AsyncRemovePlacementGroup,
-              (const PlacementGroupID &placement_group_id,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncWaitUntilReady,
-              (const PlacementGroupID &placement_group_id,
-               const StatusCallback &callback),
+  MOCK_METHOD(Status, SyncRemovePlacementGroup,
+              (const PlacementGroupID &placement_group_id), (override));
+  MOCK_METHOD(Status, SyncWaitUntilReady, (const PlacementGroupID &placement_group_id),
               (override));
 };
 
@@ -298,21 +259,25 @@ namespace gcs {
 class MockInternalKVAccessor : public InternalKVAccessor {
  public:
   MOCK_METHOD(Status, AsyncInternalKVKeys,
-              (const std::string &prefix,
+              (const std::string &ns, const std::string &prefix,
                const OptionalItemCallback<std::vector<std::string>> &callback),
               (override));
   MOCK_METHOD(Status, AsyncInternalKVGet,
-              (const std::string &key, const OptionalItemCallback<std::string> &callback),
+              (const std::string &ns, const std::string &key,
+               const OptionalItemCallback<std::string> &callback),
               (override));
   MOCK_METHOD(Status, AsyncInternalKVPut,
-              (const std::string &key, const std::string &value, bool overwrite,
-               const OptionalItemCallback<int> &callback),
+              (const std::string &ns, const std::string &key, const std::string &value,
+               bool overwrite, const OptionalItemCallback<int> &callback),
               (override));
   MOCK_METHOD(Status, AsyncInternalKVExists,
-              (const std::string &key, const OptionalItemCallback<bool> &callback),
+              (const std::string &ns, const std::string &key,
+               const OptionalItemCallback<bool> &callback),
               (override));
   MOCK_METHOD(Status, AsyncInternalKVDel,
-              (const std::string &key, const StatusCallback &callback), (override));
+              (const std::string &ns, const std::string &key, bool del_by_prefix,
+               const StatusCallback &callback),
+              (override));
 };
 
 }  // namespace gcs

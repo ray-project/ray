@@ -3,31 +3,40 @@ import os
 from pathlib import Path
 import sys
 from typing import Any, Dict, List, Optional, Set, Union
+from pkg_resources import Requirement
+from collections import OrderedDict
 import yaml
 
 import ray
-from ray._private.runtime_env.plugin import (RuntimeEnvPlugin,
-                                             encode_plugin_uri)
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin, encode_plugin_uri
 from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.utils import import_attr
-from ray._private.runtime_env import conda
+from ray._private.runtime_env.conda import (
+    _resolve_install_from_source_ray_extras,
+    get_uri as get_conda_uri,
+)
+
+from ray._private.runtime_env.pip import get_uri as get_pip_uri
 
 logger = logging.getLogger(__name__)
 
 
 def validate_uri(uri: str):
     if not isinstance(uri, str):
-        raise TypeError("URIs for working_dir and py_modules must be "
-                        f"strings, got {type(uri)}.")
+        raise TypeError(
+            "URIs for working_dir and py_modules must be " f"strings, got {type(uri)}."
+        )
 
     try:
         from ray._private.runtime_env.packaging import parse_uri, Protocol
+
         protocol, path = parse_uri(uri)
     except ValueError:
         raise ValueError(
             f"{uri} is not a valid URI. Passing directories or modules to "
             "be dynamically uploaded is only supported at the job level "
-            "(i.e., passed to `ray.init`).")
+            "(i.e., passed to `ray.init`)."
+        )
 
     if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
         raise ValueError("Only .zip files supported for remote URIs.")
@@ -39,8 +48,9 @@ def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
     This should be a list of URIs.
     """
     if not isinstance(py_modules, list):
-        raise TypeError("`py_modules` must be a list of strings, got "
-                        f"{type(py_modules)}.")
+        raise TypeError(
+            "`py_modules` must be a list of strings, got " f"{type(py_modules)}."
+        )
 
     for uri in py_modules:
         validate_uri(uri)
@@ -56,8 +66,7 @@ def parse_and_validate_working_dir(working_dir: str) -> str:
     assert working_dir is not None
 
     if not isinstance(working_dir, str):
-        raise TypeError("`working_dir` must be a string, got "
-                        f"{type(working_dir)}.")
+        raise TypeError("`working_dir` must be a string, got " f"{type(working_dir)}.")
 
     validate_uri(working_dir)
 
@@ -78,9 +87,11 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
 
     result = None
     if sys.platform == "win32":
-        raise NotImplementedError("The 'conda' field in runtime_env "
-                                  "is not currently supported on "
-                                  "Windows.")
+        raise NotImplementedError(
+            "The 'conda' field in runtime_env "
+            "is not currently supported on "
+            "Windows."
+        )
     elif isinstance(conda, str):
         yaml_file = Path(conda)
         if yaml_file.suffix in (".yaml", ".yml"):
@@ -89,49 +100,111 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
             try:
                 result = yaml.safe_load(yaml_file.read_text())
             except Exception as e:
-                raise ValueError(
-                    f"Failed to read conda file {yaml_file}: {e}.")
+                raise ValueError(f"Failed to read conda file {yaml_file}: {e}.")
         else:
             # Assume it's a pre-existing conda environment name.
             result = conda
     elif isinstance(conda, dict):
         result = conda
     else:
-        raise TypeError("runtime_env['conda'] must be of type str or "
-                        f"dict, got {type(conda)}.")
+        raise TypeError(
+            "runtime_env['conda'] must be of type str or " f"dict, got {type(conda)}."
+        )
 
+    return result
+
+
+def _rewrite_pip_list_ray_libraries(pip_list: List[str]) -> List[str]:
+    """Remove Ray and replace Ray libraries with their dependencies.
+
+    The `pip` field of runtime_env installs packages into the current
+    environment, inheriting the existing environment.  If users want to
+    use Ray libraries like `ray[serve]` in their job, they must include
+    `ray[serve]` in their `runtime_env` `pip` field.  However, without this
+    function, the Ray installed at runtime would take precedence over the
+    Ray that exists in the cluster, which would lead to version mismatch
+    issues.
+
+    To work around this, this function deletes Ray from the input `pip_list`
+    if it's specified without any libraries (e.g. "ray" or "ray>1.4"). If
+    a Ray library is specified (e.g. "ray[serve]"), it is replaced by
+    its dependencies (e.g. "uvicorn", ...).
+
+    """
+    result = []
+    for specifier in pip_list:
+        try:
+            requirement = Requirement.parse(specifier)
+        except Exception:
+            # Some lines in a pip_list might not be requirements but
+            # rather options for `pip`; e.g. `--extra-index-url MY_INDEX`.
+            # Requirement.parse would raise an InvalidRequirement in this
+            # case.  Since we are only interested in lines specifying Ray
+            # or its libraries, we should just skip this line.
+            result.append(specifier)
+            continue
+        package_name = requirement.name
+        if package_name == "ray":
+            libraries = requirement.extras  # e.g. ("serve", "tune")
+            if libraries == ():
+                result.append(specifier)
+            else:
+                # Replace the library with its dependencies.
+                extras = _resolve_install_from_source_ray_extras()
+                for library in libraries:
+                    result += extras[library]
+        else:
+            # Pass through all non-Ray packages unmodified.
+            result.append(specifier)
     return result
 
 
 def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     """Parses and validates a user-provided 'pip' option.
 
-    Conda can be one of two cases:
+    The value of the input 'pip' field can be one of two cases:
         1) A List[str] describing the requirements. This is passed through.
         2) A string pointing to a local requirements file. In this case, the
            file contents will be read split into a list.
+
+    The returned parsed value will be a list of pip packages. If a Ray library
+    (e.g. "ray[serve]") is specified, it will be deleted and replaced by its
+    dependencies (e.g. "uvicorn", "requests").
     """
     assert pip is not None
 
-    result = None
+    pip_list = None
     if sys.platform == "win32":
-        raise NotImplementedError("The 'pip' field in runtime_env "
-                                  "is not currently supported on "
-                                  "Windows.")
+        raise NotImplementedError(
+            "The 'pip' field in runtime_env "
+            "is not currently supported on "
+            "Windows."
+        )
     elif isinstance(pip, str):
         # We have been given a path to a requirements.txt file.
         pip_file = Path(pip)
         if not pip_file.is_file():
             raise ValueError(f"{pip_file} is not a valid file")
-        result = pip_file.read_text().strip().split("\n")
+        pip_list = pip_file.read_text().strip().split("\n")
     elif isinstance(pip, list) and all(isinstance(dep, str) for dep in pip):
-        if len(pip) == 0:
-            result = None
-        else:
-            result = pip
+        pip_list = pip
     else:
-        raise TypeError("runtime_env['pip'] must be of type str or "
-                        f"List[str], got {type(pip)}")
+        raise TypeError(
+            "runtime_env['pip'] must be of type str or " f"List[str], got {type(pip)}"
+        )
+
+    result = _rewrite_pip_list_ray_libraries(pip_list)
+
+    # Eliminate duplicates to prevent `pip install` from erroring. Use
+    # OrderedDict to preserve the order of the list.  This makes the output
+    # deterministic and easier to debug, because pip install can have
+    # different behavior depending on the order of the input.
+    result = list(OrderedDict.fromkeys(result))
+
+    if len(result) == 0:
+        result = None
+
+    logger.debug(f"Rewrote runtime_env `pip` field from {pip} to {result}.")
 
     return result
 
@@ -157,16 +230,16 @@ def parse_and_validate_excludes(excludes: List[str]) -> List[str]:
     if isinstance(excludes, list) and len(excludes) == 0:
         return None
 
-    if (isinstance(excludes, list)
-            and all(isinstance(path, str) for path in excludes)):
+    if isinstance(excludes, list) and all(isinstance(path, str) for path in excludes):
         return excludes
     else:
-        raise TypeError("runtime_env['excludes'] must be of type "
-                        f"List[str], got {type(excludes)}")
+        raise TypeError(
+            "runtime_env['excludes'] must be of type "
+            f"List[str], got {type(excludes)}"
+        )
 
 
-def parse_and_validate_env_vars(
-        env_vars: Dict[str, str]) -> Optional[Dict[str, str]]:
+def parse_and_validate_env_vars(env_vars: Dict[str, str]) -> Optional[Dict[str, str]]:
     """Parses and validates a user-provided 'env_vars' option.
 
     This is validated to verify that all keys and vals are strings.
@@ -177,11 +250,13 @@ def parse_and_validate_env_vars(
     if len(env_vars) == 0:
         return None
 
-    if not (isinstance(env_vars, dict) and all(
-            isinstance(k, str) and isinstance(v, str)
-            for (k, v) in env_vars.items())):
-        raise TypeError("runtime_env['env_vars'] must be of type "
-                        "Dict[str, str]")
+    if not (
+        isinstance(env_vars, dict)
+        and all(
+            isinstance(k, str) and isinstance(v, str) for (k, v) in env_vars.items()
+        )
+    ):
+        raise TypeError("runtime_env['env_vars'] must be of type " "Dict[str, str]")
 
     return env_vars
 
@@ -281,7 +356,8 @@ class ParsedRuntimeEnv(dict):
                 "within the conda YAML config dict: see "
                 "https://conda.io/projects/conda/en/latest/"
                 "user-guide/tasks/manage-environments.html"
-                "#create-env-file-manually")
+                "#create-env-file-manually"
+            )
 
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
             option_val = runtime_env.get(option)
@@ -315,19 +391,20 @@ class ParsedRuntimeEnv(dict):
                     # TODO(simon): move the inferface to public once ready.
                     raise TypeError(
                         f"{class_path} must be inherit from "
-                        "ray._private.runtime_env.plugin.RuntimeEnvPlugin.")
+                        "ray._private.runtime_env.plugin.RuntimeEnvPlugin."
+                    )
                 # TODO(simon): implement uri support.
                 _ = plugin_class.validate(runtime_env)
                 # Validation passed, add the entry to parsed runtime env.
                 self["plugins"][class_path] = plugin_field
 
-        unknown_fields = (
-            set(runtime_env.keys()) - ParsedRuntimeEnv.known_fields)
+        unknown_fields = set(runtime_env.keys()) - ParsedRuntimeEnv.known_fields
         if len(unknown_fields):
             logger.warning(
                 "The following unknown entries in the runtime_env dictionary "
                 f"will be ignored: {unknown_fields}. If you intended to use "
-                "them as plugins, they must be nested in the `plugins` field.")
+                "them as plugins, they must be nested in the `plugins` field."
+            )
 
         # NOTE(architkulkarni): This allows worker caching code in C++ to check
         # if a runtime env is empty without deserializing it.  This is a catch-
@@ -340,22 +417,25 @@ class ParsedRuntimeEnv(dict):
         # URIs from all plugins.
         plugin_uris = []
         if "working_dir" in self:
-            plugin_uris.append(
-                encode_plugin_uri("working_dir", self["working_dir"]))
+            plugin_uris.append(encode_plugin_uri("working_dir", self["working_dir"]))
         if "py_modules" in self:
             for uri in self["py_modules"]:
                 plugin_uris.append(encode_plugin_uri("py_modules", uri))
-        if "conda" or "pip" in self:
-            uri = conda.get_uri(self)
+        if "conda" in self:
+            uri = get_conda_uri(self)
             if uri is not None:
                 plugin_uris.append(encode_plugin_uri("conda", uri))
+        if "pip" in self:
+            uri = get_pip_uri(self)
+            if uri is not None:
+                plugin_uris.append(encode_plugin_uri("pip", uri))
 
         return plugin_uris
 
     def get_proto_runtime_env(self):
         """Return the protobuf structure of runtime env."""
         if self._cached_pb is None:
-            self._cached_pb = RuntimeEnv.from_dict(self, conda.get_uri)
+            self._cached_pb = RuntimeEnv.from_dict(self, get_conda_uri, get_pip_uri)
 
         return self._cached_pb
 

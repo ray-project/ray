@@ -1,7 +1,7 @@
 package io.ray.api.call;
 
-import io.ray.api.Ray;
 import io.ray.api.options.ActorCreationOptions;
+import io.ray.api.options.ActorLifetime;
 import io.ray.api.placementgroup.PlacementGroup;
 import java.util.Map;
 
@@ -14,9 +14,7 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   protected ActorCreationOptions.Builder builder = new ActorCreationOptions.Builder();
 
   /**
-   * Set the actor name of a named actor. This named actor is only accessible from this job by this
-   * name via {@link Ray#getActor(java.lang.String)}. If you want create a named actor that is
-   * accessible from all jobs, use {@link BaseActorCreator#setGlobalName(java.lang.String)} instead.
+   * Set the actor name of a named actor.
    *
    * @param name The name of the named actor.
    * @return self
@@ -24,6 +22,11 @@ public class BaseActorCreator<T extends BaseActorCreator> {
    */
   public T setName(String name) {
     builder.setName(name);
+    return self();
+  }
+
+  public T setLifetime(ActorLifetime lifetime) {
+    builder.setLifetime(lifetime);
     return self();
   }
 
@@ -109,6 +112,17 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   public T setPlacementGroup(PlacementGroup group, int bundleIndex) {
     builder.setPlacementGroup(group, bundleIndex);
     return self();
+  }
+
+  /**
+   * Set the placement group to place this actor in, which may use any available bundle.
+   *
+   * @param group The placement group of the actor.
+   * @return self
+   * @see ActorCreationOptions.Builder#setPlacementGroup(PlacementGroup, int)
+   */
+  public T setPlacementGroup(PlacementGroup group) {
+    return setPlacementGroup(group, -1);
   }
 
   @SuppressWarnings("unchecked")

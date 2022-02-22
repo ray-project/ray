@@ -7,6 +7,7 @@ from ray.util.annotations import PublicAPI
 
 try:
     import tqdm
+
     needs_warning = False
 except ImportError:
     tqdm = None
@@ -46,8 +47,9 @@ class ProgressBar:
         else:
             global needs_warning
             if needs_warning:
-                print("[dataset]: Run `pip install tqdm` to enable "
-                      "progress reporting.")
+                print(
+                    "[dataset]: Run `pip install tqdm` to enable " "progress reporting."
+                )
                 needs_warning = False
             self._bar = None
 

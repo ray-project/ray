@@ -13,7 +13,7 @@ MAX_ARGS = 10000
 MAX_RETURNS = 3000
 MAX_RAY_GET_ARGS = 10000
 MAX_QUEUED_TASKS = 1_000_000
-MAX_RAY_GET_SIZE = 100 * 2**30
+MAX_RAY_GET_SIZE = 100 * 2 ** 30
 
 
 def assert_no_leaks():
@@ -189,8 +189,7 @@ print(f"Many args time: {args_time} ({MAX_ARGS} args)")
 print(f"Many returns time: {returns_time} ({MAX_RETURNS} returns)")
 print(f"Ray.get time: {get_time} ({MAX_RAY_GET_ARGS} args)")
 print(f"Queued task time: {queued_time} ({MAX_QUEUED_TASKS} tasks)")
-print(f"Ray.get large object time: {large_object_time} "
-      f"({MAX_RAY_GET_SIZE} bytes)")
+print(f"Ray.get large object time: {large_object_time} " f"({MAX_RAY_GET_SIZE} bytes)")
 
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
@@ -205,6 +204,6 @@ if "TEST_OUTPUT_JSON" in os.environ:
         "num_queued": MAX_QUEUED_TASKS,
         "large_object_time": large_object_time,
         "large_object_size": MAX_RAY_GET_SIZE,
-        "success": "1"
+        "success": "1",
     }
     json.dump(results, out_file)

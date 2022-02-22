@@ -16,58 +16,63 @@ from ray.rllib.agents.registry import get_trainer_class
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--run",
-    type=str,
-    default="PPO",
-    help="The RLlib-registered algorithm to use.")
+    "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
+)
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument(
     "--eager-tracing",
     action="store_true",
     help="Use tf eager tracing to speed up execution in tf2.x. Only supported"
-    " for `framework=tf2`.")
+    " for `framework=tf2`.",
+)
 parser.add_argument(
     "--prev-n-actions",
     type=int,
     default=0,
-    help="Feed n most recent actions to the attention net as part of its "
-    "input.")
+    help="Feed n most recent actions to the attention net as part of its " "input.",
+)
 parser.add_argument(
     "--prev-n-rewards",
     type=int,
     default=0,
-    help="Feed n most recent rewards to the attention net as part of its "
-    "input.")
+    help="Feed n most recent rewards to the attention net as part of its " "input.",
+)
 parser.add_argument(
     "--stop-iters",
     type=int,
     default=200,
-    help="Number of iterations to train before we do inference.")
+    help="Number of iterations to train before we do inference.",
+)
 parser.add_argument(
     "--stop-timesteps",
     type=int,
     default=100000,
-    help="Number of timesteps to train before we do inference.")
+    help="Number of timesteps to train before we do inference.",
+)
 parser.add_argument(
     "--stop-reward",
     type=float,
     default=150.0,
-    help="Reward at which we stop training before we do inference.")
+    help="Reward at which we stop training before we do inference.",
+)
 parser.add_argument(
     "--explore-during-inference",
     action="store_true",
     help="Whether the trained policy should use exploration during action "
-    "inference.")
+    "inference.",
+)
 parser.add_argument(
     "--num-episodes-during-inference",
     type=int,
     default=10,
-    help="Number of episodes to do inference over after training.")
+    help="Number of episodes to do inference over after training.",
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()

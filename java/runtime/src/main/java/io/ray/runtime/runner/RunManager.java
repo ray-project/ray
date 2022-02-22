@@ -28,8 +28,6 @@ public class RunManager {
     command.add("--head");
     command.add("--redis-password");
     command.add(rayConfig.redisPassword);
-    command.add("--node-ip-address");
-    command.add(rayConfig.nodeIp);
     command.addAll(rayConfig.headArgs);
 
     String numGpus = System.getProperty("num-gpus");
@@ -46,8 +44,8 @@ public class RunManager {
     }
     Matcher matcher = pattern.matcher(output);
     if (matcher.find()) {
-      String redisAddress = matcher.group(1);
-      rayConfig.setRedisAddress(redisAddress);
+      String bootstrapAddress = matcher.group(1);
+      rayConfig.setBootstrapAddress(bootstrapAddress);
     } else {
       throw new RuntimeException("Redis address is not found. output: " + output);
     }
