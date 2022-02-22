@@ -590,7 +590,8 @@ class Dataset(Generic[T]):
             )
             if len(set(locality_hints)) != len(locality_hints):
                 raise ValueError(
-                    "locality_hints must not contain duplicate actor handles")
+                    "locality_hints must not contain duplicate actor handles"
+                )
 
         blocks = self._plan.execute()
         stats = self._plan.stats()

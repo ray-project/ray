@@ -1603,12 +1603,15 @@ def test_split_small(ray_start_regular_shared, pipelined):
                     if equal:
                         lens = set([len(s) for s in outs])
                         limit = len(data) - (len(data) % n)
-                        if len(out) != limit or len(set(out)) != limit or len(lens) != 1:
+                        if (
+                            len(out) != limit
+                            or len(set(out)) != limit
+                            or len(lens) != 1
+                        ):
                             print("FAIL", m, n, equal, locality_hints)
                             print(outs)
                             fail.append((m, n, equal, locality_hints))
                     else:
-                        expected = data
                         if sorted(out) != data:
                             print("FAIL", m, n, equal, locality_hints)
                             print(outs)
