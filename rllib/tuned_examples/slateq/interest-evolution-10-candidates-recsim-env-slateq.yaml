@@ -26,14 +26,15 @@ interest-evolution-recsim-env-slateq:
                 seed: 0
 
         exploration_config:
-            warmup_timesteps: 20000
-            epsilon_timesteps: 50000
+            warmup_timesteps: 10000
+            epsilon_timesteps: 25000
 
         replay_buffer_config:
             capacity: 100000
 
-        lr: 0.00025
+        lr: 0.001
 
+        learning_starts: 10000
         target_network_update_freq: 3200
 
-        metrics_num_episodes_for_smoothing: 500
+        metrics_num_episodes_for_smoothing: 200

@@ -66,7 +66,7 @@ def build_slateq_losses(
     _,
     train_batch: SampleBatch,
 ) -> TensorType:
-    """Constructs the Q-value losse for the SlateQTorchPolicy.
+    """Constructs the choice- and Q-value losses for the SlateQTorchPolicy.
 
     Args:
         policy: The Policy to calculate the loss for.

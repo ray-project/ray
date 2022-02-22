@@ -9,7 +9,6 @@ configured via the --env option:
 """
 
 import argparse
-from datetime import datetime
 import numpy as np
 from scipy.stats import sem
 
