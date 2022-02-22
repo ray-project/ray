@@ -19,9 +19,11 @@ kind --help
 time kind create cluster --wait 120s --config ./ci/travis/kind.config.yaml
 docker ps
 docker network ls
-cat ~/.kube/config
+# copy it to the dind container
+cp ~/.kube/config /ray-mount/kube-config
+
 shopt -s expand_aliases
-alias kubectl='docker run --network kind --mount type=bind,src=${HOME}/.kube/config,dst=/.kube/config --env KUBECONFIG=/.kube/config bitnami/kubectl:latest'
+alias kubectl='docker run --network kind --mount type=bind,src=/ray-mount/kube-config,dst=/.kube/config --env KUBECONFIG=/.kube/config bitnami/kubectl:latest'
 kubectl version
 kubectl cluster-info --context kind-kind
 kubectl get nodes
