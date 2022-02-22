@@ -9,7 +9,6 @@ configured via the --env option:
 """
 
 import argparse
-from datetime import datetime
 import numpy as np
 from scipy.stats import sem
 
@@ -18,7 +17,7 @@ from ray import tune
 from ray.rllib.agents import slateq
 from ray.rllib.agents import dqn
 from ray.rllib.agents.slateq.slateq import ALL_SLATEQ_STRATEGIES
-from ray.rllib.examples.env.recsim_recommender_system_envs import (
+from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
     InterestEvolutionRecSimEnv,
     InterestExplorationRecSimEnv,
     LongTermSatisfactionRecSimEnv,
@@ -35,6 +34,12 @@ parser.add_argument(
     help=(
         "Select agent policy. Choose from: DQN and SlateQ. " "Default value: SlateQ."
     ),
+)
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.",
 )
 parser.add_argument(
     "--env",
@@ -54,6 +59,7 @@ parser.add_argument(
         "Default value: QL. Ignored when using Tune."
     ),
 )
+parser.add_argument("--learning-starts", type=int, default=20000)
 parser.add_argument(
     "--random-test-episodes",
     type=int,
@@ -105,9 +111,9 @@ parser.add_argument(
     help="Init Ray in local mode for easier debugging.",
 )
 parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=2000)
-parser.add_argument("--stop-reward", type=float, default=200.0)
-parser.add_argument("--stop-timesteps", type=int, default=4000000)
+parser.add_argument("--stop-iters", type=int, default=200)
+parser.add_argument("--stop-reward", type=float, default=160.0)
+parser.add_argument("--stop-timesteps", type=int, default=150000)
 
 
 def main():
@@ -130,27 +136,11 @@ def main():
             if args.env == "interest-exploration"
             else LongTermSatisfactionRecSimEnv
         ),
-        "hiddens": [
-            1024,
-            1024,
-        ],
+        "framework": args.framework,
         "num_gpus": args.num_gpus,
         "num_workers": args.num_workers,
         "env_config": env_config,
-        "lr_choice_model": 0.003,
-        "lr_q_model": 0.003,
-        "rollout_fragment_length": 4,
-        "exploration_config": {
-            "epsilon_timesteps": 50000,
-            "final_epsilon": 0.02,
-        },
-        "target_network_update_freq": 1,
-        "tau": 5e-3,
-        "evaluation_interval": 1,
-        "evaluation_num_workers": 4,
-        "evaluation_duration": 200,
-        "evaluation_duration_unit": "episodes",
-        "evaluation_parallel_to_training": True,
+        "learning_starts": args.learning_starts,
     }
 
     # Perform a test run on the env with a random agent to see, what
@@ -187,8 +177,6 @@ def main():
             "episode_reward_mean": args.stop_reward,
         }
 
-        time_signature = datetime.now().strftime("%Y-%m-%d_%H_%M_%S")
-        name = f"SlateQ/{args.run}-seed{args.env_seed}-{time_signature}"
         if args.run == "SlateQ":
             config.update(
                 {
@@ -198,7 +186,6 @@ def main():
         results = tune.run(
             args.run,
             stop=stop,
-            name=name,
             config=config,
             num_samples=args.tune_num_samples,
             verbose=2,

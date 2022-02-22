@@ -103,6 +103,10 @@ def sort_impl(
         result = sort_block.remote(block, boundaries, key, descending)
         map_results[i, :] = result[:-1]
         map_meta.append(result[-1])
+
+    # Early release memory.
+    del blocks
+
     map_bar = ProgressBar("Sort Map", len(map_results))
     map_bar.block_until_complete(map_meta)
     map_bar.close()
@@ -112,6 +116,10 @@ def sort_impl(
     for j in range(num_reducers):
         ret = merge_sorted_blocks.remote(key, descending, *map_results[:, j].tolist())
         reduce_results.append(ret)
+
+    # Early release memory.
+    del map_results
+
     merge_bar = ProgressBar("Sort Merge", len(reduce_results))
     merge_bar.block_until_complete([ret[0] for ret in reduce_results])
     merge_bar.close()
