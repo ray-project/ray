@@ -2674,11 +2674,24 @@ Dict[str, List[str]]]): The names of the columns
 
         This can be used to read all blocks into memory. By default, Datasets
         doesn't read blocks from the datasource until the first transform.
+
+        Returns:
+            A Dataset with all blocks fully materialized in memory.
         """
         blocks = self.get_internal_block_refs()
         bar = ProgressBar("Force reads", len(blocks))
         bar.block_until_complete(blocks)
-        return self
+        ds = Dataset(
+            ExecutionPlan(
+                BlockList(blocks, self._plan.execute().get_metadata()),
+                self._plan.stats(),
+                dataset_uuid=self._get_uuid(),
+            ),
+            self._epoch,
+            lazy=False,
+        )
+        ds._set_uuid(self._get_uuid())
+        return ds
 
     @DeveloperAPI
     def stats(self) -> str:
