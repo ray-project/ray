@@ -1577,23 +1577,29 @@ def test_union(ray_start_regular_shared):
     assert ds2.count() == 210
 
 
-def test_split_small(ray_start_regular_shared):
-    x = [Counter.remote() for _ in range(10)]
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_split_small(ray_start_regular_shared, pipelined):
+    x = [Counter.remote() for _ in range(4)]
     data = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]
     fail = []
 
-    for m in [1, 2, 7]:
-        ds = ray.data.from_items(data, parallelism=m)
-        for n in [1, 2, 3, 4, 10]:
+    @ray.remote(num_cpus=0)
+    def take(s):
+        return s.take()
+
+    for m in [1, 2, 4]:
+        for n in [1, 2, 4]:
             for locality_hints in [None, x[:n]]:
                 for equal in [True, False]:
+                    print("Testing", m, n, equal, locality_hints)
+                    ds = ray.data.from_items(data, parallelism=m)
+                    ds = maybe_pipeline(ds, pipelined)
                     splits = ds.split(n, equal=equal, locality_hints=locality_hints)
                     assert len(splits) == n
-                    outs = []
+                    outs = ray.get([take.remote(s) for s in splits])
                     out = []
-                    for s in splits:
-                        outs.append(s.take())
-                        out.extend(s.take())
+                    for r in outs:
+                        out.extend(r)
                     if equal:
                         lens = set([len(s) for s in outs])
                         limit = len(data) - (len(data) % n)
