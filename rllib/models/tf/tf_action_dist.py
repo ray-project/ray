@@ -197,7 +197,10 @@ class UniformMultiCategoricalNoDuplicates(Categorical):
 
     @DeveloperAPI
     def __init__(
-        self, inputs: List[TensorType], model: ModelV2 = None, temperature: float = 1.0,
+        self,
+        inputs: List[TensorType],
+        model: ModelV2 = None,
+        temperature: float = 1.0,
         action_space: Optional[gym.spaces.MultiDiscrete] = None,
         all_slates=None,
     ):
@@ -208,8 +211,9 @@ class UniformMultiCategoricalNoDuplicates(Categorical):
         self.action_space = action_space
         # Assert uniformness of the action space (all discrete buckets have the same
         # size).
-        assert isinstance(self.action_space, gym.spaces.MultiDiscrete) and \
-               all(n == self.action_space.nvec[0] for n in self.action_space.nvec)
+        assert isinstance(self.action_space, gym.spaces.MultiDiscrete) and all(
+            n == self.action_space.nvec[0] for n in self.action_space.nvec
+        )
         self.all_slates = all_slates
 
     @override(ActionDistribution)
