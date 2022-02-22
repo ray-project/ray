@@ -21,6 +21,7 @@ docker ps
 docker network ls
 # copy it to the dind container
 cp ~/.kube/config /ray-mount/kube-config
+chmod 777 /ray-mount/kube-config
 
 shopt -s expand_aliases
 alias kubectl='docker run --network kind --mount type=bind,src=/ray/kube-config,dst=/.kube/config --env KUBECONFIG=/.kube/config bitnami/kubectl:latest'
