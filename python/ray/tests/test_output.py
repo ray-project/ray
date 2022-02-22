@@ -365,6 +365,31 @@ def test_output():
         assert len(lines) == 2, lines
 
 
+def test_usage_report_error_not_displayed_to_users():
+    """
+    Make sure when the incorrect URL is set, the error message is not printed to users.
+    """
+    # Use subprocess to execute the __main__ below.
+    outputs = subprocess.check_output(
+        [sys.executable, __file__, "_ray_instance"],
+        stderr=subprocess.STDOUT,
+        env={
+            "RAY_USAGE_STATS_ENABLED": "1",
+            "RAY_USAGE_STATS_REPORT_URL": "http://127.0.0.1:8000",
+            "RAY_USAGE_STATS_REPORT_INTERVAL_S": "1",
+        },
+    ).decode()
+    lines = outputs.split("\n")
+    for line in lines:
+        print(line)
+    if os.environ.get("RAY_MINIMAL") == "1":
+        # Without "View the Ray dashboard"
+        assert len(lines) == 1, lines
+    else:
+        # With "View the Ray dashboard"
+        assert len(lines) == 2, lines
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 # TODO: fix this test to support minimal installation
 @pytest.mark.skipif(
@@ -498,30 +523,6 @@ time.sleep(5)
     """
     out = run_string_as_driver(script)
     assert actor_repr not in out
-
-
-def test_usage_report_error_not_displayed_to_users(monkeypatch):
-    """
-    Make sure when the incorrect URL is set, the error message is not printed to users.
-    """
-    with monkeypatch.context() as m:
-        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
-        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        script = """
-import ray
-import time
-
-ray.init(num_cpus=0)
-# Wait long enough
-time.sleep(2)
-        """
-        out = run_string_as_driver(script)
-        # Only the basic message;
-        # View the Ray dashboard at http://127.0.0.1:8265
-        # should be displayed. No more output should be displayed although
-        # the usage stats report fail.
-        assert len(out.strip().split("\n")) <= 1
 
 
 if __name__ == "__main__":
