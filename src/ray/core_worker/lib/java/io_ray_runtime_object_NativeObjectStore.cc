@@ -76,12 +76,12 @@ extern "C" {
 
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_NativeRayObject_2_3B(
-    JNIEnv *env, jclass, jobject obj, jbyteArray serialized_owner_actor_bytes) {
+    JNIEnv *env, jclass, jobject obj, jbyteArray serialized_owner_actor_address_bytes) {
   ObjectID object_id;
   std::unique_ptr<rpc::Address> owner_address = nullptr;
   if (serialized_owner_actor_address_bytes != nullptr) {
     owner_address = std::make_unique<rpc::Address>();
-    owner_address->ParseFromString(JavaByteArrayToNativeString(*serialized_owner_actor_address_bytes));
+    owner_address->ParseFromString(JavaByteArrayToNativeString(env, serialized_owner_actor_address_bytes));
 
   }
   auto status = PutSerializedObject(env, obj, /*object_id=*/ObjectID::Nil(),
