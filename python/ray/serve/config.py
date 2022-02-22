@@ -216,7 +216,8 @@ class ReplicaConfig:
 
         disallowed_ray_actor_options = {
             "args",
-            "kwargs" "max_concurrency",
+            "kwargs",
+            "max_concurrency",
             "max_task_retries",
             "name",
             "namespace",
