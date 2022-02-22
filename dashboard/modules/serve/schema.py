@@ -65,3 +65,71 @@ class AppConfig(BaseModel):
                 raise ValueError(f"Got {value} as {attribute}. However, "
                                  f"{attribute} is not supported in the "
                                  f"{v.value} language.")
+
+
+class DeploymentConfig(BaseModel):
+    num_replicas: int = Field(
+        default=None,
+        description=("The number of processes that handle requests to this "
+                     "deployment. Uses a default if null."),
+        gt=0
+    )
+    route_prefix: str = Field(
+        default=None,
+        description=("Requests to paths under this HTTP path "
+            "prefix will be routed to this deployment. When null, no HTTP "
+            "endpoint will be created. Routing is done based on "
+            "longest-prefix match, so if you have deployment A with "
+            "a prefix of \"/a\" and deployment B with a prefix of \"/a/b\", "
+            "requests to \"/a\", \"/a/\", and \"/a/c\" go to A and requests "
+            "to \"/a/b\", \"/a/b/\", and \"/a/b/c\" go to B. Routes must not "
+            "end with a \"/\" unless they're the root (just \"/\"), which "
+            "acts as a catch-all.")
+    )
+    max_concurrent_queries: int = Field(
+        default=None,
+        description=("The max number of pending queries in a single replica. "
+                     "Uses a default if null."),
+        gt=0
+    )
+    user_config: Dict = Field(
+        default=None,
+        description=("[EXPERIMENTAL] Config to pass into this deployment's "
+                     "reconfigure method. This can be updated dynamically "
+                     "without restarting replicas")
+    )
+    _autoscaling_config: Dict = Field(
+        default=None,
+        description=("[EXPERIMENTAL] Config specifying autoscaling "
+                     "parameters for the deployment's number of replicas. "
+                     "If null, the deployment won't autoscale its number of "
+                     "replicas; the number of replicas will be fixed at "
+                     "num_replicas.")
+    )
+    _graceful_shutdown_wait_loop_s: float = Field(
+        default=None,
+        description=("Duration that deployment replicas will wait until there "
+                     "is no more work to be done before shutting down. Uses a "
+                     "default if null."),
+        ge=0
+    )
+    _graceful_shutdown_timeout_s: float = Field(
+        default=None,
+        description=("Serve controller waits for this duration before "
+                     "forcefully killing the replica for shutdown. Uses a "
+                     "default if null."),
+        ge=0
+    )
+    _health_check_period_s: float = Field(
+        default=None,
+        description=("Frequency at which the controller will health check "
+                     "replicas. Uses a default if null."),
+        gt=0
+    )
+    _health_check_timeout_s: float = Field(
+        default=None,
+        description=("Timeout that the controller will wait for a response "
+                     "from the replica's health check before marking it "
+                     "unhealthy. Uses a default if null."),
+        gt=0
+    )
