@@ -21,6 +21,7 @@
 #include "ray/util/event_label.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
+#include "ray/util/util.h"
 
 namespace ray {
 namespace raylet {
@@ -111,7 +112,7 @@ void AgentManager::StartAgent() {
           RayConfig::instance().agent_restart_interval_ms() *
               std::pow(2, (agent_restart_count_ + 1))));
     } else {
-      RAY_LOG(WARNING) << "Agent has failed "
+      RAY_LOG(WARNING) << "Agent has failed to restart for "
                        << RayConfig::instance().agent_max_restart_count()
                        << " times in a row without registering the agent. This is highly "
                           "likely there's a bug in the dashboard agent. Please check out "
@@ -122,6 +123,13 @@ void AgentManager::StartAgent() {
           << "Agent failed to be restarted "
           << RayConfig::instance().agent_max_restart_count()
           << " times. Agent won't be restarted.";
+      if (RayConfig::instance().raylet_shares_fate_with_agent()) {
+        RAY_LOG(ERROR) << "Raylet exits immediately because the ray agent has failed. "
+                          "Raylet fate shares with the agent. It can happen because the "
+                          "Ray agent is unexpectedly killed or failed. See "
+                          "`dashboard_agent.log` for the root cause.";
+        QuickExit();
+      }
     }
   });
   monitor_thread.detach();
