@@ -2,6 +2,7 @@
 
 import gym
 import logging
+import numpy as np
 from typing import Dict
 
 import ray
@@ -88,6 +89,7 @@ def build_slateq_losses(
     observation = train_batch[SampleBatch.OBS]
     # user.shape: [B, E]
     user_obs = observation["user"]
+    batch_size = tf.shape(user_obs)[0]
     # doc.shape: [B, C, E]
     doc_obs = list(observation["doc"].values())
     # action.shape: [B, S]
@@ -131,7 +133,6 @@ def build_slateq_losses(
     # scores_slate.shape [B, A, S]
     scores_slate = tf.gather(scores, policy.slates, axis=1)
     # score_no_click_slate.shape: [B, A]
-    batch_size = user_next_obs.get_shape().as_list()[0]
     score_no_click_slate = tf.reshape(
         tf.tile(score_no_click, tf.shape(input=policy.slates)[:1]), [batch_size, -1]
     )
@@ -285,6 +286,7 @@ def setup_early(policy, obs_space, action_space, config):
 
     num_candidates = action_space.nvec[0]
     slate_size = len(action_space.nvec)
+    num_all_slates = np.prod([(num_candidates - i) for i in range(slate_size)])
 
     mesh_args = [list(range(num_candidates))] * slate_size
     slates = tf.stack(tf.meshgrid(*mesh_args), axis=-1)
@@ -298,6 +300,7 @@ def setup_early(policy, obs_space, action_space, config):
     )
     # slates.shape: [A, S]
     slates = tf.boolean_mask(tensor=slates, mask=unique_mask)
+    slates.set_shape([num_all_slates, slate_size])
 
     # Store all possible slates only once in policy object.
     policy.slates = slates
