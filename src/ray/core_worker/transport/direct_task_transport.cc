@@ -422,7 +422,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             // assign work to the worker.
             rpc::WorkerAddress addr(reply.worker_address());
             RAY_LOG(DEBUG) << "Lease granted to task " << task_id << " from raylet "
-                           << addr.raylet_id;
+                           << addr.raylet_id << " with worker " << addr.worker_id;
 
             auto resources_copy = reply.resource_mapping();
 

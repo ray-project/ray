@@ -317,7 +317,7 @@ void LocalTaskManager::SpillWaitingTasks() {
     // the most memory availability.
     std::string node_id_string =
         GetBestSchedulableNode(*(*it),
-                               /*requires_object_store_memory=*/true,
+                               /*spill_waiting_task=*/true,
                                /*force_spillback=*/force_spillback, &is_infeasible);
     if (!node_id_string.empty() && node_id_string != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(node_id_string);
@@ -348,7 +348,7 @@ bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
                                     bool &is_infeasible) {
   std::string node_id_string =
       GetBestSchedulableNode(*work,
-                             /*requires_object_store_memory=*/false,
+                             /*spill_waiting_task=*/false,
                              /*force_spillback=*/false, &is_infeasible);
 
   if (is_infeasible || node_id_string == self_node_id_.Binary() ||
@@ -1036,13 +1036,14 @@ uint64_t LocalTaskManager::MaxRunningTasksPerSchedulingClass(
 }
 
 std::string LocalTaskManager::GetBestSchedulableNode(const internal::Work &work,
-                                                     bool requires_object_store_memory,
+                                                     bool spill_waiting_task,
                                                      bool force_spillback,
                                                      bool *is_infeasible) {
   // If the local node is available, we should directly return it instead of
   // going through the full hybrid policy since we don't want spillback.
-  if ((work.grant_or_reject || work.is_selected_based_on_locality) && !force_spillback &&
-      IsLocallySchedulable(work.task)) {
+  if ((work.grant_or_reject || work.is_selected_based_on_locality ||
+       spill_waiting_task) &&
+      !force_spillback && IsLocallySchedulable(work.task)) {
     *is_infeasible = false;
     return self_node_id_.Binary();
   }
@@ -1052,7 +1053,7 @@ std::string LocalTaskManager::GetBestSchedulableNode(const internal::Work &work,
   return cluster_resource_scheduler_->GetBestSchedulableNode(
       work.task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap(),
       work.task.GetTaskSpecification().GetMessage().scheduling_strategy(),
-      requires_object_store_memory,
+      /*requires_object_store_memory=*/spill_waiting_task,
       work.task.GetTaskSpecification().IsActorCreationTask(), force_spillback, &_unused,
       is_infeasible);
 }
