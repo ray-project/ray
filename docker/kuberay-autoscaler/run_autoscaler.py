@@ -1,20 +1,22 @@
 import argparse
 import logging
 import os
+import time
 
 import ray
 from ray import ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray._private.services import get_node_ip_address
 from ray.autoscaler._private.monitor import Monitor
-import yaml
 
-AUTOSCALING_CONFIG_PATH = "/autoscaler/ray_bootstrap_config.yaml"
+from autoscaling_config import AutoscalingConfigProducer
 
 
 def setup_logging() -> None:
-    """Log to standard autoscaler log location (logs viewable in UI) and
-    pod stdout (logs viewable with `kubectl logs <head-pod> -c autoscaler`).
+    """Log to autoscaler log file
+    (typically, /tmp/ray/session_latest/logs/monitor.*)
+
+    Also log to pod stdout (logs viewable with `kubectl logs <head-pod> -c autoscaler`).
     """
     # Write logs at info level to monitor.log.
     setup_component_logger(
@@ -44,6 +46,20 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Kuberay Autoscaler")
     parser.add_argument(
+        "--cluster-name",
+        required=True,
+        type=str,
+        help="The name of the Ray Cluster.\n"
+        "Should coincide with the `metadata.name` of the RayCluster CR.",
+    )
+    parser.add_argument(
+        "--cluster-namespace",
+        required=True,
+        type=str,
+        help="The Kubernetes namespace the Ray Cluster lives in.\n"
+        "Should coincide with the `metadata.namespace` of the RayCluster CR.",
+    )
+    parser.add_argument(
         "--redis-password",
         required=False,
         type=str,
@@ -52,11 +68,26 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    cluster_name = yaml.safe_load(open(AUTOSCALING_CONFIG_PATH).read())["cluster_name"]
     head_ip = get_node_ip_address()
+
+    autoscaling_config_producer = AutoscalingConfigProducer(
+        args.cluster_name, args.cluster_namespace
+    )
+
+    # When the entrypoint code reaches here,
+    # the GCS might not have collected information on the head node itself.
+    # That can lead to a annoying artifact at the start of the autoscaler logs:
+    # a status message showing no nodes at all connected to the Ray cluster.
+    # Wait a bit to avoid that artifact.
+    # TODO (Dmitri): Fix StandardAutoscaler.summary() to avoid the issue
+    # and remove the sleep.
+    time.sleep(5)
+
     Monitor(
         address=f"{head_ip}:6379",
         redis_password=args.redis_password,
-        autoscaling_config=AUTOSCALING_CONFIG_PATH,
+        # The `autoscaling_config` arg can be a dict or a `Callable: () -> dict`.
+        # In this case, it's a callable.
+        autoscaling_config=autoscaling_config_producer,
         monitor_ip=head_ip,
     ).run()
