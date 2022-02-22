@@ -212,7 +212,10 @@ class DatasetPipeline(Generic[T]):
             A list of ``n`` disjoint pipeline splits.
         """
         return self._split(
-            n, lambda ds: ds.split(n, equal=equal, locality_hints=locality_hints)
+            n,
+            lambda ds, equal=equal: ds.split(
+                n, equal=equal, locality_hints=locality_hints
+            ),
         )
 
     def split_at_indices(self, indices: List[int]) -> List["DatasetPipeline[T]"]:
