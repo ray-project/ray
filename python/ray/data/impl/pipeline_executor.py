@@ -26,7 +26,7 @@ class PipelineExecutor:
     def __init__(self, pipeline: "DatasetPipeline[T]"):
         self._pipeline: "DatasetPipeline[T]" = pipeline
         self._stages: List[concurrent.futures.Future[Dataset[Any]]] = [None] * (
-            len(self._pipeline._stages) + 1
+            len(self._pipeline._optimized_stages) + 1
         )
         self._iter = iter(self._pipeline._base_iterable)
         self._pool = concurrent.futures.ThreadPoolExecutor(
@@ -97,7 +97,7 @@ class PipelineExecutor:
                     self._stages[i + 1] = self._pool.submit(
                         lambda r, fn: pipeline_stage(lambda: fn(r)),
                         result,
-                        self._pipeline._stages[i],
+                        self._pipeline._optimized_stages[i],
                     )
 
             # Pull a new element for the initial slot if possible.
@@ -124,6 +124,7 @@ class PipelineSplitExecutorCoordinator:
         context: DatasetContext,
     ):
         DatasetContext._set_current(context)
+        pipeline._optimize_stages()
         self.executor = PipelineExecutor(pipeline)
         self.n = n
         self.splitter = splitter

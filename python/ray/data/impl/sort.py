@@ -122,7 +122,11 @@ def sort_impl(
     for j in range(num_reducers):
         ret = merge_sorted_blocks.remote(key, descending, *map_results[:, j].tolist())
         reduce_results.append(ret)
-    merge_bar = ProgressBar("Sort Merge", len(reduce_results), signal)
+
+    # Early release memory.
+    del map_results
+
+    merge_bar = ProgressBar("Sort Merge", len(reduce_results), signal=signal)
     merge_bar.block_until_complete([ret[0] for ret in reduce_results])
     merge_bar.close()
 

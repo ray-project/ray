@@ -60,8 +60,8 @@ from ray.data.datasource import (
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import (
-    _wrap_s3_filesystem_workaround,
-    _unwrap_s3_filesystem_workaround,
+    _wrap_arrow_serialization_workaround,
+    _unwrap_arrow_serialization_workaround,
 )
 from ray.data.row import TableRow
 from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
@@ -1894,7 +1894,7 @@ class Dataset(Generic[T]):
                     ctx,
                     blocks,
                     metadata,
-                    _wrap_s3_filesystem_workaround(write_args),
+                    _wrap_arrow_serialization_workaround(write_args),
                 )
             )
 
@@ -2526,37 +2526,61 @@ Dict[str, List[str]]]): The names of the columns
         """
         from ray.data.dataset_pipeline import DatasetPipeline
 
+        # If optimizations are enabled, rewrite the read stage into a OneToOneStage
+        # to enable fusion with downstream map stages.
+        ctx = DatasetContext.get_current()
+        if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
+            blocks, read_stage = self._plan._rewrite_read_stage()
+            outer_stats = DatasetStats(stages={}, parent=None)
+        else:
+            blocks = self._plan.execute()
+            read_stage = None
+            outer_stats = self._plan.stats()
+
         if times is not None and times < 1:
             raise ValueError("`times` must be >= 1, got {}".format(times))
+        uuid = self._get_uuid()
 
         class Iterator:
-            def __init__(self, ds: "Dataset[T]"):
-                self._ds = ds
+            def __init__(self, blocks):
+                self._blocks = blocks
                 self._i = 0
 
             def __next__(self) -> "Dataset[T]":
                 if times and self._i >= times:
                     raise StopIteration
-                i = self._i
+                epoch = self._i
+                blocks = self._blocks
+                signal = self._signal
                 self._i += 1
 
-                def _next():
-                    ds = Dataset.copy(self._ds)
-                    ds._set_epoch(i)
-                    return ds.fully_executed()
+                def gen():
+                    ds = Dataset(
+                        ExecutionPlan(blocks, outer_stats, dataset_uuid=uuid),
+                        epoch,
+                        lazy=False,
+                        signal=signal,
+                    )
+                    ds._set_uuid(uuid)
+                    return ds
 
-                return _next
+                return gen
 
         class Iterable:
-            def __init__(self, ds: "Dataset[T]"):
-                self._ds = ds
+            def __init__(self, blocks):
+                self._blocks = blocks
 
             def __iter__(self):
-                return Iterator(self._ds)
+                return Iterator(self._blocks)
 
-        return DatasetPipeline(
-            Iterable(self), length=times or float("inf"), signal=self._signal
-        )
+        pipe = DatasetPipeline(Iterable(blocks), length=times or float("inf"), signal=self._signal)
+        if read_stage:
+            pipe = pipe.foreach_window(
+                lambda ds, read_stage=read_stage: Dataset(
+                    ds._plan.with_stage(read_stage), ds._epoch, True, signal=ds._signal
+                )
+            )
+        return pipe
 
     def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
         raise DeprecationWarning(
@@ -2612,8 +2636,16 @@ Dict[str, List[str]]]): The names of the columns
         """
         from ray.data.dataset_pipeline import DatasetPipeline
 
-        blocks = self._plan.execute()
-        outer_stats = self._plan.stats()
+        # If optimizations are enabled, rewrite the read stage into a OneToOneStage
+        # to enable fusion with downstream map stages.
+        ctx = DatasetContext.get_current()
+        if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
+            blocks, read_stage = self._plan._rewrite_read_stage()
+            outer_stats = DatasetStats(stages={}, parent=None)
+        else:
+            blocks = self._plan.execute()
+            read_stage = None
+            outer_stats = self._plan.stats()
         signal = self._signal
 
         class Iterator:
@@ -2647,7 +2679,15 @@ Dict[str, List[str]]]): The names of the columns
                 return Iterator(self._splits, self._epoch)
 
         it = Iterable(blocks, self._epoch)
-        return DatasetPipeline(it, length=len(it._splits), signal=self._signal)
+        pipe = DatasetPipeline(it, length=len(it._splits), signal=self._signal)
+        if read_stage:
+            pipe = pipe.foreach_window(
+                lambda ds, read_stage=read_stage: Dataset(
+                    ds._plan.with_stage(read_stage), ds._epoch, True
+                )
+            )
+        return pipe
+>>>>>>> a402e956a4e1ebe9bc4e2b404536466967c497af
 
     @DeveloperAPI
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
@@ -2981,6 +3021,6 @@ def _do_write(
     meta: List[BlockMetadata],
     write_args: dict,
 ) -> List[ObjectRef[WriteResult]]:
-    write_args = _unwrap_s3_filesystem_workaround(write_args)
+    write_args = _unwrap_arrow_serialization_workaround(write_args)
     DatasetContext._set_current(ctx)
     return ds.do_write(blocks, meta, **write_args)
