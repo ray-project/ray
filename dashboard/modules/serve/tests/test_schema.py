@@ -12,35 +12,28 @@ from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P
 
 
 class TestAppConfig:
-    def test_invalid_language(self):
-        # Unsupported languages should raise a ValidationError
-        with pytest.raises(ValidationError):
-            AppConfig(language="ocaml")
-
     def test_invalid_python_attributes(self):
         # Test setting invalid attributes for Python to ensure a validation or
         # value error is raised.
 
-        # Python versions 3.6 through Python 3.10 require an import path
-        for minor_version in range(6, 11):
-            app_config = {
-                "language": f"python_3.{minor_version}",
-                "init_args": [1, 2],
-                "init_kwargs": {"threshold": 0.5, "version": "abcd"},
-            }
+        # Python requires an import path
+        app_config = {
+            "init_args": [1, 2],
+            "init_kwargs": {"threshold": 0.5, "version": "abcd"},
+        }
 
-            with pytest.raises(ValueError, match="must be specified"):
-                AppConfig.parse_obj(app_config)
-
-            # AppConfig should be generated once import_path is set
-            app_config["import_path"] = "my_module.MyClass"
+        with pytest.raises(ValueError, match="must be specified"):
             AppConfig.parse_obj(app_config)
+
+        # AppConfig should be generated once import_path is set
+        app_config["import_path"] = "my_module.MyClass"
+        AppConfig.parse_obj(app_config)
 
         # Invalid import_path syntax should raise a ValidationError
         invalid_paths = ["", "MyClass", ".", "hello,world"]
         for path in invalid_paths:
             with pytest.raises(ValidationError):
-                AppConfig(language="python_3.8", import_path=path)
+                AppConfig(import_path=path)
 
 
 class TestDeploymentConfig:
@@ -156,7 +149,6 @@ class TestFullDeploymentConfig:
             },
             "namespace": "serve",
             "app_config": {
-                "language": "python_3.8",
                 "init_args": [4, "glue"],
                 "init_kwargs": {"fuel": "diesel"},
                 "import_path": "test_env.shallow_import.ShallowClass",
@@ -192,7 +184,6 @@ class TestFullDeploymentConfig:
             "runtime_env": None,
             "namespace": "serve",
             "app_config": {
-                "language": "python_3.8",
                 "init_args": None,
                 "init_kwargs": None,
                 "import_path": "test_env.shallow_import.ShallowClass",
@@ -259,7 +250,6 @@ class TestServeInstanceConfig:
                     },
                     "namespace": "serve",
                     "app_config": {
-                        "language": "python_3.10",
                         "init_args": [4, "glue"],
                         "init_kwargs": {"fuel": "diesel"},
                         "import_path": "test_env.shallow_import.ShallowClass",
@@ -289,7 +279,6 @@ class TestServeInstanceConfig:
                     "runtime_env": None,
                     "namespace": "serve",
                     "app_config": {
-                        "language": "python_3.8",
                         "init_args": None,
                         "init_kwargs": None,
                         "import_path": (

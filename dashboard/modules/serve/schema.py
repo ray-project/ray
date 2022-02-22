@@ -1,15 +1,6 @@
-from enum import Enum
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, root_validator, validator
 from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
-
-
-class SupportedLanguage(str, Enum):
-    python36 = "python_3.6"
-    python37 = "python_3.7"
-    python38 = "python_3.8"
-    python39 = "python_3.9"
-    python310 = "python_3.10"
 
 
 class AppConfig(BaseModel):
@@ -39,42 +30,54 @@ class AppConfig(BaseModel):
         # a dot, followed by at least one more character.
         regex=r".+\..+",
     )
-    language: SupportedLanguage = Field(
-        ..., description="The application's coding language."
-    )
 
-    @validator("language")
-    def language_supports_specified_attributes(cls, v, values):
-        required_attributes = {
-            SupportedLanguage.python36: {"import_path"},
-            SupportedLanguage.python37: {"import_path"},
-            SupportedLanguage.python38: {"import_path"},
-            SupportedLanguage.python39: {"import_path"},
-            SupportedLanguage.python310: {"import_path"},
+    @root_validator
+    def application_sufficiently_specified(cls, values):
+        """
+        Some application information, such as the path to the function or class
+        must be specified. Additionally, some attributes only work in specific
+        languages (e.g. init_args and init_kwargs make sense in Python but not
+        Java). Specifying attributes that belong to different languages is
+        invalid.
+        """
+
+        # Ensure that an application path is set
+        application_paths = {"import_path"}
+
+        specified_path = None
+        for path in application_paths:
+            if path in values and values[path] is not None:
+                specified_path = path
+
+        if specified_path is None:
+            raise ValueError(
+                "A path to the application's class or function must be specified."
+            )
+
+        # Ensure that only attributes belonging to the application path's
+        # language are specified.
+
+        # corresponding_attributes maps application_path attributes to all the
+        # attributes that may be set in that path's language
+        corresponding_attributes = {
+            # Python
+            "import_path": {"import_path", "init_args", "init_kwargs"}
         }
 
-        optional_attributes = {
-            SupportedLanguage.python36: {"init_args", "init_kwargs"},
-            SupportedLanguage.python37: {"init_args", "init_kwargs"},
-            SupportedLanguage.python38: {"init_args", "init_kwargs"},
-            SupportedLanguage.python39: {"init_args", "init_kwargs"},
-            SupportedLanguage.python310: {"init_args", "init_kwargs"},
-        }
-
-        for attribute in required_attributes[v]:
-            if attribute not in values or values[attribute] is None:
+        possible_attributes = corresponding_attributes[specified_path]
+        for attribute in values:
+            if attribute not in possible_attributes:
                 raise ValueError(
-                    f"{attribute} must be specified in the " f"{v.value} language."
+                    f'Got "{values[specified_path]}" for '
+                    f"{specified_path} and {values[attribute]} "
+                    f"for {attribute}. {specified_path} and "
+                    f"{attribute} do not belong to the same "
+                    f"language and cannot be specified at the "
+                    f"same time. Expected one of these to be "
+                    f"null."
                 )
 
-        supported_attributes = required_attributes[v].union(optional_attributes[v])
-        for attribute, value in values.items():
-            if attribute not in supported_attributes and value is not None:
-                raise ValueError(
-                    f"Got {value} as {attribute}. However, "
-                    f"{attribute} is not supported in the "
-                    f"{v.value} language."
-                )
+        return values
 
 
 class DeploymentConfig(BaseModel):
