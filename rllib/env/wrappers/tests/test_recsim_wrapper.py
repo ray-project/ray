@@ -1,7 +1,7 @@
 import gym
 import unittest
 
-from ray.rllib.examples.env.recsim_recommender_system_envs import (
+from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
     InterestEvolutionRecSimEnv,
 )
 from ray.rllib.env.wrappers.recsim import MultiDiscreteToDiscreteActionWrapper
