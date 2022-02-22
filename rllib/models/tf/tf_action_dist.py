@@ -192,6 +192,38 @@ class MultiCategorical(TFActionDistribution):
             return np.sum(action_space.nvec)
 
 
+class UniformMultiCategoricalNoDuplicates(Categorical):
+    """MultiCategorical distribution for MultiDiscrete action spaces."""
+
+    @DeveloperAPI
+    def __init__(
+        self, inputs: List[TensorType], model: ModelV2 = None, temperature: float = 1.0,
+        action_space: Optional[gym.spaces.MultiDiscrete] = None,
+        all_slates=None,
+    ):
+        assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
+        # Allow softmax formula w/ temperature != 1.0:
+        # Divide inputs by temperature.
+        super().__init__(inputs / temperature, model)
+        self.action_space = action_space
+        # Assert uniformness of the action space (all discrete buckets have the same
+        # size).
+        assert isinstance(self.action_space, gym.spaces.MultiDiscrete) and \
+               all(n == self.action_space.nvec[0] for n in self.action_space.nvec)
+        self.all_slates = all_slates
+
+    @override(ActionDistribution)
+    def deterministic_sample(self) -> TensorType:
+        sample = super().deterministic_sample()
+        # Translate to uniform multi-discrete action, w/o duplicates.
+        return tf.gather(self.all_slates, sample)
+
+    @override(ActionDistribution)
+    def logp(self, x: TensorType) -> TensorType:
+        # TODO: Implement.
+        return tf.ones_like(self.inputs[:, 0])
+
+
 class GumbelSoftmax(TFActionDistribution):
     """GumbelSoftmax distr. (for differentiable sampling in discr. actions
 

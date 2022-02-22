@@ -1,5 +1,6 @@
 """TensorFlow policy class used for SlateQ."""
 
+import functools
 import gym
 import logging
 import numpy as np
@@ -10,7 +11,7 @@ from ray.rllib.agents.dqn.dqn_tf_policy import clip_gradients
 from ray.rllib.agents.sac.sac_tf_policy import TargetNetworkMixin
 from ray.rllib.agents.slateq.slateq_tf_model import SlateQTFModel
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.tf.tf_action_dist import Categorical
+from ray.rllib.models.tf.tf_action_dist import UniformMultiCategoricalNoDuplicates
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
@@ -104,7 +105,7 @@ def build_slateq_losses(
     # q_values.shape: [B, C]
     q_values = model.get_q_values(user_obs, doc_obs)
     # slate_q_values.shape: [B, S]
-    slate_q_values = tf1.batch_gather(q_values, tf.cast(actions, dtype=tf.int32))
+    slate_q_values = tf.gather(q_values, tf.cast(actions, dtype=tf.int32), batch_dims=-1)
     # Only get the Q from the clicked document.
     # replay_click_q.shape: [B]
     replay_click_q = tf.reduce_sum(
@@ -240,8 +241,7 @@ def action_distribution_fn(
         per_slate_q_values = get_per_slate_q_values(
             policy.slates, slate_size, score_no_click, scores, q_values
         )
-    model.slates = policy.slates
-    return per_slate_q_values, Categorical, []
+    return per_slate_q_values, functools.partial(UniformMultiCategoricalNoDuplicates, action_space=policy.action_space, all_slates=policy.slates), []
 
 
 def get_per_slate_q_values(slates, slate_size, s_no_click, s, q):
