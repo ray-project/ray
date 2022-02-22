@@ -2,7 +2,10 @@ package io.ray.runtime.runtimeenv;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.google.protobuf.util.JsonFormat;
 import io.ray.api.runtimeenv.RuntimeEnv;
+import io.ray.runtime.generated.RuntimeEnvCommon;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -18,11 +21,17 @@ public class RuntimeEnvImpl implements RuntimeEnv {
 
   @Override
   public String toJsonBytes() {
-    Map<String, Object> json = new HashMap<>();
     if (!envVars.isEmpty()) {
-      /// DO NOT hardcode this key.
-      json.put("env_vars", envVars);
+      RuntimeEnvCommon.RuntimeEnv.Builder protoRuntimeEnvBuilder =
+          RuntimeEnvCommon.RuntimeEnv.newBuilder();
+      protoRuntimeEnvBuilder.putAllEnvVars(envVars);
+      JsonFormat.Printer printer = JsonFormat.printer();
+      try {
+        return printer.print(protoRuntimeEnvBuilder);
+      } catch (InvalidProtocolBufferException e) {
+        throw new RuntimeException(e);
+      }
     }
-    return GSON.toJson(json);
+    return "{}";
   }
 }
