@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import List, Any, Optional
 
 import ray
 from ray.ray_constants import env_integer
@@ -46,7 +46,9 @@ class Signal:
 class ProgressBar:
     """Thin wrapper around tqdm to handle soft imports."""
 
-    def __init__(self, name: str, total: int, signal: Signal, position: int = 0):
+    def __init__(
+        self, name: str, total: int, signal: Optional[Signal] = None, position: int = 0
+    ):
         if not _enabled:
             self._bar = None
         elif tqdm:

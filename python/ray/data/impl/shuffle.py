@@ -6,7 +6,7 @@ import numpy as np
 
 import ray
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
-from ray.data.impl.progress_bar import ProgressBar
+from ray.data.impl.progress_bar import ProgressBar, Signal
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -24,7 +24,8 @@ def simple_shuffle(
     random_seed: Optional[int] = None,
     map_ray_remote_args: Optional[Dict[str, Any]] = None,
     reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
-    _spread_resource_prefix: Optional[str] = None
+    _spread_resource_prefix: Optional[str] = None,
+    signal: Optional[Signal] = None,
 ) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
     input_blocks = input_blocks.get_blocks()
     if map_ray_remote_args is None:
@@ -49,13 +50,15 @@ def simple_shuffle(
     shuffle_map = cached_remote_fn(_shuffle_map)
     shuffle_reduce = cached_remote_fn(_shuffle_reduce)
 
-    map_bar = ProgressBar("Shuffle Map", position=0, total=input_num_blocks)
+    map_bar = ProgressBar(
+        "Shuffle Map", position=0, total=input_num_blocks, signal=signal
+    )
 
     shuffle_map_out = [
         shuffle_map.options(
             **map_ray_remote_args,
             num_returns=1 + output_num_blocks,
-            resources=next(map_resource_iter)
+            resources=next(map_resource_iter),
         ).remote(block, block_udf, i, output_num_blocks, random_shuffle, random_seed)
         for i, block in enumerate(input_blocks)
     ]
@@ -77,12 +80,14 @@ def simple_shuffle(
         random = np.random.RandomState(random_seed)
         random.shuffle(shuffle_map_out)
 
-    reduce_bar = ProgressBar("Shuffle Reduce", position=0, total=output_num_blocks)
+    reduce_bar = ProgressBar(
+        "Shuffle Reduce", position=0, total=output_num_blocks, signal=signal
+    )
     shuffle_reduce_out = [
         shuffle_reduce.options(
             **reduce_ray_remote_args,
             num_returns=2,
-            resources=next(reduce_resource_iter)
+            resources=next(reduce_resource_iter),
         ).remote(*[shuffle_map_out[i][j] for i in range(input_num_blocks)])
         for j in range(output_num_blocks)
     ]
