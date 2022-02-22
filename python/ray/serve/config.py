@@ -211,70 +211,66 @@ class ReplicaConfig:
         self._validate()
 
     def _validate(self):
-
-        if "placement_group" in self.ray_actor_options:
-            raise ValueError(
-                "Providing placement_group for deployment actors "
-                "is not currently supported."
-            )
-
         if not isinstance(self.ray_actor_options, dict):
             raise TypeError("ray_actor_options must be a dictionary.")
-        elif "lifetime" in self.ray_actor_options:
-            raise ValueError("Specifying lifetime in ray_actor_options is not allowed.")
-        elif "name" in self.ray_actor_options:
-            raise ValueError("Specifying name in ray_actor_options is not allowed.")
-        elif "max_restarts" in self.ray_actor_options:
-            raise ValueError(
-                "Specifying max_restarts in " "ray_actor_options is not allowed."
-            )
-        else:
-            # Ray defaults to zero CPUs for placement, we default to one here.
-            if "num_cpus" not in self.ray_actor_options:
-                self.ray_actor_options["num_cpus"] = 1
-            num_cpus = self.ray_actor_options["num_cpus"]
-            if not isinstance(num_cpus, (int, float)):
-                raise TypeError(
-                    "num_cpus in ray_actor_options must be an int or a float."
-                )
-            elif num_cpus < 0:
-                raise ValueError("num_cpus in ray_actor_options must be >= 0.")
-            self.resource_dict["CPU"] = num_cpus
 
-            num_gpus = self.ray_actor_options.get("num_gpus", 0)
-            if not isinstance(num_gpus, (int, float)):
-                raise TypeError(
-                    "num_gpus in ray_actor_options must be an int or a float."
-                )
-            elif num_gpus < 0:
-                raise ValueError("num_gpus in ray_actor_options must be >= 0.")
-            self.resource_dict["GPU"] = num_gpus
+        disallowed_ray_actor_options = {
+            "args",
+            "kwargs" "max_concurrency",
+            "max_task_retries",
+            "name",
+            "namespace",
+            "lifetime",
+            "placement_group",
+            "placement_group_bundle_index",
+            "placement_group_capture_child_tasks",
+            "max_pending_calls",
+            "scheduling_strategy",
+        }
 
-            memory = self.ray_actor_options.get("memory", 0)
-            if not isinstance(memory, (int, float)):
-                raise TypeError(
-                    "memory in ray_actor_options must be an int or a float."
-                )
-            elif memory < 0:
-                raise ValueError("num_gpus in ray_actor_options must be >= 0.")
-            self.resource_dict["memory"] = memory
-
-            object_store_memory = self.ray_actor_options.get("object_store_memory", 0)
-            if not isinstance(object_store_memory, (int, float)):
-                raise TypeError(
-                    "object_store_memory in ray_actor_options must be "
-                    "an int or a float."
-                )
-            elif object_store_memory < 0:
+        for option in disallowed_ray_actor_options:
+            if option in self.ray_actor_options:
                 raise ValueError(
-                    "object_store_memory in ray_actor_options must be >= 0."
+                    f"Specifying {option} in ray_actor_options is not allowed."
                 )
-            self.resource_dict["object_store_memory"] = object_store_memory
 
-            custom_resources = self.ray_actor_options.get("resources", {})
-            if not isinstance(custom_resources, dict):
-                raise TypeError("resources in ray_actor_options must be a dictionary.")
-            self.resource_dict.update(custom_resources)
+        # Ray defaults to zero CPUs for placement, we default to one here.
+        if "num_cpus" not in self.ray_actor_options:
+            self.ray_actor_options["num_cpus"] = 1
+        num_cpus = self.ray_actor_options["num_cpus"]
+        if not isinstance(num_cpus, (int, float)):
+            raise TypeError("num_cpus in ray_actor_options must be an int or a float.")
+        elif num_cpus < 0:
+            raise ValueError("num_cpus in ray_actor_options must be >= 0.")
+        self.resource_dict["CPU"] = num_cpus
+
+        num_gpus = self.ray_actor_options.get("num_gpus", 0)
+        if not isinstance(num_gpus, (int, float)):
+            raise TypeError("num_gpus in ray_actor_options must be an int or a float.")
+        elif num_gpus < 0:
+            raise ValueError("num_gpus in ray_actor_options must be >= 0.")
+        self.resource_dict["GPU"] = num_gpus
+
+        memory = self.ray_actor_options.get("memory", 0)
+        if not isinstance(memory, (int, float)):
+            raise TypeError("memory in ray_actor_options must be an int or a float.")
+        elif memory < 0:
+            raise ValueError("num_gpus in ray_actor_options must be >= 0.")
+        self.resource_dict["memory"] = memory
+
+        object_store_memory = self.ray_actor_options.get("object_store_memory", 0)
+        if not isinstance(object_store_memory, (int, float)):
+            raise TypeError(
+                "object_store_memory in ray_actor_options must be " "an int or a float."
+            )
+        elif object_store_memory < 0:
+            raise ValueError("object_store_memory in ray_actor_options must be >= 0.")
+        self.resource_dict["object_store_memory"] = object_store_memory
+
+        custom_resources = self.ray_actor_options.get("resources", {})
+        if not isinstance(custom_resources, dict):
+            raise TypeError("resources in ray_actor_options must be a dictionary.")
+        self.resource_dict.update(custom_resources)
 
 
 class DeploymentMode(str, Enum):

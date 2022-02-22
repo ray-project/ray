@@ -237,11 +237,6 @@ class ReplicaResources(BaseModel):
             "Forces replicas to run on nodes with the specified accelerator type."
         ),
     )
-    max_concurrency: int = Field(default=None, description=(""))
-    max_task_retries: int = Field(default=None, description=(""))
-    max_pending_calls: int = Field(default=None, description=(""))
-    placement_group_bundle_index: int = Field(default=None, description=(""))
-    placement_group_capture_child_tasks: bool = Field(default=None, description=(""))
 
 
 class FullDeploymentConfig(BaseModel):
