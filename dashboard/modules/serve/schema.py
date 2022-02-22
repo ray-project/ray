@@ -1,6 +1,7 @@
 from enum import Enum
 from pydantic import BaseModel, Field, validator
 from typing import Union, Tuple, List, Dict
+from ray._private.runtime_env.packaging import parse_uri
 
 
 class SupportedLanguage(str, Enum):
@@ -146,6 +147,11 @@ class DeploymentConfig(BaseModel):
         3. cannot contain wildcards (must not have "{" or "}")
         """
 
+        # route_prefix of None means the deployment is not exposed
+        # over HTTP.
+        if v is None:
+            return
+
         if len(v) < 1 or v[0] != "/":
             raise ValueError(f"Got \"{v}\" for route_prefix. Route prefix "
                              "must start with \"/\".")
@@ -234,6 +240,20 @@ class FullDeploymentConfig(BaseModel):
     app_config: AppConfig = Field(...)
     deployment_config: DeploymentConfig = Field(...)
     replica_resources: ReplicaResources = Field(...)
+
+    @validator("runtime_env")
+    def runtime_env_contains_remote_uris(cls, v):
+        # Ensure that all uris in py_modules and working_dir are remote
+
+        if v is None:
+            return
+        
+        uris = v.get("py_modules", [])
+        if "working_dir" in v:
+            uris.append(v["working_dir"])
+        
+        for uri in uris:
+            parse_uri(uri)
 
 
 class ServeInstanceConfig(BaseModel):
