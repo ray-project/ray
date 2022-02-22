@@ -1,13 +1,18 @@
+import importlib.util
 from collections import namedtuple
 import logging
 import os
 import re
 import subprocess
 import sys
-import GPUtil
 
 import ray
 import ray.ray_constants as ray_constants
+
+try:
+    import GPUtil
+except ImportError:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -269,8 +274,13 @@ def _autodetect_num_gpus():
     """
     result = 0
     if sys.platform.startswith("linux"):
-        gpu_list = GPUtil.getGPUs()
-        result = len(gpu_list)
+        if importlib.util.find_spec("GPUtil"):
+            gpu_list = GPUtil.getGPUs()
+            result = len(gpu_list)
+        else:
+            proc_gpus_path = "/proc/driver/nvidia/gpus"
+            if os.path.isdir(proc_gpus_path):
+                result = len(os.listdir(proc_gpus_path))
     elif sys.platform == "win32":
         props = "AdapterCompatibility"
         cmdargs = ["WMIC", "PATH", "Win32_VideoController", "GET", props]
@@ -309,11 +319,20 @@ def _get_gpu_info_string():
         [list] The gpu's model's names.
     """
     if sys.platform.startswith("linux"):
-        gpu_list = GPUtil.getGPUs()
-        if len(gpu_list) > 0:
-            gpu_list_names = [gpu.name for gpu in gpu_list]
-            info_str = gpu_list_names.pop()
-            return info_str
+        if importlib.util.find_spec("GPUtil"):
+            gpu_list = GPUtil.getGPUs()
+            if len(gpu_list) > 0:
+                gpu_list_names = [gpu.name for gpu in gpu_list]
+                info_str = gpu_list_names.pop()
+                return info_str
+        else:
+            proc_gpus_path = "/proc/driver/nvidia/gpus"
+            if os.path.isdir(proc_gpus_path):
+                gpu_dirs = os.listdir(proc_gpus_path)
+                if len(gpu_dirs) > 0:
+                    gpu_info_path = f"{proc_gpus_path}/{gpu_dirs[0]}/information"
+                    info_str = open(gpu_info_path).read()
+                    return info_str
     return None
 
 
