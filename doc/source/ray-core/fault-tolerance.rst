@@ -50,6 +50,7 @@ Ray will automatically restart actors that crash unexpectedly.
 This behavior is controlled using ``max_restarts``,
 which sets the maximum number of times that an actor will be restarted.
 If 0, the actor won't be restarted. If -1, it will be restarted infinitely.
+The default value of ``max_restarts`` is 0.
 When an actor is restarted, its state will be recreated by rerunning its
 constructor.
 After the specified number of restarts, subsequent actor methods will
