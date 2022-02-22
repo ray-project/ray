@@ -1,7 +1,9 @@
-.. include:: we_are_hiring.rst
+.. include:: /_includes/rllib_announcement.rst
 
-RLlib Algorithms
-================
+.. include:: /_includes/rllib_we_are_hiring.rst
+
+Algorithms
+==========
 
 .. tip::
 
@@ -959,3 +961,5 @@ RE3 uses a randomly initialized encoder to get the state’s latent representati
 .. |pytorch| image:: images/pytorch.png
     :class: inline-figure
     :width: 24
+
+.. include:: /_includes/rllib_announcement_bottom.rst

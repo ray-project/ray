@@ -60,8 +60,8 @@ from ray.data.datasource import (
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import (
-    _wrap_s3_filesystem_workaround,
-    _unwrap_s3_filesystem_workaround,
+    _wrap_arrow_serialization_workaround,
+    _unwrap_arrow_serialization_workaround,
 )
 from ray.data.row import TableRow
 from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
@@ -1868,7 +1868,7 @@ class Dataset(Generic[T]):
                     ctx,
                     blocks,
                     metadata,
-                    _wrap_s3_filesystem_workaround(write_args),
+                    _wrap_arrow_serialization_workaround(write_args),
                 )
             )
 
@@ -2982,6 +2982,6 @@ def _do_write(
     meta: List[BlockMetadata],
     write_args: dict,
 ) -> List[ObjectRef[WriteResult]]:
-    write_args = _unwrap_s3_filesystem_workaround(write_args)
+    write_args = _unwrap_arrow_serialization_workaround(write_args)
     DatasetContext._set_current(ctx)
     return ds.do_write(blocks, meta, **write_args)

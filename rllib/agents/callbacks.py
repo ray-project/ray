@@ -70,6 +70,23 @@ class DefaultCallbacks:
         """
         pass
 
+    def on_trainer_init(
+        self,
+        *,
+        trainer: "Trainer",
+        **kwargs,
+    ) -> None:
+        """Callback run when a new trainer instance has finished setup.
+
+        This method gets callled at the end of Trainer.setup() after all
+        the initialization is done, and before actually training starts.
+
+        Args:
+            trainer: Reference to the trainer instance.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
+
     def on_episode_start(
         self,
         *,
