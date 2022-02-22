@@ -215,6 +215,9 @@ Runtime Env APIs
 
 .. autofunction:: ray.runtime_env.get_current_runtime_env
 
+.. autoclass:: ray.runtime_env.RuntimeEnv
+    :members:
+
 .. _package-ref-debugging-apis:
 
 Debugging APIs

@@ -145,8 +145,9 @@ def _parse_proto_plugin_runtime_env(
             runtime_env_dict["plugins"] = plugins
 
 
+@PublicAPI(stability="beta")
 class RuntimeEnv(dict):
-    """An internal wrapper for runtime_env that is parsed and validated.
+    """An wrapper for runtime_env that is parsed and validated.
 
     This should be constructed from user-provided input (the API runtime_env)
     and used everywhere that the runtime_env is passed around internally.
@@ -174,20 +175,24 @@ class RuntimeEnv(dict):
             https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-e
             nvironments.html#create-env-file-manually
             Examples:
-                {"channels": ["defaults"], "dependencies": ["codecov"]}
-                "pytorch_p36"   # Found on DLAMIs
+
+            >>> RuntimeEnv(conda={
+                "channels": ["defaults"], "dependencies": ["codecov"]})
+            >>> RuntimeEnv(conda="pytorch_p36")   # Found on DLAMIs
         container (dict): Require a given (Docker) container image,
             The Ray worker process will run in a container with this image.
             The `worker_path` is the default_worker.py path.
             The `run_options` list spec is here:
             https://docs.docker.com/engine/reference/run/
             Examples:
-                {"image": "anyscale/ray-ml:nightly-py38-cpu",
+
+            >>> RuntimeEnv(container={"image": "anyscale/ray-ml:nightly-py38-cpu",
                  "worker_path": "/root/python/ray/workers/default_worker.py",
-                 "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]}
+                 "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]})
         env_vars (dict): Environment variables to set.
             Examples:
-                {"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}
+
+            >>> RuntimeEnv(env_vars={"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"})
     """
 
     known_fields: Set[str] = {
