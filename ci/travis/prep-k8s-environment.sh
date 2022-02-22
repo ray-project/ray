@@ -23,7 +23,7 @@ docker network ls
 cp ~/.kube/config /ray-mount/kube-config
 
 shopt -s expand_aliases
-alias kubectl='docker run --network kind --mount type=bind,src=/ray-mount/kube-config,dst=/.kube/config --env KUBECONFIG=/.kube/config bitnami/kubectl:latest'
+alias kubectl='docker run --network kind --mount type=bind,src=/ray/kube-config,dst=/.kube/config --env KUBECONFIG=/.kube/config bitnami/kubectl:latest'
 kubectl version
 kubectl cluster-info --context kind-kind
 kubectl get nodes
