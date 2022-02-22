@@ -45,20 +45,20 @@ def _log_big_error_msg(success_msg):
 
 
 def _log_job_status(client: JobSubmissionClient, job_id: str):
-    data = client.get_job_data(job_id)
-    if data.status == JobStatus.SUCCEEDED:
+    info = client.get_job_info(job_id)
+    if info.status == JobStatus.SUCCEEDED:
         _log_big_success_msg(f"Job '{job_id}' succeeded")
-    elif data.status == JobStatus.STOPPED:
+    elif info.status == JobStatus.STOPPED:
         cli_logger.warning(f"Job '{job_id}' was stopped")
-    elif data.status == JobStatus.FAILED:
+    elif info.status == JobStatus.FAILED:
         _log_big_error_msg(f"Job '{job_id}' failed")
-        if data.message is not None:
-            cli_logger.print(f"Status message: {data.message}")
+        if info.message is not None:
+            cli_logger.print(f"Status message: {info.message}")
     else:
         # Catch-all.
-        cli_logger.print(f"Status for job '{job_id}': {data.status}")
-        if data.message is not None:
-            cli_logger.print(f"Status message: {data.message}")
+        cli_logger.print(f"Status for job '{job_id}': {info.status}")
+        if info.message is not None:
+            cli_logger.print(f"Status message: {info.message}")
 
 
 async def _tail_logs(client: JobSubmissionClient, job_id: str):
