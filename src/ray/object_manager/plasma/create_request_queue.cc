@@ -168,6 +168,14 @@ Status CreateRequestQueue::ProcessRequests() {
     if (spilling_required) {
       spill_objects_callback_();
     }
+	//Block and evict tasks are called if the object store reaches over a threshold
+	if(RayConfig::instance().enable_BlockTasks() && block_tasks_required){
+        on_object_creation_blocked_callback_(lowest_pri, true, false);
+	}
+	if(RayConfig::instance().enable_EvictTasks() && evict_tasks_required){
+        on_object_creation_blocked_callback_(lowest_pri, false, true);
+	}
+
     auto now = get_time_();
     if (status.ok()) {
       FinishRequest(queue_it);
@@ -185,7 +193,11 @@ Status CreateRequestQueue::ProcessRequests() {
       if (RayConfig::instance().enable_BlockTasks()) {
         RAY_LOG(DEBUG) << "[JAE_DEBUG] calling object_creation_blocked_callback priority "
                        << lowest_pri;
-        on_object_creation_blocked_callback_(lowest_pri, true, false);
+		if(RayConfig::instance().enable_EvictTasks()){
+		  on_object_creation_blocked_callback_(lowest_pri, true, true);
+		}else{
+		  on_object_creation_blocked_callback_(lowest_pri, true, false);
+		}
 		if(!RayConfig::instance().enable_BlockTasksSpill()){
 		  spill_objects_callback_();
 		}
@@ -252,8 +264,7 @@ Status CreateRequestQueue::ProcessRequests() {
 
   // If we make it here, then there is nothing left in the queue. It's safe to
   // run new tasks again.
-  if (RayConfig::instance().enable_BlockTasks() && 
-		  !RayConfig::instance().enable_EvictTasks()) {
+  if (RayConfig::instance().enable_BlockTasks()) {
     RAY_LOG(DEBUG) << "[JAE_DEBUG] resetting object_creation_blocked_callback priority";
     RAY_UNUSED(on_object_creation_blocked_callback_(ray::Priority(), true, false));
   }
