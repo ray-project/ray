@@ -3,18 +3,75 @@ from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
 
 
-class AppConfig(BaseModel):
-    init_args: Union[Tuple, List] = Field(
+class RayActorOptions(BaseModel):
+    runtime_env: dict = Field(
         default=None,
         description=(
-            "The application's init_args. Only works with Python 3 applications."
+            "This deployment's runtime_env. working_dir and "
+            "py_modules may contain only remote URIs."
         ),
     )
-    init_kwargs: Dict = Field(
+    num_cpus: float = Field(
         default=None,
         description=(
-            "The application's init_args. Only works with Python 3 applications."
+            "The number of CPUs required by the deployment's "
+            "application per replica. This is the same as a ray "
+            "actor's num_cpus. Uses a default if null."
         ),
+        gt=0,
+    )
+    num_gpus: float = Field(
+        default=None,
+        description=(
+            "The number of GPUs required by the deployment's "
+            "application per replica. This is the same as a ray "
+            "actor's num_gpus. Uses a default if null."
+        ),
+        gt=0,
+    )
+    memory: float = Field(
+        default=None,
+        description=(
+            "Restrict the heap memory usage of each replica. Uses a default if null."
+        ),
+        gt=0,
+    )
+    object_store_memory: float = Field(
+        default=None,
+        description=(
+            "Restrict the object store memory used per replica when "
+            "creating objects. Uses a default if null."
+        ),
+        gt=0,
+    )
+    resources: Dict = Field(
+        default=None, description=("The custom resources required by each replica.")
+    )
+    accelerator_type: str = Field(
+        default=None,
+        description=(
+            "Forces replicas to run on nodes with the specified accelerator type."
+        ),
+    )
+
+    @validator("runtime_env")
+    def runtime_env_contains_remote_uris(cls, v):
+        # Ensure that all uris in py_modules and working_dir are remote
+
+        if v is None:
+            return
+
+        uris = v.get("py_modules", [])
+        if "working_dir" in v:
+            uris.append(v["working_dir"])
+
+        for uri in uris:
+            parse_uri(uri)
+
+
+class DeploymentConfig(BaseModel):
+    name: str = Field(
+        ..., description=("Globally-unique name identifying this deployment.")
     )
     import_path: str = Field(
         default=None,
@@ -30,57 +87,18 @@ class AppConfig(BaseModel):
         # a dot, followed by at least one more character.
         regex=r".+\..+",
     )
-
-    @root_validator
-    def application_sufficiently_specified(cls, values):
-        """
-        Some application information, such as the path to the function or class
-        must be specified. Additionally, some attributes only work in specific
-        languages (e.g. init_args and init_kwargs make sense in Python but not
-        Java). Specifying attributes that belong to different languages is
-        invalid.
-        """
-
-        # Ensure that an application path is set
-        application_paths = {"import_path"}
-
-        specified_path = None
-        for path in application_paths:
-            if path in values and values[path] is not None:
-                specified_path = path
-
-        if specified_path is None:
-            raise ValueError(
-                "A path to the application's class or function must be specified."
-            )
-
-        # Ensure that only attributes belonging to the application path's
-        # language are specified.
-
-        # corresponding_attributes maps application_path attributes to all the
-        # attributes that may be set in that path's language
-        corresponding_attributes = {
-            # Python
-            "import_path": {"import_path", "init_args", "init_kwargs"}
-        }
-
-        possible_attributes = corresponding_attributes[specified_path]
-        for attribute in values:
-            if attribute not in possible_attributes:
-                raise ValueError(
-                    f'Got "{values[specified_path]}" for '
-                    f"{specified_path} and {values[attribute]} "
-                    f"for {attribute}. {specified_path} and "
-                    f"{attribute} do not belong to the same "
-                    f"language and cannot be specified at the "
-                    f"same time. Expected one of these to be "
-                    f"null."
-                )
-
-        return values
-
-
-class DeploymentConfig(BaseModel):
+    init_args: Union[Tuple, List] = Field(
+        default=None,
+        description=(
+            "The application's init_args. Only works with Python 3 applications."
+        ),
+    )
+    init_kwargs: Dict = Field(
+        default=None,
+        description=(
+            "The application's init_args. Only works with Python 3 applications."
+        ),
+    )
     num_replicas: int = Field(
         default=None,
         description=(
@@ -164,6 +182,62 @@ class DeploymentConfig(BaseModel):
         ),
         gt=0,
     )
+    ray_actor_options: RayActorOptions = Field(...)
+
+    @root_validator
+    def application_sufficiently_specified(cls, values):
+        """
+        Some application information, such as the path to the function or class
+        must be specified. Additionally, some attributes only work in specific
+        languages (e.g. init_args and init_kwargs make sense in Python but not
+        Java). Specifying attributes that belong to different languages is
+        invalid.
+        """
+
+        # Ensure that an application path is set
+        application_paths = {"import_path"}
+
+        specified_path = None
+        for path in application_paths:
+            if path in values and values[path] is not None:
+                specified_path = path
+
+        if specified_path is None:
+            raise ValueError(
+                "A path to the application's class or function must be specified."
+            )
+
+        # Ensure that only attributes belonging to the application path's
+        # language are specified.
+
+        # language_attributes contains all attributes in this schema related to
+        # the application's language
+        language_attributes = {"import_path", "init_args", "init_kwargs"}
+
+        # corresponding_attributes maps application_path attributes to all the
+        # attributes that may be set in that path's language
+        corresponding_attributes = {
+            # Python
+            "import_path": {"import_path", "init_args", "init_kwargs"}
+        }
+
+        possible_attributes = corresponding_attributes[specified_path]
+        for attribute in values:
+            if (
+                attribute not in possible_attributes
+                and attribute in language_attributes
+            ):
+                raise ValueError(
+                    f'Got "{values[specified_path]}" for '
+                    f"{specified_path} and {values[attribute]} "
+                    f"for {attribute}. {specified_path} and "
+                    f"{attribute} do not belong to the same "
+                    f"language and cannot be specified at the "
+                    f"same time. Expected one of these to be "
+                    f"null."
+                )
+
+        return values
 
     @validator("route_prefix")
     def route_prefix_format(cls, v):
@@ -197,80 +271,5 @@ class DeploymentConfig(BaseModel):
             )
 
 
-class RayActorOptions(BaseModel):
-    num_cpus: float = Field(
-        default=None,
-        description=(
-            "The number of CPUs required by the deployment's "
-            "application per replica. This is the same as a ray "
-            "actor's num_cpus. Uses a default if null."
-        ),
-        gt=0,
-    )
-    num_gpus: float = Field(
-        default=None,
-        description=(
-            "The number of GPUs required by the deployment's "
-            "application per replica. This is the same as a ray "
-            "actor's num_gpus. Uses a default if null."
-        ),
-        gt=0,
-    )
-    memory: float = Field(
-        default=None,
-        description=(
-            "Restrict the heap memory usage of each replica. Uses a default if null."
-        ),
-        gt=0,
-    )
-    object_store_memory: float = Field(
-        default=None,
-        description=(
-            "Restrict the object store memory used per replica when "
-            "creating objects. Uses a default if null."
-        ),
-        gt=0,
-    )
-    resources: Dict = Field(
-        default=None, description=("The custom resources required by each replica.")
-    )
-    accelerator_type: str = Field(
-        default=None,
-        description=(
-            "Forces replicas to run on nodes with the specified accelerator type."
-        ),
-    )
-
-
-class FullDeploymentConfig(BaseModel):
-    name: str = Field(
-        ..., description=("Globally-unique name identifying this deployment.")
-    )
-    runtime_env: dict = Field(
-        default=None,
-        description=(
-            "This deployment's runtime_env. working_dir and "
-            "py_modules may contain only remote URIs."
-        ),
-    )
-    app_config: AppConfig = Field(...)
-    deployment_config: DeploymentConfig = Field(...)
-    ray_actor_options: RayActorOptions = Field(...)
-
-    @validator("runtime_env")
-    def runtime_env_contains_remote_uris(cls, v):
-        # Ensure that all uris in py_modules and working_dir are remote
-
-        if v is None:
-            return
-
-        uris = v.get("py_modules", [])
-        if "working_dir" in v:
-            uris.append(v["working_dir"])
-
-        for uri in uris:
-            parse_uri(uri)
-
-
 class ServeInstanceConfig(BaseModel):
-    deployments: List[FullDeploymentConfig] = Field(...)
+    deployments: List[DeploymentConfig] = Field(...)
