@@ -30,7 +30,7 @@ check_python_command_exist() {
             exit 1
     esac
     if ! [ -x "$(command -v "$1")" ]; then
-        echo "$1 not installed. pip install $1==$VERSION"
+        echo "$1 not installed. Install the python package with: pip install $1==$VERSION"
         exit 1
     fi
 }
