@@ -14,7 +14,10 @@ if TYPE_CHECKING:
 def pipeline_stage(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
     try:
         prev = set_progress_bars(False)
-        return fn()
+        # Force eager evaluation of all blocks in the pipeline stage. This
+        # prevents resource deadlocks due to overlapping stage execution (e.g.,
+        # task -> actor stage).
+        return fn().fully_executed()
     finally:
         set_progress_bars(prev)
 
@@ -52,7 +55,7 @@ class PipelineExecutor:
         executed = [f for f in self._stages if f is not None]
         if executed:
             self._pipeline._signal.set()
-            pending = [f for f in self._stages if not f.cancel()]
+            pending = [f for f in self._stages if f is not None and not f.cancel()]
             concurrent.futures.wait(pending)
             self._pool.shutdown()
 
