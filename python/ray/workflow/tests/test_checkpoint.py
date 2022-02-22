@@ -52,24 +52,17 @@ def _assert_step_checkpoints(wf_storage, step_id, mode):
         raise ValueError("Unknown mode.")
 
 
-def test_checkpoint_dag(workflow_start_regular):
-    # warm up to ensure precise timing
-    for _ in range(3):
-        outputs = checkpoint_dag.step(True).run()
-        assert np.isclose(outputs, 8388607.5)
-
+def test_checkpoint_dag_skip_all(workflow_start_regular):
     global_storage = storage.get_global_storage()
 
-    # =================== skip all checkpoints ===================
-
-    start = time.time()
     outputs = (
         checkpoint_dag.options(name="checkpoint_dag", checkpoint=False)
         .step(False)
         .run(workflow_id="checkpoint_skip")
     )
-    run_duration_skipped = time.time() - start
     assert np.isclose(outputs, 8388607.5)
+    recovered = ray.get(workflow.resume("checkpoint_skip"))
+    assert np.isclose(recovered, 8388607.5)
 
     wf_storage = workflow_storage.WorkflowStorage("checkpoint_skip", global_storage)
     _assert_step_checkpoints(wf_storage, "checkpoint_dag", mode="output_skipped")
@@ -77,24 +70,17 @@ def test_checkpoint_dag(workflow_start_regular):
     _assert_step_checkpoints(wf_storage, "identity", mode="all_skipped")
     _assert_step_checkpoints(wf_storage, "average", mode="all_skipped")
 
-    start = time.time()
-    recovered = ray.get(workflow.resume("checkpoint_skip"))
-    recover_duration_skipped = time.time() - start
-    assert np.isclose(recovered, 8388607.5)
 
-    # =================== skip partial checkpoints ===================
+def test_checkpoint_dag_skip_partial(workflow_start_regular):
+    global_storage = storage.get_global_storage()
 
-    start = time.time()
     outputs = (
         checkpoint_dag.options(name="checkpoint_dag")
         .step(False)
         .run(workflow_id="checkpoint_partial")
     )
-    run_duration_partial = time.time() - start
     assert np.isclose(outputs, 8388607.5)
-    start = time.time()
     recovered = ray.get(workflow.resume("checkpoint_partial"))
-    recover_duration_partial = time.time() - start
     assert np.isclose(recovered, 8388607.5)
 
     wf_storage = workflow_storage.WorkflowStorage("checkpoint_partial", global_storage)
@@ -103,40 +89,24 @@ def test_checkpoint_dag(workflow_start_regular):
     _assert_step_checkpoints(wf_storage, "identity", mode="output_skipped")
     _assert_step_checkpoints(wf_storage, "average", mode="checkpointed")
 
-    # =================== skip none checkpoints ===================
 
-    start = time.time()
+def test_checkpoint_dag_full(workflow_start_regular):
+    global_storage = storage.get_global_storage()
+
     outputs = (
         checkpoint_dag.options(name="checkpoint_dag")
         .step(True)
         .run(workflow_id="checkpoint_whole")
     )
-    run_duration_whole = time.time() - start
     assert np.isclose(outputs, 8388607.5)
-    start = time.time()
+    recovered = ray.get(workflow.resume("checkpoint_whole"))
+    assert np.isclose(recovered, 8388607.5)
 
     wf_storage = workflow_storage.WorkflowStorage("checkpoint_whole", global_storage)
     _assert_step_checkpoints(wf_storage, "checkpoint_dag", mode="checkpointed")
     _assert_step_checkpoints(wf_storage, "large_input", mode="checkpointed")
     _assert_step_checkpoints(wf_storage, "identity", mode="checkpointed")
     _assert_step_checkpoints(wf_storage, "average", mode="checkpointed")
-
-    recovered = ray.get(workflow.resume("checkpoint_whole"))
-    recover_duration_whole = time.time() - start
-    assert np.isclose(recovered, 8388607.5)
-
-    print(
-        f"[skipped] run_duration = {run_duration_skipped}, "
-        f"recover_duration = {recover_duration_skipped}"
-    )
-    print(
-        f"[partial] run_duration = {run_duration_partial}, "
-        f"recover_duration = {recover_duration_partial}"
-    )
-    print(
-        f"[whole] run_duration = {run_duration_whole}, "
-        f"recover_duration = {recover_duration_whole}"
-    )
 
 
 @workflow.step

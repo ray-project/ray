@@ -512,7 +512,7 @@ def _workflow_wait_executor(
     ready_workflows, remaining_workflows = baked_inputs.wait(**wait_options)
     ready_objects = []
     for w in ready_workflows:
-        obj,  _ = _resolve_object_ref(w.ref.ref)
+        obj, _ = _resolve_object_ref(w.ref.ref)
         ready_objects.append(obj)
     persisted_output = (ready_objects, remaining_workflows)
 
