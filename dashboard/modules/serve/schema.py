@@ -1,9 +1,10 @@
 from pydantic import BaseModel, Field, root_validator, validator
 from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
+from ray.serve.api import Deployment
 
 
-class RayActorOptions(BaseModel):
+class RayActorOptionsSchema(BaseModel):
     runtime_env: dict = Field(
         default=None,
         description=(
@@ -69,7 +70,7 @@ class RayActorOptions(BaseModel):
             parse_uri(uri)
 
 
-class DeploymentConfig(BaseModel):
+class DeploymentSchema(BaseModel):
     name: str = Field(
         ..., description=("Globally-unique name identifying this deployment.")
     )
@@ -182,7 +183,7 @@ class DeploymentConfig(BaseModel):
         ),
         gt=0,
     )
-    ray_actor_options: RayActorOptions = Field(...)
+    ray_actor_options: RayActorOptionsSchema = Field(...)
 
     @root_validator
     def application_sufficiently_specified(cls, values):
@@ -271,5 +272,21 @@ class DeploymentConfig(BaseModel):
             )
 
 
-class ServeInstanceConfig(BaseModel):
-    deployments: List[DeploymentConfig] = Field(...)
+class ServeInstanceSchema(BaseModel):
+    deployments: List[DeploymentSchema] = Field(...)
+
+
+def deployment_to_schema(deployment: Deployment) -> DeploymentSchema:
+    pass
+
+
+def schema_to_deployment(schema: DeploymentSchema) -> Deployment:
+    pass
+
+
+def serve_instance_to_schema(deployments: List[Deployment]) -> ServeInstanceSchema:
+    pass
+
+
+def schema_to_serve_instance(schema: ServeInstanceSchema) -> List[Deployment]:
+    pass

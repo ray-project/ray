@@ -67,38 +67,10 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
 
         return Response(text=json.dumps(dict_response), content_type="application/json")
 
-    @routes.get("/api/serve/deployments/{name}")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
-    async def get_single_deployment(self, req: Request) -> Response:
-        name = req.match_info["name"]
-        deployment = self._get_deployment_by_name(name)
-        if deployment is None:
-            return Response(
-                text=f"Deployment {name} does not exist.",
-                status=aiohttp.web.HTTPNotFound.status_code,
-            )
-        return Response(
-            text=json.dumps(str(deployment)), content_type="application/json"
-        )
-
     @routes.delete("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def delete_all_deployments(self, req: Request) -> Response:
         serve.shutdown()
-
-    @routes.delete("/api/serve/deployments/{name}")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
-    async def delete_single_deployment(self, req: Request) -> Response:
-        name = req.match_info["name"]
-        deployment = self._get_deployment_by_name(name)
-        if deployment is None:
-            return Response(
-                text=f"Deployment {name} does not exist.",
-                status=aiohttp.web.HTTPNotFound.status_code,
-            )
-
-        deployment.delete()
-        return Response()
 
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)

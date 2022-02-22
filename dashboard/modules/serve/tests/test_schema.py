@@ -2,18 +2,18 @@ from pydantic import ValidationError
 import pytest
 
 from ray.dashboard.modules.serve.schema import (
-    RayActorOptions,
-    DeploymentConfig,
-    ServeInstanceConfig,
+    RayActorOptionsSchema,
+    DeploymentSchema,
+    ServeInstanceSchema,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
 
 
-class TestRayActorOptions:
-    def test_valid_ray_actor_options(self):
-        # Ensure a valid RayActorOptions can be generated
+class TestRayActorOptionsSchema:
+    def test_valid_ray_actor_options_schema(self):
+        # Ensure a valid RayActorOptionsSchema can be generated
 
-        ray_actor_options = {
+        ray_actor_options_schema = {
             "runtime_env": {
                 "working_dir": (
                     "https://github.com/shrekris-anyscale/"
@@ -28,21 +28,21 @@ class TestRayActorOptions:
             "accelerator_type": NVIDIA_TESLA_V100,
         }
 
-        RayActorOptions.parse_obj(ray_actor_options)
+        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
-    def test_gt_zero_ray_actor_options(self):
+    def test_gt_zero_ray_actor_options_schema(self):
         # Ensure ValidationError is raised when any fields that must be greater
         # than zero is set to zero.
 
         gt_zero_fields = ["num_cpus", "num_gpus", "memory", "object_store_memory"]
         for field in gt_zero_fields:
             with pytest.raises(ValidationError):
-                RayActorOptions.parse_obj({field: 0})
+                RayActorOptionsSchema.parse_obj({field: 0})
 
     def test_runtime_env(self):
         # Test different runtime_env configurations
 
-        ray_actor_options = {
+        ray_actor_options_schema = {
             "runtime_env": None,
             "num_cpus": 0.2,
             "num_gpus": 50,
@@ -52,11 +52,11 @@ class TestRayActorOptions:
             "accelerator_type": NVIDIA_TESLA_V100,
         }
 
-        # ray_actor_options should work as is
-        RayActorOptions.parse_obj(ray_actor_options)
+        # ray_actor_options_schema should work as is
+        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
         # working_dir and py_modules cannot contain local uris
-        ray_actor_options["runtime_env"] = {
+        ray_actor_options_schema["runtime_env"] = {
             "working_dir": ".",
             "py_modules": [
                 "/Desktop/my_project",
@@ -68,10 +68,10 @@ class TestRayActorOptions:
         }
 
         with pytest.raises(ValueError):
-            RayActorOptions.parse_obj(ray_actor_options)
+            RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
         # remote uris should work
-        ray_actor_options["runtime_env"] = {
+        ray_actor_options_schema["runtime_env"] = {
             "working_dir": (
                 "https://github.com/shrekris-anyscale/" "test_module/archive/HEAD.zip"
             ),
@@ -83,12 +83,12 @@ class TestRayActorOptions:
             ],
         }
 
-        RayActorOptions.parse_obj(ray_actor_options)
+        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
 
-class TestDeploymentConfig:
-    def get_minimal_deployment_config(self):
-        # Generate a DeploymentConfig with the fewest possible attributes set
+class TestDeploymentSchema:
+    def get_minimal_deployment_schema(self):
+        # Generate a DeploymentSchema with the fewest possible attributes set
 
         return {
             "name": "deep",
@@ -115,10 +115,10 @@ class TestDeploymentConfig:
             },
         }
 
-    def test_valid_deployment_config(self):
-        # Ensure a valid FullDeploymentConfig can be generated
+    def test_valid_deployment_schema(self):
+        # Ensure a valid DeploymentSchema can be generated
 
-        deployment_config = {
+        deployment_schema = {
             "name": "shallow",
             "init_args": [4, "glue"],
             "init_kwargs": {"fuel": "diesel"},
@@ -154,37 +154,37 @@ class TestDeploymentConfig:
             },
         }
 
-        DeploymentConfig.parse_obj(deployment_config)
+        DeploymentSchema.parse_obj(deployment_schema)
 
     def test_invalid_python_attributes(self):
         # Test setting invalid attributes for Python to ensure a validation or
         # value error is raised.
 
         # Python requires an import path
-        deployment_config = self.get_minimal_deployment_config()
-        deployment_config["init_args"] = [1, 2]
-        deployment_config["init_kwargs"] = {"threshold": 0.5}
-        del deployment_config["import_path"]
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["init_args"] = [1, 2]
+        deployment_schema["init_kwargs"] = {"threshold": 0.5}
+        del deployment_schema["import_path"]
 
         with pytest.raises(ValueError, match="must be specified"):
-            DeploymentConfig.parse_obj(deployment_config)
+            DeploymentSchema.parse_obj(deployment_schema)
 
-        # DeploymentConfig should be generated once import_path is set
-        deployment_config["import_path"] = "my_module.MyClass"
-        DeploymentConfig.parse_obj(deployment_config)
+        # DeploymentSchema should be generated once import_path is set
+        deployment_schema["import_path"] = "my_module.MyClass"
+        DeploymentSchema.parse_obj(deployment_schema)
 
         # Invalid import_path syntax should raise a ValidationError
         invalid_paths = ["", "MyClass", ".", "hello,world"]
         for path in invalid_paths:
-            deployment_config["import_path"] = path
+            deployment_schema["import_path"] = path
             with pytest.raises(ValidationError):
-                DeploymentConfig.parse_obj(deployment_config)
+                DeploymentSchema.parse_obj(deployment_schema)
 
-    def test_gt_zero_deployment_config(self):
+    def test_gt_zero_deployment_schema(self):
         # Ensure ValidationError is raised when any fields that must be greater
         # than zero is set to zero.
 
-        deployment_config = self.get_minimal_deployment_config()
+        deployment_schema = self.get_minimal_deployment_schema()
 
         gt_zero_fields = [
             "num_replicas",
@@ -193,16 +193,16 @@ class TestDeploymentConfig:
             "health_check_timeout_s",
         ]
         for field in gt_zero_fields:
-            deployment_config[field] = 0
+            deployment_schema[field] = 0
             with pytest.raises(ValidationError):
-                DeploymentConfig.parse_obj(deployment_config)
-            deployment_config[field] = None
+                DeploymentSchema.parse_obj(deployment_schema)
+            deployment_schema[field] = None
 
-    def test_ge_zero_deployment_config(self):
+    def test_ge_zero_deployment_schema(self):
         # Ensure ValidationError is raised when any fields that must be greater
         # than or equal to zero is set to -1.
 
-        deployment_config = self.get_minimal_deployment_config()
+        deployment_schema = self.get_minimal_deployment_schema()
 
         ge_zero_fields = [
             "graceful_shutdown_wait_loop_s",
@@ -210,50 +210,50 @@ class TestDeploymentConfig:
         ]
 
         for field in ge_zero_fields:
-            deployment_config[field] = -1
+            deployment_schema[field] = -1
             with pytest.raises(ValidationError):
-                DeploymentConfig.parse_obj(deployment_config)
-            deployment_config[field] = None
+                DeploymentSchema.parse_obj(deployment_schema)
+            deployment_schema[field] = None
 
     def test_route_prefix(self):
         # Ensure that route_prefix is validated
 
-        deployment_config = self.get_minimal_deployment_config()
+        deployment_schema = self.get_minimal_deployment_schema()
 
         # route_prefix must start with a "/"
-        deployment_config["route_prefix"] = "hello/world"
+        deployment_schema["route_prefix"] = "hello/world"
         with pytest.raises(ValueError):
-            DeploymentConfig.parse_obj(deployment_config)
+            DeploymentSchema.parse_obj(deployment_schema)
 
         # route_prefix must end with a "/"
-        deployment_config["route_prefix"] = "/hello/world/"
+        deployment_schema["route_prefix"] = "/hello/world/"
         with pytest.raises(ValueError):
-            DeploymentConfig.parse_obj(deployment_config)
+            DeploymentSchema.parse_obj(deployment_schema)
 
         # route_prefix cannot contain wildcards, meaning it can't have
         # "{" or "}"
-        deployment_config["route_prefix"] = "/hello/{adjective}/world/"
+        deployment_schema["route_prefix"] = "/hello/{adjective}/world/"
         with pytest.raises(ValueError):
-            DeploymentConfig.parse_obj(deployment_config)
+            DeploymentSchema.parse_obj(deployment_schema)
 
         # Ensure a valid route_prefix works
-        deployment_config["route_prefix"] = "/hello/wonderful/world"
-        DeploymentConfig.parse_obj(deployment_config)
+        deployment_schema["route_prefix"] = "/hello/wonderful/world"
+        DeploymentSchema.parse_obj(deployment_schema)
 
         # Ensure route_prefix of "/" works
-        deployment_config["route_prefix"] = "/"
-        DeploymentConfig.parse_obj(deployment_config)
+        deployment_schema["route_prefix"] = "/"
+        DeploymentSchema.parse_obj(deployment_schema)
 
         # Ensure route_prefix of None works
-        deployment_config["route_prefix"] = None
-        DeploymentConfig.parse_obj(deployment_config)
+        deployment_schema["route_prefix"] = None
+        DeploymentSchema.parse_obj(deployment_schema)
 
 
-class TestServeInstanceConfig:
-    def test_valid_serve_instance_config(self):
-        # Ensure a valid ServeInstanceConfig can be generated
+class TestServeInstanceSchema:
+    def test_valid_serve_instance_schema(self):
+        # Ensure a valid ServeInstanceSchema can be generated
 
-        serve_instance_config = {
+        serve_instance_schema = {
             "deployments": [
                 {
                     "name": "shallow",
@@ -317,4 +317,4 @@ class TestServeInstanceConfig:
             ]
         }
 
-        ServeInstanceConfig.parse_obj(serve_instance_config)
+        ServeInstanceSchema.parse_obj(serve_instance_schema)
