@@ -19,7 +19,6 @@ from ray.rllib.agents.slateq.slateq_tf_policy import SlateQTFPolicy
 from ray.rllib.agents.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
@@ -33,19 +32,6 @@ from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
-# Defines all SlateQ strategies implemented.
-ALL_SLATEQ_STRATEGIES = [
-    # RANDOM: Randomly select documents for slates.
-    "RANDOM",
-    # MYOP: Select documents that maximize user click probabilities. This is
-    # a myopic strategy and ignores long term rewards. This is equivalent to
-    # setting a zero discount rate for future rewards.
-    "MYOP",
-    # SARSA: Use the SlateQ SARSA learning algorithm.
-    "SARSA",
-    # QL: Use the SlateQ Q-learning algorithm.
-    "QL",
-]
 
 # fmt: off
 # __sphinx_doc_begin__
@@ -178,22 +164,9 @@ class SlateQTrainer(Trainer):
                 "(framework=tf)! Try `framework=tf2` instead."
             )
 
-        if config["slateq_strategy"] not in ALL_SLATEQ_STRATEGIES:
-            raise ValueError(
-                "Unknown slateq_strategy: " f"{config['slateq_strategy']}."
-            )
-
-        if config["slateq_strategy"] == "SARSA":
-            if config["batch_mode"] != "complete_episodes":
-                raise ValueError(
-                    "For SARSA strategy, `batch_mode` must be " "'complete_episodes'"
-                )
-
     @override(Trainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
-        if config["slateq_strategy"] == "RANDOM":
-            return RandomPolicy
-        elif config["framework"] == "torch":
+        if config["framework"] == "torch":
             return SlateQTorchPolicy
         else:
             return SlateQTFPolicy
@@ -227,18 +200,14 @@ class SlateQTrainer(Trainer):
             )
         )
 
-        if config["slateq_strategy"] != "RANDOM":
-            # Alternate deterministically between (1) and (2). Only return the
-            # output of (2) since training metrics are not available until (2)
-            # runs.
-            train_op = Concurrently(
-                [store_op, replay_op],
-                mode="round_robin",
-                output_indexes=[1],
-                round_robin_weights=calculate_round_robin_weights(config),
-            )
-        else:
-            # No training is needed for the RANDOM strategy.
-            train_op = rollouts
+        # Alternate deterministically between (1) and (2). Only return the
+        # output of (2) since training metrics are not available until (2)
+        # runs.
+        train_op = Concurrently(
+            [store_op, replay_op],
+            mode="round_robin",
+            output_indexes=[1],
+            round_robin_weights=calculate_round_robin_weights(config),
+        )
 
         return StandardMetricsReporting(train_op, workers, config)
