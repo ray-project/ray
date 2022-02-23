@@ -1,4 +1,5 @@
-from typing import TypeVar, Any, Union, Callable, List, Tuple
+from typing import TypeVar, Any, Union, Callable, List, Tuple, Optional
+import re
 
 import ray
 from ray.data.block import (
@@ -122,8 +123,9 @@ class TaskPool(ComputeStrategy):
 
 
 class ActorPool(ComputeStrategy):
-    def __init__(self):
+    def __init__(self, num_actors: Optional[int] = None):
         self.workers = []
+        self.num_actors = num_actors
 
     def __del__(self):
         for w in self.workers:
@@ -168,7 +170,10 @@ class ActorPool(ComputeStrategy):
 
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
-        self.workers = [BlockWorker.remote()]
+        if self.num_actors:
+            self.workers = [BlockWorker.remote() for _ in range(self.num_actors)]
+        else:
+            self.workers = [BlockWorker.remote()]
         tasks = {w.ready.remote(): w for w in self.workers}
         metadata_mapping = {}
         ready_workers = set()
@@ -178,7 +183,7 @@ class ActorPool(ComputeStrategy):
                 list(tasks), timeout=0.01, num_returns=1, fetch_local=False
             )
             if not ready:
-                if len(ready_workers) / len(self.workers) > 0.8:
+                if not self.num_actors and len(ready_workers) / len(self.workers) > 0.8:
                     w = BlockWorker.remote()
                     self.workers.append(w)
                     tasks[w.ready.remote()] = w
@@ -199,6 +204,11 @@ class ActorPool(ComputeStrategy):
                 map_bar.update(1)
             else:
                 ready_workers.add(worker)
+                map_bar.set_description(
+                    "Map Progress ({} actors {} pending)".format(
+                        len(ready_workers), len(self.workers) - len(ready_workers)
+                    )
+                )
 
             # Schedule a new task.
             if blocks_in:
@@ -251,6 +261,9 @@ def cache_wrapper(
         return fn
 
 
+ACTOR_POOL_REGEX = "actors\[(\d+)\]"
+
+
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
     if not compute_spec or compute_spec == "tasks":
         return TaskPool()
@@ -259,4 +272,9 @@ def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
     elif isinstance(compute_spec, ComputeStrategy):
         return compute_spec
     else:
-        raise ValueError("compute must be one of [`tasks`, `actors`]")
+        if isinstance(compute_spec, str):
+            match = re.match(ACTOR_POOL_REGEX, compute_spec)
+            if match:
+                num_actors = int(match.group(1))
+                return ActorPool(num_actors)
+        raise ValueError("compute must be one of [`tasks`, `actors`, `actors[n]`]")
