@@ -26,7 +26,6 @@ VERSION_1.0 {
         *ray*ObjectReference*;
         # Others
         *ray*metrics*;
-        *opencensus*;
         *ray*rpc*;
         *ray*gcs*;
         *ray*stats*;
