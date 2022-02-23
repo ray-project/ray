@@ -1351,7 +1351,55 @@ TEST_F(LocalObjectManagerFusedTest, TestMinSpillingSize) {
   ASSERT_EQ(num_unpinned, 2);
 
   // We will spill the last object, even though we're under the min spilling
-  // size, because there is only one object to spill.
+  // size, because they are the only spillable objects.
+  manager.SpillObjectUptoMaxThroughput();
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
+}
+
+TEST_F(LocalObjectManagerFusedTest, TestMinSpillingSizeMaxFusionCount) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+
+  std::vector<ObjectID> object_ids;
+  std::vector<std::unique_ptr<RayObject>> objects;
+  int64_t total_size = 0;
+  // 20 of these objects are needed to hit the min spilling size, but
+  // max_fused_object_count=15.
+  int64_t object_size = 5;
+
+  for (size_t i = 0; i < 40; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.push_back(object_id);
+    auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
+    total_size += object_size;
+    auto object = std::make_unique<RayObject>(data_buffer, nullptr,
+                                              std::vector<rpc::ObjectReference>());
+    objects.push_back(std::move(object));
+  }
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
+  manager.SpillObjectUptoMaxThroughput();
+  // First two spill batches succeed because they have at least 15 objects.
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  // Last spill batch fails because we have 10 objects and their total size is
+  // less than 100.
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
+
+  std::vector<std::string> urls;
+  for (int i = 0; i < 15; i++) {
+    urls.push_back(BuildURL("url", i));
+  }
+  EXPECT_CALL(worker_pool, PushSpillWorker(_)).Times(2);
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  for (size_t i = 0; i < urls.size(); i++) {
+    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+  }
+
+  // We will spill the last objects even though we're under the min spilling
+  // size because they are the only spillable objects.
   manager.SpillObjectUptoMaxThroughput();
   ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
