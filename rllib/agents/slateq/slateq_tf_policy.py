@@ -11,7 +11,7 @@ from ray.rllib.agents.dqn.dqn_tf_policy import clip_gradients
 from ray.rllib.agents.sac.sac_tf_policy import TargetNetworkMixin
 from ray.rllib.agents.slateq.slateq_tf_model import SlateQTFModel
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.tf.tf_action_dist import UniformMultiCategoricalNoDuplicates
+from ray.rllib.models.tf.tf_action_dist import SlateMultiCategorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
@@ -246,7 +246,7 @@ def action_distribution_fn(
     return (
         per_slate_q_values,
         functools.partial(
-            UniformMultiCategoricalNoDuplicates,
+            SlateMultiCategorical,
             action_space=policy.action_space,
             all_slates=policy.slates,
         ),
