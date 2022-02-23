@@ -343,6 +343,10 @@ class ActorClassMetadata:
         )
 
 
+class ActorClassInheritanceException(TypeError):
+    pass
+
+
 class ActorClass:
     """An actor class.
 
@@ -360,11 +364,15 @@ class ActorClass:
         use the '_ray_from_modified_class' classmethod.
 
         Raises:
-            TypeError: Always.
+            ActorClassInheritanceException: When ActorClass is inherited.
+            AssertionError: If ActorClassInheritanceException is not raised i.e.,
+                            conditions for raising it are not met in any
+                            iteration of the loop.
+            TypeError: In all other cases.
         """
         for base in bases:
             if isinstance(base, ActorClass):
-                raise TypeError(
+                raise ActorClassInheritanceException(
                     f"Attempted to define subclass '{name}' of actor "
                     f"class '{base.__ray_metadata__.class_name}'. "
                     "Inheriting from actor classes is "
@@ -430,7 +438,18 @@ class ActorClass:
         # Make sure the actor class we are constructing inherits from the
         # original class so it retains all class properties.
         class DerivedActorClass(cls, modified_class):
-            pass
+            def __init__(self, *args, **kwargs):
+                try:
+                    cls.__init__(self, *args, **kwargs)
+                except Exception as e:
+                    # Delegate call to modified_class.__init__ only
+                    # if the exception raised by cls.__init__ is
+                    # TypeError and not ActorClassInheritanceException(TypeError).
+                    # In all other cases proceed with raise e.
+                    if isinstance(e, TypeError) and not isinstance(e, ActorClassInheritanceException):
+                        modified_class.__init__(self, *args, **kwargs)
+                    else:
+                        raise e
 
         name = f"ActorClass({modified_class.__name__})"
         DerivedActorClass.__module__ = modified_class.__module__
