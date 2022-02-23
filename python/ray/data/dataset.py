@@ -487,7 +487,7 @@ class Dataset(Generic[T]):
 
         else:
 
-            def do_fast_repartition(block_list, clear_input_blocks: bool, _, __):
+            def do_fast_repartition(block_list, clear_input_blocks: bool, *_):
                 if clear_input_blocks:
                     blocks = block_list.copy()
                     block_list.clear()
@@ -1383,7 +1383,7 @@ class Dataset(Generic[T]):
             A new, sorted dataset.
         """
 
-        def do_sort(block_list, clear_input_blocks: bool, block_udf, remote_args):
+        def do_sort(block_list, clear_input_blocks: bool, *_):
             # Handle empty dataset.
             if block_list.initial_num_blocks() == 0:
                 return block_list, {}
@@ -1427,7 +1427,7 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
-        def do_zip_all(block_list, clear_input_blocks: bool, block_udf, remote_args):
+        def do_zip_all(block_list, clear_input_blocks: bool, *_):
             blocks1 = block_list.get_blocks()
             blocks2 = other.get_internal_block_refs()
 
