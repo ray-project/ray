@@ -161,7 +161,7 @@ One way to do this is to port forward ``127.0.0.1:8265`` on your local machine t
 
 Then in a new shell, you can run a job using the CLI:
 
-.. code-block::bash
+.. code-block:: bash
 
   $ export RAY_ADDRESS="http://127.0.0.1:8265"
 
