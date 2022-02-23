@@ -48,6 +48,7 @@ parser.add_argument("--mock-train-step-time", type=float, default=1.0)
 parser.add_argument("--num-files", type=int, default=30)
 parser.add_argument("--num-windows", type=int, default=1)
 parser.add_argument("--manual-windows", type=bool, default=False)
+parser.add_argument("--parallelism", type=int, default=400)
 
 SIZE_50_G = 30  # 49.17GB
 SIZE_100_G = 62  # 101.62GB
@@ -220,7 +221,12 @@ def create_torch_iterator(split, batch_size, rank=None):
 
 
 def create_dataset(
-    files, num_workers=4, epochs=50, num_windows=1, manual_windowing=False
+    files,
+    num_workers=4,
+    epochs=50,
+    num_windows=1,
+    manual_windowing=False,
+    parallelism=400,
 ):
     if num_windows > 1 and manual_windowing:
         num_rows = ray.data.read_parquet(
@@ -250,7 +256,7 @@ def create_dataset(
         pipe = pipe.random_shuffle_each_window()
         pipe_shards = pipe.split_at_indices(split_indices)
     else:
-        ds = ray.data.read_parquet(files)
+        ds = ray.data.read_parquet(files, parallelism=parallelism)
         if num_windows > 1:
             window_size = max(ds.num_blocks() // num_windows, 1)
             ds = ds.window(blocks_per_window=window_size)
@@ -292,6 +298,7 @@ if __name__ == "__main__":
         epochs=args.epochs,
         num_windows=args.num_windows,
         manual_windowing=args.manual_windows,
+        parallelism=args.parallelism,
     )
 
     if args.debug:
