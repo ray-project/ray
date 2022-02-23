@@ -3,6 +3,7 @@ import os
 from types import ModuleType
 from typing import Any, Dict, List, Optional
 from pathlib import Path
+import asyncio
 
 from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -130,10 +131,14 @@ class PyModulesManager:
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
-        module_dir = download_and_unpack_package(
-            uri, self._resources_dir, logger=logger
-        )
-        return get_directory_size_bytes(module_dir)
+        def _create():
+            module_dir = download_and_unpack_package(
+                uri, self._resources_dir, logger=logger
+            )
+            return get_directory_size_bytes(module_dir)
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _create)
 
     def modify_context(
         self,

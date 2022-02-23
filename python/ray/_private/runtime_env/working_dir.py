@@ -2,6 +2,7 @@ import logging
 import os
 from typing import Any, Dict, Optional
 from pathlib import Path
+import asyncio
 
 from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.utils import RuntimeEnv
@@ -116,8 +117,14 @@ class WorkingDirManager:
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
-        local_dir = download_and_unpack_package(uri, self._resources_dir, logger=logger)
-        return get_directory_size_bytes(local_dir)
+        def _create():
+            local_dir = download_and_unpack_package(
+                uri, self._resources_dir, logger=logger
+            )
+            return get_directory_size_bytes(local_dir)
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _create)
 
     def modify_context(
         self, uri: Optional[str], runtime_env_dict: Dict, context: RuntimeEnvContext

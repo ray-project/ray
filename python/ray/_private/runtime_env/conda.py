@@ -8,6 +8,7 @@ import subprocess
 import platform
 import runpy
 import shutil
+import asyncio
 
 from filelock import FileLock
 from typing import Optional, List, Dict, Any
@@ -306,28 +307,36 @@ class CondaManager:
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
-        logger.debug("Setting up conda for runtime_env: " f"{runtime_env.serialize()}")
-        protocol, hash = parse_uri(uri)
-        conda_env_name = self._get_path_from_hash(hash)
+        def _create():
+            logger.debug(
+                "Setting up conda for runtime_env: " f"{runtime_env.serialize()}"
+            )
+            protocol, hash = parse_uri(uri)
+            conda_env_name = self._get_path_from_hash(hash)
 
-        conda_dict = _get_conda_dict_with_ray_inserted(runtime_env, logger=logger)
+            conda_dict = _get_conda_dict_with_ray_inserted(runtime_env, logger=logger)
 
-        logger.info(f"Setting up conda environment with {runtime_env}")
-        with FileLock(self._installs_and_deletions_file_lock):
-            try:
-                conda_yaml_file = os.path.join(self._resources_dir, "environment.yml")
-                with open(conda_yaml_file, "w") as file:
-                    yaml.dump(conda_dict, file)
-                create_conda_env_if_needed(
-                    conda_yaml_file, prefix=conda_env_name, logger=logger
-                )
-            finally:
-                os.remove(conda_yaml_file)
+            logger.info(f"Setting up conda environment with {runtime_env}")
+            with FileLock(self._installs_and_deletions_file_lock):
+                try:
+                    conda_yaml_file = os.path.join(
+                        self._resources_dir, "environment.yml"
+                    )
+                    with open(conda_yaml_file, "w") as file:
+                        yaml.dump(conda_dict, file)
+                    create_conda_env_if_needed(
+                        conda_yaml_file, prefix=conda_env_name, logger=logger
+                    )
+                finally:
+                    os.remove(conda_yaml_file)
 
-            if runtime_env.get_extension("_inject_current_ray") == "True":
-                _inject_ray_to_conda_site(conda_path=conda_env_name, logger=logger)
-        logger.info(f"Finished creating conda environment at {conda_env_name}")
-        return get_directory_size_bytes(conda_env_name)
+                if runtime_env.get_extension("_inject_current_ray") == "True":
+                    _inject_ray_to_conda_site(conda_path=conda_env_name, logger=logger)
+            logger.info(f"Finished creating conda environment at {conda_env_name}")
+            return get_directory_size_bytes(conda_env_name)
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _create)
 
     def modify_context(
         self,

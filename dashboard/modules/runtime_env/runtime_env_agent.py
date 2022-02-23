@@ -194,17 +194,23 @@ class RuntimeEnvAgent(
                 for uri in runtime_env.plugin_uris():
                     self._uris_to_envs[uri].add(serialized_runtime_env)
 
-            # Run setup function from all the plugins
-            for plugin_class_path, config in runtime_env.plugins():
-                per_job_logger.debug(
-                    f"Setting up runtime env plugin {plugin_class_path}"
-                )
-                plugin_class = import_attr(plugin_class_path)
-                # TODO(simon): implement uri support
-                plugin_class.create("uri not implemented", json.loads(config), context)
-                plugin_class.modify_context(
-                    "uri not implemented", json.loads(config), context
-                )
+            def setup_plugins():
+                # Run setup function from all the plugins
+                for plugin_class_path, config in runtime_env.plugins():
+                    per_job_logger.debug(
+                        f"Setting up runtime env plugin {plugin_class_path}"
+                    )
+                    plugin_class = import_attr(plugin_class_path)
+                    # TODO(simon): implement uri support
+                    plugin_class.create(
+                        "uri not implemented", json.loads(config), context
+                    )
+                    plugin_class.modify_context(
+                        "uri not implemented", json.loads(config), context
+                    )
+
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, setup_plugins)
 
             return context
 
