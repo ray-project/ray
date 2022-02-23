@@ -3,9 +3,10 @@ import subprocess
 import requests
 import json
 from typing import List, Dict
+import time
 
 @pytest.fixture
-def ray_start_stop():
+def serve_start_stop():
     subprocess.check_output(["ray", "start", "--head"])
     subprocess.check_output(["serve", "start"])
     yield
@@ -29,7 +30,7 @@ def deployments_match(list1: List[Dict], list2: List[Dict]) -> bool:
 
     return len(list2) == 0
 
-def test_put_get_success(ray_start_stop):
+def test_put_get_success(serve_start_stop):
     URL = "http://localhost:8265/api/serve/deployments/"
     test_env_uri = (
         "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
@@ -97,7 +98,36 @@ def test_put_get_success(ray_start_stop):
         assert get_response.status_code == 200
 
         with open("two_deployments_response.json", "r") as f:
-            # assert json.loads(get_response.json()) == json.load(f)
             response_deployments = json.loads(get_response.json())["deployments"]
             expected_deployments = json.load(f)["deployments"]
             assert deployments_match(response_deployments, expected_deployments)
+
+def test_delete_success(serve_start_stop):
+    URL = "http://localhost:8265/api/serve/deployments/"
+
+    ray_actor_options = {
+        "runtime_env": {"working_dir": (
+            "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
+        )}
+    }
+
+    shallow = dict(
+        name="shallow",
+        num_replicas=3,
+        route_prefix="/shallow",
+        ray_actor_options=ray_actor_options,
+        import_path="test_env.shallow_import.ShallowClass"
+    )
+
+    # Ensure the REST API is idempotent
+    for _ in range(5):
+        put_response = requests.put(URL, json={"deployments": [shallow]})
+        assert put_response.status_code == 200
+        assert requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
+
+        delete_response = requests.delete(URL)
+        assert delete_response.status_code == 200
+
+        # Make sure no deployments exist
+        get_response = requests.get(URL)
+        assert len(json.loads(get_response.json())["deployments"]) == 0
