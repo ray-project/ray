@@ -371,6 +371,7 @@ class Monitor:
                     # the GCS hasn't accessed received data from the Raylets.
                     # In this case, we wait until we're able to get resource info.
                     return
+
                 self.update_resource_requests()
                 self.update_event_summary()
                 status = {
@@ -383,7 +384,9 @@ class Monitor:
                 if self.autoscaler:
                     # Only used to update the load metrics for the autoscaler.
                     self.autoscaler.update()
-                    status["autoscaler_report"] = asdict(self.autoscaler.summary())
+                    autoscaler_summary = self.autoscaler.summary()
+                    if autoscaler_summary:
+                        status["autoscaler_report"] = asdict(autoscaler_summary)
 
                     for msg in self.event_summarizer.summary():
                         # Need to prefix each line of the message for the lines to
