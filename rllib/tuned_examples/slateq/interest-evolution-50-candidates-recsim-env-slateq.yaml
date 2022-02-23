@@ -1,39 +1,37 @@
 interest-evolution-recsim-env-slateq:
-    env: ray.rllib.examples.env.recsim_recommender_system_envs.InterestEvolutionRecSimEnv
+    env: ray.rllib.examples.env.recommender_system_envs_with_recsim.InterestEvolutionRecSimEnv
     run: SlateQ
     stop:
-        episode_reward_mean: 200.0
-        timesteps_total: 60000
+        episode_reward_mean: 163.0
+        timesteps_total: 200000
     config:
-        # SlateQ only supported for torch so far.
-        framework: torch
+        framework: tf2
 
         # RLlib/RecSim wrapper specific settings:
         env_config:
+            # Env class specified above takes one `config` arg in its c'tor:
             config:
-                # Each step, sample 100 documents using the env-internal
+                # Each step, sample `num_candidates` documents using the env-internal
                 # document sampler model (a logic that creates n documents to select
                 # the slate from).
-                resample_documents: false
-                num_candidates: 10
+                resample_documents: true
+                num_candidates: 50
                 # How many documents to recommend (out of `num_candidates`) each
                 # timestep?
                 slate_size: 2
                 # Should the action space be purely Discrete? Useful for algos that
-                # don't support MultiDiscrete (e.g. DQN).
+                # don't support MultiDiscrete (e.g. DQN or Bandits).
                 # SlateQ handles MultiDiscrete action spaces.
                 convert_to_discrete_action_space: false
-                seed: 42
+                seed: 0
 
-        hiddens: [256, 256]
-
-        num_workers: 0
-        num_gpus: 0
-
-        lr_choice_model: 0.003
-        lr_q_model: 0.003
-        rollout_fragment_length: 4
         exploration_config:
+            warmup_timesteps: 20000
             epsilon_timesteps: 50000
 
-        target_network_update_freq: 800
+        replay_buffer_config:
+            capacity: 1000000
+
+        lr: 0.00025
+
+        metrics_num_episodes_for_smoothing: 500

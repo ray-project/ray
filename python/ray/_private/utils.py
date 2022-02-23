@@ -1204,8 +1204,19 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
     for _ in range(num_retries):
         try:
             result = gcs_client.internal_kv_get(key, namespace)
-        except Exception:
-            logger.exception("Internal KV Get failed")
+        except Exception as e:
+            if isinstance(e, grpc.RpcError) and e.code() in (
+                grpc.StatusCode.UNAVAILABLE,
+                grpc.StatusCode.UNKNOWN,
+            ):
+                logger.warning(
+                    f"Unable to connect to GCS at {gcs_client.address}. "
+                    "Check that (1) Ray GCS with matching version started "
+                    "successfully at the specified address, and (2) there is "
+                    "no firewall setting preventing access."
+                )
+            else:
+                logger.exception("Internal KV Get failed")
             result = None
 
         if result is not None:
@@ -1215,8 +1226,7 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
             time.sleep(2)
     if not result:
         raise RuntimeError(
-            f"Could not read '{key}' from GCS (redis). "
-            "If using Redis, did Redis start successfully?"
+            f"Could not read '{key.decode()}' from GCS. Did GCS start successfully?"
         )
     return result
 
@@ -1231,7 +1241,18 @@ def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20
                 key, value, overwrite=True, namespace=namespace
             )
         except grpc.RpcError as e:
-            logger.exception("Internal KV Put failed")
+            if e.code() in (
+                grpc.StatusCode.UNAVAILABLE,
+                grpc.StatusCode.UNKNOWN,
+            ):
+                logger.warning(
+                    f"Unable to connect to GCS at {gcs_client.address}. "
+                    "Check that (1) Ray GCS with matching version started "
+                    "successfully at the specified address, and (2) there is "
+                    "no firewall setting preventing access."
+                )
+            else:
+                logger.exception("Internal KV Put failed")
             time.sleep(2)
             error = e
     # Reraise the last grpc.RpcError.

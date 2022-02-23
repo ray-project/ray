@@ -101,29 +101,6 @@ def test_multi_input_func_dag(shared_ray_instance):
     assert ray.get(dag.execute(3)) == 10
 
 
-def test_invalid_input_node_in_function_node(shared_ray_instance):
-    @ray.remote
-    def f(input):
-        return input
-
-    with pytest.raises(
-        ValueError, match="ensure InputNode is the only input to a FunctionNode"
-    ):
-        f._bind([[{"nested": InputNode()}]])
-    with pytest.raises(
-        ValueError, match="ensure InputNode is the only input to a FunctionNode"
-    ):
-        f._bind(InputNode(), 1, 2)
-    with pytest.raises(
-        ValueError, match="ensure InputNode is the only input to a FunctionNode"
-    ):
-        f._bind(1, 2, key=InputNode())
-    with pytest.raises(
-        ValueError, match="ensure InputNode is the only input to a FunctionNode"
-    ):
-        f._bind(InputNode(), key=123)
-
-
 def test_invalid_input_node_as_class_constructor(shared_ray_instance):
     @ray.remote
     class Actor:
@@ -143,39 +120,6 @@ def test_invalid_input_node_as_class_constructor(shared_ray_instance):
         ),
     ):
         Actor._bind(InputNode())
-
-
-def test_invalid_input_node_in_class_method_node(shared_ray_instance):
-    @ray.remote
-    class Actor:
-        def __init__(self, val):
-            self.val = val
-
-        def get(self, input1, input2):
-            return self.val + input1 + input2
-
-    actor = Actor._bind(1)
-
-    with pytest.raises(
-        ValueError,
-        match="ensure InputNode is the only input to a ClassMethodNode",
-    ):
-        actor.get._bind([[{"nested": InputNode()}]])
-    with pytest.raises(
-        ValueError,
-        match="ensure InputNode is the only input to a ClassMethodNode",
-    ):
-        actor.get._bind(InputNode(), 1, 2)
-    with pytest.raises(
-        ValueError,
-        match="ensure InputNode is the only input to a ClassMethodNode",
-    ):
-        actor.get._bind(1, 2, key=InputNode())
-    with pytest.raises(
-        ValueError,
-        match="ensure InputNode is the only input to a ClassMethodNode",
-    ):
-        actor.get._bind(InputNode(), key=123)
 
 
 def test_class_method_input(shared_ray_instance):

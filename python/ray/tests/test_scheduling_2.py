@@ -8,8 +8,6 @@ import ray
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 import ray.experimental.internal_kv as internal_kv
 from ray.util.scheduling_strategies import (
-    DEFAULT_SCHEDULING_STRATEGY,
-    SPREAD_SCHEDULING_STRATEGY,
     PlacementGroupSchedulingStrategy,
 )
 
@@ -108,7 +106,7 @@ def test_default_scheduling_strategy(ray_start_cluster, connect_to_client):
 
     with connect_to_client_or_not(connect_to_client):
 
-        @ray.remote(scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY)
+        @ray.remote(scheduling_strategy="DEFAULT")
         def get_node_id_1():
             return ray.worker.global_worker.current_node_id
 
@@ -127,11 +125,7 @@ def test_default_scheduling_strategy(ray_start_cluster, connect_to_client):
             return ray.worker.global_worker.current_node_id
 
         assert (
-            ray.get(
-                get_node_id_2.options(
-                    scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY
-                ).remote()
-            )
+            ray.get(get_node_id_2.options(scheduling_strategy="DEFAULT").remote())
             == head_node_id
         )
 
@@ -152,9 +146,7 @@ def test_default_scheduling_strategy(ray_start_cluster, connect_to_client):
                     # Use parent's placement group
                     ray.get(get_node_id_3.remote()),
                     ray.get(
-                        get_node_id_3.options(
-                            scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY
-                        ).remote()
+                        get_node_id_3.options(scheduling_strategy="DEFAULT").remote()
                     ),
                 ]
 
@@ -179,7 +171,7 @@ def test_placement_group_scheduling_strategy(ray_start_cluster, connect_to_clien
 
     with connect_to_client_or_not(connect_to_client):
 
-        @ray.remote(scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY)
+        @ray.remote(scheduling_strategy="DEFAULT")
         def get_node_id_1():
             return ray.worker.global_worker.current_node_id
 
@@ -286,7 +278,7 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
         # Wait for updating driver raylet's resource view.
         time.sleep(5)
 
-        @ray.remote(scheduling_strategy=SPREAD_SCHEDULING_STRATEGY)
+        @ray.remote(scheduling_strategy="SPREAD")
         def task1():
             internal_kv._internal_kv_put("test_task1", "task1")
             while internal_kv._internal_kv_exists("test_task1"):
@@ -304,9 +296,7 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
             time.sleep(0.1)
         # Wait for updating driver raylet's resource view.
         time.sleep(5)
-        locations.append(
-            task2.options(scheduling_strategy=SPREAD_SCHEDULING_STRATEGY).remote()
-        )
+        locations.append(task2.options(scheduling_strategy="SPREAD").remote())
         while not internal_kv._internal_kv_exists("test_task2"):
             time.sleep(0.1)
         internal_kv._internal_kv_del("test_task1")
