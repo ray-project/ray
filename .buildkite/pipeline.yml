@@ -151,7 +151,7 @@
 - label: ":java: :redis: Java"
   conditions: ["RAY_CI_JAVA_AFFECTED"]
   commands:
-    - RAY_bootstrap_with_gcs=1 RAY_gcs_grpc_based_pubsub=1 RAY_gcs_storage=memory ./java/test.sh
+    - RAY_gcs_storage=redis ./java/test.sh
 
 - label: ":cpp: Ray CPP Worker"
   conditions: [ "RAY_CI_CPP_AFFECTED" ]
@@ -163,7 +163,7 @@
   conditions: [ "RAY_CI_CPP_AFFECTED" ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RAY_bootstrap_with_gcs=1 RAY_gcs_grpc_based_pubsub=1 RAY_gcs_storage=memory ./ci/travis/ci.sh test_cpp
+    - RAY_gcs_storage=redis ./ci/travis/ci.sh test_cpp
 
 - label: ":cpp: Tests"
   conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
@@ -348,20 +348,14 @@
     - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
     - ./dashboard/tests/run_ui_tests.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_env=RAY_gcs_grpc_based_pubsub=1
-      --test_env=RAY_bootstrap_with_gcs=1
-      --test_env=RAY_gcs_storage=memory -- //python/ray/dashboard/...
+      --test_env=RAY_gcs_storage=redis -- //python/ray/dashboard/...
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-post_wheel_build
-      --test_env=RAY_gcs_grpc_based_pubsub=1
-      --test_env=RAY_bootstrap_with_gcs=1
-      --test_env=RAY_gcs_storage=memory
+      --test_env=RAY_gcs_storage=redis
       -- python/ray/serve/...
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=team:serve
-      --test_env=RAY_gcs_grpc_based_pubsub=1
-      --test_env=RAY_bootstrap_with_gcs=1
-      --test_env=RAY_gcs_storage=memory
+      --test_env=RAY_gcs_storage=redis
       release/...
 - label: ":redis: (Small & Client)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -369,8 +363,6 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=client_tests,small_size_python_tests
-      --test_env=RAY_gcs_grpc_based_pubsub=0
-      --test_env=RAY_bootstrap_with_gcs=0
       --test_env=RAY_gcs_storage=redis
       -- python/ray/tests/...
 - label: ":redis: (Large)"
@@ -385,8 +377,6 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
-      --test_env=RAY_gcs_grpc_based_pubsub=0
-      --test_env=RAY_bootstrap_with_gcs=0
       --test_env=RAY_gcs_storage=redis
       -- //python/ray/tests/...
 - label: ":redis: (Medium K-Z)"
@@ -395,8 +385,6 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
-      --test_env=RAY_gcs_grpc_based_pubsub=0
-      --test_env=RAY_bootstrap_with_gcs=0
       --test_env=RAY_gcs_storage=redis
       -- //python/ray/tests/...
 
