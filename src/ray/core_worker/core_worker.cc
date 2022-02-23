@@ -2855,6 +2855,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   if (request.include_memory_info()) {
     reference_counter_->AddObjectRefStats(plasma_store_provider_->UsedObjectsList(),
                                           stats);
+    task_manager_->AddTaskStatusInfo(stats);
   }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
