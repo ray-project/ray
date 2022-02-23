@@ -368,8 +368,9 @@ class Monitor:
                 if not self.load_metrics:
                     # load_metrics is Falsey iff we haven't collected any
                     # resource messages from the GCS, which can happen at startup if
-                    # the GCS hasn't accessed received data from the Raylets.
+                    # the GCS hasn't yet received data from the Raylets.
                     # In this case, we wait until we're able to get resource info.
+                    time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
                     return
 
                 self.update_resource_requests()
