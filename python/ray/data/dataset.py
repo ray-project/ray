@@ -463,13 +463,21 @@ class Dataset(Generic[T]):
 
         if shuffle:
 
-            def do_shuffle(block_list, clear_input_blocks: bool, block_udf):
+            def do_shuffle(
+                block_list, clear_input_blocks: bool, block_udf, remote_args
+            ):
                 if clear_input_blocks:
                     blocks = block_list.copy()
                     block_list.clear()
                 else:
                     blocks = block_list
-                return simple_shuffle(blocks, block_udf, num_blocks)
+                return simple_shuffle(
+                    blocks,
+                    block_udf,
+                    num_blocks,
+                    map_ray_remote_args=remote_args,
+                    reduce_ray_remote_args=remote_args,
+                )
 
             plan = self._plan.with_stage(
                 AllToAllStage(
@@ -524,7 +532,7 @@ class Dataset(Generic[T]):
             The shuffled dataset.
         """
 
-        def do_shuffle(block_list, clear_input_blocks: bool, block_udf):
+        def do_shuffle(block_list, clear_input_blocks: bool, block_udf, remote_args):
             num_blocks = block_list.executed_num_blocks()  # Blocking.
             if num_blocks == 0:
                 return block_list, {}
@@ -540,6 +548,8 @@ class Dataset(Generic[T]):
                 random_shuffle=True,
                 random_seed=seed,
                 _spread_resource_prefix=_spread_resource_prefix,
+                map_ray_remote_args=remote_args,
+                reduce_ray_remote_args=remote_args,
             )
             return new_blocks, stage_info
 
@@ -1373,7 +1383,7 @@ class Dataset(Generic[T]):
             A new, sorted dataset.
         """
 
-        def do_sort(block_list, clear_input_blocks: bool, block_udf):
+        def do_sort(block_list, clear_input_blocks: bool, block_udf, remote_args):
             # Handle empty dataset.
             if block_list.initial_num_blocks() == 0:
                 return block_list, {}
@@ -1417,7 +1427,7 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
-        def do_zip_all(block_list, clear_input_blocks: bool, block_udf):
+        def do_zip_all(block_list, clear_input_blocks: bool, block_udf, remote_args):
             blocks1 = block_list.get_blocks()
             blocks2 = other.get_internal_block_refs()
 

@@ -253,7 +253,7 @@ class OneToOneStage(Stage):
         super().__init__(name, None)
         self.block_fn = block_fn
         self.compute = compute or "tasks"
-        self.ray_remote_args = ray_remote_args
+        self.ray_remote_args = ray_remote_args or {}
 
     def can_fuse(self, prev: Stage):
         if not isinstance(prev, OneToOneStage):
@@ -301,11 +301,13 @@ class AllToAllStage(Stage):
         fn: Callable[[BlockList, bool, Callable], Tuple[BlockList, dict]],
         supports_block_udf: bool = False,
         block_udf=None,
+        remote_args=None,
     ):
         super().__init__(name, num_blocks)
         self.fn = fn
         self.supports_block_udf = supports_block_udf
         self.block_udf = block_udf
+        self.ray_remote_args = remote_args or {}
 
     def can_fuse(self, prev: Stage):
         context = DatasetContext.get_current()
@@ -325,11 +327,15 @@ class AllToAllStage(Stage):
     def fuse(self, prev: Stage):
         assert self.supports_block_udf
         name = prev.name + "->" + self.name
-        return AllToAllStage(name, self.num_blocks, self.fn, True, prev.block_fn)
+        return AllToAllStage(
+            name, self.num_blocks, self.fn, True, prev.block_fn, prev.ray_remote_args
+        )
 
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
     ) -> Tuple[BlockList, dict]:
-        blocks, stage_info = self.fn(blocks, clear_input_blocks, self.block_udf)
+        blocks, stage_info = self.fn(
+            blocks, clear_input_blocks, self.block_udf, self.ray_remote_args
+        )
         assert isinstance(blocks, BlockList), blocks
         return blocks, stage_info
