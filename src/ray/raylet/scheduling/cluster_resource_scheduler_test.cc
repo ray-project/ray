@@ -334,17 +334,17 @@ TEST_F(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest) {
   bool is_infeasible;
   rpc::SchedulingStrategy scheduling_strategy;
   scheduling_strategy.mutable_spread_scheduling_strategy();
-  std::string node_id = resource_scheduler.GetBestSchedulableNode(
+  std::string node_id_1 = resource_scheduler.GetBestSchedulableNode(
       resource_request, scheduling_strategy, false, false, false, &violations,
       &is_infeasible);
-  ASSERT_EQ(node_id, local_node_id);
   absl::flat_hash_map<std::string, double> resource_available({{"CPU", 9}});
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
-      local_node_id, resource_total, resource_available);
-  node_id = resource_scheduler.GetBestSchedulableNode(resource_request,
-                                                      scheduling_strategy, false, false,
-                                                      false, &violations, &is_infeasible);
-  ASSERT_EQ(node_id, remote_node_id);
+      node_id_1, resource_total, resource_available);
+  std::string node_id_2 = resource_scheduler.GetBestSchedulableNode(
+      resource_request, scheduling_strategy, false, false, false, &violations,
+      &is_infeasible);
+  ASSERT_EQ((std::set<std::string>{node_id_1, node_id_2}),
+            (std::set<std::string>{local_node_id, remote_node_id}));
 }
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {

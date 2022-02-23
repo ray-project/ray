@@ -149,6 +149,8 @@ class Trainable:
                 "overheads.".format(setup_time)
             )
         log_sys_usage = self.config.get("log_sys_usage", False)
+        self._start_time = start_time
+        self._warmup_time = None
         self._monitor = UtilMonitor(start=log_sys_usage)
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
@@ -240,6 +242,7 @@ class Trainable:
             "time_since_restore": self._time_since_restore,
             "timesteps_since_restore": self._timesteps_since_restore,
             "iterations_since_restore": self._iterations_since_restore,
+            "warmup_time": self._warmup_time,
         }
         if debug_metrics_only:
             autofilled = {k: v for k, v in autofilled.items() if k in DEBUG_METRICS}
@@ -333,6 +336,8 @@ class Trainable:
         Returns:
             A dict that describes training progress.
         """
+        if self._warmup_time is None:
+            self._warmup_time = time.time() - self._start_time
         start = time.time()
         result = self.step()
         assert isinstance(result, dict), "step() needs to return a dict."
@@ -441,7 +446,7 @@ class Trainable:
             self.storage_client.sync_up(
                 checkpoint_dir, self._storage_path(checkpoint_dir)
             )
-            self.storage_client.wait()
+            self.storage_client.wait_or_retry()
 
     def save_to_object(self):
         """Saves the current model state to a Python object.
@@ -488,7 +493,7 @@ class Trainable:
                 os.path.join(self.remote_checkpoint_dir, rel_checkpoint_dir),
                 os.path.join(self.logdir, rel_checkpoint_dir),
             )
-            self.storage_client.wait()
+            self.storage_client.wait_or_retry()
 
         # Ensure TrialCheckpoints are converted
         if isinstance(checkpoint_path, TrialCheckpoint):
@@ -557,6 +562,7 @@ class Trainable:
         else:
             if self.uses_cloud_checkpointing:
                 self.storage_client.delete(self._storage_path(checkpoint_dir))
+                self.storage_client.wait_or_retry()
 
         if os.path.exists(checkpoint_dir):
             shutil.rmtree(checkpoint_dir)

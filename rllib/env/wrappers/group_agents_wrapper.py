@@ -55,6 +55,8 @@ class GroupAgentsWrapper(MultiAgentEnv):
             self.observation_space = obs_space
         if act_space is not None:
             self.action_space = act_space
+        for group_id in groups.keys():
+            self._agent_ids.add(group_id)
 
     def seed(self, seed=None):
         if not hasattr(self.env, "seed"):

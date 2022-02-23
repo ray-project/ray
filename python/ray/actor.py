@@ -10,7 +10,6 @@ import ray.worker
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
-    DEFAULT_SCHEDULING_STRATEGY,
     PlacementGroupSchedulingStrategy,
     SchedulingStrategyT,
 )
@@ -943,7 +942,7 @@ class ActorClass:
                     placement_group_capture_child_tasks,
                 )
             else:
-                scheduling_strategy = DEFAULT_SCHEDULING_STRATEGY
+                scheduling_strategy = "DEFAULT"
 
         if runtime_env:
             if isinstance(runtime_env, str):
