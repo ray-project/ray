@@ -181,7 +181,7 @@ def tune_xgboost(use_class_trainable=True):
         trial has currently, the scheduler will skip the update process
         internally (same with None).
 
-        See :func:`evenly_distribute_cpus_gpus` for a more complex,
+        See :class:`DistributeResources` for a more complex,
         robust approach.
 
         Args:
@@ -221,15 +221,15 @@ def tune_xgboost(use_class_trainable=True):
         return PlacementGroupFactory([{"CPU": cpu_to_use, "GPU": 0}])
 
     # You can either define your own resources_allocation_function, or
-    # use the default one - evenly_distribute_cpus_gpus
+    # use the default one - DistributeResources
 
     # from ray.tune.schedulers.resource_changing_scheduler import \
-    #    evenly_distribute_cpus_gpus
+    #    DistributeResources
 
     scheduler = ResourceChangingScheduler(
         base_scheduler=base_scheduler,
         resources_allocation_function=example_resources_allocation_function
-        # resources_allocation_function=evenly_distribute_cpus_gpus  # default
+        # resources_allocation_function=DistributeResources()  # default
     )
 
     if use_class_trainable:

@@ -158,12 +158,6 @@ class SlateQTrainer(Trainer):
         if config["num_gpus"] > 1:
             raise ValueError("`num_gpus` > 1 not yet supported for SlateQ!")
 
-        if config["framework"] == "tf":
-            raise ValueError(
-                "SlateQ is currently not supported for TensorFlow static graph "
-                "(framework=tf)! Try `framework=tf2` instead."
-            )
-
     @override(Trainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
