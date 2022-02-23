@@ -52,7 +52,7 @@ Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback) {
       if (!item.second.empty()) {
         Data data;
         data.ParseFromString(item.second);
-        values[Key::FromBinary(item.first)] = data;
+        values[Key::FromBinary(item.first)] = std::move(data);
       }
     }
     callback(std::move(values));
