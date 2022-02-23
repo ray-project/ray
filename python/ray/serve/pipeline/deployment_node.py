@@ -44,7 +44,7 @@ class DeploymentNode(DAGNode):
             other_args_to_resolve=other_args_to_resolve,
         )
 
-        if self._contain_input_node():
+        if self._contains_input_node():
             raise ValueError(
                 "InputNode handles user dynamic input the the DAG, and "
                 "cannot be used as args, kwargs, or other_args_to_resolve "
@@ -73,7 +73,7 @@ class DeploymentNode(DAGNode):
             *self._bound_args, **self._bound_kwargs
         )
 
-    def _contain_input_node(self) -> bool:
+    def _contains_input_node(self) -> bool:
         """Check if InputNode is used in children DAGNodes with current node
         as the root.
         """
