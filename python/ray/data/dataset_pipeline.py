@@ -604,7 +604,8 @@ class DatasetPipeline(Generic[T]):
                         warned = True
                         logger.warn(
                             "Data from epoch {} was not fully read, "
-                            "skipping to next epoch.".format(self._cur_epoch - 1))
+                            "skipping to next epoch.".format(self._cur_epoch - 1)
+                        )
                     next(self._iter)
                 epoch_pipe = DatasetPipeline.from_iterable(
                     SingleEpochIterator(self._iter, epoch=self._cur_epoch)
