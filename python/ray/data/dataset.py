@@ -487,7 +487,7 @@ class Dataset(Generic[T]):
 
         else:
 
-            def do_fast_repartition(block_list, clear_input_blocks: bool, _):
+            def do_fast_repartition(block_list, clear_input_blocks: bool, _, __):
                 if clear_input_blocks:
                     blocks = block_list.copy()
                     block_list.clear()
