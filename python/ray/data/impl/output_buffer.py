@@ -67,6 +67,7 @@ class BlockOutputBuffer(object):
         accessor = BlockAccessor.for_block(block)
         if self._block_udf and accessor.num_rows() > 0:
             block = self._block_udf(block)
+        block = accessor.slice(0, accessor.num_rows(), copy=True)
         self._buffer = DelegatingBlockBuilder()
         self._returned_at_least_one_block = True
         return block
