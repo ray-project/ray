@@ -21,7 +21,7 @@ from ray._private.utils import (
 from ray._private.runtime_env.uri_cache import URICache
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-
+from ray._private.runtime_env.validation import ParsedRuntimeEnv
 
 def test_get_wheel_filename():
     ray_version = "2.0.0.dev0"
@@ -459,7 +459,8 @@ def test_runtime_env_log_msg(
     indirect=True,
 )
 @pytest.mark.parametrize("use_client", [False, True])
-def test_get_current_runtime_env(call_ray_start, use_client):
+@pytest.mark.parametrize("use_runtime_context_api", [False, True])
+def test_get_current_runtime_env(call_ray_start, use_client, use_runtime_context_api):
     job_runtime_env = {"env_vars": {"a": "b"}}
 
     if not use_client:
@@ -468,13 +469,20 @@ def test_get_current_runtime_env(call_ray_start, use_client):
     else:
         ray.init("ray://localhost:25553", runtime_env=job_runtime_env)
 
-    current_runtime_env = ray.runtime_env.get_current_runtime_env()
-    assert type(current_runtime_env) is dict
+    if use_runtime_context_api:
+        current_runtime_env = ray.get_runtime_context().runtime_env
+    else:
+        current_runtime_env = ray.runtime_env.get_current_runtime_env()
+
+    assert type(current_runtime_env) in [ParsedRuntimeEnv, dict]
     assert current_runtime_env == job_runtime_env
 
     @ray.remote
     def get_runtime_env():
-        return ray.runtime_env.get_current_runtime_env()
+        if use_runtime_context_api:
+            return ray.get_runtime_context().runtime_env
+        else:
+            return ray.runtime_env.get_current_runtime_env()
 
     assert ray.get(get_runtime_env.remote()) == job_runtime_env
 
