@@ -19,9 +19,6 @@ check_python_command_exist() {
         flake8)
             VERSION=$FLAKE8_VERSION_REQUIRED
             ;;
-        shellcheck)
-            VERSION=$SHELLCHECK_VERSION_REQUIRED
-            ;;
         mypy)
             VERSION=$MYPY_VERSION_REQUIRED
             ;;
