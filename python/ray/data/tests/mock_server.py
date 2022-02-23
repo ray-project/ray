@@ -15,12 +15,15 @@ _proxy_bypass = {
 
 def start_service(service_name, host, port):
     moto_svr_path = shutil.which("moto_server")
+    if not moto_svr_path:
+        pytest.skip("moto not installed")
     args = [moto_svr_path, service_name, "-H", host, "-p", str(port)]
     # For debugging
     # args = '{0} {1} -H {2} -p {3} 2>&1 | \
     # tee -a /tmp/moto.log'.format(moto_svr_path, service_name, host, port)
     process = sp.Popen(
-        args, stdin=sp.PIPE, stdout=sp.PIPE, stderr=sp.PIPE)  # shell=True
+        args, stdin=sp.PIPE, stdout=sp.PIPE, stderr=sp.PIPE
+    )  # shell=True
     url = "http://{host}:{port}".format(host=host, port=port)
 
     for i in range(0, 30):
@@ -53,12 +56,19 @@ def stop_process(process):
         process.kill()
         outs, errors = process.communicate(timeout=20)
         exit_code = process.returncode
-        msg = "Child process finished {} not in clean way: {} {}" \
-            .format(exit_code, outs, errors)
+        msg = "Child process finished {} not in clean way: {} {}".format(
+            exit_code, outs, errors
+        )
         raise RuntimeError(msg)
 
 
-@pytest.fixture(scope="session")
+# TODO(Clark): We should be able to use "session" scope here, but we've found
+# that the s3_fs fixture ends up hanging with S3 ops timing out (or the server
+# being unreachable). This appears to only be an issue when using the tmp_dir
+# fixture as the S3 dir path. We should fix this since "session" scope should
+# reduce a lot of the per-test overhead (2x faster execution for IO methods in
+# test_dataset.py).
+@pytest.fixture(scope="function")
 def s3_server():
     host = "localhost"
     port = 5002

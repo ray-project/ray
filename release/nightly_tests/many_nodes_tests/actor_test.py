@@ -12,7 +12,7 @@ def test_max_actors_launch(cpus_per_actor, total_actors):
             pass
 
     print("Start launch actors")
-    actors = [Actor.remote() for _ in range(total_actors)]
+    actors = [Actor.options(max_restarts=-1).remote() for _ in range(total_actors)]
     return actors
 
 
@@ -23,8 +23,8 @@ def test_actor_ready(actors):
 
 def parse_script_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cpus-per-actor", type=float, default=0.1)
-    parser.add_argument("--total-actors", type=int, default=20000)
+    parser.add_argument("--cpus-per-actor", type=float, default=0.2)
+    parser.add_argument("--total-actors", type=int, default=5000)
     parser.add_argument("--no-report", default=False, action="store_true")
     parser.add_argument("--fail", default=False, action="store_true")
     return parser.parse_known_args()
@@ -47,17 +47,12 @@ def main():
     actor_ready_end = perf_counter()
     actor_ready_time = actor_ready_end - actor_ready_start
 
-    print(
-        f"Actor launch time: {actor_launch_time} ({args.total_actors} actors)")
+    print(f"Actor launch time: {actor_launch_time} ({args.total_actors} actors)")
     print(f"Actor ready time: {actor_ready_time} ({args.total_actors} actors)")
-    print(f"Total time: {actor_launch_time + actor_ready_time}"
-          f" ({args.total_actors} actors)")
-
     print(
-        f"Actor launch time: {actor_launch_time} ({args.total_actors} actors)")
-    print(f"Actor ready time: {actor_ready_time} ({args.total_actors} actors)")
-    print(f"Total time: {actor_launch_time + actor_ready_time}"
-          f" ({args.total_actors} actors)")
+        f"Total time: {actor_launch_time + actor_ready_time}"
+        f" ({args.total_actors} actors)"
+    )
 
     if "TEST_OUTPUT_JSON" in os.environ and not args.no_report:
         out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
@@ -66,7 +61,7 @@ def main():
             "actor_ready_time": actor_ready_time,
             "total_time": actor_launch_time + actor_ready_time,
             "num_actors": args.total_actors,
-            "success": "1"
+            "success": "1",
         }
         json.dump(results, out_file)
 

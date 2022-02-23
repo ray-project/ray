@@ -2,7 +2,7 @@ from typing import Dict
 
 from ray.rllib.env import BaseEnv
 from ray.rllib.policy import Policy
-from ray.rllib.evaluation import MultiAgentEpisode, RolloutWorker
+from ray.rllib.evaluation import Episode, RolloutWorker
 from ray.rllib.utils.framework import TensorType
 from ray.rllib.utils.typing import AgentID, PolicyID
 
@@ -20,10 +20,15 @@ class ObservationFunction:
     This API is **experimental**.
     """
 
-    def __call__(self, agent_obs: Dict[AgentID, TensorType],
-                 worker: RolloutWorker, base_env: BaseEnv,
-                 policies: Dict[PolicyID, Policy], episode: MultiAgentEpisode,
-                 **kw) -> Dict[AgentID, TensorType]:
+    def __call__(
+        self,
+        agent_obs: Dict[AgentID, TensorType],
+        worker: RolloutWorker,
+        base_env: BaseEnv,
+        policies: Dict[PolicyID, Policy],
+        episode: Episode,
+        **kw
+    ) -> Dict[AgentID, TensorType]:
         """Callback run on each environment step to observe the environment.
 
         This method takes in the original agent observation dict returned by
@@ -41,11 +46,11 @@ class ObservationFunction:
                 returns this dict.
             worker (RolloutWorker): Reference to the current rollout worker.
             base_env (BaseEnv): BaseEnv running the episode. The underlying
-                env objects can be retrieved by calling
-                base_env.get_unwrapped().
+                sub environment objects (BaseEnvs are vectorized) can be
+                retrieved by calling `base_env.get_sub_environments()`.
             policies (dict): Mapping of policy id to policy objects. In single
                 agent mode there will only be a single "default" policy.
-            episode (MultiAgentEpisode): Episode state object.
+            episode (Episode): Episode state object.
             kwargs: Forward compatibility placeholder.
 
         Returns:

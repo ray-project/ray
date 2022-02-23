@@ -1,0 +1,5 @@
+name: example_job
+command: python demo_script.py
+runtime_env:
+    working_dir: .
+    docker: anyscale-ml/ray-ml:nightly-py38-cpu

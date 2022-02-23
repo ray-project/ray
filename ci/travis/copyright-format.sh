@@ -87,7 +87,7 @@ for directory in "${INCLUDES_CPP_DIRS[@]}"; do
         fi
         cmd_args="${cmd_args}*'"
     done
-    cmd_args="${cmd_args} \( -name '*.cc' -or -name '*.h' \)"
+    cmd_args="${cmd_args} \( -name '*.cc' -or -name '*.h' -or -name '*.proto' \)"
     eval "${cmd_args}" > "$FILE_LIST_TMP_FILE"
     while IFS=$'\n' read -r f
     do

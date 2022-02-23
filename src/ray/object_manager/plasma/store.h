@@ -53,7 +53,6 @@ using flatbuf::PlasmaError;
 
 class PlasmaStore {
  public:
-  // TODO: PascalCase PlasmaStore methods.
   PlasmaStore(instrumented_io_context &main_service, IAllocator &allocator,
               const std::string &socket_name, uint32_t delay_on_oom_ms,
               float object_spilling_threshold,
@@ -216,7 +215,9 @@ class PlasmaStore {
   // Start listening for clients.
   void DoAccept();
 
-  void PrintDebugDump() const LOCKS_EXCLUDED(mutex_);
+  void RecordMetrics() const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void PrintAndRecordDebugDump() const LOCKS_EXCLUDED(mutex_);
 
   std::string GetDebugDump() const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

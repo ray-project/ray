@@ -1,7 +1,9 @@
+from ray.util.annotations import Deprecated
 from ray.util.iter import ParallelIterator, from_iterators
 
 
-class Dataset():
+@Deprecated
+class Dataset:
     """A simple Dataset abstraction for RaySGD.
 
     This dataset is designed to work with RaySGD trainers (currently just
@@ -51,20 +53,16 @@ class Dataset():
             will occur on.
     """
 
-    def __init__(self,
-                 data,
-                 batch_size=32,
-                 download_func=None,
-                 max_concurrency=0,
-                 transform=None):
+    def __init__(
+        self, data, batch_size=32, download_func=None, max_concurrency=0, transform=None
+    ):
         par_iter = None
         if isinstance(data, ParallelIterator):
             par_iter = data.repartition(1)
         else:
             par_iter = from_iterators([data], repeat=True)
         if download_func:
-            par_iter = par_iter.for_each(
-                download_func, max_concurrency=max_concurrency)
+            par_iter = par_iter.for_each(download_func, max_concurrency=max_concurrency)
         self.iter = par_iter.batch(batch_size)
 
         self.batch_size = batch_size
@@ -83,10 +81,9 @@ class Dataset():
         """
         Returns a single, iterable shard.
         """
-        assert i < self.iter.num_shards(), \
-            "Trying to get shard {} but there are only {} shards. Are you " \
-            "sure you called set_num_shards already?".format(
-                i, self.iter.num_shards()
-            )
+        assert i < self.iter.num_shards(), (
+            "Trying to get shard {} but there are only {} shards. Are you "
+            "sure you called set_num_shards already?".format(i, self.iter.num_shards())
+        )
 
         return self.iter.get_shard(i)

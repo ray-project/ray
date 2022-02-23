@@ -44,12 +44,10 @@ class CoreWorkerMemoryStore {
  public:
   /// Create a memory store.
   ///
-  /// \param[in] store_in_plasma If not null, this is used to spill to plasma.
   /// \param[in] counter If not null, this enables ref counting for local objects,
   ///            and the `remove_after_get` flag for Get() will be ignored.
   /// \param[in] raylet_client If not null, used to notify tasks blocked / unblocked.
   CoreWorkerMemoryStore(
-      std::function<void(const RayObject &, const ObjectID &)> store_in_plasma = nullptr,
       std::shared_ptr<ReferenceCounter> counter = nullptr,
       std::shared_ptr<raylet::RayletClient> raylet_client = nullptr,
       std::function<Status()> check_signals = nullptr,
@@ -103,14 +101,6 @@ class CoreWorkerMemoryStore {
   ///            object value once available.
   void GetAsync(const ObjectID &object_id,
                 std::function<void(std::shared_ptr<RayObject>)> callback);
-
-  /// Get a single object if available. If the object is not local yet, or if the object
-  /// is local but is ErrorType::OBJECT_IN_PLASMA, then nullptr will be returned, and
-  /// the store will ensure the object is promoted to plasma once available.
-  ///
-  /// \param[in] object_id The object id to get.
-  /// \return pointer to the local object, or nullptr if promoted to plasma.
-  std::shared_ptr<RayObject> GetOrPromoteToPlasma(const ObjectID &object_id);
 
   /// Delete a list of objects from the object store.
   /// NOTE(swang): Objects that contain IsInPlasmaError will not be
@@ -187,9 +177,6 @@ class CoreWorkerMemoryStore {
   /// properly.
   void EraseObjectAndUpdateStats(const ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Optional callback for putting objects into the plasma store.
-  std::function<void(const RayObject &, const ObjectID &)> store_in_plasma_;
-
   /// If enabled, holds a reference to local worker ref counter. TODO(ekl) make this
   /// mandatory once Java is supported.
   std::shared_ptr<ReferenceCounter> ref_counter_ = nullptr;
@@ -199,9 +186,6 @@ class CoreWorkerMemoryStore {
 
   /// Protects the data structures below.
   mutable absl::Mutex mu_;
-
-  /// Set of objects that should be promoted to plasma once available.
-  absl::flat_hash_set<ObjectID> promoted_to_plasma_ GUARDED_BY(mu_);
 
   /// Map from object ID to `RayObject`.
   /// NOTE: This map should be modified by EmplaceObjectAndUpdateStats and

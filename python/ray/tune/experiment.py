@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Dict, Sequence, Any
 import copy
 import inspect
@@ -7,49 +8,16 @@ import os
 from pickle import PicklingError
 
 from ray.tune.error import TuneError
-from ray.tune.registry import register_trainable, get_trainable_cls
+from ray.tune.registry import register_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.sample import Domain
-from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, \
-    TimeoutStopper
+from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
+from ray.tune.syncer import SyncConfig
 from ray.tune.utils import date_str, detect_checkpoint_function
 
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
-
-
-def _raise_deprecation_note(deprecated, replacement, soft=False):
-    """User notification for deprecated parameter.
-
-    Arguments:
-        deprecated (str): Deprecated parameter.
-        replacement (str): Replacement parameter to use instead.
-        soft (bool): Fatal if True.
-    """
-    error_msg = ("`{deprecated}` is deprecated. Please use `{replacement}`. "
-                 "`{deprecated}` will be removed in future versions of "
-                 "Ray.".format(deprecated=deprecated, replacement=replacement))
-    if soft:
-        logger.warning(error_msg)
-    else:
-        raise DeprecationWarning(error_msg)
-
-
-def _raise_on_durable(trainable_name, sync_to_driver, upload_dir):
-    trainable_cls = get_trainable_cls(trainable_name)
-    from ray.tune.durable_trainable import DurableTrainable
-    if issubclass(trainable_cls, DurableTrainable):
-        if sync_to_driver is not False:
-            raise ValueError(
-                "EXPERIMENTAL: DurableTrainable will automatically sync "
-                "results to the provided upload_dir. "
-                "Set `sync_to_driver=False` to avoid data inconsistencies.")
-        if not upload_dir:
-            raise ValueError(
-                "EXPERIMENTAL: DurableTrainable will automatically sync "
-                "results to the provided upload_dir. "
-                "`upload_dir` must be provided.")
 
 
 def _validate_log_to_file(log_to_file):
@@ -67,13 +35,16 @@ def _validate_log_to_file(log_to_file):
             raise ValueError(
                 "If you pass a Sequence to `log_to_file` it has to have "
                 "a length of 2 (for stdout and stderr, respectively). The "
-                "Sequence you passed has length {}.".format(len(log_to_file)))
+                "Sequence you passed has length {}.".format(len(log_to_file))
+            )
         stdout_file, stderr_file = log_to_file
     else:
         raise ValueError(
             "You can pass a boolean, a string, or a Sequence of length 2 to "
             "`log_to_file`, but you passed something else ({}).".format(
-                type(log_to_file)))
+                type(log_to_file)
+            )
+        )
     return stdout_file, stderr_file
 
 
@@ -104,72 +75,70 @@ class Experiment:
             max_failures=2)
     """
 
-    # keys that will be present in `public_spec` dict
-    PUBLIC_KEYS = {"stop", "num_samples"}
+    # Keys that will be present in `public_spec` dict.
+    PUBLIC_KEYS = {"stop", "num_samples", "time_budget_s"}
 
-    def __init__(self,
-                 name,
-                 run,
-                 stop=None,
-                 time_budget_s=None,
-                 config=None,
-                 resources_per_trial=None,
-                 num_samples=1,
-                 local_dir=None,
-                 upload_dir=None,
-                 trial_name_creator=None,
-                 trial_dirname_creator=None,
-                 loggers=None,
-                 log_to_file=False,
-                 sync_to_driver=None,
-                 sync_to_cloud=None,
-                 checkpoint_freq=0,
-                 checkpoint_at_end=False,
-                 sync_on_checkpoint=True,
-                 keep_checkpoints_num=None,
-                 checkpoint_score_attr=None,
-                 export_formats=None,
-                 max_failures=0,
-                 restore=None):
-
-        if loggers is not None:
-            # Most users won't run into this as `tune.run()` does not pass
-            # the argument anymore. However, we will want to inform users
-            # if they instantiate their `Experiment` objects themselves.
-            raise ValueError(
-                "Passing `loggers` to an `Experiment` is deprecated. Use "
-                "an `LoggerCallback` callback instead, e.g. by passing the "
-                "`Logger` classes to `tune.logger.LegacyLoggerCallback` and "
-                "passing this as part of the `callback` parameter to "
-                "`tune.run()`.")
+    def __init__(
+        self,
+        name,
+        run,
+        stop=None,
+        time_budget_s=None,
+        config=None,
+        resources_per_trial=None,
+        num_samples=1,
+        local_dir=None,
+        sync_config=None,
+        trial_name_creator=None,
+        trial_dirname_creator=None,
+        log_to_file=False,
+        checkpoint_freq=0,
+        checkpoint_at_end=False,
+        keep_checkpoints_num=None,
+        checkpoint_score_attr=None,
+        export_formats=None,
+        max_failures=0,
+        restore=None,
+    ):
 
         config = config or {}
-        if callable(run) and not inspect.isclass(run) and \
-                detect_checkpoint_function(run):
+        sync_config = sync_config or SyncConfig()
+        if (
+            callable(run)
+            and not inspect.isclass(run)
+            and detect_checkpoint_function(run)
+        ):
             if checkpoint_at_end:
-                raise ValueError("'checkpoint_at_end' cannot be used with a "
-                                 "checkpointable function. You can specify "
-                                 "and register checkpoints within "
-                                 "your trainable function.")
+                raise ValueError(
+                    "'checkpoint_at_end' cannot be used with a "
+                    "checkpointable function. You can specify "
+                    "and register checkpoints within "
+                    "your trainable function."
+                )
             if checkpoint_freq:
                 raise ValueError(
                     "'checkpoint_freq' cannot be used with a "
                     "checkpointable function. You can specify checkpoints "
-                    "within your trainable function.")
+                    "within your trainable function."
+                )
         self._run_identifier = Experiment.register_if_needed(run)
         self.name = name or self._run_identifier
 
         # If the name has been set explicitly, we don't want to create
         # dated directories. The same is true for string run identifiers.
-        if int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0)) == 1 or name \
-           or isinstance(run, str):
+        if (
+            int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0)) == 1
+            or name
+            or isinstance(run, str)
+        ):
             self.dir_name = self.name
         else:
             self.dir_name = "{}_{}".format(self.name, date_str())
 
-        if upload_dir:
-            self.remote_checkpoint_dir = os.path.join(upload_dir,
-                                                      self.dir_name)
+        if sync_config.upload_dir:
+            self.remote_checkpoint_dir = os.path.join(
+                sync_config.upload_dir, self.dir_name
+            )
         else:
             self.remote_checkpoint_dir = None
 
@@ -178,63 +147,68 @@ class Experiment:
         if not stop:
             pass
         elif isinstance(stop, list):
-            if any(not isinstance(s, Stopper) for s in stop):
+            bad_stoppers = [s for s in stop if not isinstance(s, Stopper)]
+            if bad_stoppers:
+                stopper_types = [type(s) for s in stop]
                 raise ValueError(
                     "If you pass a list as the `stop` argument to "
                     "`tune.run()`, each element must be an instance of "
-                    "`tune.stopper.Stopper`.")
+                    f"`tune.stopper.Stopper`. Got {stopper_types}."
+                )
             self._stopper = CombinedStopper(*stop)
         elif isinstance(stop, dict):
             stopping_criteria = stop
         elif callable(stop):
             if FunctionStopper.is_valid_function(stop):
                 self._stopper = FunctionStopper(stop)
-            elif issubclass(type(stop), Stopper):
+            elif isinstance(stop, Stopper):
                 self._stopper = stop
             else:
-                raise ValueError("Provided stop object must be either a dict, "
-                                 "a function, or a subclass of "
-                                 "`ray.tune.Stopper`.")
+                raise ValueError(
+                    "Provided stop object must be either a dict, "
+                    "a function, or a subclass of "
+                    f"`ray.tune.Stopper`. Got {type(stop)}."
+                )
         else:
-            raise ValueError("Invalid stop criteria: {}. Must be a "
-                             "callable or dict".format(stop))
+            raise ValueError(
+                f"Invalid stop criteria: {stop}. Must be a "
+                f"callable or dict. Got {type(stop)}."
+            )
 
         if time_budget_s:
             if self._stopper:
-                self._stopper = CombinedStopper(self._stopper,
-                                                TimeoutStopper(time_budget_s))
+                self._stopper = CombinedStopper(
+                    self._stopper, TimeoutStopper(time_budget_s)
+                )
             else:
                 self._stopper = TimeoutStopper(time_budget_s)
-
-        _raise_on_durable(self._run_identifier, sync_to_driver, upload_dir)
 
         stdout_file, stderr_file = _validate_log_to_file(log_to_file)
 
         spec = {
             "run": self._run_identifier,
             "stop": stopping_criteria,
+            "time_budget_s": time_budget_s,
             "config": config,
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
             "local_dir": os.path.abspath(
-                os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR)),
-            "upload_dir": upload_dir,
+                os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR)
+            ),
+            "sync_config": sync_config,
             "remote_checkpoint_dir": self.remote_checkpoint_dir,
             "trial_name_creator": trial_name_creator,
             "trial_dirname_creator": trial_dirname_creator,
-            "loggers": loggers,
             "log_to_file": (stdout_file, stderr_file),
-            "sync_to_driver": sync_to_driver,
-            "sync_to_cloud": sync_to_cloud,
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
-            "sync_on_checkpoint": sync_on_checkpoint,
             "keep_checkpoints_num": keep_checkpoints_num,
             "checkpoint_score_attr": checkpoint_score_attr,
             "export_formats": export_formats or [],
             "max_failures": max_failures,
             "restore": os.path.abspath(os.path.expanduser(restore))
-            if restore else None
+            if restore
+            else None,
         }
         self.spec = spec
 
@@ -255,6 +229,9 @@ class Experiment:
             spec["config"] = spec.get("config", {})
             spec["config"]["env"] = spec["env"]
             del spec["env"]
+
+        if "sync_config" in spec and isinstance(spec["sync_config"], dict):
+            spec["sync_config"] = SyncConfig(**spec["sync_config"])
 
         spec = copy.deepcopy(spec)
 
@@ -298,17 +275,24 @@ class Experiment:
                     name = "DEFAULT"
                 else:
                     name = fn_name
+            elif (
+                isinstance(run_object, partial)
+                and hasattr(run_object, "func")
+                and hasattr(run_object.func, "__name__")
+            ):
+                name = run_object.func.__name__
             else:
-                logger.warning(
-                    "No name detected on trainable. Using {}.".format(name))
+                logger.warning("No name detected on trainable. Using {}.".format(name))
             try:
                 register_trainable(name, run_object)
             except (TypeError, PicklingError) as e:
-                extra_msg = ("Other options: "
-                             "\n-Try reproducing the issue by calling "
-                             "`pickle.dumps(trainable)`. "
-                             "\n-If the error is typing-related, try removing "
-                             "the type annotations and try again.")
+                extra_msg = (
+                    "Other options: "
+                    "\n-Try reproducing the issue by calling "
+                    "`pickle.dumps(trainable)`. "
+                    "\n-If the error is typing-related, try removing "
+                    "the type annotations and try again."
+                )
                 raise type(e)(str(e) + " " + extra_msg) from None
             return name
         else:
@@ -364,17 +348,16 @@ def convert_to_experiment_list(experiments):
         exp_list = [experiments]
     elif type(experiments) is dict:
         exp_list = [
-            Experiment.from_json(name, spec)
-            for name, spec in experiments.items()
+            Experiment.from_json(name, spec) for name, spec in experiments.items()
         ]
 
     # Validate exp_list
-    if (type(exp_list) is list
-            and all(isinstance(exp, Experiment) for exp in exp_list)):
+    if type(exp_list) is list and all(isinstance(exp, Experiment) for exp in exp_list):
         if len(exp_list) > 1:
             logger.info(
                 "Running with multiple concurrent experiments. "
-                "All experiments will be using the same SearchAlgorithm.")
+                "All experiments will be using the same SearchAlgorithm."
+            )
     else:
         raise TuneError("Invalid argument: {}".format(experiments))
 

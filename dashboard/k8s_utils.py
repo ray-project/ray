@@ -31,7 +31,7 @@ def cpu_percent():
         delta in total host cpu usage, averaged over host's cpus.
 
     Since deltas are not initially available, return 0.0 on first call.
-    """ # noqa
+    """  # noqa
     global last_system_usage
     global last_cpu_usage
     try:
@@ -43,12 +43,10 @@ def cpu_percent():
         else:
             cpu_delta = cpu_usage - last_cpu_usage
             # "System time passed." (Typically close to clock time.)
-            system_delta = (
-                (system_usage - last_system_usage) / _host_num_cpus())
+            system_delta = (system_usage - last_system_usage) / _host_num_cpus()
 
             quotient = cpu_delta / system_delta
-            cpu_percent = round(
-                quotient * 100 / ray._private.utils.get_k8s_cpus(), 1)
+            cpu_percent = round(quotient * 100 / ray._private.utils.get_k8s_cpus(), 1)
         last_system_usage = system_usage
         last_cpu_usage = cpu_usage
         # Computed percentage might be slightly above 100%.
@@ -73,14 +71,14 @@ def _system_usage():
 
     See also the /proc/stat entry here:
     https://man7.org/linux/man-pages/man5/proc.5.html
-    """ # noqa
+    """  # noqa
     cpu_summary_str = open(PROC_STAT_PATH).read().split("\n")[0]
     parts = cpu_summary_str.split()
     assert parts[0] == "cpu"
     usage_data = parts[1:8]
     total_clock_ticks = sum(int(entry) for entry in usage_data)
     # 100 clock ticks per second, 10^9 ns per second
-    usage_ns = total_clock_ticks * 10**7
+    usage_ns = total_clock_ticks * 10 ** 7
     return usage_ns
 
 
@@ -91,7 +89,8 @@ def _host_num_cpus():
         proc_stat_lines = open(PROC_STAT_PATH).read().split("\n")
         split_proc_stat_lines = [line.split() for line in proc_stat_lines]
         cpu_lines = [
-            split_line for split_line in split_proc_stat_lines
+            split_line
+            for split_line in split_proc_stat_lines
             if len(split_line) > 0 and "cpu" in split_line[0]
         ]
         # Number of lines starting with a word including 'cpu', subtracting

@@ -5,7 +5,7 @@ Workflow IDs
 ------------
 Each workflow has a unique ``workflow_id``. By default, when you call ``.run()`` or ``.run_async()``, a random id is generated. It is recommended you explicitly assign each workflow an id via ``.run(workflow_id="id")``.
 
-If ``.run()`` is called with a previously used workflow id,  the workflow will be resumed, unless ``resume_existing=False``, in which case an error will be raised.
+If ``.run()`` is called with a previously used workflow id, the workflow will be resumed from the previous execution.
 
 Workflow States
 ---------------
@@ -14,7 +14,6 @@ A workflow can be in one of several states:
 =================== =======================================================================================
 Status              Description
 =================== =======================================================================================
-RUNNING             The workflow is currently running in the cluster.
 RUNNING             The workflow is currently running in the cluster.
 FAILED              This workflow failed with an application error. It can be resumed from the failed step.
 RESUMABLE           This workflow failed with a system error. It can be resumed from the failed step.
@@ -45,6 +44,9 @@ Single workflow management APIs
     # Cancel a workflow.
     workflow.cancel(workflow_id="workflow_id")
 
+    # Delete the workflow.
+    workflow.delete(workflow_id="workflow_id")
+
 Bulk workflow management APIs
 -----------------------------
 
@@ -73,7 +75,7 @@ Bulk workflow management APIs
 Recurring workflows
 -------------------
 
-Ray workflows currently has no built-in job scheduler. You can however easily use any external job scheduler to connect to your Ray cluster via Ray client and trigger workflow runs.
+Ray workflows currently has no built-in job scheduler. You can however easily use any external job scheduler to interact with your Ray cluster (via :ref:`job submission <jobs-overview>` or :ref:`client connection <ray-client>`) trigger workflow runs.
 
 Storage Configuration
 ---------------------
@@ -101,7 +103,7 @@ Besides ``workflow.init()``, the storage URI can also be set via environment var
 If left unspecified, ``/tmp/ray/workflow_data`` will be used for temporary storage. This default setting *will only work for single-node Ray clusters*.
 
 
-Dependency Management
+Handling Dependencies
 ---------------------
 
 **Note: This feature is not yet implemented.**

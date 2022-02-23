@@ -1,6 +1,7 @@
 # A unique identifier for the head node and workers of this cluster.
 cluster_name: default
 
+# Running Ray in Docker images is optional (this docker section can be commented out).
 # This executes all commands on all nodes in the docker container,
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled. Assumes Docker is installed.
@@ -31,7 +32,14 @@ provider:
 # How Ray will authenticate with newly launched nodes.
 auth:
     ssh_user: YOUR_USERNAME
-    # Optional if an ssh private key is necessary to ssh to the cluster.
+    # You can comment out `ssh_private_key` if the following machines don't need a private key for SSH access to the Ray
+    # cluster:
+    #   (1) The machine on which `ray up` is executed.
+    #   (2) The head node of the Ray cluster.
+    #
+    # The machine that runs ray up executes SSH commands to set up the Ray head node. The Ray head node subsequently
+    # executes SSH commands to set up the Ray worker nodes. When you run ray up, ssh credentials sitting on the ray up
+    # machine are copied to the head node -- internally, the ssh key is added to the list of file mounts to rsync to head node.
     # ssh_private_key: ~/.ssh/id_rsa
 
 # The minimum number of workers nodes to launch in addition to the head
@@ -57,7 +65,9 @@ upscaling_speed: 1.0
 idle_timeout_minutes: 5
 
 # Files or directories to copy to the head and worker nodes. The format is a
-# dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
+# dictionary from REMOTE_PATH: LOCAL_PATH. E.g. you could save your conda env to an environment.yaml file, mount
+# that directory to all nodes and call `conda -n my_env -f /path1/on/remote/machine/environment.yaml`. In this
+# example paths on all nodes must be the same (so that conda can be called always with the same argument)
 file_mounts: {
 #    "/path1/on/remote/machine": "/path1/on/local/machine",
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
@@ -91,7 +101,15 @@ initialization_commands: []
 
 # List of shell commands to run to set up each nodes.
 setup_commands: []
-    # Note: if you're developing Ray, you probably want to create a Docker image that
+    # If we have e.g. conda dependencies stored in "/path1/on/local/machine/environment.yaml", we can prepare the
+    # work environment on each worker by:
+    #   1. making sure each worker has access to this file i.e. see the `file_mounts` section
+    #   2. adding a command here that creates a new conda environment on each node or if the environment already exists,
+    #     it updates it:
+    #      conda env create -q -n my_venv -f /path1/on/local/machine/environment.yaml || conda env update -q -n my_venv -f /path1/on/local/machine/environment.yaml
+    #
+    # Ray developers:
+    # you probably want to create a Docker image that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
     # To run the nightly version of ray (as opposed to the latest), either use a rayproject docker image
@@ -106,10 +124,18 @@ worker_setup_commands: []
 
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
+  # If we have e.g. conda dependencies, we could create on each node a conda environment (see `setup_commands` section).
+  # In that case we'd have to activate that env on each node before running `ray`:
+  # - conda activate my_venv && ray stop
+  # - conda activate my_venv && ulimit -c unlimited && ray start --head --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
     - ray stop
     - ulimit -c unlimited && ray start --head --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
+  # If we have e.g. conda dependencies, we could create on each node a conda environment (see `setup_commands` section).
+  # In that case we'd have to activate that env on each node before running `ray`:
+  # - conda activate my_venv && ray stop
+  # - ray start --address=$RAY_HEAD_IP:6379
     - ray stop
     - ray start --address=$RAY_HEAD_IP:6379

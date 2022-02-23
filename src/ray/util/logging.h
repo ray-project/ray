@@ -49,6 +49,7 @@
 #pragma once
 
 #include <gtest/gtest_prod.h>
+
 #include <atomic>
 #include <chrono>
 #include <functional>
@@ -124,6 +125,18 @@ enum class RayLogLevel {
 #define RAY_DCHECK(condition) RAY_CHECK(condition)
 
 #endif  // NDEBUG
+
+#define RAY_CHECK_OP(left, op, right)        \
+  if (const auto &_left_ = (left); true)     \
+    if (const auto &_right_ = (right); true) \
+  RAY_CHECK((_left_ op _right_)) << " " << _left_ << " vs " << _right_
+
+#define RAY_CHECK_EQ(left, right) RAY_CHECK_OP(left, ==, right)
+#define RAY_CHECK_NE(left, right) RAY_CHECK_OP(left, !=, right)
+#define RAY_CHECK_LE(left, right) RAY_CHECK_OP(left, <=, right)
+#define RAY_CHECK_LT(left, right) RAY_CHECK_OP(left, <, right)
+#define RAY_CHECK_GE(left, right) RAY_CHECK_OP(left, >=, right)
+#define RAY_CHECK_GT(left, right) RAY_CHECK_OP(left, >, right)
 
 // RAY_LOG_EVERY_N/RAY_LOG_EVERY_MS, adaped from
 // https://github.com/google/glog/blob/master/src/glog/logging.h.in
@@ -233,6 +246,7 @@ class RayLog : public RayLogBase {
                           const std::string &logDir = "");
 
   /// The shutdown function of ray log which should be used with StartRayLog as a pair.
+  /// If `StartRayLog` wasn't called before, it will be no-op.
   static void ShutDownRayLog();
 
   /// Uninstall the signal actions installed by InstallFailureSignalHandler.
@@ -245,7 +259,18 @@ class RayLog : public RayLogBase {
   static bool IsLevelEnabled(RayLogLevel log_level);
 
   /// Install the failure signal handler to output call stack when crash.
-  static void InstallFailureSignalHandler();
+  ///
+  /// \param argv0 This is the argv[0] supplied to main(). It enables an alternative way
+  /// to locate the object file containing debug symbols for ELF format executables. If
+  /// this is left as nullptr, symbolization can fail in some cases. More details in:
+  /// https://github.com/abseil/abseil-cpp/blob/master/absl/debugging/symbolize_elf.inc
+  /// \parem call_previous_handler Whether to call the previous signal handler. See
+  /// important caveats:
+  /// https://github.com/abseil/abseil-cpp/blob/7e446075d4aff4601c1e7627c7c0be2c4833a53a/absl/debugging/failure_signal_handler.h#L76-L88
+  /// This is currently used to enable signal handler from both Python and C++ in Python
+  /// worker.
+  static void InstallFailureSignalHandler(const char *argv0,
+                                          bool call_previous_handler = false);
 
   /// To check failure signal handler enabled or not.
   static bool IsFailureSignalHandlerEnabled();
@@ -275,6 +300,8 @@ class RayLog : public RayLogBase {
   bool is_fatal_ = false;
   /// String stream of exposed log content.
   std::shared_ptr<std::ostringstream> expose_osstream_ = nullptr;
+  /// Whether or not the log is initialized.
+  static std::atomic<bool> initialized_;
   /// Callback functions which will be triggered to expose fatal log.
   static std::vector<FatalLogCallback> fatal_log_callbacks_;
   static RayLogLevel severity_threshold_;

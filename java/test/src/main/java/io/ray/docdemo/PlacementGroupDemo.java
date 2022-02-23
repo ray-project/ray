@@ -95,31 +95,6 @@ public class PlacementGroupDemo {
     Assert.assertEquals(removedPlacementGroup.getState(), PlacementGroupState.REMOVED);
   }
 
-  public static void createGlobalNamedPlacementGroup() {
-    // Create a placement group with a globally unique name.
-    Map<String, Double> bundle = ImmutableMap.of("CPU", 1.0);
-    List<Map<String, Double>> bundles = ImmutableList.of(bundle);
-
-    PlacementGroupCreationOptions options =
-        new PlacementGroupCreationOptions.Builder()
-            .setBundles(bundles)
-            .setStrategy(PlacementStrategy.STRICT_SPREAD)
-            .setGlobalName("global_name")
-            .build();
-
-    PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
-    pg.wait(60);
-
-    // Retrieve the placement group later somewhere.
-    PlacementGroup group = PlacementGroups.getGlobalPlacementGroup("global_name");
-    Assert.assertNotNull(group);
-
-    PlacementGroups.removePlacementGroup(pg.getId());
-
-    PlacementGroup removedPlacementGroup = PlacementGroups.getPlacementGroup(pg.getId());
-    Assert.assertEquals(removedPlacementGroup.getState(), PlacementGroupState.REMOVED);
-  }
-
   public static void createNonGlobalNamedPlacementGroup() {
     // Create a placement group with a job-scope-unique name.
     Map<String, Double> bundle = ImmutableMap.of("CPU", 1.0);
@@ -186,8 +161,6 @@ public class PlacementGroupDemo {
     createAndRemovePlacementGroup();
 
     runNormalTaskWithPlacementGroup();
-
-    createGlobalNamedPlacementGroup();
 
     createNonGlobalNamedPlacementGroup();
 

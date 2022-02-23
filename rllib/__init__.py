@@ -20,30 +20,30 @@ def _setup_logger():
     handler.setFormatter(
         logging.Formatter(
             "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
-        ))
+        )
+    )
     logger.addHandler(handler)
     logger.propagate = False
 
 
 def _register_all():
-    from ray.rllib.agents.trainer import Trainer, with_common_config
+    from ray.rllib.agents.trainer import Trainer
     from ray.rllib.agents.registry import ALGORITHMS, get_trainer_class
     from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
 
-    for key in list(ALGORITHMS.keys()) + list(CONTRIBUTED_ALGORITHMS.keys(
-    )) + ["__fake", "__sigmoid_fake_data", "__parameter_tuning"]:
+    for key in (
+        list(ALGORITHMS.keys())
+        + list(CONTRIBUTED_ALGORITHMS.keys())
+        + ["__fake", "__sigmoid_fake_data", "__parameter_tuning"]
+    ):
         register_trainable(key, get_trainer_class(key))
 
     def _see_contrib(name):
         """Returns dummy agent class warning algo is in contrib/."""
 
         class _SeeContrib(Trainer):
-            _name = "SeeContrib"
-            _default_config = with_common_config({})
-
             def setup(self, config):
-                raise NameError(
-                    "Please run `contrib/{}` instead.".format(name))
+                raise NameError("Please run `contrib/{}` instead.".format(name))
 
         return _SeeContrib
 
@@ -55,7 +55,6 @@ def _register_all():
 
 
 _setup_logger()
-_register_all()
 
 __all__ = [
     "Policy",

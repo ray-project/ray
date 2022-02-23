@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
@@ -82,14 +83,8 @@ class GrpcBasedResourceBroadcaster {
   /// A lock to protect the data structures.
   absl::Mutex mutex_;
   /// The set of nodes and their addresses which are subscribed to resource usage changes.
-  std::unordered_map<NodeID, rpc::Address> nodes_ GUARDED_BY(mutex_);
-  /// Whether the node currently has an inflight request already. An inflight request is
-  /// one that has been sent, with no reply, error, or timeout.
-  std::unordered_map<NodeID, bool> inflight_updates_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<NodeID, rpc::Address> nodes_ GUARDED_BY(mutex_);
 
-  /// The number of nodes skipped in the latest broadcast round. This is useful for
-  /// diagnostic purposes.
-  uint64_t num_skipped_nodes_;
   const uint64_t broadcast_period_ms_;
 
   void SendBroadcast();

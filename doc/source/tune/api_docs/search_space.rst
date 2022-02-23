@@ -31,7 +31,7 @@ Thereby, you can either use the ``tune.grid_search`` primitive to specify an axi
 
 
 
-.. caution:: If you use a Search Algorithm, you may not be able to specify lambdas or grid search with this
+.. caution:: If you use a SearchAlgorithm, you may not be able to specify lambdas or grid search with this
     interface, as some search algorithms may not be compatible.
 
 
@@ -154,12 +154,23 @@ Here's an example showing a grid search over two nested parameters combined with
         }
     )
 
+.. note::
+
+    This format is not supported by every SearchAlgorithm, and only some SearchAlgorithms, like :ref:`HyperOpt <tune-hyperopt>` and :ref:`Optuna <tune-optuna>`, handle conditional search spaces at all. 
+
+    In order to use conditional search spaces with :ref:`HyperOpt <tune-hyperopt>`, a `Hyperopt search space <http://hyperopt.github.io/hyperopt/getting-started/search_spaces/>`_ is necessary. :ref:`Optuna <tune-optuna>` supports conditional search spaces through its define-by-run interface (:doc:`/tune/examples/optuna_define_by_run_example`).
+
 .. _tune-sample-docs:
 
 Random Distributions API
 ------------------------
 
 This section covers the functions you can use to define your search spaces.
+
+.. caution::
+
+    Not all SearchAlgorithms support all distributions. In particular, ``tune.sample_from`` and ``tune.grid_search`` are often unsupported.
+    The default :ref:`tune-basicvariant` supports all distributions.
 
 For a high-level overview, see this example:
 

@@ -46,7 +46,7 @@ build_jars() {
     echo "Finished building jars for $p"
   done
   copy_jars "$JAR_DIR"
-  # ray runtime jar in a dir specifed by maven-jar-plugin
+  # ray runtime jar is in a dir specifed by maven-jar-plugin
   cp -f "$WORKSPACE_DIR"/build/java/ray*.jar "$JAR_DIR"
   echo "Finished building jar for $platform"
 }
@@ -57,7 +57,7 @@ copy_jars() {
   for module in "${RAY_JAVA_MODULES[@]}"; do
     cp -f "$WORKSPACE_DIR"/java/"$module"/target/*jar "$JAR_DIR"
   done
-  # ray runtime jar and are in a dir specifed by maven-jar-plugin
+  # ray runtime jar is in a dir specifed by maven-jar-plugin
   cp -f "$WORKSPACE_DIR"/build/java/ray*.jar "$JAR_DIR"
 }
 

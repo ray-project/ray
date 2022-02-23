@@ -32,14 +32,15 @@ from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.policy.policy import PolicySpec
-from ray.tune import register_env
+from ray.tune import CLIReporter, register_env
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument("--num-workers", type=int, default=2)
 parser.add_argument(
@@ -47,35 +48,32 @@ parser.add_argument(
     type=str,
     default=None,
     help="Full path to a checkpoint file for restoring a previously saved "
-    "Trainer state.")
+    "Trainer state.",
+)
 parser.add_argument(
-    "--env",
-    type=str,
-    default="connect_four",
-    choices=["markov_soccer", "connect_four"])
+    "--env", type=str, default="connect_four", choices=["markov_soccer", "connect_four"]
+)
 parser.add_argument(
-    "--stop-iters",
-    type=int,
-    default=200,
-    help="Number of iterations to train.")
+    "--stop-iters", type=int, default=200, help="Number of iterations to train."
+)
 parser.add_argument(
-    "--stop-timesteps",
-    type=int,
-    default=1000000,
-    help="Number of timesteps to train.")
+    "--stop-timesteps", type=int, default=10000000, help="Number of timesteps to train."
+)
 parser.add_argument(
     "--win-rate-threshold",
     type=float,
     default=0.95,
     help="Win-rate at which we setup another opponent by freezing the "
     "current main policy and playing against a uniform distribution "
-    "of previously frozen 'main's from here on.")
+    "of previously frozen 'main's from here on.",
+)
 parser.add_argument(
     "--num-episodes-human-play",
     type=int,
     default=10,
     help="How many episodes to play against the user on the command "
-    "line after training has finished.")
+    "line after training has finished.",
+)
 args = parser.parse_args()
 
 
@@ -121,6 +119,7 @@ class SelfPlayCallback(DefaultCallbacks):
             if r_main > r_opponent:
                 won += 1
         win_rate = won / len(main_rew)
+        result["win_rate"] = win_rate
         print(f"Iter={trainer.iteration} win-rate={win_rate} -> ", end="")
         # If win rate is good -> Snapshot current policy and play against
         # it next, keeping the snapshot fixed and only improving the "main"
@@ -133,13 +132,17 @@ class SelfPlayCallback(DefaultCallbacks):
             # Re-define the mapping function, such that "main" is forced
             # to play against any of the previously played policies
             # (excluding "random").
-            def policy_mapping_fn(agent_id, episode, **kwargs):
+            def policy_mapping_fn(agent_id, episode, worker, **kwargs):
                 # agent_id = [0|1] -> policy depends on episode ID
                 # This way, we make sure that both policies sometimes play
                 # (start player) and sometimes agent1 (player to move 2nd).
-                return "main" if episode.episode_id % 2 == agent_id \
-                    else "main_v{}".format(np.random.choice(
-                        list(range(1, self.current_opponent + 1))))
+                return (
+                    "main"
+                    if episode.episode_id % 2 == agent_id
+                    else "main_v{}".format(
+                        np.random.choice(list(range(1, self.current_opponent + 1)))
+                    )
+                )
 
             new_policy = trainer.add_policy(
                 policy_id=new_pol_id,
@@ -158,14 +161,16 @@ class SelfPlayCallback(DefaultCallbacks):
         else:
             print("not good enough; will keep learning ...")
 
+        # +2 = main + random
+        result["league_size"] = self.current_opponent + 2
+
 
 if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None, include_dashboard=False)
 
-    register_env("open_spiel_env",
-                 lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
+    register_env("open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
 
-    def policy_mapping_fn(agent_id, episode, **kwargs):
+    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
         # agent_id = [0|1] -> policy depends on episode ID
         # This way, we make sure that both policies sometimes play agent0
         # (start player) and sometimes agent1 (player to move 2nd).
@@ -218,7 +223,20 @@ if __name__ == "__main__":
             stop=stop,
             checkpoint_at_end=True,
             checkpoint_freq=10,
-            verbose=1)
+            verbose=2,
+            progress_reporter=CLIReporter(
+                metric_columns={
+                    "training_iteration": "iter",
+                    "time_total_s": "time_total_s",
+                    "timesteps_total": "ts",
+                    "episodes_this_iter": "train_episodes",
+                    "policy_reward_mean/main": "reward",
+                    "win_rate": "win_rate",
+                    "league_size": "league_size",
+                },
+                sort_by_metric=True,
+            ),
+        )
 
     # Restore trained trainer (set to non-explore behavior) and play against
     # human on command line.
@@ -246,10 +264,8 @@ if __name__ == "__main__":
                 if player_id == human_player:
                     action = ask_user_for_action(time_step)
                 else:
-                    obs = np.array(
-                        time_step.observations["info_state"][player_id])
-                    action = trainer.compute_single_action(
-                        obs, policy_id="main")
+                    obs = np.array(time_step.observations["info_state"][player_id])
+                    action = trainer.compute_single_action(obs, policy_id="main")
                     # In case computer chooses an invalid action, pick a
                     # random one.
                     legal = time_step.observations["legal_actions"][player_id]

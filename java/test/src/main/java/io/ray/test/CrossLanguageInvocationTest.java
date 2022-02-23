@@ -16,6 +16,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import org.apache.commons.io.FileUtils;
@@ -286,6 +287,40 @@ public class CrossLanguageInvocationTest extends BaseTest {
     Assert.fail();
   }
 
+  @Test
+  public void testCallingPythonNamedActor() {
+    /// 1. create Python named actor.
+    /// 2. get and invoke it in Java.
+    byte[] res =
+        Ray.task(PyFunction.of(PYTHON_MODULE, "py_func_create_named_actor", byte[].class))
+            .remote()
+            .get();
+    Assert.assertEquals(res, "true".getBytes(StandardCharsets.UTF_8));
+    PyActorHandle pyActor = (PyActorHandle) Ray.getActor("py_named_actor").get();
+
+    ObjectRef<byte[]> obj =
+        pyActor.task(PyActorMethod.of("increase", byte[].class), "1".getBytes()).remote();
+    Assert.assertEquals(obj.get(), "102".getBytes());
+  }
+
+  @Test
+  public void testCallingJavaNamedActor() {
+    /// 1. create Java named actor.
+    /// 2. get and invoke it in Python.
+    ActorHandle<TestActor> actor =
+        Ray.actor(TestActor::new, "hello".getBytes(StandardCharsets.UTF_8))
+            .setName("java_named_actor")
+            .remote();
+    Assert.assertEquals(
+        actor.task(TestActor::getValue).remote().get(), "hello".getBytes(StandardCharsets.UTF_8));
+
+    byte[] res =
+        Ray.task(PyFunction.of(PYTHON_MODULE, "py_func_get_and_invoke_named_actor", byte[].class))
+            .remote()
+            .get();
+    Assert.assertEquals(res, "true".getBytes(StandardCharsets.UTF_8));
+  }
+
   public static Object[] pack(int i, String s, double f, Object[] o) {
     // This function will be called from test_cross_language_invocation.py
     return new Object[] {i, s, f, o};
@@ -355,6 +390,21 @@ public class CrossLanguageInvocationTest extends BaseTest {
       return c;
     }
 
+    public byte[] getValue() {
+      return value;
+    }
+
     private byte[] value;
+  }
+
+  public void testPyCallJavaOeveridedMethodWithDefault() {
+    ObjectRef<Object> res =
+        Ray.task(
+                PyFunction.of(
+                    PYTHON_MODULE,
+                    "py_func_call_java_overrided_method_with_default_keyword",
+                    Object.class))
+            .remote();
+    Assert.assertEquals("hi", res.get());
   }
 }

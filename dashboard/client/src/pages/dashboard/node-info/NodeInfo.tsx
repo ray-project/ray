@@ -208,7 +208,9 @@ const NodeInfo: React.FC<{}> = () => {
 
   // Show GPU features only if there is at least one GPU in cluster.
   const showGPUs =
-    nodes.map((n) => n.gpus).filter((gpus) => gpus.length !== 0).length !== 0;
+    nodes
+      .map((n) => n.gpus)
+      .filter((gpus) => gpus !== undefined && gpus.length !== 0).length !== 0;
 
   // Don't show disk on Kubernetes. K8s node disk usage should be monitored
   // elsewhere.

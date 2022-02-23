@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# YAPF + Clang formatter (if installed). This script formats all changed files from the last mergebase.
+# Black + Clang formatter (if installed). This script formats all changed files from the last mergebase.
 # You are encouraged to run this locally before pushing changes for review.
 
 # Cause the script to exit if a single command fails
 set -euo pipefail
 
 FLAKE8_VERSION_REQUIRED="3.9.1"
-YAPF_VERSION_REQUIRED="0.23.0"
+BLACK_VERSION_REQUIRED="21.12b0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
 MYPY_VERSION_REQUIRED="0.782"
 
 check_command_exist() {
     VERSION=""
     case "$1" in
-        yapf)
-            VERSION=$YAPF_VERSION_REQUIRED
+        black)
+            VERSION=$BLACK_VERSION_REQUIRED
             ;;
         flake8)
             VERSION=$FLAKE8_VERSION_REQUIRED
@@ -35,7 +35,7 @@ check_command_exist() {
     fi
 }
 
-check_command_exist yapf
+check_command_exist black
 check_command_exist flake8
 check_command_exist mypy
 
@@ -46,7 +46,7 @@ ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT" || exit 1
 
 FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
-YAPF_VERSION=$(yapf --version | awk '{print $2}')
+BLACK_VERSION=$(black --version | awk '{print $2}')
 SHELLCHECK_VERSION=$(shellcheck --version | awk '/^version:/ {print $2}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
 GOOGLE_JAVA_FORMAT_JAR=/tmp/google-java-format-1.7-all-deps.jar
@@ -59,13 +59,13 @@ tool_version_check() {
 }
 
 tool_version_check "flake8" "$FLAKE8_VERSION" "$FLAKE8_VERSION_REQUIRED"
-tool_version_check "yapf" "$YAPF_VERSION" "$YAPF_VERSION_REQUIRED"
+tool_version_check "black" "$BLACK_VERSION" "$BLACK_VERSION_REQUIRED"
 tool_version_check "shellcheck" "$SHELLCHECK_VERSION" "$SHELLCHECK_VERSION_REQUIRED"
 tool_version_check "mypy" "$MYPY_VERSION" "$MYPY_VERSION_REQUIRED"
 
 if which clang-format >/dev/null; then
   CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
-  tool_version_check "clang-format" "$CLANG_FORMAT_VERSION" "7.0.0"
+  tool_version_check "clang-format" "$CLANG_FORMAT_VERSION" "12.0.0"
 else
     echo "WARNING: clang-format is not installed!"
 fi
@@ -83,16 +83,14 @@ if [[ $(flake8 --version) != *"flake8_quotes"* ]]; then
     echo "WARNING: Ray uses flake8 with flake8_quotes. Might error without it. Install with: pip install flake8-quotes"
 fi
 
+if [[ $(flake8 --version) != *"flake8-bugbear"* ]]; then
+    echo "WARNING: Ray uses flake8 with flake8-bugbear. Might error without it. Install with: pip install flake8-bugbear"
+fi
+
 SHELLCHECK_FLAGS=(
   --exclude=1090  # "Can't follow non-constant source. Use a directive to specify location."
   --exclude=1091  # "Not following {file} due to some error"
   --exclude=2207  # "Prefer mapfile or read -a to split command output (or quote to avoid splitting)." -- these aren't compatible with macOS's old Bash
-)
-
-YAPF_FLAGS=(
-    '--style' "$ROOT/.style.yapf"
-    '--recursive'
-    '--parallel'
 )
 
 # TODO(dmitri): When more of the codebase is typed properly, the mypy flags
@@ -105,7 +103,8 @@ MYPY_FLAGS=(
 MYPY_FILES=(
     # Relative to python/ray
     'autoscaler/node_provider.py'
-    'autoscaler/sdk.py'
+    'autoscaler/sdk/__init__.py'
+    'autoscaler/sdk/sdk.py'
     'autoscaler/_private/commands.py'
     # TODO(dmitri) Fails with meaningless error, maybe due to a bug in the mypy version
     # in the CI. Type check once we get serious about type checking:
@@ -113,16 +112,17 @@ MYPY_FILES=(
     'ray_operator/operator_utils.py'
 )
 
-YAPF_EXCLUDES=(
-    '--exclude' 'python/ray/cloudpickle/*'
-    '--exclude' 'python/build/*'
-    '--exclude' 'python/ray/core/src/ray/gcs/*'
-    '--exclude' 'python/ray/thirdparty_files/*'
-    '--exclude' 'python/ray/_private/thirdparty/*'
+BLACK_EXCLUDES=(
+    '--extend-exclude' 'python/ray/cloudpickle/*'
+    '--extend-exclude' 'python/build/*'
+    '--extend-exclude' 'python/ray/core/src/ray/gcs/*'
+    '--extend-exclude' 'python/ray/thirdparty_files/*'
+    '--extend-exclude' 'python/ray/_private/thirdparty/*'
 )
 
 GIT_LS_EXCLUDES=(
   ':(exclude)python/ray/cloudpickle/'
+  ':(exclude)python/ray/_private/runtime_env/_clonevirtualenv.py'
 )
 
 JAVA_EXCLUDES=(
@@ -189,7 +189,7 @@ format_files() {
     done
 
     if [ 0 -lt "${#python_files[@]}" ]; then
-      yapf --in-place "${YAPF_FLAGS[@]}" -- "${python_files[@]}"
+      black "${python_files[@]}"
     fi
 
     if shellcheck --shell=sh --format=diff - < /dev/null; then
@@ -204,15 +204,13 @@ format_files() {
     fi
 }
 
-# Format all files, and print the diff to stdout for travis.
-# Mypy is run only on files specified in the array MYPY_FILES.
-format_all() {
+format_all_scripts() {
     command -v flake8 &> /dev/null;
     HAS_FLAKE8=$?
 
-    echo "$(date)" "YAPF...."
+    echo "$(date)" "Black...."
     git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
-      yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
+      black "${BLACK_EXCLUDES[@]}"
     echo "$(date)" "MYPY...."
     mypy_on_each "${MYPY_FILES[@]}"
     if [ $HAS_FLAKE8 ]; then
@@ -222,16 +220,6 @@ format_all() {
 
       git ls-files -- '*.pyx' '*.pxd' '*.pxi' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
         flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
-    fi
-
-    echo "$(date)" "clang-format...."
-    if command -v clang-format >/dev/null; then
-      git ls-files -- '*.cc' '*.h' '*.proto' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 clang-format -i
-    fi
-
-    echo "$(date)" "format java...."
-    if command -v java >/dev/null & [ -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
-      git ls-files -- '*.java' "${GIT_LS_EXCLUDES[@]}" | sed -E "\:$JAVA_EXCLUDES_REGEX:d" | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
     fi
 
     if command -v shellcheck >/dev/null; then
@@ -246,6 +234,23 @@ format_all() {
         shellcheck_scripts "${shell_files[@]}"
       fi
     fi
+}
+
+# Format all files, and print the diff to stdout for travis.
+# Mypy is run only on files specified in the array MYPY_FILES.
+format_all() {
+    format_all_scripts "${@}"
+
+    echo "$(date)" "clang-format...."
+    if command -v clang-format >/dev/null; then
+      git ls-files -- '*.cc' '*.h' '*.proto' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 clang-format -i
+    fi
+
+    echo "$(date)" "format java...."
+    if command -v java >/dev/null & [ -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
+      git ls-files -- '*.java' "${GIT_LS_EXCLUDES[@]}" | sed -E "\:$JAVA_EXCLUDES_REGEX:d" | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
+    fi
+
     echo "$(date)" "done!"
 }
 
@@ -253,8 +258,8 @@ format_all() {
 # for autoformat yet.
 format_changed() {
     # The `if` guard ensures that the list of filenames is not empty, which
-    # could cause yapf to receive 0 positional arguments, making it hang
-    # waiting for STDIN.
+    # could cause the formatter to receive 0 positional arguments, making
+    # Black error.
     #
     # `diff-filter=ACRM` and $MERGEBASE is to ensure we only format files that
     # exist on both branches.
@@ -262,7 +267,7 @@ format_changed() {
 
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
         git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-             yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
+            black "${BLACK_EXCLUDES[@]}"
         if which flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
                  flake8 --config=.flake8
@@ -307,8 +312,12 @@ format_changed() {
 # arg to use this option.
 if [ "${1-}" == '--files' ]; then
     format_files "${@:2}"
-    # If `--all` is passed, then any further arguments are ignored and the
-    # entire python directory is formatted.
+# If `--all` or `--scripts` are passed, then any further arguments are ignored.
+# Format the entire python directory and other scripts.
+elif [ "${1-}" == '--all-scripts' ]; then
+    format_all_scripts "${@}"
+    if [ -n "${FORMAT_SH_PRINT_DIFF-}" ]; then git --no-pager diff; fi
+# Format the all Python, C++, Java and other script files.
 elif [ "${1-}" == '--all' ]; then
     format_all "${@}"
     if [ -n "${FORMAT_SH_PRINT_DIFF-}" ]; then git --no-pager diff; fi

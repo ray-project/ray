@@ -26,9 +26,8 @@ class RuntimeEnvAgentClientInterface {
   virtual void CreateRuntimeEnv(
       const rpc::CreateRuntimeEnvRequest &request,
       const rpc::ClientCallback<rpc::CreateRuntimeEnvReply> &callback) = 0;
-  virtual void DeleteRuntimeEnv(
-      const rpc::DeleteRuntimeEnvRequest &request,
-      const rpc::ClientCallback<rpc::DeleteRuntimeEnvReply> &callback) = 0;
+  virtual void DeleteURIs(const rpc::DeleteURIsRequest &request,
+                          const rpc::ClientCallback<rpc::DeleteURIsReply> &callback) = 0;
   virtual ~RuntimeEnvAgentClientInterface(){};
 };
 
@@ -50,13 +49,15 @@ class RuntimeEnvAgentClient : public RuntimeEnvAgentClientInterface {
   ///
   /// \param request The request message
   /// \param callback  The callback function that handles reply
-  VOID_RPC_CLIENT_METHOD(RuntimeEnvService, CreateRuntimeEnv, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(RuntimeEnvService, CreateRuntimeEnv, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
-  /// Delete runtime env.
+  /// Delete URIs.
   ///
   /// \param request The request message
   /// \param callback  The callback function that handles reply
-  VOID_RPC_CLIENT_METHOD(RuntimeEnvService, DeleteRuntimeEnv, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(RuntimeEnvService, DeleteURIs, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
  private:
   /// The RPC client.

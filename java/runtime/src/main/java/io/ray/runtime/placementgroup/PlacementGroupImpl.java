@@ -5,11 +5,14 @@ import io.ray.api.id.PlacementGroupId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.placementgroup.PlacementGroupState;
 import io.ray.api.placementgroup.PlacementStrategy;
+import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 
 /** The default implementation of `PlacementGroup` interface. */
-public class PlacementGroupImpl implements PlacementGroup {
+public class PlacementGroupImpl implements PlacementGroup, Serializable {
+
+  private static final long serialVersionUID = -6616291240442716883L;
 
   private final PlacementGroupId id;
   private final String name;

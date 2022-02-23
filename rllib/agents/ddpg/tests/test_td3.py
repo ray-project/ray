@@ -4,8 +4,12 @@ import unittest
 import ray
 import ray.rllib.agents.ddpg.td3 as td3
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    framework_iterator
+from ray.rllib.utils.test_utils import (
+    check,
+    check_compute_single_action,
+    check_train_results,
+    framework_iterator,
+)
 
 tf1, tf, tfv = try_import_tf()
 
@@ -25,11 +29,12 @@ class TestTD3(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
 
         # Test against all frameworks.
-        for _ in framework_iterator(config):
-            trainer = td3.TD3Trainer(config=config, env="Pendulum-v0")
+        for _ in framework_iterator(config, with_eager_tracing=True):
+            trainer = td3.TD3Trainer(config=config, env="Pendulum-v1")
             num_iterations = 1
             for i in range(num_iterations):
                 results = trainer.train()
+                check_train_results(results)
                 print(results)
             check_compute_single_action(trainer)
             trainer.stop()
@@ -41,10 +46,10 @@ class TestTD3(unittest.TestCase):
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, with_eager_tracing=True):
             lcl_config = config.copy()
             # Default GaussianNoise setup.
-            trainer = td3.TD3Trainer(config=lcl_config, env="Pendulum-v0")
+            trainer = td3.TD3Trainer(config=lcl_config, env="Pendulum-v1")
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_single_action(obs, explore=False)
             self.assertEqual(trainer.get_policy().global_timestep, 1)
@@ -69,16 +74,14 @@ class TestTD3(unittest.TestCase):
                 "initial_scale": 0.001,
                 "final_scale": 0.001,
             }
-            trainer = td3.TD3Trainer(config=lcl_config, env="Pendulum-v0")
+            trainer = td3.TD3Trainer(config=lcl_config, env="Pendulum-v1")
             # ts=0 (get a deterministic action as per explore=False).
-            deterministic_action = trainer.compute_single_action(
-                obs, explore=False)
+            deterministic_action = trainer.compute_single_action(obs, explore=False)
             self.assertEqual(trainer.get_policy().global_timestep, 1)
             # ts=1-29 (in random window).
             random_a = []
             for i in range(1, 30):
-                random_a.append(
-                    trainer.compute_single_action(obs, explore=True))
+                random_a.append(trainer.compute_single_action(obs, explore=True))
                 self.assertEqual(trainer.get_policy().global_timestep, i + 1)
                 check(random_a[-1], deterministic_action, false=True)
             self.assertTrue(np.std(random_a) > 0.3)
@@ -100,4 +103,5 @@ class TestTD3(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

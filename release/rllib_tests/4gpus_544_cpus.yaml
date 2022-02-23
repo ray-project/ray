@@ -10,7 +10,12 @@ head_node_type:
 worker_node_types:
     - name: worker_node
       instance_type: m5.24xlarge
-      min_workers: 0
+      min_workers: 5
       max_workers: 5
       use_spot: false
 
+aws:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 500

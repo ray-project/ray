@@ -13,8 +13,7 @@ def request_with_retries(endpoint, timeout=30):
     start = time.time()
     while True:
         try:
-            return requests.get(
-                "http://127.0.0.1:8000" + endpoint, timeout=timeout)
+            return requests.get("http://127.0.0.1:8000" + endpoint, timeout=timeout)
         except requests.RequestException:
             if time.time() - start > timeout:
                 raise TimeoutError
@@ -29,8 +28,7 @@ def test_controller_failure(serve_instance):
 
     function.deploy()
 
-    assert request_with_retries(
-        "/controller_failure/", timeout=1).text == "hello1"
+    assert request_with_retries("/controller_failure/", timeout=1).text == "hello1"
 
     for _ in range(10):
         response = request_with_retries("/controller_failure/", timeout=30)
@@ -72,7 +70,8 @@ def test_controller_failure(serve_instance):
 
 def _kill_http_proxies():
     http_proxies = ray.get(
-        serve.api._global_client._controller.get_http_proxies.remote())
+        serve.api._global_client._controller.get_http_proxies.remote()
+    )
     for http_proxy in http_proxies.values():
         ray.kill(http_proxy, no_restart=False)
 
@@ -84,8 +83,7 @@ def test_http_proxy_failure(serve_instance):
 
     function.deploy()
 
-    assert request_with_retries(
-        "/proxy_failure/", timeout=1.0).text == "hello1"
+    assert request_with_retries("/proxy_failure/", timeout=1.0).text == "hello1"
 
     for _ in range(10):
         response = request_with_retries("/proxy_failure/", timeout=30)
@@ -108,11 +106,11 @@ def test_http_proxy_failure(serve_instance):
     wait_for_condition(check_new)
 
 
-def _get_worker_handles(backend):
+def _get_worker_handles(deployment):
     controller = serve.api._global_client._controller
-    backend_dict = ray.get(controller._all_replica_handles.remote())
+    deployment_dict = ray.get(controller._all_running_replicas.remote())
 
-    return list(backend_dict[backend].values())
+    return [replica.actor_handle for replica in deployment_dict[deployment]]
 
 
 # Test that a worker dying unexpectedly causes it to restart and continue
@@ -145,7 +143,6 @@ def test_worker_restart(serve_instance):
 
 # Test that if there are multiple replicas for a worker and one dies
 # unexpectedly, the others continue to serve requests.
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_worker_replica_failure(serve_instance):
     @ray.remote
     class Counter:

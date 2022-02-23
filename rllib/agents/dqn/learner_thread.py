@@ -6,8 +6,9 @@ from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
+from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.utils.window_stat import WindowStat
 
 LEARNER_QUEUE_MAX_SIZE = 16
 
@@ -47,7 +48,7 @@ class APEXLearnerThread(threading.Thread):
         self.daemon = True
         self.weights_updated = False
         self.stopped = False
-        self.stats = {}
+        self.learner_info = {}
 
     def run(self):
         """Runs the task of this thread until self.stopped is set to True."""
@@ -75,11 +76,16 @@ class APEXLearnerThread(threading.Thread):
             if ma_batch is not None:
                 prio_dict = {}
                 with self.grad_timer:
-                    grad_out = self.local_worker.learn_on_batch(ma_batch)
-                    for pid, info in grad_out.items():
-                        td_error = info.get(
-                            "td_error",
-                            info[LEARNER_STATS_KEY].get("td_error"))
+                    # Use LearnerInfoBuilder as a unified way to build the
+                    # final results dict from `learn_on_loaded_batch` call(s).
+                    # This makes sure results dicts always have the same
+                    # structure no matter the setup (multi-GPU, multi-agent,
+                    # minibatch SGD, tf vs torch).
+                    learner_info_builder = LearnerInfoBuilder(num_devices=1)
+                    multi_agent_results = self.local_worker.learn_on_batch(ma_batch)
+                    for pid, results in multi_agent_results.items():
+                        learner_info_builder.add_learn_on_batch_results(results, pid)
+                        td_error = results["td_error"]
                         # Switch off auto-conversion from numpy to torch/tf
                         # tensors for the indices. This may lead to errors
                         # when sent to the buffer for processing
@@ -87,15 +93,15 @@ class APEXLearnerThread(threading.Thread):
                         ma_batch.policy_batches[pid].set_get_interceptor(None)
                         prio_dict[pid] = (
                             ma_batch.policy_batches[pid].get("batch_indexes"),
-                            td_error)
-                        self.stats[pid] = get_learner_stats(info)
+                            td_error,
+                        )
+                    self.learner_info = learner_info_builder.finalize()
                     self.grad_timer.push_units_processed(ma_batch.count)
                 self.outqueue.put((replay_actor, prio_dict, ma_batch.count))
                 self.weights_updated = True
 
             self.learner_queue_size.push(self.inqueue.qsize())
-            self.overall_timer.push_units_processed(ma_batch and ma_batch.count
-                                                    or 0)
+            self.overall_timer.push_units_processed(ma_batch and ma_batch.count or 0)
 
 
 # For backward compatibility.

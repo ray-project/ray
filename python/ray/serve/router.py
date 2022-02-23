@@ -1,13 +1,13 @@
+import sys
 import asyncio
 import pickle
 import itertools
-from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 import random
 
 from ray.actor import ActorHandle
-from ray.serve.common import BackendTag
-from ray.serve.config import BackendConfig
+from ray.serve.common import RunningReplicaInfo
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.utils import compute_iterable_delta, logger
 
@@ -19,20 +19,11 @@ from ray.util import metrics
 class RequestMetadata:
     request_id: str
     endpoint: str
-
     call_method: str = "__call__"
-    shard_key: Optional[str] = None
-
-    http_method: str = "GET"
-    http_headers: Dict[str, str] = field(default_factory=dict)
 
     # This flag will be set to true if the input argument is manually pickled
-    # and it needs to be deserialized by the backend worker.
+    # and it needs to be deserialized by the replica.
     http_arg_is_pickled: bool = False
-
-    def __post_init__(self):
-        self.http_headers.setdefault("X-Serve-Call-Method", self.call_method)
-        self.http_headers.setdefault("X-Serve-Shard-Key", self.shard_key)
 
 
 @dataclass
@@ -46,15 +37,12 @@ class ReplicaSet:
     """Data structure representing a set of replica actor handles"""
 
     def __init__(
-            self,
-            backend_tag,
-            event_loop: asyncio.AbstractEventLoop,
+        self,
+        deployment_name,
+        event_loop: asyncio.AbstractEventLoop,
     ):
-        self.backend_tag = backend_tag
-        # NOTE(simon): We have to do this because max_concurrent_queries
-        # and the replica handles come from different long poll keys.
-        self.max_concurrent_queries: int = 8
-        self.in_flight_queries: Dict[ActorHandle, set] = dict()
+        self.deployment_name = deployment_name
+        self.in_flight_queries: Dict[RunningReplicaInfo, set] = dict()
         # The iterator used for load balancing among replicas. Using itertools
         # cycle, we implements a round-robin policy, skipping overloaded
         # replicas.
@@ -66,44 +54,45 @@ class ReplicaSet:
         # Used to unblock this replica set waiting for free replicas. A newly
         # added replica or updated max_concurrent_queries value means the
         # query that waits on a free replica might be unblocked on.
-        self.config_updated_event = asyncio.Event(loop=event_loop)
+
+        # Python 3.8 has deprecated the 'loop' parameter, and Python 3.10 has
+        # removed it alltogether. Call accordingly.
+        if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
+            self.config_updated_event = asyncio.Event()
+        else:
+            self.config_updated_event = asyncio.Event(loop=event_loop)
+
         self.num_queued_queries = 0
         self.num_queued_queries_gauge = metrics.Gauge(
             "serve_deployment_queued_queries",
             description=(
                 "The current number of queries to this deployment waiting"
-                " to be assigned to a replica."),
-            tag_keys=("deployment", "endpoint"))
-        self.num_queued_queries_gauge.set_default_tags({
-            "deployment": self.backend_tag
-        })
+                " to be assigned to a replica."
+            ),
+            tag_keys=("deployment", "endpoint"),
+        )
+        self.num_queued_queries_gauge.set_default_tags(
+            {"deployment": self.deployment_name}
+        )
 
-    def set_max_concurrent_queries(self, backend_config: BackendConfig):
-        new_value: int = backend_config.max_concurrent_queries
-        if new_value != self.max_concurrent_queries:
-            self.max_concurrent_queries = new_value
-            logger.debug(
-                f"ReplicaSet: changing max_concurrent_queries to {new_value}")
-            self.config_updated_event.set()
-
-    def update_worker_replicas(self, worker_replicas: Iterable[ActorHandle]):
+    def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         added, removed, _ = compute_iterable_delta(
-            self.in_flight_queries.keys(), worker_replicas)
+            self.in_flight_queries.keys(), running_replicas
+        )
 
-        for new_replica_handle in added:
-            self.in_flight_queries[new_replica_handle] = set()
+        for new_replica in added:
+            self.in_flight_queries[new_replica] = set()
 
-        for removed_replica_handle in removed:
+        for removed_replica in removed:
             # Delete it directly because shutdown is processed by controller.
-            del self.in_flight_queries[removed_replica_handle]
+            del self.in_flight_queries[removed_replica]
 
         if len(added) > 0 or len(removed) > 0:
             # Shuffle the keys to avoid synchronization across clients.
-            handles = list(self.in_flight_queries.keys())
-            random.shuffle(handles)
-            self.replica_iterator = itertools.cycle(handles)
-            logger.debug(
-                f"ReplicaSet: +{len(added)}, -{len(removed)} replicas.")
+            replicas = list(self.in_flight_queries.keys())
+            random.shuffle(replicas)
+            self.replica_iterator = itertools.cycle(replicas)
+            logger.debug(f"ReplicaSet: +{len(added)}, -{len(removed)} replicas.")
             self.config_updated_event.set()
 
     def _try_assign_replica(self, query: Query) -> Optional[ray.ObjectRef]:
@@ -112,24 +101,25 @@ class ReplicaSet:
         """
         for _ in range(len(self.in_flight_queries.keys())):
             replica = next(self.replica_iterator)
-            if len(self.in_flight_queries[replica]
-                   ) >= self.max_concurrent_queries:
+            if len(self.in_flight_queries[replica]) >= replica.max_concurrent_queries:
                 # This replica is overloaded, try next one
                 continue
 
-            logger.debug(f"Assigned query {query.metadata.request_id} "
-                         f"to replica {replica}.")
+            logger.debug(
+                f"Assigned query {query.metadata.request_id} "
+                f"to replica {replica.replica_tag}."
+            )
             # Directly passing args because it might contain an ObjectRef.
-            tracker_ref, user_ref = replica.handle_request.remote(
-                pickle.dumps(query.metadata), *query.args, **query.kwargs)
+            tracker_ref, user_ref = replica.actor_handle.handle_request.remote(
+                pickle.dumps(query.metadata), *query.args, **query.kwargs
+            )
             self.in_flight_queries[replica].add(tracker_ref)
             return user_ref
         return None
 
     @property
     def _all_query_refs(self):
-        return list(
-            itertools.chain.from_iterable(self.in_flight_queries.values()))
+        return list(itertools.chain.from_iterable(self.in_flight_queries.values()))
 
     def _drain_completed_object_refs(self) -> int:
         refs = self._all_query_refs
@@ -141,28 +131,30 @@ class ReplicaSet:
     async def assign_replica(self, query: Query) -> ray.ObjectRef:
         """Given a query, submit it to a replica and return the object ref.
         This method will keep track of the in flight queries for each replicas
-        and only send a query to available replicas (determined by the backend
+        and only send a query to available replicas (determined by the
         max_concurrent_quries value.)
         """
         endpoint = query.metadata.endpoint
         self.num_queued_queries += 1
         self.num_queued_queries_gauge.set(
-            self.num_queued_queries, tags={"endpoint": endpoint})
+            self.num_queued_queries, tags={"endpoint": endpoint}
+        )
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
-            logger.debug("Failed to assign a replica for "
-                         f"query {query.metadata.request_id}")
+            logger.debug(
+                "Failed to assign a replica for " f"query {query.metadata.request_id}"
+            )
             # Maybe there exists a free replica, we just need to refresh our
             # query tracker.
             num_finished = self._drain_completed_object_refs()
             # All replicas are really busy, wait for a query to complete or the
             # config to be updated.
             if num_finished == 0:
-                logger.debug(
-                    "All replicas are busy, waiting for a free replica.")
+                logger.debug("All replicas are busy, waiting for a free replica.")
                 await asyncio.wait(
                     self._all_query_refs + [self.config_updated_event.wait()],
-                    return_when=asyncio.FIRST_COMPLETED)
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
                 if self.config_updated_event.is_set():
                     self.config_updated_event.clear()
             # We are pretty sure a free replica is ready now, let's recurse and
@@ -170,48 +162,50 @@ class ReplicaSet:
             assigned_ref = self._try_assign_replica(query)
         self.num_queued_queries -= 1
         self.num_queued_queries_gauge.set(
-            self.num_queued_queries, tags={"endpoint": endpoint})
+            self.num_queued_queries, tags={"endpoint": endpoint}
+        )
         return assigned_ref
 
 
 class Router:
     def __init__(
-            self,
-            controller_handle: ActorHandle,
-            backend_tag: BackendTag,
-            event_loop: asyncio.BaseEventLoop = None,
+        self,
+        controller_handle: ActorHandle,
+        deployment_name: str,
+        event_loop: asyncio.BaseEventLoop = None,
     ):
-        """Router process incoming queries: choose backend, and assign replica.
+        """Router process incoming queries: assign a replica.
 
         Args:
             controller_handle(ActorHandle): The controller handle.
         """
         self._event_loop = event_loop
-        self._replica_set = ReplicaSet(backend_tag, event_loop)
+        self._replica_set = ReplicaSet(deployment_name, event_loop)
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Counter(
             "serve_num_router_requests",
             description="The number of requests processed by the router.",
-            tag_keys=("deployment", ))
-        self.num_router_requests.set_default_tags({"deployment": backend_tag})
+            tag_keys=("deployment",),
+        )
+        self.num_router_requests.set_default_tags({"deployment": deployment_name})
 
         self.long_poll_client = LongPollClient(
             controller_handle,
             {
-                (LongPollNamespace.BACKEND_CONFIGS, backend_tag): self.
-                _replica_set.set_max_concurrent_queries,
-                (LongPollNamespace.REPLICA_HANDLES, backend_tag): self.
-                _replica_set.update_worker_replicas,
+                (
+                    LongPollNamespace.RUNNING_REPLICAS,
+                    deployment_name,
+                ): self._replica_set.update_running_replicas,
             },
             call_in_event_loop=event_loop,
         )
 
     async def assign_request(
-            self,
-            request_meta: RequestMetadata,
-            *request_args,
-            **request_kwargs,
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
     ):
         """Assign a query and returns an object ref represent the result"""
 
@@ -221,4 +215,5 @@ class Router:
                 args=list(request_args),
                 kwargs=request_kwargs,
                 metadata=request_meta,
-            ))
+            )
+        )

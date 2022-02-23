@@ -122,16 +122,6 @@ public class UsingActorsDemo {
     }
 
     {
-      // Create an actor with a globally unique name
-      ActorHandle<Counter> counter = Ray.actor(Counter::new).setGlobalName("some_name").remote();
-    }
-    {
-      // Retrieve the actor later somewhere
-      Optional<ActorHandle<Counter>> counter = Ray.getGlobalActor("some_name");
-      Assert.assertTrue(counter.isPresent());
-    }
-
-    {
       // Create an actor with a job-scope-unique name
       ActorHandle<Counter> counter = Ray.actor(Counter::new).setName("some_name_in_job").remote();
     }

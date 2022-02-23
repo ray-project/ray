@@ -70,6 +70,20 @@ struct GetRequestQueueTest : public Test {
     return queue.GetRequestCount(object_id);
   }
 
+  std::vector<std::shared_ptr<GetRequest>> GetRequests(GetRequestQueue &queue,
+                                                       const ObjectID &object_id) {
+    auto it = queue.object_get_requests_.find(object_id);
+    if (it == queue.object_get_requests_.end()) {
+      return {};
+    }
+    return it->second;
+  }
+
+  void RemoveGetRequest(GetRequestQueue &queue,
+                        const std::shared_ptr<GetRequest> &get_request) {
+    queue.RemoveGetRequest(get_request);
+  }
+
   void AssertNoLeak(GetRequestQueue &queue) {
     EXPECT_FALSE(IsGetRequestExist(queue, object_id1));
     EXPECT_FALSE(IsGetRequestExist(queue, object_id2));
@@ -236,6 +250,38 @@ TEST_F(GetRequestQueueTest, TestRemoveAll) {
   EXPECT_FALSE(IsGetRequestExist(get_request_queue, object_id2));
 
   AssertNoLeak(get_request_queue);
+}
+
+TEST_F(GetRequestQueueTest, TestRemoveTwice) {
+  MockObjectLifecycleManager object_lifecycle_manager;
+  GetRequestQueue get_request_queue(
+      io_context_, object_lifecycle_manager,
+      [&](const ObjectID &object_id, const auto &request) {},
+      [&](const std::shared_ptr<GetRequest> &get_req) {});
+  auto client = std::make_shared<MockClient>();
+
+  /// Test get request two not-sealed objects, remove all requests for this client.
+  std::vector<ObjectID> object_ids{object_id1, object_id2};
+  MarkObject(object1, ObjectState::PLASMA_CREATED);
+  MarkObject(object2, ObjectState::PLASMA_CREATED);
+  EXPECT_CALL(object_lifecycle_manager, GetObject(_))
+      .Times(2)
+      .WillOnce(Return(&object1))
+      .WillOnce(Return(&object2));
+  get_request_queue.AddRequest(client, object_ids, 1000, false);
+
+  EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id1));
+  EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id2));
+
+  auto dangling_get_request = GetRequests(get_request_queue, object_id1).at(0);
+
+  get_request_queue.RemoveGetRequestsForClient(client);
+  EXPECT_FALSE(IsGetRequestExist(get_request_queue, object_id1));
+  EXPECT_FALSE(IsGetRequestExist(get_request_queue, object_id2));
+
+  AssertNoLeak(get_request_queue);
+
+  ASSERT_NO_THROW(RemoveGetRequest(get_request_queue, dangling_get_request));
 }
 }  // namespace plasma
 

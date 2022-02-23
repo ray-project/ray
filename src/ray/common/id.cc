@@ -15,13 +15,13 @@
 #include "ray/common/id.h"
 
 #include <limits.h>
+
 #include <algorithm>
 #include <chrono>
 #include <mutex>
 #include <random>
 
 #include "absl/time/clock.h"
-
 #include "ray/common/constants.h"
 #include "ray/common/status.h"
 #include "ray/util/macros.h"
@@ -160,9 +160,10 @@ TaskID TaskID::ForDriverTask(const JobID &job_id) {
   return TaskID::FromBinary(data);
 }
 
-TaskID TaskID::ForFakeTask() {
-  std::string data(kLength, 0);
+TaskID TaskID::FromRandom(const JobID &job_id) {
+  std::string data(kLength - JobID::kLength, 0);
   FillRandom(&data);
+  std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
   return TaskID::FromBinary(data);
 }
 
@@ -193,9 +194,30 @@ TaskID TaskID::ForNormalTask(const JobID &job_id, const TaskID &parent_task_id,
   return TaskID::FromBinary(data);
 }
 
+TaskID TaskID::ForExecutionAttempt(const TaskID &task_id, uint64_t attempt_number) {
+  std::string data_str;
+  std::copy_n(task_id.Data(), TaskID::kLength, std::back_inserter(data_str));
+  static_assert(TaskID::kUniqueBytesLength >= 8, "TaskID must have at least 64 bits");
+  auto data = reinterpret_cast<uint64_t *>(data_str.data());
+  // Zero out the low byte for readability.
+  uint64_t mask = 0xFFFFFFFFFFFFFF00;
+  data[0] &= mask;
+  // Add attempt number to the task ID unique bytes.
+  (*data) += attempt_number;
+  return TaskID::FromBinary(data_str);
+}
+
 ActorID TaskID::ActorId() const {
   return ActorID::FromBinary(std::string(
       reinterpret_cast<const char *>(id_ + kUniqueBytesLength), ActorID::Size()));
+}
+
+bool TaskID::IsForActorCreationTask() const {
+  static std::string nil_data(kUniqueBytesLength, 0);
+  FillNil(&nil_data);
+  bool unique_bytes_nil = std::memcmp(id_, nil_data.data(), kUniqueBytesLength) == 0;
+  bool actor_id_nil = ActorId().IsNil();
+  return unique_bytes_nil && !actor_id_nil;
 }
 
 JobID TaskID::JobId() const { return ActorId().JobId(); }
@@ -234,6 +256,22 @@ ObjectID ObjectID::FromRandom() {
 ObjectID ObjectID::ForActorHandle(const ActorID &actor_id) {
   return ObjectID::FromIndex(TaskID::ForActorCreationTask(actor_id),
                              /*return_index=*/1);
+}
+
+bool ObjectID::IsActorID(const ObjectID &object_id) {
+  for (size_t i = 0; i < (TaskID::kLength - ActorID::kLength); ++i) {
+    if (object_id.id_[i] != 0xff) {
+      return false;
+    }
+  }
+  return true;
+}
+
+ActorID ObjectID::ToActorID(const ObjectID &object_id) {
+  auto beg = reinterpret_cast<const char *>(object_id.id_) + ObjectID::kLength -
+             ActorID::kLength - ObjectID::kIndexBytesLength;
+  std::string actor_id(beg, beg + ActorID::kLength);
+  return ActorID::FromBinary(actor_id);
 }
 
 ObjectID ObjectID::GenerateObjectId(const std::string &task_id_binary,

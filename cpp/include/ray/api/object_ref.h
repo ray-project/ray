@@ -54,10 +54,35 @@ class ObjectRef {
  public:
   ObjectRef();
   ~ObjectRef();
+  // Used to identify its type.
+  static bool IsObjectRef() { return true; }
+
+  ObjectRef(ObjectRef &&rhs) {
+    SubReference(rhs.id_);
+    CopyAndAddReference(id_, rhs.id_);
+    rhs.id_ = {};
+  }
+
+  ObjectRef &operator=(ObjectRef &&rhs) {
+    if (rhs == *this) {
+      return *this;
+    }
+
+    SubReference(id_);
+    SubReference(rhs.id_);
+    CopyAndAddReference(id_, rhs.id_);
+    rhs.id_ = {};
+    return *this;
+  }
 
   ObjectRef(const ObjectRef &rhs) { CopyAndAddReference(id_, rhs.id_); }
 
   ObjectRef &operator=(const ObjectRef &rhs) {
+    if (rhs == *this) {
+      return *this;
+    }
+
+    SubReference(id_);
     CopyAndAddReference(id_, rhs.id_);
     return *this;
   }
@@ -87,6 +112,11 @@ template <typename T>
 inline static std::shared_ptr<T> GetFromRuntime(const ObjectRef<T> &object) {
   auto packed_object = internal::GetRayRuntime()->Get(object.ID());
   CheckResult(packed_object);
+
+  if (ray::internal::Serializer::IsXLang(packed_object->data(), packed_object->size())) {
+    return ray::internal::Serializer::Deserialize<std::shared_ptr<T>>(
+        packed_object->data(), packed_object->size(), internal::XLANG_HEADER_LEN);
+  }
 
   return ray::internal::Serializer::Deserialize<std::shared_ptr<T>>(
       packed_object->data(), packed_object->size());
@@ -125,6 +155,8 @@ class ObjectRef<void> {
  public:
   ObjectRef() = default;
   ~ObjectRef() { SubReference(id_); }
+  // Used to identify its type.
+  static bool IsObjectRef() { return true; }
 
   ObjectRef(const ObjectRef &rhs) { CopyAndAddReference(id_, rhs.id_); }
 

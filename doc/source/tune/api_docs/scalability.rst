@@ -107,7 +107,7 @@ Below we present more detailed results on the result throughput performance.
 
 Many concurrent trials
 """"""""""""""""""""""
-In this setup, loggers (CSV, JSON, and TensorboardX) and trial synchronization are disabled, except when
+In this setup, loggers (CSV, JSON, and TensorBoardX) and trial synchronization are disabled, except when
 explicitly noted.
 
 In this experiment, we're running many concurrent trials (up to 1,000) on a cluster. We then adjust the
@@ -143,7 +143,7 @@ should be considered.
 
 Many results on a single node
 """""""""""""""""""""""""""""
-In this setup, loggers (CSV, JSON, and TensorboardX) are disabled, except when
+In this setup, loggers (CSV, JSON, and TensorBoardX) are disabled, except when
 explicitly noted.
 
 In this experiment, we're running 96 concurrent trials on a single node. We then adjust the
@@ -184,8 +184,8 @@ In this experiment, we ran a number of trials on a cluster. Each trial was run o
 varied the number of concurrent trials (and nodes) to see how much network communication affects
 total runtime.
 
-**Main insight**: When running many concurrent trials in a distributed setup, consider using a
-:ref:`ray.tune.durable <tune-durable-trainable>` for checkpoint synchronization instead. Another option would
+**Main insight**: When running many concurrent trials in a distributed setup, consider using
+:ref:`cloud checkpointing <tune-cloud-checkpointing>` for checkpoint synchronization instead. Another option would
 be to use a shared storage and disable syncing to driver. The best practices are described
 :ref:`here for Kubernetes setups <tune-kubernetes>` but is applicable for any kind of setup.
 

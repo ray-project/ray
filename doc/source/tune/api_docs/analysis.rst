@@ -29,12 +29,12 @@ Here are some example operations for obtaining a summary of your experiment:
     # Get a list of trials
     trials = analysis.trials
 
-You may want to get a summary of multiple experiments that point to the same ``local_dir``. For this, you can use the ``Analysis`` class.
+You may want to get a summary of multiple experiments that point to the same ``local_dir``. This is also supported by the ``ExperimentAnalysis`` class.
 
 .. code-block:: python
 
-    from ray.tune import Analysis
-    analysis = Analysis("~/ray_results/example-experiment")
+    from ray.tune import ExperimentAnalysis
+    analysis = ExperimentAnalysis("~/ray_results/example-experiment")
 
 .. _exp-analysis-docstring:
 
@@ -42,12 +42,10 @@ ExperimentAnalysis (tune.ExperimentAnalysis)
 --------------------------------------------
 
 .. autoclass:: ray.tune.ExperimentAnalysis
-    :show-inheritance:
     :members:
 
-Analysis (tune.Analysis)
-------------------------
+TrialCheckpoint (tune.cloud.TrialCheckpoint)
+--------------------------------------------
 
-.. autoclass:: ray.tune.Analysis
+.. autoclass:: ray.tune.cloud.TrialCheckpoint
     :members:
-
