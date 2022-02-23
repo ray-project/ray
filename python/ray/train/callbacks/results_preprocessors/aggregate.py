@@ -10,29 +10,10 @@ from ray.train.callbacks.results_preprocessors.aggregate_fn import (
     Max,
     WeightedAverage,
     VALID_AGGREGATE_TYPES,
+    _get_values_from_results,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _get_values(key, reported_metrics, results):
-    """Return values in the results list from all workers."""
-    if key not in reported_metrics:
-        logger.warning(
-            f"`{key}` is not reported from workers, so it is ignored. "
-            "Please make sure that it is saved using `train.report()`."
-        )
-        return []
-    else:
-        values = [result.get(key, np.nan) for result in results]
-        if not all(isinstance(value, VALID_AGGREGATE_TYPES) for value in values):
-            logger.warning(
-                f"`{key}` value type (`{type(key)}`) is not valid, "
-                f"so it is ignored. "
-                f"Make sure that its type is one of {VALID_AGGREGATE_TYPES}."
-            )
-            return []
-        return values
 
 
 class AggregateResultsPreprocessor(ResultsPreprocessor):
@@ -50,13 +31,13 @@ class AggregateResultsPreprocessor(ResultsPreprocessor):
         self.aggregate_fn = aggregation_fn
         self.keys = keys
 
-    def preprocess(self, results: List[Dict] = None) -> List[Dict]:
+    def preprocess(self, results: List[Dict]) -> List[Dict]:
         """Average results before sending them to callbacks.
 
         Args:
             results List[Dict]: A list of results from all workers. The metrics
-                specified in `metrics_to_average` will be averaged according to
-                their weights. Non-numerical values will be ignored.
+                specified in `keys` will be averaged according by `aggregation_fn`.
+                Non-numerical values will be ignored.
         Returns:
             A updated list of results.
         """
@@ -80,10 +61,12 @@ class AggregateResultsPreprocessor(ResultsPreprocessor):
         aggregated_results = {}
 
         for key in self.keys:
-            values = _get_values(key, reported_metrics, results)
-            if len(values) == 0:
+            values = _get_values_from_results(key, reported_metrics, results)
+            if values is None:
                 continue
-            aggregated_results[str(self.aggregate_fn) + key] = self.aggregate_fn(values)
+            aggregated_results[self.aggregate_fn.wrap_key(key)] = self.aggregate_fn(
+                values
+            )
 
         for result in results:
             result.update(aggregated_results)
