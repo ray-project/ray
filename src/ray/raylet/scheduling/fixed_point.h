@@ -81,7 +81,7 @@ class FixedPoint {
 
   FixedPoint operator-(double const d) const {
     FixedPoint res;
-    res.i_ = i_ + static_cast<int64_t>(d * RESOURCE_UNIT_SCALING);
+    res.i_ = i_ - static_cast<int64_t>(d * RESOURCE_UNIT_SCALING);
     return res;
   }
 
