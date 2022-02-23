@@ -246,6 +246,8 @@ class DeploymentSchema(BaseModel):
             and values.get("autoscaling_config", None) is not None):
             raise ValueError("Manually setting num_replicas is not allowed "
                              "when autoscaling_config is provided.")
+        
+        return values
 
     @validator("route_prefix")
     def route_prefix_format(cls, v):
