@@ -77,7 +77,12 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       RayTask task = work->task;
       RAY_LOG(DEBUG) << "Scheduling pending task "
                      << task.GetTaskSpecification().TaskId();
-      std::string node_id_string = GetBestSchedulableNode(*work, &is_infeasible);
+      std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
+          task.GetTaskSpecification(),
+          /*prioritize_local_node*/
+          (work->grant_or_reject || work->is_selected_based_on_locality),
+          /*exclude_local_node*/ false,
+          /*requires_object_store_memory*/ false, &is_infeasible);
 
       // There is no node that has available resources to run the request.
       // Move on to the next shape.
@@ -126,7 +131,12 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
     RAY_LOG(DEBUG) << "Check if the infeasible task is schedulable in any node. task_id:"
                    << task.GetTaskSpecification().TaskId();
     bool is_infeasible;
-    std::string node_id_string = GetBestSchedulableNode(*work, &is_infeasible);
+    std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
+        task.GetTaskSpecification(),
+        /*prioritize_local_node*/
+        (work->grant_or_reject || work->is_selected_based_on_locality),
+        /*exclude_local_node*/ false,
+        /*requires_object_store_memory*/ false, &is_infeasible);
 
     // There is no node that has available resources to run the request.
     // Move on to the next shape.
@@ -304,32 +314,5 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
 
   send_reply_callback();
 }
-
-bool ClusterTaskManager::IsLocallySchedulable(const RayTask &task) const {
-  const auto &spec = task.GetTaskSpecification();
-  return cluster_resource_scheduler_->IsSchedulableOnNode(
-      self_node_id_.Binary(), spec.GetRequiredResources().GetResourceMap());
-}
-
-std::string ClusterTaskManager::GetBestSchedulableNode(const internal::Work &work,
-                                                       bool *is_infeasible) {
-  // If the local node is available, we should directly return it instead of
-  // going through the full hybrid policy since we don't want spillback.
-  if ((work.grant_or_reject || work.is_selected_based_on_locality) &&
-      IsLocallySchedulable(work.task)) {
-    *is_infeasible = false;
-    return self_node_id_.Binary();
-  }
-
-  // This argument is used to set violation, which is an unsupported feature now.
-  int64_t _unused;
-  return cluster_resource_scheduler_->GetBestSchedulableNode(
-      work.task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap(),
-      work.task.GetTaskSpecification().GetMessage().scheduling_strategy(),
-      /*requires_object_store_memory=*/false,
-      work.task.GetTaskSpecification().IsActorCreationTask(),
-      /*force_spillback=*/false, &_unused, is_infeasible);
-}
-
 }  // namespace raylet
 }  // namespace ray
