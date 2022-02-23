@@ -21,7 +21,7 @@ def test_optimize_fuse(ray_start_regular_shared):
     context = DatasetContext.get_current()
 
     def build_pipe():
-        pipe = ray.data.range(3).repeat(2)
+        pipe = ray.data.range(3).window(blocks_per_window=1).repeat(2)
         pipe = pipe.map_batches(lambda x: x)
         pipe = pipe.map_batches(lambda x: x)
         pipe = pipe.random_shuffle_each_window()
