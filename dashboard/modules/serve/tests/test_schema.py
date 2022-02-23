@@ -39,14 +39,14 @@ class TestRayActorOptionsSchema:
 
         RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
-    def test_gt_zero_ray_actor_options_schema(self):
+    def test_ge_zero_ray_actor_options_schema(self):
         # Ensure ValidationError is raised when any fields that must be greater
         # than zero is set to zero.
 
-        gt_zero_fields = ["num_cpus", "num_gpus", "memory", "object_store_memory"]
-        for field in gt_zero_fields:
+        ge_zero_fields = ["num_cpus", "num_gpus", "memory", "object_store_memory"]
+        for field in ge_zero_fields:
             with pytest.raises(ValidationError):
-                RayActorOptionsSchema.parse_obj({field: 0})
+                RayActorOptionsSchema.parse_obj({field: -1})
 
     def test_runtime_env(self):
         # Test different runtime_env configurations

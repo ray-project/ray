@@ -19,7 +19,7 @@ class RayActorOptionsSchema(BaseModel):
             "application per replica. This is the same as a ray "
             "actor's num_cpus. Uses a default if null."
         ),
-        gt=0,
+        ge=0,
     )
     num_gpus: float = Field(
         default=None,
@@ -28,14 +28,14 @@ class RayActorOptionsSchema(BaseModel):
             "application per replica. This is the same as a ray "
             "actor's num_gpus. Uses a default if null."
         ),
-        gt=0,
+        ge=0,
     )
     memory: float = Field(
         default=None,
         description=(
             "Restrict the heap memory usage of each replica. Uses a default if null."
         ),
-        gt=0,
+        ge=0,
     )
     object_store_memory: float = Field(
         default=None,
@@ -43,7 +43,7 @@ class RayActorOptionsSchema(BaseModel):
             "Restrict the object store memory used per replica when "
             "creating objects. Uses a default if null."
         ),
-        gt=0,
+        ge=0,
     )
     resources: Dict = Field(
         default=None, description=("The custom resources required by each replica.")
@@ -67,7 +67,8 @@ class RayActorOptionsSchema(BaseModel):
             uris.append(v["working_dir"])
 
         for uri in uris:
-            parse_uri(uri)
+            if uri is not None:
+                parse_uri(uri)
 
         return v
 
