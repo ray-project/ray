@@ -48,11 +48,11 @@ Concepts
 Preparing an environment using the Ray Cluster launcher
 -------------------------------------------------------
 
-The first way to set up dependencies is to is to prepare a single environment across the cluster before starting the Ray runtime.  
+The first way to set up dependencies is to is to prepare a single environment across the cluster before starting the Ray runtime.
 
 - You can build all your files and dependencies into a container image and specify this in your your :ref:`Cluster YAML Configuration<cluster-config>`.
 
-- You can also install packages using ``setup_commands`` in the Ray Cluster configuration file (:ref:`reference<cluster-configuration-setup-commands>`); these commands will be run as each node joins the cluster.  
+- You can also install packages using ``setup_commands`` in the Ray Cluster configuration file (:ref:`reference<cluster-configuration-setup-commands>`); these commands will be run as each node joins the cluster.
   Note that for production settings, it is recommended to build any necessary packages into a container image instead.
 
 - You can push local files to the cluster using ``ray rsync_up`` (:ref:`reference<ray-rsync>`).
@@ -66,7 +66,7 @@ Runtime environments
 
     This feature requires a full installation of Ray using ``pip install "ray[default]"``. This feature is available starting with Ray 1.4.0 and is currently only supported on macOS and Linux.
 
-The second way to set up dependencies is to install them dynamically while Ray is running.  
+The second way to set up dependencies is to install them dynamically while Ray is running.
 
 A **runtime environment** describes the dependencies your Ray application needs to run, including :ref:`files, packages, environment variables, and more <runtime-environments-api-ref>`.  It is installed dynamically on the cluster at runtime.
 
@@ -82,6 +82,9 @@ Runtime environments also allow you to set dependencies per-task, per-actor, and
     import requests
 
     runtime_env = {"working_dir": "/data/my_files", "pip": ["requests", "pendulum==2.1.2"]}
+    # or use strong-typed api ray.runtime_env.RuntimeEnv
+    # from ray.runtime_env import RuntimeEnv
+    # runtime_env = RuntimeEnv(working_dir="/data/my_files", pip=["requests", "pendulum==2.1.2"])
 
     # To run on a remote cluster instead of a local single-node cluster,
     # simply change to ray.init("ray://123.456.7.8:10001", runtime_env=...)
@@ -92,12 +95,19 @@ Runtime environments also allow you to set dependencies per-task, per-actor, and
       open("my_datafile.txt").read()
       return requests.get("https://www.ray.io")
 
-Here's another example of a runtime environment:
+A runtime environment can be described by a python dict, here is an example:
 
 .. literalinclude:: /ray-core/doc_code/runtime_env_example.py
    :language: python
    :start-after: __runtime_env_conda_def_start__
    :end-before: __runtime_env_conda_def_end__
+
+or use :class:`ray.runtime_env.RuntimeEnv <ray.runtime_env.RuntimeEnv>`, and here is an example:
+
+.. literalinclude:: /ray-core/doc_code/runtime_env_example.py
+   :language: python
+   :start-after: __strong_typed_api_runtime_env_conda_def_start__
+   :end-before: __strong_typed_api_runtime_env_conda_def_end__
 
 For more examples, jump to the :ref:`API Reference<runtime-environments-api-ref>`.
 
@@ -267,7 +277,7 @@ To ensure your local changes show up across all Ray workers and can be imported 
 API Reference
 ^^^^^^^^^^^^^
 
-The ``runtime_env`` is a Python dictionary including one or more of the following fields:
+The ``runtime_env`` is a Python dictionary or a python class :class:`ray.runtime_env.RuntimeEnv <ray.runtime_env.RuntimeEnv>` including one or more of the following fields:
 
 - ``working_dir`` (str): Specifies the working directory for the Ray workers. This must either be (1) an local existing directory with total size at most 100 MiB, (2) a local existing zipped file with total unzipped size at most 100 MiB (Note: ``excludes`` has no effect), or (3) a URI to a remotely-stored zip file containing the working directory for your job. See :ref:`remote-uris` for details.
   The specified directory will be downloaded to each node on the cluster, and Ray workers will be started in their node's copy of this directory.
@@ -595,8 +605,8 @@ remotely on GitHub!
 
 Debugging
 ---------
-If runtime_env cannot be set up (e.g., network issues, download failures, etc.), Ray will fail to schedule tasks/actors 
-that require the runtime_env. If you call ``ray.get``, it will raise ``RuntimeEnvSetupError`` with 
+If runtime_env cannot be set up (e.g., network issues, download failures, etc.), Ray will fail to schedule tasks/actors
+that require the runtime_env. If you call ``ray.get``, it will raise ``RuntimeEnvSetupError`` with
 the error message in detail.
 
 .. code-block:: python
@@ -620,8 +630,8 @@ the error message in detail.
     a = A.options(runtime_env=bad_env).remote()
     ray.get(a.f.remote())
 
-You can also enable runtime_env debugging logs by setting an environment variable ``RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED=1``. 
+You can also enable runtime_env debugging logs by setting an environment variable ``RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED=1``.
 It will print the full runtime_env setup log messages to the driver.
-The same information can be found from the log file ``runtime_env*.log`` from the log directory. 
+The same information can be found from the log file ``runtime_env*.log`` from the log directory.
 
 Look :ref:`Logging Directory Structure <logging-directory-structure>` for more details.

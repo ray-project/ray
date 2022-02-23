@@ -145,16 +145,53 @@ def _parse_proto_plugin_runtime_env(
             runtime_env_dict["plugins"] = plugins
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class RuntimeEnv(dict):
-    """An wrapper for runtime_env that is parsed and validated.
+    """This class use for define Runtime Environment.
+    See :ref:`runtime-environments` for detailed documentation.
 
-    This should be constructed from user-provided input (the API runtime_env)
-    and used everywhere that the runtime_env is passed around internally.
+    Can specify a runtime environment whole job, whether running a script
+    directly on the cluster, using Ray Job submission, or using Ray Client:
 
-    All options in the resulting dictionary will have non-None values.
+    .. code-block:: python
 
-    Currently supported options:
+        from ray.runtime_env import RuntimeEnv
+        # Starting a single-node local Ray cluster
+        ray.init(runtime_env=RuntimeEnv(...))
+
+    .. code-block:: python
+
+        from ray.runtime_env import RuntimeEnv
+        # Connecting to remote cluster using Ray Client
+        ray.init("ray://123.456.7.89:10001", runtime_env=RuntimeEnv(...))
+
+    Can specify different runtime environments per-actor or per-task using
+    ``.options()`` or the ``@ray.remote()`` decorator:
+
+    .. code-block:: python
+
+        from ray.runtime_env import RuntimeEnv
+        # Invoke a remote task that will run in a specified runtime environment.
+        f.options(runtime_env=RuntimeEnv(...)).remote()
+
+        # Instantiate an actor that will run in a specified runtime environment.
+        actor = SomeClass.options(runtime_env=RuntimeEnv(...)).remote()
+
+        # Specify a runtime environment in the task definition. Future invocations via
+        # `g.remote()` will use this runtime environment unless overridden by using
+        # `.options()` as above.
+        @ray.remote(runtime_env=RuntimeEnv(...))
+        def g():
+            pass
+
+        # Specify a runtime environment in the actor definition. Future instantiations
+        # via `MyClass.remote()` will use this runtime environment unless overridden by
+        # using `.options()` as above.
+        @ray.remote(runtime_env=RuntimeEnv(...))
+        class MyClass:
+            pass
+
+    Args:
         py_modules (List[URI]): List of URIs (either in the GCS or external
             storage), each of which is a zip file that will be unpacked and
             inserted into the PYTHONPATH of the workers.
