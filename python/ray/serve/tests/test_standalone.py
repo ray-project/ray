@@ -623,6 +623,7 @@ time.sleep(2)
     expected_output = [
         "View the Ray dashboard",
         "Using RayInternalKVStore for controller checkpoint ",
+        "object store is using /tmp instead of /dev/shm",  # happens in buildkite
         "Starting HTTP proxy with name ",
         "Started Serve instance in namespace",
         "Started server process",
