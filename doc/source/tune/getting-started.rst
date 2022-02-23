@@ -7,7 +7,8 @@ This tutorial will walk you through the process of setting up a Tune experiment.
 We'll start with a PyTorch model and show you how to leverage Ray Tune to optimize the hyperparameters of this model.
 Specifically, we'll leverage early stopping and Bayesian Optimization via HyperOpt to do so.
 
-.. tip:: If you have suggestions as to how to improve this tutorial, please `let us know <https://github.com/ray-project/ray/issues/new/choose>`_!
+.. tip:: If you have suggestions as to how to improve this tutorial,
+    please `let us know <https://github.com/ray-project/ray/issues/new/choose>`_!
 
 To run this example, you will need to install the following:
 

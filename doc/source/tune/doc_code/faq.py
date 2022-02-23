@@ -1,3 +1,5 @@
+# flake8: noqa
+
 # __reproducible_start__
 import numpy as np
 from ray import tune
@@ -19,24 +21,20 @@ def train(config):
 np.random.seed(1234)
 tune.run(
     train,
-    config={
-        "seed": tune.randint(0, 1000)
-    },
+    config={"seed": tune.randint(0, 1000)},
     search_alg=tune.suggest.BasicVariantGenerator(),
-    num_samples=10)
+    num_samples=10,
+)
 # __reproducible_end__
 
 # __basic_config_start__
-config = {
-    "a": {"x": tune.uniform(0, 10)},
-    "b": tune.choice([1, 2, 3])
-}
+config = {"a": {"x": tune.uniform(0, 10)}, "b": tune.choice([1, 2, 3])}
 # __basic_config_end__
 
 # __conditional_spaces_start__
 config = {
     "a": tune.randint(5, 10),
-    "b": tune.sample_from(lambda spec: np.random.randint(0, spec.config.a))
+    "b": tune.sample_from(lambda spec: np.random.randint(0, spec.config.a)),
 }
 # __conditional_spaces_end__
 
@@ -65,43 +63,44 @@ MOCK = True
 # the code is correct. Some of these snippets simply can't be run on the nose.
 
 if not MOCK:
-# __resources_start__
+    # __resources_start__
     tune.run(
         train_fn,
-        resources_per_trial={
-            "cpu": 2,
-            "gpu": 0.5,
-            "custom_resources": {"hdd": 80}
-        }
+        resources_per_trial={"cpu": 2, "gpu": 0.5, "custom_resources": {"hdd": 80}},
     )
-# __resources_end__
+    # __resources_end__
 
-# __resources_pgf_start__
+    # __resources_pgf_start__
     tune.run(
         train_fn,
-        resources_per_trial=tune.PlacementGroupFactory([
-            {"CPU": 2, "GPU": 0.5, "hdd": 80},
-            {"CPU": 1},
-            {"CPU": 1},
-        ], strategy="PACK")
+        resources_per_trial=tune.PlacementGroupFactory(
+            [
+                {"CPU": 2, "GPU": 0.5, "hdd": 80},
+                {"CPU": 1},
+                {"CPU": 1},
+            ],
+            strategy="PACK",
+        ),
     )
-# __resources_pgf_end__
+    # __resources_pgf_end__
 
     metric = None
 
-# __modin_start__
+    # __modin_start__
     def train_fn(config, checkpoint_dir=None):
         # some Modin operations here
         # import modin.pandas as pd
         tune.report(metric=metric)
 
-
     tune.run(
         train_fn,
-        resources_per_trial=tune.PlacementGroupFactory([
-            {"CPU": 1},  # this bundle will be used by the trainable itself
-            {"CPU": 1},  # this bundle will be used by Modin
-        ], strategy="PACK")
+        resources_per_trial=tune.PlacementGroupFactory(
+            [
+                {"CPU": 1},  # this bundle will be used by the trainable itself
+                {"CPU": 1},  # this bundle will be used by Modin
+            ],
+            strategy="PACK",
+        ),
     )
 # __modin_end__
 
@@ -109,23 +108,24 @@ if not MOCK:
 from ray import tune
 import numpy as np
 
+
 def train(config, checkpoint_dir=None, num_epochs=5, data=None):
     for i in range(num_epochs):
         for sample in data:
             # ... train on sample
             pass
 
+
 # Some huge dataset
 data = np.random.random(size=100000000)
 
-tune.run(
-    tune.with_parameters(train, num_epochs=5, data=data)
-)
+tune.run(tune.with_parameters(train, num_epochs=5, data=data))
 # __huge_data_end__
 
 
 # __seeded_1_start__
 import random
+
 random.seed(1234)
 output = [random.randint(0, 100) for _ in range(10)]
 
@@ -138,6 +138,7 @@ assert output == [99, 56, 14, 0, 11, 74, 4, 85, 88, 10]
 # This should suffice to initialize the RNGs for most Python-based libraries
 import random
 import numpy as np
+
 random.seed(1234)
 np.random.seed(5678)
 # __seeded_2_end__
@@ -145,9 +146,11 @@ np.random.seed(5678)
 
 # __torch_tf_seeds_start__
 import torch
+
 torch.manual_seed(0)
 
 import tensorflow as tf
+
 tf.random.set_seed(0)
 # __torch_tf_seeds_end__
 
@@ -175,10 +178,7 @@ if __name__ == "__main__":
     random.seed(1234)
     np.random.seed(1234)
     # Don't forget to check if the search alg has a `seed` parameter
-    tune.run(
-        trainable,
-        config=config
-    )
+    tune.run(trainable, config=config)
 # __torch_seed_example_end__
 
 # __large_data_start__
@@ -200,21 +200,20 @@ MyTrainableClass = None
 custom_sync_str_or_func = ""
 
 if not MOCK:
-# __log_1_start__
+    # __log_1_start__
     tune.run(
         MyTrainableClass,
         local_dir="~/ray_results",
-        sync_config=tune.SyncConfig(upload_dir="s3://my-log-dir")
+        sync_config=tune.SyncConfig(upload_dir="s3://my-log-dir"),
     )
-# __log_1_end__
+    # __log_1_end__
 
-# __log_2_start__
+    # __log_2_start__
     tune.run(
         MyTrainableClass,
         sync_config=tune.SyncConfig(
-            upload_dir="s3://my-log-dir",
-            syncer=custom_sync_str_or_func
-        )
+            upload_dir="s3://my-log-dir", syncer=custom_sync_str_or_func
+        ),
     )
 # __log_2_end__
 
@@ -224,36 +223,34 @@ import subprocess
 
 def custom_sync_func(source, target):
     # run other workload here
-    sync_cmd = "s3 {source} {target}".format(
-        source=source,
-        target=target)
+    sync_cmd = "s3 {source} {target}".format(source=source, target=target)
     sync_process = subprocess.Popen(sync_cmd, shell=True)
     sync_process.wait()
+
+
 # __sync_end__
 
 if not MOCK:
-# __docker_start__
+    # __docker_start__
     from ray import tune
     from ray.tune.integration.docker import DockerSyncer
-    sync_config = tune.SyncConfig(
-        syncer=DockerSyncer)
+
+    sync_config = tune.SyncConfig(syncer=DockerSyncer)
 
     tune.run(train, sync_config=sync_config)
-# __docker_end__
+    # __docker_end__
 
-# __s3_start__
+    # __s3_start__
     from ray import tune
 
     tune.run(
         tune.durable(train_fn),
         # ...,
-        sync_config=tune.SyncConfig(
-            upload_dir="s3://your-s3-bucket/durable-trial/"
-        )
+        sync_config=tune.SyncConfig(upload_dir="s3://your-s3-bucket/durable-trial/"),
     )
-# __s3_end__
+    # __s3_end__
 
-# __sync_config_start__
+    # __sync_config_start__
     from ray import tune
 
     tune.run(
@@ -263,24 +260,25 @@ if not MOCK:
         sync_config=tune.SyncConfig(
             # Do not sync because we are on shared storage
             syncer=None
-        )
+        ),
     )
-# __sync_config_end__
+    # __sync_config_end__
 
-# __k8s_start__
+    # __k8s_start__
     from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
-    sync_config = tune.SyncConfig(
-        syncer=NamespacedKubernetesSyncer("ray")
-    )
+
+    sync_config = tune.SyncConfig(syncer=NamespacedKubernetesSyncer("ray"))
 
     tune.run(train, sync_config=sync_config)
 # __k8s_end__
 
 import ray
+
 ray.shutdown()
 
 # __local_start__
 import ray
+
 ray.init(local_mode=True)
 # __local_end__
 
@@ -308,6 +306,6 @@ tune.run(
             tune.grid_search([16, 64, 256]),
         ],
     },
-    num_samples=10
+    num_samples=10,
 )
 # __grid_search_2_end__

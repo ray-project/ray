@@ -1,3 +1,5 @@
+# flake8: noqa
+
 import os
 from filelock import FileLock
 import torch.nn as nn
@@ -40,7 +42,6 @@ def test(model, data_loader, device=None):
     return correct / total
 
 
-
 def load_data():
     mnist_transforms = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
@@ -81,6 +82,7 @@ class ConvNet(nn.Module):
 import torch
 from ray import tune
 from ray.tune.suggest.optuna import OptunaSearch
+
 
 # 1. Wrap a PyTorch model in an objective function.
 def objective(config):

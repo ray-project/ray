@@ -204,8 +204,8 @@ If you're new to Tune, you're probably wondering, "what makes Tune different?"
     process - without sacrificing performance.
 
 
-Reference Materials
--------------------
+Learn More
+----------
 
 Below you can find blog posts and talks about Ray Tune:
 

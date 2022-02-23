@@ -1,3 +1,5 @@
+# flake8: noqa
+
 accuracy = 42
 
 # __keras_hyperopt_start__

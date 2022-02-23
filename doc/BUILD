@@ -165,6 +165,14 @@ py_test(
 )
 
 py_test(
+    name = "doc_code_key_concepts",
+    size = "small",
+    main = "source/tune/doc_code/key_concepts.py",
+    srcs = ["source/tune/doc_code/key_concepts.py"],
+    tags = ["exclusive", "team:ml"]
+)
+
+py_test(
     name = "doc_code_keras_quickstart",
     size = "small",
     main = "source/tune/doc_code/keras_hyperopt.py",
