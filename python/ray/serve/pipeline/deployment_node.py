@@ -12,13 +12,13 @@ class DeploymentNode(DAGNode):
 
     def __init__(
         self,
-        deployment_body,
+        deployment,
         cls_args: Tuple[Any],
         cls_kwargs: Dict[str, Any],
         cls_options: Dict[str, Any],
         other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
-        self._body: Deployment = deployment_body
+        self._body: Deployment = deployment
         super().__init__(
             cls_args,
             cls_kwargs,
@@ -30,13 +30,11 @@ class DeploymentNode(DAGNode):
             "sync_handle" in self._bound_other_args_to_resolve
             and self._bound_other_args_to_resolve.get("sync_handle") is True
         ):
-            self._deployment_handle: RayServeSyncHandle = deployment_body.get_handle(
+            self._deployment_handle: RayServeSyncHandle = deployment.get_handle(
                 sync=True
             )
         else:
-            self._deployment_handle: RayServeHandle = deployment_body.get_handle(
-                sync=False
-            )
+            self._deployment_handle: RayServeHandle = deployment.get_handle(sync=False)
 
         if self._contains_input_node():
             raise ValueError(

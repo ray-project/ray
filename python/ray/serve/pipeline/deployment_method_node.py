@@ -11,14 +11,14 @@ class DeploymentMethodNode(DAGNode):
 
     def __init__(
         self,
-        deployment_body: Deployment,
+        deployment: Deployment,
         method_name: str,
         method_args: Tuple[Any],
         method_kwargs: Dict[str, Any],
         method_options: Dict[str, Any],
         other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
-        self._body = deployment_body
+        self._body = deployment
         self._method_name: str = method_name
         super().__init__(
             method_args,
@@ -31,13 +31,11 @@ class DeploymentMethodNode(DAGNode):
             "sync_handle" in self._bound_other_args_to_resolve
             and self._bound_other_args_to_resolve.get("sync_handle") is True
         ):
-            self._deployment_handle: RayServeSyncHandle = deployment_body.get_handle(
+            self._deployment_handle: RayServeSyncHandle = deployment.get_handle(
                 sync=True
             )
         else:
-            self._deployment_handle: RayServeHandle = deployment_body.get_handle(
-                sync=False
-            )
+            self._deployment_handle: RayServeHandle = deployment.get_handle(sync=False)
 
     def _copy_impl(
         self,
