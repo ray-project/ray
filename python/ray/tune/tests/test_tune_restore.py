@@ -173,6 +173,8 @@ class TuneInterruptionTest(unittest.TestCase):
         event.wait()
         thread.join()
 
+        ray.shutdown()
+
 
 class TuneFailResumeGridTest(unittest.TestCase):
     class FailureInjectorCallback(Callback):
