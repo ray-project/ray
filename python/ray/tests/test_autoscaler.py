@@ -2117,6 +2117,7 @@ class AutoscalingTest(unittest.TestCase):
             prom_metrics=mock_metrics,
         )
         autoscaler.update()
+        assert autoscaler.summary() is None
         assert mock_metrics.update_loop_exceptions.inc.call_count == 1
         autoscaler.update()
         assert mock_metrics.update_loop_exceptions.inc.call_count == 2
