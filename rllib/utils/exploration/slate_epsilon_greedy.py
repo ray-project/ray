@@ -21,10 +21,9 @@ class SlateEpsilonGreedy(EpsilonGreedy):
     ) -> "tf.Tensor":
 
         per_slate_q_values = action_distribution.inputs
-        all_slates = self.model.slates
+        all_slates = action_distribution.all_slates
 
-        exploit_indices = action_distribution.deterministic_sample()
-        exploit_action = tf.gather(all_slates, exploit_indices)
+        exploit_action = action_distribution.deterministic_sample()
 
         batch_size = tf.shape(per_slate_q_values)[0]
         action_logp = tf.zeros(batch_size, dtype=tf.float32)
