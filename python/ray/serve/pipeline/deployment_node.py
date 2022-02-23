@@ -19,10 +19,12 @@ class DeploymentNode(DAGNode):
         other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
         self._body: Deployment = deployment_body
-        self._bound_args = cls_args or ()
-        self._bound_kwargs = cls_kwargs or {}
-        self._bound_options = cls_options or {}
-        self._bound_other_args_to_resolve = other_args_to_resolve or {}
+        super().__init__(
+            cls_args,
+            cls_kwargs,
+            cls_options,
+            other_args_to_resolve=other_args_to_resolve,
+        )
         # Serve handle is sync by default.
         if (
             "sync_handle" in self._bound_other_args_to_resolve
@@ -36,19 +38,12 @@ class DeploymentNode(DAGNode):
                 sync=False
             )
 
-        super().__init__(
-            cls_args,
-            cls_kwargs,
-            cls_options,
-            other_args_to_resolve=other_args_to_resolve,
-        )
-
         if self._contains_input_node():
             raise ValueError(
                 "InputNode handles user dynamic input the the DAG, and "
                 "cannot be used as args, kwargs, or other_args_to_resolve "
-                "in DeploymentNode constructor because it is not available at "
-                "class construction or binding time."
+                "in the DeploymentNode constructor because it is not available "
+                "at class construction or binding time."
             )
 
     def _copy_impl(
