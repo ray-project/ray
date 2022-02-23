@@ -1,3 +1,5 @@
+:orphan:
+
 .. _tune-parallelism:
 
 A Guide To Parallelism and Resources

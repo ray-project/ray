@@ -1,3 +1,5 @@
+:orphan:
+
 .. _tune-xgboost-ref:
 
 Tuning XGBoost parameters

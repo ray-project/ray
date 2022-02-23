@@ -1,3 +1,5 @@
+:orphan:
+
 .. _tune-comet-ref:
 
 Using Comet with Tune

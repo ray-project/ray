@@ -1,3 +1,5 @@
+:orphan:
+
 .. _tune-wandb-ref:
 
 Using Weights & Biases with Tune

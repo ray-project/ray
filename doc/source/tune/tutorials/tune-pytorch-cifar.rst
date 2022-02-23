@@ -1,3 +1,5 @@
+:orphan:
+
 .. _tune-pytorch-cifar-ref:
 
 How to use Tune with PyTorch

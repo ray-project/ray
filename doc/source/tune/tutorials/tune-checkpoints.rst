@@ -1,3 +1,5 @@
+:orphan:
+
 A Guide To Using Checkpoints
 ============================
 

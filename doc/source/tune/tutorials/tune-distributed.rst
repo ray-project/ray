@@ -1,3 +1,5 @@
+:orphan:
+
 .. _tune-distributed-ref:
 
 Tune Distributed Experiments
