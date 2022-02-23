@@ -1,8 +1,10 @@
+import logging
 import queue
 import threading
 
 from ray.rllib.evaluation.metrics import get_learner_stats
-from ray.rllib.policy.policy import LEARNER_STATS_KEY
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.execution.multi_gpu_learner_thread import _MultiGPULoaderThread
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -13,6 +15,7 @@ from ray.rllib.utils.timer import TimerStat
 LEARNER_QUEUE_MAX_SIZE = 16
 
 tf1, tf, tfv = try_import_tf()
+logger = logging.getLogger(__name__)
 
 
 class APEXLearnerThread(threading.Thread):
@@ -120,36 +123,29 @@ class APEXMultiGPULearnerThread(APEXLearnerThread):
             local_worker: RolloutWorker,
             train_batch_size: int = 500,
             num_multi_gpu_tower_stacks: int = 1,
-            learner_queue_size: int = 16,
-            learner_queue_timeout: int = 300,
             num_data_load_threads: int = 16,
-            _fake_gpus: bool = False):
+            ):
         """Initializes a MultiGPULearnerThread instance.
 
         Args:
             local_worker (RolloutWorker): Local RolloutWorker holding
                 policies this thread will call load_data() and optimizer() on.
-            num_gpus (int): Number of GPUs to use for data-parallel SGD.
             train_batch_size (int): Size of batches (minibatches if
                 `num_sgd_iter` > 1) to learn on.
             num_multi_gpu_tower_stacks (int): Number of buffers to parallelly
                 load data into on one device. Each buffer is of size
                 `train_batch_size` and hence increases GPU memory usage
                 accordingly.
-            minibatch_buffer_size (int): Max number of train batches to store
-                in the minibatch buffer.
-            num_sgd_iter (int): Number of passes to learn on per train batch
-                (minibatch if `num_sgd_iter` > 1).
-            learner_queue_size (int): Max size of queue of inbound
-                train batches to this thread.
             num_data_load_threads (int): Number of threads to use to load
                 data into GPU memory in parallel.
         """
-        APEXLearnerThread.__init__(self, local_worker)
+        super().__init__(local_worker=local_worker)
+
         self.train_batch_size = train_batch_size
 
         # TODO: (sven) Allow multi-GPU to work for multi-agent as well.
         self.policy = self.local_worker.policy_map[DEFAULT_POLICY_ID]
+        self.policy_map = self.local_worker.policy_map
 
         logger.info("APEXMultiGPULearnerThread devices {}".format(
             self.policy.devices))
@@ -176,6 +172,7 @@ class APEXMultiGPULearnerThread(APEXLearnerThread):
         assert self.loader_thread.is_alive()
         with self.load_wait_timer:
             buffer_idx, released = self.inqueue.get()
+            print(f"got buffer_idx={buffer_idx} and released={released} from {self.inqueue}")
 
         with self.grad_timer:
             fetches = self.policy.learn_on_loaded_batch(

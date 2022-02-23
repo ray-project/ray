@@ -56,8 +56,8 @@ class MultiGPULearnerThread(LearnerThread):
         learner_queue_size: int = 16,
         learner_queue_timeout: int = 300,
         num_data_load_threads: int = 16,
-        _fake_gpus: bool = False,
-        # Deprecated arg, use
+        # Deprecated args.
+        _fake_gpus=False,  # not used
         minibatch_buffer_size=None,
     ):
         """Initializes a MultiGPULearnerThread instance.
@@ -203,6 +203,7 @@ class _MultiGPULoaderThread(threading.Thread):
         # Get a new batch from the data (inqueue).
         with self.queue_timer:
             batch = s.inqueue.get()
+            print(f"got {batch} from {s.inqueue}")
 
         # Get next idle stack for loading.
         buffer_idx = s.idle_tower_stacks.get()

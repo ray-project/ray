@@ -24,7 +24,8 @@ from ray.rllib.agents.dqn.dqn import (
     DEFAULT_CONFIG as DQN_DEFAULT_CONFIG,
     DQNTrainer,
 )
-from ray.rllib.agents.dqn.learner_thread import LearnerThread
+from ray.rllib.agents.dqn.learner_thread import APEXLearnerThread, \
+    APEXMultiGPULearnerThread
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (
     STEPS_TRAINED_COUNTER,
@@ -89,6 +90,26 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # on timesteps to sampled from an environment and stored in the replay
         # buffer timesteps. Otherwise, replay will proceed as fast as possible.
         "training_intensity": None,
+
+        # For each stack of multi-GPU towers, how many slots should we reserve for
+        # parallel data loading? Set this to >1 to load data into GPUs in
+        # parallel. This will increase GPU memory usage proportionally with the
+        # number of stacks.
+        # Example:
+        # 2 GPUs and `num_multi_gpu_tower_stacks=3`:
+        # - One tower stack consists of 2 GPUs, each with a copy of the
+        #   model/graph.
+        # - Each of the stacks will create 3 slots for batch data on each of its
+        #   GPUs, increasing memory requirements on each GPU by 3x.
+        # - This enables us to preload data into these stacks while another stack
+        #   is performing gradient calculations.
+        "num_multi_gpu_tower_stacks": 1,
+        # Max queue size for train batches feeding into the learner.
+        "learner_queue_size": 16,
+        # Wait for train batches to be available in minibatch buffer queue
+        # this many seconds. This may need to be increased e.g. when training
+        # with a slow environment.
+        "learner_queue_timeout": 300,
     },
 )
 # __sphinx_doc_end__
@@ -99,7 +120,7 @@ APEX_DEFAULT_CONFIG = merge_dicts(
 class UpdateWorkerWeights:
     def __init__(
         self,
-        learner_thread: LearnerThread,
+        learner_thread: APEXLearnerThread,
         workers: WorkerSet,
         max_weight_sync_delay: int,
     ):
@@ -175,7 +196,14 @@ class ApexTrainer(DQNTrainer):
             ]
 
         # Start the learner thread.
-        learner_thread = LearnerThread(workers.local_worker())
+        if not config["simple_optimizer"]:
+            learner_thread = APEXMultiGPULearnerThread(
+                local_worker=workers.local_worker(),
+                train_batch_size=config["train_batch_size"],
+                num_multi_gpu_tower_stacks=config["num_multi_gpu_tower_stacks"],
+            )
+        else:
+            learner_thread = APEXLearnerThread(workers.local_worker())
         learner_thread.start()
 
         # Update experience priorities post learning.
