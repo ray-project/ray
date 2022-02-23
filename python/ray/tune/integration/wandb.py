@@ -527,8 +527,6 @@ class WandbTrainableMixin:
                 "`class YourTrainable(WandbTrainableMixin)`."
             )
 
-        super().__init__(config, *args, **kwargs)
-
         _config = config.copy()
 
         try:
@@ -539,6 +537,8 @@ class WandbTrainableMixin:
                 "Make sure to include a `wandb` key in your `config` dict "
                 "containing at least a `project` specification."
             )
+
+        super().__init__(_config, *args, **kwargs)
 
         api_key_file = wandb_config.pop("api_key_file", None)
         if api_key_file:

@@ -1,4 +1,5 @@
 import inspect
+
 import time
 from typing import (
     Any,
@@ -19,15 +20,18 @@ from ray.data.impl.pipeline_executor import (
     PipelineExecutor,
     PipelineSplitExecutorCoordinator,
 )
+from ray.data.row import TableRow
 from ray.data.impl import progress_bar
-from ray.data.impl.stats import DatasetPipelineStats
+from ray.data.impl.block_list import BlockList
+from ray.data.impl.plan import ExecutionPlan
+from ray.data.impl.stats import DatasetPipelineStats, DatasetStats
 from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
 
 # Operations that can be naively applied per dataset row in the pipeline.
-PER_DATASET_OPS = ["map", "map_batches", "flat_map", "filter"]
+PER_DATASET_OPS = ["map", "map_batches", "add_column", "flat_map", "filter"]
 
 # Operations that apply to each dataset holistically in the pipeline.
 HOLISTIC_PER_DATASET_OPS = ["repartition", "random_shuffle", "sort"]
@@ -41,7 +45,7 @@ PER_DATASET_OUTPUT_OPS = [
 ]
 
 # Operations that operate over the stream of output batches from the pipeline.
-OUTPUT_ITER_OPS = ["take", "take_all", "show", "iter_rows", "to_tf", "to_torch"]
+OUTPUT_ITER_OPS = ["take", "take_all", "show", "to_tf", "to_torch"]
 
 
 @PublicAPI(stability="beta")
@@ -79,6 +83,7 @@ class DatasetPipeline(Generic[T]):
         """
         self._base_iterable = base_iterable
         self._stages = stages or []
+        self._optimized_stages = None
         self._length = length
         self._progress_bars = progress_bars
         self._uuid = None  # For testing only.
@@ -87,18 +92,54 @@ class DatasetPipeline(Generic[T]):
         self._executed = _executed or [False]
         self._stats = DatasetPipelineStats()
 
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
+        """Return a local row iterator over the data in the pipeline.
+
+        If the dataset is a tabular dataset (Arrow/Pandas blocks), dict-like mappings
+        :py:class:`~ray.data.row.TableRow` are yielded for each row by the iterator.
+        If the dataset is not tabular, the raw row is yielded.
+
+        Examples:
+            >>> for i in ray.data.range(1000000).repeat(5).iter_rows():
+            ...     print(i)
+
+        Time complexity: O(1)
+
+        Args:
+            prefetch_blocks: The number of blocks to prefetch ahead of the
+                current block during the scan.
+
+        Returns:
+            A local iterator over the records in the pipeline.
+        """
+
+        def gen_rows() -> Iterator[Union[T, TableRow]]:
+            time_start = time.perf_counter()
+
+            for ds in self.iter_datasets():
+                wait_start = time.perf_counter()
+                for row in ds.iter_rows(prefetch_blocks=prefetch_blocks):
+                    self._stats.iter_wait_s.add(time.perf_counter() - wait_start)
+                    with self._stats.iter_user_s.timer():
+                        yield row
+                    wait_start = time.perf_counter()
+
+            self._stats.iter_total_s.add(time.perf_counter() - time_start)
+
+        return gen_rows()
+
     def iter_batches(
         self,
         *,
         prefetch_blocks: int = 0,
         batch_size: int = None,
-        batch_format: str = "pandas",
+        batch_format: str = "native",
         drop_last: bool = False,
     ) -> Iterator[BatchType]:
         """Return a local batched iterator over the data in the pipeline.
 
         Examples:
-            >>> for pandas_df in ray.data.range(1000000).iter_batches():
+            >>> for pandas_df in ray.data.range(1000000).repeat(5).iter_batches():
             ...     print(pandas_df)
 
         Time complexity: O(1)
@@ -108,8 +149,10 @@ class DatasetPipeline(Generic[T]):
                 current block during the scan.
             batch_size: Record batch size, or None to let the system pick.
             batch_format: The format in which to return each batch.
-                Specify "pandas" to select ``pandas.DataFrame`` or "pyarrow" to
-                select ``pyarrow.Table``. Default is "pandas".
+                Specify "native" to use the current block format (promoting
+                Arrow to pandas automatically), "pandas" to
+                select ``pandas.DataFrame`` or "pyarrow" to select
+                ``pyarrow.Table``. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:
@@ -573,6 +616,7 @@ class DatasetPipeline(Generic[T]):
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
+        self._optimize_stages()
         return PipelineExecutor(self)
 
     @DeveloperAPI
@@ -643,6 +687,31 @@ class DatasetPipeline(Generic[T]):
 
     def _set_uuid(self, uuid: str) -> None:
         self._uuid = uuid
+
+    def _optimize_stages(self):
+        """Optimize this pipeline, fusing stages together as possible."""
+        context = DatasetContext.get_current()
+
+        if not context.optimize_fuse_stages:
+            self._optimized_stages = self._stages
+            return
+
+        dummy_ds = Dataset(
+            ExecutionPlan(BlockList([], []), DatasetStats(stages={}, parent=None)),
+            0,
+            True,
+        )
+        for stage in self._stages:
+            dummy_ds = stage(dummy_ds)
+        dummy_ds._plan._optimize()
+        optimized_stages = []
+        for stage in dummy_ds._plan._stages:
+            optimized_stages.append(
+                lambda ds, stage=stage: Dataset(
+                    ds._plan.with_stage(stage), ds._epoch, True
+                )
+            )
+        self._optimized_stages = optimized_stages
 
 
 for method in PER_DATASET_OPS:

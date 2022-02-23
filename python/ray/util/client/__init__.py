@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2021-12-07"
+CURRENT_PROTOCOL_VERSION = "2022-02-22"
 
 
 class _ClientContext:
@@ -138,8 +138,11 @@ class _ClientContext:
 
     def disconnect(self):
         """Disconnect the Ray Client."""
+        from ray.util.client.api import ClientAPI
+
         if self.client_worker is not None:
             self.client_worker.close()
+        self.api = ClientAPI()
         self.client_worker = None
 
     # remote can be called outside of a connection, which is why it

@@ -61,19 +61,18 @@ def _get_conda_env_name(conda_env_path: str) -> str:
     return "ray-%s" % hashlib.sha1(conda_env_contents.encode("utf-8")).hexdigest()
 
 
-def create_conda_env(
+def create_conda_env_if_needed(
     conda_yaml_file: str, prefix: str, logger: Optional[logging.Logger] = None
 ) -> None:
     """
-    Given a conda YAML file and a path, creates a conda environment containing
-    the required dependencies.
-
+    Given a conda YAML, creates a conda environment containing the required
+    dependencies if such a conda environment doesn't already exist.
     Args:
         conda_yaml_file (str): The path to a conda `environment.yml` file.
         prefix (str): Directory to install the environment into via
             the `--prefix` option to conda create.  This also becomes the name
             of the conda env; i.e. it can be passed into `conda activate` and
-            `conda remove`.
+            `conda remove`
     """
     if logger is None:
         logger = logging.getLogger(__name__)
@@ -91,6 +90,13 @@ def create_conda_env(
             "environment variable to the path of the Conda executable."
         )
 
+    _, stdout, _ = exec_cmd([conda_path, "env", "list", "--json"])
+    envs = json.loads(stdout)["envs"]
+
+    if prefix in envs:
+        logger.info(f"Conda environment {prefix} already exists.")
+        return
+
     create_cmd = [
         conda_path,
         "env",
@@ -101,14 +107,14 @@ def create_conda_env(
         prefix,
     ]
 
-    if create_cmd is not None:
-        logger.info(f"Creating conda environment {prefix}")
-        exit_code, output = exec_cmd_stream_to_logger(create_cmd, logger)
-        if exit_code != 0:
+    logger.info(f"Creating conda environment {prefix}")
+    exit_code, output = exec_cmd_stream_to_logger(create_cmd, logger)
+    if exit_code != 0:
+        if os.path.exists(prefix):
             shutil.rmtree(prefix)
-            raise RuntimeError(
-                f"Failed to install conda environment {prefix}:\n{output}"
-            )
+        raise RuntimeError(
+            f"Failed to install conda environment {prefix}:\nOutput:\n{output}"
+        )
 
 
 def delete_conda_env(prefix: str, logger: Optional[logging.Logger] = None) -> bool:
@@ -180,22 +186,28 @@ def exec_cmd(
 
 
 def exec_cmd_stream_to_logger(
-    cmd: List[str], logger: logging.Logger, n_lines: int = 10
+    cmd: List[str], logger: logging.Logger, n_lines: int = 50, **kwargs
 ) -> Tuple[int, str]:
     """Runs a command as a child process, streaming output to the logger.
 
     The last n_lines lines of output are also returned (stdout and stderr).
     """
     child = subprocess.Popen(
-        cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+        cmd,
+        universal_newlines=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        **kwargs,
     )
-    exit_code = None
     last_n_lines = []
     with child.stdout:
         for line in iter(child.stdout.readline, b""):
             exit_code = child.poll()
             if exit_code is not None:
                 break
+            line = line.strip()
+            if not line:
+                continue
             last_n_lines.append(line.strip())
             last_n_lines = last_n_lines[-n_lines:]
             logger.info(line.strip())

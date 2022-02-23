@@ -38,7 +38,7 @@ class SlimFC:
             name (Optional[str]): An optional name for this layer.
         """
 
-        # By default, use Glorot unform initializer.
+        # By default, use Glorot uniform initializer.
         if initializer is None:
             initializer = nn.initializers.xavier_uniform()
 

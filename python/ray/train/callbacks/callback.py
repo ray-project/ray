@@ -1,13 +1,22 @@
 import abc
 from typing import List, Dict
 
-from ray.train.callbacks.results_preprocessors import ResultsPreprocessor
+from ray.train.callbacks.results_preprocessors import (
+    ResultsPreprocessor,
+    ExcludedKeysResultsPreprocessor,
+    SequentialResultsPreprocessor,
+)
+from ray.train.constants import ALL_RESERVED_KEYS
 
 
 class TrainingCallback(abc.ABC):
     """Abstract Train callback class."""
 
     results_preprocessor: ResultsPreprocessor = None
+    # Reserved keys used by this specific Callback.
+    # This should be set in a Callback class implementation so that the keys
+    # are not filtered out. See ``_preprocess_results`` for more details.
+    RESERVED_KEYS = {}
 
     def start_training(self, logdir: str, config: Dict, **info):
         """Called once on training start.
@@ -34,9 +43,36 @@ class TrainingCallback(abc.ABC):
                 the training function from each worker.
             **info: kwargs dict for forward compatibility.
         """
-        if self.results_preprocessor:
-            results = self.results_preprocessor.preprocess(results)
+        results = self._preprocess_results(results)
         self.handle_result(results, **info)
+
+    def _preprocess_results(self, results: List[Dict]) -> List[Dict]:
+        """Preprocesses the reported training results.
+
+        This will:
+
+        * Exclude all keys that are present in ``self.ALL_RESERVED_KEYS`` but
+          not ``self.RESERVED_KEYS``
+        * Execute ``self.results_preprocessor`` if defined.
+
+        Args:
+            results (List[Dict]): List of results from the training
+                function. Each value in the list corresponds to the output of
+                the training function from each worker.
+        Returns:
+            The preprocessed results.
+
+        """
+        results_to_exclude = ALL_RESERVED_KEYS.difference(self.RESERVED_KEYS)
+        system_preprocessor = ExcludedKeysResultsPreprocessor(results_to_exclude)
+        if self.results_preprocessor:
+            self.results_preprocessor = SequentialResultsPreprocessor(
+                [system_preprocessor, self.results_preprocessor]
+            )
+        else:
+            self.results_preprocessor = system_preprocessor
+        results = self.results_preprocessor.preprocess(results)
+        return results
 
     def handle_result(self, results: List[Dict], **info):
         """Called every time train.report() is called after preprocessing.
