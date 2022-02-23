@@ -28,12 +28,9 @@ class TestSlateQ(unittest.TestCase):
             "learning_starts": 1000,
         }
 
-        num_iterations = 2
+        num_iterations = 1
 
-        # TODO: Add tf and switch with-eager-tracing to True.
-        for _ in framework_iterator(
-            config, frameworks=("tf2", "torch"), with_eager_tracing=False
-        ):
+        for _ in framework_iterator(config, with_eager_tracing=True):
             trainer = slateq.SlateQTrainer(config=config)
             for i in range(num_iterations):
                 results = trainer.train()
