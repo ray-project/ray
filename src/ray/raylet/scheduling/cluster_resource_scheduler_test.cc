@@ -190,6 +190,15 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
       node_resources.custom_resources.clear();
     }
   }
+
+  void AssertPredefinedNodeResources(const ClusterResourceScheduler &resource_scheduler) {
+    ASSERT_EQ(resource_scheduler.string_to_int_map_.Get(ray::kCPU_ResourceLabel), CPU);
+    ASSERT_EQ(resource_scheduler.string_to_int_map_.Get(ray::kGPU_ResourceLabel), GPU);
+    ASSERT_EQ(
+        resource_scheduler.string_to_int_map_.Get(ray::kObjectStoreMemory_ResourceLabel),
+        OBJECT_STORE_MEM);
+    ASSERT_EQ(resource_scheduler.string_to_int_map_.Get(ray::kMemory_ResourceLabel), MEM);
+  }
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   std::string node_name;
   rpc::GcsNodeInfo node_info;
@@ -264,9 +273,23 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingIdTest) {
   ASSERT_EQ(short_ids.Count(), max_id);
 }
 
+TEST_F(ClusterResourceSchedulerTest, SchedulingIdInsertOrDieTest) {
+  StringIdMap ids;
+  ids.InsertOrDie("123", 2);
+  ids.InsertOrDie("1234", 3);
+
+  ASSERT_EQ(ids.Count(), 2);
+  ASSERT_TRUE(ids.Get(to_string(100)) == -1);
+  ASSERT_EQ(ids.Get("123"), 2);
+  ASSERT_EQ(ids.Get(2), std::string("123"));
+  ASSERT_EQ(ids.Get("1234"), 3);
+  ASSERT_EQ(ids.Get(3), std::string("1234"));
+}
+
 TEST_F(ClusterResourceSchedulerTest, SchedulingInitClusterTest) {
   int num_nodes = 10;
   ClusterResourceScheduler resource_scheduler;
+  AssertPredefinedNodeResources(resource_scheduler);
 
   initCluster(resource_scheduler, num_nodes);
 
@@ -325,6 +348,7 @@ TEST_F(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest) {
   auto local_node_id = NodeID::FromRandom().Binary();
   ClusterResourceScheduler resource_scheduler(local_node_id, resource_total,
                                               *gcs_client_);
+  AssertPredefinedNodeResources(resource_scheduler);
   auto remote_node_id = NodeID::FromRandom().Binary();
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       remote_node_id, resource_total, resource_total);
@@ -355,6 +379,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
   vector<FixedPoint> cust_capacities{5, 5};
   initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
   ClusterResourceScheduler resource_scheduler(1, node_resources, *gcs_client_);
+  AssertPredefinedNodeResources(resource_scheduler);
 
   {
     ResourceRequest resource_request;
