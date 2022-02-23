@@ -6,6 +6,7 @@ from ray.serve.deployment_state import (
     SLOW_STARTUP_WARNING_S,
     SLOW_STARTUP_WARNING_PERIOD_S,
 )
+from ray._private.test_utils import wait_for_condition
 
 
 def test_slow_allocation_warning(serve_instance, capsys):
@@ -27,13 +28,13 @@ def test_slow_allocation_warning(serve_instance, capsys):
 
     # wait long enough for the warning to be printed
     # with a small grace period
-    time.sleep(SLOW_STARTUP_WARNING_PERIOD_S * 1.5)
+    time.sleep(SLOW_STARTUP_WARNING_PERIOD_S)
 
-    captured = capsys.readouterr()
-    assert expected_warning in captured.err
-    # make sure that exactly one warning was printed
-    # for this deployment
-    assert captured.err.count(expected_warning) == 1
+    def check():
+        captured = capsys.readouterr()
+        return expected_warning in captured.err
+
+    wait_for_condition(check)
 
 
 def test_slow_initialization_warning(serve_instance, capsys):
@@ -54,17 +55,13 @@ def test_slow_initialization_warning(serve_instance, capsys):
         f"to initialize."
     )
 
-    # wait long enough for the warning to be printed
-    # with a small grace period
-    time.sleep(SLOW_STARTUP_WARNING_PERIOD_S * 1.5)
+    time.sleep(SLOW_STARTUP_WARNING_PERIOD_S)
 
-    captured = capsys.readouterr()
+    def check():
+        captured = capsys.readouterr()
+        return expected_warning in captured.err
 
-    assert expected_warning in captured.err
-
-    # make sure that exactly one warning was printed
-    # for this deployment
-    assert captured.err.count(expected_warning) == 1
+    wait_for_condition(check)
 
 
 def test_deployment_init_error_logging(serve_instance, capsys):
