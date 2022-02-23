@@ -345,8 +345,8 @@ CoreWorker &CoreWorkerProcessImpl::GetCoreWorkerForCurrentThread() {
       // TODO (scv119): A better solution could be returning error code
       // and handling it at language frontend.
       RAY_LOG(INFO) << "The global worker has already been shutdown. This happens when "
-                        "the language frontend accesses the Ray's worker after it is "
-                        "shutdown. The process will exit";
+                       "the language frontend accesses the Ray's worker after it is "
+                       "shutdown. The process will exit";
       QuickExit();
     }
     RAY_CHECK(global_worker) << "global_worker_ must not be NULL";
