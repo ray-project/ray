@@ -240,6 +240,9 @@ class TaskID : public BaseID<TaskID> {
   /// \return The `ActorID` of the actor which creates this task.
   ActorID ActorId() const;
 
+  /// Returns whether this is the ID of an actor creation task.
+  bool IsForActorCreationTask() const;
+
   /// Get the id of the job to which this task belongs.
   ///
   /// \return The `JobID` of the job which creates this task.
