@@ -223,7 +223,7 @@ def test_subnet_given_head_and_worker_sg(iam_client_stub, ec2_client_stub):
     ec2_client_stub.assert_no_pending_responses()
 
 
-# Parametrize across multiple regions, since default AMI is different ine ach
+# Parametrize across multiple regions, since default AMI is different in each
 @pytest.mark.parametrize(
     "iam_client_stub,ec2_client_stub,region",
     [3 * (region,) for region in DEFAULT_AMI],

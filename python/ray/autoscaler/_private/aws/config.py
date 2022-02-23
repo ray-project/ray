@@ -597,9 +597,9 @@ def _check_ami(config):
         if node_ami in ["", "latest_dlami"]:
             if not default_ami:
                 cli_logger.abort(
-                    f"Node type `{key}` does not have an ImageId and no default "
-                    f"AMI is available for the region `{region}`. ImageId will "
-                    "need to be set manually in your cluster config."
+                    f"Node type `{key}` has no ImageId in its node_config "
+                    f"and no default AMI is available for the region `{region}`. "
+                    "ImageId will need to be set manually in your cluster config."
                 )
             else:
                 node_config["ImageId"] = default_ami
