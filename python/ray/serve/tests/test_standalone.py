@@ -597,6 +597,7 @@ def test_output():
     driver_script = """
 from fastapi import FastAPI
 import requests
+import time
 
 from ray import serve
 
@@ -617,9 +618,11 @@ resp.raise_for_status()
 
 A.delete()
 serve.shutdown()
+time.sleep(2)
 """
     expected_output = [
         "View the Ray dashboard",
+        "Using RayInternalKVStore for controller checkpoint ",
         "Starting HTTP proxy with name ",
         "Started Serve instance in namespace",
         "Started server process",
@@ -631,8 +634,14 @@ serve.shutdown()
 
     output = run_string_as_driver(driver_script).strip().splitlines()
     assert len(output) == len(expected_output), "\n".join(output)
-    for out_line, expect_fragment in zip(output, expected_output):
-        assert expect_fragment in out_line, "\n".join(output)
+
+    # some lines might be out of order so we perform membership check
+    for out_line in output:
+        for expected_fragment in expected_output:
+            if expected_fragment in out_line:
+                break
+        else:
+            assert False, f"Unexpected line detected: {out_line}"
 
 
 @pytest.mark.parametrize("ray_start_with_dashboard", [{"num_cpus": 4}], indirect=True)
