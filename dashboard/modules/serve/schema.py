@@ -241,7 +241,7 @@ class DeploymentSchema(BaseModel):
         return values
     
     @root_validator
-    def num_replicas_and_autoscaling_config_cannot_both_be_set(cls, values):
+    def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
         if (values.get("num_replicas", None) is not None 
             and values.get("autoscaling_config", None) is not None):
             raise ValueError("Manually setting num_replicas is not allowed "
