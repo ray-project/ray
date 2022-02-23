@@ -317,7 +317,7 @@ void LocalTaskManager::SpillWaitingTasks() {
     // the most memory availability.
     std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
         (*it)->task.GetTaskSpecification(),
-        (*it)->PrioritizeLocalNode() && !force_spillback,
+        /*prioritize_local_node*/ true,
         /*exclude_local_node*/ force_spillback,
         /*requires_object_store_memory*/ true, &is_infeasible);
     if (!node_id_string.empty() && node_id_string != self_node_id_.Binary()) {
