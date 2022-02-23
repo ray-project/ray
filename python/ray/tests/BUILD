@@ -81,6 +81,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_usage_stats.py",
     "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
     "test_memory_scheduling.py",
     "test_metrics.py",
@@ -147,7 +148,6 @@ py_test_module_list(
     "test_list_actors_2.py",
     "test_list_actors_3.py",
     "test_list_actors_4.py",
-    "test_usage_stats.py",
   ],
   size = "small",
   extra_srcs = SRCS,

@@ -1,7 +1,9 @@
 """TensorFlow policy class used for SlateQ."""
 
+import functools
 import gym
 import logging
+import numpy as np
 from typing import Dict
 
 import ray
@@ -9,7 +11,7 @@ from ray.rllib.agents.dqn.dqn_tf_policy import clip_gradients
 from ray.rllib.agents.sac.sac_tf_policy import TargetNetworkMixin
 from ray.rllib.agents.slateq.slateq_tf_model import SlateQTFModel
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.tf.tf_action_dist import Categorical
+from ray.rllib.models.tf.tf_action_dist import SlateMultiCategorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
@@ -88,7 +90,7 @@ def build_slateq_losses(
     observation = train_batch[SampleBatch.OBS]
     # user.shape: [B, E]
     user_obs = observation["user"]
-    batch_size = user_obs.get_shape().as_list()[0]
+    batch_size = tf.shape(user_obs)[0]
     # doc.shape: [B, C, E]
     doc_obs = list(observation["doc"].values())
     # action.shape: [B, S]
@@ -103,7 +105,9 @@ def build_slateq_losses(
     # q_values.shape: [B, C]
     q_values = model.get_q_values(user_obs, doc_obs)
     # slate_q_values.shape: [B, S]
-    slate_q_values = tf1.batch_gather(q_values, tf.cast(actions, dtype=tf.int32))
+    slate_q_values = tf.gather(
+        q_values, tf.cast(actions, dtype=tf.int32), batch_dims=-1
+    )
     # Only get the Q from the clicked document.
     # replay_click_q.shape: [B]
     replay_click_q = tf.reduce_sum(
@@ -238,8 +242,15 @@ def action_distribution_fn(
         per_slate_q_values = get_per_slate_q_values(
             policy.slates, score_no_click, scores, q_values
         )
-    model.slates = policy.slates
-    return per_slate_q_values, Categorical, []
+    return (
+        per_slate_q_values,
+        functools.partial(
+            SlateMultiCategorical,
+            action_space=policy.action_space,
+            all_slates=policy.slates,
+        ),
+        [],
+    )
 
 
 def get_per_slate_q_values(slates, s_no_click, s, q):
@@ -284,6 +295,7 @@ def setup_early(policy, obs_space, action_space, config):
 
     num_candidates = action_space.nvec[0]
     slate_size = len(action_space.nvec)
+    num_all_slates = np.prod([(num_candidates - i) for i in range(slate_size)])
 
     mesh_args = [list(range(num_candidates))] * slate_size
     slates = tf.stack(tf.meshgrid(*mesh_args), axis=-1)
@@ -297,6 +309,7 @@ def setup_early(policy, obs_space, action_space, config):
     )
     # slates.shape: [A, S]
     slates = tf.boolean_mask(tensor=slates, mask=unique_mask)
+    slates.set_shape([num_all_slates, slate_size])
 
     # Store all possible slates only once in policy object.
     policy.slates = slates

@@ -567,7 +567,7 @@ py_test(
 py_test(
     name = "learning_tests_interest_evolution_10_candidates_recsim_env_slateq",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_discrete", "no_tf_static_graph"],
+    tags = ["team:ml", "learning_tests", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/slateq/interest-evolution-10-candidates-recsim-env-slateq.yaml"],
