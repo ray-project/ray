@@ -1,3 +1,4 @@
+import datetime
 import logging
 
 import ray._private.utils
@@ -13,6 +14,8 @@ host_num_cpus = None
 
 last_cpu_usage = None
 last_system_usage = None
+
+cpu_percent_error_lasttime = None
 
 
 def cpu_percent():
@@ -34,6 +37,7 @@ def cpu_percent():
     """  # noqa
     global last_system_usage
     global last_cpu_usage
+    global cpu_percent_error_lasttime
     try:
         cpu_usage = _cpu_usage()
         system_usage = _system_usage()
@@ -52,7 +56,13 @@ def cpu_percent():
         # Computed percentage might be slightly above 100%.
         return min(cpu_percent, 100.0)
     except Exception as e:
-        logger.exception("Error computing CPU usage of Ray Kubernetes pod.", e)
+        if (
+            cpu_percent_error_lasttime is None
+            or datetime.datetime.now() - cpu_percent_error_lasttime
+            > datetime.timedelta(minutes=2)
+        ):
+            logger.warning("Error computing CPU usage of Ray Kubernetes pod.", e)
+            cpu_percent_error_lasttime = datetime.datetime.now()
         return 0.0
 
 
@@ -78,7 +88,7 @@ def _system_usage():
     usage_data = parts[1:8]
     total_clock_ticks = sum(int(entry) for entry in usage_data)
     # 100 clock ticks per second, 10^9 ns per second
-    usage_ns = total_clock_ticks * 10 ** 7
+    usage_ns = total_clock_ticks * 10**7
     return usage_ns
 
 
