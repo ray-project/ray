@@ -100,7 +100,7 @@ class GcsServer {
   void InitGcsResourceManager(const GcsInitData &gcs_init_data);
 
   /// Initialize synchronization service
-  void InitRaySync(const GcsInitData &gcs_init_data);
+  void InitRaySyncer(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs resource scheduler.
   void InitGcsResourceScheduler();
@@ -209,7 +209,7 @@ class GcsServer {
   std::unique_ptr<rpc::StatsHandler> stats_handler_;
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
   // Synchronization service for ray.
-  std::unique_ptr<sync::RaySync> ray_sync_;
+  std::unique_ptr<sync::RaySyncer> ray_syncer_;
   /// The gcs worker manager.
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   /// Worker info service.

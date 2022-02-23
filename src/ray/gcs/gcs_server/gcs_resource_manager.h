@@ -197,7 +197,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   uint64_t counts_[CountType::CountType_MAX] = {0};
 
   // Resource syncer
-  sync::RaySync *ray_sync_;
+  sync::RaySync *ray_syncer_;
 };
 
 }  // namespace gcs
