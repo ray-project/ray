@@ -110,7 +110,8 @@ def test_delete_success(serve_start_stop):
     ray_actor_options = {
         "runtime_env": {
             "working_dir": (
-                "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
+                "https://github.com/shrekris-anyscale/"
+                "test_deploy_group/archive/HEAD.zip"
             )
         }
     }
