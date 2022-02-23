@@ -588,6 +588,10 @@ class Dataset(Generic[T]):
                 f"The length of locality_hints {len(locality_hints)} "
                 "doesn't equal the number of splits {n}."
             )
+            if len(set(locality_hints)) != len(locality_hints):
+                raise ValueError(
+                    "locality_hints must not contain duplicate actor handles"
+                )
 
         blocks = self._plan.execute()
         stats = self._plan.stats()
@@ -618,6 +622,8 @@ class Dataset(Generic[T]):
 
             This assume that the given splits are sorted in ascending order.
             """
+            if target_size == 0:
+                return splits
             new_splits = []
             leftovers = []
             for split in splits:
@@ -746,7 +752,7 @@ class Dataset(Generic[T]):
         metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
 
         if locality_hints is None:
-            return equalize(
+            ds = equalize(
                 [
                     Dataset(
                         ExecutionPlan(
@@ -759,10 +765,11 @@ class Dataset(Generic[T]):
                         self._lazy,
                     )
                     for blocks in np.array_split(block_refs, n)
-                    if not equal or len(blocks) > 0
                 ],
                 n,
             )
+            assert len(ds) == n, (ds, n)
+            return ds
 
         # If the locality_hints is set, we use a two-round greedy algorithm
         # to co-locate the blocks with the actors based on block
