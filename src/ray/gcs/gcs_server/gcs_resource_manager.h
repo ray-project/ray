@@ -28,8 +28,8 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-namespace sync {
-class RaySync;
+namespace syncer {
+class RaySyncer;
 }
 namespace gcs {
 /// Gcs resource manager interface.
@@ -47,7 +47,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
                               std::shared_ptr<GcsPublisher> gcs_publisher,
                               std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                               // TODO(iycheng): Remove sync from GcsResourceManager
-                              sync::RaySync *ray_sync = nullptr);
+                              syncer::RaySyncer *ray_syncer = nullptr);
 
   virtual ~GcsResourceManager() {}
 
@@ -197,7 +197,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   uint64_t counts_[CountType::CountType_MAX] = {0};
 
   // Resource syncer
-  sync::RaySync *ray_syncer_;
+  syncer::RaySyncer *ray_syncer_;
 };
 
 }  // namespace gcs

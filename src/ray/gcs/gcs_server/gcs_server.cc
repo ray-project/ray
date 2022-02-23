@@ -122,7 +122,7 @@ void GcsServer::Start() {
 
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init synchronization service
-  InitRaySync(gcs_init_data);
+  InitRaySyncer(gcs_init_data);
 
   // Init gcs resource manager.
   InitGcsResourceManager(gcs_init_data);
@@ -400,7 +400,7 @@ void GcsServer::StoreGcsServerAddressInRedis() {
   RAY_LOG(INFO) << "Finished setting gcs server address: " << address;
 }
 
-void GcsServer::InitRaySync(const GcsInitData &gcs_init_data) {
+void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
   /*
     The current synchronization flow is:
         syncer::poller -> gcs_resource_manager -> syncer::buffer -> syncer::broadcast
@@ -428,7 +428,7 @@ void GcsServer::InitRaySync(const GcsInitData &gcs_init_data) {
   auto grpc_based_resource_broadcaster =
       std::make_unique<GrpcBasedResourceBroadcaster>(raylet_client_pool_);
   grpc_based_resource_broadcaster->Initialize(gcs_init_data);
-  ray_syncer_ = std::make_unique<sync::RaySync>(
+  ray_syncer_ = std::make_unique<syncer::RaySyncer>(
       main_service_, std::move(grpc_based_resource_broadcaster),
       std::move(gcs_resource_report_poller));
   ray_syncer_->Start();
