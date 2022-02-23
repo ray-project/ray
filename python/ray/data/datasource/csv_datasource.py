@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, Callable, Iterator, Optional
+from typing import TYPE_CHECKING, Any, Dict, Callable, Iterator
 
 if TYPE_CHECKING:
     import pyarrow
@@ -8,7 +8,6 @@ from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     _resolve_kwargs,
 )
-from pyarrow.fs import FileSystem
 
 
 class CSVDatasource(FileBasedDatasource):
@@ -21,11 +20,7 @@ class CSVDatasource(FileBasedDatasource):
     """
 
     def _read_stream(
-        self,
-        f: "pyarrow.NativeFile",
-        path: str,
-        filesystem: Optional["pyarrow.fs.FileSystem"],
-        **reader_args
+        self, f: "pyarrow.NativeFile", path: str, **reader_args
     ) -> Iterator[Block]:
         import pyarrow
         from pyarrow import csv

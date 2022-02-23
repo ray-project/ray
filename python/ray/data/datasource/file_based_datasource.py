@@ -163,8 +163,27 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
             )
             for read_path in read_paths:
+                compression = open_stream_args.pop("compression", None)
+                if compression is None:
+                    import pyarrow as pa
+
+                    try:
+                        # If no compression manually given, try to detect compression codec from
+                        # path.
+                        compression = pa.Codec.detect(read_path).name
+                    except (ValueError, TypeError):
+                        compression = None
+                if compression == "snappy":
+                    # Pass Snappy compression as a reader arg, so datasource subclasses can
+                    # manually handle streaming decompression in self._read_stream().
+                    reader_args["compression"] = compression
+                    reader_args["filesystem"] = filesystem
+                elif compression is not None:
+                    # Non-Snappy compression, pass as open_input_stream() arg so Arrow can take
+                    # care of streaming decompression for us.
+                    open_stream_args["compression"] = compression
                 with fs.open_input_stream(read_path, **open_stream_args) as f:
-                    for data in read_stream(f, read_path, filesystem=fs, **reader_args):
+                    for data in read_stream(f, read_path, **reader_args):
                         output_buffer.add_block(data)
                         if output_buffer.has_next():
                             yield output_buffer.next()
@@ -202,25 +221,15 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         return None
 
     def _read_stream(
-        self,
-        f: "pyarrow.NativeFile",
-        path: str,
-        filesystem: Optional["pyarrow.fs.FileSystem"],
-        **reader_args,
+        self, f: "pyarrow.NativeFile", path: str, **reader_args
     ) -> Iterator[Block]:
         """Streaming read a single file, passing all kwargs to the reader.
 
         By default, delegates to self._read_file().
         """
-        yield self._read_file(f, path, filesystem, **reader_args)
+        yield self._read_file(f, path, **reader_args)
 
-    def _read_file(
-        self,
-        f: "pyarrow.NativeFile",
-        path: str,
-        filesystem: Optional["pyarrow.fs.FileSystem"],
-        **reader_args,
-    ) -> Block:
+    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args) -> Block:
         """Reads a single file, passing all kwargs to the reader.
 
         This method should be implemented by subclasses.

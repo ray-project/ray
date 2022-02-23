@@ -1,5 +1,5 @@
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Dict, Callable, Optional
+from typing import TYPE_CHECKING, Any, Dict, Callable
 
 import numpy as np
 
@@ -8,7 +8,6 @@ if TYPE_CHECKING:
 
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from pyarrow.fs import FileSystem
 
 
 class NumpyDatasource(FileBasedDatasource):
@@ -21,13 +20,7 @@ class NumpyDatasource(FileBasedDatasource):
 
     """
 
-    def _read_file(
-        self,
-        f: "pyarrow.NativeFile",
-        path: str,
-        filesystem: Optional["pyarrow.fs.FileSystem"],
-        **reader_args
-    ):
+    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
         from ray.data.extensions import TensorArray
         import pyarrow as pa
 

@@ -1,4 +1,3 @@
-import io
 import os
 import shutil
 
@@ -10,6 +9,7 @@ import pytest
 import snappy
 from fsspec.implementations.local import LocalFileSystem
 from pytest_lazyfixture import lazy_fixture
+from io import BytesIO
 
 import ray
 
@@ -794,11 +794,11 @@ def test_read_text(ray_start_regular_shared, tmp_path):
 
 
 def test_read_binary_snappy(ray_start_regular_shared, tmp_path):
-    path = os.path.join(tmp_path, "test_binary")
+    path = os.path.join(tmp_path, "test_binary_snappy")
     os.mkdir(path)
     with open(os.path.join(path, "file"), "wb") as f:
         byte_str = "hello, world".encode()
-        bytes = io.BytesIO(byte_str)
+        bytes = BytesIO(byte_str)
         snappy.stream_compress(bytes, f)
     ds = ray.data.read_binary_files(
         path,
