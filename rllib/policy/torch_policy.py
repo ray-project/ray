@@ -587,6 +587,15 @@ class TorchPolicy(Policy):
                 for b in self._loaded_batches[buffer_index]
             ]
 
+        # Callback handling.
+        batch_fetches = {}
+        for i, batch in enumerate(device_batches):
+            custom_metrics = {}
+            self.callbacks.on_learn_on_batch(
+                policy=self, train_batch=batch, result=custom_metrics
+            )
+            batch_fetches[f"tower_{i}"] = {"custom_metrics": custom_metrics}
+
         # Do the (maybe parallelized) gradient calculation step.
         tower_outputs = self._multi_gpu_parallel_grad_calc(device_batches)
 
@@ -608,11 +617,13 @@ class TorchPolicy(Policy):
 
         self.apply_gradients(_directStepOptimizerSingleton)
 
-        batch_fetches = {}
-        for i, batch in enumerate(device_batches):
-            batch_fetches[f"tower_{i}"] = {
-                LEARNER_STATS_KEY: self.extra_grad_info(batch)
-            }
+        for i, (model, batch) in enumerate(zip(self.model_gpu_towers, device_batches)):
+            batch_fetches[f"tower_{i}"].update(
+                {
+                    LEARNER_STATS_KEY: self.extra_grad_info(batch),
+                    "model": model.metrics(),
+                }
+            )
 
         batch_fetches.update(self.extra_compute_grad_fetches())
 
