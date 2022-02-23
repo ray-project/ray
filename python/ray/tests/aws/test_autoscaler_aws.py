@@ -229,7 +229,7 @@ def test_subnet_given_head_and_worker_sg(iam_client_stub, ec2_client_stub):
     [3 * (region,) for region in DEFAULT_AMI],
     indirect=["iam_client_stub", "ec2_client_stub"],
 )
-def test_fills_out_amis_non_default_region(iam_client_stub, ec2_client_stub, region):
+def test_fills_out_amis_and_iam(iam_client_stub, ec2_client_stub, region):
     # Set up expected key pair for specific region
     region_key_pair = DEFAULT_KEY_PAIR.copy()
     region_key_pair["KeyName"] = DEFAULT_KEY_PAIR["KeyName"].replace(
