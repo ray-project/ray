@@ -240,10 +240,14 @@ py_test(
 
 py_test(
     name = "test_logs",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
+    env = {
+        "SERVE_SLOW_STARTUP_WARNING_S": "2",
+        "SERVE_SLOW_STARTUP_WARNING_PERIOD_S": "4"
+    }
 )
 
 

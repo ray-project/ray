@@ -30,11 +30,7 @@ def test_slow_allocation_warning(serve_instance, capsys):
     time.sleep(SLOW_STARTUP_WARNING_PERIOD_S * 1.5)
 
     captured = capsys.readouterr()
-
-    print(captured.err)
-
     assert expected_warning in captured.err
-
     # make sure that exactly one warning was printed
     # for this deployment
     assert captured.err.count(expected_warning) == 1
@@ -48,7 +44,7 @@ def test_slow_initialization_warning(serve_instance, capsys):
         def __init__(self):
             time.sleep(99999)
 
-    num_replicas = 4
+    num_replicas = 2
     D.options(num_replicas=num_replicas).deploy(_blocking=False)
 
     expected_warning = (
