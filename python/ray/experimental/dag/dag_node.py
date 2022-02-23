@@ -1,13 +1,5 @@
 import ray
 from ray.experimental.dag.py_obj_scanner import _PyObjScanner
-from ray.experimental.dag.format_utils import (
-    get_args_lines,
-    get_kwargs_lines,
-    get_options_lines,
-    get_other_args_to_resolve_lines,
-    get_indentation,
-)
-import ray.experimental.dag as ray_dag
 
 from typing import (
     Optional,
@@ -198,16 +190,6 @@ class DAGNode:
             )
         )
 
-    def _contain_input_node(self) -> bool:
-        """Check if InputNode is used in children DAGNodes with current node
-        as the root.
-        """
-        children_dag_nodes = self._get_all_child_nodes()
-        for child in children_dag_nodes:
-            if isinstance(child, ray_dag.InputNode):
-                return True
-        return False
-
     def _execute_impl(self) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this node, assuming args have been transformed already."""
         raise NotImplementedError
@@ -236,38 +218,10 @@ class DAGNode:
         instance._stable_uuid = self._stable_uuid
         return instance
 
-    def __str__(self) -> str:
-        indent = get_indentation()
-
-        if isinstance(self, (ray_dag.FunctionNode, ray_dag.ClassNode)):
-            body_line = str(self._body)
-        elif isinstance(self, ray_dag.ClassMethodNode):
-            body_line = f"{self._method_name}()"
-        elif isinstance(self, ray_dag.InputNode):
-            body_line = "__InputNode__"
-
-        args_line = get_args_lines(self._bound_args)
-        kwargs_line = get_kwargs_lines(self._bound_kwargs)
-        options_line = get_options_lines(self._bound_options)
-        other_args_to_resolve_line = get_other_args_to_resolve_lines(
-            self._bound_other_args_to_resolve
-        )
-        node_type = f"{self.__class__.__name__}"
-
-        return (
-            f"({node_type})(\n"
-            f"{indent}body={body_line}\n"
-            f"{indent}args={args_line}\n"
-            f"{indent}kwargs={kwargs_line}\n"
-            f"{indent}options={options_line}\n"
-            f"{indent}other_args_to_resolve={other_args_to_resolve_line}\n"
-            f")"
-        )
-
     def __reduce__(self):
         """We disallow serialization to prevent inadvertent closure-capture.
 
         Use ``.to_json()`` and ``.from_json()`` to convert DAGNodes to a
         serializable form.
         """
-        raise ValueError("DAGNode cannot be serialized.")
+        raise ValueError(f"DAGNode cannot be serialized. DAGNode: {str(self)}")
