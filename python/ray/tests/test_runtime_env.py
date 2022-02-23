@@ -23,6 +23,7 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.validation import ParsedRuntimeEnv
 
+
 def test_get_wheel_filename():
     ray_version = "2.0.0.dev0"
     for sys_platform in ["darwin", "linux", "win32"]:
