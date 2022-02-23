@@ -79,10 +79,10 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
       &GetClusterResources() const;
 
   /// Update resources of a node
-  void UpdateResources(const NodeID& node_id, );
+  void UpdateResources(const NodeID &node_id, );
 
   /// Delete resource of a node
-  void DeleteResources(const NodeID& node_id, );
+  void DeleteResources(const NodeID &node_id, );
 
   /// Handle a node registration.
   ///
