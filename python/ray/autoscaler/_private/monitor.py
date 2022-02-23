@@ -374,7 +374,7 @@ class Monitor:
                         "Autoscaler has not yet received load metrics. Waiting."
                     )
                     time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
-                    return
+                    continue
 
                 self.update_resource_requests()
                 self.update_event_summary()
