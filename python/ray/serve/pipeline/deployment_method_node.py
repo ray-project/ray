@@ -7,7 +7,7 @@ from ray.serve.handle import RayServeSyncHandle, RayServeHandle
 
 
 class DeploymentMethodNode(DAGNode):
-    """Represents a deployment method invocation in a Ray function DAG."""
+    """Represents a deployment method invocation of a DeploymentNode in DAG."""
 
     def __init__(
         self,
@@ -20,10 +20,12 @@ class DeploymentMethodNode(DAGNode):
     ):
         self._body = deployment_body
         self._method_name: str = method_name
-        self._bound_args = method_args or ()
-        self._bound_kwargs = method_kwargs or {}
-        self._bound_options = method_options or {}
-        self._bound_other_args_to_resolve = other_args_to_resolve or {}
+        super().__init__(
+            method_args,
+            method_kwargs,
+            method_options,
+            other_args_to_resolve=other_args_to_resolve,
+        )
         # Serve handle is sync by default.
         if (
             "sync_handle" in self._bound_other_args_to_resolve
@@ -36,13 +38,6 @@ class DeploymentMethodNode(DAGNode):
             self._deployment_handle: RayServeHandle = deployment_body.get_handle(
                 sync=False
             )
-
-        super().__init__(
-            method_args,
-            method_kwargs,
-            method_options,
-            other_args_to_resolve=other_args_to_resolve,
-        )
 
     def _copy_impl(
         self,
