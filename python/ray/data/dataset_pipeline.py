@@ -417,10 +417,15 @@ class DatasetPipeline(Generic[T]):
                 # Still going through the original pipeline.
                 if self._original_iter:
                     try:
-                        res = next(self._original_iter)
-                        res._set_epoch(0)
-                        self._results.append(res)
-                        return lambda: res
+                        make_ds = next(self._original_iter)
+
+                        def gen():
+                            res = make_ds()
+                            res._set_epoch(0)
+                            self._results.append(res)
+                            return res
+
+                        return gen
                     except StopIteration:
                         self._original_iter = None
                         # Calculate the cursor limit.
@@ -451,7 +456,11 @@ class DatasetPipeline(Generic[T]):
         else:
             length = None
 
-        return DatasetPipeline(RepeatIterable(self.iter_datasets()), length=length)
+        return DatasetPipeline(
+            RepeatIterable(iter(self._base_iterable)),
+            stages=self._stages.copy(),
+            length=length,
+        )
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset pipeline.
