@@ -5,16 +5,19 @@ import time
 import pytest
 
 import ray
-from ray.exceptions import TaskCancelledError, RayTaskError, \
-                           GetTimeoutError, WorkerCrashedError, \
-                           ObjectLostError
+from ray.exceptions import (
+    TaskCancelledError,
+    RayTaskError,
+    GetTimeoutError,
+    WorkerCrashedError,
+    ObjectLostError,
+)
 from ray._private.test_utils import SignalActor
 
 
 def valid_exceptions(use_force):
     if use_force:
-        return (RayTaskError, TaskCancelledError, WorkerCrashedError,
-                ObjectLostError)
+        return (RayTaskError, TaskCancelledError, WorkerCrashedError, ObjectLostError)
     else:
         return (RayTaskError, TaskCancelledError)
 
@@ -32,7 +35,7 @@ def test_cancel_chain(ray_start_regular, use_force):
     obj3 = wait_for.remote([obj2])
     obj4 = wait_for.remote([obj3])
 
-    assert len(ray.wait([obj1], timeout=.1)[0]) == 0
+    assert len(ray.wait([obj1], timeout=0.1)[0]) == 0
     ray.cancel(obj1, force=use_force)
     for ob in [obj1, obj2, obj3, obj4]:
         with pytest.raises(valid_exceptions(use_force)):
@@ -44,17 +47,17 @@ def test_cancel_chain(ray_start_regular, use_force):
     obj3 = wait_for.remote([obj2])
     obj4 = wait_for.remote([obj3])
 
-    assert len(ray.wait([obj3], timeout=.1)[0]) == 0
+    assert len(ray.wait([obj3], timeout=0.1)[0]) == 0
     ray.cancel(obj3, force=use_force)
     for ob in [obj3, obj4]:
         with pytest.raises(valid_exceptions(use_force)):
             ray.get(ob)
 
     with pytest.raises(GetTimeoutError):
-        ray.get(obj1, timeout=.1)
+        ray.get(obj1, timeout=0.1)
 
     with pytest.raises(GetTimeoutError):
-        ray.get(obj2, timeout=.1)
+        ray.get(obj2, timeout=0.1)
 
     signaler2.send.remote()
     ray.get(obj1)
@@ -73,7 +76,7 @@ def test_cancel_multiple_dependents(ray_start_regular, use_force):
     for _ in range(3):
         deps.append(wait_for.remote([head]))
 
-    assert len(ray.wait([head], timeout=.1)[0]) == 0
+    assert len(ray.wait([head], timeout=0.1)[0]) == 0
     ray.cancel(head, force=use_force)
     for d in deps:
         with pytest.raises(valid_exceptions(use_force)):
@@ -110,7 +113,7 @@ def test_single_cpu_cancel(shutdown_only, use_force):
     obj3 = wait_for.remote([obj2])
     indep = wait_for.remote([signaler.wait.remote()])
 
-    assert len(ray.wait([obj3], timeout=.1)[0]) == 0
+    assert len(ray.wait([obj3], timeout=0.1)[0]) == 0
     ray.cancel(obj3, force=use_force)
     with pytest.raises(valid_exceptions(use_force)):
         ray.get(obj3)
@@ -241,7 +244,8 @@ def test_fast(shutdown_only, use_force):
             ray.get(obj_ref, timeout=120)
         except Exception as e:
             assert isinstance(
-                e, valid_exceptions(use_force)), f"Failure on iteration: {i}"
+                e, valid_exceptions(use_force)
+            ), f"Failure on iteration: {i}"
 
 
 @pytest.mark.parametrize("use_force", [True, False])

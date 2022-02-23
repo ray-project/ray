@@ -34,8 +34,7 @@ def _can_fulfill_no_autoscaler(trial: Trial) -> bool:
 
     return trial_cpu_gpu["CPU"] <= _get_cluster_resources_no_autoscaler().get(
         "CPU", 0
-    ) and trial_cpu_gpu["GPU"] <= _get_cluster_resources_no_autoscaler().get(
-        "GPU", 0)
+    ) and trial_cpu_gpu["GPU"] <= _get_cluster_resources_no_autoscaler().get("GPU", 0)
 
 
 @lru_cache()
@@ -43,13 +42,14 @@ def _get_insufficient_resources_warning_threshold() -> float:
     if is_ray_cluster():
         return float(
             os.environ.get(
-                "TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER", "60"))
+                "TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER", "60"
+            )
+        )
     else:
         # Set the default to 10s so that we don't prematurely determine that
         # a cluster cannot fulfill the resources requirements.
         # TODO(xwjiang): Change it back once #18608 is resolved.
-        return float(
-            os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "60"))
+        return float(os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "60"))
 
 
 # TODO(xwjiang): Consider having a help page with more detailed instructions.
@@ -63,7 +63,8 @@ def _get_insufficient_resources_warning_msg() -> str:
         f"resources available to start the next trial. "
         f"Stop the tuning job and adjust the resources requested per trial "
         f"(possibly via `resources_per_trial` or via `num_workers` for rllib) "
-        f"and/or add more resources to your Ray runtime.")
+        f"and/or add more resources to your Ray runtime."
+    )
     if is_ray_cluster():
         return "Ignore this message if the cluster is autoscaling. " + msg
     else:
@@ -81,7 +82,8 @@ def _get_insufficient_resources_error_msg(trial: Trial) -> str:
         f"{_get_cluster_resources_no_autoscaler().get('GPU', 0)} gpu. "
         f"Stop the tuning job and adjust the resources requested per trial "
         f"(possibly via `resources_per_trial` or via `num_workers` for rllib) "
-        f"and/or add more resources to your Ray runtime.")
+        f"and/or add more resources to your Ray runtime."
+    )
 
 
 class InsufficientResourcesManager:
@@ -109,18 +111,21 @@ class InsufficientResourcesManager:
         if len(all_trials) == self._last_trial_num:
             if self._no_running_trials_since == -1:
                 self._no_running_trials_since = time.monotonic()
-            elif (time.monotonic() - self._no_running_trials_since >
-                  _get_insufficient_resources_warning_threshold()):
+            elif (
+                time.monotonic() - self._no_running_trials_since
+                > _get_insufficient_resources_warning_threshold()
+            ):
                 if not is_ray_cluster():  # autoscaler not enabled
                     # If any of the pending trial cannot be fulfilled,
                     # that's a good enough hint of trial resources not enough.
                     for trial in all_trials:
-                        if (trial.status is Trial.PENDING
-                                and not _can_fulfill_no_autoscaler(trial)):
+                        if (
+                            trial.status is Trial.PENDING
+                            and not _can_fulfill_no_autoscaler(trial)
+                        ):
                             # TODO(xwjiang):
                             #  Raise an Error once #18608 is resolved.
-                            logger.warning(
-                                _get_insufficient_resources_error_msg(trial))
+                            logger.warning(_get_insufficient_resources_error_msg(trial))
                             break
                 else:
                     # TODO(xwjiang): #17799.

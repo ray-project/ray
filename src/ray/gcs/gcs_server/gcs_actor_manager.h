@@ -19,10 +19,10 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
-#include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
+#include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -199,6 +199,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<GcsActorSchedulerInterface> scheduler,
       std::shared_ptr<GcsTableStorage> gcs_table_storage,
       std::shared_ptr<GcsPublisher> gcs_publisher, RuntimeEnvManager &runtime_env_manager,
+      GcsFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
       std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config,
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
@@ -315,12 +316,12 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// failed).
   ///
   /// \param actor The actor whose creation task is infeasible.
-  /// \param runtime_env_setup_failed Whether creation is failed due to runtime env setup
-  /// failure. If false is given, the actor will be rescheduled. Otherwise, all
-  /// the interest party (driver that has actor handles) will notify
-  /// that the actor is dead.
-  void OnActorSchedulingFailed(std::shared_ptr<GcsActor> actor,
-                               bool runtime_env_setup_failed = false);
+  /// \param failure_type Scheduling failure type.
+  /// \param scheduling_failure_message The scheduling failure error message.
+  void OnActorSchedulingFailed(
+      std::shared_ptr<GcsActor> actor,
+      const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+      const std::string &scheduling_failure_message);
 
   /// Handle actor creation task success. This should be called when the actor
   /// creation task has been scheduled successfully.
@@ -531,8 +532,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// A callback to get the job config of an actor based on its job id. This is
   /// necessary for actor creation.
   std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config_;
-
+  /// Runtime environment manager for GC purpose
   RuntimeEnvManager &runtime_env_manager_;
+  /// Function manager for GC purpose
+  GcsFunctionManager &function_manager_;
   /// Run a function on a delay. This is useful for guaranteeing data will be
   /// accessible for a minimum amount of time.
   std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>

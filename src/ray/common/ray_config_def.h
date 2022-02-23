@@ -23,12 +23,12 @@ RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
 /// Whether to enable Ray event stats collection.
 /// TODO(ekl) this seems to segfault Java unit tests when on by default?
-RAY_CONFIG(bool, event_stats, false)
+RAY_CONFIG(bool, event_stats, true)
 
 /// Whether to enable Ray legacy scheduler warnings. These are replaced by
 /// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
 /// TODO(ekl) remove this after Ray 1.8
-RAY_CONFIG(bool, legacy_scheduler_warnings, true)
+RAY_CONFIG(bool, legacy_scheduler_warnings, false)
 
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available to
@@ -90,7 +90,16 @@ RAY_CONFIG(int64_t, free_objects_period_milliseconds, 1000)
 /// to -1.
 RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
+/// Whether to pin object lineage, i.e. the task that created the object and
+/// the task's recursive dependencies. If this is set to true, then the system
+/// will attempt to reconstruct the object from its lineage if the object is
+/// lost.
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
+
+/// Objects that require recovery are added to a local cache. This is the
+/// duration between attempts to flush and recover the objects in the local
+/// cache.
+RAY_CONFIG(int64_t, reconstruct_objects_period_milliseconds, 100)
 
 /// Maximum amount of lineage to keep in bytes. This includes the specs of all
 /// tasks that have previously already finished but that may be retried again.
@@ -127,6 +136,11 @@ RAY_CONFIG(int64_t, worker_cap_max_backoff_delay_ms, 1000 * 10)
 /// to prefer spreading tasks to other nodes. This balances between locality and
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
 RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
+
+/// Whether to only report the usage of pinned copies of objects in the
+/// object_store_memory resource. This means nodes holding secondary copies only
+/// will become eligible for removal in the autoscaler.
+RAY_CONFIG(bool, scheduler_report_pinned_bytes_only, false)
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -205,8 +219,8 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128);
 
-/// Allow up to 5 seconds for connecting to Redis.
-RAY_CONFIG(int64_t, redis_db_connect_retries, 50)
+/// Allow up to 60 seconds for connecting to Redis.
+RAY_CONFIG(int64_t, redis_db_connect_retries, 600)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
 
 /// The object manager's global timer interval in milliseconds.
@@ -274,15 +288,12 @@ RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
 RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
 // The number of concurrent polls to polls to GCS.
 RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
-// Feature flag to use grpc instead of redis for resource broadcast.
-// TODO(ekl) broken as of https://github.com/ray-project/ray/issues/16858
-RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 // Feature flag to enable grpc based pubsub in GCS.
-RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
+RAY_CONFIG(bool, gcs_grpc_based_pubsub, true)
 // The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
-RAY_CONFIG(std::string, gcs_storage, "redis")
+RAY_CONFIG(std::string, gcs_storage, "memory")
 // Feature flag to enable GCS based bootstrapping.
-RAY_CONFIG(bool, bootstrap_with_gcs, false)
+RAY_CONFIG(bool, bootstrap_with_gcs, true)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
@@ -301,7 +312,7 @@ RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
 RAY_CONFIG(uint64_t, global_gc_min_interval_s, 30)
 
 /// Duration to wait between retries for failed tasks.
-RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
+RAY_CONFIG(uint32_t, task_retry_delay_ms, 0)
 
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
@@ -326,13 +337,8 @@ RAY_CONFIG(int64_t, enable_metrics_collection, true)
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 
-/// Maximum number of tasks that can be in flight between an owner and a worker for which
-/// the owner has been granted a lease. A value >1 is used when we want to enable
-/// pipelining task submission.
-RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
-
 /// Maximum number of pending lease requests per scheduling category
-RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 1)
+RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 10)
 
 /// Interval to restart dashboard agent after the process exit.
 RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
@@ -342,6 +348,9 @@ RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 
 /// Max restart count for the dashboard agent.
 RAY_CONFIG(uint32_t, agent_max_restart_count, 5)
+
+/// Whether to fail raylet when agent fails.
+RAY_CONFIG(bool, raylet_shares_fate_with_agent, false)
 
 /// If the agent manager fails to communicate with the dashboard agent, we will retry
 /// after this interval.
@@ -445,9 +454,10 @@ RAY_CONFIG(int64_t, max_command_batch_size, 2000)
 /// The maximum batch size for OBOD report.
 RAY_CONFIG(int64_t, max_object_report_batch_size, 2000)
 
-/// The time where the subscriber connection is timed out in milliseconds.
-/// This is for the pubsub module.
-RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
+/// For Ray publishers, the minimum time to drop an inactive subscriber connection in ms.
+/// In the current implementation, a subscriber might be dead for up to 3x the configured
+/// time before it is deleted from the publisher, i.e. deleted in 300s ~ 900s.
+RAY_CONFIG(uint64_t, subscriber_timeout_ms, 300 * 1000)
 
 // This is the minimum time an actor will remain in the actor table before
 // being garbage collected when a job finishes

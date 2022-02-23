@@ -7,6 +7,7 @@ from ray import workflow
 @workflow.step
 def check_and_update(x, worker_id):
     from ray.worker import global_worker
+
     _worker_id = global_worker.worker_id
     if worker_id == _worker_id:
         return x + "0"
@@ -16,6 +17,7 @@ def check_and_update(x, worker_id):
 @workflow.step
 def inplace_test():
     from ray.worker import global_worker
+
     worker_id = global_worker.worker_id
     x = check_and_update.options(allow_inplace=True).step("@", worker_id)
     y = check_and_update.step(x, worker_id)
@@ -26,6 +28,7 @@ def inplace_test():
 @workflow.step
 def exp_inplace(k, n, worker_id=None):
     from ray.worker import global_worker
+
     _worker_id = global_worker.worker_id
     if worker_id is not None:
         # sub-workflows running inplace
@@ -34,13 +37,13 @@ def exp_inplace(k, n, worker_id=None):
 
     if n == 0:
         return k
-    return exp_inplace.options(allow_inplace=True).step(
-        2 * k, n - 1, worker_id)
+    return exp_inplace.options(allow_inplace=True).step(2 * k, n - 1, worker_id)
 
 
 @workflow.step
 def exp_remote(k, n, worker_id=None):
     from ray.worker import global_worker
+
     _worker_id = global_worker.worker_id
     if worker_id is not None:
         # sub-workflows running in another worker
@@ -56,10 +59,11 @@ def test_inplace_workflows(workflow_start_regular_shared):
     assert inplace_test.step().run() == "@010"
 
     k, n = 12, 10
-    assert exp_inplace.step(k, n).run() == k * 2**n
-    assert exp_remote.step(k, n).run() == k * 2**n
+    assert exp_inplace.step(k, n).run() == k * 2 ** n
+    assert exp_remote.step(k, n).run() == k * 2 ** n
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -50,6 +50,7 @@ bool GlobalStateAccessor::Connect() {
 
 void GlobalStateAccessor::Disconnect() {
   absl::WriterMutexLock lock(&mutex_);
+  RAY_LOG(DEBUG) << "Global state accessor disconnect";
   if (is_connected_) {
     io_service_->stop();
     thread_io_service_->join();
@@ -266,11 +267,12 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupByName(
   return placement_group_table_data;
 }
 
-std::unique_ptr<std::string> GlobalStateAccessor::GetInternalKV(const std::string &key) {
+std::unique_ptr<std::string> GlobalStateAccessor::GetInternalKV(const std::string &ns,
+                                                                const std::string &key) {
   absl::ReaderMutexLock lock(&mutex_);
   std::string value;
 
-  Status status = gcs_client_->InternalKV().Get(key, value);
+  Status status = gcs_client_->InternalKV().Get(ns, key, value);
   return status.ok() ? std::make_unique<std::string>(value) : nullptr;
 }
 
@@ -302,9 +304,9 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
     {
       absl::ReaderMutexLock lock(&mutex_);
       RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
-          [&promise](Status status, const std::vector<rpc::GcsNodeInfo> &nodes) {
-            promise.set_value(
-                std::pair<Status, std::vector<rpc::GcsNodeInfo>>(status, nodes));
+          [&promise](Status status, std::vector<rpc::GcsNodeInfo> &&nodes) {
+            promise.set_value(std::pair<Status, std::vector<rpc::GcsNodeInfo>>(
+                status, std::move(nodes)));
           }));
     }
     auto result = promise.get_future().get();

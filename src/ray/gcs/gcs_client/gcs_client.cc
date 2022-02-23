@@ -204,12 +204,6 @@ void GcsClient::Disconnect() {
     return;
   }
   is_connected_ = false;
-  periodical_runner_.reset();
-  gcs_subscriber_.reset();
-  if (redis_client_) {
-    redis_client_->Disconnect();
-    redis_client_.reset();
-  }
   disconnected_ = true;
   RAY_LOG(DEBUG) << "GcsClient Disconnected.";
 }
@@ -259,6 +253,9 @@ bool GcsClient::GetGcsServerAddressFromRedis(redisContext *context,
 }
 
 void GcsClient::PeriodicallyCheckGcsServerAddress() {
+  if (disconnected_) {
+    return;
+  }
   std::pair<std::string, int> address;
   if (get_server_address_func_(&address)) {
     if (address != current_gcs_server_address_) {
@@ -271,6 +268,9 @@ void GcsClient::PeriodicallyCheckGcsServerAddress() {
 }
 
 void GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type) {
+  if (disconnected_) {
+    return;
+  }
   switch (type) {
   case rpc::GcsServiceFailureType::RPC_DISCONNECT:
     // If the GCS server address does not change, reconnect to GCS server.

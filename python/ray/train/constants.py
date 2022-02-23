@@ -46,12 +46,12 @@ TUNE_CHECKPOINT_ID = "_current_checkpoint_id"
 
 # Env var name
 ENABLE_DETAILED_AUTOFILLED_METRICS_ENV = (
-    "TRAIN_RESULT_ENABLE_DETAILED_AUTOFILLED_METRICS")
+    "TRAIN_RESULT_ENABLE_DETAILED_AUTOFILLED_METRICS"
+)
 
 # Integer value which if set will override the value of
 # Backend.share_cuda_visible_devices. 1 for True, 0 for False.
-ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV =\
-    "TRAIN_ENABLE_SHARE_CUDA_VISIBLE_DEVICES"
+ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV = "TRAIN_ENABLE_SHARE_CUDA_VISIBLE_DEVICES"
 
 # Integer value which indicates the number of seconds to wait when creating
 # the worker placement group before timing out.
@@ -59,5 +59,18 @@ TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV = "TRAIN_PLACEMENT_GROUP_TIMEOUT_S"
 
 # Integer value which if set will change the placement group strategy from
 # PACK to SPREAD. 1 for True, 0 for False.
-TRAIN_ENABLE_WORKER_SPREAD_ENV =\
-    "TRAIN_ENABLE_WORKER_SPREAD"
+TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
+
+# The key used to identify whether we have already warned about ray.train
+# functions being used outside of the session
+SESSION_MISUSE_LOG_ONCE_KEY = "train_warn_session_misuse"
+
+# Reserved keyword used by the ``TorchWorkerProfiler`` and
+# ``TorchTensorboardProfilerCallback`` for passing PyTorch Profiler data
+# through ``train.report()``
+PYTORCH_PROFILER_KEY = "_train_torch_profiler"
+
+# Reserved keys used across all Callbacks.
+# By default these will be filtered out from ``train.report()``.
+# See ``TrainingCallback._preprocess_results`` for more details.
+ALL_RESERVED_KEYS = {PYTORCH_PROFILER_KEY}

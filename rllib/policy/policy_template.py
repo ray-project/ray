@@ -1,6 +1,15 @@
 import gym
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, \
-    TYPE_CHECKING, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TYPE_CHECKING,
+    Union,
+)
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.jax.jax_modelv2 import JAXModelV2
@@ -15,8 +24,7 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch, try_import_jax
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.typing import ModelGradients, TensorType, \
-    TrainerConfigDict
+from ray.rllib.utils.typing import ModelGradients, TensorType, TrainerConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation.episode import Episode  # noqa
@@ -28,60 +36,91 @@ torch, _ = try_import_torch()
 # TODO: Deprecate in favor of directly sub-classing from TorchPolicy.
 @DeveloperAPI
 def build_policy_class(
-        name: str,
-        framework: str,
-        *,
-        loss_fn: Optional[Callable[[
-            Policy, ModelV2, Type[TorchDistributionWrapper], SampleBatch
-        ], Union[TensorType, List[TensorType]]]],
-        get_default_config: Optional[Callable[[], TrainerConfigDict]] = None,
-        stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
-            str, TensorType]]] = None,
-        postprocess_fn: Optional[Callable[[
-            Policy, SampleBatch, Optional[Dict[Any, SampleBatch]], Optional[
-                "Episode"]
-        ], SampleBatch]] = None,
-        extra_action_out_fn: Optional[Callable[[
-            Policy, Dict[str, TensorType], List[TensorType], ModelV2,
-            TorchDistributionWrapper
-        ], Dict[str, TensorType]]] = None,
-        extra_grad_process_fn: Optional[Callable[[
-            Policy, "torch.optim.Optimizer", TensorType
-        ], Dict[str, TensorType]]] = None,
-        # TODO: (sven) Replace "fetches" with "process".
-        extra_learn_fetches_fn: Optional[Callable[[Policy], Dict[
-            str, TensorType]]] = None,
-        optimizer_fn: Optional[Callable[[Policy, TrainerConfigDict],
-                                        "torch.optim.Optimizer"]] = None,
-        validate_spaces: Optional[Callable[
-            [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
-        before_init: Optional[Callable[
-            [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
-        before_loss_init: Optional[Callable[[
-            Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
-        ], None]] = None,
-        after_init: Optional[Callable[
-            [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
-        _after_loss_init: Optional[Callable[[
-            Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
-        ], None]] = None,
-        action_sampler_fn: Optional[Callable[[TensorType, List[
-            TensorType]], Tuple[TensorType, TensorType]]] = None,
-        action_distribution_fn: Optional[Callable[[
-            Policy, ModelV2, TensorType, TensorType, TensorType
-        ], Tuple[TensorType, type, List[TensorType]]]] = None,
-        make_model: Optional[Callable[[
-            Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
-        ], ModelV2]] = None,
-        make_model_and_action_dist: Optional[Callable[[
-            Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
-        ], Tuple[ModelV2, Type[TorchDistributionWrapper]]]] = None,
-        compute_gradients_fn: Optional[Callable[[Policy, SampleBatch], Tuple[
-            ModelGradients, dict]]] = None,
-        apply_gradients_fn: Optional[Callable[
-            [Policy, "torch.optim.Optimizer"], None]] = None,
-        mixins: Optional[List[type]] = None,
-        get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None
+    name: str,
+    framework: str,
+    *,
+    loss_fn: Optional[
+        Callable[
+            [Policy, ModelV2, Type[TorchDistributionWrapper], SampleBatch],
+            Union[TensorType, List[TensorType]],
+        ]
+    ],
+    get_default_config: Optional[Callable[[], TrainerConfigDict]] = None,
+    stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[str, TensorType]]] = None,
+    postprocess_fn: Optional[
+        Callable[
+            [
+                Policy,
+                SampleBatch,
+                Optional[Dict[Any, SampleBatch]],
+                Optional["Episode"],
+            ],
+            SampleBatch,
+        ]
+    ] = None,
+    extra_action_out_fn: Optional[
+        Callable[
+            [
+                Policy,
+                Dict[str, TensorType],
+                List[TensorType],
+                ModelV2,
+                TorchDistributionWrapper,
+            ],
+            Dict[str, TensorType],
+        ]
+    ] = None,
+    extra_grad_process_fn: Optional[
+        Callable[[Policy, "torch.optim.Optimizer", TensorType], Dict[str, TensorType]]
+    ] = None,
+    # TODO: (sven) Replace "fetches" with "process".
+    extra_learn_fetches_fn: Optional[Callable[[Policy], Dict[str, TensorType]]] = None,
+    optimizer_fn: Optional[
+        Callable[[Policy, TrainerConfigDict], "torch.optim.Optimizer"]
+    ] = None,
+    validate_spaces: Optional[
+        Callable[[Policy, gym.Space, gym.Space, TrainerConfigDict], None]
+    ] = None,
+    before_init: Optional[
+        Callable[[Policy, gym.Space, gym.Space, TrainerConfigDict], None]
+    ] = None,
+    before_loss_init: Optional[
+        Callable[[Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], None]
+    ] = None,
+    after_init: Optional[
+        Callable[[Policy, gym.Space, gym.Space, TrainerConfigDict], None]
+    ] = None,
+    _after_loss_init: Optional[
+        Callable[[Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], None]
+    ] = None,
+    action_sampler_fn: Optional[
+        Callable[[TensorType, List[TensorType]], Tuple[TensorType, TensorType]]
+    ] = None,
+    action_distribution_fn: Optional[
+        Callable[
+            [Policy, ModelV2, TensorType, TensorType, TensorType],
+            Tuple[TensorType, type, List[TensorType]],
+        ]
+    ] = None,
+    make_model: Optional[
+        Callable[
+            [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], ModelV2
+        ]
+    ] = None,
+    make_model_and_action_dist: Optional[
+        Callable[
+            [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict],
+            Tuple[ModelV2, Type[TorchDistributionWrapper]],
+        ]
+    ] = None,
+    compute_gradients_fn: Optional[
+        Callable[[Policy, SampleBatch], Tuple[ModelGradients, dict]]
+    ] = None,
+    apply_gradients_fn: Optional[
+        Callable[[Policy, "torch.optim.Optimizer"], None]
+    ] = None,
+    mixins: Optional[List[type]] = None,
+    get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None
 ) -> Type[TorchPolicy]:
     """Helper function for creating a new Policy class at runtime.
 
@@ -226,31 +265,37 @@ def build_policy_class(
 
             # Model is customized (use default action dist class).
             if make_model:
-                assert make_model_and_action_dist is None, \
-                    "Either `make_model` or `make_model_and_action_dist`" \
+                assert make_model_and_action_dist is None, (
+                    "Either `make_model` or `make_model_and_action_dist`"
                     " must be None!"
+                )
                 self.model = make_model(self, obs_space, action_space, config)
                 dist_class, _ = ModelCatalog.get_action_dist(
-                    action_space, self.config["model"], framework=framework)
+                    action_space, self.config["model"], framework=framework
+                )
             # Model and action dist class are customized.
             elif make_model_and_action_dist:
                 self.model, dist_class = make_model_and_action_dist(
-                    self, obs_space, action_space, config)
+                    self, obs_space, action_space, config
+                )
             # Use default model and default action dist.
             else:
                 dist_class, logit_dim = ModelCatalog.get_action_dist(
-                    action_space, self.config["model"], framework=framework)
+                    action_space, self.config["model"], framework=framework
+                )
                 self.model = ModelCatalog.get_model_v2(
                     obs_space=obs_space,
                     action_space=action_space,
                     num_outputs=logit_dim,
                     model_config=self.config["model"],
-                    framework=framework)
+                    framework=framework,
+                )
 
             # Make sure, we passed in a correct Model factory.
             model_cls = TorchModelV2 if framework == "torch" else JAXModelV2
-            assert isinstance(self.model, model_cls), \
-                "ERROR: Generated Model must be a TorchModelV2 object!"
+            assert isinstance(
+                self.model, model_cls
+            ), "ERROR: Generated Model must be a TorchModelV2 object!"
 
             # Call the framework-specific Policy constructor.
             self.parent_cls = parent_cls
@@ -273,8 +318,9 @@ def build_policy_class(
 
             _before_loss_init = before_loss_init or after_init
             if _before_loss_init:
-                _before_loss_init(self, self.observation_space,
-                                  self.action_space, config)
+                _before_loss_init(
+                    self, self.observation_space, self.action_space, config
+                )
 
             # Perform test runs through postprocessing- and loss functions.
             self._initialize_loss_from_dummy_batch(
@@ -289,20 +335,21 @@ def build_policy_class(
             self.global_timestep = 0
 
         @override(Policy)
-        def postprocess_trajectory(self,
-                                   sample_batch,
-                                   other_agent_batches=None,
-                                   episode=None):
+        def postprocess_trajectory(
+            self, sample_batch, other_agent_batches=None, episode=None
+        ):
             # Do all post-processing always with no_grad().
             # Not using this here will introduce a memory leak
             # in torch (issue #6962).
             with self._no_grad_context():
                 # Call super's postprocess_trajectory first.
                 sample_batch = super().postprocess_trajectory(
-                    sample_batch, other_agent_batches, episode)
+                    sample_batch, other_agent_batches, episode
+                )
                 if postprocess_fn:
-                    return postprocess_fn(self, sample_batch,
-                                          other_agent_batches, episode)
+                    return postprocess_fn(
+                        self, sample_batch, other_agent_batches, episode
+                    )
 
                 return sample_batch
 
@@ -342,15 +389,16 @@ def build_policy_class(
                 parent_cls.apply_gradients(self, gradients)
 
         @override(parent_cls)
-        def extra_action_out(self, input_dict, state_batches, model,
-                             action_dist):
+        def extra_action_out(self, input_dict, state_batches, model, action_dist):
             with self._no_grad_context():
                 if extra_action_out_fn:
                     stats_dict = extra_action_out_fn(
-                        self, input_dict, state_batches, model, action_dist)
+                        self, input_dict, state_batches, model, action_dist
+                    )
                 else:
                     stats_dict = parent_cls.extra_action_out(
-                        self, input_dict, state_batches, model, action_dist)
+                        self, input_dict, state_batches, model, action_dist
+                    )
                 return self._convert_to_numpy(stats_dict)
 
         @override(parent_cls)
@@ -367,8 +415,7 @@ def build_policy_class(
                 if stats_fn:
                     stats_dict = stats_fn(self, train_batch)
                 else:
-                    stats_dict = self.parent_cls.extra_grad_info(
-                        self, train_batch)
+                    stats_dict = self.parent_cls.extra_grad_info(self, train_batch)
                 return self._convert_to_numpy(stats_dict)
 
         def _no_grad_context(self):

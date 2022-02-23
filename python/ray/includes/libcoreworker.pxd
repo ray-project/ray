@@ -21,9 +21,6 @@ from ray.includes.unique_ids cimport (
     CWorkerID,
 )
 
-from ray.includes.gcs_client cimport CGcsClient
-
-
 from ray.includes.common cimport (
     CAddress,
     CObjectReference,
@@ -202,13 +199,14 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Put(const CRayObject &object,
                        const c_vector[CObjectID] &contained_object_ids,
                        const CObjectID &object_id)
-        CRayStatus CreateOwned(const shared_ptr[CBuffer] &metadata,
-                               const size_t data_size,
-                               const c_vector[CObjectID] &contained_object_ids,
-                               CObjectID *object_id, shared_ptr[CBuffer] *data,
-                               c_bool created_by_worker,
-                               const unique_ptr[CAddress] &owner_address,
-                               c_bool inline_small_object)
+        CRayStatus CreateOwnedAndIncrementLocalRef(
+                    const shared_ptr[CBuffer] &metadata,
+                    const size_t data_size,
+                    const c_vector[CObjectID] &contained_object_ids,
+                    CObjectID *object_id, shared_ptr[CBuffer] *data,
+                    c_bool created_by_worker,
+                    const unique_ptr[CAddress] &owner_address,
+                    c_bool inline_small_object)
         CRayStatus CreateExisting(const shared_ptr[CBuffer] &metadata,
                                   const size_t data_size,
                                   const CObjectID &object_id,
@@ -254,8 +252,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                const CNodeID &client_Id)
 
         CJobConfig GetJobConfig()
-
-        shared_ptr[CGcsClient] GetGcsClient() const
 
         c_bool IsExiting() const
 
@@ -323,7 +319,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int metrics_agent_port
         c_bool connect_on_start
         int runtime_env_hash
-        int worker_shim_pid
         int startup_token
 
     cdef cppclass CCoreWorkerProcess "ray::core::CoreWorkerProcess":

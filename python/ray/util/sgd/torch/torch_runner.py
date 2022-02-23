@@ -28,14 +28,16 @@ except ImportError:
 class TorchRunner:
     """Manages a PyTorch model for training."""
 
-    def __init__(self,
-                 training_operator_cls,
-                 config=None,
-                 use_gpu=False,
-                 serialize_data_creation=True,
-                 use_fp16=False,
-                 use_tqdm=False,
-                 scheduler_step_freq=None):
+    def __init__(
+        self,
+        training_operator_cls,
+        config=None,
+        use_gpu=False,
+        serialize_data_creation=True,
+        use_fp16=False,
+        use_tqdm=False,
+        scheduler_step_freq=None,
+    ):
         self.training_operator_cls = training_operator_cls
         self.config = {} if config is None else config
 
@@ -66,7 +68,8 @@ class TorchRunner:
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
             use_tqdm=self.use_tqdm,
-            scheduler_step_freq=self.scheduler_step_freq)
+            scheduler_step_freq=self.scheduler_step_freq,
+        )
 
     def get_iterator(self, training=True):
         if training:
@@ -111,11 +114,7 @@ class TorchRunner:
                     # Else, start cycling through the iterator again.
                     pass
 
-    def train_epoch(self,
-                    num_steps=None,
-                    profile=False,
-                    info=None,
-                    iterator=None):
+    def train_epoch(self, num_steps=None, profile=False, info=None, iterator=None):
         """Runs a training epoch and updates the model parameters."""
         logger.debug(f"Begin Training Step {self.epochs + 1}")
         info = info or {}
@@ -134,13 +133,10 @@ class TorchRunner:
                     iterator = itertools.islice(iterator, num_steps)
                 self.epochs += 1
             else:
-                iterator = self.make_iterator(
-                    training=True, num_steps=num_steps)
+                iterator = self.make_iterator(training=True, num_steps=num_steps)
             train_stats = self.training_operator.train_epoch(
-                iterator,
-                info=info,
-                num_steps=num_steps,
-                epoch_idx=self.epochs)
+                iterator, info=info, num_steps=num_steps, epoch_idx=self.epochs
+            )
 
         # This is so that `epochs` is first in ordering.
         stats = dict(epoch=self.epochs, **train_stats)
@@ -154,8 +150,7 @@ class TorchRunner:
 
         with self.timers.record("validation"):
             iterator = self.make_iterator(training=False, num_steps=num_steps)
-            validation_stats = self.training_operator.validate(
-                iterator, info=info)
+            validation_stats = self.training_operator.validate(iterator, info=info)
         if profile:
             validation_stats.update(profile=self.timers.stats())
         return validation_stats
@@ -172,31 +167,25 @@ class TorchRunner:
     def state_dict(self):
         """Returns the state of the runner."""
         model_states = [model.state_dict() for model in self.models]
-        optimizer_states = [
-            optimizer.state_dict() for optimizer in self.optimizers
-        ]
+        optimizer_states = [optimizer.state_dict() for optimizer in self.optimizers]
         state = {
             "epoch": self.epochs,
             "operator": self.training_operator.state_dict(),
             "models": model_states,
-            "optimizers": optimizer_states
+            "optimizers": optimizer_states,
         }
         schedulers = self.schedulers
         if schedulers:
-            state.update({
-                "schedulers": [
-                    scheduler.state_dict() for scheduler in schedulers
-                ]
-            })
+            state.update(
+                {"schedulers": [scheduler.state_dict() for scheduler in schedulers]}
+            )
         # Check if fp16 is True and if NVIDIA Apex is imported.
         if self.training_operator.use_fp16_apex:
-            state.update({
-                "amp_apex": self.training_operator._amp.state_dict()
-            })
+            state.update({"amp_apex": self.training_operator._amp.state_dict()})
         elif self.training_operator.use_fp16_native:
-            state.update({
-                "amp_native": self.training_operator._amp_scaler.state_dict()
-            })
+            state.update(
+                {"amp_native": self.training_operator._amp_scaler.state_dict()}
+            )
 
         return state
 
@@ -222,8 +211,7 @@ class TorchRunner:
         elif self.training_operator.use_fp16_native and "amp_native" in state:
             if not hasattr(self.training_operator, "_amp_scaler"):
                 self.training_operator._amp_scaler = amp.GradScaler()
-            self.training_operator._amp_scaler.load_state_dict(
-                state["amp_native"])
+            self.training_operator._amp_scaler.load_state_dict(state["amp_native"])
         self.epochs = state["epoch"]
         self.training_operator.load_state_dict(state["operator"])
 
@@ -247,8 +235,8 @@ class TorchRunner:
         to_gpu = self.use_gpu and torch.cuda.is_available()
         state_dict = torch.load(
             _buffer,
-            map_location=("cpu" if not to_gpu else
-                          lambda storage, loc: storage.cuda()))
+            map_location=("cpu" if not to_gpu else lambda storage, loc: storage.cuda()),
+        )
         return self.load_state_dict(state_dict)
 
     def apply(self, fn):

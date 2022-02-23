@@ -152,9 +152,7 @@ head_node:
               command: ["/bin/bash", "-c", "--"]
               args: ["trap : TERM INT; sleep infinity & wait;"]
               ports:
-                  - containerPort: 6379 # Redis port.
-                  - containerPort: 6380 # Redis port.
-                  - containerPort: 6381 # Redis port.
+                  - containerPort: 6379 # Redis port for Ray <= 1.10.0. GCS server port for Ray >= 1.11.0
                   - containerPort: 22345 # Ray internal communication.
                   - containerPort: 22346 # Ray internal communication.
 

@@ -21,10 +21,12 @@ class RemoteTest(unittest.TestCase):
                 reporter(timesteps_total=i)
 
         register_trainable("f1", train)
-        exp1 = Experiment(**{
-            "name": "foo",
-            "run": "f1",
-        })
+        exp1 = Experiment(
+            **{
+                "name": "foo",
+                "run": "f1",
+            }
+        )
         [trial] = run_experiments(exp1, _remote=True)
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
@@ -56,8 +58,7 @@ class RemoteTest(unittest.TestCase):
         kwargs.pop("_remote")
 
         default_kwargs = {
-            k: v.default
-            for k, v in inspect.signature(run).parameters.items()
+            k: v.default for k, v in inspect.signature(run).parameters.items()
         }
         default_kwargs.pop("run_or_experiment")
         default_kwargs.pop("_remote")
@@ -75,7 +76,8 @@ class RemoteTest(unittest.TestCase):
             config={"a": choice(["a", "b"])},
             metric="timesteps_total",
             mode="max",
-            _remote=True)
+            _remote=True,
+        )
         [trial] = analysis.trials
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
@@ -91,10 +93,12 @@ class RemoteTest(unittest.TestCase):
                     reporter(timesteps_total=i)
 
             register_trainable("f1", train)
-            exp1 = Experiment(**{
-                "name": "foo",
-                "run": "f1",
-            })
+            exp1 = Experiment(
+                **{
+                    "name": "foo",
+                    "run": "f1",
+                }
+            )
             [trial] = run_experiments(exp1)
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
@@ -118,4 +122,5 @@ class RemoteTest(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

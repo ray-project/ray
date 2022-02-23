@@ -3,11 +3,20 @@ import logging
 from typing import Callable, Dict, List, Tuple, Type, Optional, Union, Set
 
 from ray.rllib.env.base_env import BaseEnv
-from ray.rllib.env.env_context import EnvContext
-from ray.rllib.utils.annotations import ExperimentalAPI, override, PublicAPI, \
-    DeveloperAPI
-from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, \
-    MultiEnvDict
+from ray.rllib.utils.annotations import (
+    ExperimentalAPI,
+    override,
+    PublicAPI,
+    DeveloperAPI,
+)
+from ray.rllib.utils.typing import (
+    AgentID,
+    EnvCreator,
+    EnvID,
+    EnvType,
+    MultiAgentDict,
+    MultiEnvDict,
+)
 
 # If the obs space is Dict type, look for the global state under this key.
 ENV_STATE = "state"
@@ -25,13 +34,17 @@ class MultiAgentEnv(gym.Env):
     """
 
     def __init__(self):
-        self.observation_space = None
-        self.action_space = None
-        self._agent_ids = {}
+        if not hasattr(self, "observation_space"):
+            self.observation_space = None
+        if not hasattr(self, "action_space"):
+            self.action_space = None
+        if not hasattr(self, "_agent_ids"):
+            self._agent_ids = set()
 
         # do the action and observation spaces map from agent ids to spaces
         # for the individual agents?
-        self._spaces_in_preferred_format = None
+        if not hasattr(self, "_spaces_in_preferred_format"):
+            self._spaces_in_preferred_format = None
 
     @PublicAPI
     def reset(self) -> MultiAgentDict:
@@ -54,7 +67,7 @@ class MultiAgentEnv(gym.Env):
 
     @PublicAPI
     def step(
-            self, action_dict: MultiAgentDict
+        self, action_dict: MultiAgentDict
     ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
         """Returns observations from ready agents.
 
@@ -105,10 +118,13 @@ class MultiAgentEnv(gym.Env):
             True if the observation space contains the given all observations
                 in x.
         """
-        if not hasattr(self, "_spaces_in_preferred_format") or \
-                self._spaces_in_preferred_format is None:
-            self._spaces_in_preferred_format = \
+        if (
+            not hasattr(self, "_spaces_in_preferred_format")
+            or self._spaces_in_preferred_format is None
+        ):
+            self._spaces_in_preferred_format = (
                 self._check_if_space_maps_agent_id_to_sub_space()
+            )
         if self._spaces_in_preferred_format:
             return self.observation_space.contains(x)
 
@@ -125,10 +141,13 @@ class MultiAgentEnv(gym.Env):
         Returns:
             True if the action space contains all actions in x.
         """
-        if not hasattr(self, "_spaces_in_preferred_format") or \
-                self._spaces_in_preferred_format is None:
-            self._spaces_in_preferred_format = \
+        if (
+            not hasattr(self, "_spaces_in_preferred_format")
+            or self._spaces_in_preferred_format is None
+        ):
+            self._spaces_in_preferred_format = (
                 self._check_if_space_maps_agent_id_to_sub_space()
+            )
         if self._spaces_in_preferred_format:
             return self.action_space.contains(x)
 
@@ -148,15 +167,22 @@ class MultiAgentEnv(gym.Env):
         Returns:
             A random action for each environment.
         """
-        if not hasattr(self, "_spaces_in_preferred_format") or \
-                self._spaces_in_preferred_format is None:
-            self._spaces_in_preferred_format = \
+        if (
+            not hasattr(self, "_spaces_in_preferred_format")
+            or self._spaces_in_preferred_format is None
+        ):
+            self._spaces_in_preferred_format = (
                 self._check_if_space_maps_agent_id_to_sub_space()
+            )
         if self._spaces_in_preferred_format:
             if agent_ids is None:
                 agent_ids = self.get_agent_ids()
             samples = self.action_space.sample()
-            return {agent_id: samples[agent_id] for agent_id in agent_ids}
+            return {
+                agent_id: samples[agent_id]
+                for agent_id in agent_ids
+                if agent_id != "__all__"
+            }
         logger.warning("action_space_sample() has not been implemented")
         del agent_ids
         return {}
@@ -176,10 +202,13 @@ class MultiAgentEnv(gym.Env):
             A random action for each environment.
         """
 
-        if not hasattr(self, "_spaces_in_preferred_format") or \
-                self._spaces_in_preferred_format is None:
-            self._spaces_in_preferred_format = \
+        if (
+            not hasattr(self, "_spaces_in_preferred_format")
+            or self._spaces_in_preferred_format is None
+        ):
+            self._spaces_in_preferred_format = (
                 self._check_if_space_maps_agent_id_to_sub_space()
+            )
         if self._spaces_in_preferred_format:
             if agent_ids is None:
                 agent_ids = self.get_agent_ids()
@@ -195,7 +224,7 @@ class MultiAgentEnv(gym.Env):
         """Returns a set of agent ids in the environment.
 
         Returns:
-            set of agent ids.
+            Set of agent ids.
         """
         if not isinstance(self._agent_ids, set):
             self._agent_ids = set(self._agent_ids)
@@ -208,7 +237,7 @@ class MultiAgentEnv(gym.Env):
         # By default, do nothing.
         pass
 
-    # yapf: disable
+    # fmt: off
     # __grouping_doc_begin__
     @ExperimentalAPI
     def with_agent_groups(
@@ -254,52 +283,55 @@ class MultiAgentEnv(gym.Env):
         return GroupAgentsWrapper(self, groups, obs_space, act_space)
 
     # __grouping_doc_end__
-    # yapf: enable
+    # fmt: on
 
     @PublicAPI
     def to_base_env(
-            self,
-            make_env: Callable[[int], EnvType] = None,
-            num_envs: int = 1,
-            remote_envs: bool = False,
-            remote_env_batch_wait_ms: int = 0,
+        self,
+        make_env: Optional[Callable[[int], EnvType]] = None,
+        num_envs: int = 1,
+        remote_envs: bool = False,
+        remote_env_batch_wait_ms: int = 0,
     ) -> "BaseEnv":
         """Converts an RLlib MultiAgentEnv into a BaseEnv object.
 
-            The resulting BaseEnv is always vectorized (contains n
-            sub-environments) to support batched forward passes, where n may
-            also be 1. BaseEnv also supports async execution via the `poll` and
-            `send_actions` methods and thus supports external simulators.
+        The resulting BaseEnv is always vectorized (contains n
+        sub-environments) to support batched forward passes, where n may
+        also be 1. BaseEnv also supports async execution via the `poll` and
+        `send_actions` methods and thus supports external simulators.
 
-            Args:
-                make_env: A callable taking an int as input (which indicates
-                    the number of individual sub-environments within the final
-                    vectorized BaseEnv) and returning one individual
-                    sub-environment.
-                num_envs: The number of sub-environments to create in the
-                    resulting (vectorized) BaseEnv. The already existing `env`
-                    will be one of the `num_envs`.
-                remote_envs: Whether each sub-env should be a @ray.remote
-                    actor. You can set this behavior in your config via the
-                    `remote_worker_envs=True` option.
-                remote_env_batch_wait_ms: The wait time (in ms) to poll remote
-                    sub-environments for, if applicable. Only used if
-                    `remote_envs` is True.
+        Args:
+            make_env: A callable taking an int as input (which indicates
+                the number of individual sub-environments within the final
+                vectorized BaseEnv) and returning one individual
+                sub-environment.
+            num_envs: The number of sub-environments to create in the
+                resulting (vectorized) BaseEnv. The already existing `env`
+                will be one of the `num_envs`.
+            remote_envs: Whether each sub-env should be a @ray.remote
+                actor. You can set this behavior in your config via the
+                `remote_worker_envs=True` option.
+            remote_env_batch_wait_ms: The wait time (in ms) to poll remote
+                sub-environments for, if applicable. Only used if
+                `remote_envs` is True.
 
-            Returns:
-                The resulting BaseEnv object.
-            """
-        from ray.rllib.env.remote_vector_env import RemoteBaseEnv
+        Returns:
+            The resulting BaseEnv object.
+        """
+        from ray.rllib.env.remote_base_env import RemoteBaseEnv
+
         if remote_envs:
             env = RemoteBaseEnv(
                 make_env,
                 num_envs,
                 multiagent=True,
-                remote_env_batch_wait_ms=remote_env_batch_wait_ms)
+                remote_env_batch_wait_ms=remote_env_batch_wait_ms,
+            )
         # Sub-environments are not ray.remote actors.
         else:
             env = MultiAgentEnvWrapper(
-                make_env=make_env, existing_envs=[self], num_envs=num_envs)
+                make_env=make_env, existing_envs=[self], num_envs=num_envs
+            )
 
         return env
 
@@ -310,16 +342,18 @@ class MultiAgentEnv(gym.Env):
         obs_space_check = (
             hasattr(self, "observation_space")
             and isinstance(self.observation_space, gym.spaces.Dict)
-            and set(self.observation_space.keys()) == self.get_agent_ids())
+            and set(self.observation_space.keys()) == self.get_agent_ids()
+        )
         action_space_check = (
             hasattr(self, "action_space")
             and isinstance(self.action_space, gym.spaces.Dict)
-            and set(self.action_space.keys()) == self.get_agent_ids())
+            and set(self.action_space.keys()) == self.get_agent_ids()
+        )
         return obs_space_check and action_space_check
 
 
 def make_multi_agent(
-        env_name_or_creator: Union[str, Callable[[EnvContext], EnvType]],
+    env_name_or_creator: Union[str, EnvCreator],
 ) -> Type["MultiAgentEnv"]:
     """Convenience wrapper for any single-agent env to be converted into MA.
 
@@ -366,12 +400,11 @@ def make_multi_agent(
 
     class MultiEnv(MultiAgentEnv):
         def __init__(self, config=None):
+            MultiAgentEnv.__init__(self)
             config = config or {}
             num = config.pop("num_agents", 1)
             if isinstance(env_name_or_creator, str):
-                self.agents = [
-                    gym.make(env_name_or_creator) for _ in range(num)
-                ]
+                self.agents = [gym.make(env_name_or_creator) for _ in range(num)]
             else:
                 self.agents = [env_name_or_creator(config) for _ in range(num)]
             self.dones = set()
@@ -380,37 +413,32 @@ def make_multi_agent(
             self._agent_ids = set(range(num))
 
         @override(MultiAgentEnv)
-        def observation_space_sample(self,
-                                     agent_ids: list = None) -> MultiAgentDict:
+        def observation_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
             if agent_ids is None:
                 agent_ids = list(range(len(self.agents)))
-            obs = {
-                agent_id: self.observation_space.sample()
-                for agent_id in agent_ids
-            }
+            obs = {agent_id: self.observation_space.sample() for agent_id in agent_ids}
 
             return obs
 
         @override(MultiAgentEnv)
-        def action_space_sample(self,
-                                agent_ids: list = None) -> MultiAgentDict:
+        def action_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
             if agent_ids is None:
                 agent_ids = list(range(len(self.agents)))
-            actions = {
-                agent_id: self.action_space.sample()
-                for agent_id in agent_ids
-            }
+            actions = {agent_id: self.action_space.sample() for agent_id in agent_ids}
 
             return actions
 
         @override(MultiAgentEnv)
         def action_space_contains(self, x: MultiAgentDict) -> bool:
+            if not isinstance(x, dict):
+                return False
             return all(self.action_space.contains(val) for val in x.values())
 
         @override(MultiAgentEnv)
         def observation_space_contains(self, x: MultiAgentDict) -> bool:
-            return all(
-                self.observation_space.contains(val) for val in x.values())
+            if not isinstance(x, dict):
+                return False
+            return all(self.observation_space.contains(val) for val in x.values())
 
         @override(MultiAgentEnv)
         def reset(self):
@@ -440,8 +468,12 @@ class MultiAgentEnvWrapper(BaseEnv):
     This also supports vectorization if num_envs > 1.
     """
 
-    def __init__(self, make_env: Callable[[int], EnvType],
-                 existing_envs: MultiAgentEnv, num_envs: int):
+    def __init__(
+        self,
+        make_env: Callable[[int], EnvType],
+        existing_envs: MultiAgentEnv,
+        num_envs: int,
+    ):
         """Wraps MultiAgentEnv(s) into the BaseEnv API.
 
         Args:
@@ -463,10 +495,13 @@ class MultiAgentEnvWrapper(BaseEnv):
         for env in self.envs:
             assert isinstance(env, MultiAgentEnv)
         self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
+        self._unwrapped_env = self.envs[0].unwrapped
+        self._agent_ids = self._unwrapped_env.get_agent_ids()
 
     @override(BaseEnv)
-    def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
-                            MultiEnvDict, MultiEnvDict]:
+    def poll(
+        self,
+    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
         obs, rewards, dones, infos = {}, {}, {}, {}
         for i, env_state in enumerate(self.env_states):
             obs[i], rewards[i], dones[i], infos[i] = env_state.poll()
@@ -484,33 +519,38 @@ class MultiAgentEnvWrapper(BaseEnv):
             assert isinstance(dones, dict), "Not a multi-agent return"
             assert isinstance(infos, dict), "Not a multi-agent info"
             if set(infos).difference(set(obs)):
-                raise ValueError("Key set for infos must be a subset of obs: "
-                                 "{} vs {}".format(infos.keys(), obs.keys()))
+                raise ValueError(
+                    "Key set for infos must be a subset of obs: "
+                    "{} vs {}".format(infos.keys(), obs.keys())
+                )
             if "__all__" not in dones:
                 raise ValueError(
                     "In multi-agent environments, '__all__': True|False must "
-                    "be included in the 'done' dict: got {}.".format(dones))
+                    "be included in the 'done' dict: got {}.".format(dones)
+                )
             if dones["__all__"]:
                 self.dones.add(env_id)
             self.env_states[env_id].observe(obs, rewards, dones, infos)
 
     @override(BaseEnv)
-    def try_reset(self,
-                  env_id: Optional[EnvID] = None) -> Optional[MultiEnvDict]:
-        obs = self.env_states[env_id].reset()
-        assert isinstance(obs, dict), "Not a multi-agent obs"
-        if obs is not None and env_id in self.dones:
-            self.dones.remove(env_id)
-        obs = {env_id: obs}
-        return obs
+    def try_reset(self, env_id: Optional[EnvID] = None) -> Optional[MultiEnvDict]:
+        ret = {}
+        if isinstance(env_id, int):
+            env_id = [env_id]
+        if env_id is None:
+            env_id = list(range(len(self.envs)))
+        for idx in env_id:
+            obs = self.env_states[idx].reset()
+            assert isinstance(obs, dict), "Not a multi-agent obs"
+            if obs is not None and idx in self.dones:
+                self.dones.remove(idx)
+            ret[idx] = obs
+        return ret
 
     @override(BaseEnv)
     def get_sub_environments(self, as_dict: bool = False) -> List[EnvType]:
         if as_dict:
-            return {
-                _id: env_state
-                for _id, env_state in enumerate(self.env_states)
-            }
+            return {_id: env_state for _id, env_state in enumerate(self.env_states)}
         return [state.env for state in self.env_states]
 
     @override(BaseEnv)
@@ -534,21 +574,23 @@ class MultiAgentEnvWrapper(BaseEnv):
 
     @override(BaseEnv)
     def observation_space_contains(self, x: MultiEnvDict) -> bool:
-        return all(
-            self.envs[0].observation_space_contains(val) for val in x.values())
+        return all(self.envs[0].observation_space_contains(val) for val in x.values())
 
     @override(BaseEnv)
     def action_space_contains(self, x: MultiEnvDict) -> bool:
-        return all(
-            self.envs[0].action_space_contains(val) for val in x.values())
+        return all(self.envs[0].action_space_contains(val) for val in x.values())
 
     @override(BaseEnv)
     def observation_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
-        return self.envs[0].observation_space_sample(agent_ids)
+        return {0: self.envs[0].observation_space_sample(agent_ids)}
 
     @override(BaseEnv)
     def action_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
-        return self.envs[0].action_space_sample(agent_ids)
+        return {0: self.envs[0].action_space_sample(agent_ids)}
+
+    @override(BaseEnv)
+    def get_agent_ids(self) -> Set[AgentID]:
+        return self._agent_ids
 
 
 class _MultiAgentEnvState:
@@ -562,7 +604,7 @@ class _MultiAgentEnvState:
         self.last_infos = {}
 
     def poll(
-            self
+        self,
     ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
         if not self.initialized:
             self.reset()
@@ -599,8 +641,13 @@ class _MultiAgentEnvState:
         self.last_dones["__all__"] = False
         return observations, rewards, dones, infos
 
-    def observe(self, obs: MultiAgentDict, rewards: MultiAgentDict,
-                dones: MultiAgentDict, infos: MultiAgentDict):
+    def observe(
+        self,
+        obs: MultiAgentDict,
+        rewards: MultiAgentDict,
+        dones: MultiAgentDict,
+        infos: MultiAgentDict,
+    ):
         self.last_obs = obs
         for ag, r in rewards.items():
             if ag in self.last_rewards:

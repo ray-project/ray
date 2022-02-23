@@ -1,6 +1,9 @@
-# yapf: disable
+# fmt: off
 """
 This file holds code for a Distributed Pytorch + Tune page in the docs.
+
+FIXME: We switched our code formatter from YAPF to Black. Check if we can enable code
+formatting on this module and update the paragraph below. See issue #21318.
 
 It ignores yapf because yapf doesn't allow comments right after code blocks,
 but we put comments right after code blocks to prevent large white spaces

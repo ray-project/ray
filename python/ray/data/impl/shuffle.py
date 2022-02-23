@@ -1,6 +1,6 @@
 import itertools
 import math
-from typing import TypeVar, List, Optional, Dict, Any, Tuple, Union
+from typing import TypeVar, List, Optional, Dict, Any, Tuple, Union, Callable, Iterable
 
 import numpy as np
 
@@ -15,33 +15,38 @@ from ray.data.impl.util import _get_spread_resources_iter
 T = TypeVar("T")
 
 
-def simple_shuffle(input_blocks: BlockList,
-                   output_num_blocks: int,
-                   *,
-                   random_shuffle: bool = False,
-                   random_seed: Optional[int] = None,
-                   map_ray_remote_args: Optional[Dict[str, Any]] = None,
-                   reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
-                   _spread_resource_prefix: Optional[str] = None
-                   ) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
+def simple_shuffle(
+    input_blocks: BlockList,
+    block_udf: Optional[Callable[[Block], Iterable[Block]]],
+    output_num_blocks: int,
+    *,
+    random_shuffle: bool = False,
+    random_seed: Optional[int] = None,
+    map_ray_remote_args: Optional[Dict[str, Any]] = None,
+    reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
+    _spread_resource_prefix: Optional[str] = None
+) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
     input_blocks = input_blocks.get_blocks()
     if map_ray_remote_args is None:
         map_ray_remote_args = {}
     if reduce_ray_remote_args is None:
         reduce_ray_remote_args = {}
+    if "scheduling_strategy" not in reduce_ray_remote_args:
+        reduce_ray_remote_args["scheduling_strategy"] = "SPREAD"
     input_num_blocks = len(input_blocks)
     if _spread_resource_prefix is not None:
         # Use given spread resource prefix for round-robin resource-based
         # scheduling.
         nodes = ray.nodes()
         map_resource_iter = _get_spread_resources_iter(
-            nodes, _spread_resource_prefix, map_ray_remote_args)
+            nodes, _spread_resource_prefix, map_ray_remote_args
+        )
         reduce_resource_iter = _get_spread_resources_iter(
-            nodes, _spread_resource_prefix, reduce_ray_remote_args)
+            nodes, _spread_resource_prefix, reduce_ray_remote_args
+        )
     else:
         # If no spread resource prefix given, yield an empty dictionary.
-        map_resource_iter, reduce_resource_iter = itertools.tee(
-            itertools.repeat({}), 2)
+        map_resource_iter, reduce_resource_iter = itertools.tee(itertools.repeat({}), 2)
 
     shuffle_map = cached_remote_fn(_shuffle_map)
     shuffle_reduce = cached_remote_fn(_shuffle_reduce)
@@ -52,8 +57,8 @@ def simple_shuffle(input_blocks: BlockList,
         shuffle_map.options(
             **map_ray_remote_args,
             num_returns=1 + output_num_blocks,
-            resources=next(map_resource_iter)).remote(
-                block, i, output_num_blocks, random_shuffle, random_seed)
+            resources=next(map_resource_iter)
+        ).remote(block, block_udf, i, output_num_blocks, random_shuffle, random_seed)
         for i, block in enumerate(input_blocks)
     ]
 
@@ -74,14 +79,13 @@ def simple_shuffle(input_blocks: BlockList,
         random = np.random.RandomState(random_seed)
         random.shuffle(shuffle_map_out)
 
-    reduce_bar = ProgressBar(
-        "Shuffle Reduce", position=0, total=output_num_blocks)
+    reduce_bar = ProgressBar("Shuffle Reduce", position=0, total=output_num_blocks)
     shuffle_reduce_out = [
         shuffle_reduce.options(
             **reduce_ray_remote_args,
             num_returns=2,
-            resources=next(reduce_resource_iter)).remote(
-                *[shuffle_map_out[i][j] for i in range(input_num_blocks)])
+            resources=next(reduce_resource_iter)
+        ).remote(*[shuffle_map_out[i][j] for i in range(input_num_blocks)])
         for j in range(output_num_blocks)
     ]
     # Eagerly delete the map block references in order to eagerly release
@@ -101,10 +105,25 @@ def simple_shuffle(input_blocks: BlockList,
 
 
 def _shuffle_map(
-        block: Block, idx: int, output_num_blocks: int, random_shuffle: bool,
-        random_seed: Optional[int]) -> List[Union[BlockMetadata, Block]]:
+    block: Block,
+    block_udf: Optional[Callable[[Block], Iterable[Block]]],
+    idx: int,
+    output_num_blocks: int,
+    random_shuffle: bool,
+    random_seed: Optional[int],
+) -> List[Union[BlockMetadata, Block]]:
     """Returns list of [BlockMetadata, O1, O2, O3, ...output_num_blocks]."""
     stats = BlockExecStats.builder()
+    if block_udf:
+        # TODO(ekl) note that this effectively disables block splitting.
+        blocks = list(block_udf(block))
+        if len(blocks) > 1:
+            builder = BlockAccessor.for_block(blocks[0]).builder()
+            for b in blocks:
+                builder.add_block(b)
+            block = builder.build()
+        else:
+            block = blocks[0]
     block = BlockAccessor.for_block(block)
 
     # Randomize the distribution of records to blocks.
@@ -142,5 +161,6 @@ def _shuffle_reduce(*mapper_outputs: List[Block]) -> (Block, BlockMetadata):
         size_bytes=accessor.size_bytes(),
         schema=accessor.schema(),
         input_files=None,
-        exec_stats=stats.build())
+        exec_stats=stats.build(),
+    )
     return new_block, new_metadata

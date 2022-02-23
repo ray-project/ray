@@ -14,11 +14,15 @@
 
 #include <memory>
 
+// clang-format off
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
+// clang-format on
 
 namespace ray {
 
@@ -68,12 +72,14 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     // In order to avoid multithreading reading and writing created_actors_, we also
     // send the `WaitForActorOutOfScope` callback operation to io_service thread.
     std::promise<bool> promise;
-    io_service_.post([this, status, &promise]() {
-      auto callback = callbacks_.front();
-      auto reply = rpc::WaitForActorOutOfScopeReply();
-      callback(status, reply);
-      promise.set_value(false);
-    });
+    io_service_.post(
+        [this, status, &promise]() {
+          auto callback = callbacks_.front();
+          auto reply = rpc::WaitForActorOutOfScopeReply();
+          callback(status, reply);
+          promise.set_value(false);
+        },
+        "test");
     promise.get_future().get();
 
     callbacks_.pop_front();
@@ -107,9 +113,11 @@ class GcsActorManagerTest : public ::testing::Test {
         std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
-    gcs_actor_manager_.reset(new gcs::GcsActorManager(
+    kv_ = std::make_unique<gcs::MockInternalKVInterface>();
+    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);
+    gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
         io_service_, mock_actor_scheduler_, gcs_table_storage_, gcs_publisher_,
-        *runtime_env_mgr_, [](const ActorID &actor_id) {},
+        *runtime_env_mgr_, *function_manager_, [](const ActorID &actor_id) {},
         [this](const JobID &job_id) {
           auto job_config = std::make_shared<rpc::JobConfig>();
           job_config->set_ray_namespace(job_namespace_table_[job_id]);
@@ -123,7 +131,7 @@ class GcsActorManagerTest : public ::testing::Test {
             delayed_to_run_ = fn;
           }
         },
-        [this](const rpc::Address &addr) { return worker_client_; }));
+        [this](const rpc::Address &addr) { return worker_client_; });
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -142,18 +150,20 @@ class GcsActorManagerTest : public ::testing::Test {
       // In order to avoid multithreading reading and writing created_actors_, we also
       // send the read operation to io_service thread.
       std::promise<bool> promise;
-      io_service_.post([this, actor_id, &promise]() {
-        const auto &created_actors = gcs_actor_manager_->GetCreatedActors();
-        for (auto &node_iter : created_actors) {
-          for (auto &actor_iter : node_iter.second) {
-            if (actor_iter.second == actor_id) {
-              promise.set_value(true);
-              return;
+      io_service_.post(
+          [this, actor_id, &promise]() {
+            const auto &created_actors = gcs_actor_manager_->GetCreatedActors();
+            for (auto &node_iter : created_actors) {
+              for (auto &actor_iter : node_iter.second) {
+                if (actor_iter.second == actor_id) {
+                  promise.set_value(true);
+                  return;
+                }
+              }
             }
-          }
-        }
-        promise.set_value(false);
-      });
+            promise.set_value(false);
+          },
+          "test");
       return promise.get_future().get();
     };
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
@@ -179,15 +189,17 @@ class GcsActorManagerTest : public ::testing::Test {
     // If we register an actor after destroying an actor, it may result in multithreading
     // reading and writing the same variable. In order to avoid the problem of
     // multithreading, we put `RegisterActor` to io_service thread.
-    io_service_.post([this, request, &promise]() {
-      auto status = gcs_actor_manager_->RegisterActor(
-          request, [&promise](std::shared_ptr<gcs::GcsActor> actor) {
-            promise.set_value(std::move(actor));
-          });
-      if (!status.ok()) {
-        promise.set_value(nullptr);
-      }
-    });
+    io_service_.post(
+        [this, request, &promise]() {
+          auto status = gcs_actor_manager_->RegisterActor(
+              request, [&promise](std::shared_ptr<gcs::GcsActor> actor) {
+                promise.set_value(std::move(actor));
+              });
+          if (!status.ok()) {
+            promise.set_value(nullptr);
+          }
+        },
+        "test");
     return promise.get_future().get();
   }
 
@@ -197,10 +209,12 @@ class GcsActorManagerTest : public ::testing::Test {
     // times in succession, the second call may result in multithreading reading and
     // writing the same variable. In order to avoid the problem of multithreading, we put
     // `OnNodeDead` to io_service thread.
-    io_service_.post([this, node_id, &promise]() {
-      gcs_actor_manager_->OnNodeDead(node_id, "127.0.0.1");
-      promise.set_value(true);
-    });
+    io_service_.post(
+        [this, node_id, &promise]() {
+          gcs_actor_manager_->OnNodeDead(node_id, "127.0.0.1");
+          promise.set_value(true);
+        },
+        "test");
     promise.get_future().get();
   }
 
@@ -218,6 +232,8 @@ class GcsActorManagerTest : public ::testing::Test {
   const std::chrono::milliseconds timeout_ms_{2000};
   std::function<void(void)> delayed_to_run_;
   boost::posix_time::milliseconds delay_;
+  std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
+  std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   bool skip_delay_;
 };
 
@@ -271,7 +287,8 @@ TEST_F(GcsActorManagerTest, TestSchedulingFailed) {
   auto actor = mock_actor_scheduler_->actors.back();
   mock_actor_scheduler_->actors.clear();
 
-  gcs_actor_manager_->OnActorSchedulingFailed(actor);
+  gcs_actor_manager_->OnActorSchedulingFailed(
+      actor, rpc::RequestWorkerLeaseReply::SCHEDULING_FAILED, "");
   gcs_actor_manager_->SchedulePendingActors();
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
   mock_actor_scheduler_->actors.clear();

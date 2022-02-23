@@ -33,9 +33,7 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
                 raise ValueError()
         return 100
 
-    outputs = [
-        long_running.step(i).run_async(workflow_id=str(i)) for i in range(100)
-    ]
+    outputs = [long_running.step(i).run_async(workflow_id=str(i)) for i in range(100)]
     # Test list all, it should list all jobs running
     all_tasks = workflow.list_all()
     assert len(all_tasks) == 100
@@ -59,15 +57,20 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
     finished_jobs = workflow.list_all("SUCCESSFUL")
     assert len(finished_jobs) == 50
 
-    all_tasks_status = workflow.list_all({
-        workflow.WorkflowStatus.SUCCESSFUL, workflow.WorkflowStatus.FAILED,
-        workflow.WorkflowStatus.RUNNING
-    })
+    all_tasks_status = workflow.list_all(
+        {
+            workflow.WorkflowStatus.SUCCESSFUL,
+            workflow.WorkflowStatus.FAILED,
+            workflow.WorkflowStatus.RUNNING,
+        }
+    )
     assert len(all_tasks_status) == 100
-    assert failed_jobs == [(k, v) for (k, v) in all_tasks_status
-                           if v == workflow.WorkflowStatus.FAILED]
-    assert finished_jobs == [(k, v) for (k, v) in all_tasks_status
-                             if v == workflow.WorkflowStatus.SUCCESSFUL]
+    assert failed_jobs == [
+        (k, v) for (k, v) in all_tasks_status if v == workflow.WorkflowStatus.FAILED
+    ]
+    assert finished_jobs == [
+        (k, v) for (k, v) in all_tasks_status if v == workflow.WorkflowStatus.SUCCESSFUL
+    ]
 
     # Test get_status
     assert workflow.get_status("0") == "FAILED"
@@ -94,10 +97,7 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
     assert [ray.get(o) for (_, o) in resumed] == [100] * 48
 
 
-@pytest.mark.parametrize(
-    "workflow_start_regular", [{
-        "num_cpus": 4
-    }], indirect=True)
+@pytest.mark.parametrize("workflow_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_actor_manager(workflow_start_regular, tmp_path):
     lock_file = tmp_path / "lock"
 
@@ -148,4 +148,5 @@ def test_actor_manager(workflow_start_regular, tmp_path):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -40,7 +40,7 @@ class GcsBasedActorSchedulerTest : public ::testing::Test {
     gcs_actor_table_ =
         std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
-        io_service_, gcs_publisher_, gcs_table_storage_, true);
+        io_service_, gcs_publisher_, gcs_table_storage_);
     auto resource_scheduler =
         std::make_shared<gcs::GcsResourceScheduler>(*gcs_resource_manager_);
     gcs_actor_scheduler_ =
@@ -48,7 +48,9 @@ class GcsBasedActorSchedulerTest : public ::testing::Test {
             io_service_, *gcs_actor_table_, *gcs_node_manager_, gcs_resource_manager_,
             resource_scheduler,
             /*schedule_failure_handler=*/
-            [this](std::shared_ptr<gcs::GcsActor> actor, bool destroy_actor) {
+            [this](std::shared_ptr<gcs::GcsActor> actor,
+                   const rpc::RequestWorkerLeaseReply::SchedulingFailureType,
+                   const std::string &scheduling_failure_message) {
               failure_actors_.emplace_back(std::move(actor));
             },
             /*schedule_success_handler=*/
@@ -155,7 +157,12 @@ TEST_F(GcsBasedActorSchedulerTest, TestScheduleAndDestroyOneActor) {
   auto node = AddNewNode(node_resources);
   auto node_id = NodeID::FromBinary(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
-  auto cluster_resources_before_scheduling = gcs_resource_manager_->GetClusterResources();
+  absl::flat_hash_map<NodeID, std::shared_ptr<SchedulingResources>>
+      cluster_resources_before_scheduling;
+  for (auto &entry : gcs_resource_manager_->GetClusterResources()) {
+    cluster_resources_before_scheduling.emplace(
+        entry.first, std::make_shared<SchedulingResources>(*entry.second));
+  }
   ASSERT_TRUE(cluster_resources_before_scheduling.contains(node_id));
 
   // Schedule a actor (requiring 32 memory units and 4 CPU).
@@ -189,16 +196,16 @@ TEST_F(GcsBasedActorSchedulerTest, TestScheduleAndDestroyOneActor) {
   auto cluster_resources_after_scheduling = gcs_resource_manager_->GetClusterResources();
   ASSERT_TRUE(cluster_resources_after_scheduling.contains(node_id));
   ASSERT_FALSE(
-      cluster_resources_before_scheduling[node_id].GetAvailableResources().IsEqual(
-          cluster_resources_after_scheduling[node_id].GetAvailableResources()));
+      cluster_resources_before_scheduling[node_id]->GetAvailableResources().IsEqual(
+          cluster_resources_after_scheduling[node_id]->GetAvailableResources()));
 
   // When destroying an actor, its acquired resources have to be returned.
   gcs_actor_scheduler_->OnActorDestruction(actor);
   auto cluster_resources_after_destruction = gcs_resource_manager_->GetClusterResources();
   ASSERT_TRUE(cluster_resources_after_destruction.contains(node_id));
   ASSERT_TRUE(
-      cluster_resources_before_scheduling[node_id].GetAvailableResources().IsEqual(
-          cluster_resources_after_destruction[node_id].GetAvailableResources()));
+      cluster_resources_before_scheduling[node_id]->GetAvailableResources().IsEqual(
+          cluster_resources_after_destruction[node_id]->GetAvailableResources()));
 }
 
 TEST_F(GcsBasedActorSchedulerTest, TestBalancedSchedule) {

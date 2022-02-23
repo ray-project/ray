@@ -35,32 +35,40 @@ class PytorchTrainable(tune.Trainable):
         self.netG.apply(weights_init)
         self.criterion = nn.BCELoss()
         self.optimizerD = optim.Adam(
-            self.netD.parameters(),
-            lr=config.get("lr", 0.01),
-            betas=(beta1, 0.999))
+            self.netD.parameters(), lr=config.get("lr", 0.01), betas=(beta1, 0.999)
+        )
         self.optimizerG = optim.Adam(
-            self.netG.parameters(),
-            lr=config.get("lr", 0.01),
-            betas=(beta1, 0.999))
+            self.netG.parameters(), lr=config.get("lr", 0.01), betas=(beta1, 0.999)
+        )
         with FileLock(os.path.expanduser("~/.data.lock")):
             self.dataloader = get_data_loader(config.get("data_dir", "~/data"))
         self.mnist_model_ref = config["mnist_model_ref"]
 
     def step(self):
-        lossG, lossD, is_score = train(self.netD, self.netG, self.optimizerG,
-                                       self.optimizerD, self.criterion,
-                                       self.dataloader, self._iteration,
-                                       self.device, self.mnist_model_ref)
+        lossG, lossD, is_score = train(
+            self.netD,
+            self.netG,
+            self.optimizerG,
+            self.optimizerD,
+            self.criterion,
+            self.dataloader,
+            self._iteration,
+            self.device,
+            self.mnist_model_ref,
+        )
         return {"lossg": lossG, "lossd": lossD, "is_score": is_score}
 
     def save_checkpoint(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint")
-        torch.save({
-            "netDmodel": self.netD.state_dict(),
-            "netGmodel": self.netG.state_dict(),
-            "optimD": self.optimizerD.state_dict(),
-            "optimG": self.optimizerG.state_dict(),
-        }, path)
+        torch.save(
+            {
+                "netDmodel": self.netD.state_dict(),
+                "netGmodel": self.netG.state_dict(),
+                "optimD": self.optimizerD.state_dict(),
+                "optimG": self.optimizerG.state_dict(),
+            },
+            path,
+        )
 
         return checkpoint_dir
 
@@ -86,10 +94,13 @@ class PytorchTrainable(tune.Trainable):
     def _export_model(self, export_formats, export_dir):
         if export_formats == [ExportFormat.MODEL]:
             path = os.path.join(export_dir, "exported_models")
-            torch.save({
-                "netDmodel": self.netD.state_dict(),
-                "netGmodel": self.netG.state_dict()
-            }, path)
+            torch.save(
+                {
+                    "netDmodel": self.netD.state_dict(),
+                    "netGmodel": self.netG.state_dict(),
+                },
+                path,
+            )
             return {ExportFormat.MODEL: path}
         else:
             raise ValueError("unexpected formats: " + str(export_formats))
@@ -100,16 +111,16 @@ class PytorchTrainable(tune.Trainable):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     parser.add_argument(
-        "--data-dir",
-        type=str,
-        default="~/data/",
-        help="Set the path of the dataset.")
+        "--data-dir", type=str, default="~/data/", help="Set the path of the dataset."
+    )
     args, _ = parser.parse_known_args()
     ray.init()
 
     import urllib.request
+
     # Download a pre-trained MNIST model for inception score calculation.
     # This is a tiny model (<100kb).
     if not os.path.exists(MODEL_PATH):
@@ -117,7 +128,9 @@ if __name__ == "__main__":
         os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
         urllib.request.urlretrieve(
             "https://github.com/ray-project/ray/raw/master/python/ray/tune/"
-            "examples/pbt_dcgan_mnist/mnist_cnn.pt", MODEL_PATH)
+            "examples/pbt_dcgan_mnist/mnist_cnn.pt",
+            MODEL_PATH,
+        )
 
     dataloader = get_data_loader()
     if not args.smoke_test:
@@ -137,7 +150,8 @@ if __name__ == "__main__":
             # distribution for resampling
             "netG_lr": lambda: np.random.uniform(1e-2, 1e-5),
             "netD_lr": lambda: np.random.uniform(1e-2, 1e-5),
-        })
+        },
+    )
 
     tune_iter = 5 if args.smoke_test else 300
     analysis = tune.run(
@@ -156,12 +170,15 @@ if __name__ == "__main__":
         export_formats=[ExportFormat.MODEL],
         config={
             "netG_lr": tune.sample_from(
-                lambda spec: random.choice([0.0001, 0.0002, 0.0005])),
+                lambda spec: random.choice([0.0001, 0.0002, 0.0005])
+            ),
             "netD_lr": tune.sample_from(
-                lambda spec: random.choice([0.0001, 0.0002, 0.0005])),
+                lambda spec: random.choice([0.0001, 0.0002, 0.0005])
+            ),
             "mnist_model_ref": mnist_model_ref,
-            "data_dir": args.data_dir
-        })
+            "data_dir": args.data_dir,
+        },
+    )
     # __tune_end__
 
     # demo of the trained Generators

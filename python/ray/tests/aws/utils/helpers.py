@@ -4,17 +4,24 @@ import ray
 import copy
 
 from ray.autoscaler._private.aws.node_provider import AWSNodeProvider
-from ray.autoscaler.tags import TAG_RAY_NODE_KIND, NODE_KIND_HEAD, \
-    NODE_KIND_WORKER, TAG_RAY_USER_NODE_TYPE, TAG_RAY_CLUSTER_NAME
+from ray.autoscaler.tags import (
+    TAG_RAY_NODE_KIND,
+    NODE_KIND_HEAD,
+    NODE_KIND_WORKER,
+    TAG_RAY_USER_NODE_TYPE,
+    TAG_RAY_CLUSTER_NAME,
+)
 from ray.autoscaler._private.commands import prepare_config, validate_config
-from ray.tests.aws.utils.constants import DEFAULT_CLUSTER_NAME, \
-    DEFAULT_NODE_PROVIDER_INSTANCE_TAGS
+from ray.tests.aws.utils.constants import (
+    DEFAULT_CLUSTER_NAME,
+    DEFAULT_NODE_PROVIDER_INSTANCE_TAGS,
+)
 
 
 def get_aws_example_config_file_path(file_name):
     import ray.autoscaler.aws
-    return os.path.join(
-        os.path.dirname(ray.autoscaler.aws.__file__), file_name)
+
+    return os.path.join(os.path.dirname(ray.autoscaler.aws.__file__), file_name)
 
 
 def load_aws_example_config_file(file_name):
@@ -54,8 +61,7 @@ def node_provider_tags(config, type_name):
     return tags
 
 
-def apply_node_provider_config_updates(config, node_cfg, node_type_name,
-                                       max_count):
+def apply_node_provider_config_updates(config, node_cfg, node_type_name, max_count):
     """
     Applies default updates made by AWSNodeProvider to node_cfg during node
     creation. This should only be used for testing purposes.
@@ -69,13 +75,12 @@ def apply_node_provider_config_updates(config, node_cfg, node_type_name,
     tags = node_provider_tags(config, node_type_name)
     tags[TAG_RAY_CLUSTER_NAME] = DEFAULT_CLUSTER_NAME
     user_tag_specs = node_cfg.get("TagSpecifications", [])
-    tag_specs = [{
-        "ResourceType": "instance",
-        "Tags": [{
-            "Key": k,
-            "Value": v
-        } for k, v in sorted(tags.items())]
-    }]
+    tag_specs = [
+        {
+            "ResourceType": "instance",
+            "Tags": [{"Key": k, "Value": v} for k, v in sorted(tags.items())],
+        }
+    ]
     node_provider_cfg_updates = {
         "MinCount": 1,
         "MaxCount": max_count,

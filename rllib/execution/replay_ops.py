@@ -5,10 +5,8 @@ from ray.actor import ActorHandle
 from ray.util.iter import from_actors, LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import SharedMetrics
 from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
-    MultiAgentReplayBuffer
-from ray.rllib.execution.common import \
-    STEPS_SAMPLED_COUNTER, _get_shared_metrics
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
+from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metrics
 from ray.rllib.utils.typing import SampleBatchType
 
 
@@ -31,10 +29,10 @@ class StoreToReplayBuffer:
     """
 
     def __init__(
-            self,
-            *,
-            local_buffer: Optional[MultiAgentReplayBuffer] = None,
-            actors: Optional[List[ActorHandle]] = None,
+        self,
+        *,
+        local_buffer: Optional[MultiAgentReplayBuffer] = None,
+        actors: Optional[List[ActorHandle]] = None,
     ):
         """
         Args:
@@ -42,12 +40,12 @@ class StoreToReplayBuffer:
             actors: An optional list of replay actors to use instead of
                 `local_buffer`.
         """
-        if bool(local_buffer) == bool(actors):
+        if local_buffer is not None and actors is not None:
             raise ValueError(
-                "Either `local_buffer` or `replay_actors` must be given, "
-                "not both!")
+                "Either `local_buffer` or `replay_actors` must be given, " "not both!"
+            )
 
-        if local_buffer:
+        if local_buffer is not None:
             self.local_actor = local_buffer
             self.replay_actors = None
         else:
@@ -55,7 +53,7 @@ class StoreToReplayBuffer:
             self.replay_actors = actors
 
     def __call__(self, batch: SampleBatchType):
-        if self.local_actor:
+        if self.local_actor is not None:
             self.local_actor.add_batch(batch)
         else:
             actor = random.choice(self.replay_actors)
@@ -63,10 +61,12 @@ class StoreToReplayBuffer:
         return batch
 
 
-def Replay(*,
-           local_buffer: MultiAgentReplayBuffer = None,
-           actors: List[ActorHandle] = None,
-           num_async: int = 4) -> LocalIterator[SampleBatchType]:
+def Replay(
+    *,
+    local_buffer: Optional[MultiAgentReplayBuffer] = None,
+    actors: Optional[List[ActorHandle]] = None,
+    num_async: int = 4,
+) -> LocalIterator[SampleBatchType]:
     """Replay experiences from the given buffer or actors.
 
     This should be combined with the StoreToReplayActors operation using the
@@ -87,14 +87,12 @@ def Replay(*,
         SampleBatch(...)
     """
 
-    if bool(local_buffer) == bool(actors):
-        raise ValueError(
-            "Exactly one of local_buffer and replay_actors must be given.")
+    if local_buffer is not None and actors is not None:
+        raise ValueError("Exactly one of local_buffer and replay_actors must be given.")
 
-    if actors:
+    if actors is not None:
         replay = from_actors(actors)
-        return replay.gather_async(
-            num_async=num_async).filter(lambda x: x is not None)
+        return replay.gather_async(num_async=num_async).filter(lambda x: x is not None)
 
     def gen_replay(_):
         while True:
@@ -123,9 +121,7 @@ class WaitUntilTimestepsElapsed:
 class SimpleReplayBuffer:
     """Simple replay buffer that operates over batches."""
 
-    def __init__(self,
-                 num_slots: int,
-                 replay_proportion: Optional[float] = None):
+    def __init__(self, num_slots: int, replay_proportion: Optional[float] = None):
         """Initialize SimpleReplayBuffer.
 
         Args:
@@ -134,6 +130,8 @@ class SimpleReplayBuffer:
         self.num_slots = num_slots
         self.replay_batches = []
         self.replay_index = 0
+
+        self.last_added_batches = []
 
     def add_batch(self, sample_batch: SampleBatchType) -> None:
         warn_replay_capacity(item=sample_batch, num_items=self.num_slots)
@@ -145,8 +143,13 @@ class SimpleReplayBuffer:
                 self.replay_index += 1
                 self.replay_index %= self.num_slots
 
+            self.last_added_batches.append(sample_batch)
+
     def replay(self) -> SampleBatchType:
         return random.choice(self.replay_batches)
+
+    def __len__(self):
+        return len(self.replay_batches)
 
 
 class MixInReplay:
@@ -179,8 +182,7 @@ class MixInReplay:
             [SampleBatch(<input>)]
         """
         if replay_proportion > 0 and num_slots == 0:
-            raise ValueError(
-                "You must set num_slots > 0 if replay_proportion > 0.")
+            raise ValueError("You must set num_slots > 0 if replay_proportion > 0.")
         self.replay_buffer = SimpleReplayBuffer(num_slots)
         self.replay_proportion = replay_proportion
 

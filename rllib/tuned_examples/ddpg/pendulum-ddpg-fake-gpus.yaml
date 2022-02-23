@@ -2,10 +2,11 @@ pendulum-ddpg-fake-gpus:
     env: Pendulum-v1
     run: DDPG
     stop:
-        episode_reward_mean: -700
-        timesteps_total: 100000
+        episode_reward_mean: -1000
+        timesteps_total: 40000
     config:
         # Works for both torch and tf.
+        seed: 42
         framework: tf
         actor_hiddens: [64, 64]
         critic_hiddens: [64, 64]
@@ -21,7 +22,9 @@ pendulum-ddpg-fake-gpus:
         learning_starts: 500
         train_batch_size: 64
         num_workers: 0
-        worker_side_prioritization: False
+        worker_side_prioritization: false
+        actor_lr: 0.0001
+        critic_lr: 0.0001
 
         # Fake 2 GPUs.
         num_gpus: 2

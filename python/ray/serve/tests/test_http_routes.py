@@ -213,8 +213,7 @@ def test_redirect(serve_instance, base_path):
             root_path = request.scope.get("root_path")
             if root_path.endswith("/"):
                 root_path = root_path[:-1]
-            return RedirectResponse(url=root_path +
-                                    app.url_path_for("redirect_root"))
+            return RedirectResponse(url=root_path + app.url_path_for("redirect_root"))
 
     D.deploy()
 
@@ -248,8 +247,7 @@ def test_default_error_handling(serve_instance):
 
     @serve.deployment
     def h():
-        ray.get(
-            intentional_kill.remote(ray.get_runtime_context().current_actor))
+        ray.get(intentional_kill.remote(ray.get_runtime_context().current_actor))
         time.sleep(100)  # Don't return here to leave time for actor exit.
 
     h.deploy()
@@ -260,4 +258,5 @@ def test_default_error_handling(serve_instance):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -24,8 +24,8 @@ public class GcsClient {
 
   private GlobalStateAccessor globalStateAccessor;
 
-  public GcsClient(String redisAddress, String redisPassword) {
-    globalStateAccessor = GlobalStateAccessor.getInstance(redisAddress, redisPassword);
+  public GcsClient(String bootstrapAddress, String redisPassword) {
+    globalStateAccessor = GlobalStateAccessor.getInstance(bootstrapAddress, redisPassword);
   }
 
   /**
@@ -66,8 +66,8 @@ public class GcsClient {
     return placementGroups;
   }
 
-  public String getInternalKV(String key) {
-    byte[] value = globalStateAccessor.getInternalKV(key);
+  public String getInternalKV(String ns, String key) {
+    byte[] value = globalStateAccessor.getInternalKV(ns, key);
     return value == null ? null : new String(value);
   }
 
