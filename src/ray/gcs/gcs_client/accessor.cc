@@ -417,8 +417,10 @@ bool ActorInfoAccessor::IsActorUnsubscribed(const ActorID &actor_id) {
 
 NodeInfoAccessor::NodeInfoAccessor(GcsClient *client_impl) : client_impl_(client_impl) {}
 
-Status NodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
-                                      const StatusCallback &callback) {
+Status NodeInfoAccessor::RegisterSelf(
+    const GcsNodeInfo &local_node_info,
+    const std::unordered_map<std::string, rpc::ResourceTableData> &resources,
+    const StatusCallback &callback) {
   auto node_id = NodeID::FromBinary(local_node_info.node_id());
   RAY_LOG(DEBUG) << "Registering node info, node id = " << node_id
                  << ", address is = " << local_node_info.node_manager_address();
@@ -426,6 +428,9 @@ Status NodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
   RAY_CHECK(local_node_info.state() == GcsNodeInfo::ALIVE);
   rpc::RegisterNodeRequest request;
   request.mutable_node_info()->CopyFrom(local_node_info);
+  for (auto &resource : resources) {
+    (*request.mutable_resources())[resource.first] = resource.second;
+  }
 
   client_impl_->GetGcsRpcClient().RegisterNode(
       request, [this, node_id, local_node_info, callback](

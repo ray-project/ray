@@ -159,6 +159,7 @@ service ActorInfoGcsService {
 message RegisterNodeRequest {
   // Info of node.
   GcsNodeInfo node_info = 1;
+  map<string, ResourceTableData> resources = 2;
 }
 
 message RegisterNodeReply {
@@ -203,20 +204,6 @@ message GetResourcesRequest {
 message GetResourcesReply {
   GcsStatus status = 1;
   map<string, ResourceTableData> resources = 2;
-}
-
-message UpdateResourcesRequest {
-  bytes node_id = 1;
-  map<string, ResourceTableData> resources = 2;
-}
-
-message UpdateResourcesReply {
-  GcsStatus status = 1;
-}
-
-message DeleteResourcesRequest {
-  bytes node_id = 1;
-  repeated string resource_name_list = 2;
 }
 
 message DeleteResourcesReply {

@@ -114,15 +114,15 @@ ray::Status Raylet::RegisterGcs() {
 
   // Add resource information.
   const NodeManagerConfig &node_manager_config = node_manager_.GetInitialConfig();
-  std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>> resources;
+  std::unordered_map<std::string, rpc::ResourceTableData> resources;
   for (const auto &resource_pair : node_manager_config.resource_config.GetResourceMap()) {
-    auto resource = std::make_shared<rpc::ResourceTableData>();
-    resource->set_resource_capacity(resource_pair.second);
+    rpc::ResourceTableData resource;
+    resource.set_resource_capacity(resource_pair.second);
     resources.emplace(resource_pair.first, resource);
   }
 
   RAY_RETURN_NOT_OK(
-      gcs_client_->Nodes().RegisterSelf(self_node_info_, register_callback));
+      gcs_client_->Nodes().RegisterSelf(self_node_info_, resources, register_callback));
   return Status::OK();
 }
 
