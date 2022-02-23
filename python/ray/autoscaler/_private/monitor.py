@@ -364,6 +364,13 @@ class Monitor:
                 if self.stop_event and self.stop_event.is_set():
                     break
                 self.update_load_metrics()
+
+                if not self.load_metrics:
+                    # load_metrics is Falsey iff we haven't collected any
+                    # resource messages from the GCS, which can happen at startup if
+                    # the GCS hasn't accessed received data from the Raylets.
+                    # In this case, we wait until we're able to get resource info.
+                    return
                 self.update_resource_requests()
                 self.update_event_summary()
                 status = {
