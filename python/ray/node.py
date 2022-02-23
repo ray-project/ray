@@ -1463,7 +1463,7 @@ class Node:
                         grpc.StatusCode.UNKNOWN,
                 ):
                     logger.warning(
-                        f"Unable to connect to GCS at {gcs_client.address}. "
+                        f"Unable to connect to GCS at {self.gcs_address}. "
                         "Check that (1) Ray GCS with matching version started "
                         "successfully at the specified address, and (2) there is "
                         "no firewall setting preventing access.")
