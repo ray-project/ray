@@ -276,5 +276,7 @@ def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
             match = re.match(ACTOR_POOL_REGEX, compute_spec)
             if match:
                 num_actors = int(match.group(1))
+                if num_actors == 0:
+                    raise ValueError("`n` in actors[n] must be > 0")
                 return ActorPool(num_actors)
         raise ValueError("compute must be one of [`tasks`, `actors`, `actors[n]`]")

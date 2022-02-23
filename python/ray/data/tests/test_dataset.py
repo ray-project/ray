@@ -92,6 +92,9 @@ def test_basic_actors(shutdown_only, pipelined):
         range(1, n + 1)
     )
 
+    with pytest.raises(ValueError):
+        ray.data.range(10).map(lambda x: x, compute="actors[0]")
+
 
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_avoid_placement_group_capture(shutdown_only, pipelined):
