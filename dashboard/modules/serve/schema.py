@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, root_validator, validator
 from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
-from ray.serve.api import Deployment
+from ray.serve.api import Deployment, deployment
 
 
 class RayActorOptionsSchema(BaseModel):
@@ -306,15 +306,27 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
     )
 
 
-def schema_to_deployment(schema: DeploymentSchema) -> Deployment:
-    ray_actor_options = schema.ray_actor_options.dict()
-
-
+def schema_to_deployment(s: DeploymentSchema) -> Deployment:
+    return deployment(
+        name=s.name,
+        num_replicas=s.num_replicas,
+        init_args=s.init_args,
+        init_kwargs=s.init_kwargs,
+        route_prefix=s.route_prefix,
+        ray_actor_options=s.ray_actor_options.dict(),
+        max_concurrent_queries=s.max_concurrent_queries,
+        _autoscaling_config=s.autoscaling_config,
+        _graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
+        _graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
+        _health_check_period_s=s.health_check_period_s,
+        _health_check_timeout_s=s.health_check_timeout_s
+    )(s.import_path)
 
 
 def serve_instance_to_schema(deployments: List[Deployment]) -> ServeInstanceSchema:
-    pass
+    schemas = [deployment_to_schema(d) for d in deployments]
+    return ServeInstanceSchema(deployments=schemas)
 
 
 def schema_to_serve_instance(schema: ServeInstanceSchema) -> List[Deployment]:
-    pass
+    return [schema_to_deployment(s) for s in schema.deployments]
