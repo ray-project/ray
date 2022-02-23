@@ -166,6 +166,8 @@ class TestBuffer : public Buffer {
 
   bool IsPlasmaBuffer() const override { return false; }
 
+  const MockBufferManager &GetBufferManager() const { return manager_; }
+
  private:
   MockBufferManager &manager_;
   std::string data_;

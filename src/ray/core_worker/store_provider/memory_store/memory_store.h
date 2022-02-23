@@ -221,6 +221,8 @@ class CoreWorkerMemoryStore {
   /// store memory usage).
   int64_t used_object_store_memory_ GUARDED_BY(mu_) = 0;
 
+  /// This lambda is used to allow language frontend to allocate the objects
+  /// in the memory store.
   std::function<std::shared_ptr<RayObject>(const RayObject &object,
                                            const ObjectID &object_id)>
       object_allocator_;
