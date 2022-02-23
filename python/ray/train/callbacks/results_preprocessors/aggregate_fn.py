@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 class AggregateFn:
     """An abstract class for aggregation function."""
+
     def __call__(self):
         raise NotImplementedError
 
@@ -25,7 +26,6 @@ class AggregateFn:
 
 
 class Average(AggregateFn):
-
     def __call__(self, values: List[Union[VALID_AGGREGATE_TYPES]]):
         return np.nanmean(values)
 
@@ -34,7 +34,6 @@ class Average(AggregateFn):
 
 
 class Max(AggregateFn):
-
     def __call__(self, values: List[Union[VALID_AGGREGATE_TYPES]]):
         return np.nanmax(values)
 
@@ -43,7 +42,6 @@ class Max(AggregateFn):
 
 
 class WeightedAverage(AggregateFn):
-
     def __init__(self, weight_key: Optional[str] = None):
         self.weight_key = "" if weight_key is None else weight_key
         self.weights = None
@@ -60,16 +58,22 @@ class WeightedAverage(AggregateFn):
 
     def _get_weights(self, weight, reported_metrics, results):
 
-        weights_from_workers = np.array([result.get(weight, np.nan) for result in results])
+        weights_from_workers = np.array(
+            [result.get(weight, np.nan) for result in results]
+        )
 
         warning_message = ""
         if weight not in reported_metrics:
             warning_message = (
                 f"Averaging weight `{weight}` is not reported in `train.report()`. "
             )
-        elif not all(isinstance(weight_value, VALID_AGGREGATE_TYPES) for weight_value in weights_from_workers):
+        elif not all(
+            isinstance(weight_value, VALID_AGGREGATE_TYPES)
+            for weight_value in weights_from_workers
+        ):
             warning_message = (
-                f"Averaging weight `{weight}` value type (`{type(results[0].get(weight, np.nan))}`) is not valid. "
+                f"Averaging weight `{weight}` value type "
+                f"(`{type(results[0].get(weight, np.nan))}`) is not valid. "
                 f"Make sure that its type is one of {VALID_AGGREGATE_TYPES}. "
             )
 
