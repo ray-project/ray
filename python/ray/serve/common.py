@@ -7,7 +7,6 @@ from ray.actor import ActorHandle
 from ray.serve.config import DeploymentConfig, ReplicaConfig
 from ray.serve.autoscaling_policy import AutoscalingPolicy
 
-str = str
 EndpointTag = str
 ReplicaTag = str
 NodeId = str

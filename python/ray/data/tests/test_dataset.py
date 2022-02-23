@@ -998,6 +998,14 @@ def test_tensors_in_tables_to_tf(ray_start_regular_shared, pipelined):
     np.testing.assert_array_equal(arr, combined_iterations)
 
 
+def test_empty_shuffle(ray_start_regular_shared):
+    ds = ray.data.range(100, parallelism=100)
+    ds = ds.filter(lambda x: x)
+    ds = ds.map_batches(lambda x: x)
+    ds = ds.random_shuffle()  # Would prev. crash with AssertionError: pyarrow.Table.
+    ds.show()
+
+
 def test_empty_dataset(ray_start_regular_shared):
     ds = ray.data.range(0)
     assert ds.count() == 0
@@ -3178,9 +3186,7 @@ def test_random_shuffle(shutdown_only, pipelined):
         with pytest.raises(RuntimeError):
             ds = ds.map(lambda x: x).take(999)
     else:
-        # Source dataset should be unusable if not pipelining.
-        with pytest.raises(ValueError):
-            ds = ds.map(lambda x: x).take(999)
+        ds = ds.map(lambda x: x).take(999)
     r2 = range(100).random_shuffle(_move=True).take(999)
     assert r1 != r2, (r1, r2)
 
@@ -3191,13 +3197,15 @@ def test_random_shuffle(shutdown_only, pipelined):
     assert r1.take() == ds.take()
 
 
-def test_random_shuffle_spread(ray_start_cluster):
+@pytest.mark.parametrize("use_spread_resource_prefix", [False, True])
+def test_random_shuffle_spread(ray_start_cluster, use_spread_resource_prefix):
     cluster = ray_start_cluster
     cluster.add_node(
-        resources={"foo": 100}, _system_config={"max_direct_call_object_size": 0}
+        resources={"bar:1": 100},
+        num_cpus=10,
+        _system_config={"max_direct_call_object_size": 0},
     )
-    cluster.add_node(resources={"bar:1": 100})
-    cluster.add_node(resources={"bar:2": 100})
+    cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
     cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
 
     ray.init(cluster.address)
@@ -3210,7 +3218,7 @@ def test_random_shuffle_spread(ray_start_cluster):
     node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
 
     ds = ray.data.range(100, parallelism=2).random_shuffle(
-        _spread_resource_prefix="bar:"
+        _spread_resource_prefix=("bar:" if use_spread_resource_prefix else None)
     )
     blocks = ds.get_internal_block_refs()
     ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
@@ -3221,13 +3229,15 @@ def test_random_shuffle_spread(ray_start_cluster):
     assert set(locations) == {node1_id, node2_id}
 
 
-def test_parquet_read_spread(ray_start_cluster, tmp_path):
+@pytest.mark.parametrize("use_spread_resource_prefix", [False, True])
+def test_parquet_read_spread(ray_start_cluster, tmp_path, use_spread_resource_prefix):
     cluster = ray_start_cluster
     cluster.add_node(
-        resources={"foo": 100}, _system_config={"max_direct_call_object_size": 0}
+        resources={"bar:1": 100},
+        num_cpus=10,
+        _system_config={"max_direct_call_object_size": 0},
     )
-    cluster.add_node(resources={"bar:1": 100})
-    cluster.add_node(resources={"bar:2": 100})
+    cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
     cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
 
     ray.init(cluster.address)
@@ -3247,7 +3257,10 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
     path2 = os.path.join(data_path, "test2.parquet")
     df2.to_parquet(path2)
 
-    ds = ray.data.read_parquet(data_path, _spread_resource_prefix="bar:")
+    ds = ray.data.read_parquet(
+        data_path,
+        _spread_resource_prefix=("bar:" if use_spread_resource_prefix else None),
+    )
 
     # Force reads.
     blocks = ds.get_internal_block_refs()

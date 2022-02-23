@@ -1,9 +1,9 @@
 import logging
 import gym
 import numpy as np
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union, Set
 
-from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID
 from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
 from ray.rllib.utils.typing import (
     EnvActionType,
@@ -12,6 +12,7 @@ from ray.rllib.utils.typing import (
     EnvObsType,
     EnvType,
     MultiEnvDict,
+    AgentID,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,7 @@ class VectorEnv:
             action_space: The action space. If None, use existing_envs[0]'s
                 action space.
             observation_space: The observation space. If None, use
-                existing_envs[0]'s action space.
+                existing_envs[0]'s observation space.
 
         Returns:
             The resulting _VectorizedGymEnv object (subclass of VectorEnv).
@@ -206,7 +207,7 @@ class _VectorizedGymEnv(VectorEnv):
             action_space: The action space. If None, use existing_envs[0]'s
                 action space.
             observation_space: The observation space. If None, use
-                existing_envs[0]'s action space.
+                existing_envs[0]'s observation space.
         """
         self.envs = existing_envs
 
@@ -355,3 +356,20 @@ class VectorEnvWrapper(BaseEnv):
     @PublicAPI
     def action_space(self) -> gym.Space:
         return self._action_space
+
+    @override(BaseEnv)
+    @PublicAPI
+    def action_space_sample(self, agent_id: list = None) -> MultiEnvDict:
+        del agent_id
+        return {0: {_DUMMY_AGENT_ID: self._action_space.sample()}}
+
+    @override(BaseEnv)
+    @PublicAPI
+    def observation_space_sample(self, agent_id: list = None) -> MultiEnvDict:
+        del agent_id
+        return {0: {_DUMMY_AGENT_ID: self._observation_space.sample()}}
+
+    @override(BaseEnv)
+    @PublicAPI
+    def get_agent_ids(self) -> Set[AgentID]:
+        return {_DUMMY_AGENT_ID}

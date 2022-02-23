@@ -315,7 +315,15 @@ class TorchPolicy(Policy):
                 input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
             ]
             # Calculate RNN sequence lengths.
-            seq_lens = np.array([1] * len(input_dict["obs"])) if state_batches else None
+            seq_lens = (
+                torch.tensor(
+                    [1] * len(input_dict["obs"]),
+                    dtype=torch.long,
+                    device=input_dict["obs"].device,
+                )
+                if state_batches
+                else None
+            )
 
             return self._compute_action_helper(
                 input_dict, state_batches, seq_lens, explore, timestep
