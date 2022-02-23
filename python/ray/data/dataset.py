@@ -2557,7 +2557,12 @@ Dict[str, List[str]]]): The names of the columns
             "Use .window(blocks_per_window=n) instead of " ".pipeline(parallelism=n)"
         )
 
-    def window(self, *, blocks_per_window: int = 10) -> "DatasetPipeline[T]":
+    def window(
+        self,
+        *,
+        blocks_per_window: Optional[int] = 10,
+        bytes_per_window: Optional[int] = None,
+    ) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by windowing over data blocks.
 
         Transformations prior to the call to ``window()`` are evaluated in
@@ -2603,6 +2608,9 @@ Dict[str, List[str]]]): The names of the columns
                 increases the latency to initial output, since it decreases the
                 length of the pipeline. Setting this to infinity effectively
                 disables pipelining.
+            bytes_per_window: Specify the window size in bytes instead of blocks.
+                This will be treated as an upper bound for the window size, but each
+                window will still include at least one block.
         """
         from ray.data.dataset_pipeline import DatasetPipeline
 
@@ -2638,7 +2646,24 @@ Dict[str, List[str]]]): The names of the columns
 
         class Iterable:
             def __init__(self, blocks, epoch):
-                self._splits = blocks.split(split_size=blocks_per_window)
+                if bytes_per_window:
+                    self._splits = blocks.split_by_bytes(bytes_per_window)
+                else:
+                    self._splits = blocks.split(split_size=blocks_per_window)
+                sizes = [s.size_bytes() for s in self._splits]
+
+                def mb(size_bytes):
+                    return round(size_bytes / (1024 * 1024), 2)
+
+                logger.info(
+                    "Created DatasetPipeline with {} windows: "
+                    "{}MiB min, {}MiB max, {}MiB mean".format(
+                        len(self._splits),
+                        mb(min(sizes)),
+                        mb(max(sizes)),
+                        mb(int(np.mean(sizes))),
+                    )
+                )
                 self._epoch = epoch
 
             def __iter__(self):
