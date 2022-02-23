@@ -159,7 +159,6 @@ service ActorInfoGcsService {
 message RegisterNodeRequest {
   // Info of node.
   GcsNodeInfo node_info = 1;
-  map<string, ResourceTableData> resources = 2;
 }
 
 message RegisterNodeReply {
