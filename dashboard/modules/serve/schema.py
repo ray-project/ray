@@ -239,6 +239,13 @@ class DeploymentSchema(BaseModel):
                 )
 
         return values
+    
+    @root_validator
+    def num_replicas_and_autoscaling_config_cannot_both_be_set(cls, values):
+        if (values.get("num_replicas", None) is not None 
+            and values.get("autoscaling_config", None) is not None):
+            raise ValueError("Manually setting num_replicas is not allowed "
+                             "when autoscaling_config is provided.")
 
     @validator("route_prefix")
     def route_prefix_format(cls, v):
@@ -276,12 +283,33 @@ class ServeInstanceSchema(BaseModel):
     deployments: List[DeploymentSchema] = Field(...)
 
 
-def deployment_to_schema(deployment: Deployment) -> DeploymentSchema:
-    pass
+def deployment_to_schema(d: Deployment) -> DeploymentSchema:
+    ray_actor_options_schema = RayActorOptionsSchema.parse_obj(
+        d.ray_actor_options
+    )
+
+    return DeploymentSchema(
+        name=d.name,
+        import_path=d.func_or_class,
+        init_args=d.init_args,
+        init_kwargs=d.init_kwargs,
+        num_replicas=d.num_replicas,
+        route_prefix=d.route_prefix,
+        max_concurrent_queries=d.max_concurrent_queries,
+        user_config=d.user_config,
+        autoscaling_config=d._config.autoscaling_config,
+        graceful_shutdown_wait_loop_s=d._config.graceful_shutdown_wait_loop_s,
+        graceful_shutdown_timeout_s=d._config.graceful_shutdown_timeout_s,
+        health_check_period_s=d._config.health_check_period_s,
+        health_check_timeout_s=d._config.health_check_timeout_s,
+        ray_actor_options=ray_actor_options_schema
+    )
 
 
 def schema_to_deployment(schema: DeploymentSchema) -> Deployment:
-    pass
+    ray_actor_options = schema.ray_actor_options.dict()
+
+
 
 
 def serve_instance_to_schema(deployments: List[Deployment]) -> ServeInstanceSchema:
