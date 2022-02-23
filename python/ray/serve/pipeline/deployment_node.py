@@ -1,9 +1,9 @@
-
-from typing import Any, Dict, List
+from typing import Any, Dict, Optional, List, Tuple
 
 from ray.experimental.dag import DAGNode, InputNode
 from ray.serve.api import Deployment
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import RayServeSyncHandle, RayServeHandle
+from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.experimental.dag.format_utils import get_dag_node_str
 
 
@@ -13,16 +13,29 @@ class DeploymentNode(DAGNode):
     def __init__(
         self,
         deployment_body,
-        deployment_name,
-        cls_args,
-        cls_kwargs,
-        cls_options,
-        other_args_to_resolve=None,
+        cls_args: Tuple[Any],
+        cls_kwargs: Dict[str, Any],
+        cls_options: Dict[str, Any],
+        other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
         self._body: Deployment = deployment_body
-        self._deployment_name: str = deployment_name
-        # TODO: (jiaodong) Support async handle
-        self._deployment_handle: RayServeHandle = deployment_body.get_handle()
+        # Serve handle is sync by default.
+        if (
+            "sync_handle" in other_args_to_resolve
+            and other_args_to_resolve.get("sync_handle") is True
+        ):
+            self._deployment_handle: RayServeSyncHandle = deployment_body.get_handle(
+                sync=True
+            )
+        else:
+            self._deployment_handle: RayServeHandle = deployment_body.get_handle(
+                sync=False
+            )
+
+        self._bound_args = cls_args or ()
+        self._bound_kwargs = cls_kwargs or {}
+        self._bound_options = cls_options or {}
+        self._bound_other_args_to_resolve = other_args_to_resolve or {}
 
         super().__init__(
             cls_args,
@@ -69,6 +82,19 @@ class DeploymentNode(DAGNode):
             if isinstance(child, InputNode):
                 return True
         return False
+
+    def __getattr__(self, method_name: str):
+        # Raise an error if the method is invalid.
+        getattr(self._body.func_or_class, method_name)
+        call_node = DeploymentMethodNode(
+            self._body,
+            method_name,
+            (),
+            {},
+            {},
+            other_args_to_resolve=self._bound_other_args_to_resolve,
+        )
+        return call_node
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._body))

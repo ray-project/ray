@@ -76,6 +76,7 @@ class ClassNode(DAGNode):
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._body))
 
+
 class _UnboundClassMethodNode(object):
     def __init__(self, actor: ClassNode, method_name: str):
         self._actor = actor
