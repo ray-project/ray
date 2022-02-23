@@ -69,14 +69,13 @@ class ClusterResourceScheduler {
   ///  \param prioritize_local_node: true if we want to try out local node first.
   ///  \param exclude_local_node: true if we want to avoid local node. This will cancel
   ///  prioritize_local_node if set to true.
-  ///  \param requires_object_store_memory: take
-  ///  object store memory usage as part of scheduling decision. \param
-  ///  is_infeasible[out]: It is set true if the task is not schedulable because it is
-  ///  infeasible.
+  ///  \param requires_object_store_memory: take object store memory usage as part of
+  ///  scheduling decision.
+  ///  \param is_infeasible[out]: It is set true if the task is not schedulable because it
+  ///  is infeasible.
   ///
   ///  \return emptry string, if no node can schedule the current request; otherwise,
   ///          return the string name of a node that can schedule the resource request.
-
   std::string GetBestSchedulableNode(const TaskSpecification &task_spec,
                                      bool prioritize_local_node, bool exclude_local_node,
                                      bool requires_object_store_memory,
