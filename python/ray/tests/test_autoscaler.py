@@ -2324,13 +2324,11 @@ class AutoscalingTest(unittest.TestCase):
                 node_type_counts[node_type] += 1
         assert node_type_counts == {"m4.large": 2, "p2.xlarge": 6}
 
-
     def testFalseyLoadMetrics(self):
         lm = LoadMetrics()
         assert not lm
         lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 1}, {"CPU": 0}, {})
         assert lm
-
 
     def testScaleUpBasedOnLoad(self):
         config = SMALL_CLUSTER.copy()
