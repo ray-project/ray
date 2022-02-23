@@ -49,7 +49,11 @@ class RaySync {
             resources_buffer_proto_.add_batch()->mutable_data()->Swap(&ptr->second);
           }
           resources_buffer_.erase(beg, ptr);
-          broadcaster_->SendBroadcast(std::move(resources_buffer_proto_));
+          broadcast_service_.dispatch(
+              [this, resources = std::move(resources_buffer_proto_)]() mutable {
+                broadcaster_->SendBroadcast(std::move(resources));
+              },
+              "SendBroadcast");
           resources_buffer_proto_.Clear();
         },
         RayConfig::instance().raylet_report_resources_period_milliseconds(),

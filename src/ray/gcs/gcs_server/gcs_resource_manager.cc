@@ -173,7 +173,11 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
 
   UpdateNodeResourceUsage(node_id, data);
 
-  ray_sync_->Update(data);
+  // TODO (iycheng): This will only happen in testing. We'll clean this code path
+  // in follow up PRs.
+  if(ray_sync_ != nullptr) {
+    ray_sync_->Update(data);
+  }
 }
 
 void GcsResourceManager::HandleReportResourceUsage(
