@@ -1,13 +1,17 @@
 from pydantic import ValidationError
 import pytest
 
+import ray
 from ray.dashboard.modules.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
     ServeInstanceSchema,
+    deployment_to_schema,
+    schema_to_deployment,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
 from ray.serve.config import AutoscalingConfig
+from ray import serve
 
 
 class TestRayActorOptionsSchema:
@@ -74,7 +78,7 @@ class TestRayActorOptionsSchema:
         # remote uris should work
         ray_actor_options_schema["runtime_env"] = {
             "working_dir": (
-                "https://github.com/shrekris-anyscale/" "test_module/archive/HEAD.zip"
+                "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
             ),
             "py_modules": [
                 (
@@ -248,11 +252,11 @@ class TestDeploymentSchema:
         # Ensure route_prefix of None works
         deployment_schema["route_prefix"] = None
         DeploymentSchema.parse_obj(deployment_schema)
-    
+
     def test_mutually_exclusive_num_replicas_and_autoscaling_config(self):
         # num_replicas and autoscaling_config cannot be set at the same time
         deployment_schema = self.get_minimal_deployment_schema()
-        
+
         deployment_schema["num_replicas"] = 5
         deployment_schema["autoscaling_config"] = None
         DeploymentSchema.parse_obj(deployment_schema)
@@ -336,3 +340,54 @@ class TestServeInstanceSchema:
         }
 
         ServeInstanceSchema.parse_obj(serve_instance_schema)
+
+
+# This function is defined globally to be accessible via import path
+def global_f():
+    return "Hello world!"
+
+
+def test_deployment_to_schema_to_deployment():
+    @serve.deployment(
+        num_replicas=3,
+        route_prefix="/hello",
+        ray_actor_options={
+            "runtime_env": {
+                "working_dir": (
+                    "https://github.com/shrekris-anyscale/"
+                    "test_module/archive/HEAD.zip"
+                ),
+                "py_modules": [
+                    (
+                        "https://github.com/shrekris-anyscale/"
+                        "test_deploy_group/archive/HEAD.zip"
+                    ),
+                ],
+            }
+        },
+    )
+    def f():
+        # The body of this function doesn't matter. It gets replaced by
+        # global_f() when the import path in f._func_or_class is overwritten.
+        # This function is used as a convenience to apply the @serve.deployment
+        # decorator without converting global_f() into a Deployment object.
+        pass
+
+    f._func_or_class = "ray.dashboard.modules.serve.tests.test_schema.global_f"
+
+    deployment = schema_to_deployment(deployment_to_schema(f))
+
+    assert deployment.num_replicas == 3
+    assert deployment.route_prefix == "/hello"
+    assert deployment.ray_actor_options["runtime_env"]["working_dir"] == (
+        "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+    )
+    assert deployment.ray_actor_options["runtime_env"]["py_modules"] == [
+        "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip",
+        "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
+    ]
+
+    serve.start()
+    deployment.deploy()
+    assert ray.get(deployment.get_handle().remote()) == "Hello world!"
+    serve.shutdown()

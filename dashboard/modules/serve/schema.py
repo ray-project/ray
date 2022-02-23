@@ -69,6 +69,8 @@ class RayActorOptionsSchema(BaseModel):
         for uri in uris:
             parse_uri(uri)
 
+        return v
+
 
 class DeploymentSchema(BaseModel):
     name: str = Field(
@@ -239,14 +241,18 @@ class DeploymentSchema(BaseModel):
                 )
 
         return values
-    
+
     @root_validator
     def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
-        if (values.get("num_replicas", None) is not None 
-            and values.get("autoscaling_config", None) is not None):
-            raise ValueError("Manually setting num_replicas is not allowed "
-                             "when autoscaling_config is provided.")
-        
+        if (
+            values.get("num_replicas", None) is not None
+            and values.get("autoscaling_config", None) is not None
+        ):
+            raise ValueError(
+                "Manually setting num_replicas is not allowed "
+                "when autoscaling_config is provided."
+            )
+
         return values
 
     @validator("route_prefix")
@@ -261,7 +267,7 @@ class DeploymentSchema(BaseModel):
         # route_prefix of None means the deployment is not exposed
         # over HTTP.
         if v is None:
-            return
+            return v
 
         if len(v) < 1 or v[0] != "/":
             raise ValueError(
@@ -280,15 +286,15 @@ class DeploymentSchema(BaseModel):
                 'contain "{" or "}".'
             )
 
+        return v
+
 
 class ServeInstanceSchema(BaseModel):
     deployments: List[DeploymentSchema] = Field(...)
 
 
 def deployment_to_schema(d: Deployment) -> DeploymentSchema:
-    ray_actor_options_schema = RayActorOptionsSchema.parse_obj(
-        d.ray_actor_options
-    )
+    ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
 
     return DeploymentSchema(
         name=d.name,
@@ -304,7 +310,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         graceful_shutdown_timeout_s=d._config.graceful_shutdown_timeout_s,
         health_check_period_s=d._config.health_check_period_s,
         health_check_timeout_s=d._config.health_check_timeout_s,
-        ray_actor_options=ray_actor_options_schema
+        ray_actor_options=ray_actor_options_schema,
     )
 
 
@@ -321,7 +327,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         _graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
         _graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
         _health_check_period_s=s.health_check_period_s,
-        _health_check_timeout_s=s.health_check_timeout_s
+        _health_check_timeout_s=s.health_check_timeout_s,
     )(s.import_path)
 
 
