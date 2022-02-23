@@ -19,10 +19,14 @@ class DeploymentNode(DAGNode):
         other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
         self._body: Deployment = deployment_body
+        self._bound_args = cls_args or ()
+        self._bound_kwargs = cls_kwargs or {}
+        self._bound_options = cls_options or {}
+        self._bound_other_args_to_resolve = other_args_to_resolve or {}
         # Serve handle is sync by default.
         if (
-            "sync_handle" in other_args_to_resolve
-            and other_args_to_resolve.get("sync_handle") is True
+            "sync_handle" in self._bound_other_args_to_resolve
+            and self._bound_other_args_to_resolve.get("sync_handle") is True
         ):
             self._deployment_handle: RayServeSyncHandle = deployment_body.get_handle(
                 sync=True
@@ -31,11 +35,6 @@ class DeploymentNode(DAGNode):
             self._deployment_handle: RayServeHandle = deployment_body.get_handle(
                 sync=False
             )
-
-        self._bound_args = cls_args or ()
-        self._bound_kwargs = cls_kwargs or {}
-        self._bound_options = cls_options or {}
-        self._bound_other_args_to_resolve = other_args_to_resolve or {}
 
         super().__init__(
             cls_args,
