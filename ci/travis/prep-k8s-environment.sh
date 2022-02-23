@@ -32,6 +32,7 @@ kubectl cluster-info --context kind-kind
 kubectl get nodes
 kubectl get pods
 
+unalias kubectl
 cat ~/.kube/config
 kubectl config set clusters.kind-kind.server https://docker:43063
 cat ~/.kube/config
