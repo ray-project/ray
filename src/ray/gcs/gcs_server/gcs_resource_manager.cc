@@ -25,7 +25,8 @@ GcsResourceManager::GcsResourceManager(
     instrumented_io_context &main_io_service, std::shared_ptr<GcsPublisher> gcs_publisher,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     syncer::RaySyncer *ray_syncer)
-    : periodical_runner_(main_io_service),
+    : main_io_service_(main_io_service),
+      periodical_runner_(main_io_service),
       gcs_publisher_(gcs_publisher),
       gcs_table_storage_(gcs_table_storage),
       ray_syncer_(ray_syncer) {}
@@ -47,16 +48,10 @@ void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &requ
   ++counts_[CountType::GET_RESOURCES_REQUEST];
 }
 
-void GcsResourceManager::HandleUpdateResources(
-    const rpc::UpdateResourcesRequest &request, rpc::UpdateResourcesReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  NodeID node_id = NodeID::FromBinary(request.node_id());
+void GcsResourceManager::UpdateResources(
+    const NodeID &node_id, const std::unordered_map<std::string, double> &resources,
+    std::function<void(const Status &)> callback) {
   RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
-  auto changed_resources = std::make_shared<std::unordered_map<std::string, double>>();
-  for (const auto &entry : request.resources()) {
-    changed_resources->emplace(entry.first, entry.second.resource_capacity());
-  }
-
   auto iter = cluster_scheduling_resources_.find(node_id);
   if (iter != cluster_scheduling_resources_.end()) {
     // Update `cluster_scheduling_resources_`.
@@ -75,38 +70,31 @@ void GcsResourceManager::HandleUpdateResources(
     }
 
     auto start = absl::GetCurrentTimeNanos();
-    auto on_done = [this, node_id, changed_resources, reply, send_reply_callback,
-                    start](const Status &status) {
+    auto on_done = [this, node_id, start,
+                    callback = std::move(callback)](const Status &status) {
       auto end = absl::GetCurrentTimeNanos();
       ray::stats::STATS_gcs_new_resource_creation_latency_ms.Record(
           absl::Nanoseconds(end - start) / absl::Milliseconds(1));
       RAY_CHECK_OK(status);
-      rpc::NodeResourceChange node_resource_change;
-      node_resource_change.set_node_id(node_id.Binary());
-      node_resource_change.mutable_updated_resources()->insert(changed_resources->begin(),
-                                                               changed_resources->end());
-      ray_syncer_->Update(std::move(node_resource_change));
-      GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       RAY_LOG(DEBUG) << "Finished updating resources, node id = " << node_id;
+      callback(status);
     };
 
     RAY_CHECK_OK(
         gcs_table_storage_->NodeResourceTable().Put(node_id, resource_map, on_done));
   } else {
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply,
-                       Status::Invalid("Node does not exist."));
     RAY_LOG(ERROR) << "Failed to update resources as node " << node_id
                    << " is not registered.";
+    main_io_service_.post(
+        std::bind(std::move(callback), Status::Invalid("Node does not exist.")),
+        "UpdateResourcesCallback");
   }
-  ++counts_[CountType::UPDATE_RESOURCES_REQUEST];
 }
 
 void GcsResourceManager::HandleDeleteResources(
-    const rpc::DeleteResourcesRequest &request, rpc::DeleteResourcesReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  NodeID node_id = NodeID::FromBinary(request.node_id());
+    const NodeID &node_id, const std::vector<std::string> &resource_names,
+    std::function<void(const Status &)> callback) {
   RAY_LOG(DEBUG) << "Deleting node resources, node id = " << node_id;
-  auto resource_names = VectorFromProtobuf(request.resource_name_list());
   auto iter = cluster_scheduling_resources_.find(node_id);
   if (iter != cluster_scheduling_resources_.end()) {
     // Update `cluster_scheduling_resources_`.
@@ -124,25 +112,18 @@ void GcsResourceManager::HandleDeleteResources(
       (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
     }
 
-    auto on_done = [this, node_id, resource_names, reply,
-                    send_reply_callback](const Status &status) {
+    auto on_done = [this, callback = std::move(callback)](const Status &status) {
       RAY_CHECK_OK(status);
-      rpc::NodeResourceChange node_resource_change;
-      node_resource_change.set_node_id(node_id.Binary());
-      for (const auto &resource_name : resource_names) {
-        node_resource_change.add_deleted_resources(resource_name);
-      }
-      ray_syncer_->Update(std::move(node_resource_change));
-
-      GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      callback(status);
     };
     RAY_CHECK_OK(
         gcs_table_storage_->NodeResourceTable().Put(node_id, resource_map, on_done));
   } else {
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    main_io_service_.post(
+        std::bind(std::move(callback), Status::Invalid("Node does not exist.")),
+        "DeleteResourcesCallback");
     RAY_LOG(DEBUG) << "Finished deleting node resources, node id = " << node_id;
   }
-  ++counts_[CountType::DELETE_RESOURCES_REQUEST];
 }
 
 void GcsResourceManager::HandleGetAllAvailableResources(

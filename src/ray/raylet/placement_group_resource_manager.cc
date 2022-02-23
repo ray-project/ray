@@ -35,14 +35,8 @@ void PlacementGroupResourceManager::ReturnUnusedBundle(
 }
 
 NewPlacementGroupResourceManager::NewPlacementGroupResourceManager(
-    std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
-
-    std::function<void(const ray::gcs::NodeResourceInfoAccessor::ResourceMap &resources)>
-        update_resources,
-    std::function<void(const std::vector<std::string> &resource_names)> delete_resources)
-    : cluster_resource_scheduler_(cluster_resource_scheduler),
-      update_resources_(update_resources),
-      delete_resources_(delete_resources) {}
+    std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler)
+    : cluster_resource_scheduler_(cluster_resource_scheduler) {}
 
 bool NewPlacementGroupResourceManager::PrepareBundle(
     const BundleSpecification &bundle_spec) {
@@ -145,9 +139,6 @@ void NewPlacementGroupResourceManager::CommitBundle(
           resource_name, {resource.second});
     }
   }
-  update_resources_(
-      cluster_resource_scheduler_->GetLocalResourceManager().GetResourceTotals(
-          /*resource_name_filter*/ resources));
 }
 
 void NewPlacementGroupResourceManager::CommitBundles(
@@ -183,7 +174,6 @@ void NewPlacementGroupResourceManager::ReturnBundle(
   cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
       placement_group_resources, resource_instances);
 
-  std::vector<std::string> deleted;
   for (const auto &resource : placement_group_resources) {
     if (cluster_resource_scheduler_->GetLocalResourceManager().IsAvailableResourceEmpty(
             resource.first)) {
@@ -193,14 +183,12 @@ void NewPlacementGroupResourceManager::ReturnBundle(
       // will be resource leak.
       cluster_resource_scheduler_->GetLocalResourceManager().DeleteLocalResource(
           resource.first);
-      deleted.push_back(resource.first);
     } else {
       RAY_LOG(DEBUG) << "Available bundle resource:[" << resource.first
                      << "] is not empty. Resources are not deleted from the local node.";
     }
   }
   pg_bundles_.erase(it);
-  delete_resources_(deleted);
 }
 
 }  // namespace raylet

@@ -79,10 +79,14 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
       &GetClusterResources() const;
 
   /// Update resources of a node
-  void UpdateResources(const NodeID &node_id, );
+  void UpdateResources(const NodeID &node_id,
+                       const std::unordered_map<std::string, double> &changed_resources,
+                       std::function<void(const Status &)> callback);
 
   /// Delete resource of a node
-  void DeleteResources(const NodeID &node_id, );
+  void DeleteResources(const NodeID &node_id,
+                       const std::vector<std::string> &resource_names,
+                       std::function<void(const Status &)> callback);
 
   /// Handle a node registration.
   ///
@@ -158,6 +162,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param deleted_resources Deleted resources of a node.
   void DeleteResources(const NodeID &node_id,
                        const std::vector<std::string> &deleted_resources);
+
+  /// main io service
+  instrumented_io_context &main_io_service_;
 
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
