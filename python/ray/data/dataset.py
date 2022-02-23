@@ -622,11 +622,13 @@ class Dataset(Generic[T]):
 
             This assume that the given splits are sorted in ascending order.
             """
+            if target_size == 0:
+                return splits
             new_splits = []
             leftovers = []
             for split in splits:
                 size = counts_cache[split._get_uuid()]
-                if size == target_size or target_size == 0:
+                if size == target_size:
                     new_splits.append(split)
                     continue
                 split_indices = list(range(target_size, size, target_size))
