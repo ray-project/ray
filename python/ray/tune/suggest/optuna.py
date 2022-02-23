@@ -121,6 +121,16 @@ class OptunaSearch(Searcher):
             draw hyperparameter configurations. Defaults to ``MOTPESampler``
             for multi-objective optimization with Optuna<2.9.0, and
             ``TPESampler`` in every other case.
+
+            .. warning::
+                Please note that with Optuna 2.10.0 and earlier
+                default ``MOTPESampler``/``TPESampler`` suffer
+                from performance issues when dealing with a large number of
+                completed trials (approx. >100). This will manifest as
+                a delay when suggesting new configurations.
+                This is an Optuna issue and may be fixed in a future
+                Optuna release.
+
         seed (int): Seed to initialize sampler with. This parameter is only
             used when ``sampler=None``. In all other cases, the sampler
             you pass should be initialized with the seed already.
@@ -131,7 +141,7 @@ class OptunaSearch(Searcher):
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate.
 
-            ..warning::
+            .. warning::
                 When using ``evaluated_rewards``, the search space ``space``
                 must be provided as a :class:`dict` with parameter names as
                 keys and ``optuna.distributions`` instances as values. The
