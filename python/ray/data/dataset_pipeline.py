@@ -1,5 +1,5 @@
 import inspect
-
+import logging
 import time
 from typing import (
     Any,
@@ -29,6 +29,8 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
+
+logger = logging.getLogger(__name__)
 
 # Operations that can be naively applied per dataset row in the pipeline.
 PER_DATASET_OPS = ["map", "map_batches", "add_column", "flat_map", "filter"]
@@ -573,18 +575,14 @@ class DatasetPipeline(Generic[T]):
                 return item
 
         class SingleEpochIterator:
-            def __init__(self, peekable_iter: Iterator[Dataset[T]]):
+            def __init__(self, peekable_iter: Iterator[Dataset[T]], epoch: int):
                 self._iter = peekable_iter
-                self._epoch = None
+                self._epoch = epoch
 
             def __next__(self) -> Dataset[T]:
-                if (
-                    self._epoch is not None
-                    and self._iter.peek()._get_epoch() != self._epoch
-                ):
+                if self._iter.peek()._get_epoch() > self._epoch:
                     raise StopIteration
                 ds = next(self._iter)
-                self._epoch = ds._get_epoch()
                 return lambda: ds
 
             def __iter__(self):
@@ -593,11 +591,24 @@ class DatasetPipeline(Generic[T]):
         class EpochDelimitedIterator:
             def __init__(self, pipe):
                 self._iter = Peekable(pipe.iter_datasets())
+                self._cur_epoch = None
 
             def __next__(self) -> "DatasetPipeline[T]":
-                self._iter.peek()  # Raises StopIteration on end of data.
+                if self._cur_epoch is None:
+                    self._cur_epoch = self._iter.peek()._get_epoch()
+                else:
+                    self._cur_epoch += 1
+                warned = False
+                while self._iter.peek()._get_epoch() < self._cur_epoch:
+                    if not warned:
+                        warned = True
+                        logger.warn(
+                            "Data from epoch {} was not fully read, "
+                            "skipping to next epoch.".format(self._cur_epoch - 1)
+                        )
+                    next(self._iter)
                 epoch_pipe = DatasetPipeline.from_iterable(
-                    SingleEpochIterator(self._iter)
+                    SingleEpochIterator(self._iter, epoch=self._cur_epoch)
                 )
                 return epoch_pipe
 
