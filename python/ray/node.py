@@ -1447,7 +1447,6 @@ class Node:
         external_storage.setup_external_storage(deserialized_config)
         external_storage.reset_external_storage()
 
-
     def _internal_kv_get_with_retry(self,
                                     key,
                                     namespace,
@@ -1458,17 +1457,16 @@ class Node:
         for i in range(num_retries):
             try:
                 result = self.get_gcs_client().internal_kv_get(key, namespace)
-            except Exception:
+            except Exception as e:
                 if isinstance(e, grpc.RpcError) and e.code() in (
-                    grpc.StatusCode.UNAVAILABLE,
-                    grpc.StatusCode.UNKNOWN,
+                        grpc.StatusCode.UNAVAILABLE,
+                        grpc.StatusCode.UNKNOWN,
                 ):
                     logger.warning(
                         f"Unable to connect to GCS at {gcs_client.address}. "
                         "Check that (1) Ray GCS with matching version started "
                         "successfully at the specified address, and (2) there is "
-                        "no firewall setting preventing access."
-                    )
+                        "no firewall setting preventing access.")
                 else:
                     logger.exception("Internal KV Get failed")
                 result = None
@@ -1497,15 +1495,14 @@ class Node:
                     key, value, overwrite=True, namespace=namespace)
             except grpc.RpcError as e:
                 if e.code() in (
-                    grpc.StatusCode.UNAVAILABLE,
-                    grpc.StatusCode.UNKNOWN,
+                        grpc.StatusCode.UNAVAILABLE,
+                        grpc.StatusCode.UNKNOWN,
                 ):
                     logger.warning(
-                        f"Unable to connect to GCS at {gcs_client.address}. "
+                        f"Unable to connect to GCS at {self.gcs_address}. "
                         "Check that (1) Ray GCS with matching version started "
                         "successfully at the specified address, and (2) there is "
-                        "no firewall setting preventing access."
-                    )
+                        "no firewall setting preventing access.")
                 else:
                     logger.exception("Internal KV Put failed")
                 time.sleep(2)
