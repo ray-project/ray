@@ -164,6 +164,29 @@ py_test(
     tags = ["exclusive", "team:ml"]
 )
 
+py_test(
+    name = "doc_code_keras_quickstart",
+    size = "small",
+    main = "source/tune/doc_code/keras_hyperopt.py",
+    srcs = ["source/tune/doc_code/keras_hyperopt.py"],
+    tags = ["exclusive", "team:ml"]
+)
+
+py_test(
+    name = "doc_code_pytorch_quickstart",
+    size = "small",
+    main = "source/tune/doc_code/pytorch_optuna.py",
+    srcs = ["source/tune/doc_code/pytorch_optuna.py"],
+    tags = ["exclusive", "team:ml"]
+)
+
+py_test(
+    name = "doc_code_keras_hyperopt",
+    size = "small",
+    main = "source/tune/doc_code/keras_hyperopt.py",
+    srcs = ["source/tune/doc_code/keras_hyperopt.py"],
+    tags = ["exclusive", "team:ml"]
+)
 
 py_test(
     name = "hyperopt_example",

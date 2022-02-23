@@ -44,35 +44,26 @@ Tune integrates with a wide range of hyperparameter optimization tools, like
     After defining the search space, you can simply initialize the ``HyperOptSearch`` object and pass it to ``run``.
     It's important to tell Ray Tune which metric you want to optimize and whether you want to maximize or minimize it.
 
-    .. code-block:: python
+    .. literalinclude:: doc_code/keras_hyperopt.py
+        :language: python
+        :start-after: __keras_hyperopt_start__
+        :end-before: __keras_hyperopt_end__
 
-        from ray import tune
-        from ray.tune.suggest.hyperopt import HyperOptSearch
-        import keras
+.. tabbed:: PyTorch+Optuna
 
-        # 1. Wrap a Keras model in an objective function.
-        def objective(config):
-            model = keras.models.Sequential()
-            model.add(keras.layers.Dense(784, activation=config["activation"]))
-            model.add(keras.layers.Dense(10, activation="softmax"))
+    To tune your PyTorch models with Optuna, you wrap your model in an objective function whose ``config`` you
+    can access for selecting hyperparameters.
+    In the example below we only tune the ``momentum`` and learning rate (``lr``) parameters of the model's optimizer,
+    but you can tune any other model parameter you want.
+    After defining the search space, you can simply initialize the ``OptunaSearch`` object and pass it to ``run``.
+    It's important to tell Ray Tune which metric you want to optimize and whether you want to maximize or minimize it.
+    We stop tuning this training run after ``5`` iterations, but you can easily define other stopping rules as well.
 
-            model.compile(loss="binary_crossentropy", optimizer="adam", metrics=["accuracy"])
-            model.fit(...)
-            loss, accuracy = model.evaluate(...)
-            return {"accuracy": accuracy}
+    .. literalinclude:: doc_code/pytorch_optuna.py
+        :language: python
+        :start-after: __pytorch_optuna_start__
+        :end-before: __pytorch_optuna_end__
 
-        # 2. Define a search space and initialize the search algorithm.
-        search_space = {"activation": tune.choice(["relu", "tanh"])}
-        algo = HyperOptSearch()
-
-        # 3. Start a Tune run that maximizes accuracy.
-        analysis = tune.run(
-            objective, search_alg=algo, config=search_space, metric="accuracy", mode="max"
-        )
-
-.. TODO add .. tabbed:: PyTorch+Optuna
-
-.. TODO add .. tabbed:: Scikit+PBT
 
 With Tune you can also launch a multi-node :ref:`distributed hyperparameter sweep <tune-distributed-ref>`
 in less than 10 lines of code.
