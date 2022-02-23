@@ -95,7 +95,7 @@ Running a distributed (multi-node) experiment requires Ray to be started already
 
 Across your machines, Tune will automatically detect the number of GPUs and CPUs without you needing to manage ``CUDA_VISIBLE_DEVICES``.
 
-To execute a distributed experiment, call ``ray.init(address=XXX)`` before ``tune.run``, where ``XXX`` is the Ray redis address, which defaults to ``localhost:6379``. The Tune python script should be executed only on the head node of the Ray cluster.
+To execute a distributed experiment, call ``ray.init(address=XXX)`` before ``tune.run``, where ``XXX`` is the Ray address, which defaults to ``localhost:6379``. The Tune python script should be executed only on the head node of the Ray cluster.
 
 One common approach to modifying an existing Tune experiment to go distributed is to set an ``argparse`` variable so that toggling between distributed and single-node is seamless.
 
@@ -124,7 +124,7 @@ If you used a cluster configuration (starting a cluster with ``ray up`` or ``ray
 
 .. tip::
 
-    1. In the examples, the Ray redis address commonly used is ``localhost:6379``.
+    1. In the examples, the Ray address commonly used is ``localhost:6379``.
     2. If the Ray cluster is already started, you should not need to run anything on the worker nodes.
 
 

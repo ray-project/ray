@@ -81,6 +81,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_usage_stats.py",
     "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
     "test_memory_scheduling.py",
     "test_metrics.py",
@@ -144,7 +145,9 @@ py_test_module_list(
     "test_unhandled_error.py",
     "test_top_level_api.py",
     "test_list_actors.py",
-    "test_usage_stats.py",
+    "test_list_actors_2.py",
+    "test_list_actors_3.py",
+    "test_list_actors_4.py",
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -342,6 +345,9 @@ py_test_module_list(
     "test_asyncio.py",
     "test_multiprocessing.py",
     "test_list_actors.py",
+    "test_list_actors_2.py",
+    "test_list_actors_3.py",
+    "test_list_actors_4.py",
   ],
   size = "medium",
   extra_srcs = SRCS,

@@ -2,17 +2,15 @@ from typing import Union, Optional
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import PlacementGroup
 
-# The default hybrid scheduling strategy
+# "DEFAULT": The default hybrid scheduling strategy
 # based on config scheduler_spread_threshold.
 # This disables any potential placement group capture.
-DEFAULT_SCHEDULING_STRATEGY = "DEFAULT"
 
-# Spread scheduling on a best effort basis.
-SPREAD_SCHEDULING_STRATEGY = "SPREAD"
+# "SPREAD": Spread scheduling on a best effort basis.
 
 
 @PublicAPI(stability="beta")
-class PlacementGroupSchedulingStrategy(object):
+class PlacementGroupSchedulingStrategy:
     """Placement group based scheduling strategy.
 
     Attributes:
