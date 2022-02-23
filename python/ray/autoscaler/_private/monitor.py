@@ -370,6 +370,9 @@ class Monitor:
                     # resource messages from the GCS, which can happen at startup if
                     # the GCS hasn't yet received data from the Raylets.
                     # In this case, we wait until we're able to get resource info.
+                    logger.info(
+                        "Autoscaler has not yet received load metrics. Waiting."
+                    )
                     time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
                     return
 
