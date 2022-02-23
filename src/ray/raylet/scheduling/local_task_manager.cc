@@ -317,7 +317,7 @@ void LocalTaskManager::SpillWaitingTasks() {
     // the most memory availability.
     std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
         (*it)->task.GetTaskSpecification(),
-        /*prioritize_local_node*/ true,
+        (*it)->PrioritizeLocalNode() && !force_spillback,
         /*exclude_local_node*/ force_spillback,
         /*requires_object_store_memory*/ true, &is_infeasible);
     if (!node_id_string.empty() && node_id_string != self_node_id_.Binary()) {
@@ -348,9 +348,7 @@ void LocalTaskManager::SpillWaitingTasks() {
 bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
                                     bool &is_infeasible) {
   std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-      work->task.GetTaskSpecification(),
-      /*prioritize_local_node*/
-      (work->grant_or_reject || work->is_selected_based_on_locality),
+      work->task.GetTaskSpecification(), work->PrioritizeLocalNode(),
       /*exclude_local_node*/ false,
       /*requires_object_store_memory*/ false, &is_infeasible);
 

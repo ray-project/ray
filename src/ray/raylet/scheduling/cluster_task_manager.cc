@@ -78,9 +78,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       RAY_LOG(DEBUG) << "Scheduling pending task "
                      << task.GetTaskSpecification().TaskId();
       std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-          task.GetTaskSpecification(),
-          /*prioritize_local_node*/
-          (work->grant_or_reject || work->is_selected_based_on_locality),
+          task.GetTaskSpecification(), work->PrioritizeLocalNode(),
           /*exclude_local_node*/ false,
           /*requires_object_store_memory*/ false, &is_infeasible);
 
@@ -132,9 +130,7 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
                    << task.GetTaskSpecification().TaskId();
     bool is_infeasible;
     std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        task.GetTaskSpecification(),
-        /*prioritize_local_node*/
-        (work->grant_or_reject || work->is_selected_based_on_locality),
+        task.GetTaskSpecification(), work->PrioritizeLocalNode(),
         /*exclude_local_node*/ false,
         /*requires_object_store_memory*/ false, &is_infeasible);
 
