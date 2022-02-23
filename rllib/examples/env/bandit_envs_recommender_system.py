@@ -18,6 +18,7 @@ class ParametricRecSys(gym.Env):
     To enable slate recommendation, the `slate_size` config parameter can be
     set as > 1.
     """
+
     def __init__(
         self,
         embedding_size: int = 20,
