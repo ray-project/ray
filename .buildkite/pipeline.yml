@@ -159,11 +159,12 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/travis/ci.sh test_cpp
 
+# TODO (iycheng): Get rid of RAY_bootstrap_with_gcs=0
 - label: ":redis: Ray CPP Worker"
   conditions: [ "RAY_CI_CPP_AFFECTED" ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RAY_gcs_storage=redis ./ci/travis/ci.sh test_cpp
+    - RAY_bootstrap_with_gcs=0 RAY_gcs_storage=redis ./ci/travis/ci.sh test_cpp
 
 - label: ":cpp: Tests"
   conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
