@@ -22,7 +22,6 @@ from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
-    get_log_batch,
     chdir,
 )
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
@@ -842,16 +841,16 @@ def test_e2e_complex(call_ray_start, tmp_path):
 
                 return Path("./test").read_text()
 
-        a = TestActor.options(runtime_env={"pip": str(requirement_path)}).remote()
+        a = TestActor.remote()
         assert ray.get(a.test.remote()) == "Hello"
 
         # Check that per-task pip specification works and that the job's
-        # working_dir is still inherited.
+        # working_dir is not inherited.
         @ray.remote
         def test_pip():
             import pip_install_test  # noqa
 
-            return Path("./test").read_text()
+            return "Hello"
 
         assert (
             ray.get(
@@ -860,22 +859,44 @@ def test_e2e_complex(call_ray_start, tmp_path):
             == "Hello"
         )
 
+        @ray.remote
+        def test_working_dir():
+            import pip_install_test  # noqa
+
+            return Path("./test").read_text()
+
+        with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+            ray.get(
+                test_working_dir.options(
+                    runtime_env={"pip": ["pip-install-test"]}
+                ).remote()
+            )
+        assert "FileNotFoundError" in str(excinfo.value)
+
         # Check that pip_install_test is not in the job's pip requirements.
         with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
             ray.get(test_pip.remote())
         assert "ModuleNotFoundError" in str(excinfo.value)
 
         # Check that per-actor pip specification works and that the job's
-        # working_dir is still inherited.
+        # working_dir is not inherited.
         @ray.remote
         class TestActor:
             def test(self):
+                import pip_install_test  # noqa
+
+                return "Hello"
+
+            def test_working_dir(self):
                 import pip_install_test  # noqa
 
                 return Path("./test").read_text()
 
         a = TestActor.options(runtime_env={"pip": ["pip-install-test"]}).remote()
         assert ray.get(a.test.remote()) == "Hello"
+        with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+            ray.get(a.test_working_dir.remote())
+        assert "FileNotFoundError" in str(excinfo.value)
 
 
 @pytest.mark.skipif(
@@ -933,25 +954,6 @@ def test_runtime_env_override(call_ray_start):
         assert ray.get(child.read.remote("hello")) == "world"
 
         ray.shutdown()
-
-
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
-def test_runtime_env_logging_to_driver(ray_start_regular_shared, log_pubsub):
-    @ray.remote(runtime_env={"pip": [f"requests=={REQUEST_VERSIONS[0]}"]})
-    def func():
-        pass
-
-    ray.get(func.remote())
-
-    # Check the stderr from the worker.
-    def matcher(log_batch):
-        return log_batch["pid"] == "runtime_env"
-
-    match = get_log_batch(log_pubsub, 1, timeout=5, matcher=matcher)
-    assert len(match) > 0
 
 
 if __name__ == "__main__":

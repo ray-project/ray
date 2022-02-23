@@ -3,11 +3,14 @@ pendulum-ddpg:
     env: Pendulum-v1
     run: DDPG
     stop:
-        episode_reward_mean: -600
-        timesteps_total: 100000
+      episode_reward_mean: -320
+      timesteps_total: 30000
     config:
         # Works for both torch and tf.
-        framework: tf
+        seed: 42
+        soft_horizon: false
+        no_done_at_end: true
+        framework: torch
         # === Model ===
         actor_hiddens: [64, 64]
         critic_hiddens: [64, 64]

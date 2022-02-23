@@ -2,7 +2,7 @@ base_image: "anyscale/ray-ml:nightly-py37-gpu"
 env_vars: {"RAY_lineage_pinning_enabled": "1", "RAY_record_ref_creation_sites": "1"}
 python:
   pip_packages:
-    - pyarrow
+    - pyarrow<7.0.0
     - cmake
   conda_packages: []
 

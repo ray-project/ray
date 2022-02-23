@@ -3,7 +3,8 @@ import os
 import tracemalloc
 from typing import Dict, Optional, TYPE_CHECKING
 
-from ray.rllib.env import BaseEnv
+from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.episode import Episode
@@ -15,7 +16,7 @@ from ray.rllib.utils.exploration.random_encoder import (
     compute_states_entropy,
     update_beta,
 )
-from ray.rllib.utils.typing import AgentID, PolicyID
+from ray.rllib.utils.typing import AgentID, EnvType, PolicyID
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -43,6 +44,48 @@ class DefaultCallbacks:
                 "a class extending rllib.agents.callbacks.DefaultCallbacks",
             )
         self.legacy_callbacks = legacy_callbacks_dict or {}
+
+    def on_sub_environment_created(
+        self,
+        *,
+        worker: "RolloutWorker",
+        sub_environment: EnvType,
+        env_context: EnvContext,
+        **kwargs,
+    ) -> None:
+        """Callback run when a new sub-environment has been created.
+
+        This method gets called after each sub-environment (usually a
+        gym.Env) has been created, validated (RLlib built-in validation
+        + possible custom validation function implemented by overriding
+        `Trainer.validate_env()`), wrapped (e.g. video-wrapper), and seeded.
+
+        Args:
+            worker: Reference to the current rollout worker.
+            sub_environment: The sub-environment instance that has been
+                created. This is usually a gym.Env object.
+            env_context: The `EnvContext` object that has been passed to
+                the env's constructor.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
+
+    def on_trainer_init(
+        self,
+        *,
+        trainer: "Trainer",
+        **kwargs,
+    ) -> None:
+        """Callback run when a new trainer instance has finished setup.
+
+        This method gets called at the end of Trainer.setup() after all
+        the initialization is done, and before actually training starts.
+
+        Args:
+            trainer: Reference to the trainer instance.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
 
     def on_episode_start(
         self,

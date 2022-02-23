@@ -1,7 +1,7 @@
 .. _data_api:
 
-Ray Data API
-============
+Ray Datasets API
+================
 
 Creating Datasets
 -----------------
@@ -71,6 +71,12 @@ Custom Datasource API
     :members:
 
 .. autoclass:: ray.data.ReadTask
+    :members:
+
+Table Row API
+---------------------
+
+.. autoclass:: ray.data.row.TableRow
     :members:
 
 Utility
