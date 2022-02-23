@@ -3,7 +3,7 @@ import os
 import pprint
 import random
 from typing import Any, Mapping, Optional
-
+import logging
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
@@ -110,12 +110,19 @@ def update_global_seed_if_necessary(
             os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
         else:
             from distutils.version import LooseVersion
-
-            if LooseVersion(torch.__version__) >= LooseVersion("1.8.0"):
+            loose_version = LooseVersion(torch.__version__)
+            if loose_version >= LooseVersion("1.8.0"):
                 # Not all Operations support this.
                 torch.use_deterministic_algorithms(True)
-            else:
+            elif loose_version in [LooseVersion("1.7.0"), LooseVersion("1.7.1")]:
                 torch.set_deterministic(True)
+            elif loose_version == LooseVersion("1.6.0"):
+                torch._set_deterministic(True)
+            else:
+                logging.warning(
+                    f"Your PyTorch version {torch.__version__} is too old to enable "
+                    f"deterministic operations. Use version >= 1.6.0 for this feature."
+                )
         # This is only for Convolution no problem.
         torch.backends.cudnn.deterministic = True
     elif framework == "tf2" or framework == "tfe":
