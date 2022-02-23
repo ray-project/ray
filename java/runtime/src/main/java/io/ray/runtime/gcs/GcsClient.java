@@ -8,7 +8,6 @@ import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.NodeInfo;
-import io.ray.runtime.generated.Common;
 import io.ray.runtime.generated.Gcs;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
 import io.ray.runtime.placementgroup.PlacementGroupUtils;

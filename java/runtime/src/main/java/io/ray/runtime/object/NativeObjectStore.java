@@ -39,7 +39,8 @@ public class NativeObjectStore extends ObjectStore {
 
   @Override
   public ObjectId putRaw(NativeRayObject obj, ActorId ownerActorId) {
-    byte[] serializedOwnerAddressBytes = ((RayRuntimeInternal)Ray.internal()).getGcsClient().getActorAddress(ownerActorId);
+    byte[] serializedOwnerAddressBytes =
+        ((RayRuntimeInternal) Ray.internal()).getGcsClient().getActorAddress(ownerActorId);
     return new ObjectId(nativePut(obj, serializedOwnerAddressBytes));
   }
 
