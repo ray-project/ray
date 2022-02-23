@@ -220,13 +220,13 @@ class RuntimeEnv(dict):
         container: Optional[Dict[str, str]] = None,
         env_vars: Optional[Dict[str, str]] = None,
         _validate: bool = True,
-        **kwgs,
+        **kwargs,
     ):
         super().__init__()
         self._cached_pb = None
         self.__proto_runtime_env = None
 
-        runtime_env = kwgs
+        runtime_env = kwargs
         if py_modules is not None:
             runtime_env["py_modules"] = py_modules
         if working_dir is not None:
