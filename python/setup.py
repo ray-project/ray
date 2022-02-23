@@ -279,6 +279,7 @@ if setup_spec.type == SetupType.RAY:
         "aioredis < 2",
         "aiosignal",
         "frozenlist",
+        "requests",
         "virtualenv",  # For pip runtime env.
     ]
 
