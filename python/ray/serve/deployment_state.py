@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import ray
 from ray import ObjectRef
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayError
+from ray.exceptions import RayError
 from ray.serve.common import (
     DeploymentInfo,
     DeploymentStatus,
@@ -25,7 +25,6 @@ from ray.serve.config import DeploymentConfig
 from ray.serve.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_NUM_DELETED_DEPLOYMENTS,
-    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
 )
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
@@ -51,13 +50,6 @@ class ReplicaStartupStatus(Enum):
     PENDING_INITIALIZATION = 2
     SUCCEEDED = 3
     FAILED = 4
-
-
-class ReplicaHealthCheckResponse(Enum):
-    NONE = 1
-    SUCCEEDED = 2
-    APP_FAILURE = 3
-    ACTOR_CRASHED = 4
 
 
 CHECKPOINT_KEY = "serve-deployment-state-checkpoint"
@@ -121,12 +113,10 @@ class ActorReplicaWrapper:
         self._actor_resources: Dict[str, float] = None
         self._max_concurrent_queries: int = None
         self._graceful_shutdown_timeout_s: float = 0.0
-        self._healthy: bool = True
         self._health_check_period_s: float = 0.0
-        self._health_check_timeout_s: float = 0.0
-        self._health_check_ref: Optional[ObjectRef] = None
+        self._health_timeout_s: float = 0.0
+        self._health_check_ref: ObjectRef = None
         self._last_health_check_time: float = 0.0
-        self._consecutive_health_check_failures = 0
         # NOTE: storing these is necessary to keep the actor and PG alive in
         # the non-detached case.
         self._actor_handle: ActorHandle = None
@@ -158,10 +148,6 @@ class ActorReplicaWrapper:
     @property
     def max_concurrent_queries(self) -> int:
         return self._max_concurrent_queries
-
-    def _check_obj_ref_ready(self, obj_ref: ObjectRef) -> bool:
-        ready, _ = ray.wait([obj_ref], timeout=0)
-        return len(ready) == 1
 
     def create_placement_group(
         self, placement_group_name: str, actor_resources: dict
@@ -311,19 +297,20 @@ class ActorReplicaWrapper:
                     - replica __init__() and reconfigure() succeeded.
         """
 
-        # Check whether the replica has been allocated.
-        if not self._check_obj_ref_ready(self._allocated_obj_ref):
+        # check whether the replica has been allocated
+        ready, _ = ray.wait([self._allocated_obj_ref], timeout=0)
+        if len(ready) == 0:
             return ReplicaStartupStatus.PENDING_ALLOCATION, None
 
-        # Check whether relica initialization has completed.
-        replica_ready = self._check_obj_ref_ready(self._ready_obj_ref)
+        # check whether relica initialization has completed
+        ready, _ = ray.wait([self._ready_obj_ref], timeout=0)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
-        if not replica_ready:
+        if len(ready) == 0:
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
-        else:
+        elif len(ready) > 0:
             try:
-                deployment_config, version = ray.get(self._ready_obj_ref)
+                deployment_config, version = ray.get(ready)[0]
                 self._max_concurrent_queries = deployment_config.max_concurrent_queries
                 self._graceful_shutdown_timeout_s = (
                     deployment_config.graceful_shutdown_timeout_s
@@ -361,7 +348,8 @@ class ActorReplicaWrapper:
         """Check if the actor has exited."""
         try:
             handle = ray.get_actor(self._actor_name)
-            stopped = self._check_obj_ref_ready(self._graceful_shutdown_ref)
+            ready, _ = ray.wait([self._graceful_shutdown_ref], timeout=0)
+            stopped = len(ready) == 1
             if stopped:
                 ray.kill(handle, no_restart=True)
         except ValueError:
@@ -369,126 +357,48 @@ class ActorReplicaWrapper:
 
         return stopped
 
-    def _check_active_health_check(self) -> ReplicaHealthCheckResponse:
-        """Check the active health check (if any).
-
-        self._health_check_ref will be reset to `None` when the active health
-        check is deemed to have succeeded or failed. This method *does not*
-        start a new health check, that's up to the caller.
-
-        Returns:
-            - NONE if there's no active health check, or it hasn't returned
-              yet and the timeout is not up.
-            - SUCCEEDED if the active health check succeeded.
-            - APP_FAILURE if the active health check failed (or didn't return
-              before the timeout).
-            - ACTOR_CRASHED if the underlying actor crashed.
-        """
+    def check_health(self) -> bool:
+        """Check if the actor is healthy."""
         if self._health_check_ref is None:
-            # There is no outstanding health check.
-            response = ReplicaHealthCheckResponse.NONE
-        elif self._check_obj_ref_ready(self._health_check_ref):
+            self._last_health_check_time = time.time()
+            self._health_check_ref = self._actor_handle.check_health.remote()
+
+        healthy = True
+        ready, pending = ray.wait([self._health_check_ref], timeout=0)
+        if len(ready) == 1:
             # Object ref is ready, ray.get it to check for exceptions.
             try:
                 ray.get(self._health_check_ref)
-                # Health check succeeded without exception.
-                response = ReplicaHealthCheckResponse.SUCCEEDED
-            except RayActorError:
-                # Health check failed due to actor crashing.
-                # logger.info(f"Actor for replica {self._replica_tag} crashed.")
-                response = ReplicaHealthCheckResponse.ACTOR_CRASHED
+
+                # Health check succeeded. Kick off another and reset the timer
+                # if it's been long enough since the last health check. Add
+                # some randomness to avoid synchronizing across all replicas.
+                healthy = True
+                time_since_last = time.time() - self._last_health_check_time
+                randomized_period = self._health_check_period_s * random.uniform(
+                    0.9, 1.1
+                )
+                if time_since_last > randomized_period:
+                    self._last_health_check_time = time.time()
+                    self._health_check_ref = (
+                        self._actor_handle.check_health.remote()  # noqa: E501
+                    )
             except RayError as e:
-                # Health check failed due to application-level exception.
-                logger.info(f"Health check for replica {self._replica_tag} failed: {e}")
-                response = ReplicaHealthCheckResponse.APP_FAILURE
+                logger.info(
+                    f"Health check for replica {self._replica_tag} " f"failed: {e}"
+                )
+                healthy = False
         elif time.time() - self._last_health_check_time > self._health_check_timeout_s:
-            # Health check hasn't returned and the timeout is up, consider it failed.
             logger.info(
                 "Didn't receive health check response for replica "
                 f"{self._replica_tag} after "
                 f"{self._health_check_timeout_s}s, marking it unhealthy."
             )
-            response = ReplicaHealthCheckResponse.APP_FAILURE
+            healthy = False
         else:
-            # Health check hasn't returned and the timeout isn't up yet.
-            response = ReplicaHealthCheckResponse.NONE
+            healthy = True
 
-        if response is not ReplicaHealthCheckResponse.NONE:
-            self._health_check_ref = None
-
-        return response
-
-    def _should_start_new_health_check(self) -> bool:
-        """Determines if a new health check should be kicked off.
-
-        A health check will be started if:
-            1) There is not already an active health check.
-            2) It has been more than self._health_check_period_s since the
-               previous health check was *started*.
-
-        This assumes that self._health_check_ref is reset to `None` when an
-        active health check succeeds or fails (due to returning or timeout).
-        """
-        if self._health_check_ref is not None:
-            # There's already an active health check.
-            return False
-
-        # If there's no active health check, kick off another and reset
-        # the timer if it's been long enough since the last health
-        # check. Add some randomness to avoid synchronizing across all
-        # replicas.
-        time_since_last = time.time() - self._last_health_check_time
-        randomized_period = self._health_check_period_s * random.uniform(0.9, 1.1)
-        return time_since_last > randomized_period
-
-    def check_health(self) -> bool:
-        """Check if the actor is healthy.
-
-        self._healthy should *only* be modified in this method.
-
-        This is responsible for:
-            1) Checking the outstanding health check (if any).
-            2) Determining the replica health based on the health check results.
-            3) Kicking off a new health check if needed.
-        """
-        response: ReplicaHealthCheckResponse = self._check_active_health_check()
-        if response is ReplicaHealthCheckResponse.NONE:
-            # No info; don't update replica health.
-            pass
-        elif response is ReplicaHealthCheckResponse.SUCCEEDED:
-            # Health check succeeded. Reset the consecutive failure counter
-            # and mark the replica healthy.
-            self._consecutive_health_check_failures = 0
-            self._healthy = True
-        elif response is ReplicaHealthCheckResponse.APP_FAILURE:
-            # Health check failed. If it has failed more than N times in a row,
-            # mark the replica unhealthy.
-            self._consecutive_health_check_failures += 1
-            if (
-                self._consecutive_health_check_failures
-                >= REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
-            ):
-                logger.info(
-                    f"Replica {self._replica_tag} failed the health "
-                    f"check {self._consecutive_health_check_failures}"
-                    "times in a row, marking it unhealthy."
-                )
-                self._healthy = False
-        elif response is ReplicaHealthCheckResponse.ACTOR_CRASHED:
-            # Actor crashed, mark the replica unhealthy immediately.
-            logger.info(
-                f"Actor for replica {self._replica_tag} crashed, marking "
-                "it unhealthy immediately."
-            )
-            self._healthy = False
-        else:
-            assert False, f"Unknown response type: {response}."
-
-        if self._should_start_new_health_check():
-            self._last_health_check_time = time.time()
-            self._health_check_ref = self._actor_handle.check_health.remote()
-
-        return self._healthy
+        return healthy
 
     def force_stop(self):
         """Force the actor to exit without shutting down gracefully."""
@@ -644,7 +554,7 @@ class DeploymentReplica(VersionedReplica):
         return False
 
     def check_health(self) -> bool:
-        """Check if the replica is healthy.
+        """Check if the replica is still alive.
 
         Returns `True` if the replica is healthy, else `False`.
         """
@@ -1146,17 +1056,17 @@ class DeploymentState:
 
         return replicas_stopped
 
-    def _check_curr_status(self) -> bool:
-        """Check the current deployment status.
+    def _get_curr_status(self) -> Tuple[DeploymentStatusInfo, bool]:
+        """Get the current deployment status.
 
         Checks the difference between the target vs. running replica count for
         the target version.
 
-        This will update the current deployment status depending on the state
-        of the replicas.
+        TODO(edoakes): we should report the status as FAILED if replicas are
+        repeatedly failing health checks. Need a reasonable heuristic here.
 
         Returns:
-            was_deleted
+            (DeploymentStatusInfo, was_deleted)
         """
         # TODO(edoakes): we could make this more efficient in steady-state by
         # having a "healthy" flag that gets flipped if an update or replica
@@ -1190,15 +1100,17 @@ class DeploymentState:
                 # reached target replica count
                 self._replica_constructor_retry_counter = -1
             else:
-                self._curr_status_info = DeploymentStatusInfo(
-                    status=DeploymentStatus.UNHEALTHY,
-                    message=(
-                        "The Deployment constructor failed "
-                        f"{failed_to_start_count} times in a row. See "
-                        "logs for details."
+                return (
+                    DeploymentStatusInfo(
+                        status=DeploymentStatus.FAILED,
+                        message=(
+                            "The Deployment constructor failed "
+                            f"{failed_to_start_count} times in a row. See "
+                            "logs for details."
+                        ),
                     ),
+                    False,
                 )
-                return False
 
         # If we have pending ops, the current goal is *not* ready.
         if (
@@ -1214,14 +1126,23 @@ class DeploymentState:
         ):
             # Check for deleting.
             if target_replica_count == 0 and all_running_replica_cnt == 0:
-                return True
+                return DeploymentStatusInfo(status=DeploymentStatus.UPDATING), True
 
             # Check for a non-zero number of deployments.
             elif target_replica_count == running_at_target_version_replica_cnt:
-                self._curr_status_info = DeploymentStatusInfo(DeploymentStatus.HEALTHY)
-                return False
+                return DeploymentStatusInfo(status=DeploymentStatus.RUNNING), False
 
-        return False
+        return (
+            DeploymentStatusInfo(
+                status=DeploymentStatus.UPDATING,
+                message=(
+                    f"Running replicas of target version: "
+                    f"{running_at_target_version_replica_cnt}, target "
+                    "replicas: {target_replica_count}"
+                ),
+            ),
+            False,
+        )
 
     def _check_startup_replicas(
         self, original_state: ReplicaState, stop_on_slow=False
@@ -1293,13 +1214,6 @@ class DeploymentState:
                 )
                 replica.stop(graceful=False)
                 self._replicas.add(ReplicaState.STOPPING, replica)
-                # If this is a replica of the target version, the deployment
-                # enters the "UNHEALTHY" status until the replica is
-                # recovered or a new deploy happens.
-                if replica.version == self._target_version:
-                    self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
-                        DeploymentStatus.UNHEALTHY
-                    )
 
         slow_start_replicas = []
         slow_start, starting_to_running = self._check_startup_replicas(
@@ -1390,14 +1304,15 @@ class DeploymentState:
             if running_replicas_changed:
                 self._notify_running_replicas_changed()
 
-            deleted = self._check_curr_status()
+            status_info, deleted = self._get_curr_status()
         except Exception as e:
-            self._curr_status_info = DeploymentStatusInfo(
-                status=DeploymentStatus.UNHEALTHY,
+            status_info = DeploymentStatusInfo(
+                status=DeploymentStatus.FAILED,
                 message=f"Failed to update deployment:\n{e}.",
             )
             deleted = False
 
+        self._curr_status_info = status_info
         return deleted
 
     def _stop_one_running_replica_for_testing(self):

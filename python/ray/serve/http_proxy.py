@@ -78,7 +78,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             await Response(error_message, status_code=500).send(scope, receive, send)
             return "500"
         except RayActorError:
-            logger.debug(
+            logger.warning(
                 "Request failed due to replica failure. There are "
                 f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
                 "remaining."

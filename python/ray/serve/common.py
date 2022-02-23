@@ -20,8 +20,8 @@ class EndpointInfo:
 
 class DeploymentStatus(Enum):
     UPDATING = 1
-    HEALTHY = 2
-    UNHEALTHY = 3
+    RUNNING = 2
+    FAILED = 3
 
 
 @dataclass

@@ -29,7 +29,7 @@ def test_scale_up(ray_cluster):
     # By default, Serve controller and proxy actors use 0 CPUs,
     # so initially there should only be room for 1 replica.
 
-    @serve.deployment(version="1", num_replicas=1, _health_check_period_s=1)
+    @serve.deployment(version="1", num_replicas=1)
     def D(*args):
         return os.getpid()
 
@@ -54,20 +54,20 @@ def test_scale_up(ray_cluster):
     # doesn't guarantee that a new replica won't ever be started, but
     # 1.0 seconds is a reasonable upper bound on replica startup time.
     with pytest.raises(TimeoutError):
-        client._wait_for_deployment_healthy(D.name, timeout_s=1)
+        client._wait_for_deployment_running(D.name, timeout_s=1)
     assert get_pids(1) == pids1
 
     # Add a node with another CPU, another replica should get placed.
     cluster.add_node(num_cpus=1)
     with pytest.raises(TimeoutError):
-        client._wait_for_deployment_healthy(D.name, timeout_s=1)
+        client._wait_for_deployment_running(D.name, timeout_s=1)
     pids2 = get_pids(2)
     assert pids1.issubset(pids2)
 
     # Add a node with another CPU, the final replica should get placed
     # and the deploy goal should be done.
     cluster.add_node(num_cpus=1)
-    client._wait_for_deployment_healthy(D.name)
+    client._wait_for_deployment_running(D.name)
     pids3 = get_pids(3)
     assert pids2.issubset(pids3)
 
