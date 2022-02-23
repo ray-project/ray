@@ -32,6 +32,8 @@ from ray.tests.aws.utils.constants import (
     DEFAULT_LT,
 )
 
+NON_DEFAULT_REGIONS = [region for region in DEFAULT_AMI if region != "us-west-2"]
+
 
 def test_use_subnets_in_only_one_vpc(iam_client_stub, ec2_client_stub):
     """
@@ -242,6 +244,63 @@ def test_fills_out_amis_and_iam(iam_client_stub, ec2_client_stub):
     # Pass in SG for stub to work
     head_node_config["SecurityGroupIds"] = ["sg-1234abcd"]
     worker_node_config["SecurityGroupIds"] = ["sg-1234abcd"]
+
+    defaults_filled = bootstrap_aws(config)
+
+    ami = DEFAULT_AMI.get(defaults_filled.get("provider", {}).get("region"))
+
+    for node_type in defaults_filled["available_node_types"].values():
+        node_config = node_type["node_config"]
+        assert node_config.get("ImageId") == ami
+
+    # Correctly configured IAM role
+    assert defaults_filled["head_node"]["IamInstanceProfile"] == {
+        "Arn": DEFAULT_INSTANCE_PROFILE["Arn"]
+    }
+    # Workers of the head's type do not get the IAM role.
+    head_type = config["head_node_type"]
+    assert (
+        "IamInstanceProfile" not in defaults_filled["available_node_types"][head_type]
+    )
+
+    iam_client_stub.assert_no_pending_responses()
+    ec2_client_stub.assert_no_pending_responses()
+
+
+@pytest.mark.parametrize(
+    "iam_client_stub,ec2_client_stub,region",
+    [3 * (region,) for region in NON_DEFAULT_REGIONS],
+    indirect=["iam_client_stub", "ec2_client_stub"],
+)
+def test_fills_out_amis_non_default_region(iam_client_stub, ec2_client_stub, region):
+    # Set up expected key pair for specific region
+    region_key_pair = DEFAULT_KEY_PAIR.copy()
+    region_key_pair["KeyName"] = DEFAULT_KEY_PAIR["KeyName"].replace(
+        "us-west-2", region
+    )
+
+    # Setup stubs to mock out boto3
+    stubs.configure_iam_role_default(iam_client_stub)
+    stubs.configure_key_pair_default(
+        ec2_client_stub, region=region, expected_key_pair=region_key_pair
+    )
+    stubs.describe_a_security_group(ec2_client_stub, DEFAULT_SG)
+    stubs.configure_subnet_default(ec2_client_stub)
+
+    config = helpers.load_aws_example_config_file("example-full.yaml")
+    head_node_config = config["available_node_types"]["ray.head.default"]["node_config"]
+    worker_node_config = config["available_node_types"]["ray.worker.default"][
+        "node_config"
+    ]
+
+    del head_node_config["ImageId"]
+    del worker_node_config["ImageId"]
+
+    # Pass in SG for stub to work
+    head_node_config["SecurityGroupIds"] = ["sg-1234abcd"]
+    worker_node_config["SecurityGroupIds"] = ["sg-1234abcd"]
+
+    config["provider"]["region"] = region
 
     defaults_filled = bootstrap_aws(config)
 
