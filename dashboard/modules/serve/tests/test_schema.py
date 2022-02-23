@@ -1,6 +1,8 @@
 from pydantic import ValidationError
 import pytest
 
+import requests
+
 import ray
 from ray.dashboard.modules.serve.schema import (
     RayActorOptionsSchema,
@@ -8,6 +10,8 @@ from ray.dashboard.modules.serve.schema import (
     ServeInstanceSchema,
     deployment_to_schema,
     schema_to_deployment,
+    serve_instance_to_schema,
+    schema_to_serve_instance,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
 from ray.serve.config import AutoscalingConfig
@@ -390,4 +394,42 @@ def test_deployment_to_schema_to_deployment():
     serve.start()
     deployment.deploy()
     assert ray.get(deployment.get_handle().remote()) == "Hello world!"
+    assert requests.get("http://localhost:8000/hello").text == "Hello world!"
+    serve.shutdown()
+
+
+def test_serve_instance_to_schema_to_serve_instance():
+    @serve.deployment(
+        num_replicas=1,
+        route_prefix="/hello",
+    )
+    def f1():
+        # The body of this function doesn't matter. See the comment in
+        # test_deployment_to_schema_to_deployment.
+        pass
+
+    @serve.deployment(
+        num_replicas=2,
+        route_prefix="/hi",
+    )
+    def f2():
+        pass
+
+    f1._func_or_class = "ray.dashboard.modules.serve.tests.test_schema.global_f"
+    f2._func_or_class = "ray.dashboard.modules.serve.tests.test_schema.global_f"
+
+    deployments = schema_to_serve_instance(serve_instance_to_schema([f1, f2]))
+
+    assert deployments[0].num_replicas == 1
+    assert deployments[0].route_prefix == "/hello"
+    assert deployments[1].num_replicas == 2
+    assert deployments[1].route_prefix == "/hi"
+
+    serve.start()
+    deployments[0].deploy()
+    deployments[1].deploy()
+    assert ray.get(deployments[0].get_handle().remote()) == "Hello world!"
+    assert requests.get("http://localhost:8000/hello").text == "Hello world!"
+    assert ray.get(deployments[1].get_handle().remote()) == "Hello world!"
+    assert requests.get("http://localhost:8000/hi").text == "Hello world!"
     serve.shutdown()

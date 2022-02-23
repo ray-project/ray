@@ -1,4 +1,3 @@
-import aiohttp.web
 from aiohttp.web import Request, Response
 import json
 import logging

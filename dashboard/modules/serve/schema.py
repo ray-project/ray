@@ -185,7 +185,9 @@ class DeploymentSchema(BaseModel):
         ),
         gt=0,
     )
-    ray_actor_options: RayActorOptionsSchema = Field(...)
+    ray_actor_options: RayActorOptionsSchema = Field(
+        default=None, description="Options set for each replica actor."
+    )
 
     @root_validator
     def application_sufficiently_specified(cls, values):
@@ -294,7 +296,10 @@ class ServeInstanceSchema(BaseModel):
 
 
 def deployment_to_schema(d: Deployment) -> DeploymentSchema:
-    ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
+    if d.ray_actor_options is not None:
+        ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
+    else:
+        ray_actor_options_schema = None
 
     return DeploymentSchema(
         name=d.name,
@@ -315,13 +320,18 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
 
 def schema_to_deployment(s: DeploymentSchema) -> Deployment:
+    if s.ray_actor_options is None:
+        ray_actor_options = None
+    else:
+        ray_actor_options = s.ray_actor_options.dict()
+
     return deployment(
         name=s.name,
         num_replicas=s.num_replicas,
         init_args=s.init_args,
         init_kwargs=s.init_kwargs,
         route_prefix=s.route_prefix,
-        ray_actor_options=s.ray_actor_options.dict(),
+        ray_actor_options=ray_actor_options,
         max_concurrent_queries=s.max_concurrent_queries,
         _autoscaling_config=s.autoscaling_config,
         _graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
