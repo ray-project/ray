@@ -446,7 +446,9 @@ class ActorClass:
                     # if the exception raised by cls.__init__ is
                     # TypeError and not ActorClassInheritanceException(TypeError).
                     # In all other cases proceed with raise e.
-                    if isinstance(e, TypeError) and not isinstance(e, ActorClassInheritanceException):
+                    if isinstance(e, TypeError) and not isinstance(
+                        e, ActorClassInheritanceException
+                    ):
                         modified_class.__init__(self, *args, **kwargs)
                     else:
                         raise e
