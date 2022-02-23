@@ -617,7 +617,9 @@ void TaskManager::AddTaskStatusInfo(rpc::CoreWorkerStats *stats) const {
 void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
-  RAY_CHECK(it != submissible_tasks_.end());
+  if (it == submissible_tasks_.end()) {
+    return;
+  }
   if (it->second.status == rpc::TaskStatus::WAITING_FOR_DEPENDENCIES) {
     it->second.status = rpc::TaskStatus::SCHEDULED;
   }
