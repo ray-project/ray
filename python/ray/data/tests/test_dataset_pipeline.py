@@ -213,7 +213,7 @@ def test_schema(ray_start_regular_shared):
 def test_split(ray_start_regular_shared):
     pipe = ray.data.range(3).map(lambda x: x + 1).repeat(10)
 
-    @ray.remote
+    @ray.remote(num_cpus=0)
     def consume(shard, i):
         total = 0
         for row in shard.iter_rows():
@@ -231,7 +231,7 @@ def test_split_at_indices(ray_start_regular_shared):
     n = 8
     pipe = ray.data.range(n).map(lambda x: x + 1).repeat(2)
 
-    @ray.remote
+    @ray.remote(num_cpus=0)
     def consume(shard, i):
         total = 0
         out = []
