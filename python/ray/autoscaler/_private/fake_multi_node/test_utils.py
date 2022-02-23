@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_DOCKER_IMAGE = "rayproject/ray:nightly-py{major}{minor}-cpu"
 
+class ResourcesNotReadyError(RuntimeError):
+    pass
 
 class DockerCluster:
     """Docker cluster wrapper.
@@ -97,7 +99,7 @@ class DockerCluster:
             try:
                 ray.init(address, **init_kwargs)
                 self.wait_for_resources({"CPU": 1})
-            except Exception:
+            except ResourcesNotReadyError:
                 time.sleep(1)
                 continue
             else:
@@ -123,7 +125,7 @@ class DockerCluster:
         available = ray.cluster_resources()
         while any(available.get(k, 0.0) < v for k, v in resources.items()):
             if time.monotonic() > timeout:
-                raise RuntimeError(f"Timed out waiting for resources: {resources}")
+                raise ResourcesNotReadyError(f"Timed out waiting for resources: {resources}")
             time.sleep(1)
             available = ray.cluster_resources()
 
