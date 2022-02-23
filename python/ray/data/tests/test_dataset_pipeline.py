@@ -140,13 +140,13 @@ def test_repeat(ray_start_regular_shared):
     pipe = ds.window(blocks_per_window=1)
     assert str(pipe) == "DatasetPipeline(num_windows=5, num_stages=2)"
     pipe = pipe.repeat(2)
-    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=1)"
+    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=2)"
     assert pipe.take() == (list(range(5)) + list(range(5)))
 
     ds = ray.data.range(5)
     pipe = ds.window(blocks_per_window=1)
     pipe = pipe.repeat()
-    assert str(pipe) == "DatasetPipeline(num_windows=inf, num_stages=1)"
+    assert str(pipe) == "DatasetPipeline(num_windows=inf, num_stages=2)"
     assert len(pipe.take(99)) == 99
 
     pipe = ray.data.range(5).repeat()
