@@ -56,16 +56,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
                           rpc::GetResourcesReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle update resource rpc request.
-  void HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
-                             rpc::UpdateResourcesReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle delete resource rpc request.
-  void HandleDeleteResources(const rpc::DeleteResourcesRequest &request,
-                             rpc::DeleteResourcesReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle get available resources of all nodes.
   void HandleGetAllAvailableResources(
       const rpc::GetAllAvailableResourcesRequest &request,
@@ -87,6 +77,12 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \return The resources of all nodes in the cluster.
   const absl::flat_hash_map<NodeID, std::shared_ptr<SchedulingResources>>
       &GetClusterResources() const;
+
+  /// Update resources of a node
+  void UpdateResources(const NodeID& node_id, );
+
+  /// Delete resource of a node
+  void DeleteResources(const NodeID& node_id, );
 
   /// Handle a node registration.
   ///
