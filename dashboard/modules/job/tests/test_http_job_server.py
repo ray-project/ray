@@ -144,7 +144,7 @@ def test_invalid_runtime_env(job_sdk_client):
     )
 
     wait_for_condition(_check_job_failed, client=client, job_id=job_id)
-    data = client.get_job_data(job_id)
+    data = client.get_job_info(job_id)
     assert "Only .zip files supported for remote URIs" in data.message
 
 
@@ -155,7 +155,7 @@ def test_runtime_env_setup_failure(job_sdk_client):
     )
 
     wait_for_condition(_check_job_failed, client=client, job_id=job_id)
-    data = client.get_job_data(job_id)
+    data = client.get_job_info(job_id)
     assert "Failed to setup runtime environment" in data.message
 
 

@@ -212,6 +212,14 @@ ActorID TaskID::ActorId() const {
       reinterpret_cast<const char *>(id_ + kUniqueBytesLength), ActorID::Size()));
 }
 
+bool TaskID::IsForActorCreationTask() const {
+  static std::string nil_data(kUniqueBytesLength, 0);
+  FillNil(&nil_data);
+  bool unique_bytes_nil = std::memcmp(id_, nil_data.data(), kUniqueBytesLength) == 0;
+  bool actor_id_nil = ActorId().IsNil();
+  return unique_bytes_nil && !actor_id_nil;
+}
+
 JobID TaskID::JobId() const { return ActorId().JobId(); }
 
 TaskID TaskID::ComputeDriverTaskId(const WorkerID &driver_id) {
