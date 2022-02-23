@@ -1,13 +1,10 @@
 import logging
-import itertools
 from typing import Any, Callable, Dict, Optional, List, Union, Iterator, TYPE_CHECKING
-
-import numpy as np
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
 from ray.data.datasource.datasource import ReadTask
@@ -19,13 +16,11 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.impl.block_list import BlockMetadata
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.util import _check_pyarrow_version
 
 logger = logging.getLogger(__name__)
 
-PIECES_PER_META_FETCH = 6
-PARALLELIZE_META_FETCH_THRESHOLD = 24
+MAX_META_FETCH_THREADS = 100
 
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
@@ -142,10 +137,7 @@ class ParquetDatasource(FileBasedDatasource):
         else:
             inferred_schema = schema
         read_tasks = []
-        if len(pq_ds.pieces) > PARALLELIZE_META_FETCH_THRESHOLD:
-            metadata = _fetch_metadata_remotely(pq_ds.pieces)
-        else:
-            metadata = _fetch_metadata(pq_ds.pieces)
+        metadata = _fetch_metadata_parallel(pq_ds.pieces)
         for piece_data in np.array_split(
             list(zip(pq_ds.pieces, metadata)), parallelism
         ):
@@ -176,47 +168,23 @@ class ParquetDatasource(FileBasedDatasource):
         return "parquet"
 
 
-def _fetch_metadata_remotely(
+def _fetch_metadata_parallel(
     pieces: List["pyarrow._dataset.ParquetFileFragment"],
-) -> List[ObjectRef["pyarrow.parquet.FileMetaData"]]:
-    from ray import cloudpickle
-
-    remote_fetch_metadata = cached_remote_fn(_fetch_metadata_serialization_wrapper)
-    metas = []
-    parallelism = min(len(pieces) // PIECES_PER_META_FETCH, 100)
-    meta_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
-    for pcs in np.array_split(pieces, parallelism):
-        if len(pcs) == 0:
-            continue
-        metas.append(remote_fetch_metadata.remote(cloudpickle.dumps(pcs)))
-    metas = meta_fetch_bar.fetch_until_complete(metas)
-    return list(itertools.chain.from_iterable(metas))
-
-
-def _fetch_metadata_serialization_wrapper(
-    pieces: str,
 ) -> List["pyarrow.parquet.FileMetaData"]:
-    # Implicitly trigger S3 subsystem initialization by importing
-    # pyarrow.fs.
-    import pyarrow.fs  # noqa: F401
-    from ray import cloudpickle
-
-    # Deserialize after loading the filesystem class.
-    pieces: List["pyarrow._dataset.ParquetFileFragment"] = cloudpickle.loads(pieces)
-
-    return _fetch_metadata(pieces)
+    metas = []
+    meta_fetch_bar = ProgressBar("Metadata Fetch Progress", total=len(pieces))
+    with ThreadPoolExecutor(max_workers=MAX_META_FETCH_THREADS) as executor:
+        futures = [executor.submit(_fetch_metadata, p) for p in pieces]
+        for result in as_completed(futures):
+            meta_fetch_bar.update(1)
+    metas = [f.result() for f in futures]
+    return metas
 
 
 def _fetch_metadata(
-    pieces: List["pyarrow.dataset.ParquetFileFragment"],
-) -> List["pyarrow.parquet.FileMetaData"]:
-    piece_metadata = []
-    for p in pieces:
-        try:
-            piece_metadata.append(p.metadata)
-        except AttributeError:
-            break
-    return piece_metadata
+    piece: "pyarrow.dataset.ParquetFileFragment",
+) -> "pyarrow.parquet.FileMetaData":
+    return piece.metadata
 
 
 def _build_block_metadata(
