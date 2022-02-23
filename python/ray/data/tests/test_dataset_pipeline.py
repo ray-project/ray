@@ -66,6 +66,14 @@ def test_epoch(ray_start_regular_shared):
     assert results == [[0, 1, 2, 3], [4, 0, 1, 2, 3, 4]]
 
 
+# https://github.com/ray-project/ray/issues/20394
+def test_unused_epoch(ray_start_regular_shared):
+    pipe = ray.data.from_items([0, 1, 2, 3, 4]).repeat(3).random_shuffle_each_window()
+
+    for i, epoch in enumerate(pipe.iter_epochs()):
+        print("Epoch", i)
+
+
 def test_cannot_read_twice(ray_start_regular_shared):
     ds = ray.data.range(10)
     pipe = ds.window(blocks_per_window=1)

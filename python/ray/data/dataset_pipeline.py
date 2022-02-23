@@ -1,4 +1,5 @@
 import inspect
+import logging
 import time
 from typing import (
     Any,
@@ -21,11 +22,15 @@ from ray.data.impl.pipeline_executor import (
 )
 from ray.data.row import TableRow
 from ray.data.impl import progress_bar
-from ray.data.impl.stats import DatasetPipelineStats
+from ray.data.impl.block_list import BlockList
+from ray.data.impl.plan import ExecutionPlan
+from ray.data.impl.stats import DatasetPipelineStats, DatasetStats
 from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
+
+logger = logging.getLogger(__name__)
 
 # Operations that can be naively applied per dataset row in the pipeline.
 PER_DATASET_OPS = ["map", "map_batches", "add_column", "flat_map", "filter"]
@@ -80,6 +85,7 @@ class DatasetPipeline(Generic[T]):
         """
         self._base_iterable = base_iterable
         self._stages = stages or []
+        self._optimized_stages = None
         self._length = length
         self._progress_bars = progress_bars
         self._uuid = None  # For testing only.
@@ -129,7 +135,7 @@ class DatasetPipeline(Generic[T]):
         *,
         prefetch_blocks: int = 0,
         batch_size: int = None,
-        batch_format: str = "pandas",
+        batch_format: str = "native",
         drop_last: bool = False,
     ) -> Iterator[BatchType]:
         """Return a local batched iterator over the data in the pipeline.
@@ -145,8 +151,10 @@ class DatasetPipeline(Generic[T]):
                 current block during the scan.
             batch_size: Record batch size, or None to let the system pick.
             batch_format: The format in which to return each batch.
-                Specify "pandas" to select ``pandas.DataFrame`` or "pyarrow" to
-                select ``pyarrow.Table``. Default is "pandas".
+                Specify "native" to use the current block format (promoting
+                Arrow to pandas automatically), "pandas" to
+                select ``pandas.DataFrame`` or "pyarrow" to select
+                ``pyarrow.Table``. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:
@@ -567,18 +575,14 @@ class DatasetPipeline(Generic[T]):
                 return item
 
         class SingleEpochIterator:
-            def __init__(self, peekable_iter: Iterator[Dataset[T]]):
+            def __init__(self, peekable_iter: Iterator[Dataset[T]], epoch: int):
                 self._iter = peekable_iter
-                self._epoch = None
+                self._epoch = epoch
 
             def __next__(self) -> Dataset[T]:
-                if (
-                    self._epoch is not None
-                    and self._iter.peek()._get_epoch() != self._epoch
-                ):
+                if self._iter.peek()._get_epoch() > self._epoch:
                     raise StopIteration
                 ds = next(self._iter)
-                self._epoch = ds._get_epoch()
                 return lambda: ds
 
             def __iter__(self):
@@ -587,11 +591,24 @@ class DatasetPipeline(Generic[T]):
         class EpochDelimitedIterator:
             def __init__(self, pipe):
                 self._iter = Peekable(pipe.iter_datasets())
+                self._cur_epoch = None
 
             def __next__(self) -> "DatasetPipeline[T]":
-                self._iter.peek()  # Raises StopIteration on end of data.
+                if self._cur_epoch is None:
+                    self._cur_epoch = self._iter.peek()._get_epoch()
+                else:
+                    self._cur_epoch += 1
+                warned = False
+                while self._iter.peek()._get_epoch() < self._cur_epoch:
+                    if not warned:
+                        warned = True
+                        logger.warn(
+                            "Data from epoch {} was not fully read, "
+                            "skipping to next epoch.".format(self._cur_epoch - 1)
+                        )
+                    next(self._iter)
                 epoch_pipe = DatasetPipeline.from_iterable(
-                    SingleEpochIterator(self._iter)
+                    SingleEpochIterator(self._iter, epoch=self._cur_epoch)
                 )
                 return epoch_pipe
 
@@ -610,6 +627,7 @@ class DatasetPipeline(Generic[T]):
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
+        self._optimize_stages()
         return PipelineExecutor(self)
 
     @DeveloperAPI
@@ -680,6 +698,31 @@ class DatasetPipeline(Generic[T]):
 
     def _set_uuid(self, uuid: str) -> None:
         self._uuid = uuid
+
+    def _optimize_stages(self):
+        """Optimize this pipeline, fusing stages together as possible."""
+        context = DatasetContext.get_current()
+
+        if not context.optimize_fuse_stages:
+            self._optimized_stages = self._stages
+            return
+
+        dummy_ds = Dataset(
+            ExecutionPlan(BlockList([], []), DatasetStats(stages={}, parent=None)),
+            0,
+            True,
+        )
+        for stage in self._stages:
+            dummy_ds = stage(dummy_ds)
+        dummy_ds._plan._optimize()
+        optimized_stages = []
+        for stage in dummy_ds._plan._stages:
+            optimized_stages.append(
+                lambda ds, stage=stage: Dataset(
+                    ds._plan.with_stage(stage), ds._epoch, True
+                )
+            )
+        self._optimized_stages = optimized_stages
 
 
 for method in PER_DATASET_OPS:

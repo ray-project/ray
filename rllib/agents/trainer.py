@@ -628,6 +628,9 @@ COMMON_CONFIG: TrainerConfigDict = {
     # training iteration.
     "_disable_execution_plan_api": False,
 
+    # If True, disable the environment pre-checking module.
+    "disable_env_checking": False,
+
     # === Deprecated keys ===
     # Uses the sync samples optimizer instead of the multi-gpu one. This is
     # usually slower, but you might want to try it if you run into issues with
@@ -1002,12 +1005,15 @@ class Trainer(Trainable):
 
             self.config["evaluation_config"] = eval_config
 
+            env_id = self._register_if_needed(eval_config.get("env"), eval_config)
+            env_creator = self._get_env_creator_from_env_id(env_id)
+
             # Create a separate evaluation worker set for evaluation.
             # If evaluation_num_workers=0, use the evaluation set's local
             # worker for evaluation, otherwise, use its remote workers
             # (parallelized evaluation).
             self.evaluation_workers: WorkerSet = WorkerSet(
-                env_creator=self.env_creator,
+                env_creator=env_creator,
                 validate_env=None,
                 policy_class=self.get_default_policy_class(self.config),
                 trainer_config=eval_config,
@@ -1016,6 +1022,9 @@ class Trainer(Trainable):
                 local_worker=False,
                 logdir=self.logdir,
             )
+
+        # Run any callbacks after trainer initialization is done.
+        self.callbacks.on_trainer_init(trainer=self)
 
     # TODO: Deprecated: In your sub-classes of Trainer, override `setup()`
     #  directly and call super().setup() from within it if you would like the
@@ -1873,7 +1882,7 @@ class Trainer(Trainable):
             config=config,
             policy_state=policy_state,
             policy_mapping_fn=policy_mapping_fn,
-            policies_to_train=list(policies_to_train),
+            policies_to_train=list(policies_to_train) if policies_to_train else None,
         )
 
         def fn(worker: RolloutWorker):

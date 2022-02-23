@@ -38,6 +38,9 @@ def scrub_traceback(ex):
     # These are used to coloring the string.
     ex = re.sub("\\x1b\[36m", "", ex)
     ex = re.sub("\\x1b\[39m", "", ex)
+    # When running bazel test with pytest 6.x, the module name becomes
+    # "python.ray.tests.test_traceback" instead of just "test_traceback"
+    ex = re.sub(r"python\.ray\.tests\.test_traceback", "test_traceback", ex)
     # Clean up object address.
     ex = re.sub("object at .*>", "object at ADDRESS>", ex)
     return ex
@@ -315,7 +318,6 @@ RuntimeError: Failed to unpickle serialized exception"""
         assert clean_noqa(expected_output) == scrub_traceback(str(ex))
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Broken on Windows")
 def test_serialization_error_message(shutdown_only):
     expected_output_task = """Could not serialize the argument <unlocked _thread.lock object at ADDRESS> for a task or actor test_traceback.test_serialization_error_message.<locals>.task_with_unserializable_arg. Check https://docs.ray.io/en/master/serialization.html#troubleshooting for more information."""  # noqa
     expected_output_actor = """Could not serialize the argument <unlocked _thread.lock object at ADDRESS> for a task or actor test_traceback.test_serialization_error_message.<locals>.A.__init__. Check https://docs.ray.io/en/master/serialization.html#troubleshooting for more information."""  # noqa
@@ -351,27 +353,37 @@ def test_serialization_error_message(shutdown_only):
     def scrub_traceback(ex):
         return re.sub("object at .*> for a", "object at ADDRESS> for a", ex)
 
-    assert clean_noqa(expected_output_task) == scrub_traceback(str(excinfo.value))
+    test_prefix = "com_github_ray_project_ray.python.ray.tests."
+
+    assert clean_noqa(expected_output_task) == scrub_traceback(
+        str(excinfo.value)
+    ).replace(test_prefix, "")
     """
     Test an actor with an unserializable object.
     """
     with pytest.raises(TypeError) as excinfo:
         a = A.remote(lock)
         print(a)
-    assert clean_noqa(expected_output_actor) == scrub_traceback(str(excinfo.value))
+    assert clean_noqa(expected_output_actor) == scrub_traceback(
+        str(excinfo.value)
+    ).replace(test_prefix, "")
     """
     Test the case where an unserializable object is captured by tasks.
     """
     with pytest.raises(TypeError) as excinfo:
         capture_lock.remote()
-    assert clean_noqa(expected_capture_output_task) == str(excinfo.value)
+    assert clean_noqa(expected_capture_output_task) == str(excinfo.value).replace(
+        test_prefix, ""
+    )
     """
     Test the case where an unserializable object is captured by actors.
     """
     with pytest.raises(TypeError) as excinfo:
         b = B.remote()
         print(b)
-    assert clean_noqa(expected_capture_output_actor) == str(excinfo.value)
+    assert clean_noqa(expected_capture_output_actor) == str(excinfo.value).replace(
+        test_prefix, ""
+    )
 
 
 if __name__ == "__main__":

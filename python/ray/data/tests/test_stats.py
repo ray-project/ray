@@ -139,7 +139,6 @@ def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
     ds.write_parquet(str(tmp_path))
     ds = ray.data.read_parquet(str(tmp_path)).map(lambda x: x)
     stats = canonicalize(ds.stats())
-    print(stats)
     assert (
         stats
         == """Stage Z read: N/N blocks executed in T

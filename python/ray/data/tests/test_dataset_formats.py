@@ -214,7 +214,7 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet([path1, path2], filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert ds._blocks._num_computed() == 1
+    assert ds._plan.execute()._num_computed() == 1
     assert ds.count() == 6
 
     out_path = os.path.join(tmp_path, "out")
@@ -256,7 +256,7 @@ def test_parquet_read(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_parquet(data_path, filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert ds._blocks._num_computed() == 1
+    assert ds._plan.execute()._num_computed() == 1
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
@@ -272,11 +272,11 @@ def test_parquet_read(ray_start_regular_shared, fs, data_path):
         repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
-    assert ds._blocks._num_computed() == 1
+    assert ds._plan.execute()._num_computed() == 1
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._blocks._num_computed() == 2
+    assert ds._plan.execute()._num_computed() == 2
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -317,7 +317,7 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_parquet(data_path, filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert ds._blocks._num_computed() == 1
+    assert ds._plan.execute()._num_computed() == 1
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
@@ -333,11 +333,11 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
         "schema={two: string, "
         "one: dictionary<values=int32, indices=int32, ordered=0>})"
     ), ds
-    assert ds._blocks._num_computed() == 1
+    assert ds._plan.execute()._num_computed() == 1
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._blocks._num_computed() == 2
+    assert ds._plan.execute()._num_computed() == 2
     assert sorted(values) == [
         [1, "a"],
         [1, "b"],
@@ -369,7 +369,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._blocks._num_computed() == 1
+    assert ds._plan.execute()._num_computed() == 1
     assert sorted(values) == [[1, "a"], [1, "a"]]
 
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
@@ -379,8 +379,57 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert ds._blocks._num_computed() == 2
+    assert ds._plan.execute()._num_computed() == 2
     assert sorted(values) == [[1, "a"], [1, "a"]]
+
+
+def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame(
+        {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "b", "c", "e", "f", "g"]}
+    )
+    table = pa.Table.from_pandas(df)
+    pq.write_to_dataset(
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
+        use_legacy_dataset=False,
+    )
+
+    schema = pa.schema([("one", pa.int32()), ("two", pa.string())])
+    partitioning = pa.dataset.partitioning(schema, flavor="hive")
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), dataset_kwargs=dict(partitioning=partitioning)
+    )
+
+    # Test metadata-only parquet ops.
+    assert ds._plan.execute()._num_computed() == 1
+    assert ds.count() == 6
+    assert ds.size_bytes() > 0
+    assert ds.schema() is not None
+    input_files = ds.input_files()
+    assert len(input_files) == 2, input_files
+    assert (
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={two: string, one: int32})"
+    ), ds
+    assert (
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={two: string, one: int32})"
+    ), ds
+    assert ds._plan.execute()._num_computed() == 1
+
+    # Forces a data read.
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert ds._plan.execute()._num_computed() == 2
+    assert sorted(values) == [
+        [1, "a"],
+        [1, "b"],
+        [1, "c"],
+        [3, "e"],
+        [3, "f"],
+        [3, "g"],
+    ]
 
 
 def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
@@ -401,7 +450,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet(str(tmp_path), parallelism=1, _block_udf=_block_udf)
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
-    assert ds._blocks._num_computed() == 1
+    assert ds._plan.execute()._num_computed() == 1
     np.testing.assert_array_equal(sorted(ones), np.array(one_data) + 1)
 
     # 2 blocks/read tasks
@@ -409,7 +458,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet(str(tmp_path), parallelism=2, _block_udf=_block_udf)
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
-    assert ds._blocks._num_computed() == 2
+    assert ds._plan.execute()._num_computed() == 2
     np.testing.assert_array_equal(sorted(ones), np.array(one_data) + 1)
 
     # 2 blocks/read tasks, 1 empty block
@@ -422,7 +471,7 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     )
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
-    assert ds._blocks._num_computed() == 2
+    assert ds._plan.execute()._num_computed() == 2
     np.testing.assert_array_equal(sorted(ones), np.array(one_data[:2]) + 1)
 
 
@@ -448,17 +497,17 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
     ds = ray.data.read_parquet(data_path, filesystem=fs, parallelism=parallelism)
 
     # Test metadata-only parquet ops.
-    assert ds._blocks._num_computed() == 1
+    assert ds._plan.execute()._num_computed() == 1
     assert ds.count() == num_dfs * 3
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
     input_files = ds.input_files()
     assert len(input_files) == num_dfs, input_files
-    assert ds._blocks._num_computed() == 1
+    assert ds._plan.execute()._num_computed() == 1
 
     # Forces a data read.
     values = [s["one"] for s in ds.take(limit=3 * num_dfs)]
-    assert ds._blocks._num_computed() == parallelism
+    assert ds._plan.execute()._num_computed() == parallelism
     assert sorted(values) == list(range(3 * num_dfs))
 
 
@@ -666,7 +715,7 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.get_blocks_with_metadata():
+    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
     if fs is None:
         shutil.rmtree(path)
@@ -850,7 +899,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._blocks.get_blocks_with_metadata():
+    for block, meta in ds._plan.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
@@ -959,7 +1008,7 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     dsdf = ds.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._blocks.get_blocks_with_metadata():
+    for block, meta in ds._plan.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes()
 
     # Directory and file, two files.
@@ -1045,7 +1094,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.get_blocks_with_metadata():
+    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     if fs is None:
@@ -1062,7 +1111,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.get_blocks_with_metadata():
+    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
@@ -1164,7 +1213,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._blocks.get_blocks_with_metadata():
+    for block, meta in ds._plan.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
@@ -1304,7 +1353,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.get_blocks_with_metadata():
+    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Two blocks.
@@ -1316,7 +1365,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.get_blocks_with_metadata():
+    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
