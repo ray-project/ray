@@ -3,7 +3,9 @@ from ray.train.callbacks.results_preprocessors.keys import (
     ExcludedKeysResultsPreprocessor,
 )
 from ray.train.callbacks.results_preprocessors.aggregate import (
-    AggregateResultsPreprocessor,
+    AverageResultsPreprocessor,
+    MaxResultsPreprocessor,
+    WeightedAverageResultsPreprocessor,
 )
 from ray.train.callbacks.results_preprocessors.preprocessor import (
     SequentialResultsPreprocessor,
@@ -15,5 +17,7 @@ __all__ = [
     "IndexedResultsPreprocessor",
     "ResultsPreprocessor",
     "SequentialResultsPreprocessor",
-    "AggregateResultsPreprocessor",
+    "AverageResultsPreprocessor",
+    "MaxResultsPreprocessor",
+    "WeightedAverageResultsPreprocessor",
 ]
