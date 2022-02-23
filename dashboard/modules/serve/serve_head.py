@@ -35,7 +35,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
 
     @routes.delete("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
-    async def delete_all_deployments(self, req: Request) -> Response:
+    async def delete_serve_instance(self, req: Request) -> Response:
         serve.shutdown()
         return Response()
 
