@@ -234,11 +234,12 @@ public class FunctionManager {
           map.put(
               ImmutablePair.of(methodName, signature), ImmutablePair.of(rayFunction, isDefault));
           // For cross language call java function with signature "{length_of_arguments}" or just
-          // empty ""
-          String[] xlang_signatures = {"", String.format("%s", type.getArgumentTypes().length)};
-          for (String xlang_signature : xlang_signatures) {
-            final Pair<String, String> emptyDescriptor =
-                ImmutablePair.of(methodName, xlang_signature);
+          // empty "".
+          // TODO: more robust signature type matching
+          // https://github.com/ray-project/ray/issues/21380.
+          String[] xlangSignatures = {"", String.format("%s", type.getArgumentTypes().length)};
+          for (String signature : xlangSignatures) {
+            final Pair<String, String> emptyDescriptor = ImmutablePair.of(methodName, signature);
             /// default method is not overloaded, so we should filter it.
             if (map.containsKey(emptyDescriptor) && !map.get(emptyDescriptor).getRight()) {
               map.put(
