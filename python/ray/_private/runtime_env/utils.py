@@ -292,7 +292,7 @@ class RuntimeEnv:
 class SubprocessCalledProcessError(subprocess.CalledProcessError):
     """The subprocess.CalledProcessError with stripped stdout."""
 
-    LAST_N_LINES = 10
+    LAST_N_LINES = 50
 
     def __init__(self, *args, cmd_index=None, **kwargs):
         self.cmd_index = cmd_index

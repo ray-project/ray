@@ -491,9 +491,9 @@ def test_subprocess_error_with_last_n_lines():
     assert "321" in s
 
 
-@pytest.mark.skipif(sys.platform.startswith("win"), reason="Fails on Windows.")
 @pytest.mark.asyncio
 async def test_check_output_cmd():
+    cmd = "dir" if sys.platform.startswith("win") else "pwd"
     logs = []
 
     class _FakeLogger:
@@ -504,7 +504,7 @@ async def test_check_output_cmd():
             return _log
 
     for _ in range(2):
-        output = await check_output_cmd(["pwd"], logger=_FakeLogger())
+        output = await check_output_cmd([cmd], logger=_FakeLogger())
         assert len(output) > 0
 
     all_log_string = "\n".join(logs)
@@ -519,7 +519,7 @@ async def test_check_output_cmd():
         side_effect=Exception("fake exception"),
     ):
         with pytest.raises(RuntimeError) as e:
-            await check_output_cmd(["pwd"], logger=_FakeLogger())
+            await check_output_cmd([cmd], logger=_FakeLogger())
         # Make sure the exception has cmd trace info.
         assert "cmd[3]" in str(e.value)
 
@@ -531,7 +531,7 @@ async def test_check_output_cmd():
 
     # Test returncode != 0.
     with pytest.raises(SubprocessCalledProcessError) as e:
-        await check_output_cmd(["ls", "--abc"], logger=_FakeLogger())
+        await check_output_cmd([cmd, "--abc"], logger=_FakeLogger())
     # Make sure the exception has cmd trace info.
     assert "cmd[5]" in str(e.value)
 
