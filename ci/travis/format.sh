@@ -10,7 +10,7 @@ BLACK_VERSION_REQUIRED="21.12b0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
 MYPY_VERSION_REQUIRED="0.782"
 
-check_command_exist() {
+check_python_command_exist() {
     VERSION=""
     case "$1" in
         black)
@@ -18,9 +18,6 @@ check_command_exist() {
             ;;
         flake8)
             VERSION=$FLAKE8_VERSION_REQUIRED
-            ;;
-        shellcheck)
-            VERSION=$SHELLCHECK_VERSION_REQUIRED
             ;;
         mypy)
             VERSION=$MYPY_VERSION_REQUIRED
@@ -30,14 +27,33 @@ check_command_exist() {
             exit 1
     esac
     if ! [ -x "$(command -v "$1")" ]; then
-        echo "$1 not installed. pip install $1==$VERSION"
+        echo "$1 not installed. Install the python package with: pip install $1==$VERSION"
         exit 1
     fi
 }
 
-check_command_exist black
-check_command_exist flake8
-check_command_exist mypy
+check_shell_command_exist() {
+    VERSION=""
+    case "$1" in
+        shellcheck)
+            VERSION=$SHELLCHECK_VERSION_REQUIRED
+            ;;
+        *)
+            echo "$1 is not a required dependency"
+            exit 1
+    esac
+    if ! [ -x "$(command -v "$1")" ]; then
+        echo "$1 not installed. Install $1 ($VERSION) with your system package manager."
+        exit 1
+    fi
+}
+
+
+check_python_command_exist black
+check_python_command_exist flake8
+check_python_command_exist mypy
+check_shell_command_exist shellcheck
+
 
 # this stops git rev-parse from failing if we run this from the .git directory
 builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
