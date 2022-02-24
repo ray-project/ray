@@ -177,7 +177,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                     # Pass Snappy compression as a reader arg, so datasource subclasses can
                     # manually handle streaming decompression in self._read_stream().
                     reader_args["compression"] = compression
-                    reader_args["filesystem"] = filesystem
+                    reader_args["filesystem"] = fs
                 elif compression is not None:
                     # Non-Snappy compression, pass as open_input_stream() arg so Arrow can take
                     # care of streaming decompression for us.
