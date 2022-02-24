@@ -1456,7 +1456,7 @@ def run_test_config(
     upload_artifacts: bool = True,
     keep_results_dir: bool = False,
     app_config_id_override: Optional[str] = None,
-    rebuild_app_config: Optional[bool]=None,
+    rebuild_app_config: Optional[bool] = None,
 ) -> Dict[Any, Any]:
     """
 
@@ -1558,7 +1558,7 @@ def run_test_config(
     app_config["env_vars"]["RAY_bootstrap_with_gcs"] = "1"
     app_config["env_vars"]["RAY_gcs_storage"] = "memory"
     if rebuild_app_config is True:
-        app_config["env_vars"]["_TIME"]=str(datetime.datetime.now().timestamp())
+        app_config["env_vars"]["_TIME"] = str(datetime.datetime.now().timestamp())
     compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
     compute_tpl = _load_config(local_dir, compute_tpl_rel_path)
 
@@ -2282,8 +2282,8 @@ def run_test(
     report: bool = True,
     keep_results_dir: bool = False,
     session_name: Optional[str] = None,
-    app_config_id_override: Optional[str]=None,
-    rebuild_app_config: Optional[bool]=None,
+    app_config_id_override: Optional[str] = None,
+    rebuild_app_config: Optional[bool] = None,
 ) -> Dict[str, Any]:
     with open(test_config_file, "rt") as f:
         test_configs = yaml.safe_load(f)
@@ -2511,8 +2511,10 @@ if __name__ == "__main__":
         help=("An app config ID, which will override the test config app " "config."),
     )
     parser.add_argument(
-        "--rebuild-app-config", action="store_true", required=False,
-        help="For a rebuild of app config"
+        "--rebuild-app-config",
+        action="store_true",
+        required=False,
+        help="For a rebuild of app config",
     )
     args, _ = parser.parse_known_args()
 
