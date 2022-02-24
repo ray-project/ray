@@ -129,7 +129,8 @@ class ActorPool(ComputeStrategy):
     ActorPool specifies that an autoscaling pool of actors should be used for a given
     Dataset transform. This is useful for stateful setup of callable classes.
 
-    For a fixed-sized actor pool of size ``n``, specify ``ActorPool(n, n)``.
+    To autoscale from ``m`` to ``n`` actors, specify ``compute=ActorPool(m, n)``.
+    For a fixed-sized pool of size ``n``, specify ``compute=ActorPool(n, n)``.
     """
 
     def __init__(self, min_size: int = 1, max_size: Optional[int] = None):
