@@ -25,14 +25,20 @@ namespace syncer {
 
 // RaySyncer is a service to sync components in the cluster.
 // It's supposed to be used to synchronize resource usage and scheduling information
-// in ray cluster. This component is still in developing.
+// in ray cluster. The gold of this component is to make sure each node in the cluster
+// eventually consistent on the information of each other.
+// Right now, RaySyncer has two sub-components:
+//    - poller: periodically get the message from the nodes in the cluster.
+//    - broadcaster: periodically broadcast the information to the nodes.
+// This component is still in developing. The goal of this node is to make raylet
+// and GCS be able to use the same code and synchronize the information.
 class RaySyncer {
  public:
   RaySyncer(instrumented_io_context &main_thread,
-            std::unique_ptr<::ray::gcs::GrpcBasedResourceBroadcaster> braodcaster,
+            std::unique_ptr<::ray::gcs::GrpcBasedResourceBroadcaster> broadcaster,
             std::unique_ptr<::ray::gcs::GcsResourceReportPoller> poller)
       : ticker_(main_thread),
-        broadcaster_(std::move(braodcaster)),
+        broadcaster_(std::move(broadcaster)),
         poller_(std::move(poller)) {}
 
   void Start() {
@@ -42,16 +48,20 @@ class RaySyncer {
       boost::asio::io_service::work work(broadcast_service_);
       broadcast_service_.run();
     });
+    // Perodically broadcast the messages received to other nodes.
     ticker_.RunFnPeriodically(
         [this] {
           auto beg = resources_buffer_.begin();
           auto ptr = beg;
           static auto max_batch = RayConfig::instance().resource_broadcast_batch_size();
+          // Prepare the to-be-sent messages.
           for (size_t cnt = resources_buffer_proto_.batch().size();
                cnt < max_batch && cnt < resources_buffer_.size(); ++ptr, ++cnt) {
             resources_buffer_proto_.add_batch()->mutable_data()->Swap(&ptr->second);
           }
           resources_buffer_.erase(beg, ptr);
+
+          // Broadcast the messages to other nodes.
           broadcast_service_.dispatch(
               [this, resources = std::move(resources_buffer_proto_)]() mutable {
                 broadcaster_->SendBroadcast(std::move(resources));
@@ -73,7 +83,18 @@ class RaySyncer {
     }
   }
 
-  // External API
+  /// This method should be used by:
+  ///     1) GCS to report resource updates; 
+  ///     2) poller to report what have received.
+  /// Right now it only put the received message into the buffer
+  /// and broadcaster will use this to send the messages to other
+  /// nodes.
+  ///
+  /// \\\param update: The messages should be sent. Right now we only support
+  ///     rpc::NodeResourceChange and rpc::ResourcesData.
+  ///
+  /// TODO(iycheng): This API should be deleted in later PRs in favor of a more general
+  /// solution.
   template <typename T>
   void Update(T update) {
     static_assert(std::is_same_v<T, rpc::NodeResourceChange> ||
@@ -94,11 +115,19 @@ class RaySyncer {
     }
   }
 
+  /// Handle a node registration.
+  /// This will call the sub-components add function.
+  ///
+  /// \param node The specified node to add.
   void AddNode(const rpc::GcsNodeInfo &node_info) {
     broadcaster_->HandleNodeAdded(node_info);
     poller_->HandleNodeAdded(node_info);
   }
 
+  /// Handle a node removal.
+  /// This will call the sub-components removal function
+  ///
+  /// \param node The specified node to remove.
   void RemoveNode(const rpc::GcsNodeInfo &node_info) {
     broadcaster_->HandleNodeRemoved(node_info);
     poller_->HandleNodeRemoved(node_info);
