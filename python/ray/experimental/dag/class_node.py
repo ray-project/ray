@@ -2,6 +2,10 @@ import ray
 from ray.experimental.dag.dag_node import DAGNode
 from ray.experimental.dag.input_node import InputNode
 from ray.experimental.dag.format_utils import get_dag_node_str
+from ray.experimental.dag.constants import (
+    PARENT_CLASS_NODE_KEY,
+    PREV_CLASS_METHOD_CALL_KEY,
+)
 
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -85,8 +89,8 @@ class _UnboundClassMethodNode(object):
 
     def _bind(self, *args, **kwargs):
         other_args_to_resolve = {
-            "parent_class_node": self._actor,
-            "prev_class_method_call": self._actor._last_call,
+            PARENT_CLASS_NODE_KEY: self._actor,
+            PREV_CLASS_METHOD_CALL_KEY: self._actor._last_call,
         }
 
         node = ClassMethodNode(
@@ -122,13 +126,13 @@ class ClassMethodNode(DAGNode):
         self._method_name: str = method_name
         # Parse other_args_to_resolve and assign to variables
         self._parent_class_node: ClassNode = other_args_to_resolve.get(
-            "parent_class_node"
+            PARENT_CLASS_NODE_KEY
         )
         # Used to track lineage of ClassMethodCall to preserve deterministic
         # submission and execution order.
         self._prev_class_method_call: Optional[
             ClassMethodNode
-        ] = other_args_to_resolve.get("prev_class_method_call", None)
+        ] = other_args_to_resolve.get(PREV_CLASS_METHOD_CALL_KEY, None)
         # The actor creation task dependency is encoded as the first argument,
         # and the ordering dependency as the second, which ensures they are
         # executed prior to this node.
