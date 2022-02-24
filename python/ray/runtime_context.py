@@ -164,10 +164,11 @@ class RuntimeContext(object):
 
     @property
     def runtime_env(self):
-        """Get the runtime env dict used for the current driver or worker.
+        """Get the runtime env used for the current driver or worker.
 
         Returns:
-            The runtime env dict currently using by this worker.
+            The runtime env currently using by this worker. The type of
+                return value is ray.runtime_env.RuntimeEnv.
         """
 
         return RuntimeEnv.deserialize(self.get_runtime_env_string())
