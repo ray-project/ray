@@ -159,7 +159,7 @@ class RuntimeContext(object):
         """
         return self.worker.should_capture_child_tasks_in_placement_group
 
-    def get_runtime_env_string(self):
+    def _get_runtime_env_string(self):
         """Get the runtime env string used for the current driver or worker.
 
         Returns:

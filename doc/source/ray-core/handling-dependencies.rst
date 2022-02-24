@@ -414,7 +414,7 @@ The runtime environment is inheritable, so it will apply to all tasks/actors wit
   ray.init(runtime_env={"pip": ["requests", "chess"]})
 
   # Child updates `runtime_env`
-  Actor.options(runtime_env=ray.get_current_runtime_env().update({"env_vars": {"A": "a", "B": "b"}}))
+  Actor.options(runtime_env=ray.get_runtime_context().runtime_env.update({"env_vars": {"A": "a", "B": "b"}}))
 
   # Child's actual `runtime_env` (merged with current runtime env)
   {"pip": ["requests", "chess"],

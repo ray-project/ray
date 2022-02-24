@@ -564,13 +564,16 @@ def test_get_current_runtime_env(call_ray_start, use_client):
     else:
         ray.init("ray://localhost:25553", runtime_env=job_runtime_env)
 
-    current_runtime_env = ray.runtime_env.get_current_runtime_env()
-    assert type(current_runtime_env) is dict
+    current_runtime_env = ray.get_runtime_context().runtime_env
+    current_runtime_env_2 = ray.get_runtime_context().runtime_env
+    # Ensure we can get a new instance for update.
+    assert current_runtime_env is not current_runtime_env_2
+    assert isinstance(current_runtime_env, dict)
     assert current_runtime_env == job_runtime_env
 
     @ray.remote
     def get_runtime_env():
-        return ray.runtime_env.get_current_runtime_env()
+        return ray.get_runtime_context().runtime_env
 
     assert ray.get(get_runtime_env.remote()) == job_runtime_env
 
