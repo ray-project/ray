@@ -75,6 +75,7 @@ class TestTrainer(unittest.TestCase):
                     # time.
                     "policy_map_capacity": 2,
                 },
+                "evaluation_num_workers": 1,
             }
         )
 
@@ -110,6 +111,13 @@ class TestTrainer(unittest.TestCase):
                 # than what's defined in the config dict).
                 test = pg.PGTrainer(config=config)
                 test.restore(checkpoint)
+
+                # Make sure evaluation worker also gets the restored policy.
+                def _has_policy(w):
+                    assert w.get_policy("p0") is not None
+                test.evaluation_workers.foreach_worker(_has_policy)
+
+                # Make sure trainer can continue training the restored policy.
                 pol0 = test.get_policy("p0")
                 test.train()
                 # Test creating an action with the added (and restored) policy.
