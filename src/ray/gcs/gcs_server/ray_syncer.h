@@ -84,7 +84,7 @@ class RaySyncer {
   }
 
   /// This method should be used by:
-  ///     1) GCS to report resource updates; 
+  ///     1) GCS to report resource updates;
   ///     2) poller to report what have received.
   /// Right now it only put the received message into the buffer
   /// and broadcaster will use this to send the messages to other
