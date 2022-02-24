@@ -25,9 +25,9 @@ class DeploymentNameGenerator(object):
 
     @classmethod
     def get_deployment_name(cls, dag_node: ClassNode):
-        assert isinstance(dag_node, ClassNode), (
-            "get_deployment_name() should only be called on ClassNode " "instances."
-        )
+        assert isinstance(
+            dag_node, ClassNode
+        ), "get_deployment_name() should only be called on ClassNode instances."
         with cls.__lock:
             deployment_name = (
                 dag_node.get_options().get("name", None) or dag_node._body.__name__
@@ -48,6 +48,8 @@ def _remove_non_default_ray_actor_options(ray_actor_options: Dict[str, Any]):
     was explicitly set. Since some values are invalid, we need to remove them
     from ray_actor_options.
     """
+    # TODO: (jiaodong) Revisit when we implement build() when user explicitly
+    # pass default value
     ray_actor_options = {k: v for k, v in ray_actor_options.items() if v}
     if ray_actor_options.get("placement_group") == "default":
         del ray_actor_options["placement_group"]
@@ -156,7 +158,6 @@ def extract_deployments_from_serve_dag(
             deployment = dag_node._body
             # In case same deployment is used in multiple DAGNodes
             deployments[deployment.name] = deployment
-        # elif DeploymentMethodNode
 
     serve_dag_root._apply_recursive(extractor)
 

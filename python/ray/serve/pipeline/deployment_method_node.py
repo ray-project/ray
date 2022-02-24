@@ -87,7 +87,7 @@ class DeploymentMethodNode(DAGNode):
             return deployment.get_handle(sync=False)
         else:
             raise ValueError(
-                f"{USE_SYNC_HANDLE_KEY} should only be set with a " "boolean value."
+                f"{USE_SYNC_HANDLE_KEY} should only be set with a boolean value."
             )
 
     def __str__(self) -> str:
