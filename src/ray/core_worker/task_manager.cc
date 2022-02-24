@@ -114,9 +114,9 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
       return false;
     }
 
-    if (!it->second.pending) {
+    if (!it->second.IsPending()) {
       resubmit = true;
-      it->second.pending = true;
+      it->second.status = rpc::TaskStatus::WAITING_FOR_DEPENDENCIES;
       num_pending_tasks_++;
 
       // The task is pending again, so it's no longer counted as lineage. If
@@ -193,7 +193,7 @@ bool TaskManager::IsTaskPending(const TaskID &task_id) const {
   if (it == submissible_tasks_.end()) {
     return false;
   }
-  return it->second.pending;
+  return it->second.IsPending();
 }
 
 size_t TaskManager::NumSubmissibleTasks() const {
@@ -308,7 +308,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                    << " plasma returns in scope";
     it->second.num_successful_executions++;
 
-    it->second.pending = false;
+    it->second.status = rpc::TaskStatus::FINISHED;
     num_pending_tasks_--;
 
     // A finished task can only be re-executed if it has some number of
@@ -351,7 +351,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to retry task that was not pending " << task_id;
-    RAY_CHECK(it->second.pending)
+    RAY_CHECK(it->second.IsPending())
         << "Tried to retry task that was not pending " << task_id;
     spec = it->second.spec;
     num_retries_left = it->second.num_retries_left;
@@ -393,7 +393,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_ty
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to fail task that was not pending " << task_id;
-    RAY_CHECK(it->second.pending)
+    RAY_CHECK(it->second.IsPending())
         << "Tried to fail task that was not pending " << task_id;
     spec = it->second.spec;
     submissible_tasks_.erase(it);
@@ -529,7 +529,7 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
                  << it->second.reconstructable_return_ids.size()
                  << " plasma returns in scope";
 
-  if (it->second.reconstructable_return_ids.empty() && !it->second.pending) {
+  if (it->second.reconstructable_return_ids.empty() && !it->second.IsPending()) {
     // If the task can no longer be retried, decrement the lineage ref count
     // for each of the task's args.
     for (size_t i = 0; i < it->second.spec.NumArgs(); i++) {
@@ -592,11 +592,37 @@ std::vector<TaskID> TaskManager::GetPendingChildrenTasks(
   std::vector<TaskID> ret_vec;
   absl::MutexLock lock(&mu_);
   for (auto it : submissible_tasks_) {
-    if ((it.second.pending) && (it.second.spec.ParentTaskId() == parent_task_id)) {
+    if (it.second.IsPending() && (it.second.spec.ParentTaskId() == parent_task_id)) {
       ret_vec.push_back(it.first);
     }
   }
   return ret_vec;
+}
+
+void TaskManager::AddTaskStatusInfo(rpc::CoreWorkerStats *stats) const {
+  absl::MutexLock lock(&mu_);
+  for (int64_t i = 0; i < stats->object_refs_size(); i++) {
+    auto ref = stats->mutable_object_refs(i);
+    const auto obj_id = ObjectID::FromBinary(ref->object_id());
+    const auto task_id = obj_id.TaskId();
+    const auto it = submissible_tasks_.find(task_id);
+    if (it == submissible_tasks_.end()) {
+      continue;
+    }
+    ref->set_task_status(it->second.status);
+    ref->set_attempt_number(it->second.spec.AttemptNumber());
+  }
+}
+
+void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return;
+  }
+  if (it->second.status == rpc::TaskStatus::WAITING_FOR_DEPENDENCIES) {
+    it->second.status = rpc::TaskStatus::SCHEDULED;
+  }
 }
 
 }  // namespace core

@@ -75,7 +75,7 @@ async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
 
 
 def check_job_succeeded(job_manager, job_id):
-    data = job_manager.get_job_data(job_id)
+    data = job_manager.get_job_info(job_id)
     status = data.status
     if status == JobStatus.FAILED:
         raise RuntimeError(f"Job failed! {data.message}")
@@ -173,7 +173,7 @@ class TestShellScriptExecution:
         job_id = job_manager.submit_job(entrypoint=run_cmd)
 
         def cleaned_up():
-            data = job_manager.get_job_data(job_id)
+            data = job_manager.get_job_info(job_id)
             if data.status != JobStatus.FAILED:
                 return False
             if "Exception: Script failed with exception !" not in data.message:
@@ -274,7 +274,7 @@ class TestRuntimeEnv:
             entrypoint=run_cmd, runtime_env={"working_dir": "path_not_exist"}
         )
 
-        data = job_manager.get_job_data(job_id)
+        data = job_manager.get_job_info(job_id)
         assert data.status == JobStatus.FAILED
         assert "path_not_exist is not a valid URI" in data.message
 
@@ -291,7 +291,7 @@ class TestRuntimeEnv:
             check_job_failed, job_manager=job_manager, job_id=job_id
         )
 
-        data = job_manager.get_job_data(job_id)
+        data = job_manager.get_job_info(job_id)
         assert "runtime_env setup failed" in data.message
 
     async def test_pass_metadata(self, job_manager):

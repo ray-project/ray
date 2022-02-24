@@ -300,12 +300,18 @@ class WorkflowStorage:
         if outer_most_step_id is None or outer_most_step_id == "":
             return
 
-        metadata = await self._get(
-            self._key_step_output_metadata(outer_most_step_id), True
-        )
-        if dynamic_output_step_id != metadata[
+        try:
+            metadata = await self._get(
+                self._key_step_output_metadata(outer_most_step_id), True
+            )
+        except KeyNotFoundError:
+            # This is because we skipped checkpointing of the
+            # step [id=outer_most_step_id]. Return a dummy
+            # metadata instead.
+            metadata = {}
+        if dynamic_output_step_id != metadata.get(
             "output_step_id"
-        ] and dynamic_output_step_id != metadata.get("dynamic_output_step_id"):
+        ) and dynamic_output_step_id != metadata.get("dynamic_output_step_id"):
             metadata["dynamic_output_step_id"] = dynamic_output_step_id
             await self._put(
                 self._key_step_output_metadata(outer_most_step_id), metadata, True

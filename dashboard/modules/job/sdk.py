@@ -22,7 +22,7 @@ from ray.dashboard.modules.job.common import (
     JobSubmitRequest,
     JobSubmitResponse,
     JobStopResponse,
-    JobData,
+    JobInfo,
     JobLogsResponse,
     uri_to_http_components,
 )
@@ -320,19 +320,19 @@ class JobSubmissionClient:
         else:
             self._raise_error(r)
 
-    def get_job_data(
+    def get_job_info(
         self,
         job_id: str,
-    ) -> JobData:
+    ) -> JobInfo:
         r = self._do_request("GET", f"/api/jobs/{job_id}")
 
         if r.status_code == 200:
-            return JobData(**r.json())
+            return JobInfo(**r.json())
         else:
             self._raise_error(r)
 
     def get_job_status(self, job_id: str) -> JobStatus:
-        return self.get_job_data(job_id).status
+        return self.get_job_info(job_id).status
 
     def get_job_logs(self, job_id: str) -> str:
         r = self._do_request("GET", f"/api/jobs/{job_id}/logs")

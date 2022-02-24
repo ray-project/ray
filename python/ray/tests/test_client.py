@@ -7,6 +7,7 @@ import queue
 import threading
 import _thread
 from unittest.mock import patch
+import numpy as np
 
 import ray.util.client.server.server as ray_client_server
 from ray.tests.client_test_utils import create_remote_signal_actor
@@ -778,6 +779,21 @@ def test_object_ref_release(call_ray_start):
     with disable_client_hook():
         ref_cnt = ray.util.client.ray.get_context().client_worker.reference_count
         assert all(v > 0 for v in ref_cnt.values())
+
+
+def test_empty_objects(ray_start_regular_shared):
+    """
+    Tests that client works with "empty" objects. Sanity check, since put requests
+    will fail if the serialized version of an object consists of zero bytes.
+    """
+    objects = [0, b"", "", [], np.array(()), {}, set(), None]
+    with ray_start_client_server() as ray:
+        for obj in objects:
+            ref = ray.put(obj)
+            if isinstance(obj, np.ndarray):
+                assert np.array_equal(ray.get(ref), obj)
+            else:
+                assert ray.get(ref) == obj
 
 
 if __name__ == "__main__":
