@@ -35,7 +35,6 @@ VERSION_1.0 {
         *init_raylet*;
         *Java*;
         *JNI_*;
-        *ray*internal*;
         *aligned_free*;
         *aligned_malloc*;
     local: *;
