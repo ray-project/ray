@@ -5,7 +5,7 @@
 # evaluation_interval: 1
 # evaluation_config:
 #     explore: False
-cartpole-apex-dqn:
+cartpole-apex-dqn-fake-gpus:
     env: CartPole-v0
     run: APEX
     stop:
@@ -14,9 +14,17 @@ cartpole-apex-dqn:
     config:
         # Works for both torch and tf.
         framework: tf
+
+        # Make this work with only 5 CPUs and 0 GPUs:
         num_workers: 3
         optimizer:
-            num_replay_buffer_shards: 1
+            num_replay_buffer_shards: 2
+
+        min_time_s_per_reporting: 5
+        target_network_update_freq: 500
+        learning_starts: 1000
+        timesteps_per_iteration: 1000
+        buffer_size: 20000
 
         # Fake 2 GPUs.
         num_gpus: 2

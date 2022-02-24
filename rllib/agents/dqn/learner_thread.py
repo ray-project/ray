@@ -170,7 +170,7 @@ class APEXMultiGPULearnerThread(APEXLearnerThread):
     def step(self) -> None:
         assert self.loader_thread.is_alive()
         with self.load_wait_timer:
-            replay_actor, buffer_idx = self.ready_tower_stacks.get()
+            replay_actor, buffer_idx, batch_indexes = self.ready_tower_stacks.get()
 
         get_num_samples_loaded_into_buffer = 0
         with self.grad_timer:
@@ -181,11 +181,6 @@ class APEXMultiGPULearnerThread(APEXLearnerThread):
             # tf vs torch).
             learner_info_builder = LearnerInfoBuilder(num_devices=len(self.devices))
 
-            #for pid in self.policy_map.keys():
-            ## Not a policy-to-train.
-            #if not self.local_worker.is_policy_to_train(pid):
-            #    continue
-            #policy = self.policy_map[pid]
             default_policy_results = self.policy.learn_on_loaded_batch(
                 offset=0, buffer_index=buffer_idx
             )
@@ -196,9 +191,10 @@ class APEXMultiGPULearnerThread(APEXLearnerThread):
             )
 
             self.learner_info = learner_info_builder.finalize()
-            prio_dict = self.larner_info["td_error"]
+
+            td_error = self.learner_info["default_policy"]["td_error"]
+            prio_dict = {"default_policy": (batch_indexes, td_error)}
 
         self.idle_tower_stacks.put(buffer_idx)
-        #replay_actor
-        self.outqueue.put((replay_actor, prio_dict, get_num_samples_loaded_into_buffer))#(get_num_samples_loaded_into_buffer, self.learner_info))
+        self.outqueue.put((replay_actor, prio_dict, get_num_samples_loaded_into_buffer))
         self.learner_queue_size.push(self.inqueue.qsize())
