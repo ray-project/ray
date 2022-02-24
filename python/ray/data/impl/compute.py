@@ -148,6 +148,7 @@ class ActorPool(ComputeStrategy):
         block_list: BlockList,
         clear_input_blocks: bool,
     ) -> BlockList:
+        """Note: this is not part of the Dataset public API."""
         context = DatasetContext.get_current()
 
         blocks_in = block_list.get_blocks_with_metadata()
