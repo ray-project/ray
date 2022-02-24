@@ -11,6 +11,33 @@ If you still have questions after reading this FAQ, let us know!
     :depth: 1
 
 
+What are Hyperparameters?
+-------------------------
+
+What are *hyperparameters?* And how are they different from *model parameters*?
+
+In supervised learning, we train a model with labeled data so the model can properly identify new data values.
+Everything about the model is defined by a set of parameters, such as the weights in a linear regression. These
+are *model parameters*; they are learned during training.
+
+.. image:: /images/hyper-model-parameters.png
+
+In contrast, the *hyperparameters* define structural details about the kind of model itself, like whether or not
+we are using a linear regression or classification, what architecture is best for a neural network,
+how many layers, what kind of filters, etc. They are defined before training, not learned.
+
+.. image:: /images/hyper-network-params.png
+
+Other quantities considered *hyperparameters* include learning rates, discount rates, etc. If we want our training
+process and resulting model to work well, we first need to determine the optimal or near-optimal set of *hyperparameters*.
+
+How do we determine the optimal *hyperparameters*? The most direct approach is to perform a loop where we pick
+a candidate set of values from some reasonably inclusive list of possible values, train a model, compare the results
+achieved with previous loop iterations, and pick the set that performed best. This process is called
+*Hyperparameter Tuning* or *Optimization* (HPO). And *hyperparameters* are specified over a configured and confined
+search space, collectively defined for each *hyperparameter* in a ``config`` dictionary.
+
+
 Which search algorithm/scheduler should I choose?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Ray Tune offers :ref:`many different search algorithms <tune-search-alg>`

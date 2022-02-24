@@ -115,6 +115,14 @@ Tune Feature Guides
     ---
     :img-top: /images/tune.png
 
+    .. link-button:: tune-search-space-tutorial
+        :type: ref
+        :text: A Guide To Working with Advanced Search Spaces
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /images/tune.png
+
     .. link-button:: tune-metrics
         :type: ref
         :text: Using Callbacks and Metrics in Tune

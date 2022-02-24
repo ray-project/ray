@@ -1,29 +1,26 @@
-# __basic_objective_start__
-def objective(x, a, b):
-    return a * (x ** 0.5) + b
-
-
-# __basic_objective_end__
-
-
 # __function_api_start__
 from ray import tune
 
 
-def trainable(config):
-    # config (dict): A dict of hyperparameters.
+def objective(x, a, b):  # Define an objective function.
+    return a * (x ** 0.5) + b
 
-    for x in range(20):
+
+def trainable(config):  # Pass a "config" dictionary into your trainable.
+
+    for x in range(20):  # "Train" for 20 iterations and compute intermediate scores.
         score = objective(x, config["a"], config["b"])
 
-        tune.report(score=score)  # This sends the score to Tune.
-
-
+        tune.report(score=score)  # Send the score to Tune.
 # __function_api_end__
 
 
 # __class_api_start__
 from ray import tune
+
+
+def objective(x, a, b):
+    return a * (x ** 2) + b
 
 
 class Trainable(tune.Trainable):
@@ -48,7 +45,7 @@ class Trainable(tune.Trainable):
 
 
 # __run_tunable_start__
-# Pass in a Trainable class or function to tune.run, along with configs
+# Pass in a Trainable class or function, along with a search space "config".
 tune.run(trainable, config={"a": 2, "b": 4})
 # __run_tunable_end__
 
@@ -82,35 +79,29 @@ config = {
 # __config_end__
 
 # __bayes_start__
-from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.suggest.bayesopt import BayesOptSearch
 
 # Define the search space
-config = {"a": tune.uniform(0, 1), "b": tune.uniform(0, 20)}
+search_space = {"a": tune.uniform(0, 1), "b": tune.uniform(0, 20)}
 
-algo = ConcurrencyLimiter(BayesOptSearch(random_search_steps=4), max_concurrent=2)
+algo = BayesOptSearch(random_search_steps=4)
 
-# Execute 20 trials using BayesOpt and stop after 20 iterations
 tune.run(
     trainable,
-    config=config,
+    config=search_space,
     metric="score",
-    mode="max",
-    # Limit to two concurrent trials (otherwise we end up with random search)
+    mode="min",
     search_alg=algo,
-    num_samples=20,
     stop={"training_iteration": 20},
-    verbose=2,
 )
 # __bayes_end__
 
 # __hyperband_start__
 from ray.tune.schedulers import HyperBandScheduler
 
-# Create HyperBand scheduler and maximize score
+# Create HyperBand scheduler and minimize the score
 hyperband = HyperBandScheduler(metric="score", mode="max")
 
-# Execute 20 trials using HyperBand using a search space
 config = {"a": tune.uniform(0, 1), "b": tune.uniform(0, 1)}
 
 tune.run(trainable, config=config, num_samples=20, scheduler=hyperband)
@@ -121,9 +112,8 @@ analysis = tune.run(
     trainable,
     config=config,
     metric="score",
-    mode="max",
+    mode="min",
     search_alg=BayesOptSearch(random_search_steps=4),
-    num_samples=20,
     stop={"training_iteration": 20}
 )
 
