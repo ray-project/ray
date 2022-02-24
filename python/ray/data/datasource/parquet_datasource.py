@@ -35,6 +35,7 @@ PARQUET_READER_ROW_BATCH_SIZE = 100000
 
 class PartitionedFile:
     """Represents a remote parquet file with partitioning info."""
+
     def __init__(self, path: str, partition_keys: dict):
         self.path = path
         self.partition_keys = partition_keys
@@ -142,6 +143,14 @@ class ParquetDatasource(FileBasedDatasource):
                     )
                     for batch in batches:
                         table = pa.Table.from_batches([batch], schema=schema)
+                        # TODO(ekl) we have to manually apply the filter on partitioned
+                        # columns after the read. This is an artifact of the way we
+                        # work around file fragment serialization issues.
+                        if f.partition_keys and "filter" in reader_args:
+                            raise NotImplementedError(
+                                "The `filter` reader arg is not implemented "
+                                "for partitioned datasets."
+                            )
                         if f.partition_keys:
                             for col, value in f.partition_keys.items():
                                 table = table.set_column(
@@ -175,7 +184,9 @@ class ParquetDatasource(FileBasedDatasource):
             inferred_schema = schema
         read_tasks = []
         if len(files_to_read) > PARALLELIZE_META_FETCH_THRESHOLD:
-            metadata = _fetch_metadata_remotely(files_to_read, filesystem, **dataset_kwargs)
+            metadata = _fetch_metadata_remotely(
+                files_to_read, filesystem, **dataset_kwargs
+            )
         else:
             metadata = _fetch_metadata(files_to_read, filesystem, **dataset_kwargs)
         for file_data in np.array_split(
