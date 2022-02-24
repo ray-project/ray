@@ -31,8 +31,6 @@ class FixedPoint {
 
   FixedPoint(int i) { i_ = (i * RESOURCE_UNIT_SCALING); }  // NOLINT
 
-  FixedPoint(uint32_t i) { i_ = (i * RESOURCE_UNIT_SCALING); }  // NOLINT
-
   FixedPoint(int64_t i) : FixedPoint((double)i) {}  // NOLINT
 
   static FixedPoint Sum(const std::vector<FixedPoint> &list) {
