@@ -42,7 +42,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
     gcs_resource_manager_ =
-        std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr, true);
+        std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr);
     gcs_resource_scheduler_ =
         std::make_shared<gcs::GcsResourceScheduler>(*gcs_resource_manager_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
@@ -102,13 +102,9 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   }
 
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node, int cpu_num = 10) {
+    (*node->mutable_resources_total())["CPU"] = cpu_num;
     gcs_node_manager_->AddNode(node);
     gcs_resource_manager_->OnNodeAdd(*node);
-
-    const auto &node_id = NodeID::FromBinary(node->node_id());
-    absl::flat_hash_map<std::string, double> resource_map;
-    resource_map["CPU"] = cpu_num;
-    gcs_resource_manager_->UpdateResourceCapacity(node_id, resource_map);
   }
 
   void ScheduleFailedWithZeroNodeTest(rpc::PlacementStrategy strategy) {
@@ -162,10 +158,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     ASSERT_EQ(1, raylet_clients_[0]->num_lease_requested);
     ASSERT_EQ(1, raylet_clients_[0]->lease_callbacks.size());
     ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
-    // TODO(@clay4444): It should be updated to 1 after we make the commit request
-    // batched.
-    WaitPendingDone(raylet_clients_[0]->commit_callbacks, 2);
-    ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+    WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
     ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
     WaitPlacementGroupPendingDone(0, GcsPlacementGroupStatus::FAILURE);
     WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
@@ -198,8 +191,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler,
                                         success_handler);
     ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
-    WaitPendingDone(raylet_clients_[0]->commit_callbacks, 2);
-    ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+    WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
     ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
     WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
   }
@@ -373,10 +365,9 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyBalancedScheduling)
 
     node_index = !raylet_clients_[0]->lease_callbacks.empty() ? 0 : 1;
     ++node_select_count[node_index];
-    node_commit_count[node_index] += 2;
+    node_commit_count[node_index] += 1;
     ASSERT_TRUE(raylet_clients_[node_index]->GrantPrepareBundleResources());
-    WaitPendingDone(raylet_clients_[node_index]->commit_callbacks, 2);
-    ASSERT_TRUE(raylet_clients_[node_index]->GrantCommitBundleResources());
+    WaitPendingDone(raylet_clients_[node_index]->commit_callbacks, 1);
     ASSERT_TRUE(raylet_clients_[node_index]->GrantCommitBundleResources());
     auto condition = [this, node_index, node_commit_count]() {
       return raylet_clients_[node_index]->num_commit_requested ==
@@ -411,8 +402,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyResourceCheck) {
   auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request, "");
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
-  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 2);
-  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
 
@@ -426,8 +416,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyResourceCheck) {
       std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request2, "");
   scheduler_->ScheduleUnplacedBundles(placement_group2, failure_handler, success_handler);
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
-  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 2);
-  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   WaitPlacementGroupPendingDone(2, GcsPlacementGroupStatus::SUCCESS);
 }
@@ -455,8 +444,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
         success_placement_groups_.emplace_back(std::move(placement_group));
       });
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
-  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 2);
-  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   WaitPlacementGroupPendingDone(0, GcsPlacementGroupStatus::FAILURE);
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
@@ -574,15 +562,11 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPackStrategyLargeBundlesScheduling) {
   ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
   // Wait until all resources are prepared.
   WaitPendingDone(raylet_clients_[0]->commit_callbacks,
-                  raylet_clients_[0]->num_prepared_bundle);
+                  raylet_clients_[0]->num_lease_requested);
   WaitPendingDone(raylet_clients_[1]->commit_callbacks,
-                  raylet_clients_[1]->num_prepared_bundle);
-  for (int index = 0; index < raylet_clients_[0]->num_commit_requested; ++index) {
-    ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
-  }
-  for (int index = 0; index < raylet_clients_[1]->num_commit_requested; ++index) {
-    ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
-  }
+                  raylet_clients_[1]->num_lease_requested);
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
 }
 

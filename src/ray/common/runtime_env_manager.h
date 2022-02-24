@@ -50,7 +50,11 @@ class RuntimeEnvManager {
   /// \param[in] hex_id The id of the runtime env.
   void RemoveURIReference(const std::string &hex_id);
 
+  std::string DebugString() const;
+
  private:
+  void PrintDebugString() const;
+
   DeleteFunc deleter_;
   /// Reference counting of a URI.
   std::unordered_map<std::string, int64_t> uri_reference_;

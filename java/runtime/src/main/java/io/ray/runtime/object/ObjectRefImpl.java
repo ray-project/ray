@@ -51,17 +51,21 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   // This byte array object is generated in CoreWorkerMemoryStore::Put.
   private byte[] rawData = null;
 
-  public ObjectRefImpl(ObjectId id, Class<T> type) {
+  public ObjectRefImpl(ObjectId id, Class<T> type, boolean skipAddingLocalRef) {
     this.id = id;
     this.type = type;
-    /// Note that registerObjectRefImpl() must be invoked before addLocalReference().
-    /// Because addLocalReference() may take a long time.
-    registerObjectRefImpl(id, this);
-    addLocalReference();
+    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
+    Preconditions.checkState(workerId == null);
+	
+	/// TODO(qwang): Take a review for this.
+    if (!skipAddingLocalRef) {
+      runtime.getObjectStore().addLocalReference(workerId, id);
+    }
+    // We still add the reference so that the local ref count will be properly
+    // decremented once this object is GCed.
+    new ObjectRefImplReference(this);
   }
 
-  private void setRawData(byte[] rawData) {
-    Preconditions.checkState(this.rawData == null);
     this.rawData = rawData;
   }
 
@@ -108,20 +112,17 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     int len = in.readInt();
     byte[] ownerAddress = new byte[len];
     in.readFully(ownerAddress);
-    addLocalReference();
+
     RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
+    Preconditions.checkState(workerId == null);
+    workerId = runtime.getWorkerContext().getCurrentWorkerId();
+    runtime.getObjectStore().addLocalReference(workerId, id);
+    new ObjectRefImplReference(this);
+
     runtime
         .getObjectStore()
         .registerOwnershipInfoAndResolveFuture(
             this.id, ObjectSerializer.getOuterObjectId(), ownerAddress);
-  }
-
-  private void addLocalReference() {
-    Preconditions.checkState(workerId == null);
-    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
-    workerId = runtime.getWorkerContext().getCurrentWorkerId();
-    runtime.getObjectStore().addLocalReference(workerId, id);
-    new ObjectRefImplReference(this);
   }
 
   private static final class ObjectRefImplReference

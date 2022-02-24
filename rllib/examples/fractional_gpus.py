@@ -20,15 +20,14 @@ torch, nn = try_import_torch()
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--run",
-    type=str,
-    default="PPO",
-    help="The RLlib-registered algorithm to use.")
+    "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
+)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument("--num-gpus", type=float, default=0.5)
 parser.add_argument("--num-workers", type=int, default=1)
 parser.add_argument("--num-gpus-per-worker", type=float, default=0.0)
@@ -37,22 +36,17 @@ parser.add_argument(
     "--as-test",
     action="store_true",
     help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.")
+    "be achieved within --stop-timesteps AND --stop-iters.",
+)
 parser.add_argument(
-    "--stop-iters",
-    type=int,
-    default=50,
-    help="Number of iterations to train.")
+    "--stop-iters", type=int, default=50, help="Number of iterations to train."
+)
 parser.add_argument(
-    "--stop-timesteps",
-    type=int,
-    default=100000,
-    help="Number of timesteps to train.")
+    "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
+)
 parser.add_argument(
-    "--stop-reward",
-    type=float,
-    default=180.0,
-    help="Reward at which we stop training.")
+    "--stop-reward", type=float, default=180.0, help="Reward at which we stop training."
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -83,8 +77,7 @@ if __name__ == "__main__":
     config = {
         # Setup the test env as one that requires a GPU, iff
         # num_gpus_per_worker > 0.
-        "env": GPURequiringEnv
-        if args.num_gpus_per_worker > 0.0 else "CartPole-v0",
+        "env": GPURequiringEnv if args.num_gpus_per_worker > 0.0 else "CartPole-v0",
         # How many GPUs does the local worker (driver) need? For most algos,
         # this is where the learning updates happen.
         # Set this to > 1 for multi-GPU learning.

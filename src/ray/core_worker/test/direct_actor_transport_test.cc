@@ -37,6 +37,12 @@ using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::Return;
 
+rpc::ActorDeathCause CreateMockDeathCause() {
+  ray::rpc::ActorDeathCause death_cause;
+  death_cause.mutable_runtime_env_failed_context()->set_error_message("failed");
+  return death_cause;
+}
+
 TaskSpecification CreateActorTaskHelper(ActorID actor_id, WorkerID caller_worker_id,
                                         int64_t counter,
                                         TaskID caller_id = TaskID::Nil()) {
@@ -310,11 +316,12 @@ TEST_P(DirectActorSubmitterTest, TestActorDead) {
   }
 
   EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(_, _, _, _, _)).Times(0);
-  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
+  const auto death_cause = CreateMockDeathCause();
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false, death_cause);
   // Actor marked as dead. All queued tasks should get failed.
   EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _))
       .Times(1);
-  submitter_.DisconnectActor(actor_id, 2, /*dead=*/true);
+  submitter_.DisconnectActor(actor_id, 2, /*dead=*/true, death_cause);
 }
 
 TEST_P(DirectActorSubmitterTest, TestActorRestartNoRetry) {
@@ -349,7 +356,8 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 
   // Simulate the actor failing.
-  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
+  const auto death_cause = CreateMockDeathCause();
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false, death_cause);
   // Third task fails after the actor is disconnected. It should not get
   // retried.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
@@ -404,7 +412,8 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartRetry) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 
   // Simulate the actor failing.
-  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
+  const auto death_cause = CreateMockDeathCause();
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false, death_cause);
   // Third task fails after the actor is disconnected.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 
@@ -460,7 +469,8 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderRetry) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK(), /*index=*/1));
   // Simulate the actor failing.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError(""), /*index=*/0));
-  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
+  const auto death_cause = CreateMockDeathCause();
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false, death_cause);
 
   // Actor gets restarted.
   addr.set_port(1);
@@ -519,7 +529,8 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
   // We receive the RESTART message late. Nothing happens.
-  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
+  const auto death_cause = CreateMockDeathCause();
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false, death_cause);
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 2);
@@ -528,7 +539,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
   // The actor dies twice. We receive the last RESTART message first.
-  submitter_.DisconnectActor(actor_id, 3, /*dead=*/false);
+  submitter_.DisconnectActor(actor_id, 3, /*dead=*/false, death_cause);
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 3);
@@ -539,17 +550,17 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   // We receive the late messages. Nothing happens.
   addr.set_port(2);
   submitter_.ConnectActor(actor_id, addr, 2);
-  submitter_.DisconnectActor(actor_id, 2, /*dead=*/false);
+  submitter_.DisconnectActor(actor_id, 2, /*dead=*/false, death_cause);
   ASSERT_EQ(num_clients_connected_, 2);
 
   // The actor dies permanently. All tasks are failed.
   EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task.TaskId(), _, _, _, _))
       .Times(1);
-  submitter_.DisconnectActor(actor_id, 3, /*dead=*/true);
+  submitter_.DisconnectActor(actor_id, 3, /*dead=*/true, death_cause);
   ASSERT_EQ(num_clients_connected_, 2);
 
   // We receive more late messages. Nothing happens because the actor is dead.
-  submitter_.DisconnectActor(actor_id, 4, /*dead=*/false);
+  submitter_.DisconnectActor(actor_id, 4, /*dead=*/false, death_cause);
   addr.set_port(3);
   submitter_.ConnectActor(actor_id, addr, 4);
   ASSERT_EQ(num_clients_connected_, 2);
@@ -590,7 +601,8 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartFailInflightTasks) {
       .Times(1);
   EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task3.TaskId(), _, _, _, _))
       .Times(1);
-  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
+  const auto death_cause = CreateMockDeathCause();
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false, death_cause);
 
   // The task replies are now received. Since the tasks are already failed, they will not
   // be marked as failed or finished again.

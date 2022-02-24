@@ -1,5 +1,5 @@
-Workflows API Reference
-=======================
+Ray Workflows API
+=================
 
 Core API
 ---------

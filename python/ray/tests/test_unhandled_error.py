@@ -33,7 +33,7 @@ if __name__ == "__main__":
     while time.time() - start < 10:
         if num_exceptions == 1:
             sys.exit(0)
-        time.sleep(.5)
+        time.sleep(0.5)
         print("wait for exception", num_exceptions)
 
     assert False

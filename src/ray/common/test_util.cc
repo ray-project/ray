@@ -20,6 +20,7 @@
 #include "absl/strings/escaping.h"
 #include "ray/common/buffer.h"
 #include "ray/common/network_util.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
@@ -99,9 +100,14 @@ std::string TestSetupUtil::StartGcsServer(const std::string &redis_address) {
   std::string gcs_server_socket_name =
       ray::JoinPaths(ray::GetUserTempDir(), "gcs_server" + ObjectID::FromRandom().Hex());
   std::vector<std::string> cmdargs(
-      {TEST_GCS_SERVER_EXEC_PATH, "--redis_address=" + redis_address, "--redis_port=6379",
+      {TEST_GCS_SERVER_EXEC_PATH, "--redis_address=" + redis_address,
        "--config_list=" +
            absl::Base64Escape(R"({"object_timeout_milliseconds": 2000})")});
+  if (RayConfig::instance().bootstrap_with_gcs()) {
+    cmdargs.push_back("--gcs_server_port=6379");
+  } else {
+    cmdargs.push_back("--redis_port=6379");
+  }
   RAY_LOG(INFO) << "Start gcs server command: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true, gcs_server_socket_name + ".pid").second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -114,7 +120,8 @@ void TestSetupUtil::StopGcsServer(const std::string &gcs_server_socket_name) {
 }
 
 std::string TestSetupUtil::StartRaylet(const std::string &node_ip_address,
-                                       const int &port, const std::string &redis_address,
+                                       const int &port,
+                                       const std::string &bootstrap_address,
                                        const std::string &resource,
                                        std::string *store_socket_name) {
   std::string raylet_socket_name =
@@ -125,13 +132,18 @@ std::string TestSetupUtil::StartRaylet(const std::string &node_ip_address,
       {TEST_RAYLET_EXEC_PATH, "--raylet_socket_name=" + raylet_socket_name,
        "--store_socket_name=" + plasma_store_socket_name, "--object_manager_port=0",
        "--node_manager_port=" + std::to_string(port),
-       "--node_ip_address=" + node_ip_address, "--redis_address=" + redis_address,
-       "--redis_port=6379", "--min-worker-port=0", "--max-worker-port=0",
-       "--maximum_startup_concurrency=10", "--static_resource_list=" + resource,
+       "--node_ip_address=" + node_ip_address, "--redis_port=6379", "--min-worker-port=0",
+       "--max-worker-port=0", "--maximum_startup_concurrency=10",
+       "--static_resource_list=" + resource,
        "--python_worker_command=" +
            CreateCommandLine({TEST_MOCK_WORKER_EXEC_PATH, plasma_store_socket_name,
                               raylet_socket_name, std::to_string(port)}),
        "--object_store_memory=10000000"});
+  if (RayConfig::instance().bootstrap_with_gcs()) {
+    cmdargs.push_back("--gcs-address=" + bootstrap_address);
+  } else {
+    cmdargs.push_back("--redis_address=" + bootstrap_address);
+  }
   RAY_LOG(DEBUG) << "Raylet Start command: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true, raylet_socket_name + ".pid").second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));

@@ -38,27 +38,31 @@ parser.add_argument(
     type=str,
     default=None,
     help="The RLlib-registered algorithm to use, even if -f (yaml file) given "
-    "(will override yaml run setting).")
+    "(will override yaml run setting).",
+)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default=None,
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument(
     "--skip-install-ray",
     action="store_true",
-    help="If set, do not attempt to re-build ray from source.")
+    help="If set, do not attempt to re-build ray from source.",
+)
 parser.add_argument(
     "--num-samples",
     type=int,
     default=1,
-    help="The number of samples to run for the given experiment.")
+    help="The number of samples to run for the given experiment.",
+)
 parser.add_argument(
     "--stop-iters",
     type=int,
     default=None,
-    help="Number of iterations to train. Skip if this criterium is not "
-    "important.")
+    help="Number of iterations to train. Skip if this criterium is not " "important.",
+)
 parser.add_argument(
     "--stop-timesteps",
     type=int,
@@ -66,7 +70,8 @@ parser.add_argument(
     help="Number of env timesteps to train. Can be used in combination with "
     "--stop-time to assertain we reach a certain (env) "
     "timesteps per (wall) time interval. Skip if this "
-    "criterium is not important.")
+    "criterium is not important.",
+)
 parser.add_argument(
     "--stop-time",
     type=int,
@@ -74,30 +79,35 @@ parser.add_argument(
     help="Time in seconds, when to stop the run. Can be used in combination "
     "with --stop-timesteps to assertain we reach a certain (env) "
     "timesteps per (wall) time interval. Skip if this criterium is "
-    "not important.")
+    "not important.",
+)
 parser.add_argument(
     "--stop-reward",
     type=float,
     default=None,
     help="The minimum reward that must be reached within the given "
-    "time/timesteps/iters. Skip if this criterium is not important.")
+    "time/timesteps/iters. Skip if this criterium is not important.",
+)
 parser.add_argument(
     "-f",
     type=str,
     default=None,
     help="The yaml file to use as config. Alternatively, use --run, "
-    "--config, and --env.")
+    "--config, and --env.",
+)
 parser.add_argument(
     "--config",
     type=str,
     default=None,
-    help="If no -f (yaml file) given, use this config instead.")
+    help="If no -f (yaml file) given, use this config instead.",
+)
 parser.add_argument(
     "--env",
     type=str,
     default=None,
     help="Sets the env to use, even if -f (yaml file) given "
-    "(will override yaml env setting).")
+    "(will override yaml env setting).",
+)
 
 if __name__ == "__main__":
 
@@ -109,8 +119,7 @@ if __name__ == "__main__":
     if args.f:
         with open(args.f, "r") as fp:
             experiment_config = yaml.safe_load(fp)
-            experiment_config = experiment_config[next(
-                iter(experiment_config))]
+            experiment_config = experiment_config[next(iter(experiment_config))]
             config = experiment_config.get("config", {})
             config["env"] = experiment_config.get("env")
             run = experiment_config.pop("run")
@@ -141,12 +150,14 @@ if __name__ == "__main__":
         stop["time_total_s"] = args.stop_time
 
     # Invalid pass criteria.
-    if stop.get("episode_reward_mean") is None and \
-            (stop.get("timesteps_total") is None or
-             stop.get("time_total_s") is None):
-        raise ValueError("Invalid pass criterium! Must use either "
-                         "(--stop-reward + optionally any other) OR "
-                         "(--stop-timesteps + --stop-time).")
+    if stop.get("episode_reward_mean") is None and (
+        stop.get("timesteps_total") is None or stop.get("time_total_s") is None
+    ):
+        raise ValueError(
+            "Invalid pass criterium! Must use either "
+            "(--stop-reward + optionally any other) OR "
+            "(--stop-timesteps + --stop-time)."
+        )
 
     # - Stop ray.
     # Do this twice to make sure all processes are stopped (older versions of
@@ -161,8 +172,9 @@ if __name__ == "__main__":
     # Install ray from the checked out repo.
     if not args.skip_install_ray:
         subprocess.run("sudo apt-get update".split(" "))
-        subprocess.run("sudo apt-get install -y build-essential curl unzip "
-                       "psmisc".split(" "))
+        subprocess.run(
+            "sudo apt-get install -y build-essential curl unzip " "psmisc".split(" ")
+        )
         subprocess.run("pip install cython==0.29.26 pytest".split(" "))
         # Assume we are in the ray (git clone) directory.
         try:
@@ -201,11 +213,11 @@ if __name__ == "__main__":
     # Criterion is to have reached some min reward within given
     # wall time, iters, or timesteps.
     if stop.get("episode_reward_mean") is not None:
-        max_avg_reward = np.max(
-            [r["episode_reward_mean"] for r in last_results])
+        max_avg_reward = np.max([r["episode_reward_mean"] for r in last_results])
         if max_avg_reward < stop["episode_reward_mean"]:
-            raise ValueError("`stop-reward` of {} not reached!".format(
-                stop["episode_reward_mean"]))
+            raise ValueError(
+                "`stop-reward` of {} not reached!".format(stop["episode_reward_mean"])
+            )
     # Criterion is to have run through n env timesteps in some wall time m
     # (minimum throughput).
     else:
@@ -218,7 +230,9 @@ if __name__ == "__main__":
         if actual_speed < desired_speed:
             raise ValueError(
                 "`stop-timesteps` of {} not reached in {}sec!".format(
-                    stop["timesteps_total"], stop["time_total_s"]))
+                    stop["timesteps_total"], stop["time_total_s"]
+                )
+            )
 
     print("ok")
     ray.shutdown()

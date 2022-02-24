@@ -46,6 +46,8 @@ class RayObject {
     Init(data, metadata, nested_refs, copy_data);
   }
 
+  /// This constructor creates a ray object instance whose data will be generated
+  /// by the data factory.
   RayObject(const std::shared_ptr<Buffer> &metadata,
             const std::vector<rpc::ObjectReference> &nested_refs,
             std::function<std::shared_ptr<ray::Buffer>()> data_factory,

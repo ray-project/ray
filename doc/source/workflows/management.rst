@@ -75,7 +75,7 @@ Bulk workflow management APIs
 Recurring workflows
 -------------------
 
-Ray workflows currently has no built-in job scheduler. You can however easily use any external job scheduler to connect to your Ray cluster via Ray client and trigger workflow runs.
+Ray workflows currently has no built-in job scheduler. You can however easily use any external job scheduler to interact with your Ray cluster (via :ref:`job submission <jobs-overview>` or :ref:`client connection <ray-client>`) trigger workflow runs.
 
 Storage Configuration
 ---------------------

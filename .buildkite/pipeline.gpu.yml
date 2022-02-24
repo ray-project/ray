@@ -12,9 +12,7 @@
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
+    - PYTHON=3.7 RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - pip install -Ur ./python/requirements_ml_docker.txt
     - ./ci/travis/env_info.sh
     # --jobs 1 is necessary as we only have 1 GPU on the machine and running tests in parallel

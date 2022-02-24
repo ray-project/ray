@@ -37,6 +37,14 @@ class FixedPoint {
 
   FixedPoint(uint64_t i) : FixedPoint((double)i) {}  // NOLINT
 
+  static FixedPoint Sum(const std::vector<FixedPoint> &list) {
+    FixedPoint sum;
+    for (auto &value : list) {
+      sum += value;
+    }
+    return sum;
+  }
+
   FixedPoint operator+(FixedPoint const &ru) const {
     FixedPoint res;
     res.i_ = i_ + ru.i_;

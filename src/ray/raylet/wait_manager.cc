@@ -14,15 +14,16 @@
 
 #include "ray/raylet/wait_manager.h"
 
+#include "ray/util/container_util.h"
+
 namespace ray {
 namespace raylet {
 
 void WaitManager::Wait(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
                        uint64_t num_required_objects, const WaitCallback &callback) {
   RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
-  RAY_CHECK(num_required_objects != 0);
-  RAY_CHECK(num_required_objects <= object_ids.size())
-      << num_required_objects << " " << object_ids.size();
+  RAY_CHECK_NE(num_required_objects, 0u);
+  RAY_CHECK_LE(num_required_objects, object_ids.size());
 
   const uint64_t wait_id = next_wait_id_++;
   wait_requests_.emplace(
@@ -61,9 +62,7 @@ void WaitManager::Wait(const std::vector<ObjectID> &object_ids, int64_t timeout_
 }
 
 void WaitManager::WaitComplete(uint64_t wait_id) {
-  auto iter = wait_requests_.find(wait_id);
-  RAY_CHECK(iter != wait_requests_.end());
-  auto &wait_request = iter->second;
+  auto &wait_request = map_find_or_die(wait_requests_, wait_id);
 
   for (const auto &object_id : wait_request.object_ids) {
     auto &requests = object_to_wait_requests_.at(object_id);
@@ -97,9 +96,7 @@ void WaitManager::HandleObjectLocal(const ray::ObjectID &object_id) {
 
   std::vector<uint64_t> complete_waits;
   for (const auto &wait_id : object_to_wait_requests_.at(object_id)) {
-    auto wait_request_iter = wait_requests_.find(wait_id);
-    RAY_CHECK(wait_request_iter != wait_requests_.end());
-    auto &wait_request = wait_request_iter->second;
+    auto &wait_request = map_find_or_die(wait_requests_, wait_id);
     wait_request.ready.emplace(object_id);
     if (wait_request.ready.size() >= wait_request.num_required_objects) {
       complete_waits.emplace_back(wait_id);

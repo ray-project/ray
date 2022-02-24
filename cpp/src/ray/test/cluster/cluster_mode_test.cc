@@ -37,6 +37,12 @@ TEST(RayClusterModeTest, Initialized) {
   EXPECT_TRUE(!ray::IsInitialized());
 }
 
+struct Person {
+  std::string name;
+  int age;
+  MSGPACK_DEFINE(name, age);
+};
+
 TEST(RayClusterModeTest, FullTest) {
   ray::RayConfig config;
   config.head_args = {"--num-cpus", "2", "--resources",
@@ -128,7 +134,7 @@ TEST(RayClusterModeTest, FullTest) {
   auto r2 = ray::Task(Plus).Remote(3, 22);
 
   std::vector<ray::ObjectRef<int>> objects = {r0, r1, r2};
-  auto result = ray::Wait(objects, 3, 1000);
+  auto result = ray::Wait(objects, 3, 5000);
   EXPECT_EQ(result.ready.size(), 3);
   EXPECT_EQ(result.unready.size(), 0);
 
@@ -196,6 +202,13 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result15, 29);
   EXPECT_EQ(result16, 30);
 
+  /// Test Put, Get & Remote for large objects
+  std::array<int, 100000> arr;
+  auto r17 = ray::Put(arr);
+  auto r18 = ray::Task(ReturnLargeArray).Remote(r17);
+  EXPECT_EQ(arr, *(ray::Get(r17)));
+  EXPECT_EQ(arr, *(ray::Get(r18)));
+
   uint64_t pid = *actor1.Task(&Counter::GetPid).Remote().Get();
   EXPECT_TRUE(Counter::IsProcessAlive(pid));
 
@@ -203,6 +216,40 @@ TEST(RayClusterModeTest, FullTest) {
   std::this_thread::sleep_for(std::chrono::seconds(2));
   EXPECT_THROW(actor_object4.Get(), ray::internal::RayActorException);
   EXPECT_FALSE(Counter::IsProcessAlive(pid));
+}
+
+TEST(RayClusterModeTest, PythonInvocationTest) {
+  auto py_actor_handle =
+      ray::Actor(ray::PyActorClass{"test_cross_language_invocation", "Counter"})
+          .Remote(1);
+  EXPECT_TRUE(!py_actor_handle.ID().empty());
+
+  auto py_actor_ret =
+      py_actor_handle.Task(ray::PyActorMethod<std::string>{"increase"}).Remote(1);
+  EXPECT_EQ("2", *py_actor_ret.Get());
+
+  auto py_obj =
+      ray::Task(ray::PyFunction<int>{"test_cross_language_invocation", "py_return_val"})
+          .Remote();
+  EXPECT_EQ(42, *py_obj.Get());
+
+  auto py_obj1 =
+      ray::Task(ray::PyFunction<int>{"test_cross_language_invocation", "py_return_input"})
+          .Remote(42);
+  EXPECT_EQ(42, *py_obj1.Get());
+
+  auto py_obj2 = ray::Task(ray::PyFunction<std::string>{"test_cross_language_invocation",
+                                                        "py_return_input"})
+                     .Remote("hello");
+  EXPECT_EQ("hello", *py_obj2.Get());
+
+  Person p{"tom", 20};
+  auto py_obj3 = ray::Task(ray::PyFunction<Person>{"test_cross_language_invocation",
+                                                   "py_return_input"})
+                     .Remote(p);
+  auto py_result = *py_obj3.Get();
+  EXPECT_EQ(p.age, py_result.age);
+  EXPECT_EQ(p.name, py_result.name);
 }
 
 TEST(RayClusterModeTest, MaxConcurrentTest) {
@@ -286,20 +333,20 @@ TEST(RayClusterModeTest, LocalRefrenceTest) {
 }
 
 TEST(RayClusterModeTest, DependencyRefrenceTest) {
-  auto r1 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Return1).Remote());
-  auto object_id = ray::ObjectID::FromBinary(r1->ID());
-  EXPECT_TRUE(CheckRefCount({{object_id, std::make_pair(1, 0)}}));
+  {
+    auto r1 = ray::Task(Return1).Remote();
+    auto object_id = ray::ObjectID::FromBinary(r1.ID());
+    EXPECT_TRUE(CheckRefCount({{object_id, std::make_pair(1, 0)}}));
 
-  auto r2 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Plus1).Remote(*r1));
-  EXPECT_TRUE(
-      CheckRefCount({{object_id, std::make_pair(1, 1)},
-                     {ray::ObjectID::FromBinary(r2->ID()), std::make_pair(1, 0)}}));
-  r2->Get();
-  EXPECT_TRUE(
-      CheckRefCount({{object_id, std::make_pair(1, 0)},
-                     {ray::ObjectID::FromBinary(r2->ID()), std::make_pair(1, 0)}}));
-  r1.reset();
-  r2.reset();
+    auto r2 = ray::Task(Plus1).Remote(r1);
+    EXPECT_TRUE(
+        CheckRefCount({{object_id, std::make_pair(1, 1)},
+                       {ray::ObjectID::FromBinary(r2.ID()), std::make_pair(1, 0)}}));
+    r2.Get();
+    EXPECT_TRUE(
+        CheckRefCount({{object_id, std::make_pair(1, 0)},
+                       {ray::ObjectID::FromBinary(r2.ID()), std::make_pair(1, 0)}}));
+  }
   EXPECT_TRUE(CheckRefCount({}));
 }
 

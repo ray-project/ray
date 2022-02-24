@@ -48,14 +48,12 @@ class MockSchedulingQueue : public SchedulingQueue {
                std::function<void(rpc::SendReplyCallback)> reject_request,
                rpc::SendReplyCallback send_reply_callback,
                const std::string &concurrency_group_name,
-               const ray::FunctionDescriptor &function_descriptor,
-               std::function<void(rpc::SendReplyCallback)> steal_request, TaskID task_id,
+               const ray::FunctionDescriptor &function_descriptor, TaskID task_id,
                const std::vector<rpc::ObjectReference> &dependencies),
               (override));
   MOCK_METHOD(void, ScheduleRequests, (), (override));
   MOCK_METHOD(bool, TaskQueueEmpty, (), (const, override));
   MOCK_METHOD(size_t, Size, (), (const, override));
-  MOCK_METHOD(size_t, Steal, (rpc::StealTasksReply * reply), (override));
   MOCK_METHOD(bool, CancelTaskIfFound, (TaskID task_id), (override));
 };
 }  // namespace core

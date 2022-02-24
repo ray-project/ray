@@ -54,12 +54,20 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_client.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "client_tests", "team:serverless"],
+  deps = ["//:ray_lib"],
+)
+    
+py_test_module_list(
+  files = [
     "test_client_builder.py",
     "test_client_compat.py",
     "test_client_init.py",
     "test_client_multi.py",
     "test_client_proxy.py",
-    "test_client_server.py",
     "test_client_references.py",
     "test_client_warnings.py",
     "test_client_library_integration.py",
@@ -73,6 +81,8 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_usage_stats.py",
+    "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
     "test_memory_scheduling.py",
     "test_metrics.py",
     "test_multi_node.py",
@@ -85,6 +95,7 @@ py_test_module_list(
     "test_placement_group.py",
     "test_placement_group_2.py",
     "test_placement_group_3.py",
+    "test_placement_group_4.py",
     "test_ray_init.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
@@ -108,6 +119,7 @@ py_test_module_list(
     "test_multi_tenancy.py",
     "test_scheduling.py",
     "test_scheduling_2.py",
+    "test_traceback.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -124,17 +136,18 @@ py_test_module_list(
     "test_component_failures.py",
     "test_debug_tools.py",
     "test_distributed_sort.py",
-    "test_kv.py",
     "test_microbenchmarks.py",
     "test_mini.py",
     "test_node_manager.py",
     "test_numba.py",
     "test_queue.py",
     "test_ray_shutdown.py",
-    "test_traceback.py",
     "test_unhandled_error.py",
     "test_top_level_api.py",
     "test_list_actors.py",
+    "test_list_actors_2.py",
+    "test_list_actors_3.py",
+    "test_list_actors_4.py",
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -153,7 +166,6 @@ py_test_module_list(
     "test_client_terminate.py",
     "test_command_runner.py",
     "test_coordinator_server.py",
-    "test_dataclient_disconnect.py",
     "test_k8s_operator_unit_tests.py",
     "test_monitor.py",
     "test_response_cache.py",
@@ -161,6 +173,16 @@ py_test_module_list(
   size = "small",
   extra_srcs = SRCS,
   tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_dataclient_disconnect.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:serverless"],
   deps = ["//:ray_lib"],
 )
 
@@ -214,6 +236,7 @@ py_test_module_list(
     "test_runtime_env_conda_and_pip.py",
     "test_runtime_env_conda_and_pip_2.py",
     "test_runtime_env_conda_and_pip_3.py",
+    "test_runtime_env_conda_and_pip_4.py",
     "test_runtime_env_complicated.py"
   ],
   size = "large",
@@ -260,8 +283,9 @@ py_test(
 #    because they requires globs and it might be refactored in the future.
 py_test(
     name = "test_typing",
-    size = "small",
-    srcs = SRCS + ["test_typing.py"] + glob(["typing_files"]),
+    size = "medium",
+    srcs = SRCS + ["test_typing.py", "typing_files/check_typing_bad.py",
+                   "typing_files/check_typing_good.py"],
     tags = ["exclusive", "small_size_python_tests", "team:core"],
     deps = ["//:ray_lib"],
 )
@@ -303,7 +327,7 @@ py_test(
     name = "test_serve_ray_minimal",
     size = "small",
     srcs = SRCS + ["test_serve_ray_minimal.py"],
-    tags = ["exclusive", "small_size_python_tests", "team:serve"],
+    tags = ["exclusive", "python_tests", "team:serve"],
     deps = ["//:ray_lib"],
 )
 
@@ -321,6 +345,9 @@ py_test_module_list(
     "test_asyncio.py",
     "test_multiprocessing.py",
     "test_list_actors.py",
+    "test_list_actors_2.py",
+    "test_list_actors_3.py",
+    "test_list_actors_4.py",
   ],
   size = "medium",
   extra_srcs = SRCS,

@@ -57,19 +57,20 @@ if torch:
             return 0.5 * torch.log((1 + x) / (1 - x))
 
         def sign(self):
-            return 1.
+            return 1.0
 
         def _call(self, x):
             return torch.tanh(x)
 
         def _inverse(self, y):
-            y = torch.where((torch.abs(y) <= 1.),
-                            torch.clamp(y, -0.99999997, 0.99999997), y)
+            y = torch.where(
+                (torch.abs(y) <= 1.0), torch.clamp(y, -0.99999997, 0.99999997), y
+            )
             y = self.atanh(y)
             return y
 
         def log_abs_det_jacobian(self, x, y):
-            return 2. * (np.log(2) - x - nn.functional.softplus(-2. * x))
+            return 2.0 * (np.log(2) - x - nn.functional.softplus(-2.0 * x))
 
 
 # Modified from https://github.com/juliusfrost/dreamer-pytorch

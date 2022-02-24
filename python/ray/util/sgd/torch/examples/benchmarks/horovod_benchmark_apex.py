@@ -9,47 +9,50 @@ from torchvision import models
 import horovod.torch as hvd
 import timeit
 import numpy as np
+
 # Apex
 from apex import amp
 
 # Benchmark settings
 parser = argparse.ArgumentParser(
     description="PyTorch Synthetic Benchmark",
-    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+)
 parser.add_argument(
     "--fp16-allreduce",
     action="store_true",
     default=False,
-    help="use fp16 compression during allreduce")
+    help="use fp16 compression during allreduce",
+)
 
-parser.add_argument(
-    "--model", type=str, default="resnet50", help="model to benchmark")
-parser.add_argument(
-    "--batch-size", type=int, default=32, help="input batch size")
+parser.add_argument("--model", type=str, default="resnet50", help="model to benchmark")
+parser.add_argument("--batch-size", type=int, default=32, help="input batch size")
 
 parser.add_argument(
     "--num-warmup-batches",
     type=int,
     default=10,
-    help="number of warm-up batches that don\"t count towards benchmark")
+    help='number of warm-up batches that don"t count towards benchmark',
+)
 parser.add_argument(
     "--num-batches-per-iter",
     type=int,
     default=10,
-    help="number of batches per benchmark iteration")
+    help="number of batches per benchmark iteration",
+)
 parser.add_argument(
-    "--num-iters", type=int, default=10, help="number of benchmark iterations")
+    "--num-iters", type=int, default=10, help="number of benchmark iterations"
+)
 
 parser.add_argument(
-    "--no-cuda",
-    action="store_true",
-    default=False,
-    help="disables CUDA training")
+    "--no-cuda", action="store_true", default=False, help="disables CUDA training"
+)
 parser.add_argument(
     "--amp-fp16",
     action="store_true",
     default=False,
-    help="Enables FP16 training with Apex.")
+    help="Enables FP16 training with Apex.",
+)
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -72,14 +75,12 @@ if args.cuda:
 optimizer = optim.SGD(model.parameters(), lr=0.01)
 
 # Horovod: (optional) compression algorithm.
-compression = (hvd.Compression.fp16
-               if args.fp16_allreduce else hvd.Compression.none)
+compression = hvd.Compression.fp16 if args.fp16_allreduce else hvd.Compression.none
 
 # Horovod: wrap optimizer with DistributedOptimizer.
 optimizer = hvd.DistributedOptimizer(
-    optimizer,
-    named_parameters=model.named_parameters(),
-    compression=compression)
+    optimizer, named_parameters=model.named_parameters(), compression=compression
+)
 
 # Horovod: broadcast parameters & optimizer state.
 hvd.broadcast_parameters(model.state_dict(), root_rank=0)
@@ -140,5 +141,7 @@ for x in range(args.num_iters):
 img_sec_mean = np.mean(img_secs)
 img_sec_conf = 1.96 * np.std(img_secs)
 log(f"Img/sec per {device}: {img_sec_mean:.1f} +-{img_sec_conf:.1f}")
-log("Total img/sec on %d %s(s): %.1f +-%.1f" %
-    (hvd.size(), device, hvd.size() * img_sec_mean, hvd.size() * img_sec_conf))
+log(
+    "Total img/sec on %d %s(s): %.1f +-%.1f"
+    % (hvd.size(), device, hvd.size() * img_sec_mean, hvd.size() * img_sec_conf)
+)

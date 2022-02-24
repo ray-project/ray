@@ -30,8 +30,7 @@ class TestPettingZooEnv(unittest.TestCase):
         config = deepcopy(get_trainer_class("PPO").get_default_config())
         config["env_config"] = {"local_ratio": 0.5}
         # Register env
-        register_env("pistonball",
-                     lambda config: PettingZooEnv(env_creator(config)))
+        register_env("pistonball", lambda config: PettingZooEnv(env_creator(config)))
         env = PettingZooEnv(env_creator(config))
         observation_space = env.observation_space
         action_space = env.action_space
@@ -39,9 +38,7 @@ class TestPettingZooEnv(unittest.TestCase):
 
         config["multiagent"] = {
             # Setup a single, shared policy for all agents.
-            "policies": {
-                "av": (None, observation_space, action_space, {})
-            },
+            "policies": {"av": (None, observation_space, action_space, {})},
             # Map all agents to that policy.
             "policy_mapping_fn": lambda agent_id, episode, **kwargs: "av",
         }
@@ -61,8 +58,7 @@ class TestPettingZooEnv(unittest.TestCase):
         trainer.train()
 
     def test_pettingzoo_env(self):
-        register_env("simple_spread",
-                     lambda _: PettingZooEnv(simple_spread_v2.env()))
+        register_env("simple_spread", lambda _: PettingZooEnv(simple_spread_v2.env()))
         env = PettingZooEnv(simple_spread_v2.env())
         observation_space = env.observation_space
         action_space = env.action_space
@@ -75,12 +71,10 @@ class TestPettingZooEnv(unittest.TestCase):
         config["multiagent"] = {
             # Set of policy IDs (by default, will use Trainer's
             # default policy class, the env's obs/act spaces and config={}).
-            "policies": {
-                "av": (None, observation_space, action_space, {})
-            },
+            "policies": {"av": (None, observation_space, action_space, {})},
             # Mapping function that always returns "av" as policy ID to use
             # (for any agent).
-            "policy_mapping_fn": lambda agent_id, episode, **kwargs: "av"
+            "policy_mapping_fn": lambda agent_id, episode, **kwargs: "av",
         }
 
         config["log_level"] = "DEBUG"
@@ -97,4 +91,5 @@ class TestPettingZooEnv(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))
