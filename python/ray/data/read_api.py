@@ -60,7 +60,7 @@ from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.plan import ExecutionPlan
 from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.stats import DatasetStats, get_or_create_stats_actor
+from ray.data.impl.stats import DatasetStats, _get_or_create_stats_actor
 from ray.data.impl.util import _lazy_import_pyarrow_dataset
 
 T = TypeVar("T")
@@ -253,11 +253,11 @@ def read_datasource(
         )
 
     context = DatasetContext.get_current()
-    stats_actor = get_or_create_stats_actor()
+    stats_actor = _get_or_create_stats_actor()
     stats_uuid = uuid.uuid4()
     stats_actor.record_start.remote(stats_uuid)
 
-    def remote_read(i: int, task: ReadTask, stats_actor) -> MaybeBlockPartition:
+    def remote_read(i: int, task: ReadTask) -> MaybeBlockPartition:
         DatasetContext._set_current(context)
         stats = BlockExecStats.builder()
 
@@ -271,6 +271,7 @@ def read_datasource(
             metadata = BlockAccessor.for_block(block).get_metadata(
                 input_files=task.get_metadata().input_files, exec_stats=stats.build()
             )
+        stats_actor = _get_or_create_stats_actor()
         stats_actor.record_task.remote(stats_uuid, i, metadata)
         return block
 
@@ -286,8 +287,7 @@ def read_datasource(
     for i, task in enumerate(read_tasks):
         calls.append(
             lambda i=i, task=task: remote_read.options(**ray_remote_args).remote(
-                i, task, stats_actor
-            )
+                i, task)
         )
         metadata.append(task.get_metadata())
 
@@ -303,7 +303,7 @@ def read_datasource(
     stats = DatasetStats(
         stages={"read": metadata},
         parent=None,
-        stats_actor=stats_actor,
+        needs_stats_actor=True,
         stats_uuid=stats_uuid,
     )
     return Dataset(
