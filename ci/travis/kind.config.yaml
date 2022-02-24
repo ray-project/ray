@@ -3,3 +3,15 @@ apiVersion: kind.x-k8s.io/v1alpha4
 networking:
   apiServerAddress: "0.0.0.0"
   apiServerPort: 6443
+
+# https://kind.sigs.k8s.io/docs/user/configuration/#kubeadm-config-patches
+# https://blog.scottlowe.org/2019/07/30/adding-a-name-to-kubernetes-api-server-certificate/
+# https://kubernetes.io/docs/reference/config-api/kubeadm-config.v1beta2/
+nodes:
+- role: control-plane
+  kubeadmConfigPatches:
+  - |
+    kind: ClusterConfiguration
+    apiServer:
+      certSANs:
+        - "docker"
