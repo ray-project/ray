@@ -8,9 +8,9 @@ import ray.dashboard.optional_utils as optional_utils
 from ray import serve
 from ray.serve.api import deploy_group, get_deployment_statuses
 from ray.dashboard.modules.serve.schema import (
-    ServeInstanceSchema,
-    serve_instance_to_schema,
-    schema_to_serve_instance,
+    ServeApplicationSchema,
+    serve_application_to_schema,
+    schema_to_serve_application,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,33 +28,33 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     async def get_all_deployments(self, req: Request) -> Response:
         deployments = list(serve.list_deployments().values())
         statuses = get_deployment_statuses()
-        serve_instance_schema = serve_instance_to_schema(
+        serve_application_schema = serve_application_to_schema(
             deployments=deployments, statuses=statuses
         )
         return Response(
-            text=json.dumps(serve_instance_schema.json()),
+            text=json.dumps(serve_application_schema.json()),
             content_type="application/json",
         )
 
     @routes.delete("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
-    async def delete_serve_instance(self, req: Request) -> Response:
+    async def delete_serve_application(self, req: Request) -> Response:
         serve.shutdown()
         return Response()
 
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
-        serve_instance_json = await req.json()
-        serve_instance_schema = ServeInstanceSchema.parse_raw(
-            json.dumps(serve_instance_json)
+        serve_application_json = await req.json()
+        serve_application_schema = ServeApplicationSchema.parse_raw(
+            json.dumps(serve_application_json)
         )
-        deployments = schema_to_serve_instance(serve_instance_schema)
+        deployments = schema_to_serve_application(serve_application_schema)
 
         deploy_group(deployments, _blocking=False)
 
         new_names = set()
-        for deployment in serve_instance_schema.deployments:
+        for deployment in serve_application_schema.deployments:
             new_names.add(deployment.name)
 
         all_deployments = serve.list_deployments()

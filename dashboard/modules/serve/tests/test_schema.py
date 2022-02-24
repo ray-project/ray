@@ -8,11 +8,11 @@ from ray.dashboard.modules.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
     StatusSchema,
-    ServeInstanceSchema,
+    ServeApplicationSchema,
     deployment_to_schema,
     schema_to_deployment,
-    serve_instance_to_schema,
-    schema_to_serve_instance,
+    serve_application_to_schema,
+    schema_to_serve_application,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
 from ray.serve.config import AutoscalingConfig
@@ -307,11 +307,11 @@ class TestStatusSchema:
             StatusSchema.parse_obj(status_schema)
 
 
-class TestServeInstanceSchema:
-    def test_valid_serve_instance_schema(self):
-        # Ensure a valid ServeInstanceSchemas can be generated
+class TestServeApplicationSchema:
+    def test_valid_serve_application_schema(self):
+        # Ensure a valid ServeApplicationSchemas can be generated
 
-        serve_instance_schema = {
+        serve_application_schema = {
             "deployments": [
                 {
                     "name": "shallow",
@@ -375,10 +375,10 @@ class TestServeInstanceSchema:
             ]
         }
 
-        # Should be able to initialize a ServeInstanceSchema without statuses
-        ServeInstanceSchema.parse_obj(serve_instance_schema)
+        # Should be able to initialize a ServeApplicationSchema without statuses
+        ServeApplicationSchema.parse_obj(serve_application_schema)
 
-        serve_instance_schema["statuses"] = [
+        serve_application_schema["statuses"] = [
             {"name": "shallow", "status_info": {"status": "healthy", "message": ""}},
             {
                 "name": "deep",
@@ -389,8 +389,8 @@ class TestServeInstanceSchema:
             },
         ]
 
-        # Should be able to initialize a ServeInstanceSchema with statuses
-        ServeInstanceSchema.parse_obj(serve_instance_schema)
+        # Should be able to initialize a ServeApplicationSchema with statuses
+        ServeApplicationSchema.parse_obj(serve_application_schema)
 
 
 # This function is defined globally to be accessible via import path
@@ -445,7 +445,7 @@ def test_deployment_to_schema_to_deployment():
     serve.shutdown()
 
 
-def test_serve_instance_to_schema_to_serve_instance():
+def test_serve_application_to_schema_to_serve_application():
     @serve.deployment(
         num_replicas=1,
         route_prefix="/hello",
@@ -465,7 +465,7 @@ def test_serve_instance_to_schema_to_serve_instance():
     f1._func_or_class = "ray.dashboard.modules.serve.tests.test_schema.global_f"
     f2._func_or_class = "ray.dashboard.modules.serve.tests.test_schema.global_f"
 
-    deployments = schema_to_serve_instance(serve_instance_to_schema([f1, f2]))
+    deployments = schema_to_serve_application(serve_application_to_schema([f1, f2]))
 
     assert deployments[0].num_replicas == 1
     assert deployments[0].route_prefix == "/hello"
@@ -482,7 +482,7 @@ def test_serve_instance_to_schema_to_serve_instance():
     assert requests.get("http://localhost:8000/hi").text == "Hello world!"
 
     # Check statuses
-    statuses = serve_instance_to_schema(
+    statuses = serve_application_to_schema(
         [f1, f2], statuses=get_deployment_statuses()
     ).statuses
     deployment_names = {"f1", "f2"}
