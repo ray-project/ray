@@ -1,14 +1,12 @@
-from typing import Any, Dict, List, OrderedDict
+from typing import Any, Dict, List
 import threading
 
 from ray.experimental.dag import (
     DAGNode,
     ClassNode,
     ClassMethodNode,
-    FunctionNode,
 )
 from ray.serve.api import Deployment, DeploymentConfig
-from ray import serve
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
 
@@ -35,6 +33,7 @@ class DeploymentIDGenerator(object):
 
                 return f"{deployment_name}_{suffix_num}"
 
+
 def _get_unique_deployment_name(dag_node):
     """
     Get unique deployment name for given ClassNode. For the first time we use
@@ -44,10 +43,9 @@ def _get_unique_deployment_name(dag_node):
     deployment_name = (
         dag_node.get_options().get("name", None) or dag_node._body.__name__
     )
-    deployment_name = DeploymentIDGenerator.get_deployment_id(
-        deployment_name
-    )
+    deployment_name = DeploymentIDGenerator.get_deployment_id(deployment_name)
     return deployment_name
+
 
 def _remove_non_default_ray_actor_options(ray_actor_options: Dict[str, Any]):
     """
@@ -55,9 +53,7 @@ def _remove_non_default_ray_actor_options(ray_actor_options: Dict[str, Any]):
     was explicitly set. Since some values are invalid, we need to remove them
     from ray_actor_options.
     """
-    ray_actor_options = {
-        k: v for k, v in ray_actor_options.items() if v
-    }
+    ray_actor_options = {k: v for k, v in ray_actor_options.items() if v}
     if ray_actor_options.get("placement_group") == "default":
         del ray_actor_options["placement_group"]
     if ray_actor_options.get("placement_group_bundle_index") == -1:
@@ -119,7 +115,7 @@ def transform_ray_dag_to_serve_dag(dag_node):
             dag_node.get_args(),
             dag_node.get_kwargs(),
             # TODO: (jiaodong) Support .options(metadata=xxx) for deployment
-            {}, # Deployment options are not ray actor options.
+            {},  # Deployment options are not ray actor options.
             other_args_to_resolve=dag_node.get_other_args_to_resolve(),
         )
         return deployment_node

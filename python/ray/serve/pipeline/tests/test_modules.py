@@ -8,6 +8,7 @@ from typing import TypeVar
 
 RayHandleLike = TypeVar("RayHandleLike")
 
+
 @ray.remote
 class ClassHello:
     def __init__(self):
@@ -32,6 +33,7 @@ class Model:
         input_data = request
         return self.ratio * self.weight * input_data
 
+
 @ray.remote
 class Combine:
     def __init__(self, m1: "RayHandleLike", m2_nested: "RayHandleLike" = None):
@@ -43,11 +45,12 @@ class Combine:
         r2_ref = self.m2.forward.remote(req)
         return sum(ray.get([r1_ref, r2_ref]))
 
+
 @ray.remote
 def fn_hello():
     return "hello"
 
 
 @ray.remote
-def combine(m1_output, m2_output, kwargs_output=0):
-    return m1_output + m2_output  #  + kwargs_output
+def combine(m1_output, m2_output):
+    return m1_output + m2_output

@@ -103,9 +103,8 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     for deployment in deployments:
         deployment.deploy()
 
-    _validate_consistent_output(
-        deployments[2], ray_dag, "Combine", input=1, output=5
-    )
+    _validate_consistent_output(deployments[2], ray_dag, "Combine", input=1, output=5)
+
 
 # def test_shared_deployment_handle(serve_instance):
 #     """
