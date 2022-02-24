@@ -34,7 +34,7 @@ def test_slow_allocation_warning(serve_instance, capsys):
         captured = capsys.readouterr()
         return expected_warning in captured.err
 
-    wait_for_condition(check)
+    wait_for_condition(check, timeout=10, retry_interval_ms=1000)
 
 
 def test_slow_initialization_warning(serve_instance, capsys):
@@ -61,7 +61,7 @@ def test_slow_initialization_warning(serve_instance, capsys):
         captured = capsys.readouterr()
         return expected_warning in captured.err
 
-    wait_for_condition(check)
+    wait_for_condition(check, timeout=10, retry_interval_ms=1000)
 
 
 def test_deployment_init_error_logging(serve_instance, capsys):
