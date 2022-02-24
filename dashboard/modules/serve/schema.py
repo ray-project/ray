@@ -300,12 +300,10 @@ class ServeApplicationSchema(BaseModel):
 class DeploymentStatusSchema(BaseModel):
     name: str = Field(..., description="The deployment's name.")
     status: DeploymentStatus = Field(
-        default=None,
-        description="The deployment's status."
+        default=None, description="The deployment's status."
     )
     message: str = Field(
-        default="",
-        description="Information about the deployment's status."
+        default="", description="Information about the deployment's status."
     )
 
 
@@ -359,7 +357,9 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     )(s.import_path)
 
 
-def serve_application_to_schema(deployments: List[Deployment]) -> ServeApplicationSchema:
+def serve_application_to_schema(
+    deployments: List[Deployment],
+) -> ServeApplicationSchema:
     schemas = [deployment_to_schema(d) for d in deployments]
     return ServeApplicationSchema(deployments=schemas)
 
@@ -368,17 +368,32 @@ def schema_to_serve_application(schema: ServeApplicationSchema) -> List[Deployme
     return [schema_to_deployment(s) for s in schema.deployments]
 
 
-def status_info_to_schema(deployment_name: str, status_info: Union[DeploymentStatusInfo, Dict]) -> DeploymentStatusSchema:
+def status_info_to_schema(
+    deployment_name: str, status_info: Union[DeploymentStatusInfo, Dict]
+) -> DeploymentStatusSchema:
     if isinstance(status_info, DeploymentStatusInfo):
-        return DeploymentStatusSchema(name=deployment_name, status=status_info.status, message=status_info.message)
+        return DeploymentStatusSchema(
+            name=deployment_name, status=status_info.status, message=status_info.message
+        )
     elif isinstance(status_info, dict):
-        return DeploymentStatusSchema(name=deployment_name, status=status_info["status"], message=status_info["message"])
+        return DeploymentStatusSchema(
+            name=deployment_name,
+            status=status_info["status"],
+            message=status_info["message"],
+        )
     else:
-        raise TypeError(f"Got {type(status_info)} as status_info's "
-                        "type. Expected status_info to be either a "
-                        "DeploymentStatusInfo or a dictionary.")
+        raise TypeError(
+            f"Got {type(status_info)} as status_info's "
+            "type. Expected status_info to be either a "
+            "DeploymentStatusInfo or a dictionary."
+        )
 
 
-def serve_application_status_to_schema(status_infos: Dict[str, Union[DeploymentStatusInfo, Dict]]) -> ServeApplicationStatusSchema:
-    schemas=[status_info_to_schema(deployment_name, status_info) for deployment_name, status_info in status_infos.items()]
+def serve_application_status_to_schema(
+    status_infos: Dict[str, Union[DeploymentStatusInfo, Dict]]
+) -> ServeApplicationStatusSchema:
+    schemas = [
+        status_info_to_schema(deployment_name, status_info)
+        for deployment_name, status_info in status_infos.items()
+    ]
     return ServeApplicationStatusSchema(statuses=schemas)

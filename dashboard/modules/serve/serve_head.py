@@ -11,6 +11,7 @@ from ray.dashboard.modules.serve.schema import (
     ServeApplicationSchema,
     serve_application_to_schema,
     schema_to_serve_application,
+    serve_application_status_to_schema,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,17 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
         serve_application_schema = serve_application_to_schema(deployments=deployments)
         return Response(
             text=json.dumps(serve_application_schema.json()),
+            content_type="application/json",
+        )
+
+    @routes.get("/api/serve/deployments/status")
+    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
+    async def get_all_deployment_statuses(self, req: Request) -> Response:
+        serve_application_status_schema = serve_application_status_to_schema(
+            get_deployment_statuses()
+        )
+        return Response(
+            text=json.dumps(serve_application_status_schema.json()),
             content_type="application/json",
         )
 

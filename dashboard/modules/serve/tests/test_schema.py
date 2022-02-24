@@ -7,14 +7,13 @@ import ray
 from ray.dashboard.modules.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
-    DeploymentStatusSchema,
     ServeApplicationSchema,
     deployment_to_schema,
     schema_to_deployment,
     serve_application_to_schema,
     schema_to_serve_application,
     status_info_to_schema,
-    serve_application_status_to_schema
+    serve_application_status_to_schema,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
 from ray.serve.config import AutoscalingConfig
@@ -384,10 +383,10 @@ class TestServeApplicationStatusSchema:
         serve_application_status_schema = {
             "deployment_1": {"status": "healthy", "message": ""},
             "deployment_2": {
-                    "status": "unhealthy",
-                    "message": "this deployment is deeply unhealthy",
-                },
-            }
+                "status": "unhealthy",
+                "message": "this deployment is deeply unhealthy",
+            },
+        }
 
         serve_application_status_to_schema(serve_application_status_schema)
 
