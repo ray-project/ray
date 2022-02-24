@@ -119,7 +119,8 @@ SERVE_NIGHTLY_TESTS = {
         "autoscaling_single_deployment",
         "autoscaling_multi_deployment",
         "serve_micro_benchmark",
-        "serve_micro_benchmark_k8s",
+        # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
+        # "serve_micro_benchmark_k8s",
         "serve_cluster_fault_tolerance",
     ],
 }
