@@ -26,7 +26,7 @@ initializes the Wandb API with Tune's training information. You can just use the
 Wandb API like you would normally do, e.g. using ``wandb.log()`` to log your training
 process.
 
-Please :doc:`see here for a full example </tune/examples/wandb_example>`.
+Please :doc:`see here for a full example </tune/examples/includes/wandb_example>`.
 
 .. _tune-wandb-logger:
 

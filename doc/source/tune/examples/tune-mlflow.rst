@@ -29,12 +29,9 @@ Then within your training function, you can just use the
 MLflow like you would normally do, e.g. using ``mlflow.log_metrics()`` or even ``mlflow.autolog()``
 to log to your training process.
 
-Please :doc:`see here </tune/examples/mlflow_example>` for a full example on how you can use either the
-MLflowLoggerCallback or the mlflow_mixin.
-
 MLflow AutoLogging
 ------------------
-You can also check out :doc:`here </tune/examples/mlflow_ptl_example>` for an example on how you can leverage MLflow
+You can also check out :doc:`here </tune/examples/includes/mlflow_ptl_example>` for an example on how you can leverage MLflow
 autologging, in this case with Pytorch Lightning
 
 MLflow Logger API

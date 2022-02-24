@@ -222,7 +222,7 @@ class ResourceChangingScheduler(TrialScheduler):
     in response to the decisions of the wrapped scheduler
     through a user-specified ``resources_allocation_function``.
     An example of such a function can be found in
-    :doc:`/tune/examples/xgboost_dynamic_resources_example`.
+    :doc:`/tune/examples/includes/xgboost_dynamic_resources_example`.
 
     If the functional API is used, the current trial resources can be obtained
     by calling `tune.get_trial_resources()` inside the training function.
@@ -282,7 +282,7 @@ class ResourceChangingScheduler(TrialScheduler):
                             my_resources_allocation_function
                         )
 
-        See :doc:`/tune/examples/xgboost_dynamic_resources_example` for a
+        See :doc:`/tune/examples/includes/xgboost_dynamic_resources_example` for a
         more detailed example.
     """
 

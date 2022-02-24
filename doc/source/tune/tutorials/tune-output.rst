@@ -285,4 +285,4 @@ You can then pass in your own logger as follows:
 Per default, Ray Tune creates JSON, CSV and TensorBoardX logger callbacks if you don't pass them yourself.
 You can disable this behavior by setting the ``TUNE_DISABLE_AUTO_CALLBACK_LOGGERS`` environment variable to ``"1"``.
 
-An example of creating a custom logger can be found in :doc:`/tune/examples/logging_example`.
+An example of creating a custom logger can be found in :doc:`/tune/examples/includes/logging_example`.

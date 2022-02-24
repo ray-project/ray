@@ -185,27 +185,27 @@ Here's an overview of all available search algorithms in Tune:
    * - :ref:`Random search/grid search <tune-basicvariant>`
      - Random search/grid search
      -
-     - :doc:`/tune/examples/tune_basic_example`
+     - :doc:`/tune/examples/includes/tune_basic_example`
    * - :ref:`AxSearch <tune-ax>`
      - Bayesian/Bandit Optimization
      - [`Ax <https://ax.dev/>`__]
-     - :doc:`/tune/examples/ax_example`
+     - :doc:`/tune/examples/includes/ax_example`
    * - :ref:`BlendSearch <BlendSearch>`
      - Blended Search
      - [`Bs <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
-     - :doc:`/tune/examples/blendsearch_example`
+     - :doc:`/tune/examples/includes/blendsearch_example`
    * - :ref:`CFO <CFO>`
      - Cost-Frugal hyperparameter Optimization
      - [`Cfo <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
-     - :doc:`/tune/examples/cfo_example`
+     - :doc:`/tune/examples/includes/cfo_example`
    * - :ref:`DragonflySearch <Dragonfly>`
      - Scalable Bayesian Optimization
      - [`Dragonfly <https://dragonfly-opt.readthedocs.io/>`__]
-     - :doc:`/tune/examples/dragonfly_example`
+     - :doc:`/tune/examples/includes/dragonfly_example`
    * - :ref:`SkoptSearch <skopt>`
      - Bayesian Optimization
      - [`Scikit-Optimize <https://scikit-optimize.github.io>`__]
-     - :doc:`/tune/examples/skopt_example`
+     - :doc:`/tune/examples/includes/skopt_example`
    * - :ref:`HyperOptSearch <tune-hyperopt>`
      - Tree-Parzen Estimators
      - [`HyperOpt <http://hyperopt.github.io/hyperopt>`__]
@@ -213,31 +213,31 @@ Here's an overview of all available search algorithms in Tune:
    * - :ref:`BayesOptSearch <bayesopt>`
      - Bayesian Optimization
      - [`BayesianOptimization <https://github.com/fmfn/BayesianOptimization>`__]
-     - :doc:`/tune/examples/bayesopt_example`
+     - :doc:`/tune/examples/includes/bayesopt_example`
    * - :ref:`TuneBOHB <suggest-TuneBOHB>`
      - Bayesian Opt/HyperBand
      - [`BOHB <https://github.com/automl/HpBandSter>`__]
-     - :doc:`/tune/examples/bohb_example`
+     - :doc:`/tune/examples/includes/bohb_example`
    * - :ref:`NevergradSearch <nevergrad>`
      - Gradient-free Optimization
      - [`Nevergrad <https://github.com/facebookresearch/nevergrad>`__]
-     - :doc:`/tune/examples/nevergrad_example`
+     - :doc:`/tune/examples/includes/nevergrad_example`
    * - :ref:`OptunaSearch <tune-optuna>`
      - Optuna search algorithms
      - [`Optuna <https://optuna.org/>`__]
-     - :doc:`/tune/examples/optuna_example`
+     - :doc:`/tune/examples/includes/optuna_example`
    * - :ref:`ZOOptSearch <zoopt>`
      - Zeroth-order Optimization
      - [`ZOOpt <https://github.com/polixir/ZOOpt>`__]
-     - :doc:`/tune/examples/zoopt_example`
+     - :doc:`/tune/examples/includes/zoopt_example`
    * - :ref:`SigOptSearch <sigopt>`
      - Closed source
      - [`SigOpt <https://sigopt.com/>`__]
-     - :doc:`/tune/examples/sigopt_example`
+     - :doc:`/tune/examples/includes/sigopt_example`
    * - :ref:`HEBOSearch <tune-hebo>`
      - Heteroscedastic Evolutionary Bayesian Optimization
      - [`HEBO <https://github.com/huawei-noah/HEBO/tree/master/HEBO>`__]
-     - :doc:`/tune/examples/hebo_example`
+     - :doc:`/tune/examples/includes/hebo_example`
 
 .. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`,
     Tune SearchAlgorithms cannot affect or stop training processes.
@@ -308,7 +308,7 @@ This is currently implemented in ``ResourceChangingScheduler``, which can wrap a
    * - :ref:`ASHA <tune-scheduler-hyperband>`
      - No
      - Yes
-     - :doc:`Link </tune/examples/async_hyperband_example>`
+     - :doc:`Link </tune/examples/includes/async_hyperband_example>`
    * - :ref:`Median Stopping Rule <tune-scheduler-msr>`
      - No
      - Yes
@@ -316,19 +316,19 @@ This is currently implemented in ``ResourceChangingScheduler``, which can wrap a
    * - :ref:`HyperBand <tune-original-hyperband>`
      - Yes
      - Yes
-     - :doc:`Link </tune/examples/hyperband_example>`
+     - :doc:`Link </tune/examples/includes/hyperband_example>`
    * - :ref:`BOHB <tune-scheduler-bohb>`
      - Yes
      - Only TuneBOHB
-     - :doc:`Link </tune/examples/bohb_example>`
+     - :doc:`Link </tune/examples/includes/bohb_example>`
    * - :ref:`Population Based Training <tune-scheduler-pbt>`
      - Yes
      - Not Compatible
-     - :doc:`Link </tune/examples/pbt_function>`
+     - :doc:`Link </tune/examples/includes/pbt_function>`
    * - :ref:`Population Based Bandits <tune-scheduler-pb2>`
      - Yes
      - Not Compatible
-     - :doc:`Basic Example </tune/examples/pb2_example>`, :doc:`PPO example </tune/examples/pb2_ppo_example>`
+     - :doc:`Basic Example </tune/examples/includes/pb2_example>`, :doc:`PPO example </tune/examples/includes/pb2_ppo_example>`
 
 Learn more about trial schedulers in :ref:`the scheduler API documentation<schedulers-ref>`.
 

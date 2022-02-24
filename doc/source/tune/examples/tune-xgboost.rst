@@ -446,7 +446,7 @@ two most promising trials were run for the full 10 iterations.
 You can also ensure that all available resources are being used as the scheduler
 terminates trials, freeing them up. This can be done through the
 ``ResourceChangingScheduler``. An example of this can be found here:
-:doc:`/tune/examples/xgboost_dynamic_resources_example`.
+:doc:`/tune/examples/includes/xgboost_dynamic_resources_example`.
 
 Using fractional GPUs
 ---------------------
@@ -488,8 +488,16 @@ But in larger applications, intelligent hyperparameter tuning can make the
 difference between a model that doesn't seem to learn at all, and a model
 that outperforms all the other ones.
 
-Further References
-------------------
+More XGBoost Examples
+---------------------
+
+- :ref:`XGBoost tutorial <tune-xgboost-ref>`: A guide to tuning XGBoost parameters with Tune.
+- :doc:`/tune/examples/includes/xgboost_example`: Trains a basic XGBoost model with Tune with the function-based API and an XGBoost callback.
+- :doc:`/tune/examples/includes/xgboost_dynamic_resources_example`: Trains a basic XGBoost model with Tune with the class-based API and a ResourceChangingScheduler, ensuring all resources are being used at all time.
+
+
+Learn More
+----------
 
 * `XGBoost Hyperparameter Tuning - A Visual Guide <https://kevinvecmanis.io/machine%20learning/hyperparameter%20tuning/dataviz/python/2019/05/11/XGBoost-Tuning-Visual-Guide.html>`_
 * `Notes on XGBoost Parameter Tuning <https://xgboost.readthedocs.io/en/latest/tutorials/param_tuning.html>`_
