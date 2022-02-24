@@ -25,8 +25,8 @@ from ray.data.impl.util import _check_pyarrow_version
 
 logger = logging.getLogger(__name__)
 
-# Number of files per metadata fetch task.
-FILES_PER_META_FETCH = 6
+PIECES_PER_META_FETCH = 6
+PARALLELIZE_META_FETCH_THRESHOLD = 24
 
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
@@ -58,7 +58,6 @@ class ParquetDatasource(FileBasedDatasource):
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **reader_args,
     ) -> List[ReadTask]:
-
         """Creates and returns read tasks for a Parquet file-based datasource."""
         # NOTE: We override the base class FileBasedDatasource.prepare_read
         # method in order to leverage pyarrow's ParquetDataset abstraction,
@@ -174,7 +173,10 @@ class ParquetDatasource(FileBasedDatasource):
         else:
             inferred_schema = schema
         read_tasks = []
-        metadata = _fetch_metadata_remotely(files_to_read, filesystem, **dataset_kwargs)
+        if len(files_to_read) > PARALLELIZE_META_FETCH_THRESHOLD:
+            metadata = _fetch_metadata_remotely(files_to_read, filesystem, **dataset_kwargs)
+        else:
+            metadata = _fetch_metadata(files_to_read, filesystem, **dataset_kwargs)
         for file_data in np.array_split(
             list(zip(files_to_read, metadata)), parallelism
         ):
@@ -215,7 +217,7 @@ def _fetch_metadata_remotely(
 
     remote_fetch_metadata = cached_remote_fn(_fetch_metadata)
     metas = []
-    parallelism = max(1, min(len(files) // FILES_PER_META_FETCH, 100))
+    parallelism = max(1, min(len(files) // PIECES_PER_META_FETCH, 100))
     meta_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
     for fs in np.array_split(files, parallelism):
         if len(fs) == 0:
