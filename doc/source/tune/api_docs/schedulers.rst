@@ -3,58 +3,17 @@
 Trial Schedulers (tune.schedulers)
 ==================================
 
-In Tune, some hyperparameter optimization algorithms are written as "scheduling algorithms". These Trial Schedulers can early terminate bad trials, pause trials, clone trials, and alter hyperparameters of a running trial.
+In Tune, some hyperparameter optimization algorithms are written as "scheduling algorithms".
+These Trial Schedulers can early terminate bad trials, pause trials, clone trials,
+and alter hyperparameters of a running trial.
 
-All Trial Schedulers take in a ``metric``, which is a value returned in the result dict of your Trainable and is maximized or minimized according to ``mode``.
+All Trial Schedulers take in a ``metric``, which is a value returned in the result dict of your
+Trainable and is maximized or minimized according to ``mode``.
 
 .. code-block:: python
 
     tune.run( ... , scheduler=Scheduler(metric="accuracy", mode="max"))
 
-.. _schedulers-ref:
-
-Summary
--------
-
-Tune includes distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, `HyperBand <https://arxiv.org/abs/1603.06560>`__, and `ASHA <https://openreview.net/forum?id=S1Y7OOlRZ>`__. Tune also includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__ and `Population Based Bandits (PB2) <https://arxiv.org/abs/2002.02518>`__.
-
-.. tip:: The easiest scheduler to start with is the ``ASHAScheduler`` which will aggressively terminate low-performing trials.
-
-When using schedulers, you may face compatibility issues, as shown in the below compatibility matrix. Certain schedulers cannot be used with Search Algorithms, and certain schedulers require :ref:`checkpointing to be implemented <tune-checkpoint-syncing>`.
-
-Schedulers can dynamically change trial resource requirements during tuning. This is currently implemented in ``ResourceChangingScheduler``, which can wrap around any other scheduler.
-
-.. list-table:: TrialScheduler Feature Compatibility Matrix
-   :header-rows: 1
-
-   * - Scheduler
-     - Need Checkpointing?
-     - SearchAlg Compatible?
-     - Example
-   * - :ref:`ASHA <tune-scheduler-hyperband>`
-     - No
-     - Yes
-     - :doc:`Link </tune/examples/async_hyperband_example>`
-   * - :ref:`Median Stopping Rule <tune-scheduler-msr>`
-     - No
-     - Yes
-     - :ref:`Link <tune-scheduler-msr>`
-   * - :ref:`HyperBand <tune-original-hyperband>`
-     - Yes
-     - Yes
-     - :doc:`Link </tune/examples/hyperband_example>`
-   * - :ref:`BOHB <tune-scheduler-bohb>`
-     - Yes
-     - Only TuneBOHB
-     - :doc:`Link </tune/examples/bohb_example>`
-   * - :ref:`Population Based Training <tune-scheduler-pbt>`
-     - Yes
-     - Not Compatible
-     - :doc:`Link </tune/examples/pbt_function>`
-   * - :ref:`Population Based Bandits <tune-scheduler-pb2>`
-     - Yes
-     - Not Compatible
-     - :doc:`Basic Example </tune/examples/pb2_example>`, :doc:`PPO example </tune/examples/pb2_ppo_example>`
 
 .. _tune-scheduler-hyperband:
 

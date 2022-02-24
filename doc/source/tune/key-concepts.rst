@@ -5,6 +5,7 @@ Key Concepts
 ============
 
 .. TODO: should we introduce checkpoints as well?
+.. TODO: should we at least mention "Stopper" classes here?
 
 Let's quickly walk through the key concepts you need to know to use Tune.
 If you want to see practical tutorials right away, go visit our :ref:`user guides<tune-guides>`.
@@ -172,9 +173,92 @@ Tune automatically converts the provided search space into the search
 spaces the search algorithms and underlying libraries expect.
 See the :ref:`Search Algorithm API documentation <tune-search-alg>` for more details.
 
+Here's an overview of all available search algorithms in Tune:
+
+.. list-table::
+   :widths: 5 5 2 10
+   :header-rows: 1
+
+   * - SearchAlgorithm
+     - Summary
+     - Website
+     - Code Example
+   * - :ref:`Random search/grid search <tune-basicvariant>`
+     - Random search/grid search
+     -
+     - :doc:`/tune/examples/tune_basic_example`
+   * - :ref:`AxSearch <tune-ax>`
+     - Bayesian/Bandit Optimization
+     - [`Ax <https://ax.dev/>`__]
+     - :doc:`/tune/examples/ax_example`
+   * - :ref:`BlendSearch <BlendSearch>`
+     - Blended Search
+     - [`Bs <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
+     - :doc:`/tune/examples/blendsearch_example`
+   * - :ref:`CFO <CFO>`
+     - Cost-Frugal hyperparameter Optimization
+     - [`Cfo <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
+     - :doc:`/tune/examples/cfo_example`
+   * - :ref:`DragonflySearch <Dragonfly>`
+     - Scalable Bayesian Optimization
+     - [`Dragonfly <https://dragonfly-opt.readthedocs.io/>`__]
+     - :doc:`/tune/examples/dragonfly_example`
+   * - :ref:`SkoptSearch <skopt>`
+     - Bayesian Optimization
+     - [`Scikit-Optimize <https://scikit-optimize.github.io>`__]
+     - :doc:`/tune/examples/skopt_example`
+   * - :ref:`HyperOptSearch <tune-hyperopt>`
+     - Tree-Parzen Estimators
+     - [`HyperOpt <http://hyperopt.github.io/hyperopt>`__]
+     - :doc:`/tune/examples/hyperopt_example`
+   * - :ref:`BayesOptSearch <bayesopt>`
+     - Bayesian Optimization
+     - [`BayesianOptimization <https://github.com/fmfn/BayesianOptimization>`__]
+     - :doc:`/tune/examples/bayesopt_example`
+   * - :ref:`TuneBOHB <suggest-TuneBOHB>`
+     - Bayesian Opt/HyperBand
+     - [`BOHB <https://github.com/automl/HpBandSter>`__]
+     - :doc:`/tune/examples/bohb_example`
+   * - :ref:`NevergradSearch <nevergrad>`
+     - Gradient-free Optimization
+     - [`Nevergrad <https://github.com/facebookresearch/nevergrad>`__]
+     - :doc:`/tune/examples/nevergrad_example`
+   * - :ref:`OptunaSearch <tune-optuna>`
+     - Optuna search algorithms
+     - [`Optuna <https://optuna.org/>`__]
+     - :doc:`/tune/examples/optuna_example`
+   * - :ref:`ZOOptSearch <zoopt>`
+     - Zeroth-order Optimization
+     - [`ZOOpt <https://github.com/polixir/ZOOpt>`__]
+     - :doc:`/tune/examples/zoopt_example`
+   * - :ref:`SigOptSearch <sigopt>`
+     - Closed source
+     - [`SigOpt <https://sigopt.com/>`__]
+     - :doc:`/tune/examples/sigopt_example`
+   * - :ref:`HEBOSearch <tune-hebo>`
+     - Heteroscedastic Evolutionary Bayesian Optimization
+     - [`HEBO <https://github.com/huawei-noah/HEBO/tree/master/HEBO>`__]
+     - :doc:`/tune/examples/hebo_example`
+
+.. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`,
+    Tune SearchAlgorithms cannot affect or stop training processes.
+    However, you can use them together to early stop the evaluation of bad trials.
+
+In case you want to implement your own search algorithm, the interface is easy to implement,
+you can :ref:`read the instructions here <byo-algo>`.
+
+Tune also provides helpful utilities to use with Search Algorithms:
+
+ * :ref:`repeater`: Support for running each *sampled hyperparameter* with multiple random seeds.
+ * :ref:`limiter`: Limits the amount of concurrent trials when running optimization.
+ * :ref:`shim`: Allows creation of the search algorithm object given a string.
+
+
 Note that in the example above we  tell Tune to ``stop`` after ``20`` training iterations.
 This way of stopping trials with explicit rules is useful, but in many cases we can do even better with
 `schedulers`.
+
+.. _schedulers-ref:
 
 Schedulers
 ----------
@@ -189,19 +273,63 @@ hyperparameters of running trials, potentially making your hyperparameter tuning
 Unlike search algorithms, :ref:`Trial Scheduler <tune-schedulers>` do not select which hyperparameter
 configurations to evaluate.
 
-TODO
-However, you can use them together.
-
 Here's a quick example of using the so-called ``HyperBand`` scheduler to tune an experiment.
-Just pass in a ``scheduler`` argument to ``tune.run()``:
+All schedulers take in a ``metric``, which is the value reported by your trainable.
+The ``metric`` is then maximized or minimized according to the ``mode`` you provide.
+To use a scheduler, just pass in a ``scheduler`` argument to ``tune.run()``:
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
     :start-after: __hyperband_start__
     :end-before: __hyperband_end__
 
-:ref:`Population-based Training <tune-scheduler-pbt>` and :ref:`ASHA <tune-scheduler-hyperband>`
-are other examples of popular optimization algorithms implemented as Trial Schedulers.
+
+Tune includes distributed implementations of early stopping algorithms such as
+`Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, `HyperBand <https://arxiv.org/abs/1603.06560>`__,
+and `ASHA <https://openreview.net/forum?id=S1Y7OOlRZ>`__.
+Tune also includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__
+and `Population Based Bandits (PB2) <https://arxiv.org/abs/2002.02518>`__.
+
+.. tip:: The easiest scheduler to start with is the ``ASHAScheduler`` which will aggressively terminate low-performing trials.
+
+When using schedulers, you may face compatibility issues, as shown in the below compatibility matrix.
+Certain schedulers cannot be used with search algorithms,
+and certain schedulers require :ref:`checkpointing to be implemented <tune-checkpoint-syncing>`.
+
+Schedulers can dynamically change trial resource requirements during tuning.
+This is currently implemented in ``ResourceChangingScheduler``, which can wrap around any other scheduler.
+
+.. list-table:: Scheduler Compatibility Matrix
+   :header-rows: 1
+
+   * - Scheduler
+     - Need Checkpointing?
+     - SearchAlg Compatible?
+     - Example
+   * - :ref:`ASHA <tune-scheduler-hyperband>`
+     - No
+     - Yes
+     - :doc:`Link </tune/examples/async_hyperband_example>`
+   * - :ref:`Median Stopping Rule <tune-scheduler-msr>`
+     - No
+     - Yes
+     - :ref:`Link <tune-scheduler-msr>`
+   * - :ref:`HyperBand <tune-original-hyperband>`
+     - Yes
+     - Yes
+     - :doc:`Link </tune/examples/hyperband_example>`
+   * - :ref:`BOHB <tune-scheduler-bohb>`
+     - Yes
+     - Only TuneBOHB
+     - :doc:`Link </tune/examples/bohb_example>`
+   * - :ref:`Population Based Training <tune-scheduler-pbt>`
+     - Yes
+     - Not Compatible
+     - :doc:`Link </tune/examples/pbt_function>`
+   * - :ref:`Population Based Bandits <tune-scheduler-pb2>`
+     - Yes
+     - Not Compatible
+     - :doc:`Basic Example </tune/examples/pb2_example>`, :doc:`PPO example </tune/examples/pb2_ppo_example>`
 
 Learn more about trial schedulers in :ref:`the scheduler API documentation<schedulers-ref>`.
 

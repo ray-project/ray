@@ -12,87 +12,12 @@ You can utilize these search algorithms as follows:
     from ray.tune.suggest.hyperopt import HyperOptSearch
     tune.run(my_function, search_alg=HyperOptSearch(...))
 
-Summary
--------
-
-.. list-table::
-   :widths: 5 5 2 10
-   :header-rows: 1
-
-   * - SearchAlgorithm
-     - Summary
-     - Website
-     - Code Example
-   * - :ref:`Random search/grid search <tune-basicvariant>`
-     - Random search/grid search
-     -
-     - :doc:`/tune/examples/tune_basic_example`
-   * - :ref:`AxSearch <tune-ax>`
-     - Bayesian/Bandit Optimization
-     - [`Ax <https://ax.dev/>`__]
-     - :doc:`/tune/examples/ax_example`
-   * - :ref:`BlendSearch <BlendSearch>`
-     - Blended Search
-     - [`Bs <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
-     - :doc:`/tune/examples/blendsearch_example`
-   * - :ref:`CFO <CFO>`
-     - Cost-Frugal hyperparameter Optimization
-     - [`Cfo <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
-     - :doc:`/tune/examples/cfo_example`
-   * - :ref:`DragonflySearch <Dragonfly>`
-     - Scalable Bayesian Optimization
-     - [`Dragonfly <https://dragonfly-opt.readthedocs.io/>`__]
-     - :doc:`/tune/examples/dragonfly_example`
-   * - :ref:`SkoptSearch <skopt>`
-     - Bayesian Optimization
-     - [`Scikit-Optimize <https://scikit-optimize.github.io>`__]
-     - :doc:`/tune/examples/skopt_example`
-   * - :ref:`HyperOptSearch <tune-hyperopt>`
-     - Tree-Parzen Estimators
-     - [`HyperOpt <http://hyperopt.github.io/hyperopt>`__]
-     - :doc:`/tune/examples/hyperopt_example`
-   * - :ref:`BayesOptSearch <bayesopt>`
-     - Bayesian Optimization
-     - [`BayesianOptimization <https://github.com/fmfn/BayesianOptimization>`__]
-     - :doc:`/tune/examples/bayesopt_example`
-   * - :ref:`TuneBOHB <suggest-TuneBOHB>`
-     - Bayesian Opt/HyperBand
-     - [`BOHB <https://github.com/automl/HpBandSter>`__]
-     - :doc:`/tune/examples/bohb_example`
-   * - :ref:`NevergradSearch <nevergrad>`
-     - Gradient-free Optimization
-     - [`Nevergrad <https://github.com/facebookresearch/nevergrad>`__]
-     - :doc:`/tune/examples/nevergrad_example`
-   * - :ref:`OptunaSearch <tune-optuna>`
-     - Optuna search algorithms
-     - [`Optuna <https://optuna.org/>`__]
-     - :doc:`/tune/examples/optuna_example`
-   * - :ref:`ZOOptSearch <zoopt>`
-     - Zeroth-order Optimization
-     - [`ZOOpt <https://github.com/polixir/ZOOpt>`__]
-     - :doc:`/tune/examples/zoopt_example`
-   * - :ref:`SigOptSearch <sigopt>`
-     - Closed source
-     - [`SigOpt <https://sigopt.com/>`__]
-     - :doc:`/tune/examples/sigopt_example`
-   * - :ref:`HEBOSearch <tune-hebo>`
-     - Heteroscedastic Evolutionary Bayesian Optimization
-     - [`HEBO <https://github.com/huawei-noah/HEBO/tree/master/HEBO>`__]
-     - :doc:`/tune/examples/hebo_example`
-
-.. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`, Tune SearchAlgorithms cannot affect or stop training processes. However, you can use them together to **early stop the evaluation of bad trials**.
-
-**Want to use your own algorithm?** The interface is easy to implement. :ref:`Read instructions here <byo-algo>`.
-
-
-Tune also provides helpful utilities to use with Search Algorithms:
-
- * :ref:`repeater`: Support for running each *sampled hyperparameter* with multiple random seeds.
- * :ref:`limiter`: Limits the amount of concurrent trials when running optimization.
- * :ref:`shim`: Allows creation of the search algorithm object given a string.
 
 Saving and Restoring
 --------------------
+
+.. TODO: what to do about this section? It doesn't really belong here and is not worth its own guide.
+.. TODO: at least check that this pseudo-code runs.
 
 Certain search algorithms have ``save/restore`` implemented,
 allowing reuse of learnings across multiple tuning runs.
