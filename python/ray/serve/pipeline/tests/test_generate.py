@@ -7,7 +7,11 @@ from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
 )
-from ray.serve.pipeline.tests.test_modules import Model, Combine
+from ray.serve.pipeline.tests.test_modules import (
+    Model,
+    Combine,
+    NESTED_HANDLE_KEY,
+)
 
 
 def _validate_consistent_output(
@@ -36,7 +40,9 @@ def test_simple_single_class(serve_instance):
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 1
     deployments[0].deploy()
-    _validate_consistent_output(deployments[0], ray_dag, "Model", input=1, output=0.6)
+    _validate_consistent_output(
+        deployments[0], ray_dag, "Model", input=1, output=0.6
+    )
 
 
 def test_single_class_with_valid_ray_options(serve_instance):
@@ -97,7 +103,9 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
     for deployment in deployments:
         deployment.deploy()
 
-    _validate_consistent_output(deployments[2], ray_dag, "Combine", input=1, output=5)
+    _validate_consistent_output(
+        deployments[2], ray_dag, "Combine", input=1, output=5
+    )
 
 
 def test_shared_deployment_handle(serve_instance):
@@ -119,7 +127,9 @@ def test_shared_deployment_handle(serve_instance):
     for deployment in deployments:
         deployment.deploy()
 
-    _validate_consistent_output(deployments[1], ray_dag, "Combine", input=1, output=4)
+    _validate_consistent_output(
+        deployments[1], ray_dag, "Combine", input=1, output=4
+    )
 
 
 def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
@@ -129,7 +139,24 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     replace args with deployment handle and parse correct deployment instances.
     """
     # TODO: (jiaodong) Support nested deployment args
-    pass
+    m1 = Model._bind(2)
+    m2 = Model._bind(3)
+    combine = Combine._bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
+    ray_dag = combine.__call__._bind(InputNode())
+    print(f"Ray DAG: \n{ray_dag}")
+
+    serve_root_dag = ray_dag._apply_recursive(
+        lambda node: transform_ray_dag_to_serve_dag(node)
+    )
+    print(f"Serve DAG: \n{serve_root_dag}")
+    deployments = extract_deployments_from_serve_dag(serve_root_dag)
+    assert len(deployments) == 3
+    for deployment in deployments:
+        deployment.deploy()
+
+    _validate_consistent_output(
+        deployments[2], ray_dag, "Combine", input=1, output=5
+    )
 
 
 def test_simple_function(serve_instance):

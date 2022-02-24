@@ -66,9 +66,34 @@ def _replace_init_args_with_deployment_handle(
 ) -> Tuple[Tuple[Any], Dict[str, Any]]:
     """
     Deployment can be passed into other DAGNodes as init args. This is supported
-    pattern in ray DAG. Thus we need convert them into deployment handles in
-    ray serve DAG to make end to end DAG executable.
+    pattern in ray DAG that user can instantiate and pass class instances as
+    init args to others.
+
+    However in ray serve we send init args via .remote() that requires pickling,
+    and all DAGNode types are not picklable by design.
+
+    Thus we need convert all DeploymentNode used in init args into deployment
+    handles (executable and picklable) in ray serve DAG to make end to end
+    DAG executable.
     """
+    # Options
+    """
+    Set pieces:
+      - DeploymentNode can separate from its encapsulated Deployment instance.
+      - We need to only let Deployment have correct init args+kwargs.
+      - DeploymentNode is backbone for traversal.
+      - Serve DAG Node needs to be executable by Ray, needed for HTTP.
+
+    1) Copy current node, replace all args + kwargs + others, feed into deployment body
+    2) Two pass, class -> deployment node first, convert deployment body in 2nd pass
+    3) Just replace all DeploymentNode with handle
+    4) Make DeploymentNode executable in a ray dag
+    """
+    # children_dag_nodes = self._get_all_child_nodes()
+    #     for child in children_dag_nodes:
+    #         if isinstance(child, InputNode):
+    #             return True
+
     init_args = []
     init_kwargs = {}
 
