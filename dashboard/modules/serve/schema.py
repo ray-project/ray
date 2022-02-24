@@ -293,14 +293,14 @@ class DeploymentSchema(BaseModel):
         return v
 
 
-class NamedDeploymentStatusInfo(BaseModel):
+class StatusSchema(BaseModel):
     name: str = Field(..., description="The status' deployment's name.")
     status_info: DeploymentStatusInfo = Field(default=None)
 
 
 class ServeInstanceSchema(BaseModel):
     deployments: List[DeploymentSchema] = Field(...)
-    statuses: List[NamedDeploymentStatusInfo] = Field(default=None)
+    statuses: List[StatusSchema] = Field(default=None)
 
 
 def deployment_to_schema(d: Deployment) -> DeploymentSchema:
@@ -355,11 +355,11 @@ def serve_instance_to_schema(
 ) -> ServeInstanceSchema:
     schemas = [deployment_to_schema(d) for d in deployments]
     if statuses is not None:
-        named_statuses = [
-            NamedDeploymentStatusInfo(name=name, status_info=status_info)
+        status_schemas = [
+            StatusSchema(name=name, status_info=status_info)
             for name, status_info in statuses.items()
         ]
-        return ServeInstanceSchema(deployments=schemas, statuses=named_statuses)
+        return ServeInstanceSchema(deployments=schemas, statuses=status_schemas)
     return ServeInstanceSchema(deployments=schemas)
 
 

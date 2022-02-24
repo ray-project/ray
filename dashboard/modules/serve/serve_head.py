@@ -6,7 +6,7 @@ import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as optional_utils
 
 from ray import serve
-from ray.serve.api import deploy_group
+from ray.serve.api import deploy_group, get_deployment_statuses
 from ray.dashboard.modules.serve.schema import (
     ServeInstanceSchema,
     serve_instance_to_schema,
@@ -27,7 +27,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployments(self, req: Request) -> Response:
         deployments = list(serve.list_deployments().values())
-        statuses = serve.get_deployment_statuses()
+        statuses = get_deployment_statuses()
         serve_instance_schema = serve_instance_to_schema(
             deployments=deployments, statuses=statuses
         )
