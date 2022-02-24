@@ -154,9 +154,9 @@ class Dataset(Generic[T]):
             ...        return self.model(batch)
 
             >>> # Apply the transform in parallel on GPUs. Since
-            >>> # compute="actors[n]", the transform will be applied on an
-            >>> # autoscaling pool of Ray actors, each allocated 1 GPU by Ray.
-            >>> ds.map(CachedModel, compute="actors[8]", num_gpus=1)
+            >>> # compute=ray.data.ActorPool(2, 8) the transform will be applied on an
+            >>> # autoscaling pool of 2-8 Ray actors, each allocated 1 GPU by Ray.
+            >>> ds.map(CachedModel, compute=ray.data.ActorPool(2, 8), num_gpus=1)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -164,8 +164,7 @@ class Dataset(Generic[T]):
             fn: The function to apply to each record, or a class type
                 that can be instantiated to create such a callable.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, "actors[n]" for an actor pool of size `n`, or "actors" to
-                use an autoscaling Ray actor pool.
+                tasks, or ActorPool(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -216,11 +215,11 @@ class Dataset(Generic[T]):
             ...        return self.model(item)
 
             >>> # Apply the transform in parallel on GPUs. Since
-            >>> # compute="actors[n]", the transform will be applied on an
-            >>> # autoscaling pool of Ray actors, each allocated 1 GPU by Ray.
+            >>> # compute=ray.data.ActorPool(2, 8) the transform will be applied on an
+            >>> # autoscaling pool of 2-8 Ray actors, each allocated 1 GPU by Ray.
             >>> ds.map_batches(
             ...    CachedModel,
-            ...    batch_size=256, compute="actors[8]", num_gpus=1)
+            ...    batch_size=256, compute=ray.data.ActorPool(2, 8), num_gpus=1)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -230,8 +229,7 @@ class Dataset(Generic[T]):
             batch_size: Request a specific batch size, or None to use entire
                 blocks as batches. Defaults to a system-chosen batch size.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, "actors[n]" for an actor pool of size `n`, or "actors" to
-                use an autoscaling Ray actor pool.
+                tasks, or ActorPool(min, max) to use an autoscaling actor pool.
             batch_format: Specify "native" to use the native block format
                 (promotes Arrow to pandas), "pandas" to select
                 ``pandas.DataFrame`` as the batch format,
@@ -332,8 +330,7 @@ class Dataset(Generic[T]):
             fn: Map function generating the column values given a batch of
                 records in pandas format.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, "actors[n]" for an actor pool of size `n`, or "actors" to
-                use an autoscaling Ray actor pool.
+                tasks, or ActorPool(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -370,8 +367,7 @@ class Dataset(Generic[T]):
             fn: The function to apply to each record, or a class type
                 that can be instantiated to create such a callable.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, "actors[n]" for an actor pool of size `n`, or "actors" to
-                use an autoscaling Ray actor pool.
+                tasks, or ActorPool(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -418,8 +414,7 @@ class Dataset(Generic[T]):
             fn: The predicate to apply to each record, or a class type
                 that can be instantiated to create such a callable.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, "actors[n]" for an actor pool of size `n`, or "actors" to
-                use an autoscaling Ray actor pool.
+                tasks, or ActorPool(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """

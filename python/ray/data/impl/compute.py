@@ -1,7 +1,7 @@
 from typing import TypeVar, Any, Union, Callable, List, Tuple, Optional
-import re
 
 import ray
+from ray.util.annotations import PublicAPI
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -122,14 +122,15 @@ class TaskPool(ComputeStrategy):
         return BlockList(list(new_blocks), list(new_metadata))
 
 
+@PublicAPI
 class ActorPool(ComputeStrategy):
-    def __init__(self, num_actors: Optional[int] = None):
-        self.workers = []
-        self.num_actors = num_actors
-
-    def __del__(self):
-        for w in self.workers:
-            w.__ray_terminate__.remote()
+    def __init__(self, min_size: int = 1, max_size: Optional[int] = None):
+        if min_size < 1:
+            raise ValueError("min_size must be > 1", min_size)
+        if max_size is not None and min_size > max_size:
+            raise ValueError("min_size must be <= max_size", min_size, max_size)
+        self.min_size = min_size
+        self.max_size = max_size or float("inf")
 
     def apply(
         self,
@@ -170,11 +171,8 @@ class ActorPool(ComputeStrategy):
 
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
-        if self.num_actors:
-            self.workers = [BlockWorker.remote() for _ in range(self.num_actors)]
-        else:
-            self.workers = [BlockWorker.remote()]
-        tasks = {w.ready.remote(): w for w in self.workers}
+        workers = [BlockWorker.remote() for _ in range(self.min_size)]
+        tasks = {w.ready.remote(): w for w in workers}
         metadata_mapping = {}
         ready_workers = set()
 
@@ -183,13 +181,16 @@ class ActorPool(ComputeStrategy):
                 list(tasks), timeout=0.01, num_returns=1, fetch_local=False
             )
             if not ready:
-                if not self.num_actors and len(ready_workers) / len(self.workers) > 0.8:
+                if (
+                    len(workers) < self.max_size
+                    and len(ready_workers) / len(workers) > 0.8
+                ):
                     w = BlockWorker.remote()
-                    self.workers.append(w)
+                    workers.append(w)
                     tasks[w.ready.remote()] = w
                     map_bar.set_description(
                         "Map Progress ({} actors {} pending)".format(
-                            len(ready_workers), len(self.workers) - len(ready_workers)
+                            len(ready_workers), len(workers) - len(ready_workers)
                         )
                     )
                 continue
@@ -206,7 +207,7 @@ class ActorPool(ComputeStrategy):
                 ready_workers.add(worker)
                 map_bar.set_description(
                     "Map Progress ({} actors {} pending)".format(
-                        len(ready_workers), len(self.workers) - len(ready_workers)
+                        len(ready_workers), len(workers) - len(ready_workers)
                     )
                 )
 
@@ -261,9 +262,6 @@ def cache_wrapper(
         return fn
 
 
-ACTOR_POOL_REGEX = "actors\[(\d+)\]"
-
-
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
     if not compute_spec or compute_spec == "tasks":
         return TaskPool()
@@ -272,11 +270,4 @@ def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
     elif isinstance(compute_spec, ComputeStrategy):
         return compute_spec
     else:
-        if isinstance(compute_spec, str):
-            match = re.match(ACTOR_POOL_REGEX, compute_spec)
-            if match:
-                num_actors = int(match.group(1))
-                if num_actors == 0:
-                    raise ValueError("`n` in actors[n] must be > 0")
-                return ActorPool(num_actors)
-        raise ValueError("compute must be one of [`tasks`, `actors`, `actors[n]`]")
+        raise ValueError("compute must be one of [`tasks`, `actors`, ComputeStrategy]")
