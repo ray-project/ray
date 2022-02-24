@@ -209,8 +209,10 @@ class DatasetStats:
         out = ""
         if self.parents:
             for p in self.parents:
-                out += p.summary_string(already_printed)
-                out += "\n"
+                parent_sum = p.summary_string(already_printed)
+                if parent_sum:
+                    out += parent_sum
+                    out += "\n"
         first = True
         for stage_name, metadata in self.stages.items():
             stage_uuid = self.dataset_uuid + stage_name
