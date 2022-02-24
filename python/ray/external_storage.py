@@ -9,7 +9,7 @@ from collections import namedtuple
 from typing import List, IO, Tuple
 
 import ray
-from ray.ray_constants import DEFAULT_OBJECT_PREFIX
+from ray.ray_constants import DEFAULT_OBJECT_PREFIX, DEFAULT_SPILLING_BUFFER_SIZE
 from ray._raylet import ObjectRef
 
 ParsedURL = namedtuple("ParsedURL", "base_url, offset, size")
@@ -294,7 +294,7 @@ class FileSystemStorage(ExternalStorage):
         first_ref = object_refs[0]
         filename = f"{first_ref.hex()}-multi-{len(object_refs)}"
         url = f"{os.path.join(directory_path, filename)}"
-        with open(url, "wb") as f:
+        with open(url, "wb", buffering=DEFAULT_SPILLING_BUFFER_SIZE) as f:
             return self._write_multiple_objects(f, object_refs, owner_addresses, url)
 
     def restore_spilled_objects(

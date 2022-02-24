@@ -290,6 +290,8 @@ MAX_INT64_VALUE = 9223372036854775807
 
 # Object Spilling related constants
 DEFAULT_OBJECT_PREFIX = "ray_spilled_objects"
+# The buffer size to use when fusing objects to spill in bytes
+DEFAULT_SPILLING_BUFFER_SIZE = 1 * 1024 * 1024
 
 GCS_PORT_ENVIRONMENT_VARIABLE = "RAY_GCS_SERVER_PORT"
 
