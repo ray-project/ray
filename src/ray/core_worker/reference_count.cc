@@ -151,6 +151,12 @@ void ReferenceCounter::AddObjectRefStats(
     for (const auto &obj_id : ref.second.contained_in_owned) {
       ref_proto->add_contained_in_owned(obj_id.Binary());
     }
+
+    if (ref.second.owned_by_us && !ref.second.pending_creation) {
+      // For finished tasks only, we set the status here instead of in the
+      // TaskManager in case the task spec has already been GCed.
+      ref_proto->set_task_status(rpc::TaskStatus::FINISHED);
+    }
   }
   // Also include any unreferenced objects that are pinned in memory.
   for (const auto &entry : pinned_objects) {
