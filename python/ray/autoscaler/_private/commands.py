@@ -136,7 +136,8 @@ def debug_status(status, error) -> str:
             autoscaler_summary = AutoscalerSummary(**autoscaler_summary_dict)
             report_time = datetime.datetime.fromtimestamp(timestamp)
             status = format_info_string(
-                lm_summary, autoscaler_summary, time=report_time)
+                lm_summary, autoscaler_summary, time=report_time
+            )
         else:
             status = "No cluster status."
     else:
