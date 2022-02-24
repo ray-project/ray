@@ -1,5 +1,3 @@
-:orphan:
-
 A Guide To Logging & Outputs in Tune
 ====================================
 

@@ -1,5 +1,3 @@
-:orphan:
-
 .. _tune-search-space-tutorial:
 
 Working with Tune Search Spaces

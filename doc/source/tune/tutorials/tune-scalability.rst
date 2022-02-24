@@ -1,9 +1,9 @@
-.. _tune-scalability:
+:orphan:
 
-Scalability and overhead benchmarks
+Scalability and Overhead Benchmarks
 ===================================
 
-We conducted a series of microbenchmarks where we evaluated the scalability of Ray Tune and analyzed the
+We conducted a series of micro-benchmarks where we evaluated the scalability of Ray Tune and analyzed the
 performance overhead we observed. The results from these benchmarks are reflected in the documentation,
 e.g. when we make suggestions on :ref:`how to remove performance bottlenecks <tune-bottlenecks>`.
 

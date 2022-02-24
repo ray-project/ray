@@ -62,8 +62,7 @@ Given concrete choices for ``a``, ``b`` and ``x`` we can evaluate the objective 
         :start-after: __class_api_start__
         :end-before: __class_api_end__
 
-    .. tip:: Do not use ``tune.report`` within a ``Trainable`` class.
-    .. TODO: why not? explain.
+    .. tip:: ``tune.report`` can't be used within a ``Trainable`` class.
 
 Learn more about the details of :ref:`Trainables here<trainable-docs>`
 and :ref:`have a look at our examples <tune-general-examples>`.
