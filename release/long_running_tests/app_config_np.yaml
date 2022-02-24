@@ -10,6 +10,7 @@ python:
     - gym[atari]
     - pytest
     - tensorflow
+    - torch
   conda_packages: []
 
 post_build_cmds:
