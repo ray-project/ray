@@ -121,7 +121,12 @@ class DeploymentConfig(BaseModel):
 
     autoscaling_config: Optional[AutoscalingConfig] = None
 
+    # This flag is used to let replica know they are deplyed from
+    # a different language.
     is_cross_language: bool = False
+
+    # This flag is used to let controller know which language does
+    # the deploymnent use.
     deployment_language: Any = DeploymentLanguage.PYTHON
 
     class Config:

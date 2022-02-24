@@ -279,6 +279,7 @@ class ActorReplicaWrapper:
         ).remote(*init_args)
 
         # Perform auto method name translation for java handles.
+        # See https://github.com/ray-project/ray/issues/21474
         if self._is_cross_language:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
 
