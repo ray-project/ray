@@ -2,7 +2,7 @@
 
 # This scripts creates a kind cluster and verify it works
 
-set -x
+set -xe
 
 # Install kind
 wget https://github.com/kubernetes-sigs/kind/releases/download/v0.11.1/kind-linux-amd64
@@ -10,35 +10,22 @@ chmod +x kind-linux-amd64
 mv ./kind-linux-amd64 /usr/bin/kind
 kind --help
 
-#Install kubectl
+# Install kubectl
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
 chmod +x kubectl
 mv ./kubectl /usr/bin/kubectl
 kubectl version --client
 
-# https://github.com/kubernetes-sigs/kind/issues/273#issuecomment-622180144
-#export KIND_EXPERIMENTAL_DOCKER_NETWORK=dind-network
+# Create the cluster
 time kind create cluster --wait 120s --config ./ci/travis/kind.config.yaml
 docker ps
-docker network ls
-# copy it to the dind container
-cp ~/.kube/config /ray-mount/kube-config
-chmod 777 /ray-mount/kube-config
 
-shopt -s expand_aliases
-alias kubectl='docker run --network host --mount type=bind,src=/ray/kube-config,dst=/.kube/config --env KUBECONFIG=/.kube/config bitnami/kubectl:latest'
-kubectl version
-kubectl cluster-info --context kind-kind
-kubectl get nodes
-kubectl get pods
-
-unalias kubectl
-cat ~/.kube/config
+# Now the kind node is running, it exposes port 6443 in the dind-daemon network.
 kubectl config set clusters.kind-kind.server https://docker:6443
-cat ~/.kube/config
-kubectl version
-kubectl cluster-info --context kind-kind
-kubectl get nodes
-kubectl get pods
 
-exit 1
+# Verify the kubectl works
+kubectl version
+kubectl cluster-info
+kubectl get nodes
+kubectl get pods --all-namespaces
+
