@@ -57,7 +57,11 @@ from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.plan import ExecutionPlan
 from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.stats import DatasetStats, get_or_create_stats_actor
+from ray.data.impl.stats import (
+    DatasetStats,
+    get_or_create_stats_actor,
+    _StatsActorWrapper,
+)
 from ray.data.impl.util import _get_spread_resources_iter, _lazy_import_pyarrow_dataset
 
 T = TypeVar("T")
@@ -282,11 +286,15 @@ def read_datasource(
     calls: List[Callable[[], ObjectRef[MaybeBlockPartition]]] = []
     metadata: List[BlockPartitionMetadata] = []
 
+    # Wrap with type on which we can register a serializer so we can support
+    # out-of-band serialization.
+    stats_actor_wrapper = _StatsActorWrapper(stats_actor)
+
     for i, task in enumerate(read_tasks):
         calls.append(
             lambda i=i, task=task, resources=next(resource_iter): remote_read.options(
                 **ray_remote_args, resources=resources
-            ).remote(i, task, stats_actor)
+            ).remote(i, task, stats_actor_wrapper.handle)
         )
         metadata.append(task.get_metadata())
 
@@ -302,7 +310,7 @@ def read_datasource(
     stats = DatasetStats(
         stages={"read": metadata},
         parent=None,
-        stats_actor=stats_actor,
+        stats_actor=stats_actor_wrapper,
         stats_uuid=stats_uuid,
     )
     return Dataset(

@@ -4,9 +4,9 @@ import uuid
 if TYPE_CHECKING:
     import pyarrow
 
-import ray
 from ray.data.context import DatasetContext
 from ray.data.block import Block
+from ray.data.datasource import ReadTask
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.compute import get_compute
 from ray.data.impl.stats import DatasetStats
@@ -30,6 +30,7 @@ class ExecutionPlan:
         self._out_blocks = None
         self._in_stats = stats
         self._out_stats = None
+        self._out_stage = None
         self._stages = []
         self._dataset_uuid = dataset_uuid or uuid.uuid4().hex
         if not stats.dataset_uuid:
@@ -44,18 +45,18 @@ class ExecutionPlan:
         Returns:
             A new ExecutionPlan with this stage appended.
         """
+        copy = ExecutionPlan(self._in_blocks, self._in_stats)
         if self._out_blocks:
-            copy = ExecutionPlan(self._out_blocks, self._out_stats)
-            copy._stages = [stage]
-        else:
-            copy = ExecutionPlan(self._in_blocks, self._in_stats)
-            copy._stages = self._stages.copy()
-            copy._stages.append(stage)
+            copy._out_blocks = self._out_blocks
+            copy._out_stats = self._out_stats
+            copy._out_stage = self._out_stage
+        copy._stages = self._stages.copy()
+        copy._stages.append(stage)
         return copy
 
     def initial_num_blocks(self) -> int:
         """Get the estimated number of blocks after applying all plan stages."""
-        if self._out_blocks:
+        if self._out_blocks and self._out_stage == len(self._stages) - 1:
             return self._out_blocks.initial_num_blocks()
         for stage in self._stages[::-1]:
             if stage.num_blocks is not None:
@@ -118,11 +119,18 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
-        if self._out_blocks is None:
+        if self._out_blocks is None or self._out_stage < len(self._stages) - 1:
             self._optimize()
-            blocks = self._in_blocks
-            stats = self._in_stats
-            for stage in self._stages:
+            if self._out_blocks is None:
+                blocks = self._in_blocks
+                stats = self._in_stats
+                i = 0
+            else:
+                blocks = self._out_blocks
+                stats = self._out_stats
+                i = self._out_stage + 1
+            while i < len(self._stages):
+                stage = self._stages[i]
                 stats_builder = stats.child_builder(stage.name)
                 blocks, stage_info = stage(blocks, clear_input_blocks)
                 if stage_info:
@@ -130,18 +138,24 @@ class ExecutionPlan:
                 else:
                     stats = stats_builder.build(blocks)
                 stats.dataset_uuid = uuid.uuid4().hex
+                i += 1
             self._out_blocks = blocks
             self._out_stats = stats
             self._out_stats.dataset_uuid = self._dataset_uuid
+            self._out_stage = len(self._stages) - 1
         return self._out_blocks
 
     def clear(self) -> None:
         """Clear all cached block references of this plan, including input blocks.
 
         This will render the plan un-executable unless the root is a LazyBlockList."""
-        self._in_blocks.clear()
+        if isinstance(self._in_blocks, LazyBlockList) or not isinstance(
+            self._in_blocks._blocks[0], ReadTask
+        ):
+            self._in_blocks.clear()
         self._out_blocks = None
         self._out_stats = None
+        self._out_stage = None
 
     def stats(self) -> DatasetStats:
         """Return stats for this plan, forcing execution if needed."""
@@ -163,6 +177,8 @@ class ExecutionPlan:
             self._in_blocks = block_list
             self._in_stats = DatasetStats(stages={}, parent=None)
             self._stages.insert(0, stage)
+            if self._out_blocks is not None:
+                self._out_stage += 1
 
     def _has_read_stage(self) -> bool:
         """Whether this plan has a read stage for its input."""
@@ -186,15 +202,16 @@ class ExecutionPlan:
         """
         # Generate the "GetReadTasks" stage blocks.
         remote_args = self._in_blocks._read_remote_args
-        blocks = []
+        read_tasks = []
         metadata = []
+        # TODO(Clark): Add CreationStage so we're not shoe-horning read tasks into a
+        # BlockList.
         for i, read_task in enumerate(self._in_blocks._read_tasks):
-            blocks.append(ray.put([read_task]))
+            read_tasks.append(read_task)
             metadata.append(self._in_blocks._metadata[i])
-        block_list = BlockList(blocks, metadata)
+        block_list = BlockList(read_tasks, metadata)
 
-        def block_fn(block: Block) -> Iterable[Block]:
-            [read_task] = block
+        def block_fn(read_task: ReadTask) -> Iterable[Block]:
             for tmp1 in read_task._read_fn():
                 yield tmp1
 
@@ -204,11 +221,14 @@ class ExecutionPlan:
         """Fuses compatible one-to-one stages."""
         optimized_stages = []
         prev_stage = None
-        for stage in self._stages:
+        old_out_stage = self._out_stage
+        for idx, stage in enumerate(self._stages):
             if prev_stage is None:
                 prev_stage = stage
-            elif stage.can_fuse(prev_stage):
+            elif stage.can_fuse(prev_stage) and self._out_stage != idx - 1:
                 prev_stage = stage.fuse(prev_stage)
+                if old_out_stage is not None and idx < old_out_stage:
+                    self._out_stage -= 1
             else:
                 optimized_stages.append(prev_stage)
                 prev_stage = stage

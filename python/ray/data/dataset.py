@@ -34,6 +34,7 @@ import itertools
 import numpy as np
 
 import ray
+import ray.cloudpickle as pickle
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import (
@@ -58,6 +59,7 @@ from ray.data.datasource import (
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
     WriteResult,
+    ReadTask,
 )
 from ray.data.datasource.file_based_datasource import (
     _wrap_arrow_serialization_workaround,
@@ -68,7 +70,11 @@ from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.plan import ExecutionPlan, OneToOneStage, AllToAllStage
-from ray.data.impl.stats import DatasetStats
+from ray.data.impl.stats import (
+    DatasetStats,
+    get_or_create_stats_actor,
+    _StatsActorWrapper,
+)
 from ray.data.impl.compute import cache_wrapper, CallableClass
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
@@ -2719,6 +2725,63 @@ Dict[str, List[str]]]): The names of the columns
         """Enable lazy evaluation (experimental)."""
         self._lazy = True
         return self
+
+    @DeveloperAPI
+    def serialize_out_of_band(self) -> bytes:
+        """
+        Serialize the Dataset for out-of-band use, i.e. for use across different Ray
+        clusters. This method serializes the lineage of the Dataset operations. Note
+        that this will drop all computed data, and that everything will be recomputed
+        from scratch after deserialization.
+
+        Use ``Dataset.deserialize_out_of_band`` to deserialize the serialized bytes
+        into a Dataset.
+
+        Returns:
+            Serialized bytes.
+        """
+        if not isinstance(self._plan._in_blocks, LazyBlockList) and not isinstance(
+            self._plan._in_blocks._blocks[0], ReadTask
+        ):
+            raise ValueError(
+                "Out-of-band serialization is only supported for Datasets created from "
+                "lazy datasources. Explicitly, out-of-band serialization is not "
+                "supported for any ray.data.from_* APIs."
+            )
+        self._plan.clear()
+        self._lazy = True
+        ray.util.register_serializer(
+            _StatsActorWrapper,
+            serializer=lambda _: None,
+            deserializer=lambda _: _StatsActorWrapper(get_or_create_stats_actor()),
+        )
+        serialized = pickle.dumps(self)
+        ray.util.deregister_serializer(_StatsActorWrapper)
+        return serialized
+
+    @DeveloperAPI
+    @staticmethod
+    def deserialize_out_of_band(serialized_ds: bytes) -> "Dataset":
+        """
+        Deserialize the provided out-of-band serialized Dataset.
+
+        This assumes that the provided serialized bytes were serialized using
+        ``Dataset.serialize_out_of_band``.
+
+        Args:
+            serialized_ds: The serialized Dataset that we wish to deserialize.
+
+        Returns:
+            A deserialized ``Dataset`` instance.
+        """
+        ray.util.register_serializer(
+            _StatsActorWrapper,
+            serializer=lambda _: None,
+            deserializer=lambda _: _StatsActorWrapper(get_or_create_stats_actor()),
+        )
+        deserialized = pickle.loads(serialized_ds)
+        ray.util.deregister_serializer(_StatsActorWrapper)
+        return deserialized
 
     def _split(
         self, index: int, return_right_half: bool

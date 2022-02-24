@@ -351,3 +351,16 @@ class DatasetPipelineStats:
         out += "* Time in user code: {}\n".format(fmt(self.iter_user_s.get()))
         out += "* Total time: {}\n".format(fmt(self.iter_total_s.get()))
         return out
+
+
+class _StatsActorWrapper:
+    """
+    Actor handle wrapper whose type is used to register a custom serializer when doing
+    out-of-band serialization.
+    """
+
+    def __init__(self, handle: ray.actor.ActorHandle):
+        self.handle = handle
+
+    def __getattr__(self, attr):
+        return getattr(self.handle, attr)
