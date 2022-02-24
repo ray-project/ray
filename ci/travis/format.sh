@@ -32,28 +32,9 @@ check_python_command_exist() {
     fi
 }
 
-check_shell_command_exist() {
-    VERSION=""
-    case "$1" in
-        shellcheck)
-            VERSION=$SHELLCHECK_VERSION_REQUIRED
-            ;;
-        *)
-            echo "$1 is not a required dependency"
-            exit 1
-    esac
-    if ! [ -x "$(command -v "$1")" ]; then
-        echo "$1 not installed. Install $1 ($VERSION) with your system package manager."
-        exit 1
-    fi
-}
-
-
 check_python_command_exist black
 check_python_command_exist flake8
 check_python_command_exist mypy
-check_shell_command_exist shellcheck
-
 
 # this stops git rev-parse from failing if we run this from the .git directory
 builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
@@ -63,7 +44,6 @@ builtin cd "$ROOT" || exit 1
 
 FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
 BLACK_VERSION=$(black --version | awk '{print $2}')
-SHELLCHECK_VERSION=$(shellcheck --version | awk '/^version:/ {print $2}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
 GOOGLE_JAVA_FORMAT_JAR=/tmp/google-java-format-1.7-all-deps.jar
 
@@ -76,10 +56,16 @@ tool_version_check() {
 
 tool_version_check "flake8" "$FLAKE8_VERSION" "$FLAKE8_VERSION_REQUIRED"
 tool_version_check "black" "$BLACK_VERSION" "$BLACK_VERSION_REQUIRED"
-tool_version_check "shellcheck" "$SHELLCHECK_VERSION" "$SHELLCHECK_VERSION_REQUIRED"
 tool_version_check "mypy" "$MYPY_VERSION" "$MYPY_VERSION_REQUIRED"
 
-if which clang-format >/dev/null; then
+if command -v shellcheck >/dev/null; then
+    SHELLCHECK_VERSION=$(shellcheck --version | awk '/^version:/ {print $2}')
+    tool_version_check "shellcheck" "$SHELLCHECK_VERSION" "$SHELLCHECK_VERSION_REQUIRED"
+else
+    echo "INFO: Ray uses shellcheck for shell scripts, which is not installed. You may install shellcheck=$SHELLCHECK_VERSION_REQUIRED with your system package manager."
+fi
+
+if command -v clang-format >/dev/null; then
   CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
   tool_version_check "clang-format" "$CLANG_FORMAT_VERSION" "12.0.0"
 else
@@ -208,15 +194,17 @@ format_files() {
       black "${python_files[@]}"
     fi
 
-    if shellcheck --shell=sh --format=diff - < /dev/null; then
-      if [ 0 -lt "${#shell_files[@]}" ]; then
-        local difference
-        difference="$(shellcheck_scripts --format=diff "${shell_files[@]}" || true && printf "-")"
-        difference="${difference%-}"
-        printf "%s" "${difference}" | patch -p1
+    if command -v shellcheck >/dev/null; then
+      if shellcheck --shell=sh --format=diff - < /dev/null; then
+        if [ 0 -lt "${#shell_files[@]}" ]; then
+          local difference
+          difference="$(shellcheck_scripts --format=diff "${shell_files[@]}" || true && printf "-")"
+          difference="${difference%-}"
+          printf "%s" "${difference}" | patch -p1
+        fi
+      else
+        echo "error: this version of shellcheck does not support diffs"
       fi
-    else
-      echo "error: this version of shellcheck does not support diffs"
     fi
 }
 
