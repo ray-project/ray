@@ -146,12 +146,11 @@ class APEXMultiGPULearnerThread(APEXLearnerThread):
         # TODO: (sven) Allow multi-GPU to work for multi-agent as well.
         self.policy = self.local_worker.policy_map[DEFAULT_POLICY_ID]
         self.policy_map = self.local_worker.policy_map
+        self.devices = self.policy.devices
 
-        logger.info("APEXMultiGPULearnerThread devices {}".format(
-            self.policy.devices))
-        assert self.train_batch_size % len(self.policy.devices) == 0
-        assert self.train_batch_size >= len(self.policy.devices), \
-            "batch too small"
+        logger.info("APEXMultiGPULearnerThread devices {}".format(self.devices))
+        assert self.train_batch_size % len(self.devices) == 0
+        assert self.train_batch_size >= len(self.devices), "batch too small"
 
         if set(self.local_worker.policy_map.keys()) != {DEFAULT_POLICY_ID}:
             raise NotImplementedError("Multi-gpu mode for multi-agent")
@@ -171,19 +170,35 @@ class APEXMultiGPULearnerThread(APEXLearnerThread):
     def step(self) -> None:
         assert self.loader_thread.is_alive()
         with self.load_wait_timer:
-            buffer_idx, released = self.inqueue.get()
-            print(f"got buffer_idx={buffer_idx} and released={released} from {self.inqueue}")
+            replay_actor, buffer_idx = self.ready_tower_stacks.get()
 
+        get_num_samples_loaded_into_buffer = 0
         with self.grad_timer:
-            fetches = self.policy.learn_on_loaded_batch(
-                offset=0, buffer_index=buffer_idx)
+            # Use LearnerInfoBuilder as a unified way to build the final
+            # results dict from `learn_on_loaded_batch` call(s).
+            # This makes sure results dicts always have the same structure
+            # no matter the setup (multi-GPU, multi-agent, minibatch SGD,
+            # tf vs torch).
+            learner_info_builder = LearnerInfoBuilder(num_devices=len(self.devices))
+
+            #for pid in self.policy_map.keys():
+            ## Not a policy-to-train.
+            #if not self.local_worker.is_policy_to_train(pid):
+            #    continue
+            #policy = self.policy_map[pid]
+            default_policy_results = self.policy.learn_on_loaded_batch(
+                offset=0, buffer_index=buffer_idx
+            )
+            learner_info_builder.add_learn_on_batch_results(default_policy_results)
             self.weights_updated = True
-            self.stats = {DEFAULT_POLICY_ID: get_learner_stats(fetches)}
+            get_num_samples_loaded_into_buffer += (
+                self.policy.get_num_samples_loaded_into_buffer(buffer_idx)
+            )
 
-        if released:
-            self.idle_tower_stacks.put(buffer_idx)
+            self.learner_info = learner_info_builder.finalize()
+            prio_dict = self.larner_info["td_error"]
 
-        self.outqueue.put(
-            (self.policy.get_num_samples_loaded_into_buffer(buffer_idx),
-             self.stats))
+        self.idle_tower_stacks.put(buffer_idx)
+        #replay_actor
+        self.outqueue.put((replay_actor, prio_dict, get_num_samples_loaded_into_buffer))#(get_num_samples_loaded_into_buffer, self.learner_info))
         self.learner_queue_size.push(self.inqueue.qsize())

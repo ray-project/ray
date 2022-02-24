@@ -94,7 +94,7 @@ class Enqueue:
 
     def __call__(self, x: Any) -> Any:
         try:
-            print(f"enqueuing {x} in {self.queue}")
+            #print(f"enqueuing {x} in {self.queue}")
             self.queue.put(x, timeout=0.001)
         except queue.Full:
             return _NextValueNotReady()

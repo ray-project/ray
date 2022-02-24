@@ -73,10 +73,10 @@ def Replay(
     Concurrently() operator.
 
     Args:
-        local_buffer: Local buffer to use. Only one of this and replay_actors
-            can be specified.
-        actors: List of replay actors. Only one of this and local_buffer
-            can be specified.
+        local_buffer: Local buffer to use.
+            Note that only either `local_buffer` OR `actors` may be specified.
+        actors: List of replay actors.
+            Note that only either `local_buffer` OR `actors` may be specified.
         num_async: In async mode, the max number of async requests in flight
             per actor.
 
@@ -88,7 +88,7 @@ def Replay(
     """
 
     if local_buffer is not None and actors is not None:
-        raise ValueError("Exactly one of local_buffer and replay_actors must be given.")
+        raise ValueError("Exactly one of local_buffer and actors must be given.")
 
     if actors is not None:
         replay = from_actors(actors)

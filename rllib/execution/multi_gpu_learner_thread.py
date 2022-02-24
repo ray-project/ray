@@ -201,9 +201,14 @@ class _MultiGPULoaderThread(threading.Thread):
         policy_map = s.policy_map
 
         # Get a new batch from the data (inqueue).
+        replay_actor = None
         with self.queue_timer:
-            batch = s.inqueue.get()
-            print(f"got {batch} from {s.inqueue}")
+            item = s.inqueue.get()
+            if isinstance(batch, tuple):
+                replay_actor, batch = item
+            else:
+                batch = item
+            print(f"got {item} from {s.inqueue}")
 
         # Get next idle stack for loading.
         buffer_idx = s.idle_tower_stacks.get()
@@ -222,4 +227,7 @@ class _MultiGPULoaderThread(threading.Thread):
                 )
 
         # Tag just-loaded stack as "ready".
-        s.ready_tower_stacks.put(buffer_idx)
+        if replay_actor is not None:
+            s.ready_tower_stacks.put([replay_actor, buffer_idx])
+        else:
+            s.ready_tower_stacks.put(buffer_idx)
