@@ -6,7 +6,6 @@ Examples
 
 .. TODO: Keep this in sync with ray/python/ray/tune/examples/README.rst
 
-
 .. tip:: Check out :ref:`the Tune User Guides <tune-guides>` To learn more about Tune's features in depth.
 
 
@@ -131,15 +130,6 @@ Search Algorithm Examples
 - :doc:`/tune/examples/sigopt_multi_objective_example`: Example using Sigopt's multi-objective functionality.
 - :doc:`/tune/examples/sigopt_prior_beliefs_example`: Example using Sigopt's support for prior beliefs.
 
-
-tune-sklearn examples
----------------------
-
-See the `ray-project/tune-sklearn examples <https://github.com/ray-project/tune-sklearn/tree/master/examples>`__ for a comprehensive list of examples leveraging Tune's sklearn interface.
-
-- `tune-sklearn with xgboost <https://github.com/ray-project/tune-sklearn/blob/master/examples/xgbclassifier.py>`__
-- `tune-sklearn with sklearn pipelines <https://github.com/ray-project/tune-sklearn/blob/master/examples/sklearn_pipeline.py>`__
-- `tune-sklearn with Bayesian Optimization <https://github.com/ray-project/tune-sklearn/blob/master/examples/hyperopt_sgd.py>`__
 
 
 Framework-specific Examples

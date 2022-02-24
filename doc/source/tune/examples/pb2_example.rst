@@ -1,6 +1,6 @@
 :orphan:
 
-pb2_example
+PB2 Example
 ~~~~~~~~~~~
 
 .. literalinclude:: /../../python/ray/tune/examples/pb2_example.py

@@ -1,6 +1,6 @@
 :orphan:
 
-pbt_transformers_example
+PBT Transformers Example
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. literalinclude:: /../../python/ray/tune/examples/pbt_transformers/pbt_transformers.py

@@ -1,6 +1,6 @@
 :orphan:
 
-hebo_example
-~~~~~~~~~~~~~~~
+HEBO Example
+~~~~~~~~~~~~
 
 .. literalinclude:: /../../python/ray/tune/examples/hebo_example.py

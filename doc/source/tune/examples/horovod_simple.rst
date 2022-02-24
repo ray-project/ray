@@ -1,6 +1,6 @@
 :orphan:
 
-horovod_simple
-~~~~~~~~~~~~~~
+Horovod Example
+~~~~~~~~~~~~~~~
 
 .. literalinclude:: /../../python/ray/tune/examples/horovod_simple.py

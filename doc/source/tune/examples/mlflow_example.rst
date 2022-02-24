@@ -1,6 +1,6 @@
 :orphan:
 
-mlflow_example
+MLflow Example
 ~~~~~~~~~~~~~~
 
 .. literalinclude:: /../../python/ray/tune/examples/mlflow_example.py

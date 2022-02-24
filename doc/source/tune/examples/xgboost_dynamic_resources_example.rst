@@ -1,6 +1,6 @@
 :orphan:
 
-xgboost_dynamic_resources_example
+XGBoost Dynamic Resources Example
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 

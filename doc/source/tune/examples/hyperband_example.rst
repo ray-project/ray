@@ -1,6 +1,6 @@
 :orphan:
 
-hyperband_example
+HyperBand Example
 =================
 
 .. literalinclude:: /../../python/ray/tune/examples/hyperband_example.py

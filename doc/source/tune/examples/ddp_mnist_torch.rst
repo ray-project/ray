@@ -1,6 +1,6 @@
 :orphan:
 
-ddp_mnist_torch
-~~~~~~~~~~~~~~~
+DDP Mnist Torch Example
+~~~~~~~~~~~~~~~~~~~~~~~
 
 .. literalinclude:: /../../python/ray/tune/examples/ddp_mnist_torch.py

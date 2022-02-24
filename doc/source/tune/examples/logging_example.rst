@@ -1,6 +1,6 @@
 :orphan:
 
-logging_example
+Logging Example
 ~~~~~~~~~~~~~~~
 
 .. literalinclude:: /../../python/ray/tune/examples/logging_example.py

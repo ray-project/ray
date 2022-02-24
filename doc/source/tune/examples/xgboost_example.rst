@@ -1,6 +1,6 @@
 :orphan:
 
-xgboost_example
+XGBoost Example
 ~~~~~~~~~~~~~~~
 
 

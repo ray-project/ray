@@ -27,7 +27,8 @@ need to
 3. add checkpointing (optional),
 4. and define the search space for the model tuning
 
-Optionally, you can seamlessly leverage :ref:`DistributedDataParallel training <tune-torch-ddp>` for each individual Pytorch model within Tune.
+Optionally, you can seamlessly leverage :ref:`DistributedDataParallel training <tune-torch-ddp>`
+for each individual Pytorch model within Tune.
 
 .. note::
 
@@ -285,7 +286,8 @@ So that's it! You can now tune the parameters of your PyTorch models.
 Advanced: Distributed training with DistributedDataParallel
 -----------------------------------------------------------
 
-Some models require multiple nodes to train in a short amount of time. Ray Tune allows you to easily do distributed data parallel training in addition to distributed hyperparameter tuning.
+Some models require multiple nodes to train in a short amount of time.
+Ray Tune allows you to easily do distributed data parallel training in addition to distributed hyperparameter tuning.
 
 You can wrap your model in ``torch.nn.parallel.DistributedDataParallel`` to support distributed data parallel training:
 
@@ -309,7 +311,8 @@ You can wrap your model in ``torch.nn.parallel.DistributedDataParallel`` to supp
         net.to(device)
 
 
-If using checkpointing, be sure to use a :ref:`special checkpoint context manager <tune-ddp-doc>`, ``distributed_checkpoint_dir`` that avoids redundant checkpointing across multiple processes:
+If using checkpointing, be sure to use a :ref:`special checkpoint context manager <tune-ddp-doc>`,
+``distributed_checkpoint_dir`` that avoids redundant checkpointing across multiple processes:
 
 .. code-block:: python
 
@@ -324,7 +327,9 @@ If using checkpointing, be sure to use a :ref:`special checkpoint context manage
         torch.save((net.state_dict(), optimizer.state_dict()), path)
 
 
-Finally, we need to tell Ray Tune to start multiple distributed processes at once by using ``ray.tune.integration.torch.DistributedTrainableCreator`` (:ref:`docs <tune-ddp-doc>`). This is essentially equivalent to running ``torch.distributed.launch`` for each hyperparameter trial:
+Finally, we need to tell Ray Tune to start multiple distributed processes at once by using
+``ray.tune.integration.torch.DistributedTrainableCreator`` (:ref:`docs <tune-ddp-doc>`).
+This is essentially equivalent to running ``torch.distributed.launch`` for each hyperparameter trial:
 
 .. code-block:: python
 

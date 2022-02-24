@@ -13,8 +13,7 @@ loops all over again when building a new model.
   :align: center
 
 The main abstraction of PyTorch Lightning is the ``LightningModule`` class, which
-should be extended by your application. There is `a great post on how to transfer
-your models from vanilla PyTorch to Lightning <https://towardsdatascience.com/from-pytorch-to-pytorch-lightning-a-gentle-introduction-b371b7caaf09>`_.
+should be extended by your application. There is `a great post on how to transfer your models from vanilla PyTorch to Lightning <https://towardsdatascience.com/from-pytorch-to-pytorch-lightning-a-gentle-introduction-b371b7caaf09>`_.
 
 The class structure of PyTorch Lightning makes it very easy to define and tune model
 parameters. This tutorial will show you how to use Tune to find the best set of
@@ -210,14 +209,16 @@ we would like to use:
    :lines: 22
    :dedent: 4
 
-You can also specify :doc:`fractional GPUs for Tune <../../ray-core/using-ray-with-gpus>`, allowing multiple trials to share GPUs
-and thus increase concurrency under resource constraints. While the ``gpus_per_trial`` passed into
+You can also specify :doc:`fractional GPUs for Tune <../../ray-core/using-ray-with-gpus>`,
+allowing multiple trials to share GPUs and thus increase concurrency under resource constraints.
+While the ``gpus_per_trial`` passed into
 Tune is a decimal value, the ``gpus`` passed into the ``pl.Trainer`` should still be an integer.
 Please note that if using fractional GPUs, it is the user's responsibility to
 make sure multiple trials can share GPUs and there is enough memory to do so.
 Ray does not automatically handle this for you.
 
-If you want to use multiple GPUs per trial, you should check out the `Ray Lightning Library <https://github.com/ray-project/ray_lightning>`_.
+If you want to use multiple GPUs per trial, you should check out the
+`Ray Lightning Library <https://github.com/ray-project/ray_lightning>`_.
 This library makes it easy to run multiple concurrent trials with Ray Tune, with each trial also running
 in a distributed fashion using Ray.
 

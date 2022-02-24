@@ -1,6 +1,6 @@
 :orphan:
 
-genetic_example
-~~~~~~~~~~~~~~~
+Genetic Search Example
+~~~~~~~~~~~~~~~~~~~~~~
 
 .. literalinclude:: /../../python/ray/tune/examples/genetic_example.py

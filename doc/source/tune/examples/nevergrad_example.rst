@@ -1,6 +1,6 @@
 :orphan:
 
-nevergrad_example
+Nevergrad Example
 ~~~~~~~~~~~~~~~~~
 
 .. literalinclude:: /../../python/ray/tune/examples/nevergrad_example.py

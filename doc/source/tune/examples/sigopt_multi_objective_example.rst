@@ -1,6 +1,6 @@
 :orphan:
 
-sigopt_multi_objective_example
+SigOpt Multi-Objective Example
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. literalinclude:: /../../python/ray/tune/examples/sigopt_multi_objective_example.py

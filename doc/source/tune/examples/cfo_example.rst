@@ -1,6 +1,6 @@
 :orphan:
 
-cfo_example
+CFO Example
 ~~~~~~~~~~~
 
 .. literalinclude:: /../../python/ray/tune/examples/cfo_example.py

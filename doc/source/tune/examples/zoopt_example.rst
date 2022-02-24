@@ -1,6 +1,6 @@
 :orphan:
 
-zoopt_example
+ZOOpt Example
 ~~~~~~~~~~~~~
 
 .. literalinclude:: /../../python/ray/tune/examples/zoopt_example.py

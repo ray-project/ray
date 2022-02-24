@@ -1,6 +1,6 @@
 :orphan:
 
-cifar10_pytorch
-~~~~~~~~~~~~~~~
+Cifar10 Pytorch Example
+~~~~~~~~~~~~~~~~~~~~~~~
 
 .. literalinclude:: /../../python/ray/tune/examples/cifar10_pytorch.py
