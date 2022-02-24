@@ -372,7 +372,6 @@ class Monitor:
                     "monitor_pid": os.getpid(),
                 }
 
-                # Process autoscaling actions
                 if self.autoscaler and not self.load_metrics:
                     # load_metrics is Falsey iff we haven't collected any
                     # resource messages from the GCS, which can happen at startup if
@@ -383,7 +382,7 @@ class Monitor:
                         "Autoscaler has not yet received load metrics. Waiting."
                     )
                 elif self.autoscaler:
-                    # Only used to update the load metrics for the autoscaler.
+                    # Process autoscaling actions
                     self.autoscaler.update()
                     autoscaler_summary = self.autoscaler.summary()
                     if autoscaler_summary:
