@@ -16,7 +16,12 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray.actor import ActorHandle
-from ray.serve.common import DeploymentInfo, DeploymentStatus, ReplicaTag
+from ray.serve.common import (
+    DeploymentInfo,
+    DeploymentStatus,
+    DeploymentStatusInfo,
+    ReplicaTag,
+)
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
@@ -1400,6 +1405,10 @@ def list_deployments() -> Dict[str, Deployment]:
         )
 
     return deployments
+
+
+def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
+    return _get_global_client().get_deployment_statuses()
 
 
 def deploy_group(deployments: List[Deployment], _blocking: bool = True):
