@@ -9,7 +9,7 @@ class TestCheckMultiAgent(unittest.TestCase):
             "multiagent": {
                 "wrong_key": 1,
                 "policies": {"p0"},
-                "policies_to_train": ["p0"]
+                "policies_to_train": ["p0"],
             }
         }
         self.assertRaisesRegex(
@@ -22,7 +22,7 @@ class TestCheckMultiAgent(unittest.TestCase):
         config = {
             "multiagent": {
                 "policies": {1, "good_id"},
-                "policy_mapping_fn": lambda aid, **kw: "good_id"
+                "policy_mapping_fn": lambda aid, **kw: "good_id",
             }
         }
         self.assertRaisesRegex(
@@ -49,4 +49,5 @@ class TestCheckMultiAgent(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
+
     pytest.main()

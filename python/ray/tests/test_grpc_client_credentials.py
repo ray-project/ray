@@ -21,10 +21,7 @@ def test_grpc_client_credentials_are_passed_to_channel(monkeypatch):
         def subscribe(self, f):
             raise Stop(self.credentials)
 
-    def mock_secure_channel(conn_str,
-                            credentials,
-                            options=None,
-                            compression=None):
+    def mock_secure_channel(conn_str, credentials, options=None, compression=None):
         return MockChannel(conn_str, credentials, options, compression)
 
     monkeypatch.setattr(grpc, "secure_channel", mock_secure_channel)
@@ -59,4 +56,5 @@ def test_grpc_client_credentials_are_generated(monkeypatch):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

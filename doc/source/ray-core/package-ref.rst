@@ -1,5 +1,5 @@
-Core API Reference
-==================
+Ray Core API
+============
 
 Python API
 ----------
@@ -286,6 +286,18 @@ The Ray Command Line API
 
 .. click:: ray.scripts.scripts:timeline
    :prog: ray timeline
+   :show-nested:
+ 
+.. _ray-status-doc:
+
+.. click:: ray.scripts.scripts:status
+   :prog: ray status
+   :show-nested:
+   
+.. _ray-monitor-doc:
+
+.. click:: ray.scripts.scripts:monitor
+   :prog: ray monitor
    :show-nested:
 
 .. click:: ray.scripts.scripts:debug

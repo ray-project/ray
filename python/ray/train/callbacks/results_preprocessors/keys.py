@@ -1,7 +1,6 @@
 from typing import List, Dict, Optional, Iterable
 
-from ray.train.callbacks.results_preprocessors.preprocessor import \
-    ResultsPreprocessor
+from ray.train.callbacks.results_preprocessors.preprocessor import ResultsPreprocessor
 from ray.util.annotations import DeveloperAPI
 
 
@@ -24,9 +23,13 @@ class ExcludedKeysResultsPreprocessor(ResultsPreprocessor):
         self.excluded_keys = set(excluded_keys) or {}
 
     def preprocess(self, results: List[Dict]) -> List[Dict]:
-        new_results = [{
-            key: value
-            for key, value in result.items() if key not in self.excluded_keys
-        } for result in results]
+        new_results = [
+            {
+                key: value
+                for key, value in result.items()
+                if key not in self.excluded_keys
+            }
+            for result in results
+        ]
 
         return new_results

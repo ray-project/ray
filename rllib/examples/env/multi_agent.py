@@ -11,7 +11,8 @@ from ray.rllib.utils.deprecation import Deprecated
 @Deprecated(
     old="ray.rllib.examples.env.multi_agent.make_multiagent",
     new="ray.rllib.env.multi_agent_env.make_multi_agent",
-    error=False)
+    error=False,
+)
 def make_multiagent(env_name_or_creator):
     return make_multi_agent(env_name_or_creator)
 
@@ -26,6 +27,7 @@ class BasicMultiAgent(MultiAgentEnv):
     def __init__(self, num):
         super().__init__()
         self.agents = [MockEnv(25) for _ in range(num)]
+        self._agent_ids = set(range(num))
         self.dones = set()
         self.observation_space = gym.spaces.Discrete(2)
         self.action_space = gym.spaces.Discrete(2)
@@ -58,6 +60,7 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
     def __init__(self):
         super().__init__()
         self.agents = [MockEnv(3), MockEnv(5)]
+        self._agent_ids = set(range(len(self.agents)))
         self.dones = set()
         self.last_obs = {}
         self.last_rew = {}
@@ -76,7 +79,7 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
         self.i = 0
         for i, a in enumerate(self.agents):
             self.last_obs[i] = a.reset()
-            self.last_rew[i] = None
+            self.last_rew[i] = 0
             self.last_done[i] = False
             self.last_info[i] = {}
         obs_dict = {self.i: self.last_obs[self.i]}
@@ -86,8 +89,12 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
     def step(self, action_dict):
         assert len(self.dones) != len(self.agents)
         for i, action in action_dict.items():
-            (self.last_obs[i], self.last_rew[i], self.last_done[i],
-             self.last_info[i]) = self.agents[i].step(action)
+            (
+                self.last_obs[i],
+                self.last_rew[i],
+                self.last_done[i],
+                self.last_info[i],
+            ) = self.agents[i].step(action)
         obs = {self.i: self.last_obs[self.i]}
         rew = {self.i: self.last_rew[self.i]}
         done = {self.i: self.last_done[self.i]}
@@ -106,6 +113,7 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
     def __init__(self):
         super().__init__()
         self.agents = {}
+        self._agent_ids = set()
         self.agentID = 0
         self.dones = set()
         self.observation_space = gym.spaces.Discrete(2)
@@ -116,15 +124,16 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
         # Spawn a new agent into the current episode.
         agentID = self.agentID
         self.agents[agentID] = MockEnv(25)
+        self._agent_ids.add(agentID)
         self.agentID += 1
         return agentID
 
     def reset(self):
         self.agents = {}
+        self._agent_ids = set()
         self.spawn()
         self.resetted = True
         self.dones = set()
-
         obs = {}
         for i, a in self.agents.items():
             obs[i] = a.reset()
@@ -170,6 +179,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         else:
             # Observations are all zeros
             self.agents = [MockEnv(5) for _ in range(num)]
+        self._agent_ids = set(range(num))
         self.dones = set()
         self.last_obs = {}
         self.last_rew = {}
@@ -189,7 +199,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         self.i = 0
         for i, a in enumerate(self.agents):
             self.last_obs[i] = a.reset()
-            self.last_rew[i] = None
+            self.last_rew[i] = 0
             self.last_done[i] = False
             self.last_info[i] = {}
         obs_dict = {self.i: self.last_obs[self.i]}
@@ -199,8 +209,12 @@ class RoundRobinMultiAgent(MultiAgentEnv):
     def step(self, action_dict):
         assert len(self.dones) != len(self.agents)
         for i, action in action_dict.items():
-            (self.last_obs[i], self.last_rew[i], self.last_done[i],
-             self.last_info[i]) = self.agents[i].step(action)
+            (
+                self.last_obs[i],
+                self.last_rew[i],
+                self.last_done[i],
+                self.last_info[i],
+            ) = self.agents[i].step(action)
         obs = {self.i: self.last_obs[self.i]}
         rew = {self.i: self.last_rew[self.i]}
         done = {self.i: self.last_done[self.i]}
@@ -216,5 +230,4 @@ class RoundRobinMultiAgent(MultiAgentEnv):
 MultiAgentCartPole = make_multi_agent("CartPole-v0")
 MultiAgentMountainCar = make_multi_agent("MountainCarContinuous-v0")
 MultiAgentPendulum = make_multi_agent("Pendulum-v1")
-MultiAgentStatelessCartPole = make_multi_agent(
-    lambda config: StatelessCartPole(config))
+MultiAgentStatelessCartPole = make_multi_agent(lambda config: StatelessCartPole(config))

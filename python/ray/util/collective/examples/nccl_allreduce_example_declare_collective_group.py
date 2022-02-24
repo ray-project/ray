@@ -7,7 +7,7 @@ import ray.util.collective as collective
 @ray.remote(num_gpus=1)
 class Worker:
     def __init__(self):
-        self.send = cp.ones((4, ), dtype=cp.float32)
+        self.send = cp.ones((4,), dtype=cp.float32)
 
     def compute(self):
         collective.allreduce(self.send, "177")
@@ -26,7 +26,7 @@ if __name__ == "__main__":
         "group_name": "177",
         "world_size": 2,
         "ranks": [0, 1],
-        "backend": "nccl"
+        "backend": "nccl",
     }
     collective.create_collective_group(workers, **_options)
     results = ray.get([w.compute.remote() for w in workers])

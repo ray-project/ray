@@ -7,13 +7,15 @@ from ray import job_config
 import yaml
 
 from ray._private.runtime_env.validation import (
-    parse_and_validate_excludes, parse_and_validate_working_dir,
-    parse_and_validate_conda, parse_and_validate_pip,
-    parse_and_validate_env_vars, parse_and_validate_py_modules,
-    ParsedRuntimeEnv)
-from ray._private.runtime_env.pip import RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP
-from ray._private.runtime_env.plugin import (decode_plugin_uri,
-                                             encode_plugin_uri)
+    parse_and_validate_excludes,
+    parse_and_validate_working_dir,
+    parse_and_validate_conda,
+    parse_and_validate_pip,
+    parse_and_validate_env_vars,
+    parse_and_validate_py_modules,
+    ParsedRuntimeEnv,
+)
+from ray._private.runtime_env.plugin import decode_plugin_uri, encode_plugin_uri
 
 CONDA_DICT = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
 
@@ -71,18 +73,20 @@ class TestValidateWorkingDir:
 
     def test_validate_remote_invalid_extensions(self):
         for uri in [
-                "https://some_domain.com/path/file", "s3://bucket/file",
-                "gs://bucket/file"
+            "https://some_domain.com/path/file",
+            "s3://bucket/file",
+            "gs://bucket/file",
         ]:
             with pytest.raises(
-                    ValueError,
-                    match="Only .zip files supported for remote URIs."):
+                ValueError, match="Only .zip files supported for remote URIs."
+            ):
                 parse_and_validate_working_dir(uri)
 
     def test_validate_remote_valid_input(self):
         for uri in [
-                "https://some_domain.com/path/file.zip",
-                "s3://bucket/file.zip", "gs://bucket/file.zip"
+            "https://some_domain.com/path/file.zip",
+            "s3://bucket/file.zip",
+            "gs://bucket/file.zip",
         ]:
             working_dir = parse_and_validate_working_dir(uri)
             assert working_dir == uri
@@ -103,18 +107,20 @@ class TestValidatePyModules:
 
     def test_validate_remote_invalid_extension(self):
         uris = [
-            "https://some_domain.com/path/file", "s3://bucket/file",
-            "gs://bucket/file"
+            "https://some_domain.com/path/file",
+            "s3://bucket/file",
+            "gs://bucket/file",
         ]
         with pytest.raises(
-                ValueError,
-                match="Only .zip files supported for remote URIs."):
+            ValueError, match="Only .zip files supported for remote URIs."
+        ):
             parse_and_validate_py_modules(uris)
 
     def test_validate_remote_valid_input(self):
         uris = [
-            "https://some_domain.com/path/file.zip", "s3://bucket/file.zip",
-            "gs://bucket/file.zip"
+            "https://some_domain.com/path/file.zip",
+            "s3://bucket/file.zip",
+            "gs://bucket/file.zip",
         ]
         py_modules = parse_and_validate_py_modules(uris)
         assert py_modules == uris
@@ -139,7 +145,8 @@ class TestValidateExcludes:
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="Conda option not supported on Windows.")
+    sys.platform == "win32", reason="Conda option not supported on Windows."
+)
 class TestValidateConda:
     def test_validate_conda_invalid_types(self):
         with pytest.raises(TypeError):
@@ -179,7 +186,8 @@ class TestValidateConda:
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="Pip option not supported on Windows.")
+    sys.platform == "win32", reason="Pip option not supported on Windows."
+)
 class TestValidatePip:
     def test_validate_pip_invalid_types(self):
         with pytest.raises(TypeError):
@@ -206,12 +214,7 @@ class TestValidatePip:
         result = parse_and_validate_pip(PIP_LIST)
         assert result == PIP_LIST
 
-    def test_remove_ray(self):
-        result = parse_and_validate_pip(["pkg1", "ray", "pkg2"])
-        assert result == ["pkg1", "pkg2"]
-
-    def test_remove_ray_env_var(self, monkeypatch):
-        monkeypatch.setenv(RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP, "1")
+    def test_validate_ray(self):
         result = parse_and_validate_pip(["pkg1", "ray", "pkg2"])
         assert result == ["pkg1", "ray", "pkg2"]
 
@@ -239,23 +242,16 @@ class TestParsedRuntimeEnv:
         assert ParsedRuntimeEnv({}) == {}
 
     @pytest.mark.skipif(
-        sys.platform == "win32", reason="Pip option not supported on Windows.")
+        sys.platform == "win32", reason="Pip option not supported on Windows."
+    )
     def test_serialization(self):
-        env1 = ParsedRuntimeEnv({
-            "pip": ["requests"],
-            "env_vars": {
-                "hi1": "hi1",
-                "hi2": "hi2"
-            }
-        })
+        env1 = ParsedRuntimeEnv(
+            {"pip": ["requests"], "env_vars": {"hi1": "hi1", "hi2": "hi2"}}
+        )
 
-        env2 = ParsedRuntimeEnv({
-            "env_vars": {
-                "hi2": "hi2",
-                "hi1": "hi1"
-            },
-            "pip": ["requests"]
-        })
+        env2 = ParsedRuntimeEnv(
+            {"env_vars": {"hi2": "hi2", "hi1": "hi1"}, "pip": ["requests"]}
+        )
 
         assert env1 == env2
 
@@ -276,16 +272,19 @@ class TestParsedRuntimeEnv:
 
     @pytest.mark.skipif(
         sys.platform == "win32",
-        reason="Conda and pip options not supported on Windows.")
+        reason="Conda and pip options not supported on Windows.",
+    )
     def test_ray_commit_injection(self):
         # Should not be injected if no pip and conda.
         result = ParsedRuntimeEnv({"env_vars": {"hi": "hi"}})
         assert "_ray_commit" not in result
 
         # Should be injected if pip or conda present.
-        result = ParsedRuntimeEnv({
-            "pip": ["requests"],
-        })
+        result = ParsedRuntimeEnv(
+            {
+                "pip": ["requests"],
+            }
+        )
         assert "_ray_commit" in result
 
         result = ParsedRuntimeEnv({"conda": "env_name"})

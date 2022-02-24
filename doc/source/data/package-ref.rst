@@ -1,8 +1,11 @@
-Data API Reference
-=====================
+.. _data_api:
 
-Creating a Dataset
-------------------
+Ray Datasets API
+================
+
+Creating Datasets
+-----------------
+
 .. autofunction:: ray.data.range
 .. autofunction:: ray.data.range_arrow
 .. autofunction:: ray.data.range_tensor
@@ -68,6 +71,12 @@ Custom Datasource API
     :members:
 
 .. autoclass:: ray.data.ReadTask
+    :members:
+
+Table Row API
+---------------------
+
+.. autoclass:: ray.data.row.TableRow
     :members:
 
 Utility

@@ -7,6 +7,7 @@ import queue
 import threading
 import _thread
 from unittest.mock import patch
+import numpy as np
 
 import ray.util.client.server.server as ray_client_server
 from ray.tests.client_test_utils import create_remote_signal_actor
@@ -23,6 +24,7 @@ from ray._private.test_utils import run_string_as_driver
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_client_context_manager(ray_start_regular_shared, connect_to_client):
     import ray
+
     with connect_to_client_or_not(connect_to_client):
         if connect_to_client:
             # Client mode is on.
@@ -36,6 +38,7 @@ def test_client_context_manager(ray_start_regular_shared, connect_to_client):
 
 def test_client_thread_safe(call_ray_stop_only):
     import ray
+
     ray.init(num_cpus=2)
 
     with ray_start_client_server() as ray:
@@ -87,14 +90,13 @@ def test_client_mode_hook_thread_safe(ray_start_regular_shared):
             assert client_mode_should_convert(auto_init=True)
             lock.release()
             t.join()
-            assert q.get(
-            ) is False, "Threaded disable_client_hook failed  to disable"
-            assert q.get(
-            ) is True, "Threaded disable_client_hook failed to re-enable"
+            assert q.get() is False, "Threaded disable_client_hook failed  to disable"
+            assert q.get() is True, "Threaded disable_client_hook failed to re-enable"
 
 
 def test_interrupt_ray_get(call_ray_stop_only):
     import ray
+
     ray.init(num_cpus=2)
 
     with ray_start_client_server() as ray:
@@ -159,6 +161,7 @@ def test_real_ray_fallback(ray_start_regular_shared):
         @ray.remote
         def get_nodes_real():
             import ray as real_ray
+
             return real_ray.nodes()
 
         nodes = ray.get(get_nodes_real.remote())
@@ -233,12 +236,16 @@ def test_wait(ray_start_regular_shared):
 
         objectref2 = ray.put(5)
         ready, remaining = ray.wait([objectref, objectref2])
-        assert (ready, remaining) == ([objectref], [objectref2]) or \
-            (ready, remaining) == ([objectref2], [objectref])
+        assert (ready, remaining) == ([objectref], [objectref2]) or (
+            ready,
+            remaining,
+        ) == ([objectref2], [objectref])
         ready_retval = ray.get(ready[0])
         remaining_retval = ray.get(remaining[0])
-        assert (ready_retval, remaining_retval) == ("hello world", 5) \
-            or (ready_retval, remaining_retval) == (5, "hello world")
+        assert (ready_retval, remaining_retval) == ("hello world", 5) or (
+            ready_retval,
+            remaining_retval,
+        ) == (5, "hello world")
 
         with pytest.raises(Exception):
             # Reference not in the object store.
@@ -408,16 +415,15 @@ def test_pass_handles(ray_start_regular_shared):
         assert ray.get(sneaky_func_exec.remote(test_obj, 5)) == local_fact(5)
         actor_handle = ExecActor.remote()
         assert ray.get(actor_handle.exec.remote(fact, 7)) == local_fact(7)
-        assert ray.get(func_actor_exec.remote(actor_handle, fact,
-                                              10)) == local_fact(10)
+        assert ray.get(func_actor_exec.remote(actor_handle, fact, 10)) == local_fact(10)
         second_actor = ExecActor.remote()
-        assert ray.get(actor_handle.exec_exec.remote(second_actor, fact,
-                                                     9)) == local_fact(9)
+        assert ray.get(
+            actor_handle.exec_exec.remote(second_actor, fact, 9)
+        ) == local_fact(9)
         test_actor_obj = {}
         test_actor_obj["actor"] = second_actor
         test_actor_obj["f"] = fact
-        assert ray.get(sneaky_actor_exec.remote(test_actor_obj,
-                                                4)) == local_fact(4)
+        assert ray.get(sneaky_actor_exec.remote(test_actor_obj, 4)) == local_fact(4)
 
 
 def test_basic_log_stream(ray_start_regular_shared):
@@ -436,10 +442,8 @@ def test_basic_log_stream(ray_start_regular_shared):
         time.sleep(1)
         logs_with_id = [msg for msg in log_msgs if msg.find(x.id.hex()) >= 0]
         assert len(logs_with_id) >= 2, logs_with_id
-        assert any(
-            (msg.find("get") >= 0 for msg in logs_with_id)), logs_with_id
-        assert any(
-            (msg.find("put") >= 0 for msg in logs_with_id)), logs_with_id
+        assert any((msg.find("get") >= 0 for msg in logs_with_id)), logs_with_id
+        assert any((msg.find("put") >= 0 for msg in logs_with_id)), logs_with_id
 
 
 def test_stdout_log_stream(ray_start_regular_shared):
@@ -468,8 +472,7 @@ def test_stdout_log_stream(ray_start_regular_shared):
 
 def test_serializing_exceptions(ray_start_regular_shared):
     with ray_start_client_server() as ray:
-        with pytest.raises(
-                ValueError, match="Failed to look up actor with name 'abc'"):
+        with pytest.raises(ValueError, match="Failed to look up actor with name 'abc'"):
             ray.get_actor("abc")
 
 
@@ -513,8 +516,7 @@ def test_create_remote_before_start(ray_start_regular_shared):
 
 
 def test_basic_named_actor(ray_start_regular_shared):
-    """Test that ray.get_actor() can create and return a detached actor.
-    """
+    """Test that ray.get_actor() can create and return a detached actor."""
     with ray_start_client_server() as ray:
 
         @ray.remote
@@ -545,8 +547,7 @@ def test_basic_named_actor(ray_start_regular_shared):
 
         del actor
 
-        actor = Accumulator.options(
-            name="test_acc2", lifetime="detached").remote()
+        actor = Accumulator.options(name="test_acc2", lifetime="detached").remote()
         actor.inc.remote()
         del actor
 
@@ -592,6 +593,7 @@ def test_internal_kv(ray_start_regular_shared):
 
 def test_startup_retry(ray_start_regular_shared):
     from ray.util.client import ray as ray_client
+
     ray_client._inside_client_test = True
 
     with pytest.raises(ConnectionError):
@@ -612,6 +614,7 @@ def test_startup_retry(ray_start_regular_shared):
 
 def test_dataclient_server_drop(ray_start_regular_shared):
     from ray.util.client import ray as ray_client
+
     ray_client._inside_client_test = True
 
     @ray_client.remote
@@ -625,7 +628,7 @@ def test_dataclient_server_drop(ray_start_regular_shared):
 
     server = ray_client_server.serve("localhost:50051")
     ray_client.connect("localhost:50051")
-    thread = threading.Thread(target=stop_server, args=(server, ))
+    thread = threading.Thread(target=stop_server, args=(server,))
     thread.start()
     x = f.remote(2)
     with pytest.raises(ConnectionError):
@@ -640,14 +643,17 @@ def test_dataclient_server_drop(ray_start_regular_shared):
 @patch.dict(os.environ, {"RAY_ENABLE_AUTO_CONNECT": "0"})
 def test_client_gpu_ids(call_ray_stop_only):
     import ray
+
     ray.init(num_cpus=2)
 
     with enable_client_mode():
         # No client connection.
         with pytest.raises(Exception) as e:
             ray.get_gpu_ids()
-        assert str(e.value) == "Ray Client is not connected."\
+        assert (
+            str(e.value) == "Ray Client is not connected."
             " Please connect by calling `ray.init`."
+        )
 
         with ray_start_client_server():
             # Now have a client connection.
@@ -700,7 +706,8 @@ def test_object_ref_cleanup():
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head --ray-client-server-port 25552 --port 0"],
-    indirect=True)
+    indirect=True,
+)
 def test_wrapped_actor_creation(call_ray_start):
     """
     When the client schedules an actor, the server will load a separate
@@ -725,6 +732,7 @@ def test_wrapped_actor_creation(call_ray_start):
     imports the class.
     """
     import ray
+
     ray.init("ray://localhost:25552")
     run_wrapped_actor_creation()
 
@@ -732,11 +740,13 @@ def test_wrapped_actor_creation(call_ray_start):
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head --ray-client-server-port 25553 --num-cpus 0"],
-    indirect=True)
+    indirect=True,
+)
 @pytest.mark.parametrize("use_client", [True, False])
 def test_init_requires_no_resources(call_ray_start, use_client):
     import ray
-    if use_client:
+
+    if not use_client:
         address = call_ray_start
         ray.init(address)
     else:
@@ -747,6 +757,43 @@ def test_init_requires_no_resources(call_ray_start, use_client):
         pass
 
     ray.get(f.remote())
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25553 --num-cpus 1"],
+    indirect=True,
+)
+def test_object_ref_release(call_ray_start):
+    import ray
+
+    ray.init("ray://localhost:25553")
+
+    a = ray.put("Hello")
+
+    ray.shutdown()
+    ray.init("ray://localhost:25553")
+
+    del a
+
+    with disable_client_hook():
+        ref_cnt = ray.util.client.ray.get_context().client_worker.reference_count
+        assert all(v > 0 for v in ref_cnt.values())
+
+
+def test_empty_objects(ray_start_regular_shared):
+    """
+    Tests that client works with "empty" objects. Sanity check, since put requests
+    will fail if the serialized version of an object consists of zero bytes.
+    """
+    objects = [0, b"", "", [], np.array(()), {}, set(), None]
+    with ray_start_client_server() as ray:
+        for obj in objects:
+            ref = ray.put(obj)
+            if isinstance(obj, np.ndarray):
+                assert np.array_equal(ray.get(ref), obj)
+            else:
+                assert ray.get(ref) == obj
 
 
 if __name__ == "__main__":

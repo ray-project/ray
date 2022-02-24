@@ -5,12 +5,13 @@ import ray
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="PSUtil does not work the same on windows.")
+    sys.platform == "win32", reason="PSUtil does not work the same on windows."
+)
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head --ray-client-server-port 25001 --port 0"],
-    indirect=True)
+    indirect=True,
+)
 def test_multi_cli_basic(call_ray_start):
     ray.init("ray://localhost:25001")
     cli1 = ray.init("ray://localhost:25001", allow_multiple=True)
@@ -48,19 +49,21 @@ def test_multi_cli_basic(call_ray_start):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="PSUtil does not work the same on windows.")
+    sys.platform == "win32", reason="PSUtil does not work the same on windows."
+)
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head --ray-client-server-port 25001 --port 0"],
-    indirect=True)
+    indirect=True,
+)
 def test_multi_cli_init(call_ray_start):
     cli1 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
     with pytest.raises(
-            ValueError,
-            match="The client has already connected to the cluster "
-            "with allow_multiple=True. Please set allow_multiple=True"
-            " to proceed"):
+        ValueError,
+        match="The client has already connected to the cluster "
+        "with allow_multiple=True. Please set allow_multiple=True"
+        " to proceed",
+    ):
         ray.init("ray://localhost:25001")
     cli2 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
 
@@ -72,12 +75,13 @@ def test_multi_cli_init(call_ray_start):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="PSUtil does not work the same on windows.")
+    sys.platform == "win32", reason="PSUtil does not work the same on windows."
+)
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head --ray-client-server-port 25001 --port 0"],
-    indirect=True)
+    indirect=True,
+)
 def test_multi_cli_func(call_ray_start):
     @ray.remote
     def hello():
@@ -107,12 +111,13 @@ def test_multi_cli_func(call_ray_start):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="PSUtil does not work the same on windows.")
+    sys.platform == "win32", reason="PSUtil does not work the same on windows."
+)
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head --ray-client-server-port 25001 --port 0"],
-    indirect=True)
+    indirect=True,
+)
 def test_multi_cli_actor(call_ray_start):
     @ray.remote
     class Actor:
@@ -155,14 +160,16 @@ def test_multi_cli_actor(call_ray_start):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="PSUtil does not work the same on windows.")
+    sys.platform == "win32", reason="PSUtil does not work the same on windows."
+)
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head --ray-client-server-port 25001 --port 0"],
-    indirect=True)
+    indirect=True,
+)
 def test_multi_cli_threading(call_ray_start):
     import threading
+
     b = threading.Barrier(2)
     ret = [None, None]
 
@@ -176,8 +183,8 @@ def test_multi_cli_threading(call_ray_start):
             b.wait()
             ret[idx] = v
 
-    t1 = threading.Thread(target=get, args=(0, ))
-    t2 = threading.Thread(target=get, args=(1, ))
+    t1 = threading.Thread(target=get, args=(0,))
+    t2 = threading.Thread(target=get, args=(1,))
     t1.start()
     t2.start()
     t1.join()

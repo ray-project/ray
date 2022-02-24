@@ -5,8 +5,11 @@ import unittest
 import ray
 import ray.rllib.agents.marwil as marwil
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check_compute_single_action, \
-    check_train_results, framework_iterator
+from ray.rllib.utils.test_utils import (
+    check_compute_single_action,
+    check_train_results,
+    framework_iterator,
+)
 
 tf1, tf, tfv = try_import_tf()
 
@@ -29,8 +32,7 @@ class TestBC(unittest.TestCase):
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
         data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
-        print("data_file={} exists={}".format(data_file,
-                                              os.path.isfile(data_file)))
+        print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
         config = marwil.BC_DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
@@ -57,8 +59,7 @@ class TestBC(unittest.TestCase):
 
                 eval_results = results.get("evaluation")
                 if eval_results:
-                    print("iter={} R={}".format(
-                        i, eval_results["episode_reward_mean"]))
+                    print("iter={} R={}".format(i, eval_results["episode_reward_mean"]))
                     # Learn until good reward is reached in the actual env.
                     if eval_results["episode_reward_mean"] > min_reward:
                         print("learnt!")
@@ -68,10 +69,10 @@ class TestBC(unittest.TestCase):
             if not learnt:
                 raise ValueError(
                     "BCTrainer did not reach {} reward from expert offline "
-                    "data!".format(min_reward))
+                    "data!".format(min_reward)
+                )
 
-            check_compute_single_action(
-                trainer, include_prev_action_reward=True)
+            check_compute_single_action(trainer, include_prev_action_reward=True)
 
             trainer.stop()
 
@@ -79,4 +80,5 @@ class TestBC(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

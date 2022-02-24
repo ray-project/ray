@@ -8,8 +8,7 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, \
-    GcsFunctionKeySubscriber
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsFunctionKeySubscriber
 from ray._private.test_utils import wait_for_condition
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from pathlib import Path
@@ -44,9 +43,11 @@ def test_worker_startup_count(ray_start_cluster):
     cluster = ray_start_cluster
     # Cluster total cpu resources is 4.
     cluster.add_node(
-        num_cpus=4, _system_config={
+        num_cpus=4,
+        _system_config={
             "debug_dump_period_milliseconds": 100,
-        })
+        },
+    )
     ray.init(address=cluster.address)
 
     # A slow function never returns. It will hold cpu resources all the way.
@@ -73,7 +74,7 @@ def test_worker_startup_count(ray_start_cluster):
             for line in f.readlines():
                 num_workers_prefix = "- num PYTHON workers: "
                 if num_workers_prefix in line:
-                    num_workers = int(line[len(num_workers_prefix):])
+                    num_workers = int(line[len(num_workers_prefix) :])
                     return num_workers
         return None
 
@@ -109,7 +110,8 @@ def test_function_unique_export(ray_start_regular):
 
     if gcs_pubsub_enabled():
         subscriber = GcsFunctionKeySubscriber(
-            address=ray.worker.global_worker.gcs_client.address)
+            address=ray.worker.global_worker.gcs_client.address
+        )
         subscriber.subscribe()
 
         ray.get(g.remote())
@@ -132,17 +134,17 @@ def test_function_unique_export(ray_start_regular):
         ray.get(g.remote())
         num_exports = ray.worker.global_worker.redis_client.llen("Exports")
         ray.get([g.remote() for _ in range(5)])
-        assert ray.worker.global_worker.redis_client.llen("Exports") == \
-               num_exports
+        assert ray.worker.global_worker.redis_client.llen("Exports") == num_exports
 
 
 @pytest.mark.skipif(
     sys.platform not in ["win32", "darwin"],
-    reason="Only listen on localhost by default on mac and windows.")
+    reason="Only listen on localhost by default on mac and windows.",
+)
 @pytest.mark.parametrize("start_ray", ["ray_start_regular", "call_ray_start"])
 def test_listen_on_localhost(start_ray, request):
     """All ray processes should listen on localhost by default
-       on mac and windows to prevent security popups.
+    on mac and windows to prevent security popups.
     """
     request.getfixturevalue(start_ray)
 
@@ -156,8 +158,9 @@ def test_listen_on_localhost(start_ray, request):
     for keyword, filter_by_cmd in RAY_PROCESSES:
         for candidate in process_infos:
             proc, proc_cmd, proc_cmdline = candidate
-            corpus = (proc_cmd if filter_by_cmd else
-                      subprocess.list2cmdline(proc_cmdline))
+            corpus = (
+                proc_cmd if filter_by_cmd else subprocess.list2cmdline(proc_cmdline)
+            )
             if keyword not in corpus:
                 continue
 
@@ -204,6 +207,7 @@ def test_job_id_consistency(ray_start_regular):
                     exc.append(e)
 
             import threading
+
             t = threading.Thread(target=run)
             t.start()
             t.join()
@@ -226,7 +230,8 @@ def test_fair_queueing(shutdown_only):
             # before we can execute the first h task.
             "max_pending_lease_requests_per_scheduling_category": 1,
             "worker_cap_enabled": True,
-        })
+        },
+    )
 
     @ray.remote
     def h():
@@ -244,7 +249,8 @@ def test_fair_queueing(shutdown_only):
     # https://github.com/ray-project/ray/issues/3644
     timeout = 60.0
     ready, _ = ray.wait(
-        [f.remote() for _ in range(1000)], timeout=timeout, num_returns=1000)
+        [f.remote() for _ in range(1000)], timeout=timeout, num_returns=1000
+    )
     assert len(ready) == 1000, len(ready)
 
 

@@ -106,7 +106,8 @@ class AutoMLSearcher(SearchAlgorithm):
                     deep_insert(path.split("."), value, new_spec["config"])
 
                 trial = create_trial_from_spec(
-                    new_spec, exp.dir_name, self._parser, experiment_tag=tag)
+                    new_spec, exp.dir_name, self._parser, experiment_tag=tag
+                )
 
                 # AutoML specific fields set in Trial
                 trial.results = []
@@ -126,11 +127,9 @@ class AutoMLSearcher(SearchAlgorithm):
         self._start_ts = time.time()
         logger.info(
             "=========== BEGIN Experiment-Round: %(round)s "
-            "[%(new)s NEW | %(total)s TOTAL] ===========", {
-                "round": self._iteration,
-                "new": ntrial,
-                "total": self._total_trial_num
-            })
+            "[%(new)s NEW | %(total)s TOTAL] ===========",
+            {"round": self._iteration, "new": ntrial, "total": self._total_trial_num},
+        )
         self._next_trials = trials
 
     def on_trial_result(self, trial_id, result):
@@ -140,16 +139,17 @@ class AutoMLSearcher(SearchAlgorithm):
         trial = self._running_trials[trial_id]
         # Update trial's best result
         trial.results.append(result)
-        if trial.best_result is None \
-                or result[self.reward_attr] \
-                > trial.best_result[self.reward_attr]:
+        if (
+            trial.best_result is None
+            or result[self.reward_attr] > trial.best_result[self.reward_attr]
+        ):
             trial.best_result = result
             trial.invalidate_json_state()
 
         # Update job's best trial
-        if self.best_trial is None \
-                or (result[self.reward_attr]
-                    > self.best_trial.best_result[self.reward_attr]):
+        if self.best_trial is None or (
+            result[self.reward_attr] > self.best_trial.best_result[self.reward_attr]
+        ):
             self.best_trial = self._running_trials[trial_id]
 
     def on_trial_complete(self, trial_id, result=None, error=False):
@@ -157,8 +157,9 @@ class AutoMLSearcher(SearchAlgorithm):
         self._unfinished_count -= 1
         if self._unfinished_count == 0:
             total = len(self._running_trials)
-            succ = sum(t.status == Trial.TERMINATED
-                       for t in self._running_trials.values())
+            succ = sum(
+                t.status == Trial.TERMINATED for t in self._running_trials.values()
+            )
             # handle the last trial
             this_trial = self._running_trials[trial_id]
             if this_trial.status == Trial.RUNNING and not error:
@@ -169,15 +170,18 @@ class AutoMLSearcher(SearchAlgorithm):
                 "=========== END Experiment-Round: %(round)s "
                 "[%(succ)s SUCC | %(fail)s FAIL] this round, "
                 "elapsed=%(elapsed).2f, "
-                "BEST %(reward_attr)s=%(reward)f ===========", {
+                "BEST %(reward_attr)s=%(reward)f ===========",
+                {
                     "round": self._iteration,
                     "succ": succ,
                     "fail": total - succ,
                     "elapsed": elapsed,
                     "reward_attr": self.reward_attr,
                     "reward": self.best_trial.best_result[self.reward_attr]
-                    if self.best_trial else None
-                })
+                    if self.best_trial
+                    else None,
+                },
+            )
 
             action = self._feedback(self._running_trials.values())
             if action == AutoMLSearcher.TERMINATE:

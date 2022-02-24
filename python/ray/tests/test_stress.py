@@ -14,10 +14,8 @@ def ray_start_combination(request):
     # Start the Ray processes.
     cluster = Cluster(
         initialize_head=True,
-        head_node_args={
-            "num_cpus": 10,
-            "redis_max_memory": 10**8
-        })
+        head_node_args={"num_cpus": 10, "redis_max_memory": 10 ** 8},
+    )
     for i in range(num_nodes - 1):
         cluster.add_node(num_cpus=10)
     ray.init(address=cluster.address)
@@ -94,9 +92,7 @@ def test_wait(ray_start_combination):
         time.sleep(x)
 
     for i in range(1, 5):
-        x_ids = [
-            g.remote(np.random.uniform(0, i)) for _ in range(2 * num_workers)
-        ]
+        x_ids = [g.remote(np.random.uniform(0, i)) for _ in range(2 * num_workers)]
         ray.wait(x_ids, num_returns=len(x_ids))
 
     assert cluster.remaining_processes_alive()
@@ -105,4 +101,5 @@ def test_wait(ray_start_combination):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -1,5 +1,5 @@
 # flake8: noqa
-# yapf: disable
+# fmt: off
 
 # External PyTorch tutorial (https://github.com/pytorch/tutorials/pull/1066)
 # If this script fails, fix it and submit a PR to pytorch/tutorials.

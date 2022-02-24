@@ -87,8 +87,7 @@ def benchmark_simple_actor(ray, results):
     def actor_concurrent():
         ray.get([a.small_value.remote() for _ in range(1000)])
 
-    results += timeit("client: 1:1 actor calls concurrent", actor_concurrent,
-                      1000)
+    results += timeit("client: 1:1 actor calls concurrent", actor_concurrent, 1000)
 
 
 def main(results=None):
@@ -98,16 +97,17 @@ def main(results=None):
 
     def ray_connect_handler(job_config=None, **ray_init_kwargs):
         from ray._private.client_mode_hook import disable_client_hook
+
         with disable_client_hook():
             import ray as real_ray
+
             if not real_ray.is_initialized():
                 real_ray.init(**ray_config)
 
     for name, obj in inspect.getmembers(sys.modules[__name__]):
         if not name.startswith("benchmark_"):
             continue
-        with ray_start_client_server(
-                ray_connect_handler=ray_connect_handler) as ray:
+        with ray_start_client_server(ray_connect_handler=ray_connect_handler) as ray:
             obj(ray, results)
 
     return results

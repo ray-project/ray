@@ -24,7 +24,8 @@ class RandomEnv(gym.Env):
         # Reward space from which to sample.
         self.reward_space = config.get(
             "reward_space",
-            gym.spaces.Box(low=-1.0, high=1.0, shape=(), dtype=np.float32))
+            gym.spaces.Box(low=-1.0, high=1.0, shape=(), dtype=np.float32),
+        )
         # Chance that an episode ends at any step.
         # Note that a max episode length can be specified via
         # `max_episode_len`.
@@ -45,12 +46,15 @@ class RandomEnv(gym.Env):
 
     def step(self, action):
         if self.check_action_bounds and not self.action_space.contains(action):
-            raise ValueError("Illegal action for {}: {}".format(
-                self.action_space, action))
-        if (isinstance(self.action_space, Tuple)
-                and len(action) != len(self.action_space.spaces)):
-            raise ValueError("Illegal action for {}: {}".format(
-                self.action_space, action))
+            raise ValueError(
+                "Illegal action for {}: {}".format(self.action_space, action)
+            )
+        if isinstance(self.action_space, Tuple) and len(action) != len(
+            self.action_space.spaces
+        ):
+            raise ValueError(
+                "Illegal action for {}: {}".format(self.action_space, action)
+            )
 
         self.steps += 1
         done = False
@@ -60,11 +64,15 @@ class RandomEnv(gym.Env):
         # Max episode length not reached yet -> Sample `done` via `p_done`.
         elif self.p_done > 0.0:
             done = bool(
-                np.random.choice(
-                    [True, False], p=[self.p_done, 1.0 - self.p_done]))
+                np.random.choice([True, False], p=[self.p_done, 1.0 - self.p_done])
+            )
 
-        return self.observation_space.sample(), \
-            float(self.reward_space.sample()), done, {}
+        return (
+            self.observation_space.sample(),
+            float(self.reward_space.sample()),
+            done,
+            {},
+        )
 
 
 # Multi-agent version of the RandomEnv.
@@ -75,9 +83,7 @@ RandomMultiAgentEnv = make_multi_agent(lambda c: RandomEnv(c))
 class RandomLargeObsSpaceEnv(RandomEnv):
     def __init__(self, config=None):
         config = config or {}
-        config.update({
-            "observation_space": gym.spaces.Box(-1.0, 1.0, (5000, ))
-        })
+        config.update({"observation_space": gym.spaces.Box(-1.0, 1.0, (5000,))})
         super().__init__(config=config)
 
 
@@ -86,8 +92,10 @@ class RandomLargeObsSpaceEnv(RandomEnv):
 class RandomLargeObsSpaceEnvContActions(RandomEnv):
     def __init__(self, config=None):
         config = config or {}
-        config.update({
-            "observation_space": gym.spaces.Box(-1.0, 1.0, (5000, )),
-            "action_space": gym.spaces.Box(-1.0, 1.0, (5, )),
-        })
+        config.update(
+            {
+                "observation_space": gym.spaces.Box(-1.0, 1.0, (5000,)),
+                "action_space": gym.spaces.Box(-1.0, 1.0, (5,)),
+            }
+        )
         super().__init__(config=config)

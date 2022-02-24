@@ -5,8 +5,7 @@ import ray
 from ray import cloudpickle, ObjectRef
 
 from ray.serve.pipeline.common import StepConfig
-from ray.serve.pipeline.executor import (create_executor_from_step_config,
-                                         Executor)
+from ray.serve.pipeline.executor import create_executor_from_step_config, Executor
 
 
 class PipelineNode(ABC):
@@ -42,11 +41,14 @@ class ExecutorPipelineNode(PipelineNode):
     Call .deploy() on this to instantiate the pipeline.
     """
 
-    def __init__(self, callable_factory: Callable[[], Callable],
-                 config: StepConfig, incoming_edges: Tuple[PipelineNode]):
+    def __init__(
+        self,
+        callable_factory: Callable[[], Callable],
+        config: StepConfig,
+        incoming_edges: Tuple[PipelineNode],
+    ):
         # Serialize to make this class environment-independent.
-        self._serialized_callable_factory: bytes = cloudpickle.dumps(
-            callable_factory)
+        self._serialized_callable_factory: bytes = cloudpickle.dumps(callable_factory)
         self._config: StepConfig = config
         self._incoming_edges: PipelineNode = incoming_edges
 
@@ -62,14 +64,14 @@ class ExecutorPipelineNode(PipelineNode):
         """
         [node.deploy() for node in self._incoming_edges]
         self._executor = create_executor_from_step_config(
-            self._serialized_callable_factory, self._config)
+            self._serialized_callable_factory, self._config
+        )
 
         return Pipeline(self)
 
     def _call(self, input_arg: Tuple[Any]) -> Any:
         if self._executor is None:
-            raise RuntimeError(
-                "Pipeline hasn't been deployed, call .deploy() first.")
+            raise RuntimeError("Pipeline hasn't been deployed, call .deploy() first.")
         args = tuple(node._call(input_arg) for node in self._incoming_edges)
         return self._executor.call(*args)
 

@@ -18,18 +18,25 @@ class TestParameterNoise(unittest.TestCase):
 
     def test_ddpg_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
-            ddpg.DDPGTrainer, ddpg.DEFAULT_CONFIG, "Pendulum-v1", {},
-            np.array([1.0, 0.0, -1.0]))
+            ddpg.DDPGTrainer,
+            ddpg.DEFAULT_CONFIG,
+            "Pendulum-v1",
+            {},
+            np.array([1.0, 0.0, -1.0]),
+        )
 
     def test_dqn_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
-            dqn.DQNTrainer, dqn.DEFAULT_CONFIG, "FrozenLake-v1", {
-                "is_slippery": False,
-                "map_name": "4x4"
-            }, np.array(0))
+            dqn.DQNTrainer,
+            dqn.DEFAULT_CONFIG,
+            "FrozenLake-v1",
+            {"is_slippery": False, "map_name": "4x4"},
+            np.array(0),
+        )
 
-    def do_test_parameter_noise_exploration(self, trainer_cls, config, env,
-                                            env_config, obs):
+    def do_test_parameter_noise_exploration(
+        self, trainer_cls, config, env, env_config, obs
+    ):
         """Tests, whether an Agent works with ParameterNoise."""
         core_config = config.copy()
         core_config["num_workers"] = 0  # Run locally.
@@ -79,8 +86,7 @@ class TestParameterNoise(unittest.TestCase):
                 check(a, a_)
                 # Noise never gets applied.
                 check(self._get_current_weight(policy, fw), initial_weights)
-                self.assertFalse(
-                    policy.exploration.weights_are_currently_noisy)
+                self.assertFalse(policy.exploration.weights_are_currently_noisy)
 
             # Explore=None (default: True) should return different actions.
             # However, this is only due to the underlying epsilon-greedy
@@ -222,4 +228,5 @@ class TestParameterNoise(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

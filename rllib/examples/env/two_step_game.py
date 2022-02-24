@@ -13,12 +13,12 @@ class TwoStepGame(MultiAgentEnv):
         self.state = None
         self.agent_1 = 0
         self.agent_2 = 1
+        self._skip_env_checking = True
         # MADDPG emits action logits instead of actual discrete actions
         self.actions_are_logits = env_config.get("actions_are_logits", False)
-        self.one_hot_state_encoding = env_config.get("one_hot_state_encoding",
-                                                     False)
+        self.one_hot_state_encoding = env_config.get("one_hot_state_encoding", False)
         self.with_state = env_config.get("separate_state_space", False)
-
+        self._agent_ids = {0, 1}
         if not self.one_hot_state_encoding:
             self.observation_space = Discrete(6)
             self.with_state = False
@@ -27,10 +27,12 @@ class TwoStepGame(MultiAgentEnv):
             # three states are active) as input with the receiving agent's
             # ID (1 or 2) concatenated onto the end.
             if self.with_state:
-                self.observation_space = Dict({
-                    "obs": MultiDiscrete([2, 2, 2, 3]),
-                    ENV_STATE: MultiDiscrete([2, 2, 2])
-                })
+                self.observation_space = Dict(
+                    {
+                        "obs": MultiDiscrete([2, 2, 2, 3]),
+                        ENV_STATE: MultiDiscrete([2, 2, 2]),
+                    }
+                )
             else:
                 self.observation_space = MultiDiscrete([2, 2, 2, 3])
 
@@ -45,8 +47,7 @@ class TwoStepGame(MultiAgentEnv):
     def step(self, action_dict):
         if self.actions_are_logits:
             action_dict = {
-                k: np.random.choice([0, 1], p=v)
-                for k, v in action_dict.items()
+                k: np.random.choice([0, 1], p=v) for k, v in action_dict.items()
             }
 
         state_index = np.flatnonzero(self.state)
@@ -63,20 +64,15 @@ class TwoStepGame(MultiAgentEnv):
             global_rew = 7
             done = True
         else:
-            if action_dict[self.agent_1] == 0 and action_dict[self.
-                                                              agent_2] == 0:
+            if action_dict[self.agent_1] == 0 and action_dict[self.agent_2] == 0:
                 global_rew = 0
-            elif action_dict[self.agent_1] == 1 and action_dict[self.
-                                                                agent_2] == 1:
+            elif action_dict[self.agent_1] == 1 and action_dict[self.agent_2] == 1:
                 global_rew = 8
             else:
                 global_rew = 1
             done = True
 
-        rewards = {
-            self.agent_1: global_rew / 2.0,
-            self.agent_2: global_rew / 2.0
-        }
+        rewards = {self.agent_1: global_rew / 2.0, self.agent_2: global_rew / 2.0}
         obs = self._obs()
         dones = {"__all__": done}
         infos = {}
@@ -85,20 +81,11 @@ class TwoStepGame(MultiAgentEnv):
     def _obs(self):
         if self.with_state:
             return {
-                self.agent_1: {
-                    "obs": self.agent_1_obs(),
-                    ENV_STATE: self.state
-                },
-                self.agent_2: {
-                    "obs": self.agent_2_obs(),
-                    ENV_STATE: self.state
-                }
+                self.agent_1: {"obs": self.agent_1_obs(), ENV_STATE: self.state},
+                self.agent_2: {"obs": self.agent_2_obs(), ENV_STATE: self.state},
             }
         else:
-            return {
-                self.agent_1: self.agent_1_obs(),
-                self.agent_2: self.agent_2_obs()
-            }
+            return {self.agent_1: self.agent_1_obs(), self.agent_2: self.agent_2_obs()}
 
     def agent_1_obs(self):
         if self.one_hot_state_encoding:
@@ -123,9 +110,12 @@ class TwoStepGameWithGroupedAgents(MultiAgentEnv):
         self.env = env.with_agent_groups(
             groups={"agents": [0, 1]},
             obs_space=tuple_obs_space,
-            act_space=tuple_act_space)
+            act_space=tuple_act_space,
+        )
         self.observation_space = self.env.observation_space
         self.action_space = self.env.action_space
+        self._agent_ids = {"agents"}
+        self._skip_env_checking = True
 
     def reset(self):
         return self.env.reset()

@@ -68,8 +68,7 @@ DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "15s"
 DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 
 
-def setup_multi_deployment_replicas(min_replicas, max_replicas,
-                                    num_deployments):
+def setup_multi_deployment_replicas(min_replicas, max_replicas, num_deployments):
     max_replicas_per_deployment = max_replicas // num_deployments
     all_deployment_names = [f"Echo_{i+1}" for i in range(num_deployments)]
 
@@ -80,9 +79,10 @@ def setup_multi_deployment_replicas(min_replicas, max_replicas,
             "max_replicas": max_replicas_per_deployment,
             "look_back_period_s": 0.2,
             "downscale_delay_s": 0.2,
-            "upscale_delay_s": 0.2
+            "upscale_delay_s": 0.2,
         },
-        version="v1")
+        version="v1",
+    )
     class Echo:
         def __init__(self):
             self.all_deployment_async_handles = []
@@ -91,12 +91,10 @@ def setup_multi_deployment_replicas(min_replicas, max_replicas,
             # sync get_handle() and expected to be called only a few times
             # during deployment warmup so each deployment has reference to
             # all other handles to send recursive inference call
-            if len(self.all_deployment_async_handles) < len(
-                    all_deployment_names):
+            if len(self.all_deployment_async_handles) < len(all_deployment_names):
                 deployments = list(serve.list_deployments().values())
                 self.all_deployment_async_handles = [
-                    deployment.get_handle(sync=False)
-                    for deployment in deployments
+                    deployment.get_handle(sync=False) for deployment in deployments
                 ]
 
             return random.choice(self.all_deployment_async_handles)
@@ -107,8 +105,7 @@ def setup_multi_deployment_replicas(min_replicas, max_replicas,
                 return "hi"
 
             next_async_handle = self.get_random_async_handle()
-            obj_ref = await next_async_handle.handle_request.remote(
-                request, depth + 1)
+            obj_ref = await next_async_handle.handle_request.remote(request, depth + 1)
 
             return await obj_ref
 
@@ -124,8 +121,12 @@ def setup_multi_deployment_replicas(min_replicas, max_replicas,
 @click.option("--max-replicas", "-max", type=int)
 @click.option("--num-deployments", "-nd", type=int)
 @click.option("--trial-length", "-tl", type=str)
-def main(min_replicas: Optional[int], max_replicas: Optional[int],
-         num_deployments: Optional[int], trial_length: Optional[str]):
+def main(
+    min_replicas: Optional[int],
+    max_replicas: Optional[int],
+    num_deployments: Optional[int],
+    trial_length: Optional[str],
+):
     # Give default cluster parameter values based on smoke_test config
     # if user provided values explicitly, use them instead.
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
@@ -135,24 +136,27 @@ def main(min_replicas: Optional[int], max_replicas: Optional[int],
         max_replicas = max_replicas or DEFAULT_SMOKE_TEST_MAX_NUM_REPLICA
         num_deployments = num_deployments or DEFAULT_SMOKE_TEST_NUM_DEPLOYMENTS
         trial_length = trial_length or DEFAULT_SMOKE_TEST_TRIAL_LENGTH
-        logger.info(f"Running smoke test with min {min_replicas} and max "
-                    f"{max_replicas} replicas, {num_deployments} deployments "
-                    f".. \n")
+        logger.info(
+            f"Running smoke test with min {min_replicas} and max "
+            f"{max_replicas} replicas, {num_deployments} deployments "
+            f".. \n"
+        )
         # Choose cluster setup based on user config. Local test uses Cluster()
         # to mock actors that requires # of nodes to be specified, but ray
         # client doesn't need to
         num_nodes = int(math.ceil(max_replicas / NUM_CPU_PER_NODE))
-        logger.info(
-            f"Setting up local ray cluster with {num_nodes} nodes .. \n")
+        logger.info(f"Setting up local ray cluster with {num_nodes} nodes .. \n")
         serve_client = setup_local_single_node_cluster(num_nodes)[0]
     else:
         min_replicas = min_replicas or DEFAULT_FULL_TEST_MIN_NUM_REPLICA
         max_replicas = max_replicas or DEFAULT_FULL_TEST_MAX_NUM_REPLICA
         num_deployments = num_deployments or DEFAULT_FULL_TEST_NUM_DEPLOYMENTS
         trial_length = trial_length or DEFAULT_FULL_TEST_TRIAL_LENGTH
-        logger.info(f"Running full test with min {min_replicas} and max "
-                    f"{max_replicas} replicas, {num_deployments} deployments "
-                    f".. \n")
+        logger.info(
+            f"Running full test with min {min_replicas} and max "
+            f"{max_replicas} replicas, {num_deployments} deployments "
+            f".. \n"
+        )
         logger.info("Setting up anyscale ray cluster .. \n")
         serve_client = setup_anyscale_cluster()
 
@@ -160,10 +164,11 @@ def main(min_replicas: Optional[int], max_replicas: Optional[int],
     http_port = str(serve_client._http_config.port)
     logger.info(f"Ray serve http_host: {http_host}, http_port: {http_port}")
 
-    logger.info(f"Deploying with min {min_replicas} and max {max_replicas}"
-                f"target replicas ....\n")
-    setup_multi_deployment_replicas(min_replicas, max_replicas,
-                                    num_deployments)
+    logger.info(
+        f"Deploying with min {min_replicas} and max {max_replicas}"
+        f"target replicas ....\n"
+    )
+    setup_multi_deployment_replicas(min_replicas, max_replicas, num_deployments)
 
     logger.info("Warming up cluster ....\n")
     endpoint_refs = []
@@ -171,7 +176,9 @@ def main(min_replicas: Optional[int], max_replicas: Optional[int],
     for endpoint in all_endpoints:
         endpoint_refs.append(
             warm_up_one_cluster.options(num_cpus=0).remote(
-                10, http_host, http_port, endpoint))
+                10, http_host, http_port, endpoint
+            )
+        )
     for endpoint in ray.get(endpoint_refs):
         logger.info(f"Finished warming up {endpoint}")
 
@@ -179,11 +186,8 @@ def main(min_replicas: Optional[int], max_replicas: Optional[int],
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
     all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(
-        trial_length,
-        NUM_CONNECTIONS,
-        http_host,
-        http_port,
-        all_endpoints=all_endpoints)
+        trial_length, NUM_CONNECTIONS, http_host, http_port, all_endpoints=all_endpoints
+    )
 
     aggregated_metrics = aggregate_all_metrics(all_metrics)
     logger.info("Wrk stdout on each node: ")
@@ -193,12 +197,13 @@ def main(min_replicas: Optional[int], max_replicas: Optional[int],
     for key, val in aggregated_metrics.items():
         logger.info(f"{key}: {val}")
     save_test_results(
-        aggregated_metrics,
-        default_output_file="/tmp/autoscaling_multi_deployment.json")
+        aggregated_metrics, default_output_file="/tmp/autoscaling_multi_deployment.json"
+    )
 
 
 if __name__ == "__main__":
     main()
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -1,19 +1,18 @@
 import collections
 import platform
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import numpy as np
 import ray
 from ray.rllib import SampleBatch
 from ray.rllib.execution import PrioritizedReplayBuffer, ReplayBuffer
 from ray.rllib.execution.buffers.replay_buffer import logger, _ALL_POLICIES
-from ray.rllib.policy.rnn_sequencing import \
-    timeslice_along_seq_lens_with_overlap
+from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import deprecation_warning
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.utils.typing import PolicyID, SampleBatchType
 from ray.util.iter import ParallelIteratorWorker
 
 
@@ -24,19 +23,19 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
     may be created to increase parallelism."""
 
     def __init__(
-            self,
-            num_shards: int = 1,
-            learning_starts: int = 1000,
-            capacity: int = 10000,
-            replay_batch_size: int = 1,
-            prioritized_replay_alpha: float = 0.6,
-            prioritized_replay_beta: float = 0.4,
-            prioritized_replay_eps: float = 1e-6,
-            replay_mode: str = "independent",
-            replay_sequence_length: int = 1,
-            replay_burn_in: int = 0,
-            replay_zero_init_states: bool = True,
-            buffer_size=DEPRECATED_VALUE,
+        self,
+        num_shards: int = 1,
+        learning_starts: int = 1000,
+        capacity: int = 10000,
+        replay_batch_size: int = 1,
+        prioritized_replay_alpha: float = 0.6,
+        prioritized_replay_beta: float = 0.4,
+        prioritized_replay_eps: float = 1e-6,
+        replay_mode: str = "independent",
+        replay_sequence_length: int = 1,
+        replay_burn_in: int = 0,
+        replay_zero_init_states: bool = True,
+        buffer_size=DEPRECATED_VALUE,
     ):
         """Initializes a MultiAgentReplayBuffer instance.
 
@@ -76,7 +75,8 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
         # Deprecated args.
         if buffer_size != DEPRECATED_VALUE:
             deprecation_warning(
-                "ReplayBuffer(size)", "ReplayBuffer(capacity)", error=False)
+                "ReplayBuffer(size)", "ReplayBuffer(capacity)", error=False
+            )
             capacity = buffer_size
 
         self.replay_starts = learning_starts // num_shards
@@ -91,12 +91,14 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
 
         if replay_sequence_length > 1:
             self.replay_batch_size = int(
-                max(1, replay_batch_size // replay_sequence_length))
+                max(1, replay_batch_size // replay_sequence_length)
+            )
             logger.info(
                 "Since replay_sequence_length={} and replay_batch_size={}, "
                 "we will replay {} sequences at a time.".format(
-                    replay_sequence_length, replay_batch_size,
-                    self.replay_batch_size))
+                    replay_sequence_length, replay_batch_size, self.replay_batch_size
+                )
+            )
 
         if replay_mode not in ["lockstep", "independent"]:
             raise ValueError("Unsupported replay mode: {}".format(replay_mode))
@@ -112,7 +114,8 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
                 return ReplayBuffer(self.capacity)
             else:
                 return PrioritizedReplayBuffer(
-                    self.capacity, alpha=prioritized_replay_alpha)
+                    self.capacity, alpha=prioritized_replay_alpha
+                )
 
         self.replay_buffers = collections.defaultdict(new_buffer)
 
@@ -186,23 +189,20 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
                         # If SampleBatch has prio-replay weights, average
                         # over these to use as a weight for the entire
                         # sequence.
-                        if "weights" in time_slice and \
-                                len(time_slice["weights"]):
+                        if "weights" in time_slice and len(time_slice["weights"]):
                             weight = np.mean(time_slice["weights"])
                         else:
                             weight = None
-                        self.replay_buffers[policy_id].add(
-                            time_slice, weight=weight)
+                        self.replay_buffers[policy_id].add(time_slice, weight=weight)
         self.num_added += batch.count
 
-    def replay(self) -> SampleBatchType:
+    def replay(self, policy_id: Optional[PolicyID] = None) -> SampleBatchType:
         """If this buffer was given a fake batch, return it, otherwise return
         a MultiAgentBatch with samples.
         """
         if self._fake_batch:
             if not isinstance(self._fake_batch, MultiAgentBatch):
-                self._fake_batch = SampleBatch(
-                    self._fake_batch).as_multi_agent()
+                self._fake_batch = SampleBatch(self._fake_batch).as_multi_agent()
             return self._fake_batch
 
         if self.num_added < self.replay_starts:
@@ -211,14 +211,22 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
             # Lockstep mode: Sample from all policies at the same time an
             # equal amount of steps.
             if self.replay_mode == "lockstep":
+                assert (
+                    policy_id is None
+                ), "`policy_id` specifier not allowed in `locksetp` mode!"
                 return self.replay_buffers[_ALL_POLICIES].sample(
-                    self.replay_batch_size, beta=self.prioritized_replay_beta)
+                    self.replay_batch_size, beta=self.prioritized_replay_beta
+                )
+            elif policy_id is not None:
+                return self.replay_buffers[policy_id].sample(
+                    self.replay_batch_size, beta=self.prioritized_replay_beta
+                )
             else:
                 samples = {}
                 for policy_id, replay_buffer in self.replay_buffers.items():
                     samples[policy_id] = replay_buffer.sample(
-                        self.replay_batch_size,
-                        beta=self.prioritized_replay_beta)
+                        self.replay_batch_size, beta=self.prioritized_replay_beta
+                    )
                 return MultiAgentBatch(samples, self.replay_batch_size)
 
     def update_priorities(self, prio_dict: Dict) -> None:
@@ -234,10 +242,10 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
         """
         with self.update_priorities_timer:
             for policy_id, (batch_indexes, td_errors) in prio_dict.items():
-                new_priorities = (
-                    np.abs(td_errors) + self.prioritized_replay_eps)
+                new_priorities = np.abs(td_errors) + self.prioritized_replay_eps
                 self.replay_buffers[policy_id].update_priorities(
-                    batch_indexes, new_priorities)
+                    batch_indexes, new_priorities
+                )
 
     def stats(self, debug: bool = False) -> Dict:
         """Returns the stats of this buffer and all underlying buffers.
@@ -253,12 +261,13 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
             "add_batch_time_ms": round(1000 * self.add_batch_timer.mean, 3),
             "replay_time_ms": round(1000 * self.replay_timer.mean, 3),
             "update_priorities_time_ms": round(
-                1000 * self.update_priorities_timer.mean, 3),
+                1000 * self.update_priorities_timer.mean, 3
+            ),
         }
         for policy_id, replay_buffer in self.replay_buffers.items():
-            stat.update({
-                "policy_{}".format(policy_id): replay_buffer.stats(debug=debug)
-            })
+            stat.update(
+                {"policy_{}".format(policy_id): replay_buffer.stats(debug=debug)}
+            )
         return stat
 
     def get_state(self) -> Dict[str, Any]:

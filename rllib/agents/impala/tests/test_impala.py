@@ -4,10 +4,13 @@ import ray
 import ray.rllib.agents.impala as impala
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
-    LEARNER_STATS_KEY
-from ray.rllib.utils.test_utils import check, \
-    check_compute_single_action, check_train_results, framework_iterator
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.rllib.utils.test_utils import (
+    check,
+    check_compute_single_action,
+    check_train_results,
+    framework_iterator,
+)
 
 tf1, tf, tfv = try_import_tf()
 
@@ -35,8 +38,11 @@ class TestIMPALA(unittest.TestCase):
             for lstm in [False, True]:
                 local_cfg["num_aggregation_workers"] = 0 if not lstm else 1
                 local_cfg["model"]["use_lstm"] = lstm
-                print("lstm={} aggregation-workers={}".format(
-                    lstm, local_cfg["num_aggregation_workers"]))
+                print(
+                    "lstm={} aggregation-workers={}".format(
+                        lstm, local_cfg["num_aggregation_workers"]
+                    )
+                )
                 # Test with and w/o aggregation workers (this has nothing
                 # to do with LSTMs, though).
                 trainer = impala.ImpalaTrainer(config=local_cfg, env=env)
@@ -66,8 +72,9 @@ class TestIMPALA(unittest.TestCase):
         config["env"] = "CartPole-v0"
 
         def get_lr(result):
-            return result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
-                LEARNER_STATS_KEY]["cur_lr"]
+            return result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
+                "cur_lr"
+            ]
 
         for fw in framework_iterator(config):
             trainer = impala.ImpalaTrainer(config=config)
@@ -97,4 +104,5 @@ class TestIMPALA(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

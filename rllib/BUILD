@@ -100,6 +100,17 @@ py_test(
     args = ["--yaml-dir=tuned_examples/a3c"]
 )
 
+# AlphaStar
+py_test(
+    name = "learning_tests_cartpole_alpha_star",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/alpha_star/multi-agent-cartpole-alpha-star.yaml"],
+    args = ["--yaml-dir=tuned_examples/alpha_star", "--num-cpus=20"]
+)
+
 # APEX-DQN
 py_test(
     name = "learning_tests_cartpole_apex",
@@ -212,6 +223,16 @@ py_test(
     srcs = ["tests/run_regression_tests.py"],
     data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
     args = ["--yaml-dir=tuned_examples/ddpg"]
+)
+
+py_test(
+    name = "learning_tests_pendulum_ddpg_tf2",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests_continuous_tf2_eager_off_policy"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
+    args = ["--yaml-dir=tuned_examples/ddpg", "--override-mean-reward=-750.0"]
 )
 
 py_test(
@@ -513,6 +534,26 @@ py_test(
 )
 
 py_test(
+    name = "learning_tests_pendulum_sac_tf2",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests_continuous_tf2_eager_off_policy"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/sac/pendulum-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac", "--override-mean-reward=-900.0"]
+)
+
+py_test(
+    name = "learning_tests_transformed_actions_pendulum_sac_tf2",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests_continuous_tf2_eager_off_policy"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac" ,"--override-mean-reward=-850.0"]
+)
+
+py_test(
     name = "learning_tests_pendulum_sac_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
@@ -520,6 +561,17 @@ py_test(
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac-fake-gpus.yaml"],
     args = ["--yaml-dir=tuned_examples/sac"]
+)
+
+# SlateQ
+py_test(
+    name = "learning_tests_interest_evolution_10_candidates_recsim_env_slateq",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/slateq/interest-evolution-10-candidates-recsim-env-slateq.yaml"],
+    args = ["--yaml-dir=tuned_examples/slateq"]
 )
 
 # TD3
@@ -543,6 +595,13 @@ py_test(
 
 # Generic (all Trainers)
 py_test(
+    name = "test_callbacks",
+    tags = ["team:ml", "trainers_dir"],
+    size = "medium",
+    srcs = ["agents/tests/test_callbacks.py"]
+)
+
+py_test(
     name = "test_trainer",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
@@ -560,8 +619,16 @@ py_test(
 py_test(
     name = "test_a3c",
     tags = ["team:ml", "trainers_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/a3c/tests/test_a3c.py"]
+)
+
+# AlphaStar
+py_test(
+    name = "test_alpha_star",
+    tags = ["team:ml", "trainers_dir"],
+    size = "large",
+    srcs = ["agents/alpha_star/tests/test_alpha_star.py"]
 )
 
 # APEXTrainer (DQN)
@@ -586,6 +653,14 @@ py_test(
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
     srcs = ["agents/ars/tests/test_ars.py"]
+)
+
+# Bandits
+py_test(
+    name = "test_bandits",
+    tags = ["team:ml", "trainers_dir"],
+    size = "medium",
+    srcs = ["agents/bandit/tests/test_bandits.py"],
 )
 
 # CQLTrainer
@@ -748,6 +823,14 @@ py_test(
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
     srcs = ["agents/dqn/tests/test_simple_q.py"]
+)
+
+# SlateQTrainer
+py_test(
+    name = "test_slateq",
+    tags = ["team:ml", "trainers_dir"],
+    size = "medium",
+    srcs = ["agents/slateq/tests/test_slateq.py"]
 )
 
 # TD3Trainer
@@ -1082,6 +1165,24 @@ sh_test(
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "env/tests/test_local_inference_cartpole_w_2_concurrent_episodes",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["local", "cartpole-dummy-2-episodes"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "env/tests/test_remote_inference_cartpole_w_2_concurrent_episodes",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["remote", "cartpole-dummy-2-episodes"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -2549,6 +2650,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/recommender_system_with_recsim_and_slateq_tf2",
+    main = "examples/recommender_system_with_recsim_and_slateq.py",
+    tags = ["team:ml", "examples", "examples_R"],
+    size = "large",
+    srcs = ["examples/recommender_system_with_recsim_and_slateq.py"],
+    args = ["--stop-iters=2", "--learning-starts=100", "--framework=tf2", "--use-tune", "--random-test-episodes=10", "--env-num-candidates=50", "--env-slate-size=2"],
+)
+
+py_test(
     name = "examples/remote_envs_with_inference_done_on_main_node_tf",
     main = "examples/remote_envs_with_inference_done_on_main_node.py",
     tags = ["team:ml", "examples", "examples_R"],
@@ -2734,46 +2844,37 @@ py_test(
     args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=PG"]
 )
 
+
 py_test(
-    name = "contrib/bandits/examples/lin_ts",
-    main = "contrib/bandits/examples/simple_context_bandit.py",
-    tags = ["team:ml", "examples", "examples_T"],
+    name = "examples/bandit/lin_ts_train_wheel_env",
+    main = "examples/bandit/lin_ts_train_wheel_env.py",
+    tags = ["team:ml", "examples"],
     size = "small",
-    srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
-    args = ["--as-test", "--stop-reward=10", "--run=contrib/LinTS"],
+    srcs = ["examples/bandit/lin_ts_train_wheel_env.py"],
 )
 
 py_test(
-    name = "contrib/bandits/examples/lin_ucb",
-    main = "contrib/bandits/examples/simple_context_bandit.py",
-    tags = ["team:ml", "examples", "examples_U"],
+    name = "examples/bandit/tune_lin_ts_train_wheel_env",
+    main = "examples/bandit/tune_lin_ts_train_wheel_env.py",
+    tags = ["team:ml", "examples"],
     size = "small",
-    srcs = ["contrib/bandits/examples/simple_context_bandit.py"],
-    args = ["--as-test", "--stop-reward=10", "--run=contrib/LinUCB"],
+    srcs = ["examples/bandit/tune_lin_ts_train_wheel_env.py"],
 )
 
 py_test(
-    name = "contrib/bandits/examples/lin_ts_train_wheel_env",
-    main = "contrib/bandits/examples/LinTS_train_wheel_env.py",
-    tags = ["team:ml", "examples", "examples_U"],
+    name = "examples/bandit/tune_lin_ucb_train_recommendation",
+    main = "examples/bandit/tune_lin_ucb_train_recommendation.py",
+    tags = ["team:ml", "examples", ],
     size = "small",
-    srcs = ["contrib/bandits/examples/LinTS_train_wheel_env.py"],
+    srcs = ["examples/bandit/tune_lin_ucb_train_recommendation.py"],
 )
 
 py_test(
-    name = "contrib/bandits/examples/tune_lin_ts_train_wheel_env",
-    main = "contrib/bandits/examples/tune_LinTS_train_wheel_env.py",
-    tags = ["team:ml", "examples", "examples_U"],
+    name = "examples/bandit/tune_lin_ucb_train_recsim_env",
+    main = "examples/bandit/tune_lin_ucb_train_recsim_env.py",
+    tags = ["team:ml", "examples", ],
     size = "small",
-    srcs = ["contrib/bandits/examples/tune_LinTS_train_wheel_env.py"],
-)
-
-py_test(
-    name = "contrib/bandits/examples/tune_lin_ucb_train_recommendation",
-    main = "contrib/bandits/examples/tune_LinUCB_train_recommendation.py",
-    tags = ["team:ml", "examples", "examples_U"],
-    size = "small",
-    srcs = ["contrib/bandits/examples/tune_LinUCB_train_recommendation.py"],
+    srcs = ["examples/bandit/tune_lin_ucb_train_recsim_env.py"],
 )
 
 # --------------------------------------------------------------------

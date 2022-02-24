@@ -5,6 +5,7 @@ parts:
     chapters:
       - file: ray-overview/index
       - file: ray-overview/installation
+      - file: ray-overview/learn-more
       - file: ray-overview/ray-libraries
 
   - caption: Ray ML
@@ -12,15 +13,11 @@ parts:
       - file: data/dataset
         title: Ray Data
         sections:
-          - file: data/dataset-pipeline
-          - file: data/dataset-ml-preprocessing
-          - file: data/dataset-execution-model
-          - file: data/dataset-tensor-support
+          - file: data/getting-started
+          - file: data/user-guide
+          - file: data/key-concepts
           - file: data/examples/big_data_ingestion
-          - file: data/dask-on-ray
-          - file: data/mars-on-ray
-          - file: data/modin/index
-          - file: data/raydp
+
       - file: train/train
         title: Ray Train
         sections:
@@ -33,27 +30,33 @@ parts:
       - file: tune/index
         title: Ray Tune
         sections:
+          - file: tune/getting-started
           - file: tune/key-concepts
-          - file: tune/user-guide
           - file: tune/tutorials/overview
             sections:
-              - file: tune/tutorials/tune-tutorial.rst
-              - file: tune/tutorials/tune-advanced-tutorial.rst
-              - file: tune/tutorials/tune-distributed.rst
-              - file: tune/tutorials/tune-lifecycle.rst
-              - file: tune/tutorials/tune-mlflow.rst
-              - file: tune/tutorials/tune-pytorch-cifar.rst
-              - file: tune/tutorials/tune-pytorch-lightning.rst
-              - file: tune/tutorials/tune-serve-integration-mnist.rst
-              - file: tune/tutorials/tune-sklearn.rst
-              - file: tune/tutorials/tune-xgboost.rst
-              - file: tune/tutorials/tune-wandb.rst
+              - file: tune/tutorials/tune-sklearn
+              - file: tune/tutorials/tune-pytorch-cifar
+              - file: tune/tutorials/tune-pytorch-lightning
+              - file: tune/tutorials/tune-serve-integration-mnist
+              - file: tune/tutorials/tune-xgboost
+              - file: tune/tutorials/tune-wandb
+              - file: tune/tutorials/tune-mlflow
+              - file: tune/tutorials/tune-comet
+              - file: tune/tutorials/tune-stopping
+              - file: tune/tutorials/tune-metrics
+              - file: tune/tutorials/tune-output
+              - file: tune/tutorials/tune-resources
+              - file: tune/tutorials/tune-checkpoints
+              - file: tune/tutorials/tune-lifecycle
+              - file: tune/tutorials/tune-advanced-tutorial
+              - file: tune/tutorials/tune-distributed
           - file: tune/examples/index
-          - file: tune/contrib
+          - file: tune/faq
+          - file: tune/api_docs/overview.rst
       - file: serve/index
         title: Ray Serve
         sections:
-          - file: serve/end_to_end_tutorial.rst
+          - file: serve/end_to_end_tutorial
           - file: serve/core-apis
           - file: serve/http-servehandle
           - file: serve/deployment
@@ -66,17 +69,18 @@ parts:
       - file: rllib/index
         title: Ray RLlib
         sections:
-          - file: rllib/rllib-toc
           - file: rllib/core-concepts
           - file: rllib/rllib-training
           - file: rllib/rllib-env
-          - file: rllib/rllib-models
           - file: rllib/rllib-algorithms
-          - file: rllib/rllib-sample-collection
-          - file: rllib/rllib-offline
-          - file: rllib/rllib-concepts
+          - file: rllib/user-guides
+            sections:
+              - file: rllib/rllib-models
+              - file: rllib/rllib-concepts
+              - file: rllib/rllib-sample-collection
+              - file: rllib/rllib-offline
+              - file: rllib/rllib-dev
           - file: rllib/rllib-examples
-          - file: rllib/rllib-dev
       - file: workflows/concepts
         title: Ray Workflows
         sections:
@@ -98,33 +102,35 @@ parts:
         title: "User Guide"
       - file: ray-core/examples/overview
         title: "Tutorials and Examples"
+        sections:
+          - file: ray-core/examples/placement-group
+          - file: ray-core/examples/plot_example-a3c
+          - file: ray-core/examples/plot_example-lm
+          - file: ray-core/examples/plot_hyperparameter
+          - file: ray-core/examples/plot_lbfgs
+          - file: ray-core/examples/plot_newsreader
+          - file: ray-core/examples/plot_parameter_server
+          - file: ray-core/examples/plot_pong_example
+          - file: ray-core/examples/plot_streaming
+          - file: ray-core/examples/progress_bar
+          - file: ray-core/examples/testing-tips
+          - file: ray-core/examples/tips-for-first-time
+          - file: ray-core/examples/using-ray-with-pytorch-lightning
+          - file: ray-core/examples/dask_xgboost/dask_xgboost
+          - file: ray-core/examples/modin_xgboost/modin_xgboost
 
-  - caption: Deploying Ray Clusters
+  - caption: Ray Clusters
     chapters:
       - file: cluster/quickstart
       - file: cluster/user-guide
-        sections:
-          - file: cluster/index
-          - file: cluster/guide
-          - file: cluster/job-submission
-            title: "Submitting Ray Jobs"
-          - file: cluster/ray-client
       - file: cluster/cloud
-        sections:
-          - file: cluster/aws-tips
       - file: cluster/deploy
-        sections:
-          - file: cluster/kubernetes
-          - file: cluster/yarn
-          - file: cluster/slurm
-          - file: cluster/lsf
 
   - caption: References
     chapters:
       - file: ray-references/api
-      - file: ray-references/faq
 
-  - caption: Developer Guide
+  - caption: Developer Guides
     chapters:
       - file: ray-contribute/getting-involved
         sections:
