@@ -36,9 +36,9 @@ class Model:
 
 @ray.remote
 class Combine:
-    def __init__(self, m1: "RayHandleLike", m2_nested: "RayHandleLike" = None):
+    def __init__(self, m1: "RayHandleLike", m2: "RayHandleLike" = None):
         self.m1 = m1
-        self.m2 = m2_nested.get("handle")
+        self.m2 = m2
 
     def __call__(self, req):
         r1_ref = self.m1.forward.remote(req)

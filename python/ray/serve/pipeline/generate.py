@@ -1,19 +1,21 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 import threading
 
 from ray.experimental.dag import (
     DAGNode,
     ClassNode,
     ClassMethodNode,
+    PARENT_CLASS_NODE_KEY,
 )
+
 from ray.serve.api import Deployment, DeploymentConfig
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
 
 
-class DeploymentIDGenerator(object):
+class DeploymentNameGenerator(object):
     """
-    Generate unique suffix for each given deployment_name requested for id.
+    Generate unique suffix for each given deployment_name requested for name.
     By default uses deployment_name for the very first time, then append
     monotonic increasing id to it.
     """
@@ -22,29 +24,22 @@ class DeploymentIDGenerator(object):
     __shared_state = dict()
 
     @classmethod
-    def get_deployment_id(cls, deployment_name: str):
+    def get_deployment_name(cls, dag_node: ClassNode):
+        assert isinstance(dag_node, ClassNode), (
+            "get_deployment_name() should only be called on ClassNode " "instances."
+        )
         with cls.__lock:
+            deployment_name = (
+                dag_node.get_options().get("name", None) or dag_node._body.__name__
+            )
             if deployment_name not in cls.__shared_state:
                 cls.__shared_state[deployment_name] = 0
                 return deployment_name
             else:
-                suffix_num = cls.__shared_state[deployment_name] + 1
-                cls.__shared_state[deployment_name] = suffix_num
+                cls.__shared_state[deployment_name] += 1
+                suffix_num = cls.__shared_state[deployment_name]
 
                 return f"{deployment_name}_{suffix_num}"
-
-
-def _get_unique_deployment_name(dag_node):
-    """
-    Get unique deployment name for given ClassNode. For the first time we use
-    class name, and subsequent instantition of the same class used in Ray DAG
-    get monotonic increasing id as suffix.
-    """
-    deployment_name = (
-        dag_node.get_options().get("name", None) or dag_node._body.__name__
-    )
-    deployment_name = DeploymentIDGenerator.get_deployment_id(deployment_name)
-    return deployment_name
 
 
 def _remove_non_default_ray_actor_options(ray_actor_options: Dict[str, Any]):
@@ -64,7 +59,9 @@ def _remove_non_default_ray_actor_options(ray_actor_options: Dict[str, Any]):
     return ray_actor_options
 
 
-def _replace_init_args_with_deployment_handle(args, kwargs):
+def _replace_init_args_with_deployment_handle(
+    args: List[Any], kwargs: Dict[str, Any]
+) -> Tuple[Tuple[Any], Dict[str, Any]]:
     """
     Deployment can be passed into other DAGNodes as init args. This is supported
     pattern in ray DAG. Thus we need convert them into deployment handles in
@@ -84,7 +81,7 @@ def _replace_init_args_with_deployment_handle(args, kwargs):
             init_kwargs[key] = value._deployment_handle
         else:
             init_kwargs[key] = value
-    return init_args, init_kwargs
+    return tuple(init_args), init_kwargs
 
 
 def transform_ray_dag_to_serve_dag(dag_node):
@@ -93,7 +90,7 @@ def transform_ray_dag_to_serve_dag(dag_node):
     ray decorated body passed in, ans ClassMethodNode to DeploymentMethodNode.
     """
     if isinstance(dag_node, ClassNode):
-        deployment_name = _get_unique_deployment_name(dag_node)
+        deployment_name = DeploymentNameGenerator.get_deployment_name(dag_node)
         ray_actor_options = _remove_non_default_ray_actor_options(
             dag_node.get_options()
         )
@@ -105,7 +102,7 @@ def transform_ray_dag_to_serve_dag(dag_node):
             dag_node._body,
             deployment_name,
             DeploymentConfig(),
-            init_args=tuple(init_args),  # replace DeploymentNode with handle
+            init_args=init_args,
             init_kwargs=init_kwargs,
             ray_actor_options=ray_actor_options,
             _internal=True,
@@ -123,7 +120,7 @@ def transform_ray_dag_to_serve_dag(dag_node):
     elif isinstance(dag_node, ClassMethodNode):
         other_args_to_resolve = dag_node.get_other_args_to_resolve()
         # TODO: (jiaodong) Need to capture DAGNodes in the parent node
-        parent_deployment_node = other_args_to_resolve["parent_class_node"]
+        parent_deployment_node = other_args_to_resolve[PARENT_CLASS_NODE_KEY]
 
         deployment_method_node = DeploymentMethodNode(
             parent_deployment_node._body,
@@ -161,6 +158,6 @@ def extract_deployments_from_serve_dag(
             deployments[deployment.name] = deployment
         # elif DeploymentMethodNode
 
-    serve_dag_root._apply_recursive(lambda node: extractor(node))
+    serve_dag_root._apply_recursive(extractor)
 
     return list(deployments.values())
