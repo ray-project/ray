@@ -176,7 +176,7 @@ def test_get_status_info(serve_start_stop):
     for deployment_status in statuses:
         assert deployment_status["name"] in expected_deployment_names
         expected_deployment_names.remove(deployment_status["name"])
-        assert deployment_status["status"] in {"updating", "healthy"}
+        assert deployment_status["status"] in {"UPDATING", "HEALTHY"}
         assert deployment_status["message"] == ""
     assert len(expected_deployment_names) == 0
 

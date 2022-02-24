@@ -381,9 +381,9 @@ class TestServeApplicationStatusSchema:
         # Ensure a valid ServeApplicationStatusSchema can be generated
 
         serve_application_status_schema = {
-            "deployment_1": {"status": "healthy", "message": ""},
+            "deployment_1": {"status": "HEALTHY", "message": ""},
             "deployment_2": {
-                "status": "unhealthy",
+                "status": "UNHEALTHY",
                 "message": "this deployment is deeply unhealthy",
             },
         }
@@ -483,7 +483,7 @@ def test_serve_application_to_schema_to_serve_application():
     statuses = serve_application_status_to_schema(get_deployment_statuses()).statuses
     deployment_names = {"f1", "f2"}
     for deployment_status in statuses:
-        assert deployment_status.status in {"updating", "healthy"}
+        assert deployment_status.status in {"UPDATING", "HEALTHY"}
         assert deployment_status.name in deployment_names
         deployment_names.remove(deployment_status.name)
     assert len(deployment_names) == 0
