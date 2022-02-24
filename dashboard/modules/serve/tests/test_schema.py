@@ -1,4 +1,3 @@
-from grpc import Status
 from pydantic import ValidationError
 import pytest
 

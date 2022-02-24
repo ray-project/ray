@@ -6,12 +6,8 @@ from typing import List, Dict
 
 
 URL = "http://localhost:8265/api/serve/deployments/"
-test_env_uri = (
-    "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
-)
-test_module_uri = (
-    "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
-)
+test_env_uri = "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
+test_module_uri = "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
 
 
 @pytest.fixture
