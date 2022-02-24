@@ -266,7 +266,7 @@ def _build_block_metadata(
     metadata: List["pyarrow.parquet.FileMetaData"],
     schema: Optional[Union[type, "pyarrow.lib.Schema"]],
 ) -> BlockMetadata:
-    input_files = list(set([p.path for p in files]))
+    input_files = list(set(p.path for p in files))
     if len(metadata) == len(files):
         # Piece metadata was available, construct a normal
         # BlockMetadata.
