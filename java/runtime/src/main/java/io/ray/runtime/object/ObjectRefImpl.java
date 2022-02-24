@@ -64,8 +64,15 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     // We still add the reference so that the local ref count will be properly
     // decremented once this object is GCed.
     new ObjectRefImplReference(this);
+
+    /// Note that registerObjectRefImpl() must be invoked before addLocalReference().
+    /// Because addLocalReference() may take a long time.
+    registerObjectRefImpl(id, this);
+    this.rawData = rawData;
   }
 
+  private void setRawData(byte[] rawData) {
+    Preconditions.checkState(this.rawData == null);
     this.rawData = rawData;
   }
 
