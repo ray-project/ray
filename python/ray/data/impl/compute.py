@@ -124,6 +124,14 @@ class TaskPool(ComputeStrategy):
 
 @PublicAPI
 class ActorPool(ComputeStrategy):
+    """Specify the compute strategy for a Dataset transform.
+
+    ActorPool specifies that an autoscaling pool of actors should be used for a given
+    Dataset transform. This is useful for stateful setup of callable classes.
+
+    For a fixed-sized actor pool of size ``n``, specify ``ActorPool(n, n)``.
+    """
+
     def __init__(self, min_size: int = 1, max_size: Optional[int] = None):
         if min_size < 1:
             raise ValueError("min_size must be > 1", min_size)
