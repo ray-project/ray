@@ -294,12 +294,8 @@ class DeploymentSchema(BaseModel):
 
 
 class NamedDeploymentStatusInfo(BaseModel):
-    name: str = Field(
-        ...,
-        description="The status' deployment's name.")
-    status_info: DeploymentStatusInfo = Field(
-        default=None
-    )
+    name: str = Field(..., description="The status' deployment's name.")
+    status_info: DeploymentStatusInfo = Field(default=None)
 
 
 class ServeInstanceSchema(BaseModel):
@@ -353,8 +349,17 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     )(s.import_path)
 
 
-def serve_instance_to_schema(deployments: List[Deployment]) -> ServeInstanceSchema:
+def serve_instance_to_schema(
+    deployments: List[Deployment],
+    statuses: Dict[str, DeploymentStatusInfo] = None,
+) -> ServeInstanceSchema:
     schemas = [deployment_to_schema(d) for d in deployments]
+    if statuses is not None:
+        named_statuses = [
+            NamedDeploymentStatusInfo(name=name, status_info=status_info)
+            for name, status_info in statuses.items()
+        ]
+        return ServeInstanceSchema(deployments=schemas, statuses=named_statuses)
     return ServeInstanceSchema(deployments=schemas)
 
 

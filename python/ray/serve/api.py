@@ -362,7 +362,7 @@ class Client:
     @_ensure_connected
     def list_deployments(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
         return ray.get(self._controller.list_deployments.remote())
-    
+
     @_ensure_connected
     def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
         return ray.get(self._controller.get_deployment_statuses.remote())
@@ -1413,7 +1413,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
 def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
     # Returns a dictionary of deployment names and their health statuses
-    
+
     return _get_global_client().get_deployment_statuses()
 
 

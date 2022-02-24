@@ -27,7 +27,10 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployments(self, req: Request) -> Response:
         deployments = list(serve.list_deployments().values())
-        serve_instance_schema = serve_instance_to_schema(deployments)
+        statuses = serve.get_deployment_statuses()
+        serve_instance_schema = serve_instance_to_schema(
+            deployments=deployments, statuses=statuses
+        )
         return Response(
             text=json.dumps(serve_instance_schema.json()),
             content_type="application/json",
