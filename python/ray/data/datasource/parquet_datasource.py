@@ -34,6 +34,7 @@ PARQUET_READER_ROW_BATCH_SIZE = 100000
 
 
 class PartitionedFile:
+    """Represents a remote parquet file with partitioning info."""
     def __init__(self, path: str, partition_keys: dict):
         self.path = path
         self.partition_keys = partition_keys
