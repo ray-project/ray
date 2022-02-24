@@ -14,7 +14,6 @@ import ray
 
 from ray.tests.conftest import *  # noqa
 from ray.data.dataset import Dataset, _sliding_window
-from ray.data.datasource import ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.row import TableRow
@@ -189,23 +188,30 @@ def test_dataset_out_of_band_serialization(shutdown_only, lazy):
     ds = maybe_lazy(ds, lazy)
     ds = ds.map(lambda x: x + 1)
     ds = ds.map(lambda x: x + 1)
+    epoch = ds._get_epoch()
+    uuid = ds._get_uuid()
+    plan_uuid = ds._plan._dataset_uuid
+    lazy = ds._lazy
 
     serialized_ds = ds.serialize_out_of_band()
-    # Confirm that Dataset was cleared.
+    # Confirm that the original Dataset was properly copied before clearing/mutating.
     in_blocks = ds._plan._in_blocks
+    # Should not raise.
+    in_blocks._check_if_cleared()
     if isinstance(in_blocks, LazyBlockList):
-        assert all(part is None for part in in_blocks._block_partitions)
-    elif not isinstance(in_blocks._blocks[0], ReadTask):
-        with pytest.raises(ValueError):
-            in_blocks._check_if_cleared()
-    assert ds._plan._out_blocks is None
+        assert in_blocks._block_partitions[0] is not None
+    if not lazy:
+        assert ds._plan._snapshot_blocks is not None
 
     ray.shutdown()
     ray.init()
 
     ds = Dataset.deserialize_out_of_band(serialized_ds)
-    # Confirm that Dataset is lazy.
-    assert ds._lazy
+    # Check Dataset state.
+    assert ds._get_epoch() == epoch
+    assert ds._get_uuid() == uuid
+    assert ds._plan._dataset_uuid == plan_uuid
+    assert ds._lazy == lazy
     # Check Dataset content.
     assert ds.count() == 10
     assert sorted(ds.take()) == list(range(2, 12))

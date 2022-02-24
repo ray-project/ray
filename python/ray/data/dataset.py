@@ -59,7 +59,6 @@ from ray.data.datasource import (
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
     WriteResult,
-    ReadTask,
 )
 from ray.data.datasource.file_based_datasource import (
     _wrap_arrow_serialization_workaround,
@@ -2740,23 +2739,29 @@ Dict[str, List[str]]]): The names of the columns
         Returns:
             Serialized bytes.
         """
-        if not isinstance(self._plan._in_blocks, LazyBlockList) and not isinstance(
-            self._plan._in_blocks._blocks[0], ReadTask
-        ):
+        if not self._plan.has_lazy_input():
             raise ValueError(
                 "Out-of-band serialization is only supported for Datasets created from "
                 "lazy datasources. Explicitly, out-of-band serialization is not "
                 "supported for any ray.data.from_* APIs."
             )
-        self._plan.clear()
-        self._lazy = True
-        ray.util.register_serializer(
-            _StatsActorWrapper,
-            serializer=lambda _: None,
-            deserializer=lambda _: _StatsActorWrapper(get_or_create_stats_actor()),
-        )
-        serialized = pickle.dumps(self)
-        ray.util.deregister_serializer(_StatsActorWrapper)
+        # Copy Dataset and clear the execution plan so the Dataset is out-of-band
+        # serializable.
+        plan_copy = self._plan.deep_copy(preserve_uuid=True)
+        plan_copy.clear()
+        ds = Dataset(plan_copy, self._get_epoch(), self._lazy)
+        ds._set_uuid(self._get_uuid())
+        try:
+            # Register a custom serializer for the stats actor handle to ensure that we
+            # create a new stats actor upon deserializing in the new cluster.
+            ray.util.register_serializer(
+                _StatsActorWrapper,
+                serializer=lambda _: None,
+                deserializer=lambda _: _StatsActorWrapper(get_or_create_stats_actor()),
+            )
+            serialized = pickle.dumps(ds)
+        finally:
+            ray.util.deregister_serializer(_StatsActorWrapper)
         return serialized
 
     @DeveloperAPI
@@ -2774,13 +2779,17 @@ Dict[str, List[str]]]): The names of the columns
         Returns:
             A deserialized ``Dataset`` instance.
         """
-        ray.util.register_serializer(
-            _StatsActorWrapper,
-            serializer=lambda _: None,
-            deserializer=lambda _: _StatsActorWrapper(get_or_create_stats_actor()),
-        )
-        deserialized = pickle.loads(serialized_ds)
-        ray.util.deregister_serializer(_StatsActorWrapper)
+        try:
+            # Register a custom serializer for the stats actor handle to ensure that we
+            # create a new stats actor upon deserializing in the new cluster.
+            ray.util.register_serializer(
+                _StatsActorWrapper,
+                serializer=lambda _: None,
+                deserializer=lambda _: _StatsActorWrapper(get_or_create_stats_actor()),
+            )
+            deserialized = pickle.loads(serialized_ds)
+        finally:
+            ray.util.deregister_serializer(_StatsActorWrapper)
         return deserialized
 
     def _split(
