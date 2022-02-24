@@ -51,14 +51,14 @@ MLFlowLogger
 
 Tune also provides a default logger for `MLflow <https://mlflow.org>`_.
 You can install MLflow via ``pip install mlflow``.
-You can see the :doc:`tutorial here </tune/tutorials/tune-mlflow>`.
+You can see the :doc:`tutorial here </tune/examples/tune-mlflow>`.
 
 WandbLogger
 -----------
 
 Tune also provides a default logger for `Weights & Biases <https://www.wandb.ai/>`_.
 You can install Wandb via ``pip install wandb``.
-You can see the :doc:`tutorial here </tune/tutorials/tune-wandb>`
+You can see the :doc:`tutorial here </tune/examples/tune-wandb>`
 
 
 .. _logger-interface:

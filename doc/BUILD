@@ -132,8 +132,7 @@ py_test(
 )
 
 # --------------------------------------------------------------------
-# Tests from the doc/source/tune/tutorials directory.
-# Please keep these sorted alphabetically.
+# Tests from the doc/source/tune/examples directory.
 # --------------------------------------------------------------------
 
 py_test(
@@ -141,8 +140,8 @@ py_test(
     size = "medium",
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
-    args = ["--path", "doc/source/tune/tutorials/tune-sklearn.ipynb"],
-    data = ["//doc/source/tune/tutorials:tune_tutorials"],
+    args = ["--path", "doc/source/tune/examples/tune-sklearn.ipynb"],
+    data = ["//doc/source/tune/examples:tune_examples"],
     tags = ["exclusive", "team:ml"],
 )
 
@@ -151,10 +150,22 @@ py_test(
     size = "medium",
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
-    args = ["--path", "doc/source/tune/tutorials/tune-serve-integration-mnist.ipynb", "--smoke-test", "--from_scratch", "--day 0"],
-    data = ["//doc/source/tune/tutorials:tune_tutorials"],
+    args = ["--path", "doc/source/tune/examples/tune-serve-integration-mnist.ipynb", "--smoke-test", "--from_scratch", "--day 0"],
+    data = ["//doc/source/tune/examples:tune_examples"],
     tags = ["exclusive", "team:ml"],
 )
+
+
+py_test(
+    name = "tune_comet",
+    size = "medium",
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    args = ["--path", "doc/source/tune/examples/tune-comet.ipynb"],
+    data = ["//doc/source/tune/examples:tune_examples"],
+    tags = ["exclusive", "team:ml"],
+)
+
 
 py_test(
     name = "doc_code_faq",
