@@ -19,6 +19,8 @@
 #include "ray/common/status.h"
 #include "ray/common/task/task_priority.h"
 
+#include <stdlib.h>
+
 namespace plasma {
 
 class MockClient : public ClientInterface {
@@ -73,6 +75,40 @@ class CreateRequestQueueTest : public ::testing::Test {
   CreateRequestQueue queue_;
   int num_global_gc_ = 0;
 };
+
+std::string TEST_RAYLET_EXEC_PATH;
+TEST_F(CreateRequestQueueTest, TestBlockTasks) {
+  /*
+  std::vector<std::string> cmdargs(
+		  {TEST_RAYLET_EXEC_PATH, "--object_store_memory=10000000"});
+  */
+  auto request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
+    result->data_size = 9000000;
+    return PlasmaError::OK;
+  };
+  ray::TaskKey key(ray::Priority({0}), ObjectID::FromRandom().TaskId());
+  ray::TaskKey key1(ray::Priority({1}), ObjectID::FromRandom().TaskId());
+
+  // Advance the clock without processing objects. This shouldn't have an impact.
+  current_time_ns_ += 10e9;
+  auto client = std::make_shared<MockClient>();
+  auto req_id = queue_.AddRequest(key, ObjectID::Nil(), client, request, 9000000);
+  auto req_id1 = queue_.AddRequest(key1, ObjectID::Nil(), client, request, 9000000);
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id);
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id1);
+
+  
+  ASSERT_TRUE(queue_.ProcessFirstRequest().ok());
+  ASSERT_REQUEST_FINISHED(queue_, req_id, PlasmaError::OK);
+  ASSERT_EQ(num_global_gc_, 0);
+  // Request gets cleaned up after we get it.
+  ASSERT_REQUEST_FINISHED(queue_, req_id, PlasmaError::UnexpectedError);
+
+  ASSERT_TRUE(queue_.ProcessFirstRequest().ok());
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id1);
+  sleep(1000);
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id1);
+}
 
 TEST_F(CreateRequestQueueTest, TestBtree) {
   auto request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {

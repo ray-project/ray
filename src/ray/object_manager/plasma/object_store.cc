@@ -53,10 +53,8 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
 
 ray::Priority ObjectStore::GetLowestPriObject() {
   // Return the lowest priority object in object_table
-  auto it = object_table_.begin();
-  ray::Priority lowest_priority = it->second->GetPriority();
-  it++;
-  for (; it != object_table_.end(); it++){
+  ray::Priority lowest_priority({-1});
+  for (auto it = object_table_.begin(); it != object_table_.end(); it++){
 	ray::Priority p = it->second->GetPriority();
     if(lowest_priority < p){
       lowest_priority = p;
