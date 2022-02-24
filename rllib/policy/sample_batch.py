@@ -1182,6 +1182,7 @@ class MultiAgentBatch:
                 {k: v.build_and_reset() for k, v in cur_slice.items()}, cur_slice_size
             )
             cur_slice_size = 0
+            cur_slice.clear()
             finished_slices.append(batch)
 
         # For each unique env timestep.
