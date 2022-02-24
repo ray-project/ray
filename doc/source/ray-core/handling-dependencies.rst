@@ -391,7 +391,7 @@ The runtime environment is inheritable, so it will apply to all tasks/actors wit
   # ChildActor's actual `runtime_env` (specify runtime_env overrides)
   {"env_vars": {"A": "a", "B": "b"}}
 
-3. If you'd like to still use current runtime env, you can use the API :ref:`ray.get_current_runtime_env() <runtime-env-apis>` to get the current runtime env and modify it by yourself.
+3. If you'd like to still use current runtime env, you can use the :ref:`ray.get_runtime_context() <runtime-context-apis>` API to get the current runtime env and modify it by yourself.
 
 .. code-block:: python
 

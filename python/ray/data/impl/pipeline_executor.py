@@ -126,6 +126,7 @@ class PipelineSplitExecutorCoordinator:
         if all(s is None for s in self.cur_splits):
             ds = next(self.executor)
             self.cur_splits = self.splitter(ds)
+            assert len(self.cur_splits) == self.n, (self.cur_splits, self.n)
 
         # Return the dataset at the split index once per split.
         ret = self.cur_splits[split_index]
