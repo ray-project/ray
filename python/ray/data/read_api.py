@@ -240,23 +240,6 @@ def read_datasource(
     stats_uuid = uuid.uuid4()
     stats_actor.record_start.remote(stats_uuid)
 
-    def remote_read(i: int, task: ReadTask, stats_actor) -> MaybeBlockPartition:
-        DatasetContext._set_current(context)
-        stats = BlockExecStats.builder()
-
-        # Execute the read task.
-        block = task()
-
-        if context.block_splitting_enabled:
-            metadata = task.get_metadata()
-            metadata.exec_stats = stats.build()
-        else:
-            metadata = BlockAccessor.for_block(block).get_metadata(
-                input_files=task.get_metadata().input_files, exec_stats=stats.build()
-            )
-        stats_actor.record_task.remote(stats_uuid, i, metadata)
-        return block
-
     if ray_remote_args is None:
         ray_remote_args = {}
     # Increase the read parallelism by default to maximize IO throughput. This
@@ -267,7 +250,7 @@ def read_datasource(
         ray_remote_args["num_cpus"] = 0.5
     if "scheduling_strategy" not in ray_remote_args:
         ray_remote_args["scheduling_strategy"] = "SPREAD"
-    remote_read = cached_remote_fn(remote_read)
+    remote_read = cached_remote_fn(_remote_read)
 
     if _spread_resource_prefix is not None:
         # Use given spread resource prefix for round-robin resource-based
@@ -287,7 +270,7 @@ def read_datasource(
         calls.append(
             lambda i=i, task=task, resources=next(resource_iter): remote_read.options(
                 **ray_remote_args, resources=resources
-            ).remote(i, task, stats_actor)
+            ).remote(i, task, context, stats_actor, stats_uuid)
         )
         metadata.append(task.get_metadata())
 
@@ -310,6 +293,26 @@ def read_datasource(
         0,
         False,
     )
+
+
+def _remote_read(
+    i: int, task: ReadTask, context, stats_actor, stats_uuid
+) -> MaybeBlockPartition:
+    DatasetContext._set_current(context)
+    stats = BlockExecStats.builder()
+
+    # Execute the read task.
+    block = task()
+
+    if context.block_splitting_enabled:
+        metadata = task.get_metadata()
+        metadata.exec_stats = stats.build()
+    else:
+        metadata = BlockAccessor.for_block(block).get_metadata(
+            input_files=task.get_metadata().input_files, exec_stats=stats.build()
+        )
+    stats_actor.record_task.remote(stats_uuid, i, metadata)
+    return block
 
 
 @PublicAPI(stability="beta")

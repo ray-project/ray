@@ -240,28 +240,10 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             filesystem.create_dir(path, recursive=True)
         filesystem = _wrap_s3_serialization_workaround(filesystem)
 
-        _write_block_to_file = self._write_block
-
         if open_stream_args is None:
             open_stream_args = {}
 
-        def write_block(write_path: str, block: Block):
-            logger.debug(f"Writing {write_path} file.")
-            fs = filesystem
-            if isinstance(fs, _S3FileSystemWrapper):
-                fs = fs.unwrap()
-            if _block_udf is not None:
-                block = _block_udf(block)
-
-            with fs.open_output_stream(write_path, **open_stream_args) as f:
-                _write_block_to_file(
-                    f,
-                    BlockAccessor.for_block(block),
-                    writer_args_fn=write_args_fn,
-                    **write_args,
-                )
-
-        write_block = cached_remote_fn(write_block)
+        write_block = cached_remote_fn(_write_block)
 
         file_format = self._file_format()
         write_tasks = []
@@ -276,7 +258,16 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 block_index=block_idx,
                 file_format=file_format,
             )
-            write_task = write_block.remote(write_path, block)
+            write_task = write_block.remote(
+                write_path,
+                block,
+                filesystem,
+                open_stream_args,
+                write_args,
+                write_args_fn,
+                _block_udf,
+                self._write_block,
+            )
             write_tasks.append(write_task)
 
         return write_tasks
@@ -304,6 +295,31 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         """
         raise NotImplementedError(
             "Subclasses of FileBasedDatasource must implement _file_format()."
+        )
+
+
+def _write_block(
+    write_path: str,
+    block: Block,
+    fs,
+    open_stream_args,
+    write_args,
+    write_args_fn,
+    _block_udf,
+    _write_block_to_file,
+):
+    logger.debug(f"Writing {write_path} file.")
+    if isinstance(fs, _S3FileSystemWrapper):
+        fs = fs.unwrap()
+    if _block_udf is not None:
+        block = _block_udf(block)
+
+    with fs.open_output_stream(write_path, **open_stream_args) as f:
+        _write_block_to_file(
+            f,
+            BlockAccessor.for_block(block),
+            writer_args_fn=write_args_fn,
+            **write_args,
         )
 
 

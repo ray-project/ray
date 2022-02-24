@@ -11,7 +11,10 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
     This is used in Datasets to avoid circular import issues with ray.remote.
     (ray imports ray.data in order to allow ``ray.data.read_foo()`` to work,
     which means ray.remote cannot be used top-level in ray.data).
+
+    This also avoids excessive exports of the same function to Ray.
     """
+    assert not fn.__closure__, "Function must be defined at the top level of a file."
     if fn not in CACHED_FUNCTIONS:
         default_ray_remote_args = {
             "retry_exceptions": True,
