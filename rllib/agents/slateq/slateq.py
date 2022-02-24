@@ -189,12 +189,7 @@ class SlateQTrainer(Trainer):
         if config["num_gpus"] > 1:
             raise ValueError("`num_gpus` > 1 not yet supported for SlateQ!")
 
-        if config["framework"] == "tf":
-            raise ValueError(
-                "SlateQ is currently not supported for TensorFlow static graph "
-                "(framework=tf)! Try `framework=tf2` instead."
-            )
-        elif config["framework"] == "torch":
+        if config["framework"] == "torch":
             logger.warning(
                 "SlateQ with framework==torch currently uses a limited Q-model for "
                 "learning Q-values per candidate. This causes it to learn slowly. "

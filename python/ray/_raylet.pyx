@@ -125,8 +125,6 @@ from ray.exceptions import (
 )
 from ray import external_storage
 from ray.util.scheduling_strategies import (
-    DEFAULT_SCHEDULING_STRATEGY,
-    SPREAD_SCHEDULING_STRATEGY,
     PlacementGroupSchedulingStrategy,
 )
 import ray.ray_constants as ray_constants
@@ -1459,9 +1457,9 @@ cdef class CoreWorker:
             CPlacementGroupSchedulingStrategy \
                 *c_placement_group_scheduling_strategy
         assert python_scheduling_strategy is not None
-        if python_scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
+        if python_scheduling_strategy == "DEFAULT":
             c_scheduling_strategy[0].mutable_default_scheduling_strategy()
-        elif python_scheduling_strategy == SPREAD_SCHEDULING_STRATEGY:
+        elif python_scheduling_strategy == "SPREAD":
             c_scheduling_strategy[0].mutable_spread_scheduling_strategy()
         elif isinstance(python_scheduling_strategy,
                         PlacementGroupSchedulingStrategy):

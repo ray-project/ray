@@ -21,13 +21,16 @@
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 
 namespace ray {
-namespace sync {
+namespace syncer {
 
-class RaySync {
+// RaySyncer is a service to sync components in the cluster.
+// It's supposed to be used to synchronize resource usage and scheduling information
+// in ray cluster. This component is still in developing.
+class RaySyncer {
  public:
-  RaySync(instrumented_io_context &main_thread,
-          std::unique_ptr<::ray::gcs::GrpcBasedResourceBroadcaster> braodcaster,
-          std::unique_ptr<::ray::gcs::GcsResourceReportPoller> poller)
+  RaySyncer(instrumented_io_context &main_thread,
+            std::unique_ptr<::ray::gcs::GrpcBasedResourceBroadcaster> braodcaster,
+            std::unique_ptr<::ray::gcs::GcsResourceReportPoller> poller)
       : ticker_(main_thread),
         broadcaster_(std::move(braodcaster)),
         poller_(std::move(poller)) {}
@@ -49,7 +52,11 @@ class RaySync {
             resources_buffer_proto_.add_batch()->mutable_data()->Swap(&ptr->second);
           }
           resources_buffer_.erase(beg, ptr);
-          broadcaster_->SendBroadcast(std::move(resources_buffer_proto_));
+          broadcast_service_.dispatch(
+              [this, resources = std::move(resources_buffer_proto_)]() mutable {
+                broadcaster_->SendBroadcast(std::move(resources));
+              },
+              "SendBroadcast");
           resources_buffer_proto_.Clear();
         },
         RayConfig::instance().raylet_report_resources_period_milliseconds(),
@@ -101,14 +108,22 @@ class RaySync {
   std::string DebugString() { return broadcaster_->DebugString(); }
 
  private:
+  // Right now the threading is messy here due to legacy reason.
+  // TODO (iycheng): Clean these up in follow-up PRs.
+
+  // ticker is running from main thread.
   PeriodicalRunner ticker_;
-  rpc::ResourceUsageBroadcastData resources_buffer_proto_;
-  std::unique_ptr<::ray::gcs::GrpcBasedResourceBroadcaster> broadcaster_;
-  std::unique_ptr<::ray::gcs::GcsResourceReportPoller> poller_;
-  absl::flat_hash_map<std::string, rpc::ResourcesData> resources_buffer_;
+  // All operations in broadcaster is supposed to be put in broadcast thread
   std::unique_ptr<std::thread> broadcast_thread_;
   instrumented_io_context broadcast_service_;
+  std::unique_ptr<::ray::gcs::GrpcBasedResourceBroadcaster> broadcaster_;
+  // Poller is running in its own thread.
+  std::unique_ptr<::ray::gcs::GcsResourceReportPoller> poller_;
+
+  // Accessing data related fields should be from main thread.
+  absl::flat_hash_map<std::string, rpc::ResourcesData> resources_buffer_;
+  rpc::ResourceUsageBroadcastData resources_buffer_proto_;
 };
 
-}  // namespace sync
+}  // namespace syncer
 }  // namespace ray
