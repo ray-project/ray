@@ -93,7 +93,7 @@ class ParquetDatasource(FileBasedDatasource):
         # Mapping from file path to partitioning keys.
         paths_seen = set()
         files_to_read: List[PartitionedFile] = []
-        for frag in pq_ds.fragments:
+        for frag in pq_ds.pieces:
             if frag.path not in paths_seen:
                 paths_seen.add(frag.path)
                 files_to_read.append(
@@ -133,7 +133,7 @@ class ParquetDatasource(FileBasedDatasource):
                     use_legacy_dataset=False,
                     split_row_groups=False,
                 )
-                for fragment in ds.fragments:
+                for fragment in ds.pieces:
                     batches = fragment.to_batches(
                         use_threads=use_threads,
                         columns=columns,
@@ -256,8 +256,8 @@ def _fetch_metadata(
         use_legacy_dataset=False,
         split_row_groups=False,
     )
-    assert len(pq_ds.fragments) == len(files), pq_ds.fragments
-    metadata = {f.path: f.metadata for f in pq_ds.fragments}
+    assert len(pq_ds.pieces) == len(files), pq_ds.pieces
+    metadata = {f.path: f.metadata for f in pq_ds.pieces}
     return [metadata[f.path] for f in files]
 
 
