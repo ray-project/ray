@@ -204,8 +204,11 @@ class PlacementGroupFactory:
         # Call with bounded *args and **kwargs
         return placement_group(*self._bound.args, **kwargs)
 
-    def __eq__(self, other):
-        return self._bound == other._bound
+    def __eq__(self, other: "PlacementGroupFactory"):
+        return (
+            self._bound == other._bound
+            and self.head_bundle_is_empty == other.head_bundle_is_empty
+        )
 
     def __hash__(self):
         if not self._hash:

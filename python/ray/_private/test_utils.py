@@ -207,7 +207,7 @@ def kill_process_by_name(name, SIGKILL=False):
                 p.terminate()
 
 
-def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ascii"):
+def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "utf-8"):
     """Run a driver as a separate process.
 
     Args:

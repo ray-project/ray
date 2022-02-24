@@ -48,8 +48,8 @@ from ray.data.datasource import (
     ReadTask,
 )
 from ray.data.datasource.file_based_datasource import (
-    _wrap_s3_filesystem_workaround,
-    _unwrap_s3_filesystem_workaround,
+    _wrap_arrow_serialization_workaround,
+    _unwrap_arrow_serialization_workaround,
 )
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.arrow_block import ArrowRow
@@ -58,7 +58,7 @@ from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.plan import ExecutionPlan
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.stats import DatasetStats, get_or_create_stats_actor
-from ray.data.impl.util import _get_spread_resources_iter
+from ray.data.impl.util import _get_spread_resources_iter, _lazy_import_pyarrow_dataset
 
 T = TypeVar("T")
 
@@ -205,9 +205,19 @@ def read_datasource(
     Returns:
         Dataset holding the data read from the datasource.
     """
-
     # TODO(ekl) remove this feature flag.
-    if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
+    force_local = "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ
+    pa_ds = _lazy_import_pyarrow_dataset()
+    if pa_ds:
+        partitioning = read_args.get("dataset_kwargs", {}).get("partitioning", None)
+        if isinstance(partitioning, pa_ds.Partitioning):
+            logger.info(
+                "Forcing local metadata resolution since the provided partitioning "
+                f"{partitioning} is not serializable."
+            )
+            force_local = True
+
+    if force_local:
         read_tasks = datasource.prepare_read(parallelism, **read_args)
     else:
         # Prepare read in a remote task so that in Ray client mode, we aren't
@@ -218,7 +228,10 @@ def read_datasource(
         )
         read_tasks = ray.get(
             prepare_read.remote(
-                datasource, ctx, parallelism, _wrap_s3_filesystem_workaround(read_args)
+                datasource,
+                ctx,
+                parallelism,
+                _wrap_arrow_serialization_workaround(read_args),
             )
         )
 
@@ -246,15 +259,16 @@ def read_datasource(
 
     if ray_remote_args is None:
         ray_remote_args = {}
-    # Increase the read parallelism by default to maximize IO throughput. This
-    # is particularly important when reading from e.g., remote storage.
-    if "num_cpus" not in ray_remote_args:
-        # Note that the too many workers warning triggers at 4x subscription,
-        # so we go at 0.5 to avoid the warning message.
-        ray_remote_args["num_cpus"] = 0.5
+    if "scheduling_strategy" not in ray_remote_args:
+        ray_remote_args["scheduling_strategy"] = "SPREAD"
     remote_read = cached_remote_fn(remote_read)
 
     if _spread_resource_prefix is not None:
+        if context.optimize_fuse_stages:
+            logger.warning(
+                "_spread_resource_prefix has no effect when optimize_fuse_stages "
+                "is enabled. Tasks are spread by default."
+            )
         # Use given spread resource prefix for round-robin resource-based
         # scheduling.
         nodes = ray.nodes()
@@ -277,6 +291,9 @@ def read_datasource(
         metadata.append(task.get_metadata())
 
     block_list = LazyBlockList(calls, metadata)
+    # TODO(ekl) consider refactoring LazyBlockList to take read_tasks explicitly.
+    block_list._read_tasks = read_tasks
+    block_list._read_remote_args = ray_remote_args
 
     # Get the schema from the first block synchronously.
     if metadata and metadata[0].schema is None:
@@ -871,6 +888,6 @@ def _get_metadata(table: Union["pyarrow.Table", "pandas.DataFrame"]) -> BlockMet
 def _prepare_read(
     ds: Datasource, ctx: DatasetContext, parallelism: int, kwargs: dict
 ) -> List[ReadTask]:
-    kwargs = _unwrap_s3_filesystem_workaround(kwargs)
+    kwargs = _unwrap_arrow_serialization_workaround(kwargs)
     DatasetContext._set_current(ctx)
     return ds.prepare_read(parallelism, **kwargs)

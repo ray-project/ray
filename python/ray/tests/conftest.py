@@ -15,6 +15,7 @@ from unittest import mock
 import ray
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster, AutoscalingCluster, cluster_not_supported
+from ray._private.runtime_env.pip import PipProcessor
 from ray._private.services import (
     REDIS_EXECUTABLE,
     _start_redis_instance,
@@ -165,7 +166,8 @@ def ray_start_10_cpus(request):
 
 @contextmanager
 def _ray_start_cluster(**kwargs):
-    if cluster_not_supported:
+    cluster_not_supported_ = kwargs.pop("skip_cluster", cluster_not_supported)
+    if cluster_not_supported_:
         pytest.skip("Cluster not supported")
     init_kwargs = get_default_fixture_ray_kwargs()
     num_nodes = 0
@@ -201,6 +203,14 @@ def _ray_start_cluster(**kwargs):
 @pytest.fixture
 def ray_start_cluster(request):
     param = getattr(request, "param", {})
+    with _ray_start_cluster(**param) as res:
+        yield res
+
+
+@pytest.fixture
+def ray_start_cluster_enabled(request):
+    param = getattr(request, "param", {})
+    param["skip_cluster"] = False
     with _ray_start_cluster(**param) as res:
         yield res
 
@@ -578,3 +588,38 @@ def runtime_env_disable_URI_cache():
     ):
         print("URI caching disabled (conda and pip cache size set to 0).")
         yield
+
+
+# Use to create virtualenv that clone from current python env.
+# The difference between this fixture and `pytest_virtual.virtual` is that
+# `pytest_virtual.virtual` will not inherit current python env's site-package.
+# Note: Can't use in virtualenv, this must be noted when testing locally.
+@pytest.fixture(scope="function")
+def cloned_virtualenv():
+    # Lazy import pytest_virtualenv,
+    # aviod import `pytest_virtualenv` in test case `Minimal install`
+    from pytest_virtualenv import VirtualEnv
+
+    if PipProcessor._is_in_virtualenv():
+        raise RuntimeError("Forbid the use of this fixture in virtualenv")
+
+    venv = VirtualEnv(
+        args=[
+            "--system-site-packages",
+            "--reset-app-data",
+            "--no-periodic-update",
+            "--no-download",
+        ],
+    )
+    yield venv
+    venv.teardown()
+
+
+@pytest.fixture
+def set_runtime_env_retry_times(request):
+    runtime_env_retry_times = getattr(request, "param", "0")
+    try:
+        os.environ["RUNTIME_ENV_RETRY_TIMES"] = runtime_env_retry_times
+        yield runtime_env_retry_times
+    finally:
+        del os.environ["RUNTIME_ENV_RETRY_TIMES"]

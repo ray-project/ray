@@ -1155,6 +1155,13 @@ class Deployment:
             _internal=True,
         )
 
+    def _bind(self, *args, **kwargs):
+        raise AttributeError(
+            "DAG building API should only be used for @ray.remote decorated "
+            "class or function, not in serve deployment or library "
+            "specific API."
+        )
+
     def __eq__(self, other):
         return all(
             [
