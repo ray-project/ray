@@ -24,6 +24,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   num_tasks_submitted_++;
 
   resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) {
+    task_finisher_->MarkDependenciesResolved(task_spec.TaskId());
     if (!status.ok()) {
       RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
       RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
@@ -422,7 +423,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             // assign work to the worker.
             rpc::WorkerAddress addr(reply.worker_address());
             RAY_LOG(DEBUG) << "Lease granted to task " << task_id << " from raylet "
-                           << addr.raylet_id;
+                           << addr.raylet_id << " with worker " << addr.worker_id;
 
             auto resources_copy = reply.resource_mapping();
 

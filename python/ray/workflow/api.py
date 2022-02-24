@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import os
 import types
@@ -22,6 +21,7 @@ from ray.workflow.common import (
     WorkflowNotFoundError,
     WorkflowStepRuntimeOptions,
     StepType,
+    asyncio_run,
 )
 from ray.workflow import serialization
 from ray.workflow.event_listener import EventListener, EventListenerType, TimerListener
@@ -114,6 +114,7 @@ def step(*args, **kwargs):
     name = kwargs.pop("name", None)
     metadata = kwargs.pop("metadata", None)
     allow_inplace = kwargs.pop("allow_inplace", False)
+    checkpoint = kwargs.pop("checkpoint", None)
     ray_options = kwargs
 
     options = WorkflowStepRuntimeOptions.make(
@@ -121,6 +122,7 @@ def step(*args, **kwargs):
         catch_exceptions=catch_exceptions,
         max_retries=max_retries,
         allow_inplace=allow_inplace,
+        checkpoint=checkpoint,
         ray_options=ray_options,
     )
     return make_step_decorator(options, name, metadata)
@@ -354,16 +356,14 @@ def wait_for_event(
     @step
     def get_message(event_listener_type: EventListenerType, *args, **kwargs) -> Event:
         event_listener = event_listener_type()
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(event_listener.poll_for_event(*args, **kwargs))
+        return asyncio_run(event_listener.poll_for_event(*args, **kwargs))
 
     @step
     def message_committed(
         event_listener_type: EventListenerType, event: Event
     ) -> Event:
         event_listener = event_listener_type()
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(event_listener.event_checkpointed(event))
+        asyncio_run(event_listener.event_checkpointed(event))
         return event
 
     return message_committed.step(

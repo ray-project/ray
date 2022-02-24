@@ -236,6 +236,9 @@ class SlateQModel(TorchModelV2, nn.Module):
 
         # Calculate per-slate Q values.
         batch_size, _ = q_values_doc.shape
+        # Move pre-stored slate combinations to GPU, if necessary.
+        if self.slates.device != q_values_doc.device:
+            self.slates = self.slates.to(q_values.device)
         # slate_decomp_q_values.shape: [batch_size, num_slates, slate_size]
         slate_decomp_q_values = torch.gather(
             # input.shape: [batch_size, num_slates, num_docs]

@@ -14,6 +14,7 @@ from typing import Dict
 from typing import Set
 from typing import Optional
 from typing import Callable
+from typing import Union
 from ray import cloudpickle
 from ray.job_config import JobConfig
 import ray
@@ -440,21 +441,27 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self, request: ray_client_pb2.PutRequest, context=None
     ) -> ray_client_pb2.PutResponse:
         """gRPC entrypoint for unary PutObject"""
-        return self._put_object(request, "", context)
+        return self._put_object(request.data, request.client_ref_id, "", context)
 
     def _put_object(
-        self, request: ray_client_pb2.PutRequest, client_id: str, context=None
+        self,
+        data: Union[bytes, bytearray],
+        client_ref_id: bytes,
+        client_id: str,
+        context=None,
     ):
         """Put an object in the cluster with ray.put() via gRPC.
 
         Args:
-            request: PutRequest with pickled data.
+            data: Pickled data. Can either be bytearray if this is called
+              from the dataservicer, or bytes if called from PutObject.
+            client_ref_id: The id associated with this object on the client.
             client_id: The client who owns this data, for tracking when to
               delete this reference.
             context: gRPC context.
         """
         try:
-            obj = loads_from_client(request.data, self)
+            obj = loads_from_client(data, self)
             with disable_client_hook():
                 objectref = ray.put(obj)
         except Exception as e:
@@ -464,10 +471,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             )
 
         self.object_refs[client_id][objectref.binary()] = objectref
-        if len(request.client_ref_id) > 0:
-            self.client_side_ref_map[client_id][
-                request.client_ref_id
-            ] = objectref.binary()
+        if len(client_ref_id) > 0:
+            self.client_side_ref_map[client_id][client_ref_id] = objectref.binary()
         logger.debug("put: %s" % objectref)
         return ray_client_pb2.PutResponse(id=objectref.binary(), valid=True)
 
