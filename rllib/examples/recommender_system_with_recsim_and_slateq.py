@@ -165,12 +165,6 @@ def main():
             "episode_reward_mean": args.stop_reward,
         }
 
-        if args.run == "SlateQ":
-            config.update(
-                {
-                    "slateq_strategy": args.slateq_strategy,
-                }
-            )
         results = tune.run(
             args.run,
             stop=stop,
@@ -187,11 +181,6 @@ def main():
         if args.run == "DQN":
             trainer = dqn.DQNTrainer(config=config)
         else:
-            config.update(
-                {
-                    "slateq_strategy": args.slateq_strategy,
-                }
-            )
             trainer = slateq.SlateQTrainer(config=config)
         for i in range(10):
             result = trainer.train()
