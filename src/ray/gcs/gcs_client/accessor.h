@@ -278,7 +278,6 @@ class NodeInfoAccessor {
   /// \return Status
   virtual Status RegisterSelf(
       const rpc::GcsNodeInfo &local_node_info,
-      const std::unordered_map<std::string, rpc::ResourceTableData> &resources,
       const StatusCallback &callback);
 
   /// Drain (remove the information of the node from the cluster) the local node from GCS
