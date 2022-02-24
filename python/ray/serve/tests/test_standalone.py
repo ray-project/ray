@@ -634,6 +634,7 @@ time.sleep(2)
     ]
 
     output = run_string_as_driver(driver_script).strip().splitlines()
+    output = [line for line in output if len(line.strip()) > 0]
     assert len(output) == len(expected_output), "\n".join(output)
 
     # some lines might be out of order so we perform membership check
