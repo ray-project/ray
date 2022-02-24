@@ -80,13 +80,13 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
 
   /// Update resources of a node
   void UpdateResources(const NodeID &node_id,
-                       const std::unordered_map<std::string, double> &changed_resources,
-                       std::function<void(const Status &)> callback);
+                       const absl::flat_hash_map<std::string, double> &changed_resources,
+                       std::function<void(const Status &)> callback = nullptr);
 
   /// Delete resource of a node
   void DeleteResources(const NodeID &node_id,
                        const std::vector<std::string> &resource_names,
-                       std::function<void(const Status &)> callback);
+                       std::function<void(const Status &)> callback = nullptr);
 
   /// Handle a node registration.
   ///
@@ -156,13 +156,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
       const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
 
  private:
-  /// Delete the scheduling resources of the specified node.
-  ///
-  /// \param node_id Id of a node.
-  /// \param deleted_resources Deleted resources of a node.
-  void DeleteResources(const NodeID &node_id,
-                       const std::vector<std::string> &deleted_resources);
-
   /// main io service
   instrumented_io_context &main_io_service_;
 

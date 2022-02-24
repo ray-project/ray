@@ -300,8 +300,15 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
   auto placement_group_id = placement_group->GetPlacementGroupID();
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group_id, placement_group->GetPlacementGroupTableData(),
-      [this, placement_group_id](Status status) {
+      [this, placement_group_id, placement_group](Status status) {
         RAY_CHECK_OK(status);
+        // Update the resource in gcs resource manager
+        for (auto &bundle : placement_group->GetBundles()) {
+          auto &resources = bundle->GetFormattedResources();
+          auto node_id = bundle->NodeId();
+          gcs_resource_manager_.UpdateResources(node_id, resources);
+        }
+
         // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this
         // placement group and remove all of them from
         // placement_group_to_create_callbacks_.
@@ -459,6 +466,16 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
   if (pending_it != infeasible_placement_groups_.end()) {
     // The placement group is infeasible now, remove it from the queue.
     infeasible_placement_groups_.erase(pending_it);
+  }
+
+  for (auto &bundle : placement_group->GetBundles()) {
+    std::vector<std::string> resource_names;
+    auto &resources = bundle->GetFormattedResources();
+    for (const auto &iter : resources) {
+      resource_names.push_back(iter.first);
+    }
+    auto node_id = bundle->NodeId();
+    gcs_resource_manager_.DeleteResources(node_id, resource_names);
   }
 
   // Flush the status and respond to workers.

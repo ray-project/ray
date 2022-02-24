@@ -50,7 +50,7 @@ void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &requ
 
 void GcsResourceManager::UpdateResources(
     const NodeID &node_id,
-    const std::unordered_map<std::string, double> &changed_resources,
+    const absl::flat_hash_map<std::string, double> &changed_resources,
     std::function<void(const Status &)> callback) {
   RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
   auto iter = cluster_scheduling_resources_.find(node_id);
@@ -78,7 +78,9 @@ void GcsResourceManager::UpdateResources(
           absl::Nanoseconds(end - start) / absl::Milliseconds(1));
       RAY_CHECK_OK(status);
       RAY_LOG(DEBUG) << "Finished updating resources, node id = " << node_id;
-      callback(status);
+      if (callback != nullptr) {
+        callback(status);
+      }
     };
 
     RAY_CHECK_OK(
@@ -86,9 +88,11 @@ void GcsResourceManager::UpdateResources(
   } else {
     RAY_LOG(ERROR) << "Failed to update resources as node " << node_id
                    << " is not registered.";
-    main_io_service_.post(
-        std::bind(std::move(callback), Status::Invalid("Node does not exist.")),
-        "UpdateResourcesCallback");
+    if (callback != nullptr) {
+      main_io_service_.post(
+          std::bind(std::move(callback), Status::Invalid("Node does not exist.")),
+          "UpdateResourcesCallback");
+    }
   }
 }
 
@@ -115,14 +119,18 @@ void GcsResourceManager::DeleteResources(const NodeID &node_id,
 
     auto on_done = [callback = std::move(callback)](const Status &status) {
       RAY_CHECK_OK(status);
-      callback(status);
+      if (callback != nullptr) {
+        callback(status);
+      }
     };
     RAY_CHECK_OK(
         gcs_table_storage_->NodeResourceTable().Put(node_id, resource_map, on_done));
   } else {
-    main_io_service_.post(
-        std::bind(std::move(callback), Status::Invalid("Node does not exist.")),
-        "DeleteResourcesCallback");
+    if (callback != nullptr) {
+      main_io_service_.post(
+          std::bind(std::move(callback), Status::Invalid("Node does not exist.")),
+          "DeleteResourcesCallback");
+    }
     RAY_LOG(DEBUG) << "Finished deleting node resources, node id = " << node_id;
   }
 }
@@ -279,16 +287,6 @@ void GcsResourceManager::SetAvailableResources(const NodeID &node_id,
     RAY_LOG(WARNING)
         << "Skip the setting of available resources of node " << node_id
         << " as it does not exist, maybe it is not registered yet or is already dead.";
-  }
-}
-
-void GcsResourceManager::DeleteResources(
-    const NodeID &node_id, const std::vector<std::string> &deleted_resources) {
-  auto iter = cluster_scheduling_resources_.find(node_id);
-  if (iter != cluster_scheduling_resources_.end()) {
-    for (const auto &resource_name : deleted_resources) {
-      iter->second->DeleteResource(resource_name);
-    }
   }
 }
 
