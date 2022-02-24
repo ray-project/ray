@@ -1,7 +1,5 @@
 package io.ray.runtime.runtimeenv;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.util.JsonFormat;
 import io.ray.api.runtimeenv.RuntimeEnv;
@@ -10,8 +8,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class RuntimeEnvImpl implements RuntimeEnv {
-
-  private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
   private Map<String, String> envVars = new HashMap<>();
 
