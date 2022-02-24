@@ -70,7 +70,8 @@ void GcsResourceManager::UpdateResources(
     }
 
     auto start = absl::GetCurrentTimeNanos();
-    auto on_done = [node_id, start, changed_resources = std::move(changed_resources),
+    auto on_done = [this, node_id, start,
+                    changed_resources = std::move(changed_resources),
                     callback = std::move(callback)](const Status &status) {
       auto end = absl::GetCurrentTimeNanos();
       ray::stats::STATS_gcs_new_resource_creation_latency_ms.Record(
@@ -122,7 +123,7 @@ void GcsResourceManager::DeleteResources(const NodeID &node_id,
       (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
     }
 
-    auto on_done = [callback = std::move(callback),
+    auto on_done = [this, callback = std::move(callback),
                     resource_names = std::move(resource_names)](const Status &status) {
       RAY_CHECK_OK(status);
       rpc::NodeResourceChange node_resource_change;
