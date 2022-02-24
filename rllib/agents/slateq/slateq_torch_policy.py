@@ -299,6 +299,7 @@ def action_distribution_fn(
 def get_per_slate_q_values(policy, score_no_click, scores, q_values):
     indices = policy.slates_indices
     A, S = policy.slates.shape
+    print(torch.sum)
     slate_q_values = torch.take_along_dim(scores * q_values, indices, dim=1).reshape(
         [-1, A, S]
     )
