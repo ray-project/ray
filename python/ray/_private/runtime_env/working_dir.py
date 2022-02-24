@@ -117,6 +117,10 @@ class WorkingDirManager:
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
+        # Currently create method is still a sync process, to avoid blocking
+        # the loop, need to run this function in another thread.
+        # TODO(Catch-Bull): Refactor method create into an async process, and
+        # make this method running in current loop.
         def _create():
             local_dir = download_and_unpack_package(
                 uri, self._resources_dir, logger=logger

@@ -210,6 +210,8 @@ class RuntimeEnvAgent(
                     )
 
             loop = asyncio.get_event_loop()
+            # Plugins setup method is sync process, running in other threads
+            # is to avoid  blocks asyncio loop
             await loop.run_in_executor(None, setup_plugins)
 
             return context
