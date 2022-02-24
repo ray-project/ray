@@ -284,7 +284,7 @@ class OneToOneStage(Stage):
         self, blocks: BlockList, clear_input_blocks: bool
     ) -> Tuple[BlockList, dict]:
         compute = get_compute(self.compute)
-        blocks = compute.apply(
+        blocks = compute._apply(
             self.block_fn, self.ray_remote_args, blocks, clear_input_blocks
         )
         assert isinstance(blocks, BlockList), blocks
