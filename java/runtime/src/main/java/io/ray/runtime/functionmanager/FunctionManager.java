@@ -237,16 +237,17 @@ public class FunctionManager {
           // empty "".
           // TODO: more robust signature type matching
           // https://github.com/ray-project/ray/issues/21380.
-          String[] xlangSignatures = {"", String.format("%s", type.getArgumentTypes().length)};
-          for (String signature : xlangSignatures) {
-            final Pair<String, String> emptyDescriptor = ImmutablePair.of(methodName, signature);
+          String[] crossLangSignatures = {"", String.format("%s", type.getArgumentTypes().length)};
+          for (String crossLangSignature : crossLangSignatures) {
+            final Pair<String, String> crossLangDescriptor =
+                ImmutablePair.of(methodName, crossLangSignature);
             /// default method is not overloaded, so we should filter it.
-            if (map.containsKey(emptyDescriptor) && !map.get(emptyDescriptor).getRight()) {
+            if (map.containsKey(crossLangDescriptor) && !map.get(crossLangDescriptor).getRight()) {
               map.put(
-                  emptyDescriptor,
+                  crossLangDescriptor,
                   ImmutablePair.of(null, false)); // Mark this function as overloaded.
             } else {
-              map.put(emptyDescriptor, ImmutablePair.of(rayFunction, isDefault));
+              map.put(crossLangDescriptor, ImmutablePair.of(rayFunction, isDefault));
             }
           }
         }
