@@ -475,7 +475,7 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
       resource_names.push_back(iter.first);
     }
     auto node_id = bundle->NodeId();
-    gcs_resource_manager_.DeleteResources(node_id, resource_names);
+    gcs_resource_manager_.DeleteResources(node_id, std::move(resource_names));
   }
 
   // Flush the status and respond to workers.

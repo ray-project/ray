@@ -80,12 +80,11 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
 
   /// Update resources of a node
   void UpdateResources(const NodeID &node_id,
-                       const absl::flat_hash_map<std::string, double> &changed_resources,
+                       absl::flat_hash_map<std::string, double> changed_resources,
                        std::function<void(const Status &)> callback = nullptr);
 
   /// Delete resource of a node
-  void DeleteResources(const NodeID &node_id,
-                       const std::vector<std::string> &resource_names,
+  void DeleteResources(const NodeID &node_id, std::vector<std::string> resource_names,
                        std::function<void(const Status &)> callback = nullptr);
 
   /// Handle a node registration.
