@@ -31,6 +31,7 @@ VERSION_1.0 {
         *ray*stats*;
         *ray*CoreWorker*;
         *ray*PeriodicalRunner*;
+        *ray*internal*;
         *PyInit*;
         *init_raylet*;
         *Java*;
