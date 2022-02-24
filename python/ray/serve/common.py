@@ -19,9 +19,9 @@ class EndpointInfo:
 
 
 class DeploymentStatus(str, Enum):
-    UPDATING = "updating"
-    HEALTHY = "healthy"
-    UNHEALTHY = "unhealthy"
+    UPDATING = "UPDATING"
+    HEALTHY = "HEALTHY"
+    UNHEALTHY = "UNHEALTHY"
 
 
 @dataclass
