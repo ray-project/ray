@@ -364,18 +364,6 @@ class Monitor:
                 if self.stop_event and self.stop_event.is_set():
                     break
                 self.update_load_metrics()
-
-                if not self.load_metrics:
-                    # load_metrics is Falsey iff we haven't collected any
-                    # resource messages from the GCS, which can happen at startup if
-                    # the GCS hasn't yet received data from the Raylets.
-                    # In this case, we wait until we're able to get resource info.
-                    logger.info(
-                        "Autoscaler has not yet received load metrics. Waiting."
-                    )
-                    time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
-                    continue
-
                 self.update_resource_requests()
                 self.update_event_summary()
                 status = {
@@ -385,7 +373,16 @@ class Monitor:
                 }
 
                 # Process autoscaling actions
-                if self.autoscaler:
+                if self.autoscaler and not self.load_metrics:
+                    # load_metrics is Falsey iff we haven't collected any
+                    # resource messages from the GCS, which can happen at startup if
+                    # the GCS hasn't yet received data from the Raylets.
+                    # In this case, do not do an autoscaler update.
+                    # Wait to get load metrics.
+                    logger.info(
+                        "Autoscaler has not yet received load metrics. Waiting."
+                    )
+                elif self.autoscaler:
                     # Only used to update the load metrics for the autoscaler.
                     self.autoscaler.update()
                     autoscaler_summary = self.autoscaler.summary()
