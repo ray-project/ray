@@ -169,11 +169,22 @@ class RuntimeContext(object):
 
     @property
     def runtime_env(self):
-        """Get the runtime env used for the current driver or worker.
+        """Get the runtime env of the current job/worker.
+
+        If this API is called in driver or ray client, returns the job level runtime
+        env.
+        If this API is called in workers/actors, returns the worker level runtime env.
 
         Returns:
-            The runtime env currently using by this worker. The type of
-                return value is ray.runtime_env.RuntimeEnv.
+            A new ray.runtime_env.RuntimeEnv instance.
+
+        To merge from the current runtime env in some specific cases, you can get the
+        current runtime env by this API and modify it by yourself.
+
+        Example:
+        >>> # Inherit current runtime env, except `env_vars`
+        >>> Actor.options(runtime_env=ray.get_runtime_context().runtime_env.update(
+            {"env_vars": {"A": "a", "B": "b"}}))
         """
 
         return RuntimeEnv.deserialize(self.get_runtime_env_string())
