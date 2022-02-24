@@ -203,40 +203,6 @@ TEST(TestMemoryStore, TestObjectAllocator) {
   ASSERT_EQ(max_rounds * hello.size(), mock_buffer_manager.GetBuferPressureInBytes());
 }
 
-class CustomBufferForTest : public Buffer {
- public:
-  explicit JavaByteArrayBuffer(std::string data) : data_(std::move(data) {}
-
-  uint8_t *Data() const override {
-    return reinterpret_cast<uint8_t *>(data_); }
-
-  size_t Size() const override {
-    return data_.size(); }
-
-  bool OwnsData() const override {
-    return true; }
-
-  bool IsPlasmaBuffer() const override {
-    return false; }
-
- private:
-  std:: string data_;
-};
-
-TEST(TestMemoryStore, TestMemoryStoreCustomAllocator) {
-  auto custom_object_allocator = [](const ray::RayObject &object,
-                                    const ObjectID &object_id) {
-    auto data_factory = []() { const std::shared_ptr<Buffer>() };
-
-    return std::make_shared<ray::RayObject>(object.GetMetadata(), {},
-                                            std::move(data_factory), /*copy_data=*/true);
-  };
-
-  std::shared_ptr<CoreWorkerMemoryStore> memory_store =
-      std::make_shared<CoreWorkerMemoryStore>(nullptr, nullptr, nullptr, nullptr,
-                                              std::move(custom_object_allocator));
-}
-
 }  // namespace core
 }  // namespace ray
 

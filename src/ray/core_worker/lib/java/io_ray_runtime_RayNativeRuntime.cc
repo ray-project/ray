@@ -286,7 +286,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     auto java_weak_ref = CreateJavaWeakRef(env, java_byte_array);
     // This shared_ptr will be captured by the data_factory. So when the data_factory
     // is destructed, we deference the java_weak_ref.
-    std::shared_ptr<void> java_weak_ref_ptr{
+    std::shared_ptr<void*> java_weak_ref_ptr{
         reinterpret_cast<void *>(java_weak_ref), [](auto p) {
           JNIEnv *env = GetJNIEnv();
           env->DeleteLocalRef(reinterpret_cast<jobject>(p));
