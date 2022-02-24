@@ -35,8 +35,7 @@ namespace rpc {
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
 #define HEARTBEAT_INFO_SERVICE_RPC_HANDLER(HANDLER)     \
-  RPC_SERVICE_HANDLER(HeartbeatInfoGcsService, HANDLER, \
-                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
+  RPC_SERVICE_HANDLER(HeartbeatInfoGcsService, HANDLER, -1)
 
 #define NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(HANDLER)    \
   RPC_SERVICE_HANDLER(NodeResourceInfoGcsService, HANDLER, \
