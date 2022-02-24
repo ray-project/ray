@@ -203,10 +203,10 @@ Histogram
 Runtime Context APIs
 --------------------
 
-.. autofunction:: ray.runtime_context.get_runtime_context
-
 .. autoclass:: ray.runtime_context.RuntimeContext
     :members:
+
+.. autofunction:: ray.runtime_context.get_runtime_context
 
 .. _runtime-env-apis:
 
