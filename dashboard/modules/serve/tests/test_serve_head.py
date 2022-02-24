@@ -135,48 +135,48 @@ def test_delete_success(serve_start_stop):
         assert len(json.loads(get_response.json())["deployments"]) == 0
 
 
-def test_get_status_info(serve_start_stop):
-    ray_actor_options = {"runtime_env": {"py_modules": [test_env_uri, test_module_uri]}}
+# def test_get_status_info(serve_start_stop):
+#     ray_actor_options = {"runtime_env": {"py_modules": [test_env_uri, test_module_uri]}}
 
-    shallow = dict(
-        name="shallow",
-        num_replicas=3,
-        route_prefix="/shallow",
-        ray_actor_options=ray_actor_options,
-        import_path="test_env.shallow_import.ShallowClass",
-    )
+#     shallow = dict(
+#         name="shallow",
+#         num_replicas=3,
+#         route_prefix="/shallow",
+#         ray_actor_options=ray_actor_options,
+#         import_path="test_env.shallow_import.ShallowClass",
+#     )
 
-    deep = dict(
-        name="deep",
-        route_prefix="/deep",
-        ray_actor_options=ray_actor_options,
-        import_path="test_env.subdir1.subdir2.deep_import.DeepClass",
-    )
+#     deep = dict(
+#         name="deep",
+#         route_prefix="/deep",
+#         ray_actor_options=ray_actor_options,
+#         import_path="test_env.subdir1.subdir2.deep_import.DeepClass",
+#     )
 
-    one = dict(
-        name="one",
-        num_replicas=3,
-        route_prefix="/one",
-        ray_actor_options=ray_actor_options,
-        import_path="test_module.test.one",
-    )
+#     one = dict(
+#         name="one",
+#         num_replicas=3,
+#         route_prefix="/one",
+#         ray_actor_options=ray_actor_options,
+#         import_path="test_module.test.one",
+#     )
 
-    deployments = [shallow, deep, one]
+#     deployments = [shallow, deep, one]
 
-    put_response = requests.put(URL, json={"deployments": deployments})
-    assert put_response.status_code == 200
+#     put_response = requests.put(URL, json={"deployments": deployments})
+#     assert put_response.status_code == 200
 
-    get_response = requests.get(URL)
-    assert get_response.status_code == 200
+#     get_response = requests.get(URL)
+#     assert get_response.status_code == 200
 
-    statuses = json.loads(get_response.json())["statuses"]
-    assert len(statuses) == len(deployments)
-    expected_deployment_names = {deployment["name"] for deployment in deployments}
-    for status in statuses:
-        assert status["name"] in expected_deployment_names
-        expected_deployment_names.remove(status["name"])
-        assert status["status_info"]["status"] in {"updating", "healthy"}
-        assert status["status_info"]["message"] == ""
-    assert len(expected_deployment_names) == 0
+#     statuses = json.loads(get_response.json())["statuses"]
+#     assert len(statuses) == len(deployments)
+#     expected_deployment_names = {deployment["name"] for deployment in deployments}
+#     for status in statuses:
+#         assert status["name"] in expected_deployment_names
+#         expected_deployment_names.remove(status["name"])
+#         assert status["status_info"]["status"] in {"updating", "healthy"}
+#         assert status["status_info"]["message"] == ""
+#     assert len(expected_deployment_names) == 0
 
-    print(statuses)
+#     print(statuses)

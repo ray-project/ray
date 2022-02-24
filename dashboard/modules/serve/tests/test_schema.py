@@ -7,12 +7,14 @@ import ray
 from ray.dashboard.modules.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
-    StatusSchema,
+    DeploymentStatusSchema,
     ServeApplicationSchema,
     deployment_to_schema,
     schema_to_deployment,
     serve_application_to_schema,
     schema_to_serve_application,
+    status_info_to_schema,
+    serve_application_status_to_schema
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
 from ray.serve.config import AutoscalingConfig
@@ -278,38 +280,9 @@ class TestDeploymentSchema:
             DeploymentSchema.parse_obj(deployment_schema)
 
 
-class TestStatusSchema:
-    def test_valid_status_schema(self):
-        # Ensure valid StatusSchemas can be generated
-
-        status_schemas = {
-            "deployment_1": DeploymentStatusInfo(DeploymentStatus.HEALTHY),
-            "deployment_2": DeploymentStatusInfo(
-                DeploymentStatus.UNHEALTHY, "This is an unhealthy deployment."
-            ),
-            "deployment_3": DeploymentStatusInfo(DeploymentStatus.UPDATING),
-        }
-
-        for name, status_info in status_schemas.items():
-            StatusSchema(name=name, status_info=status_info)
-
-    def test_invalid_status(self):
-        # Ensure a StatusSchema cannot be initialized with an invalid status
-
-        status_schema = {
-            "name": "invalid deployment status",
-            "status_info": {
-                "status": "nonexistent status",
-                "message": "welcome to nonexistence",
-            },
-        }
-        with pytest.raises(ValidationError):
-            StatusSchema.parse_obj(status_schema)
-
-
 class TestServeApplicationSchema:
     def test_valid_serve_application_schema(self):
-        # Ensure a valid ServeApplicationSchemas can be generated
+        # Ensure a valid ServeApplicationSchema can be generated
 
         serve_application_schema = {
             "deployments": [
@@ -375,22 +348,48 @@ class TestServeApplicationSchema:
             ]
         }
 
-        # Should be able to initialize a ServeApplicationSchema without statuses
         ServeApplicationSchema.parse_obj(serve_application_schema)
 
-        serve_application_schema["statuses"] = [
-            {"name": "shallow", "status_info": {"status": "healthy", "message": ""}},
-            {
-                "name": "deep",
-                "status_info": {
+
+class TestDeploymentStatusSchema:
+    def test_valid_deployment_status_schema(self):
+        # Ensure valid DeploymentStatusSchemas can be generated
+
+        deployment_status_schemas = {
+            "deployment_1": DeploymentStatusInfo(DeploymentStatus.HEALTHY),
+            "deployment_2": DeploymentStatusInfo(
+                DeploymentStatus.UNHEALTHY, "This is an unhealthy deployment."
+            ),
+            "deployment_3": DeploymentStatusInfo(DeploymentStatus.UPDATING),
+        }
+
+        for name, status_info in deployment_status_schemas.items():
+            status_info_to_schema(name, status_info)
+
+    def test_invalid_status(self):
+        # Ensure a DeploymentStatusSchema cannot be initialized with an invalid status
+
+        status_info = {
+            "status": "nonexistent status",
+            "message": "welcome to nonexistence",
+        }
+        with pytest.raises(ValidationError):
+            status_info_to_schema("deployment name", status_info)
+
+
+class TestServeApplicationStatusSchema:
+    def test_valid_serve_application_status_schema(self):
+        # Ensure a valid ServeApplicationStatusSchema can be generated
+
+        serve_application_status_schema = {
+            "deployment_1": {"status": "healthy", "message": ""},
+            "deployment_2": {
                     "status": "unhealthy",
                     "message": "this deployment is deeply unhealthy",
                 },
-            },
-        ]
+            }
 
-        # Should be able to initialize a ServeApplicationSchema with statuses
-        ServeApplicationSchema.parse_obj(serve_application_schema)
+        serve_application_status_to_schema(serve_application_status_schema)
 
 
 # This function is defined globally to be accessible via import path
@@ -482,14 +481,12 @@ def test_serve_application_to_schema_to_serve_application():
     assert requests.get("http://localhost:8000/hi").text == "Hello world!"
 
     # Check statuses
-    statuses = serve_application_to_schema(
-        [f1, f2], statuses=get_deployment_statuses()
-    ).statuses
+    statuses = serve_application_status_to_schema(get_deployment_statuses()).statuses
     deployment_names = {"f1", "f2"}
-    for status in statuses:
-        assert status.status_info.status == "healthy"
-        assert status.name in deployment_names
-        deployment_names.remove(status.name)
+    for deployment_status in statuses:
+        assert deployment_status.status in {"updating", "healthy"}
+        assert deployment_status.name in deployment_names
+        deployment_names.remove(deployment_status.name)
     assert len(deployment_names) == 0
 
     serve.shutdown()

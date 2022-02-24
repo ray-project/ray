@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, root_validator, validator
 from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve.api import Deployment, deployment
-from ray.serve.common import DeploymentStatusInfo
+from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
 
 
 class RayActorOptionsSchema(BaseModel):
@@ -293,14 +293,24 @@ class DeploymentSchema(BaseModel):
         return v
 
 
-class StatusSchema(BaseModel):
-    name: str = Field(..., description="The status' deployment's name.")
-    status_info: DeploymentStatusInfo = Field(default=None)
-
-
 class ServeApplicationSchema(BaseModel):
     deployments: List[DeploymentSchema] = Field(...)
-    statuses: List[StatusSchema] = Field(default=None)
+
+
+class DeploymentStatusSchema(BaseModel):
+    name: str = Field(..., description="The deployment's name.")
+    status: DeploymentStatus = Field(
+        default=None,
+        description="The deployment's status."
+    )
+    message: str = Field(
+        default="",
+        description="Information about the deployment's status."
+    )
+
+
+class ServeApplicationStatusSchema(BaseModel):
+    statuses: List[DeploymentStatusSchema] = Field(...)
 
 
 def deployment_to_schema(d: Deployment) -> DeploymentSchema:
@@ -349,19 +359,26 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     )(s.import_path)
 
 
-def serve_application_to_schema(
-    deployments: List[Deployment],
-    statuses: Dict[str, DeploymentStatusInfo] = None,
-) -> ServeApplicationSchema:
+def serve_application_to_schema(deployments: List[Deployment]) -> ServeApplicationSchema:
     schemas = [deployment_to_schema(d) for d in deployments]
-    if statuses is not None:
-        status_schemas = [
-            StatusSchema(name=name, status_info=status_info)
-            for name, status_info in statuses.items()
-        ]
-        return ServeApplicationSchema(deployments=schemas, statuses=status_schemas)
     return ServeApplicationSchema(deployments=schemas)
 
 
 def schema_to_serve_application(schema: ServeApplicationSchema) -> List[Deployment]:
     return [schema_to_deployment(s) for s in schema.deployments]
+
+
+def status_info_to_schema(deployment_name: str, status_info: Union[DeploymentStatusInfo, Dict]) -> DeploymentStatusSchema:
+    if isinstance(status_info, DeploymentStatusInfo):
+        return DeploymentStatusSchema(name=deployment_name, status=status_info.status, message=status_info.message)
+    elif isinstance(status_info, dict):
+        return DeploymentStatusSchema(name=deployment_name, status=status_info["status"], message=status_info["message"])
+    else:
+        raise TypeError(f"Got {type(status_info)} as status_info's "
+                        "type. Expected status_info to be either a "
+                        "DeploymentStatusInfo or a dictionary.")
+
+
+def serve_application_status_to_schema(status_infos: Dict[str, Union[DeploymentStatusInfo, Dict]]) -> ServeApplicationStatusSchema:
+    schemas=[status_info_to_schema(deployment_name, status_info) for deployment_name, status_info in status_infos.items()]
+    return ServeApplicationStatusSchema(statuses=schemas)
