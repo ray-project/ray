@@ -463,13 +463,21 @@ class Dataset(Generic[T]):
 
         if shuffle:
 
-            def do_shuffle(block_list, clear_input_blocks: bool, block_udf):
+            def do_shuffle(
+                block_list, clear_input_blocks: bool, block_udf, remote_args
+            ):
                 if clear_input_blocks:
                     blocks = block_list.copy()
                     block_list.clear()
                 else:
                     blocks = block_list
-                return simple_shuffle(blocks, block_udf, num_blocks)
+                return simple_shuffle(
+                    blocks,
+                    block_udf,
+                    num_blocks,
+                    map_ray_remote_args=remote_args,
+                    reduce_ray_remote_args=remote_args,
+                )
 
             plan = self._plan.with_stage(
                 AllToAllStage(
@@ -479,7 +487,7 @@ class Dataset(Generic[T]):
 
         else:
 
-            def do_fast_repartition(block_list, clear_input_blocks: bool, _):
+            def do_fast_repartition(block_list, clear_input_blocks: bool, *_):
                 if clear_input_blocks:
                     blocks = block_list.copy()
                     block_list.clear()
@@ -524,7 +532,7 @@ class Dataset(Generic[T]):
             The shuffled dataset.
         """
 
-        def do_shuffle(block_list, clear_input_blocks: bool, block_udf):
+        def do_shuffle(block_list, clear_input_blocks: bool, block_udf, remote_args):
             num_blocks = block_list.executed_num_blocks()  # Blocking.
             if num_blocks == 0:
                 return block_list, {}
@@ -540,6 +548,8 @@ class Dataset(Generic[T]):
                 random_shuffle=True,
                 random_seed=seed,
                 _spread_resource_prefix=_spread_resource_prefix,
+                map_ray_remote_args=remote_args,
+                reduce_ray_remote_args=remote_args,
             )
             return new_blocks, stage_info
 
@@ -1380,7 +1390,7 @@ class Dataset(Generic[T]):
             A new, sorted dataset.
         """
 
-        def do_sort(block_list, clear_input_blocks: bool, block_udf):
+        def do_sort(block_list, clear_input_blocks: bool, *_):
             # Handle empty dataset.
             if block_list.initial_num_blocks() == 0:
                 return block_list, {}
@@ -1424,7 +1434,7 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
-        def do_zip_all(block_list, clear_input_blocks: bool, block_udf):
+        def do_zip_all(block_list, clear_input_blocks: bool, *_):
             blocks1 = block_list.get_blocks()
             blocks2 = other.get_internal_block_refs()
 
@@ -2681,11 +2691,24 @@ Dict[str, List[str]]]): The names of the columns
 
         This can be used to read all blocks into memory. By default, Datasets
         doesn't read blocks from the datasource until the first transform.
+
+        Returns:
+            A Dataset with all blocks fully materialized in memory.
         """
         blocks = self.get_internal_block_refs()
         bar = ProgressBar("Force reads", len(blocks))
         bar.block_until_complete(blocks)
-        return self
+        ds = Dataset(
+            ExecutionPlan(
+                BlockList(blocks, self._plan.execute().get_metadata()),
+                self._plan.stats(),
+                dataset_uuid=self._get_uuid(),
+            ),
+            self._epoch,
+            lazy=False,
+        )
+        ds._set_uuid(self._get_uuid())
+        return ds
 
     @DeveloperAPI
     def stats(self) -> str:
