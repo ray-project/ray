@@ -150,15 +150,6 @@ CORE_SCALABILITY_TESTS_DAILY = {
     ],
 }
 
-CORE_REDIS_HA_TESTS_DAILY = {
-    "~/ray/benchmarks/benchmark_tests.yaml": [
-        "many_actors_redis_ha",
-        "many_tasks_redis_ha",
-        "many_pgs_redis_ha",
-        "many_nodes_redis_ha",
-    ],
-}
-
 CORE_SCHEDULING_DAILY = {
     "~/ray/benchmarks/benchmark_tests.yaml": [
         "scheduling_test_many_0s_tasks_single_node",
@@ -304,7 +295,6 @@ SUITES = {
     "serve-nightly": SERVE_NIGHTLY_TESTS,
     "core-daily": CORE_DAILY_TESTS,
     "core-scalability": CORE_SCALABILITY_TESTS_DAILY,
-    "core-redis-ha": CORE_REDIS_HA_TESTS_DAILY,
     "nightly": {**NIGHTLY_TESTS, **USER_TESTS},
     "core-scheduling-daily": CORE_SCHEDULING_DAILY,
     "weekly": WEEKLY_TESTS,
