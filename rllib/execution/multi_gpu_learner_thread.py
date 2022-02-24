@@ -100,7 +100,7 @@ class MultiGPULearnerThread(LearnerThread):
         # `num_multi_gpu_tower_stacks`.
         self.minibatch_buffer = None
 
-        # Add timer for easuring multi-GPU tower loading times
+        # Add timer for measuring multi-GPU tower loading times
         # (with batch data).
         self.load_wait_timer = TimerStat()
 
