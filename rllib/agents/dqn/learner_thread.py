@@ -2,7 +2,6 @@ import logging
 import queue
 import threading
 
-from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.multi_gpu_learner_thread import _MultiGPULoaderThread
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -114,17 +113,17 @@ LearnerThread = APEXLearnerThread
 class APEXMultiGPULearnerThread(APEXLearnerThread):
     """Background thread that updates the local model from replay data.
 
-     Thereby utilizing multiple GPUs via pre data loading, then updating
-     from the pre-loaded data.
+    Thereby utilizing multiple GPUs via pre data loading, then updating
+    from the pre-loaded data.
     """
 
     def __init__(
-            self,
-            local_worker: RolloutWorker,
-            train_batch_size: int = 500,
-            num_multi_gpu_tower_stacks: int = 1,
-            num_data_load_threads: int = 16,
-            ):
+        self,
+        local_worker: RolloutWorker,
+        train_batch_size: int = 500,
+        num_multi_gpu_tower_stacks: int = 1,
+        num_data_load_threads: int = 16,
+    ):
         """Initializes a MultiGPULearnerThread instance.
 
         Args:
@@ -162,8 +161,7 @@ class APEXMultiGPULearnerThread(APEXLearnerThread):
         for idx in self.tower_stack_indices:
             self.idle_tower_stacks.put(idx)
         for i in range(num_data_load_threads):
-            self.loader_thread = _MultiGPULoaderThread(
-                self, share_stats=(i == 0))
+            self.loader_thread = _MultiGPULoaderThread(self, share_stats=(i == 0))
             self.loader_thread.start()
 
     @override(APEXLearnerThread)

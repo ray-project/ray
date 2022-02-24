@@ -36,6 +36,25 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "timesteps_per_iteration": 25000,
         "worker_side_prioritization": True,
         "min_time_s_per_reporting": 30,
+        # For each stack of multi-GPU towers, how many slots should we reserve for
+        # parallel data loading? Set this to >1 to load data into GPUs in
+        # parallel. This will increase GPU memory usage proportionally with the
+        # number of stacks.
+        # Example:
+        # 2 GPUs and `num_multi_gpu_tower_stacks=3`:
+        # - One tower stack consists of 2 GPUs, each with a copy of the
+        #   model/graph.
+        # - Each of the stacks will create 3 slots for batch data on each of its
+        #   GPUs, increasing memory requirements on each GPU by 3x.
+        # - This enables us to preload data into these stacks while another stack
+        #   is performing gradient calculations.
+        "num_multi_gpu_tower_stacks": 1,
+        # Max queue size for train batches feeding into the learner.
+        "learner_queue_size": 16,
+        # Wait for train batches to be available in minibatch buffer queue
+        # this many seconds. This may need to be increased e.g. when training
+        # with a slow environment.
+        "learner_queue_timeout": 300,
     },
     _allow_unknown_configs=True,
 )

@@ -201,12 +201,14 @@ class _MultiGPULoaderThread(threading.Thread):
         policy_map = s.policy_map
 
         # Get a new batch from the data (inqueue).
-        replay_actor = batch_indices = None
+        replay_actor = batch_indexes = None
         with self.queue_timer:
             item = s.inqueue.get()
             if isinstance(item, tuple):
                 replay_actor, batch = item
-                batch_indexes = batch.policy_batches["default_policy"].get("batch_indexes")
+                batch_indexes = batch.policy_batches["default_policy"].get(
+                    "batch_indexes"
+                )
             else:
                 batch = item
 

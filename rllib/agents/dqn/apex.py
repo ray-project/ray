@@ -24,8 +24,10 @@ from ray.rllib.agents.dqn.dqn import (
     DEFAULT_CONFIG as DQN_DEFAULT_CONFIG,
     DQNTrainer,
 )
-from ray.rllib.agents.dqn.learner_thread import APEXLearnerThread, \
-    APEXMultiGPULearnerThread
+from ray.rllib.agents.dqn.learner_thread import (
+    APEXLearnerThread,
+    APEXMultiGPULearnerThread,
+)
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (
     STEPS_TRAINED_COUNTER,

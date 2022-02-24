@@ -22,10 +22,10 @@ Algorithm                   Frameworks Discrete Actions              Continuous 
 `CQL`_                      tf + torch No                            **Yes**            No                                                                        tf + torch
 `ES`_                       tf + torch **Yes**                       **Yes**            No                                                                        No
 `DDPG`_, `TD3`_             tf + torch No                            **Yes**            **Yes**                                                                   torch
-`APEX-DDPG`_                tf + torch No                            **Yes**            **Yes**                                                                   torch
+`APEX-DDPG`_                tf + torch No                            **Yes**            **Yes**                                                                   tf + torch
 `Dreamer`_                  torch      No                            **Yes**            No          `+RNN`_                                                       torch
 `DQN`_, `Rainbow`_          tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   tf + torch
-`APEX-DQN`_                 tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   torch
+`APEX-DQN`_                 tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   tf + torch
 `IMPALA`_                   tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
 `MAML`_                     tf + torch No                            **Yes**            No                                                                        torch
 `MARWIL`_                   tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
