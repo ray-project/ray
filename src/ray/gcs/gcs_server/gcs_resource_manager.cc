@@ -49,7 +49,8 @@ void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &requ
 }
 
 void GcsResourceManager::UpdateResources(
-    const NodeID &node_id, const std::unordered_map<std::string, double> &changed_resources,
+    const NodeID &node_id,
+    const std::unordered_map<std::string, double> &changed_resources,
     std::function<void(const Status &)> callback) {
   RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
   auto iter = cluster_scheduling_resources_.find(node_id);
@@ -91,9 +92,9 @@ void GcsResourceManager::UpdateResources(
   }
 }
 
-void GcsResourceManager::DeleteResources(
-    const NodeID &node_id, const std::vector<std::string> &resource_names,
-    std::function<void(const Status &)> callback) {
+void GcsResourceManager::DeleteResources(const NodeID &node_id,
+                                         const std::vector<std::string> &resource_names,
+                                         std::function<void(const Status &)> callback) {
   RAY_LOG(DEBUG) << "Deleting node resources, node id = " << node_id;
   auto iter = cluster_scheduling_resources_.find(node_id);
   if (iter != cluster_scheduling_resources_.end()) {
