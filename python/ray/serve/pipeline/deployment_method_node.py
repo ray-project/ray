@@ -29,13 +29,13 @@ class DeploymentMethodNode(DAGNode):
         # Serve handle is sync by default.
         if (
             "sync_handle" in self._bound_other_args_to_resolve
-            and self._bound_other_args_to_resolve.get("sync_handle") is True
+            and self._bound_other_args_to_resolve.get("sync_handle") is False
         ):
+            self._deployment_handle: RayServeHandle = deployment.get_handle(sync=False)
+        else:
             self._deployment_handle: RayServeSyncHandle = deployment.get_handle(
                 sync=True
             )
-        else:
-            self._deployment_handle: RayServeHandle = deployment.get_handle(sync=False)
 
     def _copy_impl(
         self,

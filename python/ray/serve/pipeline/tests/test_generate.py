@@ -1,6 +1,4 @@
 import pytest
-from typing import TypeVar
-import requests
 
 import ray
 from ray import serve
@@ -9,9 +7,7 @@ from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
 )
-from ray.serve.pipeline.tests.test_modules import Model
-
-RayHandleLike = TypeVar("RayHandleLike")
+from ray.serve.pipeline.tests.test_modules import Model, Combine
 
 
 def _validate_consistent_output(
@@ -29,141 +25,125 @@ def _validate_consistent_output(
     assert ray.get(handle_by_name.remote(input)) == output
 
 
-def test_simple_single_class(serve_instance):
-    # Assert converting both arg and kwarg
-    model = Model._bind(2, ratio=0.3)
-    ray_dag = model.forward._bind(InputNode())
+# def test_simple_single_class(serve_instance):
+#     # Assert converting both arg and kwarg
+#     model = Model._bind(2, ratio=0.3)
+#     ray_dag = model.forward._bind(InputNode())
 
-    serve_root_dag = ray_dag._apply_recursive(
-        lambda node: transform_ray_dag_to_serve_dag(node)
-    )
-    deployments = extract_deployments_from_serve_dag(serve_root_dag)
-    assert len(deployments) == 1
-    deployments[0].deploy()
-    _validate_consistent_output(
-        deployments[0], ray_dag, "Model", input=1, output=0.6
-    )
-
-
-def test_single_class_with_ray_options(serve_instance):
-    model = Model.options(num_cpus=1, memory=1000, max_concurrency=50)._bind(
-        2, ratio=0.3
-    )
-    ray_dag = model.forward._bind(InputNode())
-
-    serve_root_dag = ray_dag._apply_recursive(
-        lambda node: transform_ray_dag_to_serve_dag(node)
-    )
-    deployments = extract_deployments_from_serve_dag(serve_root_dag)
-    assert len(deployments) == 1
-    deployments[0].deploy()
-    _validate_consistent_output(
-        deployments[0], ray_dag, deployments[0].name, input=1, output=0.6
-    )
-
-    deployment = serve.get_deployment(deployments[0].name)
-    assert deployment.ray_actor_options == {
-        "num_cpus": 1,
-        "memory": 1000,
-        "max_concurrency": 50,
-        "runtime_env": {},
-    }
+#     serve_root_dag = ray_dag._apply_recursive(
+#         lambda node: transform_ray_dag_to_serve_dag(node)
+#     )
+#     deployments = extract_deployments_from_serve_dag(serve_root_dag)
+#     assert len(deployments) == 1
+#     deployments[0].deploy()
+#     _validate_consistent_output(
+#         deployments[0], ray_dag, "Model", input=1, output=0.6
+#     )
 
 
-def test_single_class_with_deployment_options(serve_instance):
-    """Test user provided name in .options() overrides class name as
-    deployment name
+# def test_single_class_with_valid_ray_options(serve_instance):
+#     model = Model.options(num_cpus=1, memory=1000, max_concurrency=50)._bind(
+#         2, ratio=0.3
+#     )
+#     ray_dag = model.forward._bind(InputNode())
+
+#     serve_root_dag = ray_dag._apply_recursive(
+#         lambda node: transform_ray_dag_to_serve_dag(node)
+#     )
+#     deployments = extract_deployments_from_serve_dag(serve_root_dag)
+#     assert len(deployments) == 1
+#     deployments[0].deploy()
+#     _validate_consistent_output(
+#         deployments[0], ray_dag, deployments[0].name, input=1, output=0.6
+#     )
+
+#     deployment = serve.get_deployment(deployments[0].name)
+#     assert deployment.ray_actor_options == {
+#         "num_cpus": 1,
+#         "memory": 1000,
+#         "max_concurrency": 50,
+#         "runtime_env": {},
+#     }
+
+
+# def test_single_class_with_invalid_deployment_options(serve_instance):
+#     model = Model.options(name="my_deployment")._bind(2, ratio=0.3)
+#     ray_dag = model.forward._bind(InputNode())
+
+#     serve_root_dag = ray_dag._apply_recursive(
+#         lambda node: transform_ray_dag_to_serve_dag(node)
+#     )
+#     deployments = extract_deployments_from_serve_dag(serve_root_dag)
+#     assert len(deployments) == 1
+#     with pytest.raises(
+#         ValueError,
+#         match="Specifying name in ray_actor_options is not allowed"
+#     ):
+#         deployments[0].deploy()
+
+
+def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     """
-    # TODO: (jiaodong) Support this
-    model = Model.options(name="my_deployment")._bind(2, ratio=0.3)
-    ray_dag = model.forward._bind(InputNode())
-
-    serve_root_dag = ray_dag._apply_recursive(
-        lambda node: transform_ray_dag_to_serve_dag(node)
-    )
-    deployments = extract_deployments_from_serve_dag(serve_root_dag)
-    assert len(deployments) == 1
-    deployments[0].deploy()
-    _validate_consistent_output(
-        deployments[0], ray_dag, "my_deployment", input=1, output=0.6
-    )
-
-
-def test_multiple_instantiation_class(serve_instance):
+    Test we can pass deployments as init_arg or nested init_kwarg, instantiated
+    multiple times for the same class, and we can still correctly replace
+    args with deployment handle and parse correct deployment instances.
     """
-    Test a multiple class methods can all be used as entrypoints in a dag.
-    """
-    pass
-
-
-def test_no_duplicated_deployment_name():
-    """Test to ensure we don't allow user providing to deployments with
-    same name in .options()
-    """
-    pass
-
-
-def test_multi_classes(serve_instance):
-    """
-    Test a multiple class methods can all be used as entrypoints in a dag.
-    """
-
-    @ray.remote
-    class Model1:
-        def __init__(self, weight: int):
-            self.weight = weight
-
-        def forward(self, input: int):
-            return self.weight * input
-
-    @ray.remote
-    class Model2:
-        def __init__(self, weight: int):
-            self.weight = weight
-
-        def forward(self, input: int):
-            return self.weight + input
-
-    @ray.remote
-    class Combine:
-        def __init__(self, m1: "RayHandleLike", m2: "RayHandleLike"):
-            self.m1 = m1
-            self.m2 = m2
-
-        def __call__(self, req):
-            r1_ref = self.m1.forward.remote(req)
-            r2_ref = self.m2.forward.remote(req)
-            return sum(ray.get([r1_ref, r2_ref]))
-
-    m1 = Model1._bind(2)
-    m2 = Model2._bind(3)
-    combine = Combine._bind(m1, m2)
+    m1 = Model._bind(2)
+    m2 = Model._bind(3)
+    combine = Combine._bind(m1, m2_nested={"handle": m2})
     ray_dag = combine.__call__._bind(InputNode())
-    print(ray_dag)
+    print(f"Ray DAG: \n{ray_dag}")
 
     serve_root_dag = ray_dag._apply_recursive(
         lambda node: transform_ray_dag_to_serve_dag(node)
     )
+    print(f"Serve DAG: \n{serve_root_dag}")
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 3
     for deployment in deployments:
         deployment.deploy()
 
     _validate_consistent_output(
-        deployments[2], ray_dag, "Combine", input=1, output=6
+        deployments[2], ray_dag, "Combine", input=1, output=5
     )
 
+# def test_shared_deployment_handle(serve_instance):
+#     """
+#     Test we can re-use the same deployment handle multiple times or in
+#     multiple places, without incorrectly parsing duplicated deployments.
+#     """
+#     m = Model._bind(2)
+#     combine = Combine._bind(m, m)
+#     ray_dag = combine.__call__._bind(InputNode())
+#     print(f"Ray DAG: \n{ray_dag}")
 
-# def test_simple_function(serve_instance):
-#     pass
+#     serve_root_dag = ray_dag._apply_recursive(
+#         lambda node: transform_ray_dag_to_serve_dag(node)
+#     )
+#     print(f"Serve DAG: \n{serve_root_dag}")
+#     deployments = extract_deployments_from_serve_dag(serve_root_dag)
+#     assert len(deployments) == 2
+#     for deployment in deployments:
+#         deployment.deploy()
+
+#     _validate_consistent_output(
+#         deployments[1], ray_dag, "Combine", input=1, output=4
+#     )
 
 
-# def test_multiple_functions(serve_instance):
-#     pass
+def test_simple_function(serve_instance):
+    # TODO: (jiaodong) Support function deployment node
+    pass
 
 
-# def test_mix_class_and_function(serve_instance):
-#     pass
+def test_multiple_functions(serve_instance):
+    # TODO: (jiaodong) Support function deployment node
+    pass
+
+
+def test_mix_class_and_function(serve_instance):
+    # TODO: (jiaodong) Support function deployment node
+    pass
 
 
 if __name__ == "__main__":

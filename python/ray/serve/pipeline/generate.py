@@ -35,36 +35,82 @@ class DeploymentIDGenerator(object):
 
                 return f"{deployment_name}_{suffix_num}"
 
+def _get_unique_deployment_name(dag_node):
+    """
+    Get unique deployment name for given ClassNode. For the first time we use
+    class name, and subsequent instantition of the same class used in Ray DAG
+    get monotonic increasing id as suffix.
+    """
+    deployment_name = (
+        dag_node.get_options().get("name", None) or dag_node._body.__name__
+    )
+    deployment_name = DeploymentIDGenerator.get_deployment_id(
+        deployment_name
+    )
+    return deployment_name
+
+def _remove_non_default_ray_actor_options(ray_actor_options: Dict[str, Any]):
+    """
+    In Ray DAG building we pass full ray_actor_options regardless if a field
+    was explicitly set. Since some values are invalid, we need to remove them
+    from ray_actor_options.
+    """
+    ray_actor_options = {
+        k: v for k, v in ray_actor_options.items() if v
+    }
+    if ray_actor_options.get("placement_group") == "default":
+        del ray_actor_options["placement_group"]
+    if ray_actor_options.get("placement_group_bundle_index") == -1:
+        del ray_actor_options["placement_group_bundle_index"]
+    if ray_actor_options.get("max_pending_calls") == -1:
+        del ray_actor_options["max_pending_calls"]
+
+    return ray_actor_options
+
+
+def _replace_init_args_with_deployment_handle(args, kwargs):
+    """
+    Deployment can be passed into other DAGNodes as init args. This is supported
+    pattern in ray DAG. Thus we need convert them into deployment handles in
+    ray serve DAG to make end to end DAG executable.
+    """
+    init_args = []
+    init_kwargs = {}
+
+    # TODO: (jiaodong) Need to handle deeply nested deployment in args
+    for arg in args:
+        if isinstance(arg, DeploymentNode):
+            init_args.append(arg._deployment_handle)
+        else:
+            init_args.append(arg)
+    for key, value in kwargs.items():
+        if isinstance(value, DeploymentNode):
+            init_kwargs[key] = value._deployment_handle
+        else:
+            init_kwargs[key] = value
+    return init_args, init_kwargs
+
 
 def transform_ray_dag_to_serve_dag(dag_node):
+    """
+    Transform a Ray DAG to a Serve DAG. Map ClassNode to DeploymentNode with
+    ray decorated body passed in, ans ClassMethodNode to DeploymentMethodNode.
+    """
     if isinstance(dag_node, ClassNode):
-        deployment_name = (
-            dag_node.get_options().get("name", None) or dag_node._body.__name__
+        deployment_name = _get_unique_deployment_name(dag_node)
+        ray_actor_options = _remove_non_default_ray_actor_options(
+            dag_node.get_options()
         )
-        deployment_name = DeploymentIDGenerator.get_deployment_id(deployment_name)
-        # Clean up keys with default value
-        ray_actor_options = {k: v for k, v in dag_node.get_options().items() if v}
-        if ray_actor_options.get("placement_group") == "default":
-            del ray_actor_options["placement_group"]
-        if ray_actor_options.get("placement_group_bundle_index") == -1:
-            del ray_actor_options["placement_group_bundle_index"]
-        if ray_actor_options.get("max_pending_calls") == -1:
-            del ray_actor_options["max_pending_calls"]
-
-        args = dag_node.get_args()
-        init_args = []
-        for arg in args:
-            if isinstance(arg, DeploymentNode):
-                init_args.append(arg._deployment_handle)
-            else:
-                init_args.append(arg)
+        init_args, init_kwargs = _replace_init_args_with_deployment_handle(
+            dag_node.get_args(), dag_node.get_kwargs()
+        )
         # Deployment class cannot bind with DeploymentNode
         new_deployment = Deployment(
             dag_node._body,
             deployment_name,
             DeploymentConfig(),
             init_args=tuple(init_args),  # replace DeploymentNode with handle
-            init_kwargs=dag_node.get_kwargs(),
+            init_kwargs=init_kwargs,
             ray_actor_options=ray_actor_options,
             _internal=True,
         )
@@ -72,13 +118,15 @@ def transform_ray_dag_to_serve_dag(dag_node):
             new_deployment,
             dag_node.get_args(),
             dag_node.get_kwargs(),
-            ray_actor_options,
-            other_args_to_resolve={},
+            # TODO: (jiaodong) Support .options(metadata=xxx) for deployment
+            {}, # Deployment options are not ray actor options.
+            other_args_to_resolve=dag_node.get_other_args_to_resolve(),
         )
         return deployment_node
 
     elif isinstance(dag_node, ClassMethodNode):
         other_args_to_resolve = dag_node.get_other_args_to_resolve()
+        # TODO: (jiaodong) Need to capture DAGNodes in the parent node
         parent_deployment_node = other_args_to_resolve["parent_class_node"]
 
         deployment_method_node = DeploymentMethodNode(
@@ -87,21 +135,36 @@ def transform_ray_dag_to_serve_dag(dag_node):
             dag_node.get_args(),
             dag_node.get_kwargs(),
             dag_node.get_options(),
+            other_args_to_resolve=dag_node.get_other_args_to_resolve(),
         )
         return deployment_method_node
     else:
-        #TODO: (jiaodong) Support FunctionNode
+        # TODO: (jiaodong) Support FunctionNode
         return dag_node
+
 
 def extract_deployments_from_serve_dag(
     serve_dag_root: DAGNode,
 ) -> List[Deployment]:
-    deployments = []
+    """Extract deployment python objects from a transformed serve DAG. Should
+    only be called after `transform_ray_dag_to_serve_dag`, otherwise nothing
+    to return.
+
+    Args:
+        serve_dag_root (DAGNode): Transformed serve dag root node.
+    Returns:
+        List[Deployment]: List of deployment python objects fetched from serve
+            dag.
+    """
+    deployments = {}
 
     def extractor(dag_node):
-        if isinstance(dag_node, DeploymentMethodNode):
-            deployments.append(dag_node._body)
+        if isinstance(dag_node, DeploymentNode):
+            deployment = dag_node._body
+            # In case same deployment is used in multiple DAGNodes
+            deployments[deployment.name] = deployment
+        # elif DeploymentMethodNode
 
     serve_dag_root._apply_recursive(lambda node: extractor(node))
 
-    return deployments
+    return list(deployments.values())

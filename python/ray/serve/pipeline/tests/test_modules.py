@@ -4,7 +4,9 @@ fully qualified name as import_path to test DAG building, artifact generation
 and structured deployment.
 """
 import ray
+from typing import TypeVar
 
+RayHandleLike = TypeVar("RayHandleLike")
 
 @ray.remote
 class ClassHello:
@@ -30,6 +32,16 @@ class Model:
         input_data = request
         return self.ratio * self.weight * input_data
 
+@ray.remote
+class Combine:
+    def __init__(self, m1: "RayHandleLike", m2_nested: "RayHandleLike" = None):
+        self.m1 = m1
+        self.m2 = m2_nested.get("handle")
+
+    def __call__(self, req):
+        r1_ref = self.m1.forward.remote(req)
+        r2_ref = self.m2.forward.remote(req)
+        return sum(ray.get([r1_ref, r2_ref]))
 
 @ray.remote
 def fn_hello():
