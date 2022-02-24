@@ -205,7 +205,7 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
         spill_time_total_s_ += (now - std::max(start_time, last_spill_finish_ns_)) / 1e9;
         if (now - last_spill_log_ns_ > 1e9) {
           last_spill_log_ns_ = now;
-          RAY_LOG(INFO) << "Spilled "
+          RAY_LOG(ERROR) << "Spilled "
                         << static_cast<int>(spilled_bytes_total_ / (1024 * 1024))
                         << " MiB, " << spilled_objects_total_
                         << " objects, write throughput "
