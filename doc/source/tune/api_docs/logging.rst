@@ -17,14 +17,16 @@ see :ref:`Trainable Logging <trainable-logging>`.
 Viskit
 ------
 
-Tune automatically integrates with `Viskit <https://github.com/vitchyr/viskit>`_ via the ``CSVLoggerCallback`` outputs. To use VisKit (you may have to install some dependencies), run:
+Tune automatically integrates with `Viskit <https://github.com/vitchyr/viskit>`_ via the ``CSVLoggerCallback`` outputs.
+To use VisKit (you may have to install some dependencies), run:
 
 .. code-block:: bash
 
     $ git clone https://github.com/rll/rllab.git
     $ python rllab/rllab/viskit/frontend.py ~/ray_results/my_experiment
 
-The nonrelevant metrics (like timing stats) can be disabled on the left to show only the relevant ones (like accuracy, loss, etc.).
+The non-relevant metrics (like timing stats) can be disabled on the left to show only the
+relevant ones (like accuracy, loss, etc.).
 
 .. image:: ../images/ray-tune-viskit.png
 
@@ -47,13 +49,15 @@ CSVLogger
 MLFlowLogger
 ------------
 
-Tune also provides a default logger for `MLflow <https://mlflow.org>`_. You can install MLflow via ``pip install mlflow``.
+Tune also provides a default logger for `MLflow <https://mlflow.org>`_.
+You can install MLflow via ``pip install mlflow``.
 You can see the :doc:`tutorial here </tune/tutorials/tune-mlflow>`.
 
 WandbLogger
 -----------
 
-Tune also provides a default logger for `Weights & Biases <https://www.wandb.ai/>`_. You can install Wandb via ``pip install wandb``.
+Tune also provides a default logger for `Weights & Biases <https://www.wandb.ai/>`_.
+You can install Wandb via ``pip install wandb``.
 You can see the :doc:`tutorial here </tune/tutorials/tune-wandb>`
 
 

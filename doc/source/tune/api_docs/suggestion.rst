@@ -3,7 +3,8 @@
 Search Algorithms (tune.suggest)
 ================================
 
-Tune's Search Algorithms are wrappers around open-source optimization libraries for efficient hyperparameter selection. Each library has a specific way of defining the search space - please refer to their documentation for more details.
+Tune's Search Algorithms are wrappers around open-source optimization libraries for efficient hyperparameter selection.
+Each library has a specific way of defining the search space - please refer to their documentation for more details.
 
 You can utilize these search algorithms as follows:
 
@@ -101,11 +102,14 @@ Bayesian Optimization (tune.suggest.bayesopt.BayesOptSearch)
 BOHB (tune.suggest.bohb.TuneBOHB)
 ---------------------------------
 
-BOHB (Bayesian Optimization HyperBand) is an algorithm that both terminates bad trials and also uses Bayesian Optimization to improve the hyperparameter search. It is available from the `HpBandSter library <https://github.com/automl/HpBandSter>`_.
+BOHB (Bayesian Optimization HyperBand) is an algorithm that both terminates bad trials
+and also uses Bayesian Optimization to improve the hyperparameter search.
+It is available from the `HpBandSter library <https://github.com/automl/HpBandSter>`_.
 
 Importantly, BOHB is intended to be paired with a specific scheduler class: :ref:`HyperBandForBOHB <tune-scheduler-bohb>`.
 
-This algorithm requires using the `ConfigSpace search space specification <https://automl.github.io/HpBandSter/build/html/quickstart.html#searchspace>`_. In order to use this search algorithm, you will need to install ``HpBandSter`` and ``ConfigSpace``:
+This algorithm requires using the `ConfigSpace search space specification <https://automl.github.io/HpBandSter/build/html/quickstart.html#searchspace>`_.
+In order to use this search algorithm, you will need to install ``HpBandSter`` and ``ConfigSpace``:
 
 .. code-block:: bash
 
@@ -120,7 +124,8 @@ See the `BOHB paper <https://arxiv.org/abs/1807.01774>`_ for more details.
 BlendSearch (tune.suggest.flaml.BlendSearch)
 --------------------------------------------
 
-BlendSearch is an economical hyperparameter optimization algorithm that combines combines local search with global search. It is backed by the `FLAML library <https://github.com/microsoft/FLAML>`_.
+BlendSearch is an economical hyperparameter optimization algorithm that combines combines local search with global search.
+It is backed by the `FLAML library <https://github.com/microsoft/FLAML>`_.
 It allows the users to specify a low-cost initial point as input if such point exists.
 
 In order to use this search algorithm, you will need to install ``flaml``:
@@ -138,7 +143,8 @@ See the `BlendSearch paper <https://openreview.net/pdf?id=VbLH04pRA3>`_ and docu
 CFO (tune.suggest.flaml.CFO)
 ----------------------------
 
-CFO (Cost-Frugal hyperparameter Optimization) is a hyperparameter search algorithm based on randomized local search. It is backed by the `FLAML library <https://github.com/microsoft/FLAML>`_.
+CFO (Cost-Frugal hyperparameter Optimization) is a hyperparameter search algorithm based on randomized local search.
+It is backed by the `FLAML library <https://github.com/microsoft/FLAML>`_.
 It allows the users to specify a low-cost initial point as input if such point exists.
 
 In order to use this search algorithm, you will need to install ``flaml``:
@@ -147,7 +153,8 @@ In order to use this search algorithm, you will need to install ``flaml``:
 
     $ pip install flaml
 
-See the `CFO paper <https://arxiv.org/pdf/2005.01571.pdf>`_ and documentation in FLAML `CFO documentation <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`_ for more details.
+See the `CFO paper <https://arxiv.org/pdf/2005.01571.pdf>`_ and documentation in
+FLAML `CFO documentation <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`_ for more details.
 
 .. autoclass:: ray.tune.suggest.flaml.CFO
 
@@ -199,7 +206,8 @@ Optuna (tune.suggest.optuna.OptunaSearch)
 SigOpt (tune.suggest.sigopt.SigOptSearch)
 -----------------------------------------
 
-You will need to use the `SigOpt experiment and space specification <https://app.sigopt.com/docs/overview/create>`__ to specify your search space.
+You will need to use the `SigOpt experiment and space specification <https://app.sigopt.com/docs/overview/create>`__
+to specify your search space.
 
 .. autoclass:: ray.tune.suggest.sigopt.SigOptSearch
 
@@ -246,7 +254,8 @@ will run ``repeat`` trials of the configuration. It will then average the
 ConcurrencyLimiter (tune.suggest.ConcurrencyLimiter)
 ----------------------------------------------------
 
-Use ``ray.tune.suggest.ConcurrencyLimiter`` to limit the amount of concurrency when using a search algorithm. This is useful when a given optimization algorithm does not parallelize very well (like a naive Bayesian Optimization).
+Use ``ray.tune.suggest.ConcurrencyLimiter`` to limit the amount of concurrency when using a search algorithm.
+This is useful when a given optimization algorithm does not parallelize very well (like a naive Bayesian Optimization).
 
 .. autoclass:: ray.tune.suggest.ConcurrencyLimiter
 
@@ -269,6 +278,8 @@ If contributing, make sure to add test cases and an entry in the function descri
 
 Shim Instantiation (tune.create_searcher)
 -----------------------------------------
-There is also a shim function that constructs the search algorithm based on the provided string. This can be useful if the search algorithm you want to use changes often (e.g., specifying the search algorithm via a CLI option or config file).
+There is also a shim function that constructs the search algorithm based on the provided string.
+This can be useful if the search algorithm you want to use changes often
+(e.g., specifying the search algorithm via a CLI option or config file).
 
 .. automethod:: ray.tune.create_searcher

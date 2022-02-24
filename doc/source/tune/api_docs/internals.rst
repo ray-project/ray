@@ -57,14 +57,16 @@ TrialExecutor
 ~~~~~~~~~~~~~
 [`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial_executor.py>`__]
 The TrialExecutor is a component that interacts with the underlying execution framework.
-It also manages resources to ensure the cluster isn't overloaded. By default, the TrialExecutor uses Ray to execute trials.
+It also manages resources to ensure the cluster isn't overloaded. By default,
+the TrialExecutor uses Ray to execute trials.
 
 See the docstring at :ref:`raytrialexecutor-docstring`.
 
 
 SearchAlg
 ~~~~~~~~~
-[`source code <https://github.com/ray-project/ray/tree/master/python/ray/tune/suggest>`__] The SearchAlgorithm is a user-provided object
+[`source code <https://github.com/ray-project/ray/tree/master/python/ray/tune/suggest>`__]
+The SearchAlgorithm is a user-provided object
 that is used for querying new hyperparameter configurations to evaluate.
 
 SearchAlgorithms will be notified every time a trial finishes
@@ -73,7 +75,8 @@ errors, and every time a trial completes.
 
 TrialScheduler
 ~~~~~~~~~~~~~~
-[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/schedulers>`__] TrialSchedulers operate over a set of possible trials to run,
+[`source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/schedulers>`__]
+TrialSchedulers operate over a set of possible trials to run,
 prioritizing trial execution given available cluster resources.
 
 TrialSchedulers are given the ability to kill or pause trials,

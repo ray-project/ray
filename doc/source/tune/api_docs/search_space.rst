@@ -18,6 +18,8 @@ This section covers the functions you can use to define your search spaces.
 
 For a high-level overview, see this example:
 
+.. TODO: test this
+
 .. code-block :: python
 
     config = {
