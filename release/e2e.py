@@ -1557,8 +1557,12 @@ def run_test_config(
     app_config["env_vars"]["MATCH_AUTOSCALER_AND_RAY_IMAGES"] = "1"
     app_config["env_vars"]["RAY_bootstrap_with_gcs"] = "1"
     app_config["env_vars"]["RAY_gcs_storage"] = "memory"
+    app_config["env_vars"]["RAY_USAGE_STATS_ENABLED"] = "1"
+    app_config["env_vars"]["RAY_USAGE_STATS_SOURCE"] = "nightly-tests"
+
     if rebuild_app_config is True:
         app_config["env_vars"]["_TIME"] = str(datetime.datetime.now().timestamp())
+
     compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
     compute_tpl = _load_config(local_dir, compute_tpl_rel_path)
 

@@ -17,11 +17,22 @@ def expect_stages(pipe, num_stages_expected, stage_names):
     assert len(pipe._optimized_stages) == num_stages_expected, pipe._optimized_stages
 
 
+def test_spread_hint_inherit(ray_start_regular_shared):
+    ds = ray.data.range(10)._experimental_lazy()
+    ds = ds.map(lambda x: x + 1)
+    ds = ds.random_shuffle()
+    for s in ds._plan._stages:
+        assert s.ray_remote_args == {}, s.ray_remote_args
+    ds._plan._optimize()
+    assert len(ds._plan._stages) == 1, ds._plan._stages
+    assert ds._plan._stages[0].ray_remote_args == {"scheduling_strategy": "SPREAD"}
+
+
 def test_optimize_fuse(ray_start_regular_shared):
     context = DatasetContext.get_current()
 
     def build_pipe():
-        pipe = ray.data.range(3).repeat(2)
+        pipe = ray.data.range(3).window(blocks_per_window=1).repeat(2)
         pipe = pipe.map_batches(lambda x: x)
         pipe = pipe.map_batches(lambda x: x)
         pipe = pipe.random_shuffle_each_window()

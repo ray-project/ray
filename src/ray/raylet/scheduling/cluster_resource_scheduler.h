@@ -167,6 +167,7 @@ class ClusterResourceScheduler {
   std::unique_ptr<raylet_scheduling_policy::SchedulingPolicy> scheduling_policy_;
 
   friend class ClusterResourceSchedulerTest;
+  FRIEND_TEST(ClusterResourceSchedulerTest, PopulatePredefinedResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingDeleteClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest);
