@@ -49,14 +49,14 @@ void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &requ
 }
 
 void GcsResourceManager::UpdateResources(
-    const NodeID &node_id, const std::unordered_map<std::string, double> &resources,
+    const NodeID &node_id, const std::unordered_map<std::string, double> &changed_resources,
     std::function<void(const Status &)> callback) {
   RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
   auto iter = cluster_scheduling_resources_.find(node_id);
   if (iter != cluster_scheduling_resources_.end()) {
     // Update `cluster_scheduling_resources_`.
     SchedulingResources &scheduling_resources = *iter->second;
-    for (const auto &entry : *changed_resources) {
+    for (const auto &entry : changed_resources) {
       scheduling_resources.UpdateResourceCapacity(entry.first, entry.second);
     }
 
@@ -65,12 +65,12 @@ void GcsResourceManager::UpdateResources(
     for (const auto &entry : scheduling_resources.GetTotalResources().GetResourceMap()) {
       (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
     }
-    for (const auto &entry : *changed_resources) {
+    for (const auto &entry : changed_resources) {
       (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
     }
 
     auto start = absl::GetCurrentTimeNanos();
-    auto on_done = [this, node_id, start,
+    auto on_done = [node_id, start,
                     callback = std::move(callback)](const Status &status) {
       auto end = absl::GetCurrentTimeNanos();
       ray::stats::STATS_gcs_new_resource_creation_latency_ms.Record(
@@ -91,7 +91,7 @@ void GcsResourceManager::UpdateResources(
   }
 }
 
-void GcsResourceManager::HandleDeleteResources(
+void GcsResourceManager::DeleteResources(
     const NodeID &node_id, const std::vector<std::string> &resource_names,
     std::function<void(const Status &)> callback) {
   RAY_LOG(DEBUG) << "Deleting node resources, node id = " << node_id;
@@ -112,7 +112,7 @@ void GcsResourceManager::HandleDeleteResources(
       (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
     }
 
-    auto on_done = [this, callback = std::move(callback)](const Status &status) {
+    auto on_done = [callback = std::move(callback)](const Status &status) {
       RAY_CHECK_OK(status);
       callback(status);
     };
