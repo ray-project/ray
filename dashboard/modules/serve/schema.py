@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field, root_validator, validator
 from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve.api import Deployment, deployment
+from ray.serve.common import DeploymentStatusInfo
 
 
 class RayActorOptionsSchema(BaseModel):
@@ -292,8 +293,18 @@ class DeploymentSchema(BaseModel):
         return v
 
 
+class NamedDeploymentStatusInfo(BaseModel):
+    name: str = Field(
+        ...,
+        description="The status' deployment's name.")
+    status_info: DeploymentStatusInfo = Field(
+        default=None
+    )
+
+
 class ServeInstanceSchema(BaseModel):
     deployments: List[DeploymentSchema] = Field(...)
+    statuses: List[NamedDeploymentStatusInfo] = Field(default=None)
 
 
 def deployment_to_schema(d: Deployment) -> DeploymentSchema:
