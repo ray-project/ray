@@ -217,15 +217,14 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     Returns:
         The script's output.
     """
-    if env is not None and gcs_utils.use_gcs_for_bootstrap():
-        env.update(
-            {
-                "RAY_bootstrap_with_gcs": "1",
-                "RAY_gcs_grpc_based_pubsub": "1",
-                "RAY_gcs_storage": "memory",
-                "RAY_bootstrap_with_gcs": "1",
-            }
-        )
+    if env is not None:
+        for key in [
+            "RAY_gcs_grpc_based_pubsub",
+            "RAY_gcs_storage",
+            "RAY_bootstrap_with_gcs",
+        ]:
+            if key in os.environ:
+                env[key] = os.environ[key]
 
     proc = subprocess.Popen(
         [sys.executable, "-"],
