@@ -121,9 +121,6 @@ class DeploymentConfig(BaseModel):
 
     autoscaling_config: Optional[AutoscalingConfig] = None
 
-    is_cross_language: bool = False
-    deployment_language: Any = DeploymentLanguage.PYTHON
-
     class Config:
         validate_assignment = True
         extra = "forbid"
@@ -147,7 +144,11 @@ class DeploymentConfig(BaseModel):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
-        return DeploymentConfigProto(**data).SerializeToString()
+        return DeploymentConfigProto(
+            is_cross_language=False,
+            deployment_language=DeploymentLanguage.PYTHON,
+            **data,
+        ).SerializeToString()
 
     @classmethod
     def from_proto_bytes(cls, proto_bytes: bytes):
@@ -162,6 +163,10 @@ class DeploymentConfig(BaseModel):
                 data["user_config"] = None
         if "autoscaling_config" in data:
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
+
+        # Delete fields which are only used in protobuf, not in Python.
+        del data["is_cross_language"]
+        del data["deployment_language"]
 
         return cls(**data)
 

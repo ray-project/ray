@@ -4,7 +4,6 @@ import pytest
 
 import ray
 from ray import serve
-from ray import job_config
 
 if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
     serve.controller._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
@@ -30,8 +29,6 @@ def _shared_serve_instance():
     ray.init(
         num_cpus=36,
         namespace="default_test_namespace",
-        # A dummy code search path to enable cross language.
-        job_config=job_config.JobConfig(code_search_path=["."]),
         _metrics_export_port=9999,
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
