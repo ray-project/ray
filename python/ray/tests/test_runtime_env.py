@@ -515,6 +515,40 @@ def test_get_current_runtime_env(call_ray_start, use_client):
     )
 
 
+def test_to_make_ensure_runtime_env_api(start_cluster):
+    # make sure RuntimeEnv can be used in an be used interchangeably with
+    # an unstructured dictionary in the relevant API calls.
+    ENV_KEY = "TEST_RUNTIME_ENV"
+
+    @ray.remote(runtime_env=RuntimeEnv(env_vars={ENV_KEY: "f1"}))
+    def f1():
+        assert os.environ.get(ENV_KEY) == "f1"
+
+    ray.get(f1.remote())
+
+    @ray.remote
+    def f2():
+        assert os.environ.get(ENV_KEY) == "f2"
+
+    ray.get(f2.options(runtime_env=RuntimeEnv(env_vars={ENV_KEY: "f2"})).remote())
+
+    @ray.remote(runtime_env=RuntimeEnv(env_vars={ENV_KEY: "a1"}))
+    class A1:
+        def f(self):
+            assert os.environ.get(ENV_KEY) == "a1"
+
+    a1 = A1.remote()
+    ray.get(a1.f.remote())
+
+    @ray.remote
+    class A2:
+        def f(self):
+            assert os.environ.get(ENV_KEY) == "a2"
+
+    a2 = A2.options(runtime_env=RuntimeEnv(env_vars={ENV_KEY: "a2"})).remote()
+    ray.get(a2.f.remote())
+
+
 MY_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env.MyPlugin"
 success_retry_number = 3
 runtime_env_retry_times = 0

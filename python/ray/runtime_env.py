@@ -147,8 +147,13 @@ def _parse_proto_plugin_runtime_env(
 
 @PublicAPI
 class RuntimeEnv(dict):
-    """This class use for define Runtime Environment.
+    """This class is used to define a runtime environment for a job, task,
+    or actor.
+
     See :ref:`runtime-environments` for detailed documentation.
+
+    This class can be used interchangeably with an unstructured dictionary
+    in the relevant API calls.
 
     Can specify a runtime environment whole job, whether running a script
     directly on the cluster, using Ray Job submission, or using Ray Client:
@@ -191,6 +196,24 @@ class RuntimeEnv(dict):
         class MyClass:
             pass
 
+    Here are some examples of RuntimeEnv initialization:
+
+    .. code-block:: python
+
+        # Example for using conda
+        RuntimeEnv(conda={
+            "channels": ["defaults"], "dependencies": ["codecov"]})
+        RuntimeEnv(conda="pytorch_p36")   # Found on DLAMIs
+
+        # Example for using container
+        RuntimeEnv(
+            container={"image": "anyscale/ray-ml:nightly-py38-cpu",
+            "worker_path": "/root/python/ray/workers/default_worker.py",
+            "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]})
+
+        # Example for set env_vars
+        RuntimeEnv(env_vars={"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"})
+
     Args:
         py_modules (List[URI]): List of URIs (either in the GCS or external
             storage), each of which is a zip file that will be unpacked and
@@ -211,25 +234,12 @@ class RuntimeEnv(dict):
             the conda YAML config:
             https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-e
             nvironments.html#create-env-file-manually
-            Examples:
-
-            >>> RuntimeEnv(conda={
-                "channels": ["defaults"], "dependencies": ["codecov"]})
-            >>> RuntimeEnv(conda="pytorch_p36")   # Found on DLAMIs
         container (dict): Require a given (Docker) container image,
             The Ray worker process will run in a container with this image.
             The `worker_path` is the default_worker.py path.
             The `run_options` list spec is here:
             https://docs.docker.com/engine/reference/run/
-            Examples:
-
-            >>> RuntimeEnv(container={"image": "anyscale/ray-ml:nightly-py38-cpu",
-                 "worker_path": "/root/python/ray/workers/default_worker.py",
-                 "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]})
         env_vars (dict): Environment variables to set.
-            Examples:
-
-            >>> RuntimeEnv(env_vars={"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"})
     """
 
     known_fields: Set[str] = {
