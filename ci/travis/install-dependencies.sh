@@ -314,7 +314,7 @@ install_dependencies() {
       local torch_url="https://download.pytorch.org/whl/torch_stable.html"
       case "${OSTYPE}" in
         darwin*) pip install torch torchvision;;
-        *) pip install torch==1.8.1+cpu torchvision==0.9.1+cpu -f "${torch_url}";;
+        *) pip install torch==1.9.0+cpu torchvision==0.10.0+cpu -f "${torch_url}";;
       esac
     fi
 
