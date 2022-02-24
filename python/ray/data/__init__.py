@@ -23,7 +23,7 @@ from ray.data.read_api import (
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.dataset import Dataset
 from ray.data.impl.progress_bar import set_progress_bars
-from ray.data.impl.compute import ActorPool
+from ray.data.impl.compute import ActorPoolStrategy
 
 # Module-level cached global functions (for impl/compute). It cannot be defined
 # in impl/compute since it has to be process-global across cloudpickled funcs.
@@ -31,7 +31,7 @@ _cached_fn = None
 _cached_cls = None
 
 __all__ = [
-    "ActorPool",
+    "ActorPoolStrategy",
     "Dataset",
     "Datasource",
     "ReadTask",

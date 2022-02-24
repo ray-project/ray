@@ -23,7 +23,7 @@ CallableClass = type
 
 
 class ComputeStrategy:
-    def apply(self, fn: Any, blocks: BlockList, clear_input_blocks: bool) -> BlockList:
+    def _apply(self, fn: Any, blocks: BlockList, clear_input_blocks: bool) -> BlockList:
         raise NotImplementedError
 
 
@@ -59,8 +59,8 @@ def _map_block_nosplit(
     )
 
 
-class TaskPool(ComputeStrategy):
-    def apply(
+class TaskPoolStrategy(ComputeStrategy):
+    def _apply(
         self,
         fn: Any,
         remote_args: dict,
@@ -123,7 +123,7 @@ class TaskPool(ComputeStrategy):
 
 
 @PublicAPI
-class ActorPool(ComputeStrategy):
+class ActorPoolStrategy(ComputeStrategy):
     """Specify the compute strategy for a Dataset transform.
 
     ActorPool specifies that an autoscaling pool of actors should be used for a given
@@ -141,7 +141,7 @@ class ActorPool(ComputeStrategy):
         self.min_size = min_size
         self.max_size = max_size or float("inf")
 
-    def apply(
+    def _apply(
         self,
         fn: Any,
         remote_args: dict,
@@ -274,9 +274,9 @@ def cache_wrapper(
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
     if not compute_spec or compute_spec == "tasks":
-        return TaskPool()
+        return TaskPoolStrategy()
     elif compute_spec == "actors":
-        return ActorPool()
+        return ActorPoolStrategy()
     elif isinstance(compute_spec, ComputeStrategy):
         return compute_spec
     else:
