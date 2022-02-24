@@ -87,11 +87,13 @@ def test_spread_hint_inherit(ray_start_regular_shared):
     ds = ray.data.range(10)._experimental_lazy()
     ds = ds.map(lambda x: x + 1)
     ds = ds.random_shuffle()
-    for s in ds._plan._stages:
+    for s in ds._plan._stages_before_snapshot:
         assert s.ray_remote_args == {}, s.ray_remote_args
-    ds._plan._optimize()
-    assert len(ds._plan._stages) == 1, ds._plan._stages
-    assert ds._plan._stages[0].ray_remote_args == {"scheduling_strategy": "SPREAD"}
+    for s in ds._plan._stages_after_snapshot:
+        assert s.ray_remote_args == {}, s.ray_remote_args
+    _, _, optimized_stages = ds._plan._optimize()
+    assert len(optimized_stages) == 1, optimized_stages
+    assert optimized_stages[0].ray_remote_args == {"scheduling_strategy": "SPREAD"}
 
 
 def test_optimize_fuse(ray_start_regular_shared):
@@ -220,7 +222,7 @@ class MySource(CSVDatasource):
     def _read_stream(self, f, path: str, **reader_args):
         count = self.counter.increment.remote()
         ray.get(count)
-        for block in CSVDatasource._read_stream(self, f, path, **reader_args):
+        for block in super()._read_stream(f, path, **reader_args):
             yield block
 
 
