@@ -174,6 +174,7 @@ class TuneInterruptionTest(unittest.TestCase):
         thread.join()
 
         ray.shutdown()
+        del os.environ["TUNE_DISABLE_SIGINT_HANDLER"]
 
 
 class TuneFailResumeGridTest(unittest.TestCase):

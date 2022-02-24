@@ -657,7 +657,7 @@ def run(
     # We should only install the handler when it is safe to do so.
     # When tune.run() is called from worker thread, singal.signal will
     # fail.
-    if threading.current_thread() != threading.main_thread:
+    if threading.current_thread() != threading.main_thread():
         os.environ["TUNE_DISABLE_SIGINT_HANDLER"] = "1"
 
     if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
