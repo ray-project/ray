@@ -141,25 +141,25 @@ class ParametricRecSys(gym.Env):
             np.arange(self.slate_size + 1), p=softmax(user_doc_overlaps)
         )
 
-        r = 0.0
+        reward = 0.0
         if which_clicked < self.slate_size:
             # Reward is 1.0 - regret if clicked. 0.0 if not clicked.
             regret = best_reward - user_doc_overlaps[which_clicked]
-            r = 1 - regret
+            reward = 1 - regret
             # If anything clicked, deduct from the current user's time budget.
             self.current_user_budget -= 1.0
-        d = self.current_user_budget <= 0.0
+        done = self.current_user_budget <= 0.0
 
         # Compile response.
         response = tuple(
             {
                 "click": int(idx == which_clicked),
-                "engagement": r if idx == which_clicked else 0.0,
+                "engagement": reward if idx == which_clicked else 0.0,
             }
             for idx in range(len(user_doc_overlaps) - 1)
         )
 
-        return self._get_obs(response=response), r, d, {}
+        return self._get_obs(response=response), reward, done, {}
 
     def _get_obs(self, response=None):
         # Sample D docs from infinity or our pre-existing docs.
