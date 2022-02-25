@@ -167,38 +167,6 @@ def deploy(config_file_name: str, address: str):
 
 
 @cli.command(
-    help="[Experimental] Run YAML configuration file via Serve's Python API.",
-    hidden=True,
-)
-@click.argument("config_file_name")
-def run(config_file_name: str):
-    with open(config_file_name, "r") as config:
-        deployment_data_list = yaml.safe_load(config)["deployments"]
-
-    deployments = []
-    for deployment_data in deployment_data_list:
-        configurables = deployment_data["configurable"]
-        del deployment_data["configurable"]
-        deployment_data.update(configurables)
-
-        import_path = deployment_data["import_path"]
-        del deployment_data["import_path"]
-
-        for key in list(deployment_data.keys()):
-            val = deployment_data[key]
-            if isinstance(val, str) and val.lower() == "none":
-                del deployment_data[key]
-
-        deployments.append(serve.deployment(**deployment_data)(import_path))
-
-    deploy_group(deployments)
-    print("Group deployed successfully!")
-
-    while True:
-        time.sleep(100)
-
-
-@cli.command(
     help="[Experimental] Get info about your Serve application's config.",
     hidden=True,
 )
