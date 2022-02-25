@@ -211,7 +211,8 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
               << static_cast<int>(spilled_bytes_total_ / (1024 * 1024) /
                                   spill_time_total_s_)
               << " MiB/s";
-          if (next_spill_error_log_bytes > 0 && spilled_bytes_total_ >= next_spill_error_log_bytes_) {
+          if (next_spill_error_log_bytes > 0 &&
+              spilled_bytes_total_ >= next_spill_error_log_bytes_) {
             next_spill_error_log_bytes_ *= 2;
             if (last_spill_error_log_bytes_ == 0) {
               msg << ". Set RAY_verbose_spill_logs=0 to disable this message.";
