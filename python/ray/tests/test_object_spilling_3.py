@@ -135,11 +135,12 @@ def test_spill_fusion(object_spilling_config):
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 1,
-            "automatic_object_spilling_enabled": True,
-            "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
             "min_spilling_size": min_spilling_size,
             "object_spilling_threshold": 0.8,
+            # Set the timeout between create retries high so that this test
+            # passes in ASAN and debug mode.
+            "object_store_full_delay_ms": 1000,
         },
     )
 
