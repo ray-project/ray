@@ -208,7 +208,7 @@ py_test(
 
 py_test(
     name = "test_ray_trial_executor",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_ray_trial_executor.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_R"],
