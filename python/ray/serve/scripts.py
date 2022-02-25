@@ -22,9 +22,11 @@ logger = logging.getLogger(__name__)
 
 
 def log_failed_request(response: requests.models.Response):
-    logger.error("Request failed. Got response status code "
-                 f"{response.status_code} with the following message:"
-                 f"\n{response.text}")
+    error_message = ("Request failed. Got response status code "
+                     f"{response.status_code} with the following message:"
+                     f"\n{response.text}")
+    print(error_message)
+    logger.error(error_message)
 
 
 @click.group(help="[EXPERIMENTAL] CLI for managing Serve instances on a Ray cluster.")
@@ -161,10 +163,10 @@ def deploy(config_file_name: str, address: str):
     response = requests.put(full_address_path, json=config)
 
     if response.status_code == 200:
-        logger.info("Sent deployment request successfully!\n Use "
-                    "`serve status` to check your deployments' statuses.\n "
-                    "Use `serve info` to retrieve your running Serve "
-                    "application's current configuration.")
+        print("Sent deployment request successfully!\n Use "
+              "`serve status` to check your deployments' statuses.\n "
+              "Use `serve info` to retrieve your running Serve "
+              "application's current configuration.")
     else:
         log_failed_request(response)
 
