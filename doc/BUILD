@@ -140,7 +140,7 @@ py_test(
 
 py_test_run_all_notebooks(
     size = "medium",
-    include = ["doc/source/tune/examples/**.ipynb"],
+    include = ["doc/source/tune/examples/*.ipynb"],
     exclude = [],
     data = ["//doc/source/tune/examples:tune_examples"],
     tags = ["exclusive", "team:ml"],
@@ -152,7 +152,7 @@ py_test_run_all_notebooks(
 
 py_test_run_all_subdirectory(
     size = "medium",
-    include = ["source/tune/doc_code/**.py"],
+    include = ["source/tune/doc_code/*.py"],
     exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
