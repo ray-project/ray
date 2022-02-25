@@ -122,9 +122,12 @@ def test_plugin_hang(ray_start_regular):
     def condition():
         for ref in refs:
             try:
-                assert int(ray.get(ref, timeout=1)) == 2
+                res = ray.get(ref, timeout=1)
+                print("result:", res)
+                assert int(res) == 2
                 return True
-            except Exception:
+            except Exception as error:
+                print(f"Got error: {error}")
                 pass
         return False
 
