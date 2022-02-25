@@ -58,22 +58,20 @@ rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
   inner.set_owner_id(actor_table_data.parent_id());
   inner.mutable_owner_address()->CopyFrom(actor_table_data.owner_address());
   inner.set_creation_job_id(actor_table_data.job_id());
-  inner.set_actor_language(actor_table_data.task_spec().language());
+  inner.set_actor_language(actor_table_data.language());
   inner.mutable_actor_creation_task_function_descriptor()->CopyFrom(
-      actor_table_data.task_spec().function_descriptor());
-  TaskSpecification task_spec(actor_table_data.task_spec());
-  inner.set_actor_cursor(task_spec.ReturnId(0).Binary());
-  inner.set_extension_data(
-      actor_table_data.task_spec().actor_creation_task_spec().extension_data());
-  inner.set_max_task_retries(
-      actor_table_data.task_spec().actor_creation_task_spec().max_task_retries());
-  inner.set_name(actor_table_data.task_spec().actor_creation_task_spec().name());
-  inner.set_ray_namespace(
-      actor_table_data.task_spec().actor_creation_task_spec().ray_namespace());
-  inner.set_execute_out_of_order(
-      actor_table_data.task_spec().actor_creation_task_spec().execute_out_of_order());
-  inner.set_max_pending_calls(
-      actor_table_data.task_spec().actor_creation_task_spec().max_pending_calls());
+      actor_table_data.function_descriptor());
+  inner.set_actor_cursor(
+      ObjectID::FromIndex(
+          TaskID::ForActorCreationTask(ActorID::FromBinary(actor_table_data.actor_id())),
+          1)
+          .Binary());
+  inner.set_extension_data(actor_table_data.extension_data());
+  inner.set_max_task_retries(actor_table_data.max_task_retries());
+  inner.set_name(actor_table_data.name());
+  inner.set_ray_namespace(actor_table_data.ray_namespace());
+  inner.set_execute_out_of_order(actor_table_data.execute_out_of_order());
+  inner.set_max_pending_calls(actor_table_data.max_pending_calls());
   return inner;
 }
 }  // namespace
