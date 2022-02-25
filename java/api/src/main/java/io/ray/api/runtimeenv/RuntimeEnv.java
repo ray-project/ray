@@ -4,6 +4,7 @@ import io.ray.api.Ray;
 import java.util.HashMap;
 import java.util.Map;
 
+/** This is an experimental API to let you set runtime environments for your actors. */
 public interface RuntimeEnv {
 
   String toJsonBytes();
