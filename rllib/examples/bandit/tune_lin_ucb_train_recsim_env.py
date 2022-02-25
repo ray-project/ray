@@ -21,14 +21,16 @@ if __name__ == "__main__":
         # Then: "env": [the imported RecSim class]
         "env": "RecSim-v1",
         "env_config": {
+            "num_candidates": 10,
+            "slate_size": 1,
             "convert_to_discrete_action_space": True,
             "wrap_for_bandits": True,
         },
     }
 
     # Actual training_iterations will be 10 * timesteps_per_iteration
-    # (100 by default) = 2,000
-    training_iterations = 10
+    # (100 by default) = 500,000
+    training_iterations = 5000
 
     print("Running training for %s time steps" % training_iterations)
 
