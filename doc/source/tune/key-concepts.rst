@@ -268,7 +268,7 @@ For instance, in our ``trainable`` example minimizing a function in a training l
 This reported `incremental` results, given a hyperparameter configuration selected by a search algorithm.
 Based on these reported results, a Tune scheduler can decide whether to stop the trial early or not.
 If you don't specify a scheduler, Tune will use a first-in-first-out (FIFO) scheduler by default, which simply
-passes through the trials selected by your search algorithm in the order they were picked.
+passes through the trials selected by your search algorithm in the order they were picked and does not perform any early stopping.
 
 In short, schedulers can stop, pause, or tweak the
 hyperparameters of running trials, potentially making your hyperparameter tuning process much faster.
