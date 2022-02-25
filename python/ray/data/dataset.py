@@ -154,9 +154,9 @@ class Dataset(Generic[T]):
             ...        return self.model(batch)
 
             >>> # Apply the transform in parallel on GPUs. Since
-            >>> # compute="actors", the transform will be applied on an
-            >>> # autoscaling pool of Ray actors, each allocated 1 GPU by Ray.
-            >>> ds.map(CachedModel, compute="actors", num_gpus=1)
+            >>> # compute=ActorPoolStrategy(2, 8) the transform will be applied on an
+            >>> # autoscaling pool of 2-8 Ray actors, each allocated 1 GPU by Ray.
+            >>> ds.map(CachedModel, compute=ActorPoolStrategy(2, 8), num_gpus=1)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -164,7 +164,7 @@ class Dataset(Generic[T]):
             fn: The function to apply to each record, or a class type
                 that can be instantiated to create such a callable.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or "actors" to use an autoscaling Ray actor pool.
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -215,11 +215,11 @@ class Dataset(Generic[T]):
             ...        return self.model(item)
 
             >>> # Apply the transform in parallel on GPUs. Since
-            >>> # compute="actors", the transform will be applied on an
-            >>> # autoscaling pool of Ray actors, each allocated 1 GPU by Ray.
+            >>> # compute=ActorPoolStrategy(2, 8) the transform will be applied on an
+            >>> # autoscaling pool of 2-8 Ray actors, each allocated 1 GPU by Ray.
             >>> ds.map_batches(
             ...    CachedModel,
-            ...    batch_size=256, compute="actors", num_gpus=1)
+            ...    batch_size=256, compute=ActorPoolStrategy(2, 8), num_gpus=1)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -229,7 +229,7 @@ class Dataset(Generic[T]):
             batch_size: Request a specific batch size, or None to use entire
                 blocks as batches. Defaults to a system-chosen batch size.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or "actors" to use an autoscaling Ray actor pool.
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             batch_format: Specify "native" to use the native block format
                 (promotes Arrow to pandas), "pandas" to select
                 ``pandas.DataFrame`` as the batch format,
@@ -330,7 +330,7 @@ class Dataset(Generic[T]):
             fn: Map function generating the column values given a batch of
                 records in pandas format.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or "actors" to use an autoscaling Ray actor pool.
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -367,7 +367,7 @@ class Dataset(Generic[T]):
             fn: The function to apply to each record, or a class type
                 that can be instantiated to create such a callable.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or "actors" to use an autoscaling Ray actor pool.
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -414,7 +414,7 @@ class Dataset(Generic[T]):
             fn: The predicate to apply to each record, or a class type
                 that can be instantiated to create such a callable.
             compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or "actors" to use an autoscaling Ray actor pool.
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -463,13 +463,21 @@ class Dataset(Generic[T]):
 
         if shuffle:
 
-            def do_shuffle(block_list, clear_input_blocks: bool, block_udf):
+            def do_shuffle(
+                block_list, clear_input_blocks: bool, block_udf, remote_args
+            ):
                 if clear_input_blocks:
                     blocks = block_list.copy()
                     block_list.clear()
                 else:
                     blocks = block_list
-                return simple_shuffle(blocks, block_udf, num_blocks)
+                return simple_shuffle(
+                    blocks,
+                    block_udf,
+                    num_blocks,
+                    map_ray_remote_args=remote_args,
+                    reduce_ray_remote_args=remote_args,
+                )
 
             plan = self._plan.with_stage(
                 AllToAllStage(
@@ -479,7 +487,7 @@ class Dataset(Generic[T]):
 
         else:
 
-            def do_fast_repartition(block_list, clear_input_blocks: bool, _):
+            def do_fast_repartition(block_list, clear_input_blocks: bool, *_):
                 if clear_input_blocks:
                     blocks = block_list.copy()
                     block_list.clear()
@@ -524,7 +532,7 @@ class Dataset(Generic[T]):
             The shuffled dataset.
         """
 
-        def do_shuffle(block_list, clear_input_blocks: bool, block_udf):
+        def do_shuffle(block_list, clear_input_blocks: bool, block_udf, remote_args):
             num_blocks = block_list.executed_num_blocks()  # Blocking.
             if num_blocks == 0:
                 return block_list, {}
@@ -540,6 +548,8 @@ class Dataset(Generic[T]):
                 random_shuffle=True,
                 random_seed=seed,
                 _spread_resource_prefix=_spread_resource_prefix,
+                map_ray_remote_args=remote_args,
+                reduce_ray_remote_args=remote_args,
             )
             return new_blocks, stage_info
 
@@ -588,6 +598,10 @@ class Dataset(Generic[T]):
                 f"The length of locality_hints {len(locality_hints)} "
                 "doesn't equal the number of splits {n}."
             )
+            if len(set(locality_hints)) != len(locality_hints):
+                raise ValueError(
+                    "locality_hints must not contain duplicate actor handles"
+                )
 
         blocks = self._plan.execute()
         stats = self._plan.stats()
@@ -618,6 +632,8 @@ class Dataset(Generic[T]):
 
             This assume that the given splits are sorted in ascending order.
             """
+            if target_size == 0:
+                return splits
             new_splits = []
             leftovers = []
             for split in splits:
@@ -746,7 +762,7 @@ class Dataset(Generic[T]):
         metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
 
         if locality_hints is None:
-            return equalize(
+            ds = equalize(
                 [
                     Dataset(
                         ExecutionPlan(
@@ -759,10 +775,11 @@ class Dataset(Generic[T]):
                         self._lazy,
                     )
                     for blocks in np.array_split(block_refs, n)
-                    if not equal or len(blocks) > 0
                 ],
                 n,
             )
+            assert len(ds) == n, (ds, n)
+            return ds
 
         # If the locality_hints is set, we use a two-round greedy algorithm
         # to co-locate the blocks with the actors based on block
@@ -1373,7 +1390,7 @@ class Dataset(Generic[T]):
             A new, sorted dataset.
         """
 
-        def do_sort(block_list, clear_input_blocks: bool, block_udf):
+        def do_sort(block_list, clear_input_blocks: bool, *_):
             # Handle empty dataset.
             if block_list.initial_num_blocks() == 0:
                 return block_list, {}
@@ -1417,7 +1434,7 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
-        def do_zip_all(block_list, clear_input_blocks: bool, block_udf):
+        def do_zip_all(block_list, clear_input_blocks: bool, *_):
             blocks1 = block_list.get_blocks()
             blocks2 = other.get_internal_block_refs()
 
@@ -2674,11 +2691,24 @@ Dict[str, List[str]]]): The names of the columns
 
         This can be used to read all blocks into memory. By default, Datasets
         doesn't read blocks from the datasource until the first transform.
+
+        Returns:
+            A Dataset with all blocks fully materialized in memory.
         """
         blocks = self.get_internal_block_refs()
         bar = ProgressBar("Force reads", len(blocks))
         bar.block_until_complete(blocks)
-        return self
+        ds = Dataset(
+            ExecutionPlan(
+                BlockList(blocks, self._plan.execute().get_metadata()),
+                self._plan.stats(),
+                dataset_uuid=self._get_uuid(),
+            ),
+            self._epoch,
+            lazy=False,
+        )
+        ds._set_uuid(self._get_uuid())
+        return ds
 
     @DeveloperAPI
     def stats(self) -> str:

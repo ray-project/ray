@@ -663,7 +663,7 @@ def start(
         http_options = HTTPOptions()
 
     controller = ServeController.options(
-        num_cpus=(1 if dedicated_cpu else 0),
+        num_cpus=1 if dedicated_cpu else 0,
         name=controller_name,
         lifetime="detached" if detached else None,
         max_restarts=-1,
@@ -1153,6 +1153,13 @@ class Deployment:
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
             _internal=True,
+        )
+
+    def _bind(self, *args, **kwargs):
+        raise AttributeError(
+            "DAG building API should only be used for @ray.remote decorated "
+            "class or function, not in serve deployment or library "
+            "specific API."
         )
 
     def __eq__(self, other):

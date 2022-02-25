@@ -36,11 +36,15 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler):
         from ray.experimental.dag.function_node import FunctionNode
         from ray.experimental.dag.class_node import ClassNode, ClassMethodNode
         from ray.experimental.dag.input_node import InputNode
+        from ray.serve.pipeline.deployment_node import DeploymentNode
+        from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 
         self.dispatch_table[FunctionNode] = self._reduce_dag_node
         self.dispatch_table[ClassNode] = self._reduce_dag_node
         self.dispatch_table[ClassMethodNode] = self._reduce_dag_node
         self.dispatch_table[InputNode] = self._reduce_dag_node
+        self.dispatch_table[DeploymentNode] = self._reduce_dag_node
+        self.dispatch_table[DeploymentMethodNode] = self._reduce_dag_node
         super().__init__(self._buf)
 
     def find_nodes(self, obj: Any) -> List["DAGNode"]:

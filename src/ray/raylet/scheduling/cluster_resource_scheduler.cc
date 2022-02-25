@@ -21,7 +21,19 @@
 
 namespace ray {
 
+namespace {
+// Add predefined resource in string_to_int_map to
+// avoid conflict.
+void PopulatePredefinedResources(StringIdMap &string_to_int_map) {
+  string_to_int_map.InsertOrDie(ray::kCPU_ResourceLabel, CPU)
+      .InsertOrDie(ray::kGPU_ResourceLabel, GPU)
+      .InsertOrDie(ray::kObjectStoreMemory_ResourceLabel, OBJECT_STORE_MEM)
+      .InsertOrDie(ray::kMemory_ResourceLabel, MEM);
+}
+}  // namespace
+
 ClusterResourceScheduler::ClusterResourceScheduler() {
+  PopulatePredefinedResources(string_to_int_map_);
   cluster_resource_manager_ =
       std::make_unique<ClusterResourceManager>(string_to_int_map_);
   NodeResources node_resources;
@@ -43,6 +55,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
       local_node_id_(local_node_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
       gcs_client_(&gcs_client) {
+  PopulatePredefinedResources(string_to_int_map_);
   cluster_resource_manager_ =
       std::make_unique<ClusterResourceManager>(string_to_int_map_);
   local_resource_manager_ = std::make_unique<LocalResourceManager>(
@@ -65,6 +78,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
       local_node_id_(),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
       gcs_client_(&gcs_client) {
+  PopulatePredefinedResources(string_to_int_map_);
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
