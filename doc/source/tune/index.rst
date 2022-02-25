@@ -107,8 +107,9 @@ And you can move your models from training to serving on the same infrastructure
     **User Guides**
     ^^^
 
-    Our guides teach you about key features of Tune, such as distributed training or early stopping.
-    You can also find practical tutorials for scikit-learn, PyTorch, mlflow, and many more.
+    Our guides teach you about key features of Tune,
+    such as distributed training or early stopping.
+
 
     +++
     .. link-button:: tune-guides
@@ -120,7 +121,8 @@ And you can move your models from training to serving on the same infrastructure
     **Examples**
     ^^^
 
-    Check out some of our many examples on Ray Tune.
+    In our examples you can find practical tutorials for
+    scikit-learn, Keras, TensorFlow, PyTorch, mlflow, and many more.
 
     +++
     .. link-button:: tune-examples-ref

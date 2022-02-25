@@ -184,7 +184,7 @@ Your ``my_trainable`` is either a:
   * XGBoost (:ref:`example <xgboost-ray-tuning>`)
   * Pytorch (:ref:`example <tune-pytorch-lightning-ref>`)
   * Pytorch Lightning (:ref:`example <ray-lightning-tuning>`)
-  * Keras (:doc:`example </tune/examples/includes/tune_mnist_keras>`)
+  * Keras (:doc:`example </tune/examples/tune_mnist_keras>`)
   * Tensorflow (:ref:`example <ray-train-tftrainer-example>`)
   * LightGBM (:ref:`example <lightgbm-ray-tuning>`)
 

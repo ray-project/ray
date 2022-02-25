@@ -11,6 +11,10 @@ Examples
 Practical How-To Guides
 -----------------------
 
+Ray Tune integrates with many popular machine learning frameworks.
+Here you find a few practical examples showing you how to tune your models.
+At the end of these guides you will often find links to even more examples.
+
 .. panels::
     :container: container pb-4
     :column: col-md-4 px-2 py-2
@@ -26,12 +30,21 @@ Practical How-To Guides
         :classes: btn-link btn-block stretched-link
 
     ---
+    :img-top: /images/keras.png
+
+    +++
+    .. link-button:: tune-mnist-keras
+        :type: ref
+        :text: How To Use Tune With Keras & TF Models
+        :classes: btn-link btn-block stretched-link
+
+    ---
     :img-top: /images/pytorch_logo.png
 
     +++
     .. link-button:: tune-pytorch-cifar-ref
         :type: ref
-        :text: How To Use Tune With PyTorch Models?
+        :text: How To Use Tune With PyTorch Models
         :classes: btn-link btn-block stretched-link
 
     ---
@@ -44,12 +57,30 @@ Practical How-To Guides
         :classes: btn-link btn-block stretched-link
 
     ---
+    :img-top: /images/mxnet_logo.png
+
+    +++
+    .. link-button:: tune-mxnet-example
+        :type: ref
+        :text: How To Tune MXNet Models
+        :classes: btn-link btn-block stretched-link
+
+    ---
     :img-top: /images/serve.svg
 
     +++
     .. link-button:: tune-serve-integration-mnist
         :type: ref
-        :text: Model Selection & Serving With Ray Tune & Ray Serve
+        :text: Model Selection & Serving With Tune & Serve
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /rllib/images/rllib-logo.png
+
+    +++
+    .. link-button:: tune-rllib-example
+        :type: ref
+        :text: Tuning RL Experiments With Ray Tune & Ray Serve
         :classes: btn-link btn-block stretched-link
 
     ---
@@ -60,6 +91,34 @@ Practical How-To Guides
         :type: ref
         :text: A Guide To Tuning XGBoost Parameters With Tune
         :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /images/lightgbm_logo.png
+
+    +++
+    .. link-button:: tune-lightgbm-example
+        :type: ref
+        :text: A Guide To Tuning LightGBM Parameters With Tune
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /images/horovod.png
+
+    +++
+    .. link-button:: tune-horovod-example
+        :type: ref
+        :text: A Guide To Tuning Horovod Parameters With Tune
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /images/hugging.png
+
+    +++
+    .. link-button:: tune-huggingface-example
+        :type: ref
+        :text: A Guide To Tuning Huggingface Transformers With Tune
+        :classes: btn-link btn-block stretched-link
+
 
     ---
     :img-top: /images/wandb_logo.png
@@ -92,100 +151,63 @@ Practical How-To Guides
 Search Algorithm Examples
 -------------------------
 
-.. TODO: make these panels
+.. TODO: make these panels with logos!
 
-- :doc:`/tune/examples/includes/ax_example`: Example script showing usage of :ref:`AxSearch <tune-ax>` [`Ax website <https://ax.dev/>`__]
-- :doc:`/tune/examples/includes/dragonfly_example`: Example script showing usage of :ref:`DragonflySearch <Dragonfly>` [`Dragonfly website <https://dragonfly-opt.readthedocs.io/>`__]
-- :doc:`/tune/examples/includes/skopt_example`: Example script showing usage of :ref:`SkoptSearch <skopt>` [`Scikit-Optimize website <https://scikit-optimize.github.io>`__]
-- :doc:`/tune/examples/hyperopt_example`: Example script showing usage of :ref:`HyperOptSearch <tune-hyperopt>` [`HyperOpt website <http://hyperopt.github.io/hyperopt>`__]
-- :doc:`/tune/examples/includes/hyperopt_conditional_search_space_example`: Example script showing usage of :ref:`HyperOptSearch <tune-hyperopt>` [`HyperOpt website <http://hyperopt.github.io/hyperopt>`__] with a conditional search space
-- :doc:`/tune/examples/includes/bayesopt_example`: Example script showing usage of :ref:`BayesOptSearch <bayesopt>` [`BayesianOptimization website <https://github.com/fmfn/BayesianOptimization>`__]
-- :doc:`/tune/examples/includes/blendsearch_example`: Example script showing usage of :ref:`BlendSearch <BlendSearch>` [`BlendSearch website <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
-- :doc:`/tune/examples/includes/cfo_example`: Example script showing usage of :ref:`CFO <CFO>` [`CFO website <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
-- :doc:`/tune/examples/includes/bohb_example`: Example script showing usage of :ref:`TuneBOHB <suggest-TuneBOHB>` [`BOHB website <https://github.com/automl/HpBandSter>`__]
-- :doc:`/tune/examples/includes/nevergrad_example`: Example script showing usage of :ref:`NevergradSearch <nevergrad>` [`Nevergrad website <https://github.com/facebookresearch/nevergrad>`__]
-- :doc:`/tune/examples/includes/optuna_example`: Example script showing usage of :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__]
-- :doc:`/tune/examples/includes/optuna_define_by_run_example`: Example script showing usage of :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__] with a define-by-run function
-- :doc:`/tune/examples/includes/optuna_multiobjective_example`: Example script showing usage of :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__] for multi-objective optimization
-- :doc:`/tune/examples/includes/zoopt_example`: Example script showing usage of :ref:`ZOOptSearch <zoopt>` [`ZOOpt website <https://github.com/polixir/ZOOpt>`__]
-- :doc:`/tune/examples/includes/sigopt_example`: Example script showing usage of :ref:`SigOptSearch <sigopt>` [`SigOpt website <https://sigopt.com/>`__]
-- :doc:`/tune/examples/includes/hebo_example`: Example script showing usage of :ref:`HEBOSearch <tune-hebo>` [`HEBO website <https://github.com/huawei-noah/HEBO/tree/master/HEBO>`__]
-- :doc:`/tune/examples/includes/sigopt_multi_objective_example`: Example using Sigopt's multi-objective functionality (contributed).
-- :doc:`/tune/examples/includes/sigopt_prior_beliefs_example`: Example using Sigopt's support for prior beliefs (contributed).
-
-
-Framework-specific Examples
----------------------------
-
-
-Tensorflow/Keras
-~~~~~~~~~~~~~~~~
-
-.. TODO: make this one a notebook
-
-- :doc:`/tune/examples/includes/tune_mnist_keras`: Converts the Keras MNIST example to use Tune with the function-based API and a Keras callback. Also shows how to easily convert something relying on argparse to use Tune.
-
-- :doc:`/tune/examples/includes/pbt_memnn_example`: Example of training a Memory NN on bAbI with Keras using PBT.
-- :doc:`/tune/examples/includes/tf_mnist_example`: Converts the Advanced TF2.0 MNIST example to use Tune with the Trainable. This uses `tf.function`. Original code from tensorflow: https://www.tensorflow.org/tutorials/quickstart/advanced
-
-MXNet
-~~~~~
-
-.. TODO: make this one a notebook
-
-- :doc:`/tune/examples/includes/mxnet_example`: Simple example for using MXNet with Tune.
-- :doc:`/tune/examples/includes/tune_cifar10_gluon`: MXNet Gluon example to use Tune with the function-based API on CIFAR-10 dataset.
-
-
-Horovod
-~~~~~~~
-
-.. TODO: make this one a notebook
-
-- :doc:`/tune/examples/includes/horovod_simple`: Leverages the :ref:`Horovod-Tune <tune-integration-horovod>` integration to launch a distributed training + tuning job.
-
-LightGBM
-~~~~~~~~
-
-.. TODO: make this one a notebook
-
-- :doc:`/tune/examples/includes/lightgbm_example`: Trains a basic LightGBM model with Tune with the function-based API and a LightGBM callback.
-
-RLlib
-~~~~~
-
-.. TODO: make this one a notebook
-
-- :doc:`/tune/examples/includes/pbt_ppo_example`: Example of optimizing a distributed RLlib algorithm (PPO) with the PopulationBasedTraining scheduler.
-- :doc:`/tune/examples/includes/pb2_ppo_example`: Example of optimizing a distributed RLlib algorithm (PPO) with the PB2 scheduler. Uses a small population size of 4, so can train on a laptop.
-
-
-|:hugging_face:| Huggingface Transformers
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. TODO: make this one a notebook
-
-- :doc:`/tune/examples/includes/pbt_transformers`: Fine-tunes a Huggingface transformer with Tune Population Based Training.
+- :doc:`/tune/examples/includes/ax_example`:
+  Example script showing usage of :ref:`AxSearch <tune-ax>` [`Ax website <https://ax.dev/>`__]
+- :doc:`/tune/examples/includes/dragonfly_example`:
+  Example script showing usage of :ref:`DragonflySearch <Dragonfly>` [`Dragonfly website <https://dragonfly-opt.readthedocs.io/>`__]
+- :doc:`/tune/examples/includes/skopt_example`:
+  Example script showing usage of :ref:`SkoptSearch <skopt>` [`Scikit-Optimize website <https://scikit-optimize.github.io>`__]
+- :doc:`/tune/examples/hyperopt_example`:
+  Example script showing usage of :ref:`HyperOptSearch <tune-hyperopt>` [`HyperOpt website <http://hyperopt.github.io/hyperopt>`__]
+- :doc:`/tune/examples/includes/hyperopt_conditional_search_space_example`:
+  Example script showing usage of :ref:`HyperOptSearch <tune-hyperopt>` [`HyperOpt website <http://hyperopt.github.io/hyperopt>`__] with a conditional search space
+- :doc:`/tune/examples/includes/bayesopt_example`:
+  Example script showing usage of :ref:`BayesOptSearch <bayesopt>` [`BayesianOptimization website <https://github.com/fmfn/BayesianOptimization>`__]
+- :doc:`/tune/examples/includes/blendsearch_example`:
+  Example script showing usage of :ref:`BlendSearch <BlendSearch>` [`BlendSearch website <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
+- :doc:`/tune/examples/includes/cfo_example`:
+  Example script showing usage of :ref:`CFO <CFO>` [`CFO website <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
+- :doc:`/tune/examples/includes/bohb_example`:
+  Example script showing usage of :ref:`TuneBOHB <suggest-TuneBOHB>` [`BOHB website <https://github.com/automl/HpBandSter>`__]
+- :doc:`/tune/examples/includes/nevergrad_example`:
+  Example script showing usage of :ref:`NevergradSearch <nevergrad>` [`Nevergrad website <https://github.com/facebookresearch/nevergrad>`__]
+- :doc:`/tune/examples/includes/optuna_example`:
+  Example script showing usage of :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__]
+- :doc:`/tune/examples/includes/optuna_define_by_run_example`:
+  Example script showing usage of :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__] with a define-by-run function
+- :doc:`/tune/examples/includes/optuna_multiobjective_example`:
+  Example script showing usage of :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__] for multi-objective optimization
+- :doc:`/tune/examples/includes/zoopt_example`:
+  Example script showing usage of :ref:`ZOOptSearch <zoopt>` [`ZOOpt website <https://github.com/polixir/ZOOpt>`__]
+- :doc:`/tune/examples/includes/sigopt_example`:
+  Example script showing usage of :ref:`SigOptSearch <sigopt>` [`SigOpt website <https://sigopt.com/>`__]
+- :doc:`/tune/examples/includes/hebo_example`:
+  Example script showing usage of :ref:`HEBOSearch <tune-hebo>` [`HEBO website <https://github.com/huawei-noah/HEBO/tree/master/HEBO>`__]
+- :doc:`/tune/examples/includes/sigopt_multi_objective_example`:
+  Example using Sigopt's multi-objective functionality (contributed).
+- :doc:`/tune/examples/includes/sigopt_prior_beliefs_example`:
+  Example using Sigopt's support for prior beliefs (contributed).
 
 
 .. _tune-general-examples:
 
-General Examples
-----------------
+Other Examples
+--------------
 
 - :doc:`/tune/examples/includes/tune_basic_example`: Simple example for doing a basic random and grid search.
-- :doc:`/tune/examples/includes/async_hyperband_example`: Example of using a simple tuning function with AsyncHyperBandScheduler.
-- :doc:`/tune/examples/includes/hyperband_function_example`: Example of using a Trainable function with HyperBandScheduler.  Also uses the AsyncHyperBandScheduler.
-- :doc:`/tune/examples/includes/pbt_function`: Example of using the function API with a PopulationBasedTraining scheduler.
+- :doc:`/tune/examples/includes/async_hyperband_example`: Example of using a simple tuning function with
+  AsyncHyperBandScheduler.
+- :doc:`/tune/examples/includes/hyperband_function_example`:
+  Example of using a Trainable function with HyperBandScheduler.
+  Also uses the AsyncHyperBandScheduler.
+- :doc:`/tune/examples/includes/pbt_function`:
+  Example of using the function API with a PopulationBasedTraining scheduler.
 - :doc:`/tune/examples/includes/pb2_example`: Example of using the Population-based Bandits (PB2) scheduler.
 - :doc:`/tune/examples/includes/logging_example`: Example of custom loggers and custom trial directory naming.
-
-
-Contributed Examples
---------------------
-
-- :doc:`/tune/examples/includes/pbt_tune_cifar10_with_keras`: A contributed example of tuning a Keras model on CIFAR10 with the PopulationBasedTraining scheduler.
-- :doc:`/tune/examples/includes/genetic_example`: Optimizing the michalewicz function using the contributed GeneticSearch algorithm with AsyncHyperBandScheduler.
+- :doc:`/tune/examples/includes/genetic_example`: Optimizing the michalewicz function using the contributed
+  GeneticSearch algorithm with AsyncHyperBandScheduler.
 
 
 .. _tune-exercises:

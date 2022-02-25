@@ -1,3 +1,5 @@
+# flake8: noqa
+
 # __function_api_start__
 from ray import tune
 
@@ -12,6 +14,8 @@ def trainable(config):  # Pass a "config" dictionary into your trainable.
         score = objective(x, config["a"], config["b"])
 
         tune.report(score=score)  # Send the score to Tune.
+
+
 # __function_api_end__
 
 
@@ -34,7 +38,8 @@ class Trainable(tune.Trainable):
         score = objective(self.x, self.a, self.b)
         self.x += 1
         return {"score": score}
-# __class_api_end__
+
+    # __class_api_end__
 
     # TODO: this example does not work as advertised. Errors out.
     def save_checkpoint(self, checkpoint_dir):
@@ -114,7 +119,7 @@ analysis = tune.run(
     metric="score",
     mode="min",
     search_alg=BayesOptSearch(random_search_steps=4),
-    stop={"training_iteration": 20}
+    stop={"training_iteration": 20},
 )
 
 best_trial = analysis.best_trial  # Get best trial

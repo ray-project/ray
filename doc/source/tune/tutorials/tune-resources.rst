@@ -66,7 +66,7 @@ This will automatically set ``CUDA_VISIBLE_DEVICES`` for each trial.
     # If you have 4 CPUs on your machine and 1 GPU, this will run 1 trial at a time.
     tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 2, "gpu": 1})
 
-You can find an example of this in the :doc:`Keras MNIST example </tune/examples/includes/tune_mnist_keras>`.
+You can find an example of this in the :doc:`Keras MNIST example </tune/examples/tune_mnist_keras>`.
 
 .. warning:: If 'gpu' is not set, ``CUDA_VISIBLE_DEVICES`` environment variable will be set as empty, disallowing GPU access.
 
