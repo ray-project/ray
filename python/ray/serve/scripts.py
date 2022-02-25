@@ -16,7 +16,7 @@ from ray.serve.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
-from ray.dashboard.modules.serve.schema import ServeInstanceSchema
+from ray.dashboard.modules.serve.schema import ServeApplicationSchema
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +160,7 @@ def deploy(config_file_name: str, address: str):
         config = yaml.safe_load(config_file)
 
     # Generate a schema using the config to ensure its format is valid
-    ServeInstanceSchema.parse_obj(config)
+    ServeApplicationSchema.parse_obj(config)
 
     response = requests.put(full_address_path, json=config)
 
