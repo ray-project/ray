@@ -72,6 +72,7 @@ class ObjectBufferPoolTest : public ::testing::Test {
         mock_data_(chunk_size_, 'x') {}
 
   void AssertNoLeaks() {
+    absl::MutexLock lock(&object_buffer_pool_.pool_mutex_);
     ASSERT_TRUE(object_buffer_pool_.create_buffer_state_.empty());
     ASSERT_TRUE(object_buffer_pool_.create_buffer_ops_.empty());
   }
