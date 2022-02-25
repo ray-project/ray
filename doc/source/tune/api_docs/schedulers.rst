@@ -251,15 +251,15 @@ An example of this in use can be found here: :doc:`/tune/examples/includes/xgboo
 
 .. autoclass:: ray.tune.schedulers.ResourceChangingScheduler
 
-evenly_distribute_cpus_gpus
+DistributeResources
+~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.tune.schedulers.resource_changing_scheduler.DistributeResources
+
+DistributeResourcesToTopJob
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. autofunction:: ray.tune.schedulers.resource_changing_scheduler.evenly_distribute_cpus_gpus
-
-evenly_distribute_cpus_gpus_distributed
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.tune.schedulers.resource_changing_scheduler.evenly_distribute_cpus_gpus_distributed
+.. autoclass:: ray.tune.schedulers.resource_changing_scheduler.DistributeResourcesToTopJob
 
 FIFOScheduler
 -------------
