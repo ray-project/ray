@@ -3,7 +3,6 @@ package io.ray.test;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.runtimeenv.RuntimeEnv;
-import io.ray.api.runtimeenv.RuntimeEnvBuilder;
 import io.ray.runtime.util.SystemUtil;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
@@ -34,7 +33,7 @@ public class RuntimeEnvTest extends BaseTest {
     int pid2 = 0;
     {
       RuntimeEnv runtimeEnv =
-          new RuntimeEnvBuilder()
+          new RuntimeEnv.Builder()
               .addEnvVar("KEY1", "A")
               .addEnvVar("KEY2", "B")
               .addEnvVar("KEY1", "C")
