@@ -59,6 +59,30 @@ def test_memory_release_lazy(shutdown_only):
     assert "Spilled" not in meminfo, meminfo
 
 
+def test_memory_release_lazy_shuffle(shutdown_only):
+    # TODO(ekl) why is this flaky? Due to eviction delay?
+    error = None
+    for trial in range(3):
+        print("Try", trial)
+        try:
+            info = ray.init(num_cpus=1, object_store_memory=1800e6)
+            ds = ray.data.range(10)
+
+            # Should get fused into single stage.
+            ds = ds._experimental_lazy()
+            ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
+            ds.random_shuffle().fully_executed()
+            meminfo = memory_summary(info.address_info["address"], stats_only=True)
+            assert "Spilled" not in meminfo, meminfo
+            return
+        except Exception as e:
+            error = e
+            print("Failed", e)
+        finally:
+            ray.shutdown()
+    raise error
+
+
 def test_spread_hint_inherit(ray_start_regular_shared):
     ds = ray.data.range(10)._experimental_lazy()
     ds = ds.map(lambda x: x + 1)
