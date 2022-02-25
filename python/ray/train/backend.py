@@ -155,7 +155,6 @@ class BackendExecutor:
         train_cls_kwargs: Optional[Dict] = None,
     ):
         """Starts the worker group."""
-        breakpoint()
         self._create_placement_group()
         placement_group = self._placement_group or "default"
         self.worker_group = WorkerGroup(

@@ -8,7 +8,6 @@ COPY requirements_dl.txt ./
 COPY requirements_ml_docker.txt ./
 COPY requirements_rllib.txt ./
 COPY requirements_tune.txt ./requirements_tune.txt
-COPY requirements_train.txt ./
 COPY requirements_upstream.txt ./
 COPY install_atari_roms.sh ./install_atari_roms.sh
 
@@ -24,7 +23,6 @@ RUN sudo apt-get update \
     && $HOME/anaconda3/bin/pip --use-deprecated=legacy-resolver --no-cache-dir install -r requirements.txt \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U -r requirements_rllib.txt \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U -r requirements_tune.txt \
-    && $HOME/anaconda3/bin/pip --no-cache-dir install -U -r requirements_train.txt
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U -r requirements_ml_docker.txt \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U -r requirements_upstream.txt \
     # Remove dataclasses & typing because they are included in Python > 3.6

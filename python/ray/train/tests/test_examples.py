@@ -1,7 +1,6 @@
 import pytest
 
 import ray
-from ray.autoscaler._private.fake_multi_node.test_utils import DockerCluster
 from ray.train import Trainer
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,

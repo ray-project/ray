@@ -21,8 +21,6 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_DOCKER_IMAGE = "rayproject/ray:nightly-py{major}{minor}-cpu"
 
-class ResourcesNotReadyError(RuntimeError):
-    pass
 
 class DockerCluster:
     """Docker cluster wrapper.
@@ -72,7 +70,7 @@ class DockerCluster:
             "host_client_port", FAKE_DOCKER_DEFAULT_CLIENT_PORT
         )
 
-    def connect(self, client: bool = True, timeout: int = 120, **init_kwargs):
+    def connect(self, client: bool = True, timeout: int = 120):
         """Connect to the docker-compose Ray cluster.
 
         Assumes the cluster is at RAY_TESTHOST (defaults to
@@ -82,7 +80,6 @@ class DockerCluster:
             client (bool): If True, uses Ray client to connect to the
                 cluster. If False, uses GCS to connect to the cluster.
             timeout (int): Connection timeout in seconds.
-            init_kwargs: Args to pass to ``ray.init()``
 
         """
         host = os.environ.get("RAY_TESTHOST", "127.0.0.1")
@@ -97,9 +94,9 @@ class DockerCluster:
         timeout_at = time.monotonic() + timeout
         while time.monotonic() < timeout_at:
             try:
-                ray.init(address, **init_kwargs)
+                ray.init(address)
                 self.wait_for_resources({"CPU": 1})
-            except ResourcesNotReadyError:
+            except Exception:
                 time.sleep(1)
                 continue
             else:
@@ -125,7 +122,7 @@ class DockerCluster:
         available = ray.cluster_resources()
         while any(available.get(k, 0.0) < v for k, v in resources.items()):
             if time.monotonic() > timeout:
-                raise ResourcesNotReadyError(f"Timed out waiting for resources: {resources}")
+                raise RuntimeError(f"Timed out waiting for resources: {resources}")
             time.sleep(1)
             available = ray.cluster_resources()
 
