@@ -47,3 +47,9 @@ MLflow Mixin API
 
 .. autofunction:: ray.tune.integration.mlflow.mlflow_mixin
    :noindex:
+
+More MLflow Examples
+--------------------
+
+- :doc:`/tune/examples/includes/mlflow_example`: Example for using `MLflow <https://github.com/mlflow/mlflow/>`__ with Ray Tune.
+- :doc:`/tune/examples/includes/mlflow_ptl_example`: Example for using `MLflow <https://github.com/mlflow/mlflow/>`__ and `Pytorch Lightning <https://github.com/PyTorchLightning/pytorch-lightning>`_ with Ray Tune.

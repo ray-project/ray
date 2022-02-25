@@ -37,3 +37,9 @@ Please :doc:`see here for a full example </tune/examples/includes/wandb_example>
 
 .. autofunction:: ray.tune.integration.wandb.wandb_mixin
    :noindex:
+
+More Weights & Biases Examples
+------------------------------
+
+- :ref:`Tutorial <tune-wandb-ref>` for using `wandb <https://www.wandb.ai/>`__ with Ray Tune
+- :doc:`/tune/examples/includes/wandb_example`: Example for using `Weights and Biases <https://www.wandb.ai/>`__ with Ray Tune.

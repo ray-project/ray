@@ -4,10 +4,7 @@
 Examples
 ========
 
-.. TODO: Keep this in sync with ray/python/ray/tune/examples/includes/README.rst
-
 .. tip:: Check out :ref:`the Tune User Guides <tune-guides>` To learn more about Tune's features in depth.
-
 
 .. _tune-recipes:
 
@@ -52,7 +49,7 @@ Practical How-To Guides
     +++
     .. link-button:: tune-serve-integration-mnist
         :type: ref
-        :text: Model Selection & Serving With Ray Serve
+        :text: Model Selection & Serving With Ray Tune & Ray Serve
         :classes: btn-link btn-block stretched-link
 
     ---
@@ -95,6 +92,8 @@ Practical How-To Guides
 Search Algorithm Examples
 -------------------------
 
+.. TODO: make these panels
+
 - :doc:`/tune/examples/includes/ax_example`: Example script showing usage of :ref:`AxSearch <tune-ax>` [`Ax website <https://ax.dev/>`__]
 - :doc:`/tune/examples/includes/dragonfly_example`: Example script showing usage of :ref:`DragonflySearch <Dragonfly>` [`Dragonfly website <https://dragonfly-opt.readthedocs.io/>`__]
 - :doc:`/tune/examples/includes/skopt_example`: Example script showing usage of :ref:`SkoptSearch <skopt>` [`Scikit-Optimize website <https://scikit-optimize.github.io>`__]
@@ -111,43 +110,28 @@ Search Algorithm Examples
 - :doc:`/tune/examples/includes/zoopt_example`: Example script showing usage of :ref:`ZOOptSearch <zoopt>` [`ZOOpt website <https://github.com/polixir/ZOOpt>`__]
 - :doc:`/tune/examples/includes/sigopt_example`: Example script showing usage of :ref:`SigOptSearch <sigopt>` [`SigOpt website <https://sigopt.com/>`__]
 - :doc:`/tune/examples/includes/hebo_example`: Example script showing usage of :ref:`HEBOSearch <tune-hebo>` [`HEBO website <https://github.com/huawei-noah/HEBO/tree/master/HEBO>`__]
-
-
-**Sigopt (Contributed)**
-
-- :doc:`/tune/examples/includes/sigopt_multi_objective_example`: Example using Sigopt's multi-objective functionality.
-- :doc:`/tune/examples/includes/sigopt_prior_beliefs_example`: Example using Sigopt's support for prior beliefs.
-
+- :doc:`/tune/examples/includes/sigopt_multi_objective_example`: Example using Sigopt's multi-objective functionality (contributed).
+- :doc:`/tune/examples/includes/sigopt_prior_beliefs_example`: Example using Sigopt's support for prior beliefs (contributed).
 
 
 Framework-specific Examples
 ---------------------------
 
 
-Pytorch Lightning
-~~~~~~~~~~~~~~~~~
-
-- :doc:`/tune/examples/includes/mnist_ptl_mini`: A minimal example of using `Pytorch Lightning <https://github.com/PyTorchLightning/pytorch-lightning>`_ to train a MNIST model. This example utilizes the Ray Tune-provided :ref:`PyTorch Lightning callbacks <tune-integration-pytorch-lightning>`. See also :ref:`this tutorial for a full walkthrough <tune-pytorch-lightning-ref>`.
-- :doc:`/tune/examples/includes/mnist_pytorch_lightning`: A comprehensive example using `Pytorch Lightning <https://github.com/PyTorchLightning/pytorch-lightning>`_ to train a MNIST model. This example showcases how to use various search optimization techniques. It utilizes the Ray Tune-provided :ref:`PyTorch Lightning callbacks <tune-integration-pytorch-lightning>`.
-- :ref:`A walkthrough tutorial for using Ray Tune with Pytorch-Lightning <tune-pytorch-lightning-ref>`.
-
-Wandb, MLflow
-~~~~~~~~~~~~~
-
-- :ref:`Tutorial <tune-wandb-ref>` for using `wandb <https://www.wandb.ai/>`__ with Ray Tune
-- :doc:`/tune/examples/includes/wandb_example`: Example for using `Weights and Biases <https://www.wandb.ai/>`__ with Ray Tune.
-- :doc:`/tune/examples/includes/mlflow_example`: Example for using `MLflow <https://github.com/mlflow/mlflow/>`__ with Ray Tune.
-- :doc:`/tune/examples/includes/mlflow_ptl_example`: Example for using `MLflow <https://github.com/mlflow/mlflow/>`__ and `Pytorch Lightning <https://github.com/PyTorchLightning/pytorch-lightning>`_ with Ray Tune.
-
 Tensorflow/Keras
 ~~~~~~~~~~~~~~~~
 
+.. TODO: make this one a notebook
+
 - :doc:`/tune/examples/includes/tune_mnist_keras`: Converts the Keras MNIST example to use Tune with the function-based API and a Keras callback. Also shows how to easily convert something relying on argparse to use Tune.
+
 - :doc:`/tune/examples/includes/pbt_memnn_example`: Example of training a Memory NN on bAbI with Keras using PBT.
 - :doc:`/tune/examples/includes/tf_mnist_example`: Converts the Advanced TF2.0 MNIST example to use Tune with the Trainable. This uses `tf.function`. Original code from tensorflow: https://www.tensorflow.org/tutorials/quickstart/advanced
 
 MXNet
 ~~~~~
+
+.. TODO: make this one a notebook
 
 - :doc:`/tune/examples/includes/mxnet_example`: Simple example for using MXNet with Tune.
 - :doc:`/tune/examples/includes/tune_cifar10_gluon`: MXNet Gluon example to use Tune with the function-based API on CIFAR-10 dataset.
@@ -156,15 +140,21 @@ MXNet
 Horovod
 ~~~~~~~
 
+.. TODO: make this one a notebook
+
 - :doc:`/tune/examples/includes/horovod_simple`: Leverages the :ref:`Horovod-Tune <tune-integration-horovod>` integration to launch a distributed training + tuning job.
 
 LightGBM
 ~~~~~~~~
 
+.. TODO: make this one a notebook
+
 - :doc:`/tune/examples/includes/lightgbm_example`: Trains a basic LightGBM model with Tune with the function-based API and a LightGBM callback.
 
 RLlib
 ~~~~~
+
+.. TODO: make this one a notebook
 
 - :doc:`/tune/examples/includes/pbt_ppo_example`: Example of optimizing a distributed RLlib algorithm (PPO) with the PopulationBasedTraining scheduler.
 - :doc:`/tune/examples/includes/pb2_ppo_example`: Example of optimizing a distributed RLlib algorithm (PPO) with the PB2 scheduler. Uses a small population size of 4, so can train on a laptop.
@@ -172,6 +162,8 @@ RLlib
 
 |:hugging_face:| Huggingface Transformers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. TODO: make this one a notebook
 
 - :doc:`/tune/examples/includes/pbt_transformers`: Fine-tunes a Huggingface transformer with Tune Population Based Training.
 
