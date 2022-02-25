@@ -168,7 +168,7 @@ Simply pass in a ``search_alg`` argument to ``tune.run``:
     :start-after: __bayes_start__
     :end-before: __bayes_end__
 
-Tune has SearchAlgorithms that integrate with many popular **optimization** libraries,
+Tune has Search Algorithms that integrate with many popular **optimization** libraries,
 such as :ref:`Nevergrad <nevergrad>` and :ref:`HyperOpt <tune-hyperopt>`.
 Tune automatically converts the provided search space into the search
 spaces the search algorithms and underlying libraries expect.
