@@ -3,12 +3,11 @@ import json
 import yaml
 import os
 import requests
-import time
 import logging
 import click
 
 import ray
-from ray.serve.api import Deployment, deploy_group
+from ray.serve.api import Deployment
 from ray.serve.config import DeploymentMode
 from ray._private.utils import import_attr
 from ray import serve
@@ -17,6 +16,7 @@ from ray.serve.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
+from ray.dashboard.modules.serve.schema import ServeInstanceSchema
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +154,9 @@ def deploy(config_file_name: str, address: str):
 
     with open(config_file_name, "r") as config_file:
         config = yaml.safe_load(config_file)
+    
+    # Generate a schema using the config to ensure its format is valid
+    ServeInstanceSchema.parse_obj(config)
 
     response = requests.put(full_address_path, json=config)
 
