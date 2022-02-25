@@ -59,7 +59,7 @@ class DecoratedA(A):
 
 
 @pytest.mark.parametrize("class_name", ["A", "DecoratedA"])
-def test_deploy(ray_start_stop, tmp_working_dir, class_name):  # noqa: F811
+def test_create_deployment(ray_start_stop, tmp_working_dir, class_name):  # noqa: F811
     subprocess.check_output(["serve", "start"])
     subprocess.check_output(
         [
@@ -70,7 +70,7 @@ def test_deploy(ray_start_stop, tmp_working_dir, class_name):  # noqa: F811
                     "working_dir": tmp_working_dir,
                 }
             ),
-            "deploy",
+            "create-deployment",
             f"ray.serve.tests.test_cli.{class_name}",
             "--options-json",
             json.dumps(

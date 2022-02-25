@@ -114,9 +114,114 @@ class may or may not be decorated with ``@serve.deployment``.
     type=str,
     help="JSON string for the deployments options",
 )
-def deploy(deployment: str, options_json: str):
+def create_deployment(deployment: str, options_json: str):
     deployment_cls = import_attr(deployment)
     if not isinstance(deployment_cls, Deployment):
         deployment_cls = serve.deployment(deployment_cls)
     options = json.loads(options_json)
     deployment_cls.options(**options).deploy()
+
+
+@cli.command(
+    help="""
+    [Experimental] Deploy a YAML configuration file via REST API to
+    your Serve cluster.
+    """,
+    hidden=True,
+)
+@click.argument("config_fname")
+@click.option(
+    "--address",
+    "-a",
+    default="http://localhost:8265",
+    required=False,
+    type=str,
+    help="Address of the Ray dashboard to query.",
+)
+def deploy(config_fname: str, address: str):
+    import yaml
+    import requests
+
+    full_address = f"{address}/api/serve/deployments/"
+
+    with open(config_fname, "r") as config:
+        deployments = yaml.safe_load(config)["deployments"]
+
+    response = requests.put(full_address, json=deployments)
+    if response.status_code == 200:
+        print("Deployment succeeded!")
+    else:
+        print("Deployment failed!")
+
+
+@cli.command(
+    help="[Experimental] Run YAML configuration file via Serve's Python API.",
+    hidden=True,
+)
+@click.argument("config_fname")
+@click.option(
+    "--address",
+    "-a",
+    default=os.environ.get("RAY_ADDRESS"),
+    required=False,
+    type=str,
+    help="Address of the running Ray cluster to connect to. " 'Defaults to "auto".',
+)
+def run(config_fname: str, address: str):
+    from ray.serve.api import deploy_group
+    import yaml
+    import time
+
+    with open(config_fname, "r") as config:
+        deployment_data_list = yaml.safe_load(config)["deployments"]
+
+    deployments = []
+    for deployment_data in deployment_data_list:
+        configurables = deployment_data["configurable"]
+        del deployment_data["configurable"]
+        deployment_data.update(configurables)
+
+        import_path = deployment_data["import_path"]
+        del deployment_data["import_path"]
+
+        for key in list(deployment_data.keys()):
+            val = deployment_data[key]
+            if isinstance(val, str) and val.lower() == "none":
+                del deployment_data[key]
+
+        deployments.append(serve.deployment(**deployment_data)(import_path))
+
+    deploy_group(deployments)
+    print("Group deployed successfully!")
+
+    while True:
+        time.sleep(100)
+
+
+@cli.command(
+    help="[Experimental] Get info about deployments in your Serve cluster.",
+    hidden=True,
+)
+@click.option(
+    "--address",
+    "-a",
+    default="http://localhost:8265/api/serve/deployments/",
+    required=False,
+    type=str,
+    help="Address of the Ray dashboard to query.",
+)
+def info(address: str):
+    import requests
+
+    response = requests.get(address)
+    if response.status_code == 200:
+        print("Serve instance info:\n")
+        deployments = response.json()["deployments"]
+        for name, status in deployments.items():
+            print(f'Deployment "{name}": ')
+            print(status, "\n")
+        
+        print("Deployment Statuses: \n")
+        print(response.json()["statuses"])
+    else:
+        print("Failed to acquire serve instance info!")
