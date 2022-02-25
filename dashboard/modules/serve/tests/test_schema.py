@@ -7,14 +7,18 @@ import ray
 from ray.dashboard.modules.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
-    ServeInstanceSchema,
+    ServeApplicationSchema,
     deployment_to_schema,
     schema_to_deployment,
-    serve_instance_to_schema,
-    schema_to_serve_instance,
+    serve_application_to_schema,
+    schema_to_serve_application,
+    status_info_to_schema,
+    serve_application_status_to_schema,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
 from ray.serve.config import AutoscalingConfig
+from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
+from ray.serve.api import get_deployment_statuses
 from ray import serve
 
 
@@ -275,11 +279,11 @@ class TestDeploymentSchema:
             DeploymentSchema.parse_obj(deployment_schema)
 
 
-class TestServeInstanceSchema:
-    def test_valid_serve_instance_schema(self):
-        # Ensure a valid ServeInstanceSchema can be generated
+class TestServeApplicationSchema:
+    def test_valid_serve_application_schema(self):
+        # Ensure a valid ServeApplicationSchema can be generated
 
-        serve_instance_schema = {
+        serve_application_schema = {
             "deployments": [
                 {
                     "name": "shallow",
@@ -343,7 +347,48 @@ class TestServeInstanceSchema:
             ]
         }
 
-        ServeInstanceSchema.parse_obj(serve_instance_schema)
+        ServeApplicationSchema.parse_obj(serve_application_schema)
+
+
+class TestDeploymentStatusSchema:
+    def test_valid_deployment_status_schema(self):
+        # Ensure valid DeploymentStatusSchemas can be generated
+
+        deployment_status_schemas = {
+            "deployment_1": DeploymentStatusInfo(DeploymentStatus.HEALTHY),
+            "deployment_2": DeploymentStatusInfo(
+                DeploymentStatus.UNHEALTHY, "This is an unhealthy deployment."
+            ),
+            "deployment_3": DeploymentStatusInfo(DeploymentStatus.UPDATING),
+        }
+
+        for name, status_info in deployment_status_schemas.items():
+            status_info_to_schema(name, status_info)
+
+    def test_invalid_status(self):
+        # Ensure a DeploymentStatusSchema cannot be initialized with an invalid status
+
+        status_info = {
+            "status": "nonexistent status",
+            "message": "welcome to nonexistence",
+        }
+        with pytest.raises(ValidationError):
+            status_info_to_schema("deployment name", status_info)
+
+
+class TestServeApplicationStatusSchema:
+    def test_valid_serve_application_status_schema(self):
+        # Ensure a valid ServeApplicationStatusSchema can be generated
+
+        serve_application_status_schema = {
+            "deployment_1": {"status": "HEALTHY", "message": ""},
+            "deployment_2": {
+                "status": "UNHEALTHY",
+                "message": "this deployment is deeply unhealthy",
+            },
+        }
+
+        serve_application_status_to_schema(serve_application_status_schema)
 
 
 # This function is defined globally to be accessible via import path
@@ -398,7 +443,7 @@ def test_deployment_to_schema_to_deployment():
     serve.shutdown()
 
 
-def test_serve_instance_to_schema_to_serve_instance():
+def test_serve_application_to_schema_to_serve_application():
     @serve.deployment(
         num_replicas=1,
         route_prefix="/hello",
@@ -418,7 +463,7 @@ def test_serve_instance_to_schema_to_serve_instance():
     f1._func_or_class = "ray.dashboard.modules.serve.tests.test_schema.global_f"
     f2._func_or_class = "ray.dashboard.modules.serve.tests.test_schema.global_f"
 
-    deployments = schema_to_serve_instance(serve_instance_to_schema([f1, f2]))
+    deployments = schema_to_serve_application(serve_application_to_schema([f1, f2]))
 
     assert deployments[0].num_replicas == 1
     assert deployments[0].route_prefix == "/hello"
@@ -426,10 +471,21 @@ def test_serve_instance_to_schema_to_serve_instance():
     assert deployments[1].route_prefix == "/hi"
 
     serve.start()
+
     deployments[0].deploy()
     deployments[1].deploy()
     assert ray.get(deployments[0].get_handle().remote()) == "Hello world!"
     assert requests.get("http://localhost:8000/hello").text == "Hello world!"
     assert ray.get(deployments[1].get_handle().remote()) == "Hello world!"
     assert requests.get("http://localhost:8000/hi").text == "Hello world!"
+
+    # Check statuses
+    statuses = serve_application_status_to_schema(get_deployment_statuses()).statuses
+    deployment_names = {"f1", "f2"}
+    for deployment_status in statuses:
+        assert deployment_status.status in {"UPDATING", "HEALTHY"}
+        assert deployment_status.name in deployment_names
+        deployment_names.remove(deployment_status.name)
+    assert len(deployment_names) == 0
+
     serve.shutdown()
