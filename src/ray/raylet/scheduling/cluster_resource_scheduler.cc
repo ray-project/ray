@@ -49,7 +49,7 @@ ClusterResourceScheduler::ClusterResourceScheduler() {
 }
 
 ClusterResourceScheduler::ClusterResourceScheduler(
-    int64_t local_node_id, const NodeResources &local_node_resources,
+    const std::string &local_node_id, , const NodeResources &local_node_resources,
     gcs::GcsClient &gcs_client)
     : string_to_int_map_(),
       local_node_id_(local_node_id),
@@ -75,11 +75,10 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     gcs::GcsClient &gcs_client, std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity)
     : string_to_int_map_(),
-      local_node_id_(),
+      local_node_id_(local_node_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
       gcs_client_(&gcs_client) {
   PopulatePredefinedResources(string_to_int_map_);
-  local_node_id_ = string_to_int_map_.Insert(local_node_id);
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
   cluster_resource_manager_ =

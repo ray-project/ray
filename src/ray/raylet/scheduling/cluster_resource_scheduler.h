@@ -50,7 +50,7 @@ class ClusterResourceScheduler {
   /// \param local_node_id: ID of local node,
   /// \param local_node_resources: The total and the available resources associated
   /// with the local node.
-  ClusterResourceScheduler(int64_t local_node_id,
+  ClusterResourceScheduler(const std::string &local_node_id,
                            const NodeResources &local_node_resources,
                            gcs::GcsClient &gcs_client);
   ClusterResourceScheduler(
@@ -172,7 +172,7 @@ class ClusterResourceScheduler {
   /// to integer representation. Used for improving map performance.
   StringIdMap string_to_int_map_;
   /// Identifier of local node.
-  int64_t local_node_id_;
+  const std::string local_node_id_;
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
   /// Gcs client. It's not owned by this class.
@@ -185,7 +185,6 @@ class ClusterResourceScheduler {
   std::unique_ptr<raylet_scheduling_policy::SchedulingPolicy> scheduling_policy_;
 
   friend class ClusterResourceSchedulerTest;
-  FRIEND_TEST(ClusterResourceSchedulerTest, PopulatePredefinedResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingDeleteClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest);

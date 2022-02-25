@@ -31,10 +31,10 @@ void ClusterResourceManager::AddOrUpdateNode(
     const absl::flat_hash_map<std::string, double> &resources_available) {
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, resources_total, resources_available);
-  AddOrUpdateNode(string_to_int_map_.Insert(node_id), node_resources);
+  AddOrUpdateNode(node_id, node_resources);
 }
 
-void ClusterResourceManager::AddOrUpdateNode(int64_t node_id,
+void ClusterResourceManager::AddOrUpdateNode(const std::string &node_id,
                                              const NodeResources &node_resources) {
   RAY_LOG(DEBUG) << "Update node info, node_id: " << node_id << ", node_resources: "
                  << node_resources.DebugString(string_to_int_map_);
@@ -48,9 +48,8 @@ void ClusterResourceManager::AddOrUpdateNode(int64_t node_id,
   }
 }
 
-bool ClusterResourceManager::UpdateNode(const std::string &node_id_string,
+bool ClusterResourceManager::UpdateNode(const std::string &node_id,
                                         const rpc::ResourcesData &resource_data) {
-  auto node_id = string_to_int_map_.Insert(node_id_string);
   if (!nodes_.contains(node_id)) {
     return false;
   }
@@ -88,7 +87,7 @@ bool ClusterResourceManager::UpdateNode(const std::string &node_id_string,
   return true;
 }
 
-bool ClusterResourceManager::RemoveNode(int64_t node_id) {
+bool ClusterResourceManager::RemoveNode(const std::string &node_id) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     // Node not found.
@@ -99,16 +98,7 @@ bool ClusterResourceManager::RemoveNode(int64_t node_id) {
   }
 }
 
-bool ClusterResourceManager::RemoveNode(const std::string &node_id_string) {
-  auto node_id = string_to_int_map_.Get(node_id_string);
-  if (node_id == -1) {
-    return false;
-  }
-
-  return RemoveNode(node_id);
-}
-
-bool ClusterResourceManager::GetNodeResources(int64_t node_id,
+bool ClusterResourceManager::GetNodeResources(const std::string &node_id,
                                               NodeResources *ret_resources) const {
   auto it = nodes_.find(node_id);
   if (it != nodes_.end()) {
@@ -120,24 +110,20 @@ bool ClusterResourceManager::GetNodeResources(int64_t node_id,
 }
 
 const NodeResources &ClusterResourceManager::GetNodeResources(
-    const std::string &node_name) const {
-  int64_t node_id = string_to_int_map_.Get(node_name);
+    const std::string &node_id) const {
   const auto &node = map_find_or_die(nodes_, node_id);
   return node.GetLocalView();
 }
 
 int64_t ClusterResourceManager::NumNodes() const { return nodes_.size(); }
 
-void ClusterResourceManager::UpdateResourceCapacity(const std::string &node_id_string,
+void ClusterResourceManager::UpdateResourceCapacity(const std::string &node_id,
                                                     const std::string &resource_name,
                                                     double resource_total) {
-  int64_t node_id = string_to_int_map_.Get(node_id_string);
-
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     NodeResources node_resources;
     node_resources.predefined_resources.resize(PredefinedResources_MAX);
-    node_id = string_to_int_map_.Insert(node_id_string);
     it = nodes_.emplace(node_id, node_resources).first;
   }
 
@@ -177,10 +163,8 @@ void ClusterResourceManager::UpdateResourceCapacity(const std::string &node_id_s
   }
 }
 
-void ClusterResourceManager::DeleteResource(const std::string &node_id_string,
+void ClusterResourceManager::DeleteResource(const std::string &node_id,
                                             const std::string &resource_name) {
-  int64_t node_id = string_to_int_map_.Get(node_id_string);
-
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     return;
@@ -202,8 +186,7 @@ void ClusterResourceManager::DeleteResource(const std::string &node_id_string,
 }
 
 std::string ClusterResourceManager::GetNodeResourceViewString(
-    const std::string &node_name) const {
-  int64_t node_id = string_to_int_map_.Get(node_name);
+    const std::string &node_id) const {
   const auto &node = map_find_or_die(nodes_, node_id);
   return node.GetLocalView().DictString(string_to_int_map_);
 }
@@ -218,17 +201,17 @@ std::string ClusterResourceManager::GetResourceNameFromIndex(int64_t res_idx) {
   } else if (res_idx == MEM) {
     return ray::kMemory_ResourceLabel;
   } else {
-    return string_to_int_map_.Get((uint64_t)res_idx);
+    return string_to_int_map_.Get(res_idx);
   }
 }
 
-const absl::flat_hash_map<int64_t, Node> &ClusterResourceManager::GetResourceView()
+const absl::flat_hash_map<std::string, Node> &ClusterResourceManager::GetResourceView()
     const {
   return nodes_;
 }
 
 bool ClusterResourceManager::SubtractNodeAvailableResources(
-    int64_t node_id, const ResourceRequest &resource_request) {
+    const std::string &node_id, const ResourceRequest &resource_request) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     return false;

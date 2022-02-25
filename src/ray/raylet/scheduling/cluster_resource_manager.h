@@ -40,50 +40,49 @@ class ClusterResourceManager {
   explicit ClusterResourceManager(StringIdMap &string_to_int_map);
 
   /// Get the resource view of the cluster.
-  const absl::flat_hash_map<int64_t, Node> &GetResourceView() const;
+  const absl::flat_hash_map<std::string, Node> &GetResourceView() const;
 
   // Mapping from predefined resource indexes to resource strings
   std::string GetResourceNameFromIndex(int64_t res_idx);
 
   /// Update node resources. This hanppens when a node resource usage udpated.
   ///
-  /// \param node_id_string ID of the node which resoruces need to be udpated.
+  /// \param node_id ID of the node which resoruces need to be udpated.
   /// \param resource_data The node resource data.
-  bool UpdateNode(const std::string &node_id_string,
-                  const rpc::ResourcesData &resource_data);
+  bool UpdateNode(const std::string &node_id, const rpc::ResourcesData &resource_data);
 
   /// Remove node from the cluster data structure. This happens
   /// when a node fails or it is removed from the cluster.
   ///
-  /// \param node_id_string ID of the node to be removed.
-  bool RemoveNode(const std::string &node_id_string);
+  /// \param node_id ID of the node to be removed.
+  bool RemoveNode(const std::string &node_id);
 
   /// Get number of nodes in the cluster.
   int64_t NumNodes() const;
 
   /// Update total capacity of a given resource of a given node.
   ///
-  /// \param node_name: Node whose resource we want to update.
+  /// \param node_id: Node whose resource we want to update.
   /// \param resource_name: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
-  void UpdateResourceCapacity(const std::string &node_name,
+  void UpdateResourceCapacity(const std::string &node_id,
                               const std::string &resource_name, double resource_total);
 
   /// Delete a given resource from a given node.
   ///
-  /// \param node_name: Node whose resource we want to delete.
+  /// \param node_id: Node whose resource we want to delete.
   /// \param resource_name: Resource we want to delete
-  void DeleteResource(const std::string &node_name, const std::string &resource_name);
+  void DeleteResource(const std::string &node_id, const std::string &resource_name);
 
   /// Return local resources in human-readable string form.
-  std::string GetNodeResourceViewString(const std::string &node_name) const;
+  std::string GetNodeResourceViewString(const std::string &node_id) const;
 
   /// Get local resource.
-  const NodeResources &GetNodeResources(const std::string &node_name) const;
+  const NodeResources &GetNodeResources(const std::string &node_id) const;
 
   /// Subtract available resource from a given node.
   //// Return false if such node doesn't exist.
-  bool SubtractNodeAvailableResources(int64_t node_id,
+  bool SubtractNodeAvailableResources(const std::string &node_id,
                                       const ResourceRequest &resource_request);
 
  private:
@@ -93,26 +92,20 @@ class ClusterResourceManager {
   ///
   /// \param node_id: Node ID.
   /// \param node_resources: Up to date total and available resources of the node.
-  void AddOrUpdateNode(int64_t node_id, const NodeResources &node_resources);
+  void AddOrUpdateNode(const std::string& node_id, const NodeResources &node_resources);
 
   void AddOrUpdateNode(
       const std::string &node_id,
       const absl::flat_hash_map<std::string, double> &resource_map_total,
       const absl::flat_hash_map<std::string, double> &resource_map_available);
 
-  /// Remove node from the cluster data structure. This happens
-  /// when a node fails or it is removed from the cluster.
-  ///
-  /// \param node_id ID of the node to be removed.
-  bool RemoveNode(int64_t node_id);
-
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
-  bool GetNodeResources(int64_t node_id, NodeResources *ret_resources) const;
+  bool GetNodeResources(const std::string &node_id, NodeResources *ret_resources) const;
 
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
-  absl::flat_hash_map<int64_t, Node> nodes_;
+  absl::flat_hash_map<std::string, Node> nodes_;
   /// Keep the mapping between node and resource IDs in string representation
   /// to integer representation. Used for improving map performance.
   StringIdMap &string_to_int_map_;

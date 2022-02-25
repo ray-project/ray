@@ -25,7 +25,8 @@ namespace raylet_scheduling_policy {
 
 class SchedulingPolicy {
  public:
-  SchedulingPolicy(int64_t local_node_id, const absl::flat_hash_map<int64_t, Node> &nodes)
+  SchedulingPolicy(std::string local_node_id,
+                   const absl::flat_hash_map<std::string, Node> &nodes)
       : local_node_id_(local_node_id), nodes_(nodes) {}
 
   /// This scheduling policy was designed with the following assumptions in mind:
@@ -60,24 +61,24 @@ class SchedulingPolicy {
   ///
   /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
   /// schedule on.
-  int64_t HybridPolicy(
+  std::string HybridPolicy(
       const ResourceRequest &resource_request, float spread_threshold,
       bool force_spillback, bool require_available,
-      std::function<bool(int64_t)> is_node_available,
+      std::function<bool(const std::string &)> is_node_available,
       bool scheduler_avoid_gpu_nodes = RayConfig::instance().scheduler_avoid_gpu_nodes());
 
   /// Round robin among available nodes.
   /// If there are no available nodes, fallback to hybrid policy.
-  int64_t SpreadPolicy(const ResourceRequest &resource_request, bool force_spillback,
-                       bool require_available,
-                       std::function<bool(int64_t)> is_node_available);
+  std::string SpreadPolicy(const ResourceRequest &resource_request, bool force_spillback,
+                           bool require_available,
+                           std::function<bool(const std::string &)> is_node_available);
 
  private:
   /// Identifier of local node.
-  const int64_t local_node_id_;
+  const std::string local_node_id_;
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
-  const absl::flat_hash_map<int64_t, Node> &nodes_;
+  const absl::flat_hash_map<std::string, Node> &nodes_;
   // The node to start round robin if it's spread scheduling.
   // The index may be inaccurate when nodes are added or removed dynamically,
   // but it should still be better than always scanning from 0 for spread scheduling.
@@ -101,11 +102,11 @@ class SchedulingPolicy {
   ///
   /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
   /// schedule on.
-  int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
-                                 float spread_threshold, bool force_spillback,
-                                 bool require_available,
-                                 std::function<bool(int64_t)> is_node_available,
-                                 NodeFilter node_filter = NodeFilter::kAny);
+  std::string HybridPolicyWithFilter(
+      const ResourceRequest &resource_request, float spread_threshold,
+      bool force_spillback, bool require_available,
+      std::function<bool(const std::string &)> is_node_available,
+      NodeFilter node_filter = NodeFilter::kAny);
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

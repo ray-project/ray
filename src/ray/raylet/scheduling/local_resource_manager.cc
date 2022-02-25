@@ -22,7 +22,7 @@
 namespace ray {
 
 LocalResourceManager::LocalResourceManager(
-    int64_t local_node_id, StringIdMap &resource_name_to_id,
+    std::string local_node_id, StringIdMap &resource_name_to_id,
     const NodeResources &node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
