@@ -154,5 +154,48 @@ def test_deploy(ray_start_stop):
             assert requests.get(f"{request_url}{name}").text == deployment_config["response"]
 
 
+def test_info(ray_start_stop):
+    # Deploys valid config file and checks that serve info returns correct
+    # response
+    subprocess.check_output(["serve", "start"])
+
+    config_file_name = "test_config_files/two_deployments.yaml"
+    success_message_fragment = b"Sent deployment request successfully!"
+    deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
+    assert success_message_fragment in deploy_response
+
+    info_response = subprocess.check_output(["serve", "info"]).decode("utf-8")
+    info = json.loads(info_response)
+
+    assert "deployments" in info
+    assert len(info["deployments"]) == 2
+
+    # Validate non-default information about shallow deployment
+    shallow_info = None
+    for deployment_info in info["deployments"]:
+        if deployment_info["name"] == "shallow":
+            shallow_info = deployment_info
+    
+    assert shallow_info is not None
+    assert shallow_info["import_path"] == "test_env.shallow_import.ShallowClass"
+    assert shallow_info["num_replicas"] == 3
+    assert shallow_info["route_prefix"] == "/shallow"
+    assert ("https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip" in shallow_info["ray_actor_options"]["runtime_env"]["py_modules"])
+    assert ("https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip" in shallow_info["ray_actor_options"]["runtime_env"]["py_modules"])
+
+    # Validate non-default information about one deployment
+    one_info = None
+    for deployment_info in info["deployments"]:
+        if deployment_info["name"] == "one":
+            one_info = deployment_info
+    
+    assert one_info is not None
+    assert one_info["import_path"] == "test_module.test.one"
+    assert one_info["num_replicas"] == 2
+    assert one_info["route_prefix"] == "/one"
+    assert ("https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip" in one_info["ray_actor_options"]["runtime_env"]["py_modules"])
+    assert ("https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip" in one_info["ray_actor_options"]["runtime_env"]["py_modules"])
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
