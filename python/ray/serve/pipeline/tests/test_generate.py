@@ -121,7 +121,6 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     instantiated multiple times for the same class, and we can still correctly
     replace args with deployment handle and parse correct deployment instances.
     """
-    # TODO: (jiaodong) Support nested deployment args
     m1 = Model._bind(2)
     m2 = Model._bind(3)
     combine = Combine._bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)

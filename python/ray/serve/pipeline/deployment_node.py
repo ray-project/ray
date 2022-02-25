@@ -1,7 +1,6 @@
 from typing import Any, Dict, Optional, List, Tuple, Union
 
 from ray.experimental.dag import DAGNode, InputNode
-from ray.experimental.dag.py_obj_scanner import _PyObjScanner
 from ray.serve.handle import RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
@@ -21,11 +20,27 @@ class DeploymentNode(DAGNode):
         ray_actor_options: Dict[str, Any],
         other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
+        # Deployment can be passed into other DAGNodes as init args. This is
+        # supported pattern in ray DAG that user can instantiate and pass class
+        # instances as init args to others.
+
+        # However in ray serve we send init args via .remote() that requires
+        # pickling, and all DAGNode types are not picklable by design.
+
+        # Thus we need convert all DeploymentNode used in init args into
+        # deployment handles (executable and picklable) in ray serve DAG to make
+        # serve DAG end to end executable.
         (
             replaced_deployment_init_args,
             replaced_deployment_init_kwargs,
-        ) = self._replace_deployment_init_args_and_kwargs(
-            deployment_init_args, deployment_init_kwargs
+        ) = self._apply_functional(
+            [deployment_init_args, deployment_init_kwargs],
+            predictate_fn=lambda node: isinstance(
+                node, (DeploymentNode, DeploymentMethodNode)
+            ),
+            apply_fn=lambda node: node._get_serve_deployment_handle(
+                node._deployment, node._bound_other_args_to_resolve
+            ),
         )
         self._deployment: Deployment = Deployment(
             func_or_class,
@@ -119,40 +134,6 @@ class DeploymentNode(DAGNode):
             if isinstance(child, InputNode):
                 return True
         return False
-
-    def _replace_deployment_init_args_and_kwargs(
-        self,
-        deployment_init_args: Tuple[Any],
-        deployment_init_kwargs: Dict[str, Any],
-    ):
-        """
-        Deployment can be passed into other DAGNodes as init args. This is
-        supported pattern in ray DAG that user can instantiate and pass class
-        instances as init args to others.
-
-        However in ray serve we send init args via .remote() that requires
-        pickling, and all DAGNode types are not picklable by design.
-
-        Thus we need convert all DeploymentNode used in init args into
-        deployment handles (executable and picklable) in ray serve DAG to make
-        end to end DAG executable.
-        """
-        replace_table = {}
-        scanner = _PyObjScanner()
-        for node in scanner.find_nodes([deployment_init_args, deployment_init_kwargs]):
-            if (
-                isinstance(node, (DeploymentNode, DeploymentMethodNode))
-                and node not in replace_table
-            ):
-                replace_table[node] = self._get_serve_deployment_handle(
-                    node._deployment, node._bound_other_args_to_resolve
-                )
-        (
-            replaced_deployment_init_args,
-            replaced_deployment_init_kwargs,
-        ) = scanner.replace_nodes(replace_table)
-
-        return replaced_deployment_init_args, replaced_deployment_init_kwargs
 
     def __getattr__(self, method_name: str):
         # Raise an error if the method is invalid.
