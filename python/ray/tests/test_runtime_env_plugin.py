@@ -106,6 +106,7 @@ class MyPluginForHang(RuntimeEnvPlugin):
 
 def test_plugin_hang(ray_start_regular):
     env_key = MyPluginForHang.env_key
+
     @ray.remote(num_cpus=0.1)
     def f():
         return os.environ[env_key]
