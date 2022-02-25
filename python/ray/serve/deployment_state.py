@@ -391,11 +391,7 @@ class ActorReplicaWrapper:
         """
         try:
             handle = ray.get_actor(self._actor_name)
-            self._graceful_shutdown_ref = (
-                handle.prepare_for_shutdown.remote()
-                if not self._is_cross_language
-                else handle.prepareForShutdown.remote()
-            )
+            self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote()
         except ValueError:
             pass
 
