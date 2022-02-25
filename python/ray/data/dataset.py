@@ -125,7 +125,7 @@ class Dataset(Generic[T]):
 
         if not lazy:
             # TODO(ekl) we should clear inputs once we have full lineage recorded.
-            self._plan.execute(clear_input_blocks=True)
+            self._plan.execute(clear_input_blocks=False)
 
     def map(
         self,
