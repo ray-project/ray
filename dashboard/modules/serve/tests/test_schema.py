@@ -99,7 +99,7 @@ class TestRayActorOptionsSchema:
         }
 
         RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
-    
+
     def test_extra_fields_invalid_ray_actor_options(self):
         # Undefined fields should be forbidden in the schema
 
@@ -120,7 +120,6 @@ class TestRayActorOptionsSchema:
         ray_actor_options_schema["fake_field"] = None
         with pytest.raises(ValidationError):
             RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
-
 
 
 class TestDeploymentSchema:
@@ -301,7 +300,7 @@ class TestDeploymentSchema:
         deployment_schema["autoscaling_config"] = AutoscalingConfig().dict()
         with pytest.raises(ValueError):
             DeploymentSchema.parse_obj(deployment_schema)
-    
+
     def test_extra_fields_invalid_deployment_schema(self):
         # Undefined fields should be forbidden in the schema
 
@@ -387,12 +386,12 @@ class TestServeApplicationSchema:
 
         serve_application_schema = self.get_valid_serve_application_schema()
         ServeApplicationSchema.parse_obj(serve_application_schema)
-    
+
     def test_extra_fields_invalid_serve_application_schema(self):
         # Undefined fields should be forbidden in the schema
 
         serve_application_schema = self.get_valid_serve_application_schema()
-        
+
         # Schema should be createable with valid fields
         ServeApplicationSchema.parse_obj(serve_application_schema)
 
@@ -434,15 +433,22 @@ class TestDeploymentStatusSchema:
         # Undefined fields should be forbidden in the schema
 
         deployment_status_schemas = self.get_valid_deployment_status_schema()
-        
+
         # Schema should be createable with valid fields
         for name, status_info in deployment_status_schemas.items():
-            DeploymentStatusSchema(name=name, status=status_info.status, message=status_info.message)
+            DeploymentStatusSchema(
+                name=name, status=status_info.status, message=status_info.message
+            )
 
         # Schema should raise error when a nonspecified field is included
         for name, status_info in deployment_status_schemas.items():
             with pytest.raises(ValidationError):
-                DeploymentStatusSchema(name=name, status=status_info.status, message=status_info.message, fake_field=None)
+                DeploymentStatusSchema(
+                    name=name,
+                    status=status_info.status,
+                    message=status_info.message,
+                    fake_field=None,
+                )
 
 
 class TestServeApplicationStatusSchema:
@@ -458,20 +464,27 @@ class TestServeApplicationStatusSchema:
     def test_valid_serve_application_status_schema(self):
         # Ensure a valid ServeApplicationStatusSchema can be generated
 
-        serve_application_status_schema = self.get_valid_serve_application_status_schema()
+        serve_application_status_schema = (
+            self.get_valid_serve_application_status_schema()
+        )
         serve_application_status_to_schema(serve_application_status_schema)
-    
+
     def test_extra_fields_invalid_serve_application_status_schema(self):
         # Undefined fields should be forbidden in the schema
 
-        serve_application_status_schema = self.get_valid_serve_application_status_schema()
-        
+        serve_application_status_schema = (
+            self.get_valid_serve_application_status_schema()
+        )
+
         # Schema should be createable with valid fields
         serve_application_status_to_schema(serve_application_status_schema)
 
         # Schema should raise error when a nonspecified field is included
         with pytest.raises(ValidationError):
-            statuses = [status_info_to_schema(name, status_info) for name, status_info in serve_application_status_schema.items()]
+            statuses = [
+                status_info_to_schema(name, status_info)
+                for name, status_info in serve_application_status_schema.items()
+            ]
             ServeApplicationStatusSchema(statuses=statuses, fake_field=None)
 
 

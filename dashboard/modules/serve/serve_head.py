@@ -1,5 +1,4 @@
 from aiohttp.web import Request, Response
-import json
 import logging
 
 import ray.dashboard.utils as dashboard_utils
