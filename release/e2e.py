@@ -812,8 +812,7 @@ def report_result(
 
     firehose_client = boto3.client("firehose", region_name="us-west-2")
     firehose_client.put_record(
-        DeliveryStreamName = "ray-ci-results",
-        Record = {"Data": json.dumps(result_json)}
+        DeliveryStreamName="ray-ci-results", Record={"Data": json.dumps(result_json)}
     )
 
     logger.info("Result has been persisted to the databricks delta lake")

@@ -20,9 +20,13 @@ if __name__ == "__main__":
     }
 
     perf_metrics = [
-        {"perf_metric_name": to_dict_key(v[0]),
-         "perf_metric_value": v[1],
-         "perf_metric_type": "THROUGHPUT"} for v in results if v is not None
+        {
+            "perf_metric_name": to_dict_key(v[0]),
+            "perf_metric_value": v[1],
+            "perf_metric_type": "THROUGHPUT",
+        }
+        for v in results
+        if v is not None
     ]
     result_dict["perf_metrics"] = perf_metrics
 
