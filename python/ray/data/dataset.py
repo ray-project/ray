@@ -2652,16 +2652,19 @@ Dict[str, List[str]]]): The names of the columns
                     self._splits = blocks.split(split_size=blocks_per_window)
                 sizes = [s.size_bytes() for s in self._splits]
 
-                def mb(size_bytes):
-                    return round(size_bytes / (1024 * 1024), 2)
+                def fmt(size_bytes):
+                    if size_bytes > 10 * 1024:
+                        return "{}MiB".format(round(size_bytes / (1024 * 1024), 2))
+                    else:
+                        return "{}b".format(size_bytes)
 
                 logger.info(
                     "Created DatasetPipeline with {} windows: "
-                    "{}MiB min, {}MiB max, {}MiB mean".format(
+                    "{} min, {} max, {} mean".format(
                         len(self._splits),
-                        mb(min(sizes)),
-                        mb(max(sizes)),
-                        mb(int(np.mean(sizes))),
+                        fmt(min(sizes)),
+                        fmt(max(sizes)),
+                        fmt(int(np.mean(sizes))),
                     )
                 )
                 self._epoch = epoch

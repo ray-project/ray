@@ -37,6 +37,32 @@ def test_incremental_take(shutdown_only):
     assert pipe.take(1) == [0]
 
 
+def test_window_by_bytes(ray_start_regular_shared):
+    pipe = ray.data.range_arrow(10000000, parallelism=100).window(blocks_per_window=2)
+    assert str(pipe) == "DatasetPipeline(num_windows=50, num_stages=1)"
+
+    pipe = ray.data.range_arrow(10000000, parallelism=100).window(
+        bytes_per_window=10 * 1024 * 1024
+    )
+    assert str(pipe) == "DatasetPipeline(num_windows=8, num_stages=1)"
+
+    pipe = ray.data.range_arrow(10000000, parallelism=100).window(bytes_per_window=1)
+    assert str(pipe) == "DatasetPipeline(num_windows=100, num_stages=1)"
+
+    pipe = ray.data.range_arrow(10000000, parallelism=100).window(
+        bytes_per_window=2000 * 1024 * 1024
+    )
+    assert str(pipe) == "DatasetPipeline(num_windows=1, num_stages=1)"
+
+    # Test creating from non-lazy BlockList.
+    pipe = (
+        ray.data.range_arrow(10000000, parallelism=100)
+        .map_batches(lambda x: x)
+        .window(bytes_per_window=10 * 1024 * 1024)
+    )
+    assert str(pipe) == "DatasetPipeline(num_windows=8, num_stages=1)"
+
+
 def test_epoch(ray_start_regular_shared):
     # Test dataset repeat.
     pipe = ray.data.range(5).map(lambda x: x * 2).repeat(3).map(lambda x: x * 2)
