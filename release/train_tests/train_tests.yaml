@@ -1,0 +1,11 @@
+- name: train_horovod_multi_node_test
+  team: ml
+  cluster:
+    app_config: horovod/app_config.yaml
+    compute_template: horovod/compute_tpl.yaml
+
+  run:
+    autosuspend_mins: 10
+    timeout: 1200
+    prepare: python ../util/wait_cluster.py 3 600
+    script: python horovod/train_horovod_multi_node_test.py
