@@ -112,10 +112,11 @@ You can also specify the size of each window using ``bytes_per_window``. In this
 
 .. code-block:: python
 
-    # Create a DatasetPipeline with to 10GB of data per window.
+    # Create a DatasetPipeline with up to 10GB of data per window.
     pipe: DatasetPipeline = ray.data \
         .read_binary_files("s3://bucket/image-dir") \
         .window(bytes_per_window=10e9)
+    # -> INFO -- Created DatasetPipeline with 73 windows: 9120MiB min, 9431MiB max, 9287MiB mean
 
 Per-Epoch Shuffle Pipeline
 ==========================
