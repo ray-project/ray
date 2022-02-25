@@ -3,7 +3,7 @@
 Loggers (tune.logger)
 =====================
 
-Tune has default loggers for TensorBoard, CSV, and JSON formats.
+Tune automatically uses loggers for TensorBoard, CSV, and JSON formats.
 By default, Tune only logs the returned result dictionaries from the training function.
 
 If you need to log something lower level like model weights or gradients,

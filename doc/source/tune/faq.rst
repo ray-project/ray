@@ -38,6 +38,8 @@ achieved with previous loop iterations, and pick the set that performed best. Th
 search space, collectively defined for each *hyperparameter* in a ``config`` dictionary.
 
 
+.. TODO: We *really* need to improve this section.
+
 Which search algorithm/scheduler should I choose?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Ray Tune offers :ref:`many different search algorithms <tune-search-alg>`

@@ -71,7 +71,7 @@ At the end of these guides you will often find links to even more examples.
     +++
     .. link-button:: tune-serve-integration-mnist
         :type: ref
-        :text: Model Selection & Serving With Tune & Serve
+        :text: Model Selection & Serving With Ray Serve
         :classes: btn-link btn-block stretched-link
 
     ---

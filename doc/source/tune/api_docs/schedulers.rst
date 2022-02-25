@@ -232,6 +232,8 @@ An example of this in use can be found here: :doc:`/tune/examples/includes/bohb_
 
 .. autoclass:: ray.tune.schedulers.HyperBandForBOHB
 
+.. _tune-resource-changing-scheduler:
+
 ResourceChangingScheduler
 -------------------------
 

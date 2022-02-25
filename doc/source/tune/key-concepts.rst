@@ -11,11 +11,11 @@ Let's quickly walk through the key concepts you need to know to use Tune.
 If you want to see practical tutorials right away, go visit our :ref:`user guides<tune-guides>`.
 In essence, Tune has six crucial components that you need to understand.
 
-First, you define the hyperparameters you want to tune in a `search space` and pass them into a ``Trainable``
+First, you define the hyperparameters you want to tune in a `search space` and pass them into a `trainable`
 that specifies the objective you want to tune.
 Then you select a `search algorithm` to effectively optimize your parameters and optionally use a
 `scheduler` to stop searches early and speed up your experiments.
-Together with other configuration, your ``Trainable``, algorithm, and scheduler are passed into ``tune.run()``,
+Together with other configuration, your `trainable`, algorithm, and scheduler are passed into ``tune.run()``,
 which runs your experiments and creates `trials`.
 These trials can then be used in `analyses` to inspect your experiment results.
 The following figure shows an overview of these components, which we cover in detail in the next sections.
@@ -26,9 +26,9 @@ Trainables
 ----------
 
 In short, a :ref:`Trainable<trainable-docs>` is an object that you can pass into a Tune run.
-Ray Tune has two ways of defining a ``Trainable``, namely the :ref:`Function API <tune-function-api>`
+Ray Tune has two ways of defining a `trainable`, namely the :ref:`Function API <tune-function-api>`
 and the :ref:`Class API<tune-class-api>`.
-Both are valid ways of defining a ``Trainable``, but the *Function API* is generally recommended and is used
+Both are valid ways of defining a `trainable`, but the Function API is generally recommended and is used
 throughout the rest of this guide.
 
 Let's say we want to optimize a simple objective function like ``a (x ** 2) + b`` in which ``a`` and ``b`` are the
@@ -132,6 +132,8 @@ Here's an example output of a trial run:
 
 You can also easily run just 10 trials by specifying the number of samples (``num_samples``).
 Tune automatically :ref:`determines how many trials will run in parallel <tune-parallelism>`.
+Note that instead of the number of samples, you can also specify a time budget in seconds through ``time_budget_s``,
+if you set ``num_samples=-1``.
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
@@ -159,8 +161,8 @@ a :ref:`Search Algorithm <tune-search-alg>` which suggests hyperparameter config
 If you don't specify a search algorithm, Tune will use random search by default, which can provide you
 with a good starting point for your hyperparameter optimization.
 
-For instance, to use Tune with Bayesian optimization (make sure to first run ``pip install bayesian-optimization``),
-we can define an ``algo`` using ``BayesOptSearch``.
+For instance, to use Tune with simple Bayesian optimization through the ``bayesian-optimization`` package
+(make sure to first run ``pip install bayesian-optimization``), we can define an ``algo`` using ``BayesOptSearch``.
 Simply pass in a ``search_alg`` argument to ``tune.run``:
 
 .. literalinclude:: doc_code/key_concepts.py
@@ -169,7 +171,7 @@ Simply pass in a ``search_alg`` argument to ``tune.run``:
     :end-before: __bayes_end__
 
 Tune has Search Algorithms that integrate with many popular **optimization** libraries,
-such as :ref:`Nevergrad <nevergrad>` and :ref:`HyperOpt <tune-hyperopt>`.
+such as :ref:`Nevergrad <nevergrad>`, :ref:`HyperOpt <tune-hyperopt>`, or :ref:`Optuna <tune-optuna>`.
 Tune automatically converts the provided search space into the search
 spaces the search algorithms and underlying libraries expect.
 See the :ref:`Search Algorithm API documentation <tune-search-alg>` for more details.
@@ -299,7 +301,8 @@ Certain schedulers cannot be used with search algorithms,
 and certain schedulers require :ref:`checkpointing to be implemented <tune-checkpoint-syncing>`.
 
 Schedulers can dynamically change trial resource requirements during tuning.
-This is currently implemented in ``ResourceChangingScheduler``, which can wrap around any other scheduler.
+This is currently implemented in :ref:`ResourceChangingScheduler<tune-resource-changing-scheduler>`,
+which can wrap around any other scheduler.
 
 .. list-table:: Scheduler Compatibility Matrix
    :header-rows: 1
