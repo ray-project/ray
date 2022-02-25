@@ -108,6 +108,15 @@ Tune the throughput vs latency of your pipeline with the ``blocks_per_window`` s
 
 .. _dataset-pipeline-per-epoch-shuffle:
 
+You can also specify the size of each window using ``bytes_per_window``. In this mode, Datasets will determine the size of each window based on the target byte size, giving each window at least 1 block but not otherwise exceeding the target bytes per window. This mode can be useful to limit the memory usage of a pipeline. As a rule of thumb, the cluster memory should be at least 2-5x the window size to avoid spilling.
+
+.. code-block:: python
+
+    # Create a DatasetPipeline with to 10GB of data per window.
+    pipe: DatasetPipeline = ray.data \
+        .read_binary_files("s3://bucket/image-dir") \
+        .window(bytes_per_window=10e9)
+
 Per-Epoch Shuffle Pipeline
 ==========================
 .. tip::

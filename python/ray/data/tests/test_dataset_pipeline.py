@@ -50,7 +50,7 @@ def test_window_by_bytes(ray_start_regular_shared):
     assert str(pipe) == "DatasetPipeline(num_windows=100, num_stages=1)"
 
     pipe = ray.data.range_arrow(10000000, parallelism=100).window(
-        bytes_per_window=2000 * 1024 * 1024
+        bytes_per_window=1e9
     )
     assert str(pipe) == "DatasetPipeline(num_windows=1, num_stages=1)"
 
