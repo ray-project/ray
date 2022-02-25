@@ -12,7 +12,7 @@ This section covers the functions you can use to define your search spaces.
 
 .. caution::
 
-    Not all SearchAlgorithms support all distributions. In particular,
+    Not all Search Algorithms support all distributions. In particular,
     ``tune.sample_from`` and ``tune.grid_search`` are often unsupported.
     The default :ref:`tune-basicvariant` supports all distributions.
 
