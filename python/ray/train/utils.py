@@ -8,10 +8,11 @@ from typing import Tuple, Dict, List, Any, TYPE_CHECKING, Union
 
 import ray
 from ray.exceptions import RayActorError
+from ray.ray_constants import env_integer
 from ray.types import ObjectRef
 from ray.util.ml_utils.util import find_free_port
 
-from ray.train.constants import REMAINING_WORKERS_GRACE_PERIOD_S
+from ray.train.constants import TRAIN_REMAINING_WORKERS_GRACE_PERIOD_S_ENV
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -39,11 +40,16 @@ def check_for_failure(remote_values: List[ObjectRef]) -> Tuple[bool, List[int]]:
         # Once a worker has failed, we add a timeout for getting the
         # results for the remaining workers.
         # This is to avoid situations where the remaining workers
-        # are alive, but hanging on collective calls because other
-        # workers have failed.
+        # are alive, but hanging because other
+        # workers have failed (possibly on a synchronization call).
         timeout = (
-            REMAINING_WORKERS_GRACE_PERIOD_S if at_least_one_failed_worker else None
+            env_integer(TRAIN_REMAINING_WORKERS_GRACE_PERIOD_S_ENV, 10)
+            if at_least_one_failed_worker
+            else None
         )
+        if at_least_one_failed_worker:
+            logger.info(f"Identified a worker failure. Waiting {timeout} "
+                        f"to see if remaining workers are still alive. ")
         finished, unfinished = ray.wait(unfinished, timeout=timeout)
 
         if at_least_one_failed_worker and len(unfinished) > 0:
@@ -57,7 +63,8 @@ def check_for_failure(remote_values: List[ObjectRef]) -> Tuple[bool, List[int]]:
         # If a failure occurs the ObjectRef will be marked as finished.
         # Calling ray.get will expose the failure as a RayActorError.
         for object_ref in finished:
-            # Everything in finished has either failed or
+            # Everything in finished has either failed or completed
+            # successfully.
             try:
                 ray.get(object_ref)
             except RayActorError as exc:

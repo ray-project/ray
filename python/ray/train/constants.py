@@ -27,10 +27,6 @@ DETAILED_AUTOFILLED_KEYS = {DATE, HOSTNAME, NODE_IP, PID, TIME_TOTAL_S}
 # new results after signaling the training function to continue.
 RESULT_FETCH_TIMEOUT = 0.2
 
-# Grace period for remaining workers to return results before marking them dead
-# once any worker in the training run has already failed.
-REMAINING_WORKERS_GRACE_PERIOD_S = 10
-
 # Default filename for JSON logger
 RESULT_FILE_JSON = "results.json"
 
@@ -64,6 +60,10 @@ TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV = "TRAIN_PLACEMENT_GROUP_TIMEOUT_S"
 # Integer value which if set will change the placement group strategy from
 # PACK to SPREAD. 1 for True, 0 for False.
 TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
+
+# Grace period for remaining workers to return results before marking them dead
+# once any worker in the training run has already failed.
+TRAIN_REMAINING_WORKERS_GRACE_PERIOD_S_ENV = "TRAIN_REMAINING_WORKERS_GRACE_PERIOD_S"
 
 # The key used to identify whether we have already warned about ray.train
 # functions being used outside of the session
