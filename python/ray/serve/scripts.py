@@ -3,7 +3,6 @@ import json
 import yaml
 import os
 import requests
-import logging
 import click
 
 import ray
@@ -17,18 +16,19 @@ from ray.serve.constants import (
     DEFAULT_HTTP_PORT,
 )
 from ray.dashboard.modules.serve.schema import ServeApplicationSchema
-
-logger = logging.getLogger(__name__)
+from ray.autoscaler._private.cli_logger import cli_logger
 
 
 def log_failed_request(response: requests.models.Response):
     error_message = (
-        "Request failed. Got response status code "
+        "\nRequest failed. Got response status code "
         f"{response.status_code} with the following message:"
-        f"\n{response.text}"
+        f"\n\n{response.text}"
     )
     print(error_message)
-    logger.error(error_message)
+    cli_logger.newline()
+    cli_logger.error(error_message)
+    cli_logger.newline()
 
 
 @click.group(help="[EXPERIMENTAL] CLI for managing Serve instances on a Ray cluster.")
@@ -165,12 +165,14 @@ def deploy(config_file_name: str, address: str):
     response = requests.put(full_address_path, json=config)
 
     if response.status_code == 200:
-        print(
-            "Sent deployment request successfully!\n Use "
-            "`serve status` to check your deployments' statuses.\n "
-            "Use `serve info` to retrieve your running Serve "
-            "application's current configuration."
+        cli_logger.newline()
+        cli_logger.success(
+            "\nSent deploy request successfully!\n "
+            "* Use `serve status` to check your deployments' statuses.\n "
+            "* Use `serve info` to see your running Serve "
+            "application's configuration.\n"
         )
+        cli_logger.newline()
     else:
         log_failed_request(response)
 
