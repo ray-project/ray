@@ -106,11 +106,19 @@ def test_deploy(ray_start_stop):
     ray.init(address="auto", namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE)
     serve.start(detached=True)
 
+    # Create absolute file names to YAML config files
+    three_deployments = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "three_deployments.yaml"
+    )
+    two_deployments = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
+    )
+
     # Dictionary mapping test config file names to expected deployment names
     # and configurations. These should match the values specified in the YAML
     # files.
     configs = {
-        "test_config_files/three_deployments.yaml": {
+        three_deployments: {
             "shallow": {
                 "num_replicas": 1,
                 "response": "Hello shallow world!",
@@ -124,7 +132,7 @@ def test_deploy(ray_start_stop):
                 "response": "2",
             },
         },
-        "test_config_files/two_deployments.yaml": {
+        two_deployments: {
             "shallow": {
                 "num_replicas": 3,
                 "response": "Hello shallow world!",
@@ -162,7 +170,9 @@ def test_info(ray_start_stop):
     # response
     subprocess.check_output(["serve", "start"])
 
-    config_file_name = "test_config_files/two_deployments.yaml"
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
+    )
     success_message_fragment = b"Sent deploy request successfully!"
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
