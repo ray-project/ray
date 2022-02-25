@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 import json
+import yaml
 import os
-
+import requests
+import time
+import logging
 import click
 
 import ray
-from ray.serve.api import Deployment
+from ray.serve.api import Deployment, deploy_group
 from ray.serve.config import DeploymentMode
 from ray._private.utils import import_attr
 from ray import serve
@@ -14,6 +17,14 @@ from ray.serve.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def log_failed_request(response: requests.models.Response):
+    logger.error("Request failed. Got response status code "
+                 f"{response.status_code} with the following message:"
+                 f"\n{response.text}")
 
 
 @click.group(help="[EXPERIMENTAL] CLI for managing Serve instances on a Ray cluster.")
@@ -129,50 +140,39 @@ def create_deployment(deployment: str, options_json: str):
     """,
     hidden=True,
 )
-@click.argument("config_fname")
+@click.argument("config_file_name")
 @click.option(
     "--address",
     "-a",
-    default="http://localhost:8265",
+    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
-    help="Address of the Ray dashboard to query.",
+    help="Address of the Ray dashboard to query. For example, \"http://localhost:8265\".",
 )
-def deploy(config_fname: str, address: str):
-    import yaml
-    import requests
+def deploy(config_file_name: str, address: str):
+    full_address_path = f"{address}/api/serve/deployments/"
 
-    full_address = f"{address}/api/serve/deployments/"
+    with open(config_file_name, "r") as config_file:
+        config = yaml.safe_load(config_file)
 
-    with open(config_fname, "r") as config:
-        deployments = yaml.safe_load(config)["deployments"]
+    response = requests.put(full_address_path, json=config)
 
-    response = requests.put(full_address, json=deployments)
     if response.status_code == 200:
-        print("Deployment succeeded!")
+        logger.info("Sent deployment request successfully!\n Use "
+                    "`serve status` to check your deployments' statuses.\n "
+                    "Use `serve info` to retrieve your running Serve "
+                    "application's current configuration.")
     else:
-        print("Deployment failed!")
+        log_failed_request(response)
 
 
 @cli.command(
     help="[Experimental] Run YAML configuration file via Serve's Python API.",
     hidden=True,
 )
-@click.argument("config_fname")
-@click.option(
-    "--address",
-    "-a",
-    default=os.environ.get("RAY_ADDRESS"),
-    required=False,
-    type=str,
-    help="Address of the running Ray cluster to connect to. " 'Defaults to "auto".',
-)
-def run(config_fname: str, address: str):
-    from ray.serve.api import deploy_group
-    import yaml
-    import time
-
-    with open(config_fname, "r") as config:
+@click.argument("config_file_name")
+def run(config_file_name: str):
+    with open(config_file_name, "r") as config:
         deployment_data_list = yaml.safe_load(config)["deployments"]
 
     deployments = []
@@ -199,29 +199,21 @@ def run(config_fname: str, address: str):
 
 
 @cli.command(
-    help="[Experimental] Get info about deployments in your Serve cluster.",
+    help="[Experimental] Get info about your Serve application's config.",
     hidden=True,
 )
 @click.option(
     "--address",
     "-a",
-    default="http://localhost:8265/api/serve/deployments/",
+    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
-    help="Address of the Ray dashboard to query.",
+    help="Address of the Ray dashboard to query. For example, \"http://localhost:8265\".",
 )
 def info(address: str):
-    import requests
-
-    response = requests.get(address)
+    full_address_path = f"{address}/api/serve/deployments/"
+    response = requests.get(full_address_path)
     if response.status_code == 200:
-        print("Serve instance info:\n")
-        deployments = response.json()["deployments"]
-        for name, status in deployments.items():
-            print(f'Deployment "{name}": ')
-            print(status, "\n")
-        
-        print("Deployment Statuses: \n")
-        print(response.json()["statuses"])
+        print(response.json())
     else:
-        print("Failed to acquire serve instance info!")
+        log_failed_request(response)
