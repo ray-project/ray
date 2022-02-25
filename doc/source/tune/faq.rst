@@ -12,7 +12,7 @@ If you still have questions after reading this FAQ, let us know!
 
 
 What are Hyperparameters?
--------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 What are *hyperparameters?* And how are they different from *model parameters*?
 
