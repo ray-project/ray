@@ -52,6 +52,10 @@ class StringIdMap {
   /// \return The integer ID associated with string ID string_id.
   int64_t Insert(const std::string &string_id, uint8_t num_ids = 0);
 
+  /// Insert string ID and its integer ID in the map.
+  /// It will crash the process if either string_id or id exists.
+  StringIdMap &InsertOrDie(const std::string &string_id, int64_t id);
+
   /// Removing an ID is unsupported, because it is prone to erroneously
   /// deleting an ID still in use.
 

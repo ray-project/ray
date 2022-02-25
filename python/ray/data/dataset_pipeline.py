@@ -1,5 +1,5 @@
 import inspect
-
+import logging
 import time
 from typing import (
     Any,
@@ -29,6 +29,8 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
+
+logger = logging.getLogger(__name__)
 
 # Operations that can be naively applied per dataset row in the pipeline.
 PER_DATASET_OPS = ["map", "map_batches", "add_column", "flat_map", "filter"]
@@ -214,7 +216,10 @@ class DatasetPipeline(Generic[T]):
             A list of ``n`` disjoint pipeline splits.
         """
         return self._split(
-            n, lambda ds: ds.split(n, equal=equal, locality_hints=locality_hints)
+            n,
+            lambda ds, equal=equal: ds.split(
+                n, equal=equal, locality_hints=locality_hints
+            ),
         )
 
     def split_at_indices(self, indices: List[int]) -> List["DatasetPipeline[T]"]:
@@ -389,10 +394,6 @@ class DatasetPipeline(Generic[T]):
         This operation is only allowed for pipelines of a finite length. An
         error will be raised for pipelines of infinite length.
 
-        Transformations prior to the call to ``repeat()`` are evaluated once.
-        Transformations done on the repeated pipeline are evaluated on each
-        loop of the pipeline over the base pipeline.
-
         Note that every repeat of the pipeline is considered an "epoch" for
         the purposes of ``iter_epochs()``. If there are multiple repeat calls,
         the latest repeat takes precedence for the purpose of defining epochs.
@@ -419,10 +420,15 @@ class DatasetPipeline(Generic[T]):
                 # Still going through the original pipeline.
                 if self._original_iter:
                     try:
-                        res = next(self._original_iter)
-                        res._set_epoch(0)
-                        self._results.append(res)
-                        return lambda: res
+                        make_ds = next(self._original_iter)
+                        self._results.append(make_ds)
+
+                        def gen():
+                            res = make_ds()
+                            res._set_epoch(0)
+                            return res
+
+                        return gen
                     except StopIteration:
                         self._original_iter = None
                         # Calculate the cursor limit.
@@ -432,10 +438,16 @@ class DatasetPipeline(Generic[T]):
                             self._max_i = float("inf")
                 # Going through a repeat of the pipeline.
                 if self._i < self._max_i:
-                    res = self._results[self._i % len(self._results)]
-                    res._set_epoch(1 + self._i // len(self._results))
+                    make_ds = self._results[self._i % len(self._results)]
+                    epoch = 1 + self._i // len(self._results)
+
+                    def gen():
+                        res = make_ds()
+                        res._set_epoch(epoch)
+                        return res
+
                     self._i += 1
-                    return lambda: res
+                    return gen
                 else:
                     raise StopIteration
 
@@ -453,7 +465,11 @@ class DatasetPipeline(Generic[T]):
         else:
             length = None
 
-        return DatasetPipeline(RepeatIterable(self.iter_datasets()), length=length)
+        return DatasetPipeline(
+            RepeatIterable(iter(self._base_iterable)),
+            stages=self._stages.copy(),
+            length=length,
+        )
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset pipeline.
@@ -573,18 +589,14 @@ class DatasetPipeline(Generic[T]):
                 return item
 
         class SingleEpochIterator:
-            def __init__(self, peekable_iter: Iterator[Dataset[T]]):
+            def __init__(self, peekable_iter: Iterator[Dataset[T]], epoch: int):
                 self._iter = peekable_iter
-                self._epoch = None
+                self._epoch = epoch
 
             def __next__(self) -> Dataset[T]:
-                if (
-                    self._epoch is not None
-                    and self._iter.peek()._get_epoch() != self._epoch
-                ):
+                if self._iter.peek()._get_epoch() > self._epoch:
                     raise StopIteration
                 ds = next(self._iter)
-                self._epoch = ds._get_epoch()
                 return lambda: ds
 
             def __iter__(self):
@@ -593,11 +605,24 @@ class DatasetPipeline(Generic[T]):
         class EpochDelimitedIterator:
             def __init__(self, pipe):
                 self._iter = Peekable(pipe.iter_datasets())
+                self._cur_epoch = None
 
             def __next__(self) -> "DatasetPipeline[T]":
-                self._iter.peek()  # Raises StopIteration on end of data.
+                if self._cur_epoch is None:
+                    self._cur_epoch = self._iter.peek()._get_epoch()
+                else:
+                    self._cur_epoch += 1
+                warned = False
+                while self._iter.peek()._get_epoch() < self._cur_epoch:
+                    if not warned:
+                        warned = True
+                        logger.warn(
+                            "Data from epoch {} was not fully read, "
+                            "skipping to next epoch.".format(self._cur_epoch - 1)
+                        )
+                    next(self._iter)
                 epoch_pipe = DatasetPipeline.from_iterable(
-                    SingleEpochIterator(self._iter)
+                    SingleEpochIterator(self._iter, epoch=self._cur_epoch)
                 )
                 return epoch_pipe
 

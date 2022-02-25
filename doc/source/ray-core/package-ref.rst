@@ -203,21 +203,17 @@ Histogram
 Runtime Context APIs
 --------------------
 
+.. autofunction:: ray.runtime_context.get_runtime_context
+
 .. autoclass:: ray.runtime_context.RuntimeContext
     :members:
-
-.. autofunction:: ray.runtime_context.get_runtime_context
 
 .. _runtime-env-apis:
 
 Runtime Env APIs
---------------------
 
 .. autoclass:: ray.runtime_env.RuntimeEnv
     :members:
-
-.. autofunction:: ray.runtime_env.get_current_runtime_env
-
 .. _package-ref-debugging-apis:
 
 Debugging APIs
@@ -296,6 +292,18 @@ The Ray Command Line API
 
 .. click:: ray.scripts.scripts:timeline
    :prog: ray timeline
+   :show-nested:
+ 
+.. _ray-status-doc:
+
+.. click:: ray.scripts.scripts:status
+   :prog: ray status
+   :show-nested:
+   
+.. _ray-monitor-doc:
+
+.. click:: ray.scripts.scripts:monitor
+   :prog: ray monitor
    :show-nested:
 
 .. click:: ray.scripts.scripts:debug
