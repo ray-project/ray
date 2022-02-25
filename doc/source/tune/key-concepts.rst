@@ -242,7 +242,7 @@ Here's an overview of all available search algorithms in Tune:
      - :doc:`/tune/examples/includes/hebo_example`
 
 .. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`,
-    Tune SearchAlgorithms cannot affect or stop training processes.
+    Tune Search Algorithms cannot affect or stop training processes.
     However, you can use them together to early stop the evaluation of bad trials.
 
 In case you want to implement your own search algorithm, the interface is easy to implement,
