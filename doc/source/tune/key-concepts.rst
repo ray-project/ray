@@ -156,6 +156,8 @@ Search Algorithms
 
 To optimize the hyperparameters of your training process, you use
 a :ref:`Search Algorithm <tune-search-alg>` which suggests hyperparameter configurations.
+If you don't specify a search algorithm, Tune will use random search by default, which can provide you
+with a good starting point for your hyperparameter optimization.
 
 For instance, to use Tune with Bayesian optimization (make sure to first run ``pip install bayesian-optimization``),
 we can define an ``algo`` using ``BayesOptSearch``.
@@ -252,7 +254,6 @@ Tune also provides helpful utilities to use with Search Algorithms:
  * :ref:`limiter`: Limits the amount of concurrent trials when running optimization.
  * :ref:`shim`: Allows creation of the search algorithm object given a string.
 
-
 Note that in the example above we  tell Tune to ``stop`` after ``20`` training iterations.
 This way of stopping trials with explicit rules is useful, but in many cases we can do even better with
 `schedulers`.
@@ -266,6 +267,8 @@ To make your training process more efficient, you can use a :ref:`Trial Schedule
 For instance, in our ``trainable`` example minimizing a function in a training loop, we used ``tune.report()``.
 This reported `incremental` results, given a hyperparameter configuration selected by a search algorithm.
 Based on these reported results, a Tune scheduler can decide whether to stop the trial early or not.
+If you don't specify a scheduler, Tune will use a first-in-first-out (FIFO) scheduler by default, which simply
+passes through the trials selected by your search algorithm in the order they were picked.
 
 In short, schedulers can stop, pause, or tweak the
 hyperparameters of running trials, potentially making your hyperparameter tuning process much faster.
