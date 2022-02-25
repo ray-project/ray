@@ -214,7 +214,8 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
           if (next_spill_error_log_bytes_ > 0 &&
               spilled_bytes_total_ >= next_spill_error_log_bytes_) {
             // Add an advisory the first time this is logged.
-            if (next_spill_error_log_bytes_ == RayConfig::instance().verbose_spill_logs()) {
+            if (next_spill_error_log_bytes_ ==
+                RayConfig::instance().verbose_spill_logs()) {
               msg << ". Set RAY_verbose_spill_logs=0 to disable this message.";
             }
             // Exponential backoff on the spill messages.
