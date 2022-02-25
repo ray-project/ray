@@ -2,7 +2,6 @@ from typing import Any, Dict, Optional, List, Tuple, Union
 
 from ray.experimental.dag import DAGNode, InputNode
 from ray.experimental.dag.py_obj_scanner import _PyObjScanner
-from ray.serve.api import Deployment
 from ray.serve.handle import RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
@@ -127,29 +126,16 @@ class DeploymentNode(DAGNode):
         deployment_init_kwargs: Dict[str, Any],
     ):
         """
-        Deployment can be passed into other DAGNodes as init args. This is supported
-        pattern in ray DAG that user can instantiate and pass class instances as
-        init args to others.
+        Deployment can be passed into other DAGNodes as init args. This is
+        supported pattern in ray DAG that user can instantiate and pass class
+        instances as init args to others.
 
-        However in ray serve we send init args via .remote() that requires pickling,
-        and all DAGNode types are not picklable by design.
+        However in ray serve we send init args via .remote() that requires
+        pickling, and all DAGNode types are not picklable by design.
 
-        Thus we need convert all DeploymentNode used in init args into deployment
-        handles (executable and picklable) in ray serve DAG to make end to end
-        DAG executable.
-        """
-        # Options
-        """
-        Set pieces:
-        - DeploymentNode can separate from its encapsulated Deployment instance.
-        - We need to only let Deployment have correct init args+kwargs.
-        - DeploymentNode is backbone for traversal.
-        - Serve DAG Node needs to be executable by Ray, needed for HTTP.
-
-        1) Copy current node, replace all args + kwargs + others, feed into deployment body
-        2) Two pass, class -> deployment node first, convert deployment body in 2nd pass
-        3) Just replace all DeploymentNode with handle
-        4) Make DeploymentNode executable in a ray dag
+        Thus we need convert all DeploymentNode used in init args into
+        deployment handles (executable and picklable) in ray serve DAG to make
+        end to end DAG executable.
         """
         replace_table = {}
         scanner = _PyObjScanner()
@@ -168,18 +154,18 @@ class DeploymentNode(DAGNode):
 
         return replaced_deployment_init_args, replaced_deployment_init_kwargs
 
-    # def __getattr__(self, method_name: str):
-    #     # Raise an error if the method is invalid.
-    #     getattr(self._deployment.func_or_class, method_name)
-    #     call_node = DeploymentMethodNode(
-    #         self._deployment,
-    #         method_name,
-    #         (),
-    #         {},
-    #         {},
-    #         other_args_to_resolve=self._bound_other_args_to_resolve,
-    #     )
-    #     return call_node
+    def __getattr__(self, method_name: str):
+        # Raise an error if the method is invalid.
+        getattr(self._deployment.func_or_class, method_name)
+        call_node = DeploymentMethodNode(
+            self._deployment,
+            method_name,
+            (),
+            {},
+            {},
+            other_args_to_resolve=self._bound_other_args_to_resolve,
+        )
+        return call_node
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._deployment))

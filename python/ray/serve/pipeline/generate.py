@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 import threading
 
 from ray.experimental.dag import (
@@ -40,6 +40,11 @@ class DeploymentNameGenerator(object):
                 suffix_num = cls.__shared_state[deployment_name]
 
                 return f"{deployment_name}_{suffix_num}"
+
+    @classmethod
+    def reset(cls):
+        with cls.__lock:
+            cls.__shared_state = dict()
 
 
 def _remove_non_default_ray_actor_options(ray_actor_options: Dict[str, Any]):
