@@ -5,6 +5,7 @@ Search Algorithms (tune.suggest)
 
 Tune's Search Algorithms are wrappers around open-source optimization libraries for efficient hyperparameter selection.
 Each library has a specific way of defining the search space - please refer to their documentation for more details.
+Tune will automatically convert search spaces passed to ``tune.run`` to the library format in most cases.
 
 You can utilize these search algorithms as follows:
 
