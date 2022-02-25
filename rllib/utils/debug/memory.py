@@ -33,7 +33,7 @@ Suspect = namedtuple(
 def check_memory_leaks(
     trainer,
     to_check: Optional[Set[str]] = None,
-    repeats: int = 200,
+    repeats: Optional[int] = None,
     max_num_trials: int = 3,
 ) -> List[Suspect]:
     """Diagnoses the given trainer for possible memory leaks.
@@ -168,11 +168,15 @@ def check_memory_leaks(
     if "rollout_worker" in to_check:
         print("Looking for leaks in local RolloutWorker")
 
+        def code():
+            local_worker.sample()
+            local_worker.get_metrics()
+
         # Call `compute_actions_from_input_dict()` n times.
         test = _test_some_code_for_memory_leaks(
-            desc="Calling `sample()`.",
+            desc="Calling `sample()` and `get_metrics()`.",
             init=None,
-            code=lambda: local_worker.sample(),
+            code=code,
             # How many times to repeat the function call?
             repeats=repeats or 400,
             # How many times to re-try if we find a suspicious memory
@@ -324,10 +328,8 @@ def _find_memory_leaks_in_table(table):
             # - If weak positive slope and some confidence and
             #   increase > n bytes -> error.
             # - If stronger positive slope -> error.
-            # deltas = np.array([0.0 if i == 0 else h - hist[i - 1] for i, h in
-            #          enumerate(hist)])
             if memory_increase > 1000 and (
-                line.slope > 10.0
+                (line.slope > 10.0 and line.rvalue > 0.05)
                 or (line.slope > 6.0 and line.rvalue > 0.8)
                 or (line.slope > 4.0 and line.rvalue > 0.6)
             ):

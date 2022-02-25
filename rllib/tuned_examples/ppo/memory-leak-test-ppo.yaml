@@ -5,8 +5,9 @@ memory-leak-test-ppo:
     config:
         # Works for both torch and tf.
         framework: tf
+        rollout_fragment_length: 20
         num_workers: 4
         num_envs_per_worker: 5
         train_batch_size: 1000
         sgd_minibatch_size: 256
-        num_sgd_iter: 7
+        num_sgd_iter: 5

@@ -7,3 +7,4 @@ memory-leak-test-appo:
         framework: tf
         num_workers: 4
         num_envs_per_worker: 5
+        rollout_fragment_length: 20

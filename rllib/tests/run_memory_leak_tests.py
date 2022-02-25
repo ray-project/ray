@@ -46,6 +46,12 @@ parser.add_argument(
     action="store_true",
     help="Run ray in local mode for easier debugging.",
 )
+parser.add_argument(
+    "--to-check",
+    nargs="+",
+    default=["env", "policy"],
+    help="List of 'env', 'policy', 'rollout_worker', 'model'.",
+)
 
 
 if __name__ == "__main__":
@@ -106,7 +112,10 @@ if __name__ == "__main__":
         try:
             ray.init(num_cpus=5, local_mode=args.local_mode)
             trainer = get_trainer_class(experiment["run"])(experiment["config"])
-            results = check_memory_leaks(trainer, to_check={"rollout_worker", "policy"})
+            results = check_memory_leaks(
+                trainer,
+                to_check=set(args.to_check) or {"rollout_worker", "policy"},
+            )
             if results is None:
                 leaking = False
         finally:
