@@ -1,11 +1,13 @@
 from typing import Any, Dict, Optional, List, Tuple, Union
 
 from ray.experimental.dag import DAGNode, InputNode
+from ray.experimental.dag.py_obj_scanner import _PyObjScanner
 from ray.serve.api import Deployment
 from ray.serve.handle import RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
+from ray.serve.api import Deployment, DeploymentConfig
 
 
 class DeploymentNode(DAGNode):
@@ -13,22 +15,38 @@ class DeploymentNode(DAGNode):
 
     def __init__(
         self,
-        deployment,
-        cls_args: Tuple[Any],
-        cls_kwargs: Dict[str, Any],
-        cls_options: Dict[str, Any],
+        func_or_class,
+        deployment_name: str,
+        deployment_init_args: Tuple[Any],
+        deployment_init_kwargs: Dict[str, Any],
+        ray_actor_options: Dict[str, Any],
         other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
-        self._body: Deployment = deployment
+        (
+            replaced_deployment_init_args,
+            replaced_deployment_init_kwargs,
+        ) = self._replace_deployment_init_args_and_kwargs(
+            deployment_init_args, deployment_init_kwargs
+        )
+        self._deployment: Deployment = Deployment(
+            func_or_class,
+            deployment_name,
+            # TODO: (jiaodong) Support deployment config from user input
+            DeploymentConfig(),
+            init_args=replaced_deployment_init_args,
+            init_kwargs=replaced_deployment_init_kwargs,
+            ray_actor_options=ray_actor_options,
+            _internal=True,
+        )
         super().__init__(
-            cls_args,
-            cls_kwargs,
-            cls_options,
+            deployment_init_args,
+            deployment_init_kwargs,
+            ray_actor_options,
             other_args_to_resolve=other_args_to_resolve,
         )
         self._deployment_handle: Union[
             RayServeHandle, RayServeSyncHandle
-        ] = self._get_serve_deployment_handle(deployment, other_args_to_resolve)
+        ] = self._get_serve_deployment_handle(self._deployment, other_args_to_resolve)
 
         if self._contains_input_node():
             raise ValueError(
@@ -46,7 +64,8 @@ class DeploymentNode(DAGNode):
         new_other_args_to_resolve: Dict[str, Any],
     ):
         return DeploymentNode(
-            self._body,
+            self._deployment.func_or_class,
+            self._deployment.name,
             new_args,
             new_kwargs,
             new_options,
@@ -102,18 +121,65 @@ class DeploymentNode(DAGNode):
                 return True
         return False
 
-    def __getattr__(self, method_name: str):
-        # Raise an error if the method is invalid.
-        getattr(self._body.func_or_class, method_name)
-        call_node = DeploymentMethodNode(
-            self._body,
-            method_name,
-            (),
-            {},
-            {},
-            other_args_to_resolve=self._bound_other_args_to_resolve,
-        )
-        return call_node
+    def _replace_deployment_init_args_and_kwargs(
+        self,
+        deployment_init_args: Tuple[Any],
+        deployment_init_kwargs: Dict[str, Any],
+    ):
+        """
+        Deployment can be passed into other DAGNodes as init args. This is supported
+        pattern in ray DAG that user can instantiate and pass class instances as
+        init args to others.
+
+        However in ray serve we send init args via .remote() that requires pickling,
+        and all DAGNode types are not picklable by design.
+
+        Thus we need convert all DeploymentNode used in init args into deployment
+        handles (executable and picklable) in ray serve DAG to make end to end
+        DAG executable.
+        """
+        # Options
+        """
+        Set pieces:
+        - DeploymentNode can separate from its encapsulated Deployment instance.
+        - We need to only let Deployment have correct init args+kwargs.
+        - DeploymentNode is backbone for traversal.
+        - Serve DAG Node needs to be executable by Ray, needed for HTTP.
+
+        1) Copy current node, replace all args + kwargs + others, feed into deployment body
+        2) Two pass, class -> deployment node first, convert deployment body in 2nd pass
+        3) Just replace all DeploymentNode with handle
+        4) Make DeploymentNode executable in a ray dag
+        """
+        replace_table = {}
+        scanner = _PyObjScanner()
+        for node in scanner.find_nodes([deployment_init_args, deployment_init_kwargs]):
+            if (
+                isinstance(node, (DeploymentNode, DeploymentMethodNode))
+                and node not in replace_table
+            ):
+                replace_table[node] = self._get_serve_deployment_handle(
+                    node._deployment, node._bound_other_args_to_resolve
+                )
+        (
+            replaced_deployment_init_args,
+            replaced_deployment_init_kwargs,
+        ) = scanner.replace_nodes(replace_table)
+
+        return replaced_deployment_init_args, replaced_deployment_init_kwargs
+
+    # def __getattr__(self, method_name: str):
+    #     # Raise an error if the method is invalid.
+    #     getattr(self._deployment.func_or_class, method_name)
+    #     call_node = DeploymentMethodNode(
+    #         self._deployment,
+    #         method_name,
+    #         (),
+    #         {},
+    #         {},
+    #         other_args_to_resolve=self._bound_other_args_to_resolve,
+    #     )
+    #     return call_node
 
     def __str__(self) -> str:
-        return get_dag_node_str(self, str(self._body))
+        return get_dag_node_str(self, str(self._deployment))

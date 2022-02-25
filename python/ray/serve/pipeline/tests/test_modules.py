@@ -9,6 +9,7 @@ from typing import TypeVar
 RayHandleLike = TypeVar("RayHandleLike")
 NESTED_HANDLE_KEY = "nested_handle"
 
+
 @ray.remote
 class ClassHello:
     def __init__(self):
@@ -44,7 +45,6 @@ class Combine:
     ):
         self.m1 = m1
         self.m2 = m2.get(NESTED_HANDLE_KEY) if m2_nested else m2
-
 
     def __call__(self, req):
         r1_ref = self.m1.forward.remote(req)

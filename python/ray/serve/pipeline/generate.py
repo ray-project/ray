@@ -8,7 +8,7 @@ from ray.experimental.dag import (
     PARENT_CLASS_NODE_KEY,
 )
 
-from ray.serve.api import Deployment, DeploymentConfig
+from ray.serve.api import Deployment
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
 
@@ -61,56 +61,6 @@ def _remove_non_default_ray_actor_options(ray_actor_options: Dict[str, Any]):
     return ray_actor_options
 
 
-def _replace_init_args_with_deployment_handle(
-    args: List[Any], kwargs: Dict[str, Any]
-) -> Tuple[Tuple[Any], Dict[str, Any]]:
-    """
-    Deployment can be passed into other DAGNodes as init args. This is supported
-    pattern in ray DAG that user can instantiate and pass class instances as
-    init args to others.
-
-    However in ray serve we send init args via .remote() that requires pickling,
-    and all DAGNode types are not picklable by design.
-
-    Thus we need convert all DeploymentNode used in init args into deployment
-    handles (executable and picklable) in ray serve DAG to make end to end
-    DAG executable.
-    """
-    # Options
-    """
-    Set pieces:
-      - DeploymentNode can separate from its encapsulated Deployment instance.
-      - We need to only let Deployment have correct init args+kwargs.
-      - DeploymentNode is backbone for traversal.
-      - Serve DAG Node needs to be executable by Ray, needed for HTTP.
-
-    1) Copy current node, replace all args + kwargs + others, feed into deployment body
-    2) Two pass, class -> deployment node first, convert deployment body in 2nd pass
-    3) Just replace all DeploymentNode with handle
-    4) Make DeploymentNode executable in a ray dag
-    """
-    # children_dag_nodes = self._get_all_child_nodes()
-    #     for child in children_dag_nodes:
-    #         if isinstance(child, InputNode):
-    #             return True
-
-    init_args = []
-    init_kwargs = {}
-
-    # TODO: (jiaodong) Need to handle deeply nested deployment in args
-    for arg in args:
-        if isinstance(arg, DeploymentNode):
-            init_args.append(arg._deployment_handle)
-        else:
-            init_args.append(arg)
-    for key, value in kwargs.items():
-        if isinstance(value, DeploymentNode):
-            init_kwargs[key] = value._deployment_handle
-        else:
-            init_kwargs[key] = value
-    return tuple(init_args), init_kwargs
-
-
 def transform_ray_dag_to_serve_dag(dag_node):
     """
     Transform a Ray DAG to a Serve DAG. Map ClassNode to DeploymentNode with
@@ -121,45 +71,31 @@ def transform_ray_dag_to_serve_dag(dag_node):
         ray_actor_options = _remove_non_default_ray_actor_options(
             dag_node.get_options()
         )
-        init_args, init_kwargs = _replace_init_args_with_deployment_handle(
-            dag_node.get_args(), dag_node.get_kwargs()
-        )
-        # Deployment class cannot bind with DeploymentNode
-        new_deployment = Deployment(
+        return DeploymentNode(
             dag_node._body,
             deployment_name,
-            DeploymentConfig(),
-            init_args=init_args,
-            init_kwargs=init_kwargs,
-            ray_actor_options=ray_actor_options,
-            _internal=True,
-        )
-        deployment_node = DeploymentNode(
-            new_deployment,
             dag_node.get_args(),
             dag_node.get_kwargs(),
+            ray_actor_options,
             # TODO: (jiaodong) Support .options(metadata=xxx) for deployment
-            {},  # Deployment options are not ray actor options.
             other_args_to_resolve=dag_node.get_other_args_to_resolve(),
         )
-        return deployment_node
 
     elif isinstance(dag_node, ClassMethodNode):
         other_args_to_resolve = dag_node.get_other_args_to_resolve()
         # TODO: (jiaodong) Need to capture DAGNodes in the parent node
         parent_deployment_node = other_args_to_resolve[PARENT_CLASS_NODE_KEY]
 
-        deployment_method_node = DeploymentMethodNode(
-            parent_deployment_node._body,
+        return DeploymentMethodNode(
+            parent_deployment_node._deployment,
             dag_node._method_name,
             dag_node.get_args(),
             dag_node.get_kwargs(),
             dag_node.get_options(),
             other_args_to_resolve=dag_node.get_other_args_to_resolve(),
         )
-        return deployment_method_node
     else:
-        # TODO: (jiaodong) Support FunctionNode
+        # TODO: (jiaodong) Support FunctionNode or leave it as ray task
         return dag_node
 
 
@@ -180,9 +116,10 @@ def extract_deployments_from_serve_dag(
 
     def extractor(dag_node):
         if isinstance(dag_node, DeploymentNode):
-            deployment = dag_node._body
+            deployment = dag_node._deployment
             # In case same deployment is used in multiple DAGNodes
             deployments[deployment.name] = deployment
+        return dag_node
 
     serve_dag_root._apply_recursive(extractor)
 
