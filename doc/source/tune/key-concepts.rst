@@ -28,7 +28,7 @@ Trainables
 In short, a :ref:`Trainable<trainable-docs>` is an object that you can pass into a Tune run.
 Ray Tune has two ways of defining a ``Trainable``, namely the :ref:`Function API <tune-function-api>`
 and the :ref:`Class API<tune-class-api>`.
-Both are valid ways of defining a ``Trainable``, but the ``Function API`` is generally recommended and is used
+Both are valid ways of defining a ``Trainable``, but the *Function API* is generally recommended and is used
 throughout the rest of this guide.
 
 Let's say we want to optimize a simple objective function like ``a (x ** 2) + b`` in which ``a`` and ``b`` are the
