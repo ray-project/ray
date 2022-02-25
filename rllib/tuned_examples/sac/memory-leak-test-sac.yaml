@@ -1,6 +1,4 @@
 memory-leak-test-sac:
-    stop:
-        timesteps_total: 10000
     env:
         ray.rllib.examples.env.random_env.RandomLargeObsSpaceEnvContActions
     run: SAC

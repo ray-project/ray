@@ -30,8 +30,9 @@ from ray.rllib import _register_all
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["jax", "tf2", "tf", "tfe", "torch"],
-    default="tf",
+    required=False,
+    choices=["jax", "tf2", "tf", "tfe", "torch", None],
+    default=None,
     help="The deep learning framework to use.",
 )
 parser.add_argument(
@@ -83,7 +84,8 @@ if __name__ == "__main__":
         experiment = list(experiments.values())[0]
 
         # Add framework option to exp configs.
-        experiment["config"]["framework"] = args.framework
+        if args.framework:
+            experiment["config"]["framework"] = args.framework
         # Create env on local_worker for memory leak testing just the env.
         experiment["config"]["create_env_on_driver"] = True
         # Always run with eager-tracing when framework=tf2 if not in local-mode.
@@ -104,9 +106,7 @@ if __name__ == "__main__":
         try:
             ray.init(num_cpus=5, local_mode=args.local_mode)
             trainer = get_trainer_class(experiment["run"])(experiment["config"])
-            results = check_memory_leaks(
-                trainer, to_check={"rollout_worker", "policy"}
-            )
+            results = check_memory_leaks(trainer, to_check={"rollout_worker", "policy"})
             if results is None:
                 leaking = False
         finally:

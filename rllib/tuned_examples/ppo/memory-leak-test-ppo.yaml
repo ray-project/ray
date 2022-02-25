@@ -1,6 +1,4 @@
 memory-leak-test-ppo:
-    stop:
-        timesteps_total: 70000
     env:
         ray.rllib.examples.env.random_env.RandomLargeObsSpaceEnv
     run: PPO

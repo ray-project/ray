@@ -294,34 +294,6 @@ class DefaultCallbacks:
             )
 
 
-def display_top(snapshot, key_type="lineno", limit=10):
-    snapshot = snapshot.filter_traces(
-        (
-            tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
-            tracemalloc.Filter(False, "<unknown>"),
-        )
-    )
-    top_stats = snapshot.statistics(key_type)
-
-    print("Top %s lines" % limit)
-    for index, stat in enumerate(top_stats[:limit], 1):
-        frame = stat.traceback[0]
-        print(
-            "#%s: %s:%s: %.1f KiB"
-            % (index, frame.filename, frame.lineno, stat.size / 1024)
-        )
-        line = linecache.getline(frame.filename, frame.lineno).strip()
-        if line:
-            print("    %s" % line)
-
-    other = top_stats[limit:]
-    if other:
-        size = sum(stat.size for stat in other)
-        print("%s other: %.1f KiB" % (len(other), size / 1024))
-    total = sum(stat.size for stat in top_stats)
-    print("Total allocated size: %.1f KiB" % (total / 1024))
-
-
 class MemoryTrackingCallbacks(DefaultCallbacks):
     """MemoryTrackingCallbacks can be used to trace and track memory usage
     in rollout workers.
@@ -346,23 +318,8 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
     def __init__(self):
         super().__init__()
 
-        # Will track the top 10 lines where memory is allocated.
+        # Will track the top 10 lines where memory is allocated
         tracemalloc.start(10)
-
-    def on_sample_end(self, *, worker, samples, **kwargs):
-        snapshot = tracemalloc.take_snapshot()
-        top_stats = snapshot.statistics("lineno")
-
-        display_top(snapshot)
-
-        for stat in top_stats[:10]:
-            count = stat.count
-            size = stat.size
-
-            trace = str(stat.traceback)
-
-            # episode.custom_metrics[f"tracemalloc/{trace}/size"] = size
-            # episode.custom_metrics[f"tracemalloc/{trace}/count"] = count
 
     def on_episode_end(
         self,
@@ -388,10 +345,10 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
 
         process = psutil.Process(os.getpid())
         worker_rss = process.memory_info().rss
-        # worker_data = process.memory_info().data
+        worker_data = process.memory_info().data
         worker_vms = process.memory_info().vms
         episode.custom_metrics["tracemalloc/worker/rss"] = worker_rss
-        # episode.custom_metrics["tracemalloc/worker/data"] = worker_data
+        episode.custom_metrics["tracemalloc/worker/data"] = worker_data
         episode.custom_metrics["tracemalloc/worker/vms"] = worker_vms
 
 

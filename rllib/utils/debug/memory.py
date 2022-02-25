@@ -1,5 +1,4 @@
 from collections import defaultdict, namedtuple
-import gc
 import numpy as np
 import re
 import scipy
@@ -116,7 +115,7 @@ def check_memory_leaks(
 
         # Call `compute_actions_from_input_dict()` n times.
         test = _test_some_code_for_memory_leaks(
-            desc=f"Calling `compute_actions_from_input_dict()`.",
+            desc="Calling `compute_actions_from_input_dict()`.",
             init=None,
             code=code,
             # How many times to repeat the function call?
@@ -132,7 +131,7 @@ def check_memory_leaks(
         dummy_batch = policy._get_dummy_batch_from_view_requirements(batch_size=16)
 
         test = _test_some_code_for_memory_leaks(
-            desc=f"Calling `learn_on_batch()`.",
+            desc="Calling `learn_on_batch()`.",
             init=None,
             code=lambda: policy.learn_on_batch(dummy_batch),
             # How many times to repeat the function call?
@@ -153,7 +152,7 @@ def check_memory_leaks(
 
         # Call `compute_actions_from_input_dict()` n times.
         test = _test_some_code_for_memory_leaks(
-            desc=f"Calling `[model]()`.",
+            desc="Calling `[model]()`.",
             init=None,
             code=lambda: policy.model({SampleBatch.OBS: obs}),
             # How many times to repeat the function call?
@@ -171,7 +170,7 @@ def check_memory_leaks(
 
         # Call `compute_actions_from_input_dict()` n times.
         test = _test_some_code_for_memory_leaks(
-            desc=f"Calling `sample()`.",
+            desc="Calling `sample()`.",
             init=None,
             code=lambda: local_worker.sample(),
             # How many times to repeat the function call?
@@ -263,7 +262,8 @@ def _test_some_code_for_memory_leaks(
                 if i > 10:
                     break
                 print(
-                    f"{i}) line={s.traceback[-1]} mem-increase={s.memory_increase}B slope={s.slope}B/detection rval={s.rvalue}"
+                    f"{i}) line={s.traceback[-1]} mem-increase={s.memory_increase}B "
+                    f"slope={s.slope}B/detection rval={s.rvalue}"
                 )
         # Nothing suspicious found -> Exit trial loop and return.
         else:

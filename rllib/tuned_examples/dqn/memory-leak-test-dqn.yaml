@@ -1,11 +1,8 @@
 memory-leak-test-dqn:
-    stop:
-        timesteps_total: 100000
     env:
         ray.rllib.examples.env.random_env.RandomLargeObsSpaceEnv
     run: DQN
     config:
         # Works for both torch and tf.
         framework: tf
-        num_workers: 4
-        num_envs_per_worker: 5
+        buffer_size: 500  # use small buffer to catch memory leaks
