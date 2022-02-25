@@ -566,38 +566,6 @@ async def test_check_output_cmd():
     assert "cmd[5]" in str(e.value)
 
 
-@pytest.mark.parametrize(
-    "call_ray_start",
-    ["ray start --head --ray-client-server-port 25553"],
-    indirect=True,
-)
-@pytest.mark.parametrize("use_client", [False, True])
-def test_get_current_runtime_env(call_ray_start, use_client):
-    job_runtime_env = {"env_vars": {"a": "b"}}
-
-    if not use_client:
-        address = call_ray_start
-        ray.init(address, runtime_env=job_runtime_env)
-    else:
-        ray.init("ray://localhost:25553", runtime_env=job_runtime_env)
-
-    current_runtime_env = ray.runtime_env.get_current_runtime_env()
-    assert type(current_runtime_env) is dict
-    assert current_runtime_env == job_runtime_env
-
-    @ray.remote
-    def get_runtime_env():
-        return ray.runtime_env.get_current_runtime_env()
-
-    assert ray.get(get_runtime_env.remote()) == job_runtime_env
-
-    task_runtime_env = {"env_vars": {"a": "c"}}
-    assert (
-        ray.get(get_runtime_env.options(runtime_env=task_runtime_env).remote())
-        == task_runtime_env
-    )
-
-
 def test_to_make_ensure_runtime_env_api(start_cluster):
     # make sure RuntimeEnv can be used in an be used interchangeably with
     # an unstructured dictionary in the relevant API calls.

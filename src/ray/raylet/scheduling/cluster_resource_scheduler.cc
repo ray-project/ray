@@ -281,4 +281,24 @@ bool ClusterResourceScheduler::IsSchedulableOnNode(
                        cluster_resource_manager_->GetNodeResources(node_name));
 }
 
+std::string ClusterResourceScheduler::GetBestSchedulableNode(
+    const TaskSpecification &task_spec, bool prioritize_local_node,
+    bool exclude_local_node, bool requires_object_store_memory, bool *is_infeasible) {
+  // If the local node is available, we should directly return it instead of
+  // going through the full hybrid policy since we don't want spillback.
+  if (prioritize_local_node && !exclude_local_node &&
+      IsSchedulableOnNode(string_to_int_map_.Get(local_node_id_),
+                          task_spec.GetRequiredResources().GetResourceMap())) {
+    *is_infeasible = false;
+    return string_to_int_map_.Get(local_node_id_);
+  }
+
+  // This argument is used to set violation, which is an unsupported feature now.
+  int64_t _unused;
+  return GetBestSchedulableNode(
+      task_spec.GetRequiredPlacementResources().GetResourceMap(),
+      task_spec.GetMessage().scheduling_strategy(), requires_object_store_memory,
+      task_spec.IsActorCreationTask(), exclude_local_node, &_unused, is_infeasible);
+}
+
 }  // namespace ray
