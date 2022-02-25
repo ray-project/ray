@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import os
 import sys
 import time
@@ -25,6 +26,7 @@ from ray.serve.deployment_state import (
     ReplicaStateContainer,
     VersionedReplica,
     CHECKPOINT_KEY,
+    rank_replicas_for_stopping,
 )
 from ray.serve.storage.kv_store import RayLocalKVStore
 from ray.serve.utils import get_random_letters
@@ -2055,6 +2057,30 @@ def test_resume_deployment_state_from_replica_tags(mock_deployment_state_manager
     )
     # Ensure same replica name is used
     assert deployment_state._replicas.get()[0].replica_tag == mocked_replica.replica_tag
+
+
+def test_stopping_replicas_ranking():
+    @dataclass
+    class MockActorWrapper:
+        _node_id: str
+
+    @dataclass
+    class MockReplica:
+        _actor: MockActorWrapper
+
+    def compare(before, after):
+        before_replicas = [MockReplica(MockActorWrapper(item)) for item in before]
+        after_replicas = [MockReplica(MockActorWrapper(item)) for item in after]
+        result_replicas = rank_replicas_for_stopping(before_replicas)
+        assert result_replicas == after_replicas
+
+    compare(
+        [None, 1, None], [None, None, 1]
+    )  # replicas not allocated should be stopped first
+    compare(
+        [3, 3, 3, 2, 2, 1], [1, 2, 2, 3, 3, 3]
+    )  # prefer to stop dangling replicas first
+    compare([2, 2, 3, 3], [2, 2, 3, 3])  # if equal, ordering should be kept
 
 
 if __name__ == "__main__":
