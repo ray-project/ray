@@ -34,7 +34,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
         # )
         serve_application_schema = serve_application_to_schema(deployments=deployments)
         return Response(
-            text=json.dumps(serve_application_schema.json()),
+            text=serve_application_schema.json(),
             content_type="application/json",
         )
 
@@ -45,7 +45,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
             get_deployment_statuses()
         )
         return Response(
-            text=json.dumps(serve_application_status_schema.json()),
+            text=serve_application_status_schema.json(),
             content_type="application/json",
         )
 

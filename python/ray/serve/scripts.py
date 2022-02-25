@@ -191,6 +191,6 @@ def info(address: str):
     full_address_path = f"{address}/api/serve/deployments/"
     response = requests.get(full_address_path)
     if response.status_code == 200:
-        print(response.json())
+        print(json.dumps(response.json(), indent=4))
     else:
         log_failed_request(response)
