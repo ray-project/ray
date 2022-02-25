@@ -133,7 +133,7 @@ def test_deploy(ray_start_stop):
                 "num_replicas": 2,
                 "response": "2",
             },
-        }
+        },
     }
 
     request_url = "http://localhost:8000/"
@@ -149,9 +149,12 @@ def test_deploy(ray_start_stop):
 
         for name, deployment in running_deployments.items():
             assert deployment.num_replicas == expected_deployments[name]["num_replicas"]
-            
+
         for name, deployment_config in expected_deployments.items():
-            assert requests.get(f"{request_url}{name}").text == deployment_config["response"]
+            assert (
+                requests.get(f"{request_url}{name}").text
+                == deployment_config["response"]
+            )
 
 
 def test_info(ray_start_stop):
@@ -175,26 +178,38 @@ def test_info(ray_start_stop):
     for deployment_info in info["deployments"]:
         if deployment_info["name"] == "shallow":
             shallow_info = deployment_info
-    
+
     assert shallow_info is not None
     assert shallow_info["import_path"] == "test_env.shallow_import.ShallowClass"
     assert shallow_info["num_replicas"] == 3
     assert shallow_info["route_prefix"] == "/shallow"
-    assert ("https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip" in shallow_info["ray_actor_options"]["runtime_env"]["py_modules"])
-    assert ("https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip" in shallow_info["ray_actor_options"]["runtime_env"]["py_modules"])
+    assert (
+        "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
+        in shallow_info["ray_actor_options"]["runtime_env"]["py_modules"]
+    )
+    assert (
+        "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+        in shallow_info["ray_actor_options"]["runtime_env"]["py_modules"]
+    )
 
     # Validate non-default information about one deployment
     one_info = None
     for deployment_info in info["deployments"]:
         if deployment_info["name"] == "one":
             one_info = deployment_info
-    
+
     assert one_info is not None
     assert one_info["import_path"] == "test_module.test.one"
     assert one_info["num_replicas"] == 2
     assert one_info["route_prefix"] == "/one"
-    assert ("https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip" in one_info["ray_actor_options"]["runtime_env"]["py_modules"])
-    assert ("https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip" in one_info["ray_actor_options"]["runtime_env"]["py_modules"])
+    assert (
+        "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
+        in one_info["ray_actor_options"]["runtime_env"]["py_modules"]
+    )
+    assert (
+        "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+        in one_info["ray_actor_options"]["runtime_env"]["py_modules"]
+    )
 
 
 if __name__ == "__main__":

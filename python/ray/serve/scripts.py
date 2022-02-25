@@ -22,9 +22,11 @@ logger = logging.getLogger(__name__)
 
 
 def log_failed_request(response: requests.models.Response):
-    error_message = ("Request failed. Got response status code "
-                     f"{response.status_code} with the following message:"
-                     f"\n{response.text}")
+    error_message = (
+        "Request failed. Got response status code "
+        f"{response.status_code} with the following message:"
+        f"\n{response.text}"
+    )
     print(error_message)
     logger.error(error_message)
 
@@ -149,24 +151,26 @@ def create_deployment(deployment: str, options_json: str):
     default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
-    help="Address of the Ray dashboard to query. For example, \"http://localhost:8265\".",
+    help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
 )
 def deploy(config_file_name: str, address: str):
     full_address_path = f"{address}/api/serve/deployments/"
 
     with open(config_file_name, "r") as config_file:
         config = yaml.safe_load(config_file)
-    
+
     # Generate a schema using the config to ensure its format is valid
     ServeInstanceSchema.parse_obj(config)
 
     response = requests.put(full_address_path, json=config)
 
     if response.status_code == 200:
-        print("Sent deployment request successfully!\n Use "
-              "`serve status` to check your deployments' statuses.\n "
-              "Use `serve info` to retrieve your running Serve "
-              "application's current configuration.")
+        print(
+            "Sent deployment request successfully!\n Use "
+            "`serve status` to check your deployments' statuses.\n "
+            "Use `serve info` to retrieve your running Serve "
+            "application's current configuration."
+        )
     else:
         log_failed_request(response)
 
@@ -181,7 +185,7 @@ def deploy(config_file_name: str, address: str):
     default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
-    help="Address of the Ray dashboard to query. For example, \"http://localhost:8265\".",
+    help='Address of the Ray dashboard to query. For example, "http://localhost:8265".',
 )
 def info(address: str):
     full_address_path = f"{address}/api/serve/deployments/"
