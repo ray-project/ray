@@ -6,6 +6,7 @@ import textwrap
 import types
 from typing import List
 
+
 class SubprocessCalledProcessError(subprocess.CalledProcessError):
     """The subprocess.CalledProcessError with stripped stdout."""
 

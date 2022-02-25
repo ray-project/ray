@@ -13,6 +13,7 @@ from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.utils import (
     get_directory_size_bytes,
     try_to_create_directory,
+    check_output_cmd,
 )
 
 default_logger = logging.getLogger(__name__)
