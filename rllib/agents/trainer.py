@@ -65,7 +65,7 @@ from ray.rllib.utils.annotations import (
     override,
     PublicAPI,
 )
-from ray.rllib.utils.debug.deterministic import update_global_seed_if_necessary
+from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import (
     Deprecated,
     deprecation_warning,

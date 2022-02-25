@@ -1,7 +1,6 @@
 import numpy as np
 import pprint
-import random
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 

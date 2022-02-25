@@ -43,8 +43,7 @@ from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import force_list, merge_dicts, check_env
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
-from ray.rllib.utils.debug.deterministic import update_global_seed_if_necessary
-from ray.rllib.utils.debug.summary import summarize, update_global_seed_if_necessary
+from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import get_filter, Filter

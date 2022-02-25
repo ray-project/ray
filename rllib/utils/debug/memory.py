@@ -55,7 +55,7 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> List[Suspect
             "in its local worker. Try setting `create_env_on_driver=True`."
 
         # Isolate the first sub-env in the vectorized setup and test it.
-        env = local_worker.async_env.get_unwrapped()[0]
+        env = local_worker.async_env.get_sub_environments()[0]
         action_space = env.action_space
 
         def code():
@@ -175,18 +175,22 @@ def _test_some_code_for_memory_leaks(
     code: Callable[[], None],
     repeats: int,
     max_num_trials: int = 1,
-):
+) -> List[Suspect]:
     """Runs given code (and init code) n times and checks for memory leaks. 
     
     Args:
-        desc: 
-        init: 
-        code: 
-        repeats: 
-        max_num_trials: 
+        desc: A descriptor of the test.
+        init: Optional code to be executed initially.
+        code: The actual code to be checked for producing memory leaks.
+        repeats: How many times to repeatedly execute `code`.
+        max_num_trials: The maximum number of trials to run. A new trial is only
+            run, if the previous one produced a memory leak. For all non-1st trials,
+            `repeats` calculates as: actual_repeats = `repeats` * (trial + 1), where
+            the first trial is 0.
 
     Returns:
-
+        A list of Suspect objects, describing possible memory leaks. If list
+        is empty, no leaks have been found.
     """
     def _i_print(i):
         if (i + 1) % 10 == 0:
@@ -299,7 +303,7 @@ def _find_memory_leaks_in_table(table):
             # - If stronger positive slope -> error.
             # deltas = np.array([0.0 if i == 0 else h - hist[i - 1] for i, h in
             #          enumerate(hist)])
-            if memory_increase > 100 and (
+            if memory_increase > 1000 and (
                 line.slope > 10.0 or
                 (line.slope > 6.0 and line.rvalue > 0.8) or
                 (line.slope > 4.0 and line.rvalue > 0.6)

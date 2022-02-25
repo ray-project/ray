@@ -69,7 +69,7 @@ class RandomEnv(gym.Env):
 
         return (
             self.observation_space.sample(),
-            float(self.reward_space.sample()),
+            self.reward_space.sample(),
             done,
             {},
         )

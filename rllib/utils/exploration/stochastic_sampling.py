@@ -84,7 +84,6 @@ class StochasticSampling(Exploration):
             )
 
     def _get_tf_exploration_action_op(self, action_dist, timestep, explore):
-        #ts = timestep if timestep is not None else self.last_timestep + 1
         ts = self.last_timestep + 1
 
         stochastic_actions = tf.cond(
@@ -114,10 +113,7 @@ class StochasticSampling(Exploration):
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
         if self.framework in ["tf2", "tfe"]:
-            #if timestep is None:
             self.last_timestep.assign_add(1)
-            #else:
-            #    self.last_timestep.assign(timestep)
             return action, logp
         else:
             assign_op = (

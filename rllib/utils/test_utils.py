@@ -99,8 +99,6 @@ def framework_iterator(
             sess.__enter__()
             tf1.set_random_seed(42)
 
-        print(f"framework={fw}")
-
         config["framework"] = fw
 
         eager_ctx = None
@@ -116,7 +114,6 @@ def framework_iterator(
         # Additionally loop through eager_tracing=True + False, if necessary.
         if fw in ["tf2", "tfe"] and with_eager_tracing:
             for tracing in [True, False]:
-                print(f"-> eager_tracing={tracing}")
                 config["eager_tracing"] = tracing
                 print(f"framework={fw} (eager-tracing={tracing})")
                 time_started = time.time()

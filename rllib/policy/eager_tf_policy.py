@@ -247,8 +247,7 @@ class OptimizerWrapper:
         self.tape = tape
 
     def compute_gradients(self, loss, var_list):
-        return list(
-            zip(self.tape.gradient(loss, var_list), var_list))
+        return list(zip(self.tape.gradient(loss, var_list), var_list))
 
 
 def build_eager_tf_policy(

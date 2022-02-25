@@ -4,6 +4,7 @@ import ray
 import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.examples.env.memory_leaking_env import MemoryLeakingEnv
+from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.examples.policy.memory_leaking_policy import MemoryLeakingPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.debug.memory import check_memory_leaks
@@ -12,7 +13,7 @@ from ray.rllib.utils.debug.memory import check_memory_leaks
 class TestMemoryLeaks(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)#TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -25,10 +26,14 @@ class TestMemoryLeaks(unittest.TestCase):
         config["create_env_on_driver"] = True
         config["env"] = MemoryLeakingEnv
         trainer = ppo.PPOTrainer(config=config)
-        self.assertRaisesRegex(
-            MemoryError, "Found a memory leak inside.+memory_leaking_env.py",
-            lambda: check_memory_leaks(trainer, to_check={"env"})
-        )
+        results = check_memory_leaks(trainer, to_check={"env"})
+        assert results is not None
+        trainer.stop()
+
+        config["env"] = RandomEnv
+        trainer = ppo.PPOTrainer(config=config)
+        results = check_memory_leaks(trainer, to_check={"env"})
+        assert results is None
         trainer.stop()
 
     def test_leaky_policy(self):
@@ -41,10 +46,8 @@ class TestMemoryLeaks(unittest.TestCase):
             "default_policy": PolicySpec(policy_class=MemoryLeakingPolicy),
         }
         trainer = dqn.DQNTrainer(config=config)
-        self.assertRaisesRegex(
-            MemoryError, "Found a memory leak inside.+memory_leaking_policy.py",
-            lambda: check_memory_leaks(trainer, to_check={"policy"})
-        )
+        results = check_memory_leaks(trainer, to_check={"policy"})
+        assert results is not None
         trainer.stop()
 
 
