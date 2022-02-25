@@ -232,7 +232,6 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
   const int64_t object_size =
       static_cast<int64_t>(data_size) - static_cast<int64_t>(metadata_size);
   std::shared_ptr<Buffer> data;
-  RAY_LOG(INFO) << "store_client_ " << store_client_;
 
   // Release pool_mutex_ during the blocking create call.
   pool_mutex_.Unlock();
