@@ -10,10 +10,10 @@ from typing import Optional, List, Dict, Tuple
 from ray._private.async_compat import asynccontextmanager, create_task, get_running_loop
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
+from ray._private.runtime_env.utils import check_output_cmd
 from ray._private.utils import (
     get_directory_size_bytes,
     try_to_create_directory,
-    check_output_cmd,
 )
 
 default_logger = logging.getLogger(__name__)
