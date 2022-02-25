@@ -138,6 +138,19 @@ class StepType(str, Enum):
     WAIT = "WAIT"
 
 
+CheckpointModeType = bool
+
+
+@unique
+class CheckpointMode(Enum):
+    """All checkpoint modes."""
+
+    # Keep the checkpoint of the workflow step.
+    SYNC = True
+    # Skip the checkpoint of the workflow step.
+    SKIP = False
+
+
 @dataclass
 class WorkflowInputs:
     # The object ref of the input arguments.
@@ -185,6 +198,8 @@ class WorkflowStepRuntimeOptions:
     max_retries: int
     # Run the workflow step inplace.
     allow_inplace: bool
+    # Checkpoint mode.
+    checkpoint: CheckpointModeType
     # ray_remote options
     ray_options: Dict[str, Any]
 
@@ -196,6 +211,7 @@ class WorkflowStepRuntimeOptions:
         catch_exceptions=None,
         max_retries=None,
         allow_inplace=False,
+        checkpoint=True,
         ray_options=None,
     ):
         if max_retries is None:
@@ -206,6 +222,8 @@ class WorkflowStepRuntimeOptions:
             catch_exceptions = False
         if max_retries is None:
             max_retries = 3
+        if not isinstance(checkpoint, bool) and checkpoint is not None:
+            raise ValueError("'checkpoint' should be None or a boolean.")
         if ray_options is None:
             ray_options = {}
         elif not isinstance(ray_options, dict):
@@ -215,6 +233,7 @@ class WorkflowStepRuntimeOptions:
             catch_exceptions=catch_exceptions,
             max_retries=max_retries,
             allow_inplace=allow_inplace,
+            checkpoint=checkpoint,
             ray_options=ray_options,
         )
 
@@ -224,6 +243,7 @@ class WorkflowStepRuntimeOptions:
             "max_retries": self.max_retries,
             "catch_exceptions": self.catch_exceptions,
             "allow_inplace": self.allow_inplace,
+            "checkpoint": self.checkpoint,
             "ray_options": self.ray_options,
         }
 
@@ -234,6 +254,7 @@ class WorkflowStepRuntimeOptions:
             max_retries=value["max_retries"],
             catch_exceptions=value["catch_exceptions"],
             allow_inplace=value["allow_inplace"],
+            checkpoint=value["checkpoint"],
             ray_options=value["ray_options"],
         )
 

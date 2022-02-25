@@ -129,7 +129,32 @@ def build_slateq_losses(
     # 'batch_indexes']
     learning_strategy = policy.config["slateq_strategy"]
 
-    if learning_strategy == "SARSA":
+    # Myopic agent: Don't care about value of next state.
+    # Acts only based off immediate reward.
+    if learning_strategy == "MYOP":
+        next_q_values = torch.tensor(0.0, requires_grad=False)
+    # Q-learning: Default setting for SlateQ -> Use DQN-style loss function.
+    elif learning_strategy == "QL":
+        # next_doc.shape: [batch_size, num_docs, embedding_size]
+        next_doc = torch.cat([val.unsqueeze(1) for val in next_obs["doc"].values()], 1)
+        next_user = next_obs["user"]
+        dones = train_batch[SampleBatch.DONES]
+        with torch.no_grad():
+            if policy.config["double_q"]:
+                next_target_per_slate_q_values = policy.target_models[
+                    model
+                ].get_per_slate_q_values(next_user, next_doc)
+                _, next_q_values, _ = model.choose_slate(
+                    next_user, next_doc, next_target_per_slate_q_values
+                )
+            else:
+                _, next_q_values, _ = policy.target_models[model].choose_slate(
+                    next_user, next_doc
+                )
+        next_q_values = next_q_values.detach()
+        next_q_values[dones.bool()] = 0.0
+    # SARS'A': Use on-policy sarsa loss.
+    elif learning_strategy == "SARSA":
         # next_doc.shape: [batch_size, num_docs, embedding_size]
         next_doc = torch.cat([val.unsqueeze(1) for val in next_obs["doc"].values()], 1)
         next_actions = train_batch["next_actions"]
@@ -156,27 +181,6 @@ def build_slateq_losses(
                 scores, dim=1
             )
             next_q_values[dones.bool()] = 0.0
-    elif learning_strategy == "MYOP":
-        next_q_values = 0.0
-    elif learning_strategy == "QL":
-        # next_doc.shape: [batch_size, num_docs, embedding_size]
-        next_doc = torch.cat([val.unsqueeze(1) for val in next_obs["doc"].values()], 1)
-        next_user = next_obs["user"]
-        dones = train_batch[SampleBatch.DONES]
-        with torch.no_grad():
-            if policy.config["double_q"]:
-                next_target_per_slate_q_values = policy.target_models[
-                    model
-                ].get_per_slate_q_values(next_user, next_doc)
-                _, next_q_values, _ = model.choose_slate(
-                    next_user, next_doc, next_target_per_slate_q_values
-                )
-            else:
-                _, next_q_values, _ = policy.target_models[model].choose_slate(
-                    next_user, next_doc
-                )
-        next_q_values = next_q_values.detach()
-        next_q_values[dones.bool()] = 0.0
     else:
         raise ValueError(learning_strategy)
     # target_q_values.shape: [batch_size]
@@ -198,14 +202,17 @@ def build_slateq_losses(
 
     # Store values for stats function in model (tower), such that for
     # multi-GPU, we do not override them during the parallel loss phase.
-    model.tower_stats["choice_loss"] = choice_loss
     model.tower_stats["q_loss"] = q_value_loss
     model.tower_stats["q_values"] = q_values
     model.tower_stats["next_q_values"] = next_q_values
     model.tower_stats["next_q_minus_q"] = next_q_values - q_values
     model.tower_stats["td_error"] = td_error
     model.tower_stats["target_q_values"] = target_q_values
+    model.tower_stats["scores"] = scores
     model.tower_stats["raw_scores"] = raw_scores
+    model.tower_stats["choice_loss"] = choice_loss
+    model.tower_stats["choice_beta"] = model.choice_model.beta
+    model.tower_stats["choice_score_no_click"] = model.choice_model.score_no_click
 
     logger.debug(f"loss calculation took {time.time()-start}s")
     return choice_loss, q_value_loss
@@ -214,8 +221,6 @@ def build_slateq_losses(
 def build_slateq_stats(policy: Policy, batch) -> Dict[str, TensorType]:
     stats = {
         "q_loss": torch.mean(torch.stack(policy.get_tower_stats("q_loss"))),
-        "choice_loss": torch.mean(torch.stack(policy.get_tower_stats("choice_loss"))),
-        "raw_scores": torch.mean(torch.stack(policy.get_tower_stats("raw_scores"))),
         "q_values": torch.mean(torch.stack(policy.get_tower_stats("q_values"))),
         "next_q_values": torch.mean(
             torch.stack(policy.get_tower_stats("next_q_values"))
@@ -227,6 +232,12 @@ def build_slateq_stats(policy: Policy, batch) -> Dict[str, TensorType]:
             torch.stack(policy.get_tower_stats("target_q_values"))
         ),
         "td_error": torch.mean(torch.stack(policy.get_tower_stats("td_error"))),
+        "choice_loss": torch.mean(torch.stack(policy.get_tower_stats("choice_loss"))),
+        "raw_scores": torch.mean(torch.stack(policy.get_tower_stats("raw_scores"))),
+        "choice_beta": torch.mean(torch.stack(policy.get_tower_stats("choice_beta"))),
+        "choice_score_no_click": torch.mean(
+            torch.stack(policy.get_tower_stats("choice_score_no_click"))
+        ),
     }
     model_stats = {
         k: torch.mean(var)
