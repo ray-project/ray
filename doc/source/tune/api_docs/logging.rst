@@ -56,7 +56,7 @@ You can see the :doc:`tutorial here </tune/examples/tune-mlflow>`.
 WandbLogger
 -----------
 
-Tune also provides a default logger for `Weights & Biases <https://www.wandb.ai/>`_.
+Tune also provides a logger for `Weights & Biases <https://www.wandb.ai/>`_.
 You can install Wandb via ``pip install wandb``.
 You can see the :doc:`tutorial here </tune/examples/tune-wandb>`
 
