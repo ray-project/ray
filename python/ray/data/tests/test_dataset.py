@@ -81,6 +81,16 @@ def test_basic_actors(shutdown_only, pipelined):
         range(1, n + 1)
     )
 
+    # Should still work even if num actors > num cpus.
+    ds = ray.data.range(n)
+    ds = maybe_pipeline(ds, pipelined)
+    assert sorted(
+        ds.map(lambda x: x + 1, compute=ray.data.ActorPoolStrategy(4, 4)).take()
+    ) == list(range(1, n + 1))
+
+    with pytest.raises(ValueError):
+        ray.data.range(10).map(lambda x: x, compute=ray.data.ActorPoolStrategy(8, 4))
+
 
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_avoid_placement_group_capture(shutdown_only, pipelined):
