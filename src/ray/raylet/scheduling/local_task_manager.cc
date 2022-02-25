@@ -315,10 +315,11 @@ void LocalTaskManager::SpillWaitingTasks() {
     // TODO(swang): The policy currently does not account for the amount of
     // object store memory availability. Ideally, we should pick the node with
     // the most memory availability.
-    std::string node_id_string =
-        GetBestSchedulableNode(*(*it),
-                               /*spill_waiting_task=*/true,
-                               /*force_spillback=*/force_spillback, &is_infeasible);
+    std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
+        (*it)->task.GetTaskSpecification(),
+        /*prioritize_local_node*/ true,
+        /*exclude_local_node*/ force_spillback,
+        /*requires_object_store_memory*/ true, &is_infeasible);
     if (!node_id_string.empty() && node_id_string != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(node_id_string);
       Spillback(node_id, *it);
@@ -346,10 +347,10 @@ void LocalTaskManager::SpillWaitingTasks() {
 
 bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
                                     bool &is_infeasible) {
-  std::string node_id_string =
-      GetBestSchedulableNode(*work,
-                             /*spill_waiting_task=*/false,
-                             /*force_spillback=*/false, &is_infeasible);
+  std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
+      work->task.GetTaskSpecification(), work->PrioritizeLocalNode(),
+      /*exclude_local_node*/ false,
+      /*requires_object_store_memory*/ false, &is_infeasible);
 
   if (is_infeasible || node_id_string == self_node_id_.Binary() ||
       node_id_string.empty()) {
@@ -981,12 +982,6 @@ bool LocalTaskManager::ReturnCpuResourcesToBlockedWorker(
   return false;
 }
 
-bool LocalTaskManager::IsLocallySchedulable(const RayTask &task) const {
-  const auto &spec = task.GetTaskSpecification();
-  return cluster_resource_scheduler_->IsSchedulableOnNode(
-      self_node_id_.Binary(), spec.GetRequiredResources().GetResourceMap());
-}
-
 ResourceSet LocalTaskManager::CalcNormalTaskResources() const {
   absl::flat_hash_map<std::string, FixedPoint> total_normal_task_resources;
   const auto &string_id_map = cluster_resource_scheduler_->GetStringIdMap();
@@ -1033,29 +1028,6 @@ uint64_t LocalTaskManager::MaxRunningTasksPerSchedulingClass(
     return std::numeric_limits<uint64_t>::max();
   }
   return static_cast<uint64_t>(std::round(total_cpus / cpu_req));
-}
-
-std::string LocalTaskManager::GetBestSchedulableNode(const internal::Work &work,
-                                                     bool spill_waiting_task,
-                                                     bool force_spillback,
-                                                     bool *is_infeasible) {
-  // If the local node is available, we should directly return it instead of
-  // going through the full hybrid policy since we don't want spillback.
-  if ((work.grant_or_reject || work.is_selected_based_on_locality ||
-       spill_waiting_task) &&
-      !force_spillback && IsLocallySchedulable(work.task)) {
-    *is_infeasible = false;
-    return self_node_id_.Binary();
-  }
-
-  // This argument is used to set violation, which is an unsupported feature now.
-  int64_t _unused;
-  return cluster_resource_scheduler_->GetBestSchedulableNode(
-      work.task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap(),
-      work.task.GetTaskSpecification().GetMessage().scheduling_strategy(),
-      /*requires_object_store_memory=*/spill_waiting_task,
-      work.task.GetTaskSpecification().IsActorCreationTask(), force_spillback, &_unused,
-      is_infeasible);
 }
 
 }  // namespace raylet
