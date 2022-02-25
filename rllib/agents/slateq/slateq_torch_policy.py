@@ -423,7 +423,7 @@ SlateQTorchPolicy = build_policy_class(
     # Define how to act.
     action_distribution_fn=action_distribution_fn,
     # Post processing sampled trajectory data.
-    postprocess_fn=postprocess_fn_add_next_actions_for_sarsa,
+    # postprocess_fn=postprocess_fn_add_next_actions_for_sarsa,
     extra_grad_process_fn=apply_grad_clipping,
     mixins=[TargetNetworkMixin],
 )
