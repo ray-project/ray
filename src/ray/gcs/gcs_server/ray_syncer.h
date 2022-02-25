@@ -156,8 +156,8 @@ class RaySyncer {
   // Right now there are two type of messages: rpc::NodeResourceChange and
   // rpc::ResourcesData. Ideally we should unify these two, but as the first
   // step, we keep them separate as before.
-  // rpc::NodeResourceChange is about placement group, it'll be put to resources_buffer_proto_
-  // so that it'll be sent in next sending cycle.
+  // rpc::NodeResourceChange is about placement group, it'll be put to
+  // resources_buffer_proto_ so that it'll be sent in next sending cycle.
   // rpc::ResourcesData is stored in resources_buffer_ and when we do broadcasting,
   // it'll be copied to resources_buffer_proto_ and sent to other nodes.
   // resources_buffer_proto_ will be cleared after each broadcasting.
