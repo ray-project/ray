@@ -3,6 +3,7 @@ package io.ray.runtime.task;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import io.ray.api.BaseActorHandle;
+import io.ray.api.PlacementGroups;
 import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
@@ -44,14 +45,19 @@ public class NativeTaskSubmitter implements TaskSubmitter {
     if (options != null) {
       if (options.group != null) {
         PlacementGroupImpl group = (PlacementGroupImpl) options.group;
+        // bundleIndex == -1 indicates using any available bundle.
         Preconditions.checkArgument(
-            options.bundleIndex >= 0 && options.bundleIndex < group.getBundles().size(),
-            String.format("Bundle index %s is invalid", options.bundleIndex));
+            options.bundleIndex == -1
+                || options.bundleIndex >= 0 && options.bundleIndex < group.getBundles().size(),
+            String.format(
+                "Bundle index %s is invalid, the correct bundle index should be "
+                    + "either in the range of 0 to the number of bundles "
+                    + "or -1 which means put the task to any available bundles.",
+                options.bundleIndex));
       }
 
       if (StringUtils.isNotBlank(options.name)) {
-        Optional<BaseActorHandle> actor =
-            options.global ? Ray.getGlobalActor(options.name) : Ray.getActor(options.name);
+        Optional<BaseActorHandle> actor = Ray.getActor(options.name);
         Preconditions.checkArgument(
             !actor.isPresent(), String.format("Actor of name %s exists", options.name));
       }
@@ -91,11 +97,7 @@ public class NativeTaskSubmitter implements TaskSubmitter {
   @Override
   public PlacementGroup createPlacementGroup(PlacementGroupCreationOptions creationOptions) {
     if (StringUtils.isNotBlank(creationOptions.name)) {
-      PlacementGroup placementGroup =
-          creationOptions.global
-              ? Ray.getGlobalPlacementGroup(creationOptions.name)
-              : Ray.getPlacementGroup(creationOptions.name);
-
+      PlacementGroup placementGroup = PlacementGroups.getPlacementGroup(creationOptions.name);
       Preconditions.checkArgument(
           placementGroup == null,
           String.format("Placement group with name %s exists!", creationOptions.name));

@@ -1,5 +1,7 @@
 :orphan:
 
+.. include:: we_are_hiring.rst
+
 .. _k8s-gpus:
 
 GPU Usage with Kubernetes
@@ -78,7 +80,7 @@ If you run into problems setting up GPUs for your Ray cluster on Kubernetes, ple
 Questions or Issues?
 --------------------
 
-.. include:: /_help.rst
+.. include:: /_includes/_help.rst
 
 .. _`GKE`: https://cloud.google.com/kubernetes-engine/docs/how-to/gpus
 .. _`EKS`: https://docs.aws.amazon.com/eks/latest/userguide/eks-optimized-ami.html

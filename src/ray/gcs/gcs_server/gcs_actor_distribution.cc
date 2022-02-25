@@ -38,9 +38,8 @@ GcsBasedActorScheduler::GcsBasedActorScheduler(
     const GcsNodeManager &gcs_node_manager,
     std::shared_ptr<GcsResourceManager> gcs_resource_manager,
     std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,
-    std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
-    std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
-        schedule_success_handler,
+    GcsActorSchedulerFailureCallback schedule_failure_handler,
+    GcsActorSchedulerSuccessCallback schedule_success_handler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
     rpc::ClientFactoryFn client_factory)
     : GcsActorScheduler(io_context, gcs_actor_table, gcs_node_manager,
@@ -128,7 +127,7 @@ NodeID GcsBasedActorScheduler::GetHighestScoreNodeResource(
   double highest_score = std::numeric_limits<double>::lowest();
   auto highest_score_node = NodeID::Nil();
   for (const auto &pair : cluster_map) {
-    double least_resource_val = scorer.Score(required_resources, pair.second);
+    double least_resource_val = scorer.Score(required_resources, *pair.second);
     if (least_resource_val > highest_score) {
       highest_score = least_resource_val;
       highest_score_node = pair.first;
@@ -144,7 +143,7 @@ void GcsBasedActorScheduler::WarnResourceAllocationFailure(
   const SchedulingResources *scheduling_resource = nullptr;
   auto iter = gcs_resource_manager_->GetClusterResources().find(scheduling_node_id);
   if (iter != gcs_resource_manager_->GetClusterResources().end()) {
-    scheduling_resource = &iter->second;
+    scheduling_resource = iter->second.get();
   }
   std::string scheduling_resource_str =
       scheduling_resource ? scheduling_resource->DebugString() : "None";
@@ -191,7 +190,11 @@ void GcsBasedActorScheduler::HandleWorkerLeaseReply(
       if (iter->second.empty()) {
         node_to_actors_when_leasing_.erase(iter);
       }
-      if (reply.rejected()) {
+      if (reply.canceled()) {
+        // TODO(sang): Should properly update the failure message.
+        HandleRequestWorkerLeaseCanceled(actor, node_id, reply.failure_type(),
+                                         /*scheduling_failure_message*/ "");
+      } else if (reply.rejected()) {
         RAY_LOG(INFO) << "Failed to lease worker from node " << node_id << " for actor "
                       << actor->GetActorID()
                       << " as the resources are seized by normal tasks, job id = "

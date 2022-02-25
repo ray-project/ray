@@ -21,24 +21,8 @@
 namespace ray {
 namespace gcs {
 
-GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
-                                         const std::string &redis_password) {
-  RAY_LOG(DEBUG) << "Redis server address = " << redis_address;
-  redis_address_ = redis_address;
-  std::vector<std::string> address;
-  boost::split(address, redis_address, boost::is_any_of(":"));
-  RAY_CHECK(address.size() == 2);
-  redis_ip_address_ = address[0];
-  GcsClientOptions options;
-  options.server_ip_ = address[0];
-  options.server_port_ = std::stoi(address[1]);
-  options.password_ = redis_password;
-  // Only synchronous connection is needed.
-  options.enable_sync_conn_ = true;
-  options.enable_async_conn_ = false;
-  options.enable_subscribe_conn_ = false;
-  gcs_client_ = std::make_unique<ServiceBasedGcsClient>(options);
-
+GlobalStateAccessor::GlobalStateAccessor(const GcsClientOptions &gcs_client_options) {
+  gcs_client_ = std::make_unique<GcsClient>(gcs_client_options);
   io_service_ = std::make_unique<instrumented_io_context>();
 
   std::promise<bool> promise;
@@ -66,6 +50,7 @@ bool GlobalStateAccessor::Connect() {
 
 void GlobalStateAccessor::Disconnect() {
   absl::WriterMutexLock lock(&mutex_);
+  RAY_LOG(DEBUG) << "Global state accessor disconnect";
   if (is_connected_) {
     io_service_->stop();
     thread_io_service_->join();
@@ -119,40 +104,6 @@ std::vector<std::string> GlobalStateAccessor::GetAllProfileInfo() {
   }
   promise.get_future().get();
   return profile_table_data;
-}
-
-std::vector<std::string> GlobalStateAccessor::GetAllObjectInfo() {
-  std::vector<std::string> object_table_data;
-  std::promise<bool> promise;
-  {
-    absl::ReaderMutexLock lock(&mutex_);
-    RAY_CHECK_OK(gcs_client_->Objects().AsyncGetAll(
-        TransformForMultiItemCallback<rpc::ObjectLocationInfo>(object_table_data,
-                                                               promise)));
-  }
-  promise.get_future().get();
-  return object_table_data;
-}
-
-std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
-    const ObjectID &object_id) {
-  std::unique_ptr<std::string> object_info;
-  std::promise<bool> promise;
-  auto on_done = [&object_info, &promise](
-                     const Status &status,
-                     const boost::optional<rpc::ObjectLocationInfo> &result) {
-    RAY_CHECK_OK(status);
-    if (result) {
-      object_info = std::make_unique<std::string>(result->SerializeAsString());
-    }
-    promise.set_value(true);
-  };
-  {
-    absl::ReaderMutexLock lock(&mutex_);
-    RAY_CHECK_OK(gcs_client_->Objects().AsyncGetLocations(object_id, on_done));
-  }
-  promise.get_future().get();
-  return object_info;
 }
 
 std::string GlobalStateAccessor::GetNodeResourceInfo(const NodeID &node_id) {
@@ -316,11 +267,12 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupByName(
   return placement_group_table_data;
 }
 
-std::unique_ptr<std::string> GlobalStateAccessor::GetInternalKV(const std::string &key) {
+std::unique_ptr<std::string> GlobalStateAccessor::GetInternalKV(const std::string &ns,
+                                                                const std::string &key) {
   absl::ReaderMutexLock lock(&mutex_);
   std::string value;
 
-  Status status = gcs_client_->InternalKV().Get(key, value);
+  Status status = gcs_client_->InternalKV().Get(ns, key, value);
   return status.ok() ? std::make_unique<std::string>(value) : nullptr;
 }
 
@@ -352,9 +304,9 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
     {
       absl::ReaderMutexLock lock(&mutex_);
       RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
-          [&promise](Status status, const std::vector<rpc::GcsNodeInfo> &nodes) {
-            promise.set_value(
-                std::pair<Status, std::vector<rpc::GcsNodeInfo>>(status, nodes));
+          [&promise](Status status, std::vector<rpc::GcsNodeInfo> &&nodes) {
+            promise.set_value(std::pair<Status, std::vector<rpc::GcsNodeInfo>>(
+                status, std::move(nodes)));
           }));
     }
     auto result = promise.get_future().get();
@@ -371,10 +323,16 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
                  });
 
     if (nodes.empty()) {
-      status = Status::NotFound("Redis has started but no raylets have registered yet.");
+      status = Status::NotFound("GCS has started but no raylets have registered yet.");
     } else {
       int relevant_client_index = -1;
       int head_node_client_index = -1;
+      std::pair<std::string, int> gcs_address;
+      {
+        absl::WriterMutexLock lock(&mutex_);
+        gcs_address = gcs_client_->GetGcsServerAddress();
+      }
+
       for (int i = 0; i < static_cast<int>(nodes.size()); i++) {
         const auto &node = nodes[i];
         std::string ip_address = node.node_manager_address();
@@ -384,8 +342,8 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
         }
         // TODO(kfstorm): Do we need to replace `node_ip_address` with
         // `get_node_ip_address()`?
-        if ((ip_address == "127.0.0.1" && redis_ip_address_ == node_ip_address) ||
-            ip_address == redis_ip_address_) {
+        if ((ip_address == "127.0.0.1" && gcs_address.first == node_ip_address) ||
+            ip_address == gcs_address.first) {
           head_node_client_index = i;
         }
       }
@@ -400,8 +358,8 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
       if (relevant_client_index < 0) {
         std::ostringstream oss;
         oss << "This node has an IP address of " << node_ip_address << ", and Ray "
-            << "expects this IP address to be either the Redis address or one of"
-            << " the Raylet addresses. Connected to Redis at " << redis_address_
+            << "expects this IP address to be either the GCS address or one of"
+            << " the Raylet addresses. Connected to GCS at " << gcs_address.first
             << " and found raylets at ";
         for (size_t i = 0; i < nodes.size(); i++) {
           if (i > 0) {
@@ -425,9 +383,9 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
       return status;
     }
     RAY_LOG(WARNING) << "Some processes that the driver needs to connect to have "
-                        "not registered with Redis, so retrying. Have you run "
+                        "not registered with GCS, so retrying. Have you run "
                         "'ray start' on this node?";
-    // Some of the information may not be in Redis yet, so wait a little bit.
+    // Some of the information may not be in GCS yet, so wait a little bit.
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
 }

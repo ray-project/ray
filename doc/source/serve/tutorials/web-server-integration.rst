@@ -30,7 +30,7 @@ Here's how to run this example:
 
 1. Run ``ray start --head`` to start a local Ray cluster in the background.
 
-2. In the directory where the example files are saved, run ``python aiohttp_deploy_serve.py`` to deploy our Ray Serve endpoint.
+2. In the directory where the example files are saved, run ``python aiohttp_deploy_serve.py`` to deploy our Ray Serve deployment.
 
 3. Run ``gunicorn aiohttp_app:app --worker-class aiohttp.GunicornWebWorker`` to start the AIOHTTP app using gunicorn.
 

@@ -1,4 +1,4 @@
-base_image: "anyscale/ray-ml:pinned-nightly-py37"
+base_image: "anyscale/ray:nightly-py37"
 env_vars: { }
 debian_packages:
   - curl
@@ -6,7 +6,7 @@ debian_packages:
 python:
   pip_packages:
     - pandas>=1.3.0  # otherwise, a version mismatch between local and remote will cause an exception
-    - "git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray"
+    - git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray
     - modin>=0.11.0 # ray.services has been removed
     - s3fs
     - fastapi

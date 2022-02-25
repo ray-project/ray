@@ -19,7 +19,7 @@
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/gcs/gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 namespace ray {
 namespace core {
 
@@ -116,9 +116,10 @@ class ActorManager {
   /// This is used for debugging purpose.
   std::vector<ObjectID> GetActorHandleIDsFromHandles();
 
-  /// Check if named actor is cached locally.
-  /// If it has been cached, core worker will not get actor id by name from GCS.
-  ActorID GetCachedNamedActorID(const std::string &actor_name);
+  /// Function that's invoked when the actor is permanatly dead.
+  ///
+  /// \param actor_id The actor id of the handle that will be invalidated.
+  void OnActorKilled(const ActorID &actor_id);
 
  private:
   bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
@@ -151,6 +152,10 @@ class ActorManager {
                       const std::string &call_site, const rpc::Address &caller_address,
                       const ActorID &actor_id, const ObjectID &actor_creation_return_id,
                       bool is_self = false);
+
+  /// Check if named actor is cached locally.
+  /// If it has been cached, core worker will not get actor id by name from GCS.
+  ActorID GetCachedNamedActorID(const std::string &actor_name);
 
   /// Handle actor state notification published from GCS.
   ///

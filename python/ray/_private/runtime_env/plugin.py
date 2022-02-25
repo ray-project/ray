@@ -1,7 +1,23 @@
 from abc import ABC, abstractstaticmethod
 
+from typing import Tuple
 from ray.util.annotations import DeveloperAPI
 from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.utils import RuntimeEnv
+
+
+# TODO(SongGuyang): This function exists in both C++ and Python.
+# We should make this logic clearly.
+def encode_plugin_uri(plugin: str, uri: str) -> str:
+    return plugin + "|" + uri
+
+
+def decode_plugin_uri(plugin_uri: str) -> Tuple[str, str]:
+    if "|" not in plugin_uri:
+        raise ValueError(
+            f"Plugin URI must be of the form 'plugin|uri', not {plugin_uri}"
+        )
+    return tuple(plugin_uri.split("|", 2))
 
 
 @DeveloperAPI
@@ -24,8 +40,7 @@ class RuntimeEnvPlugin(ABC):
         """
         raise NotImplementedError()
 
-    def create(uri: str, runtime_env_dict: dict,
-               ctx: RuntimeEnvContext) -> float:
+    def create(uri: str, runtime_env: RuntimeEnv, ctx: RuntimeEnvContext) -> float:
         """Create and install the runtime environment.
 
         Gets called in the runtime env agent at install time. The URI can be
@@ -33,7 +48,7 @@ class RuntimeEnvPlugin(ABC):
 
         Args:
             uri(str): a URI uniquely describing this resource.
-            runtime_env_dict(dict): the entire dictionary passed in by user.
+            runtime_env(RuntimeEnv): the runtime env protobuf.
             ctx(RuntimeEnvContext): auxiliary information supplied by Ray.
 
         Returns:
@@ -43,8 +58,9 @@ class RuntimeEnvPlugin(ABC):
         """
         return 0
 
-    def modify_context(uri: str, runtime_env_dict: dict,
-                       ctx: RuntimeEnvContext) -> None:
+    def modify_context(
+        uri: str, runtime_env: RuntimeEnv, ctx: RuntimeEnvContext
+    ) -> None:
         """Modify context to change worker startup behavior.
 
         For example, you can use this to preprend "cd <dir>" command to worker
@@ -52,7 +68,7 @@ class RuntimeEnvPlugin(ABC):
 
         Args:
             uri(str): a URI uniquely describing this resource.
-            runtime_env_dict(dict): the entire dictionary passed in by user.
+            runtime_env(RuntimeEnv): the runtime env protobuf.
             ctx(RuntimeEnvContext): auxiliary information supplied by Ray.
         """
         return

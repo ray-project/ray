@@ -5,6 +5,7 @@ import subprocess
 import hashlib
 import json
 from typing import Optional, List, Union, Tuple
+
 """Utilities for conda.  Adapted from https://github.com/mlflow/mlflow."""
 
 # Name of environment variable indicating a path to a conda installation. Ray
@@ -17,12 +18,10 @@ def get_conda_activate_commands(conda_env_name: str) -> List[str]:
     Get a list of commands to run to silently activate the given conda env.
     """
     #  Checking for newer conda versions
-    if os.name != "nt" and ("CONDA_EXE" in os.environ
-                            or RAY_CONDA_HOME in os.environ):
+    if os.name != "nt" and ("CONDA_EXE" in os.environ or RAY_CONDA_HOME in os.environ):
         conda_path = get_conda_bin_executable("conda")
         activate_conda_env = [
-            ". {}/../etc/profile.d/conda.sh".format(
-                os.path.dirname(conda_path))
+            ". {}/../etc/profile.d/conda.sh".format(os.path.dirname(conda_path))
         ]
         activate_conda_env += ["conda activate {} 1>&2".format(conda_env_name)]
 
@@ -58,28 +57,22 @@ def get_conda_bin_executable(executable_name: str) -> str:
 
 
 def _get_conda_env_name(conda_env_path: str) -> str:
-    conda_env_contents = open(conda_env_path).read() if conda_env_path else ""
-    return "ray-%s" % hashlib.sha1(
-        conda_env_contents.encode("utf-8")).hexdigest()
+    conda_env_contents = open(conda_env_path).read()
+    return "ray-%s" % hashlib.sha1(conda_env_contents.encode("utf-8")).hexdigest()
 
 
-def get_or_create_conda_env(conda_env_path: str,
-                            base_dir: Optional[str] = None,
-                            logger: Optional[logging.Logger] = None) -> str:
+def create_conda_env_if_needed(
+    conda_yaml_file: str, prefix: str, logger: Optional[logging.Logger] = None
+) -> None:
     """
     Given a conda YAML, creates a conda environment containing the required
-    dependencies if such a conda environment doesn't already exist. Returns the
-    name of the conda environment, which is based on a hash of the YAML.
-
+    dependencies if such a conda environment doesn't already exist.
     Args:
-        conda_env_path: Path to a conda environment YAML file.
-        base_dir (str, optional): Directory to install the environment into via
-            the --prefix option to conda create.  If not specified, will
-            install into the default conda directory (e.g. ~/anaconda3/envs)
-    Returns:
-        The name of the env, or the path to the env if base_dir is specified.
-            In either case, the return value should be valid to pass in to
-            `conda activate`.
+        conda_yaml_file (str): The path to a conda `environment.yml` file.
+        prefix (str): Directory to install the environment into via
+            the `--prefix` option to conda create.  This also becomes the name
+            of the conda env; i.e. it can be passed into `conda activate` and
+            `conda remove`
     """
     if logger is None:
         logger = logging.getLogger(__name__)
@@ -94,36 +87,51 @@ def get_or_create_conda_env(conda_env_path: str,
             "user-guide/install/index.html. "
             "You can also configure Ray to look for a specific "
             f"Conda executable by setting the {RAY_CONDA_HOME} "
-            "environment variable to the path of the Conda executable.")
+            "environment variable to the path of the Conda executable."
+        )
+
     _, stdout, _ = exec_cmd([conda_path, "env", "list", "--json"])
     envs = json.loads(stdout)["envs"]
 
-    create_cmd = None
-    env_name = _get_conda_env_name(conda_env_path)
-    if base_dir:
-        env_name = f"{base_dir}/{env_name}"
-        if env_name not in envs:
-            create_cmd = [
-                conda_path, "env", "create", "--file", conda_env_path,
-                "--prefix", env_name
-            ]
-    else:
-        env_names = [os.path.basename(env) for env in envs]
-        if env_name not in env_names:
-            create_cmd = [
-                conda_path, "env", "create", "-n", env_name, "--file",
-                conda_env_path
-            ]
+    if prefix in envs:
+        logger.info(f"Conda environment {prefix} already exists.")
+        return
 
-    if create_cmd is not None:
-        logger.info(f"Creating conda environment {env_name}")
-        exit_code, output = exec_cmd_stream_to_logger(create_cmd, logger)
-        if exit_code != 0:
-            shutil.rmtree(env_name)
-            raise RuntimeError(
-                f"Failed to install conda environment:\n{output}")
+    create_cmd = [
+        conda_path,
+        "env",
+        "create",
+        "--file",
+        conda_yaml_file,
+        "--prefix",
+        prefix,
+    ]
 
-    return env_name
+    logger.info(f"Creating conda environment {prefix}")
+    exit_code, output = exec_cmd_stream_to_logger(create_cmd, logger)
+    if exit_code != 0:
+        if os.path.exists(prefix):
+            shutil.rmtree(prefix)
+        raise RuntimeError(
+            f"Failed to install conda environment {prefix}:\nOutput:\n{output}"
+        )
+
+
+def delete_conda_env(prefix: str, logger: Optional[logging.Logger] = None) -> bool:
+    if logger is None:
+        logger = logging.getLogger(__name__)
+
+    logger.info(f"Deleting conda environment {prefix}")
+
+    conda_path = get_conda_bin_executable("conda")
+    delete_cmd = [conda_path, "remove", "-p", prefix, "--all", "-y"]
+    exit_code, output = exec_cmd_stream_to_logger(delete_cmd, logger)
+
+    if exit_code != 0:
+        logger.debug(f"Failed to delete conda environment {prefix}:\n{output}")
+        return False
+
+    return True
 
 
 def get_conda_env_list() -> list:
@@ -144,10 +152,9 @@ class ShellCommandException(Exception):
     pass
 
 
-def exec_cmd(cmd: List[str],
-             throw_on_error: bool = True,
-             logger: Optional[logging.Logger] = None
-             ) -> Union[int, Tuple[int, str, str]]:
+def exec_cmd(
+    cmd: List[str], throw_on_error: bool = True, logger: Optional[logging.Logger] = None
+) -> Union[int, Tuple[int, str, str]]:
     """
     Runs a command as a child process.
 
@@ -166,19 +173,21 @@ def exec_cmd(cmd: List[str],
         stdout=subprocess.PIPE,
         stdin=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        universal_newlines=True)
+        universal_newlines=True,
+    )
     (stdout, stderr) = child.communicate()
     exit_code = child.wait()
     if throw_on_error and exit_code != 0:
         raise ShellCommandException(
-            "Non-zero exit code: %s\n\nSTDOUT:\n%s\n\nSTDERR:%s" %
-            (exit_code, stdout, stderr))
+            "Non-zero exit code: %s\n\nSTDOUT:\n%s\n\nSTDERR:%s"
+            % (exit_code, stdout, stderr)
+        )
     return exit_code, stdout, stderr
 
 
-def exec_cmd_stream_to_logger(cmd: List[str],
-                              logger: logging.Logger,
-                              n_lines: int = 10) -> Tuple[int, str]:
+def exec_cmd_stream_to_logger(
+    cmd: List[str], logger: logging.Logger, n_lines: int = 50, **kwargs
+) -> Tuple[int, str]:
     """Runs a command as a child process, streaming output to the logger.
 
     The last n_lines lines of output are also returned (stdout and stderr).
@@ -187,14 +196,18 @@ def exec_cmd_stream_to_logger(cmd: List[str],
         cmd,
         universal_newlines=True,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT)
-    exit_code = None
+        stderr=subprocess.STDOUT,
+        **kwargs,
+    )
     last_n_lines = []
     with child.stdout:
         for line in iter(child.stdout.readline, b""):
             exit_code = child.poll()
             if exit_code is not None:
                 break
+            line = line.strip()
+            if not line:
+                continue
             last_n_lines.append(line.strip())
             last_n_lines = last_n_lines[-n_lines:]
             logger.info(line.strip())

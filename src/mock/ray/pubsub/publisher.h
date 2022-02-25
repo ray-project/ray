@@ -56,7 +56,7 @@ class MockPublisherInterface : public PublisherInterface {
  public:
   MOCK_METHOD(bool, RegisterSubscription,
               (const rpc::ChannelType channel_type, const SubscriberID &subscriber_id,
-               const std::string &key_id_binary),
+               const std::optional<std::string> &key_id_binary),
               (override));
   MOCK_METHOD(void, Publish,
               (const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message,
@@ -67,7 +67,7 @@ class MockPublisherInterface : public PublisherInterface {
               (override));
   MOCK_METHOD(bool, UnregisterSubscription,
               (const rpc::ChannelType channel_type, const SubscriberID &subscriber_id,
-               const std::string &key_id_binary),
+               const std::optional<std::string> &key_id_binary),
               (override));
 };
 
@@ -81,7 +81,7 @@ class MockPublisher : public Publisher {
  public:
   MOCK_METHOD(bool, RegisterSubscription,
               (const rpc::ChannelType channel_type, const SubscriberID &subscriber_id,
-               const std::string &key_id_binary),
+               const std::optional<std::string> &key_id_binary),
               (override));
   MOCK_METHOD(void, Publish,
               (const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message,
@@ -92,7 +92,7 @@ class MockPublisher : public Publisher {
               (override));
   MOCK_METHOD(bool, UnregisterSubscription,
               (const rpc::ChannelType channel_type, const SubscriberID &subscriber_id,
-               const std::string &key_id_binary),
+               const std::optional<std::string> &key_id_binary),
               (override));
 };
 

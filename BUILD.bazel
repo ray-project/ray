@@ -375,6 +375,7 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":plasma_client",
+        ":stats_lib",
     ],
 )
 
@@ -440,6 +441,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/random",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
@@ -448,18 +450,18 @@ cc_library(
     ],
 )
 
-# This header is used to warp some streaming code so we can reduce suspicious
+# This header is used to warp some internal code so we can reduce suspicious
 # symbols export.
 cc_library(
-    name = "exported_streaming_internal",
+    name = "exported_internal",
     srcs = glob(
         [
-            "src/ray/streaming/streaming.cc",
+            "src/ray/internal/internal.cc",
         ],
     ),
     hdrs = glob(
         [
-            "src/ray/streaming/streaming.h",
+            "src/ray/internal/internal.h",
         ],
     ),
     copts = COPTS,
@@ -593,9 +595,11 @@ cc_library(
     name = "stats_metric",
     srcs = [
         "src/ray/stats/metric.cc",
+        "src/ray/stats/metric_defs.cc",
     ],
     hdrs = [
         "src/ray/stats/metric.h",
+        "src/ray/stats/metric_defs.h",
         "src/ray/stats/tag_defs.h",
     ],
     strip_include_prefix = "src",
@@ -604,6 +608,7 @@ cc_library(
         ":ray_util",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -622,7 +627,6 @@ cc_library(
     ],
     hdrs = [
         "src/ray/stats/metric.h",
-        "src/ray/stats/metric_defs.h",
         "src/ray/stats/metric_exporter.h",
         "src/ray/stats/metric_exporter_client.h",
         "src/ray/stats/stats.h",
@@ -670,10 +674,11 @@ cc_library(
         ],
     }),
     strip_include_prefix = "src",
-    visibility = ["//streaming:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":agent_manager_rpc",
         ":gcs",
+        ":gcs_client_lib",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":object_manager",
@@ -682,7 +687,6 @@ cc_library(
         ":ray_common",
         ":ray_util",
         ":runtime_env_rpc",
-        ":service_based_gcs_client_lib",
         ":stats_lib",
         ":worker_rpc",
         "//src/ray/protobuf:common_cc_proto",
@@ -718,7 +722,7 @@ cc_library(
         ],
     }),
     strip_include_prefix = "src",
-    visibility = ["//streaming:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":agent_manager_rpc",
         ":node_manager_fbs",
@@ -755,15 +759,16 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":gcs",
+        ":gcs_client_lib",
         ":plasma_client",
         ":ray_common",
         ":ray_util",
         ":raylet_client_lib",
-        ":service_based_gcs_client_lib",
         ":stats_lib",
         ":worker_rpc",
         "//src/ray/protobuf:worker_cc_proto",
         "@boost//:fiber",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -813,9 +818,10 @@ cc_test(
     deps = [
         ":core_worker_lib",
         ":gcs",
+        "//src/ray/protobuf:runtime_env_common_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -850,6 +856,18 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_function_manager_test",
+    srcs = ["src/ray/gcs/gcs_server/test/gcs_function_manager_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
         ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
@@ -917,6 +935,29 @@ cc_test(
 )
 
 cc_test(
+    name = "concurrency_group_manager_test",
+    srcs = ["src/ray/core_worker/test/concurrency_group_manager_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "actor_submit_queue_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/actor_submit_queue_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "task_manager_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/task_manager_test.cc"],
@@ -936,6 +977,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":gcs_client_lib",
         ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1215,6 +1257,18 @@ cc_test(
 )
 
 cc_test(
+    name = "asio_defer_test",
+    size = "small",
+    srcs = ["src/ray/common/test/asio_defer_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        "ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "id_test",
     size = "small",
     srcs = ["src/ray/common/id_test.cc"],
@@ -1263,6 +1317,20 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "container_util_test",
+    size = "small",
+    srcs = ["src/ray/util/container_util_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_util",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1318,6 +1386,18 @@ cc_test(
 )
 
 cc_test(
+    name = "wait_manager_test",
+    size = "small",
+    srcs = ["src/ray/raylet/wait_manager_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "client_connection_test",
     size = "small",
     srcs = ["src/ray/common/test/client_connection_test.cc"],
@@ -1325,6 +1405,36 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "status_test",
+    size = "small",
+    srcs = [
+        "src/ray/common/test/status_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "pubsub_integration_test",
+    timeout = "short",
+    srcs = ["src/ray/pubsub/test/integration_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":pubsub_cc_grpc",
+        ":pubsub_lib",
+        "//src/ray/protobuf:pubsub_cc_proto",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1459,6 +1569,29 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "gcs_kv_manager_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_kv_manager_test.cc",
+    ],
+    args = [
+        "$(location redis-server)",
+        "$(location redis-cli)",
+    ],
+    copts = COPTS,
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "gcs_server_test_util",
     hdrs = [
@@ -1466,6 +1599,9 @@ cc_library(
     ],
     copts = COPTS,
     strip_include_prefix = "src",
+    deps = [
+        ":gcs_client_lib",
+    ],
 )
 
 cc_test(
@@ -1480,6 +1616,23 @@ cc_test(
         ":gcs_server_lib",
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_job_manager_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_job_manager_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1525,6 +1678,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        ":gcs_client_lib",
         ":gcs_server_lib",
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
@@ -1575,6 +1729,7 @@ cc_test(
         ":gcs_server_lib",
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1717,17 +1872,15 @@ cc_test(
 )
 
 cc_library(
-    name = "service_based_gcs_client_lib",
-    srcs = glob(
-        [
-            "src/ray/gcs/gcs_client/service_based_*.cc",
-        ],
-    ),
-    hdrs = glob(
-        [
-            "src/ray/gcs/gcs_client/service_based_*.h",
-        ],
-    ),
+    name = "gcs_client_lib",
+    srcs = [
+        "src/ray/gcs/gcs_client/accessor.cc",
+        "src/ray/gcs/gcs_client/gcs_client.cc",
+    ],
+    hdrs = [
+        "src/ray/gcs/gcs_client/accessor.h",
+        "src/ray/gcs/gcs_client/gcs_client.h",
+    ],
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
@@ -1755,7 +1908,22 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
-        ":service_based_gcs_client_lib",
+        ":gcs_client_lib",
+    ],
+)
+
+cc_test(
+    name = "accessor_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_client/test/accessor_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_client_lib",
+        ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1776,10 +1944,10 @@ cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        ":gcs_client_lib",
         ":gcs_server_lib",
         ":gcs_test_util_lib",
         ":global_state_accessor_lib",
-        ":service_based_gcs_client_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1787,7 +1955,7 @@ cc_test(
 cc_test(
     name = "gcs_server_test",
     srcs = [
-        "src/ray/gcs/gcs_client/test/service_based_gcs_client_test.cc",
+        "src/ray/gcs/gcs_client/test/gcs_client_test.cc",
     ],
     args = [
         "$(location redis-server)",
@@ -1800,24 +1968,8 @@ cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        ":gcs_client_lib",
         ":gcs_server_lib",
-        ":gcs_test_util_lib",
-        ":service_based_gcs_client_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "gcs_object_manager_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_object_manager_test.cc",
-    ],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1884,6 +2036,13 @@ cc_library(
         "src/ray/util/*.h",
     ]),
     copts = COPTS,
+    linkopts = select({
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "-lpthread",
+        ],
+    }),
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
@@ -1896,6 +2055,7 @@ cc_library(
         "@com_google_absl//absl/debugging:failure_signal_handler",
         "@com_google_absl//absl/debugging:stacktrace",
         "@com_google_absl//absl/debugging:symbolize",
+        "@com_google_absl//absl/random",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
@@ -2178,7 +2338,7 @@ pyx_library(
     ),
     deps = [
         "//:core_worker_lib",
-        "//:exported_streaming_internal",
+        "//:exported_internal",
         "//:global_state_accessor_lib",
         "//:ray_util",
         "//:raylet_lib",
@@ -2186,27 +2346,6 @@ pyx_library(
         "//:src/ray/ray_version_script.lds",
         "//:stats_lib",
         "//src/ray/protobuf:serialization_cc_proto",
-    ],
-)
-
-pyx_library(
-    name = "_streaming",
-    srcs = glob([
-        "python/ray/streaming/_streaming.pyx",
-        "python/ray/__init__.py",
-        "python/ray/_raylet.pxd",
-        "python/ray/includes/*.pxd",
-        "python/ray/includes/*.pxi",
-        "python/ray/streaming/__init__.pxd",
-        "python/ray/streaming/includes/*.pxd",
-        "python/ray/streaming/includes/*.pxi",
-    ]),
-    cc_kwargs = dict(
-        srcs = PYX_SRCS,
-        copts = COPTS + PYX_COPTS,
-    ),
-    deps = [
-        "//streaming:streaming_lib",
     ],
 )
 
@@ -2233,7 +2372,7 @@ cc_binary(
     visibility = ["//java:__subpackages__"],
     deps = [
         "//:core_worker_lib",
-        "//:exported_streaming_internal",
+        "//:exported_internal",
         "//:global_state_accessor_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
@@ -2298,6 +2437,7 @@ filegroup(
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
         "//src/ray/protobuf:runtime_env_agent_py_proto",
+        "//src/ray/protobuf:runtime_env_common_py_proto",
     ],
 )
 
@@ -2323,12 +2463,6 @@ copy_to_workspace(
     name = "cp_raylet_so",
     srcs = ["python/ray/_raylet.so"],
     dstdir = "python/ray",
-)
-
-copy_to_workspace(
-    name = "cp_streaming",
-    srcs = ["python/ray/streaming/_streaming.so"],
-    dstdir = "python/ray/streaming",
 )
 
 copy_to_workspace(
@@ -2369,7 +2503,6 @@ genrule(
     srcs = [
         ":cp_all_py_proto",
         ":cp_serve_py_proto",
-        "//streaming:copy_streaming_py_proto",
     ],
     outs = ["install_py_proto.out"],
     cmd = """
@@ -2389,7 +2522,6 @@ genrule(
     name = "ray_pkg",
     srcs = [
         ":cp_raylet_so",
-        ":cp_streaming",
         ":python_sources",
         ":install_py_proto",
         ":cp_redis",

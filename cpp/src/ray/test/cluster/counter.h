@@ -15,6 +15,7 @@
 #pragma once
 
 #include <ray/api.h>
+
 #include <condition_variable>
 #include <mutex>
 
@@ -36,6 +37,13 @@ class Counter {
 
   bool CheckRestartInActorCreationTask();
   bool CheckRestartInActorTask();
+
+  std::string GetVal(ray::ObjectRef<std::string> obj) { return *obj.Get(); }
+
+  int GetIntVal(ray::ObjectRef<ray::ObjectRef<int>> obj) {
+    auto val = *obj.Get();
+    return *val.Get();
+  }
 
  private:
   int count;

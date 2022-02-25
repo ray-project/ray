@@ -4,6 +4,7 @@ import queue
 import threading
 import time
 from datetime import datetime
+from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Callable
 from typing import Optional, Dict
@@ -11,9 +12,20 @@ import warnings
 
 import ray
 from ray.train.constants import (
-    DETAILED_AUTOFILLED_KEYS, TIME_THIS_ITER_S, PID, TIMESTAMP, TIME_TOTAL_S,
-    NODE_IP, TRAINING_ITERATION, HOSTNAME, DATE, RESULT_FETCH_TIMEOUT)
+    DETAILED_AUTOFILLED_KEYS,
+    TIME_THIS_ITER_S,
+    PID,
+    TIMESTAMP,
+    TIME_TOTAL_S,
+    NODE_IP,
+    TRAINING_ITERATION,
+    HOSTNAME,
+    DATE,
+    RESULT_FETCH_TIMEOUT,
+    SESSION_MISUSE_LOG_ONCE_KEY,
+)
 from ray.train.utils import PropagatingThread, RayDataset
+from ray.util import PublicAPI, log_once
 
 
 class TrainingResultType(Enum):
@@ -21,31 +33,44 @@ class TrainingResultType(Enum):
     CHECKPOINT = auto()
 
 
-class TrainingResult():
-    def __init__(self, type: TrainingResultType, data: Dict):
-        self.type = type
-        self.data = data
+@dataclass
+class TrainingResult:
+    type: TrainingResultType
+    data: Dict
 
 
 class Session:
     """Holds information for training on each worker."""
 
-    def __init__(self,
-                 training_func: Callable,
-                 world_rank: int,
-                 local_rank: int,
-                 dataset_shard: Optional[RayDataset] = None,
-                 checkpoint: Optional[Dict] = None,
-                 detailed_autofilled_metrics: bool = False):
+    def __init__(
+        self,
+        training_func: Callable,
+        world_rank: int,
+        local_rank: int,
+        world_size: int,
+        dataset_shard: Optional[RayDataset] = None,
+        checkpoint: Optional[Dict] = None,
+        encode_data_fn: Callable = None,
+        detailed_autofilled_metrics: bool = False,
+    ):
 
         self.dataset_shard = dataset_shard
 
         # The Thread object that is running the training function.
-        self.training_thread = PropagatingThread(
-            target=training_func, daemon=True)
+        self.training_thread = PropagatingThread(target=training_func, daemon=True)
         self.world_rank = world_rank
         self.local_rank = local_rank
+        self.world_size = world_size
         self.loaded_checkpoint = checkpoint
+
+        # Function to encode checkpoint dict before sending to the driver.
+        if not encode_data_fn:
+
+            def noop(x):
+                return x
+
+            encode_data_fn = noop
+        self._encode_data_fn = encode_data_fn
 
         # This lock is used to control the execution of the training thread.
         self.continue_lock = threading.Semaphore(0)
@@ -91,15 +116,17 @@ class Session:
         return func_output
 
     def get_next(self) -> Optional[TrainingResult]:
-        """Gets next result from the queue."""
+        """Gets the next ``TrainingResult`` from the result queue.
+
+        If the result queue is empty, then this function returns ``None``.
+        """
         if not self.training_started:
             raise RuntimeError("Please call start before calling get_next.")
         result = None
         # While training is still ongoing, attempt to get the result.
         while result is None and self.training_thread.is_alive():
             try:
-                result = self.result_queue.get(
-                    block=True, timeout=RESULT_FETCH_TIMEOUT)
+                result = self.result_queue.get(block=True, timeout=RESULT_FETCH_TIMEOUT)
             except queue.Empty:
                 pass
 
@@ -110,7 +137,8 @@ class Session:
             # termination of the thread runner.
             try:
                 result = self.result_queue.get(
-                    block=False, timeout=RESULT_FETCH_TIMEOUT)
+                    block=False, timeout=RESULT_FETCH_TIMEOUT
+                )
             except queue.Empty:
                 pass
 
@@ -140,7 +168,7 @@ class Session:
             PID: os.getpid(),
             HOSTNAME: platform.node(),
             NODE_IP: self.local_ip,
-            TRAINING_ITERATION: self.iteration
+            TRAINING_ITERATION: self.iteration,
         }
 
         if not self.detailed_autofilled_metrics:
@@ -159,9 +187,9 @@ class Session:
         if self.ignore_report:
             return
 
-        kwargs = self._auto_fill_metrics(kwargs)
+        kwargs = self._encode_data_fn(self._auto_fill_metrics(kwargs))
 
-        result = TrainingResult(TrainingResultType.REPORT, kwargs.copy())
+        result = TrainingResult(TrainingResultType.REPORT, kwargs)
 
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)
@@ -194,7 +222,7 @@ class Session:
         if self.world_rank != 0:
             kwargs = {}
         else:
-            kwargs = self._auto_fill_checkpoint_metrics(kwargs)
+            kwargs = self._encode_data_fn(self._auto_fill_checkpoint_metrics(kwargs))
 
         result = TrainingResult(TrainingResultType.CHECKPOINT, kwargs)
         # Add result to a thread-safe queue.
@@ -208,21 +236,34 @@ class Session:
 _session = None
 
 
+def _warn_session_misuse(fn_name: str):
+    """Logs warning message on provided fn being used outside of session.
+
+    Args:
+        fn_name (str): The name of the function to warn about.
+    """
+
+    if log_once(f"{SESSION_MISUSE_LOG_ONCE_KEY}-{fn_name}"):
+        warnings.warn(
+            f"`train.{fn_name}()` is meant to only be "
+            f"called "
+            "inside a training function that is executed by "
+            "`Trainer.run`. Returning None."
+        )
+
+
 def init_session(*args, **kwargs) -> None:
     global _session
     if _session:
-        raise ValueError("A Train session is already in use. Do not call "
-                         "`init_session()` manually.")
+        raise ValueError(
+            "A Train session is already in use. Do not call "
+            "`init_session()` manually."
+        )
     _session = Session(*args, **kwargs)
 
 
-def get_session() -> Session:
+def get_session() -> Optional[Session]:
     global _session
-    if _session is None or not isinstance(_session, Session):
-        raise ValueError("Trying to access a Train session that has not been "
-                         "initialized yet. Train functions like "
-                         "`train.report()` should only be called from inside "
-                         "the training function.")
     return _session
 
 
@@ -232,8 +273,8 @@ def shutdown_session():
     _session = None
 
 
-def get_dataset_shard(
-        dataset_name: Optional[str] = None) -> Optional[RayDataset]:
+@PublicAPI(stability="beta")
+def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional[RayDataset]:
     """Returns the Ray Dataset or DatasetPipeline shard for this worker.
 
     You should call ``to_torch()`` or ``to_tf()`` on this shard to convert
@@ -270,22 +311,29 @@ def get_dataset_shard(
         If no dataset is passed into Trainer, then return None.
     """
     session = get_session()
+    if session is None:
+        _warn_session_misuse(get_dataset_shard.__name__)
+        return
     shard = session.dataset_shard
     if shard is None:
-        warnings.warn("No dataset passed in. Returning None. Make sure to "
-                      "pass in a Ray Dataset to Trainer.run to use this "
-                      "function.")
+        warnings.warn(
+            "No dataset passed in. Returning None. Make sure to "
+            "pass in a Ray Dataset to Trainer.run to use this "
+            "function."
+        )
     elif isinstance(shard, dict):
         if not dataset_name:
             raise RuntimeError(
                 "Multiple datasets were passed into ``Trainer``, "
                 "but no ``dataset_name`` is passed into "
                 "``get_dataset_shard``. Please specify which "
-                "dataset shard to retrieve.")
+                "dataset shard to retrieve."
+            )
         return shard[dataset_name]
     return shard
 
 
+@PublicAPI(stability="beta")
 def report(**kwargs) -> None:
     """Reports all keyword arguments to Train as intermediate results.
 
@@ -310,9 +358,13 @@ def report(**kwargs) -> None:
             intermediate results.
     """
     session = get_session()
+    if session is None:
+        _warn_session_misuse(report.__name__)
+        return
     session.report(**kwargs)
 
 
+@PublicAPI(stability="beta")
 def world_rank() -> int:
     """Get the world rank of this worker.
 
@@ -334,9 +386,12 @@ def world_rank() -> int:
 
     """
     session = get_session()
+    if session is None:
+        return 0
     return session.world_rank
 
 
+@PublicAPI(stability="beta")
 def local_rank() -> int:
     """Get the local rank of this worker (rank of the worker on its node).
 
@@ -357,9 +412,12 @@ def local_rank() -> int:
 
     """
     session = get_session()
+    if session is None:
+        return 0
     return session.local_rank
 
 
+@PublicAPI(stability="beta")
 def load_checkpoint() -> Optional[Dict]:
     """Loads checkpoint data onto the worker.
 
@@ -387,9 +445,13 @@ def load_checkpoint() -> Optional[Dict]:
         originally initialized with. ``None`` if neither exist.
     """
     session = get_session()
+    if session is None:
+        _warn_session_misuse(load_checkpoint.__name__)
+        return
     return session.loaded_checkpoint
 
 
+@PublicAPI(stability="beta")
 def save_checkpoint(**kwargs) -> None:
     """Checkpoints all keyword arguments to Train as restorable state.
 
@@ -412,4 +474,30 @@ def save_checkpoint(**kwargs) -> None:
         **kwargs: Any key value pair to be checkpointed by Train.
     """
     session = get_session()
+    if session is None:
+        _warn_session_misuse(save_checkpoint.__name__)
+        return
     session.checkpoint(**kwargs)
+
+
+@PublicAPI(stability="beta")
+def world_size() -> int:
+    """Get the current world size (i.e. total number of workers) for this run.
+
+    .. code-block:: python
+
+        import time
+        from ray import train
+
+        def train_func():
+            assert train.world_size() == 4
+
+        trainer = Trainer(backend="torch", num_workers=4)
+        trainer.start()
+        trainer.run(train_func)
+        trainer.shutdown()
+    """
+    session = get_session()
+    if session is None:
+        return 1
+    return session.world_size

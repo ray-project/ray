@@ -33,13 +33,16 @@ class MockClusterTaskManagerInterface : public ClusterTaskManagerInterface {
               (const, override));
   MOCK_METHOD(void, TaskFinished,
               (std::shared_ptr<WorkerInterface> worker, RayTask *task), (override));
-  MOCK_METHOD(bool, CancelTask, (const TaskID &task_id, bool runtime_env_setup_failed),
+  MOCK_METHOD(bool, CancelTask,
+              (const TaskID &task_id,
+               rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+               const std::string &scheduling_failure_message),
               (override));
   MOCK_METHOD(void, QueueAndScheduleTask,
               (const RayTask &task, rpc::RequestWorkerLeaseReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
-  MOCK_METHOD(bool, AnyPendingTasks,
+  MOCK_METHOD(bool, AnyPendingTasksForResourceAcquisition,
               (RayTask * exemplar, bool *any_pending, int *num_pending_actor_creation,
                int *num_pending_tasks),
               (const, override));

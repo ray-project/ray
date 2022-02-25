@@ -6,15 +6,17 @@ from typing import Optional
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 
-def update_global_seed_if_necessary(framework: Optional[str] = None,
-                                    seed: Optional[int] = None) -> None:
+
+def update_global_seed_if_necessary(
+    framework: Optional[str] = None, seed: Optional[int] = None
+) -> None:
     """Seed global modules such as random, numpy, torch, or tf.
 
     This is useful for debugging and testing.
 
     Args:
-        framework (Optional[str]): The framework specifier (may be None).
-        seed (Optional[int]): An optional int seed. If None, will not do
+        framework: The framework specifier (may be None).
+        seed: An optional int seed. If None, will not do
             anything.
     """
     if seed is None:

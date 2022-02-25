@@ -9,7 +9,6 @@ import io.ray.runtime.metric.Gauge;
 import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.metric.TagKey;
 import io.ray.serve.generated.ActorSet;
-import io.ray.serve.generated.BackendConfig;
 import io.ray.serve.util.CollectionUtil;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -27,15 +26,13 @@ public class ReplicaSet {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ReplicaSet.class);
 
-  private volatile int maxConcurrentQueries = 8;
-
   private final Map<ActorHandle<RayServeWrappedReplica>, Set<ObjectRef<Object>>> inFlightQueries;
 
   private AtomicInteger numQueuedQueries = new AtomicInteger();
 
   private Gauge numQueuedQueriesGauge;
 
-  public ReplicaSet(String backendTag) {
+  public ReplicaSet(String deploymentName) {
     this.inFlightQueries = new ConcurrentHashMap<>();
     RayServeMetrics.execute(
         () ->
@@ -44,20 +41,8 @@ public class ReplicaSet {
                     .name(RayServeMetrics.SERVE_DEPLOYMENT_QUEUED_QUERIES.getName())
                     .description(RayServeMetrics.SERVE_DEPLOYMENT_QUEUED_QUERIES.getDescription())
                     .unit("")
-                    .tags(ImmutableMap.of(RayServeMetrics.TAG_DEPLOYMENT, backendTag))
+                    .tags(ImmutableMap.of(RayServeMetrics.TAG_DEPLOYMENT, deploymentName))
                     .register());
-  }
-
-  public void setMaxConcurrentQueries(Object backendConfig) {
-    int newValue = ((BackendConfig) backendConfig).getMaxConcurrentQueries();
-    if (newValue != this.maxConcurrentQueries) {
-      this.maxConcurrentQueries = newValue;
-      LOGGER.info("ReplicaSet: changing max_concurrent_queries to {}", newValue);
-    }
-  }
-
-  public int getMaxConcurrentQueries() {
-    return maxConcurrentQueries;
   }
 
   @SuppressWarnings("unchecked")
@@ -86,7 +71,7 @@ public class ReplicaSet {
   /**
    * Given a query, submit it to a replica and return the object ref. This method will keep track of
    * the in flight queries for each replicas and only send a query to available replicas (determined
-   * by the backend max_concurrent_quries value.)
+   * by the max_concurrent_quries value.)
    *
    * @param query the incoming query.
    * @return ray.ObjectRef
@@ -98,7 +83,7 @@ public class ReplicaSet {
         () ->
             numQueuedQueriesGauge.update(
                 numQueuedQueries.get(),
-                TagKey.tagsFromMap(ImmutableMap.of(RayServeMetrics.TAG_ENDPOINT, endpoint))));
+                ImmutableMap.of(new TagKey(RayServeMetrics.TAG_ENDPOINT), endpoint)));
     ObjectRef<Object> assignedRef =
         tryAssignReplica(query); // TODO controll concurrency using maxConcurrentQueries
     numQueuedQueries.decrementAndGet();
@@ -106,7 +91,7 @@ public class ReplicaSet {
         () ->
             numQueuedQueriesGauge.update(
                 numQueuedQueries.get(),
-                TagKey.tagsFromMap(ImmutableMap.of(RayServeMetrics.TAG_ENDPOINT, endpoint))));
+                ImmutableMap.of(new TagKey(RayServeMetrics.TAG_ENDPOINT), endpoint)));
     return assignedRef;
   }
 

@@ -37,6 +37,7 @@ public class ProxyActor {
   /** Used only for displaying the route table. Key: route, value: endpoint. */
   private volatile Map<String, EndpointInfo> routeInfo = new HashMap<>();
 
+  @SuppressWarnings("unused")
   private LongPollClient longPollClient;
 
   private ProxyRouter proxyRouter = new ProxyRouter();
@@ -47,6 +48,7 @@ public class ProxyActor {
     // Set the controller name so that serve will connect to the controller instance this proxy is
     // running in.
     Serve.setInternalReplicaContext(null, null, controllerName, null);
+    Serve.getReplicaContext().setRayServeConfig(new RayServeConfig().setConfig(config));
 
     Optional<BaseActorHandle> optional = Ray.getActor(controllerName);
     Preconditions.checkState(optional.isPresent(), "Controller does not exist");
@@ -55,7 +57,6 @@ public class ProxyActor {
     keyListeners.put(
         new KeyType(LongPollNamespace.ROUTE_TABLE, null), endpoints -> updateRoutes(endpoints));
     this.longPollClient = new LongPollClient(optional.get(), keyListeners);
-    this.longPollClient.start();
     this.run();
   }
 
@@ -137,8 +138,8 @@ public class ProxyActor {
     this.proxyRouter.updateRoutes(endpointInfos);
   }
 
-  public void ready() {
-    return;
+  public boolean ready() {
+    return true;
   }
 
   public void blockUntilEndpointExists(String endpoint, double timeoutS) {

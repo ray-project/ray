@@ -39,5 +39,8 @@ public interface RuntimeContext {
   <T extends BaseActorHandle> T getCurrentActorHandle();
 
   /** Get available GPU(deviceIds) for this worker. */
-  public List<Long> getGpuIds();
+  List<Long> getGpuIds();
+
+  /** Get the namespace of this job. */
+  String getNamespace();
 }

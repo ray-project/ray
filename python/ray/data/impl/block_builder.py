@@ -18,6 +18,10 @@ class BlockBuilder(Generic[T]):
         """Build the block."""
         raise NotImplementedError
 
+    def num_rows(self) -> int:
+        """Return the number of rows added in the block."""
+        raise NotImplementedError
+
     def get_estimated_memory_usage(self) -> int:
         """Return the estimated memory usage so far in bytes."""
         raise NotImplementedError

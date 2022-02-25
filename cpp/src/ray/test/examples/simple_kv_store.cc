@@ -15,6 +15,7 @@
 /// This is an example of Ray C++ application. Please visit
 /// `https://docs.ray.io/en/master/index.html` for more details.
 #include <ray/api.h>
+
 #include <chrono>
 #include <thread>
 
@@ -150,7 +151,7 @@ void StartServer() {
   // different nodes if possible.
   std::vector<std::unordered_map<std::string, double>> bundles{RESOUECES, RESOUECES};
 
-  ray::PlacementGroupCreationOptions options{false, "kv_server_pg", bundles,
+  ray::PlacementGroupCreationOptions options{"kv_server_pg", bundles,
                                              ray::PlacementStrategy::SPREAD};
   auto placement_group = ray::CreatePlacementGroup(options);
   // Wait until the placement group is created.

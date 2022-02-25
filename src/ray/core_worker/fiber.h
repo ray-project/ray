@@ -83,6 +83,12 @@ using FiberChannel = boost::fibers::unbuffered_channel<std::function<void()>>;
 
 class FiberState {
  public:
+  static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group) {
+    RAY_UNUSED(max_concurrency_in_default_group);
+    /// asycio mode always need a default executor.
+    return true;
+  }
+
   FiberState(int max_concurrency) : rate_limiter_(max_concurrency) {
     fiber_runner_thread_ =
         std::thread(
@@ -127,6 +133,10 @@ class FiberState {
       fiber_runner_thread_.join();
     }
   }
+
+  void Stop() {}
+
+  void Join() {}
 
  private:
   /// The fiber channel used to send task between the submitter thread

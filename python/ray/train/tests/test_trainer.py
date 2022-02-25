@@ -5,24 +5,18 @@ from unittest.mock import patch
 
 import horovod.torch as hvd_torch
 import pytest
+import torch
 
 import ray
 import ray.train as train
 from ray._private.test_utils import wait_for_condition
-from ray.train import Trainer, TorchConfig, TensorflowConfig, \
-    HorovodConfig, CheckpointStrategy
-from ray.train.backends.backend import BackendConfig, Backend, \
-    BackendExecutor
+from ray.train import Trainer, CheckpointStrategy
+from ray.train.backend import BackendConfig, Backend, BackendExecutor
+from ray.train.constants import TRAIN_ENABLE_WORKER_SPREAD_ENV
+from ray.train.torch import TorchConfig
+from ray.train.tensorflow import TensorflowConfig
+from ray.train.horovod import HorovodConfig
 from ray.train.callbacks.callback import TrainingCallback
-from ray.train.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
-from ray.train.examples.horovod.horovod_example import train_func as \
-    horovod_torch_train_func, HorovodTrainClass
-from ray.train.examples.tensorflow_mnist_example import train_func as \
-    tensorflow_mnist_train_func
-from ray.train.examples.train_fashion_mnist_example import train_func \
-    as fashion_mnist_train_func
-from ray.train.examples.train_linear_example import train_func as \
-    linear_train_func
 from ray.train.worker_group import WorkerGroup
 
 
@@ -76,8 +70,7 @@ class TestBackend(Backend):
     def on_start(self, worker_group: WorkerGroup, backend_config: TestConfig):
         pass
 
-    def on_shutdown(self, worker_group: WorkerGroup,
-                    backend_config: TestConfig):
+    def on_shutdown(self, worker_group: WorkerGroup, backend_config: TestConfig):
         pass
 
 
@@ -95,7 +88,8 @@ def gen_execute_single_async_special(special_f):
         if i == 0 and hasattr(self, "should_fail") and self.should_fail:
             kwargs["train_func"] = special_f
         return self.workers[i].actor._BaseWorkerMixin__execute.remote(
-            f, *args, **kwargs)
+            f, *args, **kwargs
+        )
 
     return execute_single_async_special
 
@@ -115,22 +109,22 @@ def gen_new_backend_executor(special_f):
                 self._has_failed = True
             else:
                 self.worker_group.should_fail = False
-            with patch.object(WorkerGroup, "execute_single_async",
-                              special_execute):
+            with patch.object(WorkerGroup, "execute_single_async", special_execute):
                 super().start_training(*args, **kwargs)
 
     return TestBackendExecutor
 
 
 class KillCallback(TrainingCallback):
-    def __init__(self, fail_on, worker_group):
+    def __init__(self, fail_on, trainer):
         self.counter = 0
         self.fail_on = fail_on
-        self.worker_group = worker_group
+        self.worker_group = ray.get(
+            trainer._backend_executor_actor.get_worker_group.remote()
+        )
 
     def handle_result(self, results):
         print(results)
-        assert all(r["loss"] == 1 for r in results)
         if self.counter == self.fail_on:
             ray.kill(self.worker_group.workers[0].actor)
             time.sleep(3)
@@ -154,6 +148,29 @@ def test_start_shutdown(ray_start_2_cpus, num_workers):
     trainer.shutdown()
     time.sleep(1)
     assert ray.available_resources()["CPU"] == 2
+
+
+def test_env_var(ray_start_2_cpus):
+    """Tests if Train env vars are propagated to the BackendExecutor."""
+    config = TestConfig()
+
+    os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV] = "1"
+
+    class EnvBackendExecutor(BackendExecutor):
+        def __init__(self, *args, **kwargs):
+            assert (
+                TRAIN_ENABLE_WORKER_SPREAD_ENV in os.environ
+                and os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV] == "1"
+            )
+            super().__init__(*args, **kwargs)
+
+    with patch.object(ray.train.trainer, "BackendExecutor", EnvBackendExecutor):
+        trainer = Trainer(config, num_workers=1)
+        trainer.start()
+        trainer.run(lambda: 1)
+        trainer.shutdown()
+
+    del os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV]
 
 
 def test_run(ray_start_2_cpus):
@@ -229,8 +246,7 @@ def test_fast_slow(ray_start_2_cpus):
     new_backend_executor_cls = gen_new_backend_executor(train_slow)
     callback = TestCallback()
 
-    with patch.object(ray.train.trainer, "BackendExecutor",
-                      new_backend_executor_cls):
+    with patch.object(ray.train.trainer, "BackendExecutor", new_backend_executor_cls):
         trainer = Trainer(test_config, num_workers=2)
         trainer.start()
         trainer.run(train_func, callbacks=[callback])
@@ -258,8 +274,7 @@ def test_mismatch_report(ray_start_2_cpus):
 
     new_backend_executor_cls = gen_new_backend_executor(train_mismatch)
 
-    with patch.object(ray.train.trainer, "BackendExecutor",
-                      new_backend_executor_cls):
+    with patch.object(ray.train.trainer, "BackendExecutor", new_backend_executor_cls):
         trainer = Trainer(test_config, num_workers=2)
         trainer.start()
         with pytest.raises(RuntimeError):
@@ -280,7 +295,7 @@ def test_run_iterator(ray_start_2_cpus):
 
     count = 0
     for results in iterator:
-        assert (value["index"] == count for value in results)
+        assert all(value["index"] == count for value in results)
         count += 1
 
     assert count == 3
@@ -327,18 +342,38 @@ def test_run_iterator_error(ray_start_2_cpus):
     assert iterator.is_finished()
 
 
+def test_no_exhaust(ray_start_2_cpus, tmp_path):
+    """Tests if training can finish even if queue is not exhausted."""
+
+    def train_func():
+        for _ in range(2):
+            train.report(loss=1)
+        return 2
+
+    config = TestConfig()
+    trainer = Trainer(config, num_workers=2)
+    trainer.start()
+
+    iterator = trainer.run_iterator(train_func)
+    output = iterator.get_final_results(force=True)
+
+    assert output == [2, 2]
+
+
 def test_checkpoint(ray_start_2_cpus):
     config = TestConfig()
 
     def train_func():
         assert train.load_checkpoint() is None
         for i in range(3):
+            time.sleep(1)
             train.save_checkpoint(epoch=i)
         return 1
 
     trainer = Trainer(config, num_workers=2)
     trainer.start()
     trainer.run(train_func)
+    assert trainer.latest_checkpoint == trainer.best_checkpoint
     checkpoint = trainer.latest_checkpoint
 
     assert checkpoint is not None
@@ -350,10 +385,12 @@ def test_checkpoint(ray_start_2_cpus):
         assert checkpoint["epoch"] == 2
 
         for i in range(checkpoint["epoch"], 5):
+            time.sleep(1)
             train.save_checkpoint(epoch=i)
         return 1
 
     trainer.run(train_func_checkpoint, checkpoint=checkpoint)
+    assert trainer.latest_checkpoint == trainer.best_checkpoint
     checkpoint = trainer.latest_checkpoint
 
     assert checkpoint is not None
@@ -372,8 +409,7 @@ def test_mismatch_checkpoint(ray_start_2_cpus):
 
     new_backend_executor_cls = gen_new_backend_executor(train_mismatch)
 
-    with patch.object(ray.train.trainer, "BackendExecutor",
-                      new_backend_executor_cls):
+    with patch.object(ray.train.trainer, "BackendExecutor", new_backend_executor_cls):
         trainer = Trainer(test_config, num_workers=2)
         trainer.start()
         with pytest.raises(RuntimeError):
@@ -397,8 +433,7 @@ def test_mismatch_checkpoint_report(ray_start_2_cpus):
     new_backend_executor_cls = gen_new_backend_executor(train_mismatch)
     callback = TestCallback()
 
-    with patch.object(ray.train.trainer, "BackendExecutor",
-                      new_backend_executor_cls):
+    with patch.object(ray.train.trainer, "BackendExecutor", new_backend_executor_cls):
         trainer = Trainer(test_config, num_workers=2)
         trainer.start()
         with pytest.raises(RuntimeError):
@@ -437,10 +472,14 @@ def test_load_checkpoint(ray_start_2_cpus):
     assert result[1] == [3, 4]
 
 
-@pytest.mark.parametrize("logdir", [
-    None, "/tmp/test/trainer/test_persisted_checkpoint",
-    "~/tmp/test/trainer/test_persisted_checkpoint"
-])
+@pytest.mark.parametrize(
+    "logdir",
+    [
+        None,
+        "/tmp/test/trainer/test_persisted_checkpoint",
+        "~/tmp/test/trainer/test_persisted_checkpoint",
+    ],
+)
 def test_persisted_checkpoint(ray_start_2_cpus, logdir):
     config = TestConfig()
 
@@ -460,6 +499,7 @@ def test_persisted_checkpoint(ray_start_2_cpus, logdir):
     assert trainer.best_checkpoint_path.is_file()
     assert trainer.best_checkpoint_path.name == f"checkpoint_{2:06d}"
     assert trainer.best_checkpoint_path.parent.name == "checkpoints"
+    assert trainer.best_checkpoint == trainer.latest_checkpoint
     latest_checkpoint = trainer.latest_checkpoint
 
     def validate():
@@ -475,9 +515,8 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
     config = TestConfig()
 
     checkpoint_strategy = CheckpointStrategy(
-        num_to_keep=2,
-        checkpoint_score_attribute="loss",
-        checkpoint_score_order="min")
+        num_to_keep=2, checkpoint_score_attribute="loss", checkpoint_score_order="min"
+    )
 
     def train_func():
         train.save_checkpoint(loss=3)  # best
@@ -494,6 +533,8 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
     assert trainer.latest_checkpoint_dir.is_dir()
     assert trainer.best_checkpoint_path.is_file()
     assert trainer.best_checkpoint_path.name == f"checkpoint_{1:06d}"
+    assert trainer.latest_checkpoint["loss"] == 5
+    assert trainer.best_checkpoint["loss"] == 3
 
     checkpoint_dir = trainer.latest_checkpoint_dir
     file_names = [f.name for f in checkpoint_dir.iterdir()]
@@ -510,6 +551,28 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
     trainer.run(validate, checkpoint=trainer.best_checkpoint_path)
 
 
+def test_load_checkpoint_from_path(ray_start_2_cpus, tmpdir):
+    config = TestConfig()
+
+    checkpoint_strategy = CheckpointStrategy(
+        checkpoint_score_attribute="loss", checkpoint_score_order="min"
+    )
+
+    def train_func_checkpoint():
+        train.save_checkpoint(loss=3)
+        train.save_checkpoint(loss=7)
+
+    trainer = Trainer(config, num_workers=2, logdir=tmpdir)
+    trainer.start()
+    trainer.run(train_func_checkpoint, checkpoint_strategy=checkpoint_strategy)
+
+    assert trainer.best_checkpoint["loss"] == 3
+    assert (
+        Trainer.load_checkpoint_from_path(trainer.best_checkpoint_path)
+        == trainer.best_checkpoint
+    )
+
+
 def test_persisted_checkpoint_strategy_failure(ray_start_2_cpus):
     logdir = "/tmp/test/trainer/test_persisted_checkpoint_strategy_failure"
     config = TestConfig()
@@ -521,20 +584,23 @@ def test_persisted_checkpoint_strategy_failure(ray_start_2_cpus):
     trainer.start()
 
     with pytest.raises(ValueError):
-        trainer.run(
-            train_func, checkpoint_strategy=CheckpointStrategy(num_to_keep=-1))
+        trainer.run(train_func, checkpoint_strategy=CheckpointStrategy(num_to_keep=-1))
 
     with pytest.raises(ValueError):
         trainer.run(
             train_func,
             checkpoint_strategy=CheckpointStrategy(
-                checkpoint_score_order="invalid_order"))
+                checkpoint_score_order="invalid_order"
+            ),
+        )
 
     with pytest.raises(ValueError):
         trainer.run(
             train_func,
             checkpoint_strategy=CheckpointStrategy(
-                checkpoint_score_attribute="missing_attribute"))
+                checkpoint_score_attribute="missing_attribute"
+            ),
+        )
 
 
 def test_world_rank(ray_start_2_cpus):
@@ -550,60 +616,42 @@ def test_world_rank(ray_start_2_cpus):
     assert set(results) == {0, 1}
 
 
-def test_tensorflow_mnist(ray_start_2_cpus):
+def test_torch_auto_unwrap(ray_start_2_cpus):
+    """Tests if underlying model from DDP is extracted when saving ckpt."""
+
+    def train_fn():
+        model = torch.nn.Linear(1, 1)
+
+        # Wrap in DDP.
+        model = train.torch.prepare_model(model)
+
+        # Save DDP wrapped model.
+        train.save_checkpoint(model=model)
+
+        # Report DDP wrapped model.
+        train.report(model=model)
+
     num_workers = 2
-    epochs = 3
-
-    trainer = Trainer("tensorflow", num_workers=num_workers)
-    config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
+    trainer = Trainer("torch", num_workers)
     trainer.start()
-    results = trainer.run(tensorflow_mnist_train_func, config)
+
+    class ValidateEncodedCallback(TrainingCallback):
+        def handle_result(self, results, **info):
+            for result in results:
+                model = result["model"]
+                assert isinstance(model, torch.nn.Module) and not isinstance(
+                    model, torch.nn.parallel.DistributedDataParallel
+                )
+
+    trainer.run(train_fn, callbacks=[ValidateEncodedCallback()])
+
+    last_checkpoint = trainer.latest_checkpoint
+    model = last_checkpoint["model"]
+    assert isinstance(model, torch.nn.Module) and not isinstance(
+        model, torch.nn.parallel.DistributedDataParallel
+    )
+
     trainer.shutdown()
-
-    assert len(results) == num_workers
-    result = results[0]
-
-    loss = result["loss"]
-    assert len(loss) == epochs
-    assert loss[-1] < loss[0]
-
-    accuracy = result["accuracy"]
-    assert len(accuracy) == epochs
-    assert accuracy[-1] > accuracy[0]
-
-
-def test_torch_linear(ray_start_2_cpus):
-    num_workers = 2
-    epochs = 3
-
-    trainer = Trainer("torch", num_workers=num_workers)
-    config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
-    trainer.start()
-    results = trainer.run(linear_train_func, config)
-    trainer.shutdown()
-
-    assert len(results) == num_workers
-
-    for result in results:
-        assert len(result) == epochs
-        assert result[-1]["loss"] < result[0]["loss"]
-
-
-def test_torch_fashion_mnist(ray_start_2_cpus):
-    num_workers = 2
-    epochs = 3
-
-    trainer = Trainer("torch", num_workers=num_workers)
-    config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
-    trainer.start()
-    results = trainer.run(fashion_mnist_train_func, config)
-    trainer.shutdown()
-
-    assert len(results) == num_workers
-
-    for result in results:
-        assert len(result) == epochs
-        assert result[-1] < result[0]
 
 
 def test_horovod_simple(ray_start_2_cpus):
@@ -618,44 +666,6 @@ def test_horovod_simple(ray_start_2_cpus):
     trainer.shutdown()
 
     assert result == list(range(num_workers))
-
-
-def test_horovod_torch_mnist(ray_start_2_cpus):
-    num_workers = 2
-    num_epochs = 2
-    trainer = Trainer("horovod", num_workers)
-    trainer.start()
-    results = trainer.run(
-        horovod_torch_train_func,
-        config={
-            "num_epochs": num_epochs,
-            "lr": 1e-3
-        })
-    trainer.shutdown()
-
-    assert len(results) == num_workers
-    for worker_result in results:
-        assert len(worker_result) == num_epochs
-        assert worker_result[num_epochs - 1] < worker_result[0]
-
-
-def test_horovod_torch_mnist_stateful(ray_start_2_cpus):
-    num_workers = 2
-    num_epochs = 2
-    trainer = Trainer("horovod", num_workers)
-    workers = trainer.to_worker_group(
-        HorovodTrainClass, config={
-            "num_epochs": num_epochs,
-            "lr": 1e-3
-        })
-    results = []
-    for epoch in range(num_epochs):
-        results.append(ray.get([w.train.remote(epoch=epoch) for w in workers]))
-    trainer.shutdown()
-
-    assert len(results) == num_epochs
-    for i in range(num_workers):
-        assert results[num_epochs - 1][i] < results[0][i]
 
 
 def test_init_failure(ray_start_2_cpus):
@@ -723,12 +733,12 @@ def test_worker_failure_1(ray_start_2_cpus):
 
     def train_actor_failure():
         import sys
+
         sys.exit(0)
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
-    with patch.object(ray.train.trainer, "BackendExecutor",
-                      new_backend_executor_cls):
+    with patch.object(ray.train.trainer, "BackendExecutor", new_backend_executor_cls):
         trainer = Trainer(test_config, num_workers=2)
         trainer.start()
         results = trainer.run(train_func)
@@ -747,12 +757,12 @@ def test_worker_failure_2(ray_start_2_cpus):
         for _ in range(2):
             train.report(loss=1)
         import sys
+
         sys.exit(0)
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
-    with patch.object(ray.train.trainer, "BackendExecutor",
-                      new_backend_executor_cls):
+    with patch.object(ray.train.trainer, "BackendExecutor", new_backend_executor_cls):
         trainer = Trainer(test_config, num_workers=2)
         trainer.start()
         results = trainer.run(train_func)
@@ -767,13 +777,13 @@ def test_worker_failure_local_rank(ray_start_2_cpus):
 
     def train_actor_failure():
         import sys
+
         sys.exit(0)
         return train.local_rank()
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
-    with patch.object(ray.train.trainer, "BackendExecutor",
-                      new_backend_executor_cls):
+    with patch.object(ray.train.trainer, "BackendExecutor", new_backend_executor_cls):
         trainer = Trainer(test_config, num_workers=2)
         trainer.start()
         results = trainer.run(train_func)
@@ -783,23 +793,26 @@ def test_worker_failure_local_rank(ray_start_2_cpus):
 def test_worker_start_failure(ray_start_2_cpus):
     test_config = TestConfig()
 
-    trainer = Trainer(test_config, num_workers=2)
-
-    restart = trainer._executor._restart
-
     def init_hook():
         pass
 
     def init_hook_fail():
         ray.actor.exit_actor()
 
-    def restart_patched(self):
-        self._initialization_hook = init_hook
-        restart()
+    class TestBackendExecutor(BackendExecutor):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
 
-    with patch.object(BackendExecutor, "_restart", restart_patched):
+        def _restart(self):
+            self._initialization_hook = init_hook
+            super()._restart()
+
+    with patch.object(ray.train.trainer, "BackendExecutor", TestBackendExecutor):
+        trainer = Trainer(test_config, num_workers=2)
         trainer.start(initialization_hook=init_hook_fail)
-        assert len(trainer._executor.worker_group) == 2
+        assert (
+            len(ray.get(trainer._backend_executor_actor.get_worker_group.remote())) == 2
+        )
 
 
 def test_max_failures(ray_start_2_cpus):
@@ -807,6 +820,7 @@ def test_max_failures(ray_start_2_cpus):
 
     def train_func():
         import sys
+
         sys.exit(0)
 
     trainer = Trainer(test_config, num_workers=2)
@@ -814,7 +828,7 @@ def test_max_failures(ray_start_2_cpus):
     iterator = trainer.run_iterator(train_func)
     with pytest.raises(RuntimeError):
         iterator.get_final_results(force=True)
-    assert iterator._executor._num_failures == 3
+    assert ray.get(iterator._backend_executor_actor._get_num_failures.remote()) == 3
 
 
 def test_start_max_failures(ray_start_2_cpus):
@@ -824,6 +838,7 @@ def test_start_max_failures(ray_start_2_cpus):
 
     def init_hook_fail():
         import sys
+
         sys.exit(0)
 
     with pytest.raises(RuntimeError):
@@ -848,8 +863,7 @@ def test_worker_kill(ray_start_2_cpus, backend):
             train.report(loss=1, iter=i)
 
     trainer.start()
-    kill_callback = KillCallback(
-        fail_on=0, worker_group=trainer._executor.worker_group)
+    kill_callback = KillCallback(fail_on=0, trainer=trainer)
     trainer.run(train_func, callbacks=[kill_callback])
     # Run 1: iter=0, counter=1, Successful
     # Run 2: iter=1, counter=1, Unsuccessful, starts training from beginning
@@ -860,8 +874,7 @@ def test_worker_kill(ray_start_2_cpus, backend):
     trainer.shutdown()
     trainer.start()
 
-    kill_callback = KillCallback(
-        fail_on=1, worker_group=trainer._executor.worker_group)
+    kill_callback = KillCallback(fail_on=1, trainer=trainer)
     trainer.run(train_func, callbacks=[kill_callback])
     # Run 1: iter=0, counter=1, Successful
     # Run 2: iter=1, counter=2, Successful
@@ -893,8 +906,7 @@ def test_worker_kill_checkpoint(ray_start_2_cpus):
 
     trainer = Trainer(test_config, num_workers=2)
     trainer.start()
-    kill_callback = KillCallback(
-        fail_on=0, worker_group=trainer._executor.worker_group)
+    kill_callback = KillCallback(fail_on=0, trainer=trainer)
 
     trainer.run(train_func, callbacks=[kill_callback])
 
@@ -910,8 +922,7 @@ def test_worker_kill_checkpoint(ray_start_2_cpus):
     trainer.shutdown()
     trainer.start()
 
-    kill_callback = KillCallback(
-        fail_on=1, worker_group=trainer._executor.worker_group)
+    kill_callback = KillCallback(fail_on=1, trainer=trainer)
     trainer.run(train_func, callbacks=[kill_callback])
     # Run 1: epoch=0, counter=1, Successful
     # *Checkpoint saved*
@@ -969,8 +980,7 @@ def test_run_after_user_error(ray_start_2_cpus):
 
 
 def check_dataset_output(num_data, num_epochs, data_all_epochs):
-    assert all(
-        len(worker_data) == num_epochs for worker_data in data_all_epochs)
+    assert all(len(worker_data) == num_epochs for worker_data in data_all_epochs)
     for i in range(num_epochs):
         epoch_data = []
         for worker_data in data_all_epochs:
@@ -1035,15 +1045,13 @@ def test_multiple_datasets(ray_start_4_cpus):
 
     trainer = Trainer(config, num_workers=2)
     trainer.start()
-    results = trainer.run(
-        get_dataset, dataset={
-            "train": train_data,
-            "val": val_data
-        })
-    check_dataset_output(num_data_1, num_epochs,
-                         [worker_data[0] for worker_data in results])
-    check_dataset_output(num_data_2, num_epochs,
-                         [worker_data[1] for worker_data in results])
+    results = trainer.run(get_dataset, dataset={"train": train_data, "val": val_data})
+    check_dataset_output(
+        num_data_1, num_epochs, [worker_data[0] for worker_data in results]
+    )
+    check_dataset_output(
+        num_data_2, num_epochs, [worker_data[1] for worker_data in results]
+    )
     trainer.shutdown()
 
 
@@ -1055,12 +1063,12 @@ def test_dataset_pipeline(ray_start_4_cpus):
     dataset = ray.data.range(num_data).repeat()
 
     def get_dataset():
-        pipeline_iterator = train.get_dataset_shard().iter_datasets()
+        pipeline_iterator = train.get_dataset_shard().iter_epochs()
         data_all_epochs = []
         for _ in range(num_epochs):
             dataset_this_epoch = next(pipeline_iterator)
             data_this_epoch = []
-            for batch in dataset_this_epoch.iter_batches():
+            for batch in dataset_this_epoch.iter_batches(batch_format="native"):
                 data_this_epoch.extend(batch)
             data_all_epochs.append(data_this_epoch)
         return data_all_epochs
@@ -1080,12 +1088,12 @@ def test_dataset_pipeline_shuffle(ray_start_4_cpus):
     dataset = ray.data.range(num_data).repeat().random_shuffle_each_window()
 
     def get_dataset():
-        pipeline_iterator = train.get_dataset_shard().iter_datasets()
+        pipeline_iterator = train.get_dataset_shard().iter_epochs()
         data_all_epochs = []
         for _ in range(2):
             dataset_this_epoch = next(pipeline_iterator)
             data_this_epoch = []
-            for batch in dataset_this_epoch.iter_batches():
+            for batch in dataset_this_epoch.iter_batches(batch_format="native"):
                 data_this_epoch.extend(batch)
 
             if len(data_all_epochs) > 0:
@@ -1105,28 +1113,36 @@ def test_dataset_pipeline_shuffle(ray_start_4_cpus):
 
 def test_dataset_fault_tolerance(ray_start_4_cpus):
     dataset = ray.data.range(10)
-    dataset_splits = dataset.split(n=2, equal=True)
     test_config = TestConfig()
 
     def train_func():
-        return 1
+        return train.get_dataset_shard()
 
     def train_actor_failure():
         import sys
+
         sys.exit(0)
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
-    with patch.object(ray.train.trainer, "BackendExecutor",
-                      new_backend_executor_cls):
-        with patch.object(
-                new_backend_executor_cls,
-                "_get_dataset_shards",
-                return_value=dataset_splits) as mock_method:
-            trainer = Trainer(test_config, num_workers=2)
-            trainer.start()
-            trainer.run(train_func, dataset=dataset)
-            mock_method.assert_called_once()
+    class SingleGetDatasetShardsBackendExecutor(new_backend_executor_cls):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._has_called_get_dataset_shards = False
+
+        def _get_dataset_shards(self, dataset_or_dict):
+            if self._has_called_get_dataset_shards:
+                raise Exception
+            self._has_called_get_dataset_shards = True
+            return super()._get_dataset_shards(dataset_or_dict)
+
+    with patch.object(
+        ray.train.trainer, "BackendExecutor", SingleGetDatasetShardsBackendExecutor
+    ):
+        trainer = Trainer(test_config, num_workers=2)
+        trainer.start()
+        trainer.run(train_func, dataset=dataset)
+        # No exception is raised by _get_dataset_shards
 
 
 @pytest.mark.parametrize("resource", ["CPU", "GPU", "extra"])
@@ -1141,49 +1157,56 @@ def test_resources(ray_start_4_cpus_4_gpus_4_extra, resource, num_requested):
         config,
         num_workers=num_workers,
         use_gpu=use_gpu,
-        resources_per_worker=resources_per_worker)
+        resources_per_worker=resources_per_worker,
+    )
 
     trainer.start()
     expected = original - num_workers * num_requested
-    wait_for_condition(
-        lambda: ray.available_resources().get(resource, 0) == expected)
+    wait_for_condition(lambda: ray.available_resources().get(resource, 0) == expected)
 
     trainer.shutdown()
-    wait_for_condition(
-        lambda: ray.available_resources().get(resource, 0) == original)
+    wait_for_condition(lambda: ray.available_resources().get(resource, 0) == original)
 
 
 def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
+    class CudaTestBackend(TestBackend):
+        share_cuda_visible_devices = True
+
+    class CudaTestConfig(TestConfig):
+        @property
+        def backend_cls(self):
+            return CudaTestBackend
+
     # GPUs should not be requested if `use_gpu` is False.
     with pytest.raises(ValueError):
         Trainer(
-            TestConfig(),
+            CudaTestConfig(),
             num_workers=2,
             use_gpu=False,
-            resources_per_worker={"GPU": 1})
+            resources_per_worker={"GPU": 1},
+        )
 
     # GPUs should not be set to 0 if `use_gpu` is True.
     with pytest.raises(ValueError):
         Trainer(
-            TestConfig(),
+            CudaTestConfig(),
             num_workers=2,
             use_gpu=True,
-            resources_per_worker={"GPU": 0})
+            resources_per_worker={"GPU": 0},
+        )
 
     def get_resources():
         return os.environ["CUDA_VISIBLE_DEVICES"]
 
-    os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
-
     # 0 GPUs will be requested and should not raise an error.
-    trainer = Trainer(TestConfig(), num_workers=2, use_gpu=False)
+    trainer = Trainer(CudaTestConfig(), num_workers=2, use_gpu=False)
     trainer.start()
     result = trainer.run(get_resources)
     assert result == ["", ""]
     trainer.shutdown()
 
     # 1 GPU will be requested and should not raise an error.
-    trainer = Trainer(TestConfig(), num_workers=2, use_gpu=True)
+    trainer = Trainer(CudaTestConfig(), num_workers=2, use_gpu=True)
     trainer.start()
     result = trainer.run(get_resources)
     assert result == ["0,1", "0,1"]
@@ -1191,10 +1214,8 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
 
     # Partial GPUs should not raise an error.
     trainer = Trainer(
-        TestConfig(),
-        num_workers=2,
-        use_gpu=True,
-        resources_per_worker={"GPU": 0.1})
+        CudaTestConfig(), num_workers=2, use_gpu=True, resources_per_worker={"GPU": 0.1}
+    )
     trainer.start()
     result = trainer.run(get_resources)
     assert result == ["0", "0"]
@@ -1202,10 +1223,8 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
 
     # Multiple GPUs should not raise an error.
     trainer = Trainer(
-        TestConfig(),
-        num_workers=2,
-        use_gpu=True,
-        resources_per_worker={"GPU": 2})
+        CudaTestConfig(), num_workers=2, use_gpu=True, resources_per_worker={"GPU": 2}
+    )
     trainer.start()
     result = trainer.run(get_resources)
     assert result == ["0,1,2,3", "0,1,2,3"]

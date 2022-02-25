@@ -18,7 +18,10 @@ option cc_enable_arenas = true;
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/dependency.proto";
 import "src/ray/protobuf/gcs.proto";
+import "src/ray/protobuf/logging.proto";
+import "src/ray/protobuf/reporter.proto";
 
 /// Each channel is prefixed by the name of its components.
 /// For example, for pubsub channels that are used by core workers,
@@ -38,6 +41,16 @@ enum ChannelType {
   GCS_NODE_INFO_CHANNEL = 5;
   /// A channel for node resources.
   GCS_NODE_RESOURCE_CHANNEL = 6;
+  /// A channel for worker changes, currently only for worker failures.
+  GCS_WORKER_DELTA_CHANNEL = 7;
+  /// A channel for errors from various Ray components.
+  RAY_ERROR_INFO_CHANNEL = 8;
+  /// A channel for logs from various Ray components.
+  RAY_LOG_CHANNEL = 9;
+  /// A channel for keys to pickled python functions and actor classes.
+  RAY_PYTHON_FUNCTION_CHANNEL = 10;
+  /// A channel for reporting node resource usage stats.
+  RAY_NODE_RESOURCE_USAGE_CHANNEL = 11;
 }
 
 ///
@@ -54,12 +67,18 @@ message PubMessage {
     WorkerObjectEvictionMessage worker_object_eviction_message = 3;
     WorkerRefRemovedMessage worker_ref_removed_message = 4;
     WorkerObjectLocationsPubMessage worker_object_locations_message = 5;
-    // The message that indicates the given key id is not available anymore.
-    FailureMessage failure_message = 6;
     ActorTableData actor_message = 7;
     JobTableData job_message = 8;
     GcsNodeInfo node_info_message = 9;
     NodeResourceChange node_resource_message = 10;
+    WorkerDeltaData worker_delta_message = 11;
+    ErrorTableData error_info_message = 12;
+    LogBatch log_batch_message = 13;
+    PythonFunction python_function_message = 14;
+    NodeResourceUsage node_resource_usage_message = 15;
+
+    // The message that indicates the given key id is not available anymore.
+    FailureMessage failure_message = 6;
   }
 }
 
@@ -94,6 +113,10 @@ message WorkerObjectLocationsPubMessage {
   // counting protocol that causes the object to be released while there are
   // still references.
   bool ref_removed = 7;
+  // If this is set, the task that creates the object is pending execution. If
+  // there are no locations and this is set, the subscriber should wait for the
+  // new location to appear.
+  bool pending_creation = 8;
 }
 
 /// Indicating the subscriber needs to handle failure callback.
@@ -192,7 +215,7 @@ message PubsubCommandBatchRequest {
 message PubsubCommandBatchReply {
 }
 
-service PublisherService {
+service SubscriberService {
   /// The long polling request sent to the publisher for pubsub operations.
   /// It is replied once there are batch of objects that need to be published to
   /// the caller (subscriber).

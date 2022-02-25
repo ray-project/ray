@@ -1,6 +1,6 @@
 # This configuration can expect to reach -160 reward in 10k-20k timesteps
 pendulum-td3:
-    env: Pendulum-v0
+    env: Pendulum-v1
     run: TD3
     stop:
         episode_reward_mean: -900

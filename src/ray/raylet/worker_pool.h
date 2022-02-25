@@ -28,9 +28,10 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/client_connection.h"
+#include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
-#include "ray/gcs/gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/worker.h"
 
@@ -60,10 +61,17 @@ enum PopWorkerStatus {
   RuntimeEnvCreationFailed = 4,
 };
 
-/// \Return true if the worker was used. Otherwise, return false and the worker will be
-/// returned to the worker pool.
+/// \param[in] worker The started worker instance. Nullptr if worker is not started.
+/// \param[in] status The pop worker status. OK if things go well. Otherwise, it will
+/// contain the error status.
+/// \param[in] runtime_env_setup_error_message The error message
+/// when runtime env setup is failed. This should be empty unless status ==
+/// RuntimeEnvCreationFailed.
+/// \return true if the worker was used. Otherwise, return false
+/// and the worker will be returned to the worker pool.
 using PopWorkerCallback = std::function<bool(
-    const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status)>;
+    const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,
+    const std::string &runtime_env_setup_error_message)>;
 
 /// \class WorkerPoolInterface
 ///
@@ -86,6 +94,7 @@ class WorkerPoolInterface {
   /// cases:
   /// Case 1: An suitable worker was found in idle worker pool.
   /// Case 2: An suitable worker registered to raylet.
+  /// The corresponding PopWorkerStatus will be passed to the callback.
   /// \param allocated_instances_serialized_json The allocated resource instances
   /// json string, it contains resource ID which assigned to this worker.
   /// Instance resource value will be like {"GPU":[10000,0,10000]}, non-instance
@@ -215,7 +224,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param[in] worker The worker to be registered.
   /// \param[in] pid The PID of the worker.
-  /// \param[in] worker_shim_pid The PID of the process for setup worker runtime env.
   /// \param[in] worker_startup_token The startup token of the process assigned to
   /// it during startup as a command line argument.
   /// \param[in] send_reply_callback The callback to invoke after registration is
@@ -223,7 +231,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Returns 0 if the worker should bind on a random port.
   /// \return If the registration is successful.
   Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker, pid_t pid,
-                        pid_t worker_shim_pid, StartupToken worker_startup_token,
+                        StartupToken worker_startup_token,
                         std::function<void(Status, int)> send_reply_callback);
 
   /// To be invoked when a worker is started. This method should be called when the worker
@@ -401,18 +409,20 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param status The output status of work process starting.
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \param runtime_env_hash The hash of runtime env.
-  /// \param serialized_runtime_env The runtime environment for the started worker
+  /// \param serialized_runtime_env_context The context of runtime env.
   /// \param allocated_instances_serialized_json The allocated resource instances
   //  json string.
-  /// process. \return The id of the process that we started if it's positive, otherwise
-  /// it means we didn't start a process.
-  Process StartWorkerProcess(
+  /// \param runtime_env_info The raw runtime env info.
+  /// \return The process that we started and a token. If the token is less than 0,
+  /// we didn't start a process.
+  std::tuple<Process, StartupToken> StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
       PopWorkerStatus *status /*output*/,
       const std::vector<std::string> &dynamic_options = {},
-      const int runtime_env_hash = 0, const std::string &serialized_runtime_env = "{}",
+      const int runtime_env_hash = 0,
       const std::string &serialized_runtime_env_context = "{}",
-      const std::string &allocated_instances_serialized_json = "{}");
+      const std::string &allocated_instances_serialized_json = "{}",
+      const rpc::RuntimeEnvInfo &runtime_env_info = rpc::RuntimeEnvInfo());
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
@@ -460,6 +470,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     rpc::WorkerType worker_type;
     /// The worker process instance.
     Process proc;
+    /// The worker process start time.
+    std::chrono::high_resolution_clock::time_point start_time;
+    /// The runtime env Info.
+    rpc::RuntimeEnvInfo runtime_env_info;
   };
 
   struct TaskWaitingForWorkerInfo {
@@ -497,12 +511,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// same with worker process PID, except starting worker process in container.
     absl::flat_hash_map<StartupToken, StartingWorkerProcessInfo>
         starting_worker_processes;
-    /// A map for looking up the task by the pid of starting worker process.
-    absl::flat_hash_map<Process, TaskWaitingForWorkerInfo> starting_workers_to_tasks;
-    /// A map for looking up the task with dynamic options by the pid of
+    /// A map for looking up the task by the startup token of starting worker process.
+    absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo> starting_workers_to_tasks;
+    /// A map for looking up the task with dynamic options by the startup token of
     /// starting worker process. Note that this is used for the dedicated worker
     /// processes.
-    absl::flat_hash_map<Process, TaskWaitingForWorkerInfo>
+    absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo>
         starting_dedicated_workers_to_tasks;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
@@ -596,7 +610,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Try to find a task that is associated with the given worker process from the given
   /// queue. If found, invoke its PopWorkerCallback.
   /// \param workers_to_tasks The queue of tasks which waiting for workers.
-  /// \param proc The process which the worker belongs to.
+  /// \param startup_token The startup token representing the worker.
   /// \param worker A new idle worker. If the worker is empty, we could also callback
   /// to the task.
   /// \param status The pop worker status which will be forwarded to
@@ -606,16 +620,23 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// true.
   /// \param task_id  The related task id.
   void InvokePopWorkerCallbackForProcess(
-      absl::flat_hash_map<Process, TaskWaitingForWorkerInfo> &workers_to_tasks,
-      const Process &proc, const std::shared_ptr<WorkerInterface> &worker,
+      absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo> &workers_to_tasks,
+      StartupToken startup_token, const std::shared_ptr<WorkerInterface> &worker,
       const PopWorkerStatus &status, bool *found /* output */,
       bool *worker_used /* output */, TaskID *task_id /* output */);
 
   /// Create runtime env asynchronously by runtime env agent.
   void CreateRuntimeEnv(
       const std::string &serialized_runtime_env, const JobID &job_id,
-      const std::function<void(bool, const std::string &)> &callback,
+      const CreateRuntimeEnvCallback &callback,
       const std::string &serialized_allocated_resource_instances = "{}");
+
+  void AddStartingWorkerProcess(
+      State &state, const int workers_to_start, const rpc::WorkerType worker_type,
+      const Process &proc, const std::chrono::high_resolution_clock::time_point &start,
+      const rpc::RuntimeEnvInfo &runtime_env_info);
+
+  void RemoveStartingWorkerProcess(State &state, const StartupToken &proc_startup_token);
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;
@@ -680,6 +701,154 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const std::function<double()> get_time_;
   /// Agent manager.
   std::shared_ptr<AgentManager> agent_manager_;
+
+  /// Manage all runtime env resources locally by URI reference. We add or remove URI
+  /// reference in the cases below:
+  /// For the job with an eager installed runtime env:
+  /// - Add URI reference when job started.
+  /// - Remove URI reference when job finished.
+  /// For the worker process with a valid runtime env:
+  /// - Add URI reference when worker process started.
+  /// - Remove URI reference when all the worker instance registration completed or any
+  /// worker instance registration times out.
+  /// - Add URI reference when a worker instance registered.
+  /// - Remove URI reference when a worker instance disconnected.
+  ///
+  /// A normal state change flow is:
+  ///   job level:
+  ///       HandleJobStarted(ref + 1 = 1) -> HandleJobFinshed(ref - 1 = 0)
+  ///   worker level:
+  ///       StartWorkerProcess(ref + 1 = 1)
+  ///       -> OnWorkerStarted * 3 (ref + 3 = 4)
+  ///       -> All worker instances registered (ref - 1 = 3)
+  ///       -> DisconnectWorker * 3 (ref - 3 = 0)
+  ///
+  /// A state change flow for worker timeout case is:
+  ///       StartWorkerProcess(ref + 1 = 1)
+  ///       -> OnWorkerStarted * 2 (ref + 2 = 3)
+  ///       -> One worker registration times out, kill worker process (ref - 1 = 2)
+  ///       -> DisconnectWorker * 2 (ref - 2 = 0)
+  ///
+  /// Note: "OnWorkerStarted * 3" means that three workers are started. And we assume
+  /// that the worker process has tree worker instances totally.
+  ///
+  /// An example to show reference table changes:
+  ///
+  ///   Start a job with eager installed runtime env:
+  ///       ray.init(runtime_env=
+  ///       {
+  ///         "conda": {
+  ///           "dependencies": ["requests"]
+  ///         },
+  ///         "eager_install": True
+  ///       })
+  ///   Add URI reference and get the reference tables:
+  ///       +---------------------------------------------+
+  ///       |      id            |          URIs          |
+  ///       +--------------------+------------------------+
+  ///       | job-id-hex-A       | conda://{hash-A}       |
+  ///       +---------------------------------------------+
+  ///       +---------------------------------------------+
+  ///       |      URI           |          count         |
+  ///       +--------------------+------------------------+
+  ///       | conda://{hash-A}   |           1            |
+  ///       +---------------------------------------------+
+  ///
+  ///   Create actor with runtime env:
+  ///      @ray.remote
+  ///      class actor:
+  ///          def Foo():
+  ///              import my_module
+  ///              pass
+  ///      actor.options(runtime_env=
+  ///           {
+  ///              "conda": {
+  ///                  "dependencies": ["requests"]
+  ///              },
+  ///              "py_modules": [
+  ///                  "s3://bucket/my_module.zip"
+  ///              ]
+  ///              }).remote()
+  ///   First step when worker process started, add URI reference and get the reference
+  ///   tables:
+  ///       +-------------------------------------------------------------------+
+  ///       |      id              |          URIs                              |
+  ///       +----------------------+--------------------------------------------+
+  ///       | job-id-hex-A         | conda://{hash-A}                           |
+  ///       | worker-setup-token-A | conda://{hash-A},s3://bucket/my_module.zip |
+  ///       +-------------------------------------------------------------------+
+  ///       +------------------------------------------------------+
+  ///       |      URI                    |          count         |
+  ///       +-----------------------------+------------------------+
+  ///       | conda://{hash-A}            |           2            |
+  ///       | s3://bucket/my_module.zip   |           1            |
+  ///       +------------------------------------------------------+
+  ///   Second step when worker instance registers, add URI reference for worker
+  ///   instance and get the reference tables:
+  ///       +-------------------------------------------------------------------+
+  ///       |      id              |          URIs                              |
+  ///       +----------------------+--------------------------------------------+
+  ///       | job-id-hex-A         | conda://{hash-A}                           |
+  ///       | worker-setup-token-A | conda://{hash-A},s3://bucket/my_module.zip |
+  ///       | worker-id-hex-A      | conda://{hash-A},s3://bucket/my_module.zip |
+  ///       +-------------------------------------------------------------------+
+  ///       +------------------------------------------------------+
+  ///       |      URI                    |          count         |
+  ///       +-----------------------------+------------------------+
+  ///       | conda://{hash-A}            |           3            |
+  ///       | s3://bucket/my_module.zip   |           2            |
+  ///       +------------------------------------------------------+
+  ///   At the same time, we should remove URI reference for worker process because python
+  ///   worker only contains one worker instance:
+  ///       +-------------------------------------------------------------------+
+  ///       |      id              |          URIs                              |
+  ///       +----------------------+--------------------------------------------+
+  ///       | job-id-hex-A         | conda://{hash-A}                           |
+  ///       | worker-id-hex-A      | conda://{hash-A},s3://bucket/my_module.zip |
+  ///       +-------------------------------------------------------------------+
+  ///       +------------------------------------------------------+
+  ///       |      URI                    |          count         |
+  ///       +-----------------------------+------------------------+
+  ///       | conda://{hash-A}            |           2            |
+  ///       | s3://bucket/my_module.zip   |           1            |
+  ///       +------------------------------------------------------+
+  ///
+  ///   Next, when the actor is killed, remove URI reference for worker instance:
+  ///       +-------------------------------------------------------------------+
+  ///       |      id              |          URIs                              |
+  ///       +----------------------+--------------------------------------------+
+  ///       | job-id-hex-A         | conda://{hash-A}                           |
+  ///       +-------------------------------------------------------------------+
+  ///       +------------------------------------------------------+
+  ///       |      URI                    |          count         |
+  ///       +-----------------------------+------------------------+
+  ///       | conda://{hash-A}            |           1            |
+  ///       +------------------------------------------------------+
+
+  ///   Finally, when the job is finished, remove URI reference and got an empty reference
+  ///   table:
+  ///       +-------------------------------------------------------------------+
+  ///       |      id              |          URIs                              |
+  ///       +----------------------+--------------------------------------------+
+  ///       |                      |                                            |
+  ///       +-------------------------------------------------------------------+
+  ///       +------------------------------------------------------+
+  ///       |      URI                    |          count         |
+  ///       +-----------------------------+------------------------+
+  ///       |                             |                        |
+  ///       +------------------------------------------------------+
+  ///
+  ///  Now, we can delete the runtime env resources safely.
+
+  RuntimeEnvManager runtime_env_manager_;
+
+  /// Stats
+  int64_t process_failed_job_config_missing_ = 0;
+  int64_t process_failed_rate_limited_ = 0;
+  int64_t process_failed_pending_registration_ = 0;
+  int64_t process_failed_runtime_env_setup_failed_ = 0;
+
+  friend class WorkerPoolTest;
 };
 
 }  // namespace raylet

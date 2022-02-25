@@ -66,7 +66,7 @@ def get_remote_url(remote):
 
 def replace_suffix(base, old_suffix, new_suffix=""):
     if base.endswith(old_suffix):
-        base = base[:len(base) - len(old_suffix)] + new_suffix
+        base = base[: len(base) - len(old_suffix)] + new_suffix
     return base
 
 
@@ -199,12 +199,21 @@ def monitor():
     expected_line = "{}\t{}".format(expected_sha, ref)
 
     if should_keep_alive(git("show", "-s", "--format=%B", "HEAD^-")):
-        logger.info("Not monitoring %s on %s due to keep-alive on: %s", ref,
-                    remote, expected_line)
+        logger.info(
+            "Not monitoring %s on %s due to keep-alive on: %s",
+            ref,
+            remote,
+            expected_line,
+        )
         return
 
-    logger.info("Monitoring %s (%s) for changes in %s: %s", remote,
-                get_remote_url(remote), ref, expected_line)
+    logger.info(
+        "Monitoring %s (%s) for changes in %s: %s",
+        remote,
+        get_remote_url(remote),
+        ref,
+        expected_line,
+    )
 
     for to_wait in yield_poll_schedule():
         time.sleep(to_wait)
@@ -217,12 +226,21 @@ def monitor():
             status = ex.returncode
 
         if status == 2:
-            logger.info("Terminating job as %s has been deleted on %s: %s",
-                        ref, remote, expected_line)
+            logger.info(
+                "Terminating job as %s has been deleted on %s: %s",
+                ref,
+                remote,
+                expected_line,
+            )
             break
         elif status != 0:
-            logger.error("Error %d: unable to check %s on %s: %s", status, ref,
-                         remote, expected_line)
+            logger.error(
+                "Error %d: unable to check %s on %s: %s",
+                status,
+                ref,
+                remote,
+                expected_line,
+            )
         else:
             prev = expected_line
             expected_line = detect_spurious_commit(line, expected_line, remote)
@@ -230,14 +248,24 @@ def monitor():
                 logger.info(
                     "Terminating job as %s has been updated on %s\n"
                     "    from:\t%s\n"
-                    "    to:  \t%s", ref, remote, expected_line, line)
+                    "    to:  \t%s",
+                    ref,
+                    remote,
+                    expected_line,
+                    line,
+                )
                 time.sleep(1)  # wait for CI to flush output
                 break
             if expected_line != prev:
                 logger.info(
                     "%s appeared to spuriously change on %s\n"
                     "    from:\t%s\n"
-                    "    to:  \t%s", ref, remote, prev, expected_line)
+                    "    to:  \t%s",
+                    ref,
+                    remote,
+                    prev,
+                    expected_line,
+                )
 
     return terminate_my_process_group()
 
@@ -259,9 +287,8 @@ def main(program, *args):
 
 if __name__ == "__main__":
     logging.basicConfig(
-        format="%(levelname)s: %(message)s",
-        stream=sys.stderr,
-        level=logging.DEBUG)
+        format="%(levelname)s: %(message)s", stream=sys.stderr, level=logging.DEBUG
+    )
     try:
         raise SystemExit(main(*sys.argv) or 0)
     except KeyboardInterrupt:

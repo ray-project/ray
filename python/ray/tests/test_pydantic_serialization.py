@@ -91,6 +91,7 @@ def test_serialize_app_pydantic_type_inline(start_ray):
 
 def test_serialize_app_imported(start_ray):
     from pydantic_module import app
+
     ray.get(ray.put(app))
 
 
@@ -143,6 +144,7 @@ def test_serialize_app_pydantic_type_closure(start_ray):
 
 def test_serialize_app_imported_closure(start_ray):
     from pydantic_module import closure
+
     ray.get(ray.put(closure))
 
 
@@ -181,4 +183,5 @@ def test_serialize_nested_field(start_ray):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -63,8 +63,9 @@ class PullManager {
       NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
       const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
       const std::function<void(const ObjectID &)> cancel_pull_request,
+      const std::function<void(const ObjectID &)> fail_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
-      const std::function<double()> get_time, int pull_timeout_ms,
+      const std::function<double()> get_time_seconds, int pull_timeout_ms,
       int64_t num_bytes_available,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
       std::function<std::string(const ObjectID &)> get_locally_spilled_object_url);
@@ -104,10 +105,14 @@ class PullManager {
   /// non-empty, the object may no longer be on any node.
   /// \param spilled_node_id The node id of the object if it was spilled. If Nil, the
   /// object may no longer be on any node.
+  /// \param pending_creation Whether this object is pending creation. This is
+  /// used to time out objects that have had no locations for too long.
+  /// \param object_size The size of the object. Used to compute how many
+  /// objects we can safely pull.
   void OnLocationChange(const ObjectID &object_id,
                         const std::unordered_set<NodeID> &client_ids,
                         const std::string &spilled_url, const NodeID &spilled_node_id,
-                        size_t object_size);
+                        bool pending_creation, size_t object_size);
 
   /// Cancel an existing pull request.
   ///
@@ -152,6 +157,9 @@ class PullManager {
   /// there are object sizes missing.
   bool HasPullsQueued() const;
 
+  /// Record the internal metrics.
+  void RecordMetrics() const;
+
   std::string DebugString() const;
 
   /// Returns the number of bytes of quota remaining. When this is less than zero,
@@ -170,7 +178,11 @@ class PullManager {
     std::vector<NodeID> client_locations;
     std::string spilled_url;
     NodeID spilled_node_id;
+    bool pending_object_creation = false;
     double next_pull_time;
+    // The pull will timeout at this time if there are still no locations for
+    // the object.
+    double expiration_time_seconds = 0;
     uint8_t num_retries;
     bool object_size_set = false;
     size_t object_size = 0;
@@ -279,7 +291,7 @@ class PullManager {
   const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
   const std::function<void(const ObjectID &)> cancel_pull_request_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
-  const std::function<double()> get_time_;
+  const std::function<double()> get_time_seconds_;
   uint64_t pull_timeout_ms_;
 
   /// The next ID to assign to a bundle pull request, so that the caller can
@@ -362,6 +374,9 @@ class PullManager {
   // A callback to get the spilled object URL if the object is spilled locally.
   // It will return an empty string otherwise.
   std::function<std::string(const ObjectID &)> get_locally_spilled_object_url_;
+
+  // A callback to fail a hung pull request.
+  std::function<void(const ObjectID &)> fail_pull_request_;
 
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;

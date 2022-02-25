@@ -147,6 +147,11 @@ class ResourceSet {
   /// \return Number of CPUs.
   const ResourceSet GetNumCpus() const;
 
+  /// Return the number of CPUs.
+  ///
+  /// \return Number of CPUs.
+  double GetNumCpusAsDouble() const;
+
   /// Return true if the resource set is empty. False otherwise.
   ///
   /// \return True if the resource capacity is zero. False otherwise.

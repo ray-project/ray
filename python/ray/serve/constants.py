@@ -22,11 +22,6 @@ ASYNC_CONCURRENCY = int(1e6)
 # How often to call the control loop on the controller.
 CONTROL_LOOP_PERIOD_S = 0.1
 
-# Upon controller failure and recovery with running actor names,
-# we will update replica handles that halt all traffic to the cluster.
-# This constant indicates grace period to avoid controller thrashing.
-CONTROLLER_STARTUP_GRACE_PERIOD_S = 5
-
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
 
@@ -52,8 +47,11 @@ DEFAULT_LATENCY_BUCKET_MS = [
     5000,
 ]
 
-#: Name of backend reconfiguration method implemented by user.
-BACKEND_RECONFIGURE_METHOD = "reconfigure"
+#: Name of deployment health check method implemented by user.
+HEALTH_CHECK_METHOD = "check_health"
+
+#: Name of deployment reconfiguration method implemented by user.
+RECONFIGURE_METHOD = "reconfigure"
 
 SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 
@@ -67,3 +65,12 @@ MAX_CACHED_HANDLES = 100
 #: Because ServeController will accept one long poll request per handle, its
 #: concurrency needs to scale as O(num_handles)
 CONTROLLER_MAX_CONCURRENCY = 15000
+
+DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
+DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
+DEFAULT_HEALTH_CHECK_PERIOD_S = 10
+DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
+
+#: Number of times in a row that a replica must fail the health check before
+#: being marked unhealthy.
+REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3

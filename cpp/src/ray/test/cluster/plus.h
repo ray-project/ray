@@ -21,3 +21,5 @@ int Return1();
 int Plus1(int x);
 int Plus(int x, int y);
 void ThrowTask();
+
+std::array<int, 100000> ReturnLargeArray(std::array<int, 100000> x);

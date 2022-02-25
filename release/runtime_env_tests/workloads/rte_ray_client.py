@@ -36,17 +36,18 @@ def test_pip_requirements_files(tmpdir: str):
     @ray.remote(runtime_env=env_16)
     def get_version():
         import requests
+
         return requests.__version__
 
     # TODO(architkulkarni): Uncomment after #19002 is fixed
     # assert ray.get(get_version.remote()) == "2.16.0"
-    assert ray.get(
-        get_version.options(runtime_env=env_18).remote()) == "2.18.0"
+    assert ray.get(get_version.options(runtime_env=env_18).remote()) == "2.18.0"
 
     @ray.remote(runtime_env=env_18)
     class VersionActor:
         def get_version(self):
             import requests
+
             return requests.__version__
 
     # TODO(architkulkarni): Uncomment after #19002 is fixed
@@ -60,22 +61,21 @@ def test_pip_requirements_files(tmpdir: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test",
-        action="store_true",
-        help="Finish quickly for testing.")
+        "--smoke-test", action="store_true", help="Finish quickly for testing."
+    )
     args = parser.parse_args()
 
     start = time.time()
 
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "rte_ray_client")
-    for use_working_dir in [True, False]:
+    # Test reconnecting to the same cluster multiple times.
+    for use_working_dir in [True, True, False, False]:
         with tempfile.TemporaryDirectory() as tmpdir:
             runtime_env = {"working_dir": tmpdir} if use_working_dir else None
             print("Testing with use_working_dir=" + str(use_working_dir))
             if addr is not None and addr.startswith("anyscale://"):
-                ray.init(
-                    address=addr, job_name=job_name, runtime_env=runtime_env)
+                ray.init(address=addr, job_name=job_name, runtime_env=runtime_env)
             else:
                 ray.init(address="auto", runtime_env=runtime_env)
             test_pip_requirements_files(tmpdir)
@@ -85,8 +85,7 @@ if __name__ == "__main__":
     result = {
         "time_taken": taken,
     }
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/rte_ray_client.json")
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/rte_ray_client.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 

@@ -1,24 +1,29 @@
 import random
 import sys
 import heapq
-from typing import Callable, Iterator, List, Tuple, Union, Any, Optional, \
-    TYPE_CHECKING
+from typing import Iterator, List, Tuple, Any, Optional, TYPE_CHECKING
 
 import numpy as np
 
 if TYPE_CHECKING:
     import pandas
     import pyarrow
+    from ray.data.impl.sort import SortKeyT
 
-from ray.data.impl.block_builder import BlockBuilder
 from ray.data.aggregate import AggregateFn
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    T,
+    U,
+    KeyType,
+    AggType,
+    BlockExecStats,
+    KeyFn,
+)
+from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.size_estimator import SizeEstimator
-from ray.data.block import Block, BlockAccessor, BlockMetadata, \
-    T, U, KeyType, AggType
-
-# A simple block can be sorted by value (None) or a lambda function (Callable).
-SortKeyT = Union[None, Callable[[T], Any]]
-GroupKeyT = Union[None, Callable[[T], KeyType]]
 
 
 class SimpleBlockBuilder(BlockBuilder[T]):
@@ -35,6 +40,9 @@ class SimpleBlockBuilder(BlockBuilder[T]):
         self._items.extend(block)
         for item in block:
             self._size_estimator.add(item)
+
+    def num_rows(self) -> int:
+        return len(self._items)
 
     def build(self) -> Block:
         return list(self._items)
@@ -53,8 +61,7 @@ class SimpleBlockAccessor(BlockAccessor):
     def iter_rows(self) -> Iterator[T]:
         return iter(self._items)
 
-    def slice(self, start: int, end: int,
-              copy: bool) -> "SimpleBlockAccessor[T]":
+    def slice(self, start: int, end: int, copy: bool) -> "SimpleBlockAccessor[T]":
         view = self._items[start:end]
         if copy:
             view = view.copy()
@@ -68,7 +75,8 @@ class SimpleBlockAccessor(BlockAccessor):
 
     def to_pandas(self) -> "pandas.DataFrame":
         import pandas
-        return pandas.DataFrame(self._items)
+
+        return pandas.DataFrame({"value": self._items})
 
     def to_numpy(self, column: str = None) -> np.ndarray:
         if column:
@@ -77,6 +85,7 @@ class SimpleBlockAccessor(BlockAccessor):
 
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow
+
         return pyarrow.Table.from_pandas(self.to_pandas())
 
     def size_bytes(self) -> int:
@@ -90,31 +99,36 @@ class SimpleBlockAccessor(BlockAccessor):
 
     def zip(self, other: "Block[T]") -> "Block[T]":
         if not isinstance(other, list):
-            raise ValueError("Cannot zip {} with block of type {}".format(
-                type(self), type(other)))
+            raise ValueError(
+                "Cannot zip {} with block of type {}".format(type(self), type(other))
+            )
         if len(other) != len(self._items):
             raise ValueError(
                 "Cannot zip self (length {}) with block of length {}".format(
-                    len(self), len(other)))
+                    len(self), len(other)
+                )
+            )
         return list(zip(self._items, other))
 
     @staticmethod
     def builder() -> SimpleBlockBuilder[T]:
         return SimpleBlockBuilder()
 
-    def sample(self, n_samples: int = 1, key: SortKeyT = None) -> List[T]:
+    def sample(self, n_samples: int = 1, key: "SortKeyT" = None) -> List[T]:
         if not callable(key) and key is not None:
             raise NotImplementedError(
                 "Python sort key must be either None or a callable "
-                "function, was: {}".format(key))
+                "function, was: {}".format(key)
+            )
         k = min(n_samples, len(self._items))
         ret = random.sample(self._items, k)
         if key is None:
             return ret
         return [key(x) for x in ret]
 
-    def sort_and_partition(self, boundaries: List[T], key: SortKeyT,
-                           descending: bool) -> List["Block[T]"]:
+    def sort_and_partition(
+        self, boundaries: List[T], key: "SortKeyT", descending: bool
+    ) -> List["Block[T]"]:
         items = sorted(self._items, key=key, reverse=descending)
         if len(boundaries) == 0:
             return [items]
@@ -126,8 +140,9 @@ class SimpleBlockAccessor(BlockAccessor):
         # in descending order and we only need to count the number of items
         # *greater than* the boundary value instead.
         key_fn = key if key else lambda x: x
-        comp_fn = lambda x, b: key_fn(x) > b \
-            if descending else lambda x, b: key_fn(x) < b  # noqa E731
+        comp_fn = (
+            (lambda x, b: key_fn(x) > b) if descending else (lambda x, b: key_fn(x) < b)
+        )  # noqa E731
 
         # Compute the boundary indices in O(n) time via scan.
         boundary_indices = []
@@ -148,8 +163,9 @@ class SimpleBlockAccessor(BlockAccessor):
         ret.append(items[prev_i:])
         return ret
 
-    def combine(self, key: GroupKeyT,
-                agg: AggregateFn) -> Block[Tuple[KeyType, AggType]]:
+    def combine(
+        self, key: KeyFn, aggs: Tuple[AggregateFn]
+    ) -> Block[Tuple[KeyType, AggType]]:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -157,11 +173,12 @@ class SimpleBlockAccessor(BlockAccessor):
         Args:
             key: The key function that returns the key from the row
                 or None for global aggregation.
-            agg: The aggregation to do.
+            agg: The aggregations to do.
 
         Returns:
-            A sorted block of (k, v) tuples where k is the groupby
-            key and v is the partially combined accumulator.
+            A sorted block of (k, v_1, ..., v_n) tuples where k is the groupby
+            key and v_i is the partially combined accumulator for the ith given
+            aggregation.
             If key is None then the k element of tuple is omitted.
         """
         key_fn = key if key else lambda r: None
@@ -193,29 +210,34 @@ class SimpleBlockAccessor(BlockAccessor):
                             next_row = None
                             break
 
-                accumulator = agg.init(next_key)
+                accumulators = [agg.init(next_key) for agg in aggs]
                 for r in gen():
-                    accumulator = agg.accumulate(accumulator, r)
+                    for i in range(len(aggs)):
+                        accumulators[i] = aggs[i].accumulate(accumulators[i], r)
                 if key is None:
-                    ret.append((accumulator, ))
+                    ret.append(tuple(accumulators))
                 else:
-                    ret.append((next_key, accumulator))
+                    ret.append((next_key,) + tuple(accumulators))
             except StopIteration:
                 break
         return ret
 
     @staticmethod
     def merge_sorted_blocks(
-            blocks: List[Block[T]], key: SortKeyT,
-            descending: bool) -> Tuple[Block[T], BlockMetadata]:
+        blocks: List[Block[T]], key: "SortKeyT", descending: bool
+    ) -> Tuple[Block[T], BlockMetadata]:
+        stats = BlockExecStats.builder()
         ret = [x for block in blocks for x in block]
         ret.sort(key=key, reverse=descending)
-        return ret, SimpleBlockAccessor(ret).get_metadata(None)
+        return ret, SimpleBlockAccessor(ret).get_metadata(
+            None, exec_stats=stats.build()
+        )
 
     @staticmethod
     def aggregate_combined_blocks(
-            blocks: List[Block[Tuple[KeyType, AggType]]], key: GroupKeyT,
-            agg: AggregateFn
+        blocks: List[Block[Tuple[KeyType, AggType]]],
+        key: KeyFn,
+        aggs: Tuple[AggregateFn],
     ) -> Tuple[Block[Tuple[KeyType, U]], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
@@ -226,19 +248,21 @@ class SimpleBlockAccessor(BlockAccessor):
             blocks: A list of partially combined and sorted blocks.
             key: The key function that returns the key from the row
                 or None for global aggregation.
-            agg: The aggregation to do.
+            aggs: The aggregations to do.
 
         Returns:
-            A block of (k, v) tuples and its metadata where k is the groupby
-            key and v is the corresponding aggregation result.
+            A block of (k, v_1, ..., v_n) tuples and its metadata where k is
+            the groupby key and v_i is the corresponding aggregation result for
+            the ith given aggregation.
             If key is None then the k element of tuple is omitted.
         """
 
+        stats = BlockExecStats.builder()
         key_fn = (lambda r: r[0]) if key else (lambda r: 0)
 
         iter = heapq.merge(
-            *[SimpleBlockAccessor(block).iter_rows() for block in blocks],
-            key=key_fn)
+            *[SimpleBlockAccessor(block).iter_rows() for block in blocks], key=key_fn
+        )
         next_row = None
         ret = []
         while True:
@@ -259,19 +283,35 @@ class SimpleBlockAccessor(BlockAccessor):
                             break
 
                 first = True
-                accumulator = None
+                accumulators = [None] * len(aggs)
                 for r in gen():
                     if first:
-                        accumulator = r[1] if key else r[0]
+                        for i in range(len(aggs)):
+                            accumulators[i] = r[i + 1] if key else r[i]
                         first = False
                     else:
-                        accumulator = agg.merge(accumulator, r[1]
-                                                if key else r[0])
+                        for i in range(len(aggs)):
+                            accumulators[i] = aggs[i].merge(
+                                accumulators[i], r[i + 1] if key else r[i]
+                            )
                 if key is None:
-                    ret.append((agg.finalize(accumulator), ))
+                    ret.append(
+                        tuple(
+                            agg.finalize(accumulator)
+                            for agg, accumulator in zip(aggs, accumulators)
+                        )
+                    )
                 else:
-                    ret.append((next_key, agg.finalize(accumulator)))
+                    ret.append(
+                        (next_key,)
+                        + tuple(
+                            agg.finalize(accumulator)
+                            for agg, accumulator in zip(aggs, accumulators)
+                        )
+                    )
             except StopIteration:
                 break
 
-        return ret, SimpleBlockAccessor(ret).get_metadata(None)
+        return ret, SimpleBlockAccessor(ret).get_metadata(
+            None, exec_stats=stats.build()
+        )

@@ -63,8 +63,7 @@
   <properties>
     <java.version>1.8</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <projetct.version>2.0.0-SNAPSHOT</projetct.version>
-    <projetct.version>2.0.0-SNAPSHOT</projetct.version>
+    <project.version>2.0.0-SNAPSHOT</project.version>
   </properties>
 
   <dependencyManagement>

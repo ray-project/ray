@@ -4,8 +4,12 @@ from unittest.mock import patch
 
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
 from ray.autoscaler.command_runner import CommandRunnerInterface
-from ray.autoscaler._private.command_runner import SSHCommandRunner, \
-    DockerCommandRunner, KubernetesCommandRunner, _with_environment_variables
+from ray.autoscaler._private.command_runner import (
+    SSHCommandRunner,
+    DockerCommandRunner,
+    KubernetesCommandRunner,
+    _with_environment_variables,
+)
 from ray.autoscaler.sdk import get_docker_host_mount_location
 from getpass import getuser
 import hashlib
@@ -17,7 +21,7 @@ auth_config = {
 
 
 def test_environment_variable_encoder_strings():
-    env_vars = {"var1": "quote between this \" and this", "var2": "123"}
+    env_vars = {"var1": 'quote between this " and this', "var2": "123"}
     res = _with_environment_variables("echo hello", env_vars)
     expected = """export var1='"quote between this \\" and this"';export var2='"123"';echo hello"""  # noqa: E501
     assert res == expected
@@ -46,14 +50,10 @@ def test_command_runner_interface_abstraction_violation():
         for func in cmd_runner_interface_public_functions
         if not func.startswith("_")
     }
-    for subcls in [
-            SSHCommandRunner, DockerCommandRunner, KubernetesCommandRunner
-    ]:
+    for subcls in [SSHCommandRunner, DockerCommandRunner, KubernetesCommandRunner]:
         subclass_available_functions = dir(subcls)
         subclass_public_functions = {
-            func
-            for func in subclass_available_functions
-            if not func.startswith("_")
+            func for func in subclass_available_functions if not func.startswith("_")
         }
         assert allowed_public_interface_functions == subclass_public_functions
 
@@ -65,8 +65,9 @@ def test_ssh_command_runner():
     cluster_name = "cluster"
     ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
     ssh_user_hash = hashlib.md5(getuser().encode()).hexdigest()
-    ssh_control_path = "/tmp/ray_ssh_{}/{}".format(ssh_user_hash[:10],
-                                                   ssh_control_hash[:10])
+    ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
+        ssh_user_hash[:10], ssh_control_hash[:10]
+    )
     args = {
         "log_prefix": "prefix",
         "node_id": 0,
@@ -78,11 +79,10 @@ def test_ssh_command_runner():
     }
     cmd_runner = SSHCommandRunner(**args)
 
-    env_vars = {"var1": "quote between this \" and this", "var2": "123"}
+    env_vars = {"var1": 'quote between this " and this', "var2": "123"}
     cmd_runner.run(
-        "echo helloo",
-        port_forward=[(8265, 8265)],
-        environment_variables=env_vars)
+        "echo helloo", port_forward=[(8265, 8265)], environment_variables=env_vars
+    )
 
     expected = [
         "ssh",
@@ -116,7 +116,7 @@ def test_ssh_command_runner():
         "--login",
         "-c",
         "-i",
-        """'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1='"'"'"quote between this \\" and this"'"'"';export var2='"'"'"123"'"'"';echo helloo)'"""  # noqa: E501
+        """'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1='"'"'"quote between this \\" and this"'"'"';export var2='"'"'"123"'"'"';echo helloo)'""",  # noqa: E501
     ]
 
     # Much easier to debug this loop than the function call.
@@ -139,7 +139,7 @@ def test_kubernetes_command_runner():
     }
     cmd_runner = KubernetesCommandRunner(**args)
 
-    env_vars = {"var1": "quote between this \" and this", "var2": "123"}
+    env_vars = {"var1": 'quote between this " and this', "var2": "123"}
     cmd_runner.run("echo helloo", environment_variables=env_vars)
 
     expected = [
@@ -154,17 +154,18 @@ def test_kubernetes_command_runner():
         "--login",
         "-c",
         "-i",
-        """\'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1=\'"\'"\'"quote between this \\" and this"\'"\'"\';export var2=\'"\'"\'"123"\'"\'"\';echo helloo)\'"""  # noqa: E501
+        """\'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1=\'"\'"\'"quote between this \\" and this"\'"\'"\';export var2=\'"\'"\'"123"\'"\'"\';echo helloo)\'""",  # noqa: E501
     ]
 
     assert process_runner.calls[0] == " ".join(expected)
 
     logger = logging.getLogger("ray.autoscaler._private.command_runner")
     with pytest.raises(SystemExit) as pytest_wrapped_e, patch.object(
-            logger, "error") as mock_logger_error:
+        logger, "error"
+    ) as mock_logger_error:
         cmd_runner.run(fail_cmd, exit_on_fail=True)
 
-    failed_cmd_expected = f'prefixCommand failed: \n\n  kubectl -n namespace exec -it 0 --\'bash --login -c -i \'"\'"\'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ({fail_cmd})\'"\'"\'\'\n'  # noqa: E501
+    failed_cmd_expected = f"prefixCommand failed: \n\n  kubectl -n namespace exec -it 0 --'bash --login -c -i '\"'\"'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ({fail_cmd})'\"'\"''\n"  # noqa: E501
     mock_logger_error.assert_called_once_with(failed_cmd_expected)
     assert pytest_wrapped_e.type == SystemExit
     assert pytest_wrapped_e.value.code == 1
@@ -177,8 +178,9 @@ def test_docker_command_runner():
     cluster_name = "cluster"
     ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
     ssh_user_hash = hashlib.md5(getuser().encode()).hexdigest()
-    ssh_control_path = "/tmp/ray_ssh_{}/{}".format(ssh_user_hash[:10],
-                                                   ssh_control_hash[:10])
+    ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
+        ssh_user_hash[:10], ssh_control_hash[:10]
+    )
     docker_config = {"container_name": "container"}
     args = {
         "log_prefix": "prefix",
@@ -193,7 +195,7 @@ def test_docker_command_runner():
     cmd_runner = DockerCommandRunner(**args)
     assert len(process_runner.calls) == 0, "No calls should be made in ctor"
 
-    env_vars = {"var1": "quote between this \" and this", "var2": "123"}
+    env_vars = {"var1": 'quote between this " and this', "var2": "123"}
     cmd_runner.run("echo hello", environment_variables=env_vars)
 
     # This string is insane because there are an absurd number of embedded
@@ -202,13 +204,36 @@ def test_docker_command_runner():
     cmd = """'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (docker exec -it  container /bin/bash -c '"'"'bash --login -c -i '"'"'"'"'"'"'"'"'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"quote between this \\" and this"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';export var2='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"123"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';echo hello)'"'"'"'"'"'"'"'"''"'"' )'"""  # noqa: E501
 
     expected = [
-        "ssh", "-tt", "-i", "8265.pem", "-o", "StrictHostKeyChecking=no", "-o",
-        "UserKnownHostsFile=/dev/null", "-o", "IdentitiesOnly=yes", "-o",
-        "ExitOnForwardFailure=yes", "-o", "ServerAliveInterval=5", "-o",
-        "ServerAliveCountMax=3", "-o", "ControlMaster=auto", "-o",
-        "ControlPath={}/%C".format(ssh_control_path), "-o",
-        "ControlPersist=10s", "-o", "ConnectTimeout=120s", "ray@1.2.3.4",
-        "bash", "--login", "-c", "-i", cmd
+        "ssh",
+        "-tt",
+        "-i",
+        "8265.pem",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "ExitOnForwardFailure=yes",
+        "-o",
+        "ServerAliveInterval=5",
+        "-o",
+        "ServerAliveCountMax=3",
+        "-o",
+        "ControlMaster=auto",
+        "-o",
+        "ControlPath={}/%C".format(ssh_control_path),
+        "-o",
+        "ControlPersist=10s",
+        "-o",
+        "ConnectTimeout=120s",
+        "ray@1.2.3.4",
+        "bash",
+        "--login",
+        "-c",
+        "-i",
+        cmd,
     ]
     # Much easier to debug this loop than the function call.
     for x, y in zip(process_runner.calls[0], expected):
@@ -247,62 +272,66 @@ def test_docker_rsync():
 
     process_runner.respond_to_call("docker inspect -f", ["true"])
     cmd_runner.run_rsync_up(
-        local_mount, remote_mount, options={"docker_mount_if_possible": True})
+        local_mount, remote_mount, options={"docker_mount_if_possible": True}
+    )
 
     # Make sure we do not copy directly to raw destination
     process_runner.assert_not_has_call(
-        "1.2.3.4", pattern=f"-avz {local_mount} ray@1.2.3.4:{remote_mount}")
-    process_runner.assert_not_has_call(
-        "1.2.3.4", pattern=f"mkdir -p {remote_mount}")
+        "1.2.3.4", pattern=f"-avz {local_mount} ray@1.2.3.4:{remote_mount}"
+    )
+    process_runner.assert_not_has_call("1.2.3.4", pattern=f"mkdir -p {remote_mount}")
     # No rsync -e.*docker exec -i for file_mounts
-    process_runner.assert_not_has_call(
-        "1.2.3.4", pattern="rsync -e.*docker exec -i")
+    process_runner.assert_not_has_call("1.2.3.4", pattern="rsync -e.*docker exec -i")
     process_runner.assert_has_call(
-        "1.2.3.4",
-        pattern=f"-avz {local_mount} ray@1.2.3.4:{remote_host_mount}")
+        "1.2.3.4", pattern=f"-avz {local_mount} ray@1.2.3.4:{remote_host_mount}"
+    )
     process_runner.clear_history()
     ##############################
 
     process_runner.respond_to_call("docker inspect -f", ["true"])
     cmd_runner.run_rsync_up(
-        local_file, remote_file, options={"docker_mount_if_possible": False})
+        local_file, remote_file, options={"docker_mount_if_possible": False}
+    )
 
     # Make sure we do not copy directly to raw destination
     process_runner.assert_not_has_call(
-        "1.2.3.4", pattern=f"-avz {local_file} ray@1.2.3.4:{remote_file}")
-    process_runner.assert_not_has_call(
-        "1.2.3.4", pattern=f"mkdir -p {remote_file}")
+        "1.2.3.4", pattern=f"-avz {local_file} ray@1.2.3.4:{remote_file}"
+    )
+    process_runner.assert_not_has_call("1.2.3.4", pattern=f"mkdir -p {remote_file}")
 
+    process_runner.assert_has_call("1.2.3.4", pattern="rsync -e.*docker exec -i")
     process_runner.assert_has_call(
-        "1.2.3.4", pattern="rsync -e.*docker exec -i")
-    process_runner.assert_has_call(
-        "1.2.3.4", pattern=f"-avz {local_file} ray@1.2.3.4:{remote_host_file}")
+        "1.2.3.4", pattern=f"-avz {local_file} ray@1.2.3.4:{remote_host_file}"
+    )
     process_runner.clear_history()
     ##############################
 
     cmd_runner.run_rsync_down(
-        remote_mount, local_mount, options={"docker_mount_if_possible": True})
+        remote_mount, local_mount, options={"docker_mount_if_possible": True}
+    )
 
+    process_runner.assert_not_has_call("1.2.3.4", pattern="rsync -e.*docker exec -i")
     process_runner.assert_not_has_call(
-        "1.2.3.4", pattern="rsync -e.*docker exec -i")
-    process_runner.assert_not_has_call(
-        "1.2.3.4", pattern=f"-avz ray@1.2.3.4:{remote_mount} {local_mount}")
+        "1.2.3.4", pattern=f"-avz ray@1.2.3.4:{remote_mount} {local_mount}"
+    )
     process_runner.assert_has_call(
-        "1.2.3.4",
-        pattern=f"-avz ray@1.2.3.4:{remote_host_mount} {local_mount}")
+        "1.2.3.4", pattern=f"-avz ray@1.2.3.4:{remote_host_mount} {local_mount}"
+    )
 
     process_runner.clear_history()
     ##############################
 
     cmd_runner.run_rsync_down(
-        remote_file, local_file, options={"docker_mount_if_possible": False})
+        remote_file, local_file, options={"docker_mount_if_possible": False}
+    )
 
-    process_runner.assert_has_call(
-        "1.2.3.4", pattern="rsync -e.*docker exec -i")
+    process_runner.assert_has_call("1.2.3.4", pattern="rsync -e.*docker exec -i")
     process_runner.assert_not_has_call(
-        "1.2.3.4", pattern=f"-avz ray@1.2.3.4:{remote_file} {local_file}")
+        "1.2.3.4", pattern=f"-avz ray@1.2.3.4:{remote_file} {local_file}"
+    )
     process_runner.assert_has_call(
-        "1.2.3.4", pattern=f"-avz ray@1.2.3.4:{remote_host_file} {local_file}")
+        "1.2.3.4", pattern=f"-avz ray@1.2.3.4:{remote_host_file} {local_file}"
+    )
 
 
 def test_rsync_exclude_and_filter():
@@ -331,11 +360,13 @@ def test_rsync_exclude_and_filter():
         options={
             "docker_mount_if_possible": True,
             "rsync_exclude": ["test"],
-            "rsync_filter": [".ignore"]
-        })
+            "rsync_filter": [".ignore"],
+        },
+    )
 
     process_runner.assert_has_call(
-        "1.2.3.4", pattern="--exclude test --filter dir-merge,- .ignore")
+        "1.2.3.4", pattern="--exclude test --filter dir-merge,- .ignore"
+    )
 
 
 def test_rsync_without_exclude_and_filter():
@@ -363,15 +394,16 @@ def test_rsync_without_exclude_and_filter():
         remote_mount,
         options={
             "docker_mount_if_possible": True,
-        })
+        },
+    )
 
     process_runner.assert_not_has_call("1.2.3.4", pattern="--exclude test")
     process_runner.assert_not_has_call(
-        "1.2.3.4", pattern="--filter dir-merge,- .ignore")
+        "1.2.3.4", pattern="--filter dir-merge,- .ignore"
+    )
 
 
-@pytest.mark.parametrize("run_option_type",
-                         ["run_options", "head_run_options"])
+@pytest.mark.parametrize("run_option_type", ["run_options", "head_run_options"])
 def test_docker_shm_override(run_option_type):
     process_runner = MockProcessRunner()
     provider = MockProvider()
@@ -381,7 +413,7 @@ def test_docker_shm_override(run_option_type):
     docker_config = {
         "container_name": "container",
         "image": "rayproject/ray:latest",
-        run_option_type: ["--shm-size=80g"]
+        run_option_type: ["--shm-size=80g"],
     }
     args = {
         "log_prefix": "prefix",
@@ -407,4 +439,5 @@ def test_docker_shm_override(run_option_type):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

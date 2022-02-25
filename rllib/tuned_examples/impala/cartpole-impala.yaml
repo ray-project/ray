@@ -8,3 +8,4 @@ cartpole-impala:
         # Works for both torch and tf.
         framework: tf
         num_gpus: 0
+        vtrace_drop_last_ts: false

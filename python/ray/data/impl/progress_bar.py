@@ -1,23 +1,30 @@
 from typing import List, Any
 
 import ray
+from ray.ray_constants import env_integer
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
 
 try:
     import tqdm
+
     needs_warning = False
 except ImportError:
     tqdm = None
     needs_warning = True
 
 # Whether progress bars are enabled in this process.
-_enabled: bool = True
+_enabled: bool = not bool(env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0))
 
 
 @PublicAPI
 def set_progress_bars(enabled: bool) -> bool:
     """Set whether progress bars are enabled.
+
+    The default behavior is controlled by the
+    ``RAY_DATA_DISABLE_PROGRESS_BARS`` environment variable. By default,
+    it is set to "0". Setting it to "1" will disable progress bars, unless
+    they are reenabled by this method.
 
     Returns:
         Whether progress bars were previously enabled.
@@ -40,8 +47,9 @@ class ProgressBar:
         else:
             global needs_warning
             if needs_warning:
-                print("[dataset]: Run `pip install tqdm` to enable "
-                      "progress reporting.")
+                print(
+                    "[dataset]: Run `pip install tqdm` to enable " "progress reporting."
+                )
                 needs_warning = False
             self._bar = None
 
@@ -75,3 +83,9 @@ class ProgressBar:
 
     def __del__(self):
         self.close()
+
+    def __getstate__(self):
+        return {}
+
+    def __setstate__(self, state):
+        self._bar = None  # Progress bar is disabled on remote nodes.

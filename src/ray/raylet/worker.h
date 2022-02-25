@@ -52,9 +52,6 @@ class WorkerInterface {
   /// Return the worker process's startup token
   virtual StartupToken GetStartupToken() const = 0;
   virtual void SetProcess(Process proc) = 0;
-  /// Return the worker shim process.
-  virtual Process GetShimProcess() const = 0;
-  virtual void SetShimProcess(Process proc) = 0;
   virtual Language GetLanguage() const = 0;
   virtual const std::string IpAddress() const = 0;
   /// Connect this worker's gRPC client.
@@ -106,12 +103,16 @@ class WorkerInterface {
 
   virtual rpc::CoreWorkerClientInterface *rpc_client() = 0;
 
+  /// Return True if the worker is available for scheduling a task or actor.
+  virtual bool IsAvailableForScheduling() const = 0;
+
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
 
   FRIEND_TEST(WorkerPoolTest, PopWorkerMultiTenancy);
   FRIEND_TEST(WorkerPoolTest, TestWorkerCapping);
   FRIEND_TEST(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects);
+  FRIEND_TEST(WorkerPoolTest, TestWorkerCappingWithExitDelay);
   FRIEND_TEST(WorkerPoolTest, MaximumStartupConcurrency);
 };
 
@@ -141,9 +142,6 @@ class Worker : public WorkerInterface {
   /// Return the worker process's startup token
   StartupToken GetStartupToken() const;
   void SetProcess(Process proc);
-  /// Return this worker shim process.
-  Process GetShimProcess() const;
-  void SetShimProcess(Process proc);
   Language GetLanguage() const;
   const std::string IpAddress() const;
   /// Connect this worker's gRPC client.
@@ -202,6 +200,13 @@ class Worker : public WorkerInterface {
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
+  bool IsAvailableForScheduling() const {
+    return !IsDead()                        // Not dead
+           && !GetAssignedTaskId().IsNil()  // No assigned task
+           && !IsBlocked()                  // Not blocked
+           && GetActorId().IsNil();         // No assigned actor
+  }
+
   rpc::CoreWorkerClientInterface *rpc_client() {
     RAY_CHECK(IsRegistered());
     return rpc_client_.get();
@@ -217,9 +222,6 @@ class Worker : public WorkerInterface {
   Process proc_;
   /// The worker's process's startup_token
   StartupToken startup_token_;
-  /// The worker's shim process. The shim process PID is the same with worker process PID,
-  /// except starting worker process in container.
-  Process shim_proc_;
   /// The language type of this worker.
   Language language_;
   /// The type of the worker.

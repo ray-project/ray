@@ -19,6 +19,7 @@ from ray.workflow.tests import utils
 def the_failed_step(x):
     if not utils.check_global_mark():
         import os
+
         os.kill(os.getpid(), 9)
     return "foo(" + x + ")"
 
@@ -81,10 +82,13 @@ def gather(*args):
 
 @pytest.mark.parametrize(
     "workflow_start_regular",
-    [{
-        "num_cpus": 4,  # increase CPUs to add pressure
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 4,  # increase CPUs to add pressure
+        }
+    ],
+    indirect=True,
+)
 def test_dedupe_downloads_list(workflow_start_regular):
     with tempfile.TemporaryDirectory() as temp_dir:
         debug_store = DebugStorage(get_global_storage(), temp_dir)
@@ -105,10 +109,13 @@ def test_dedupe_downloads_list(workflow_start_regular):
 
 @pytest.mark.parametrize(
     "workflow_start_regular",
-    [{
-        "num_cpus": 4,  # increase CPUs to add pressure
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 4,  # increase CPUs to add pressure
+        }
+    ],
+    indirect=True,
+)
 def test_dedupe_download_raw_ref(workflow_start_regular):
     with tempfile.TemporaryDirectory() as temp_dir:
         debug_store = DebugStorage(get_global_storage(), temp_dir)
@@ -129,10 +136,13 @@ def test_dedupe_download_raw_ref(workflow_start_regular):
 
 @pytest.mark.parametrize(
     "workflow_start_regular",
-    [{
-        "num_cpus": 4,  # increase CPUs to add pressure
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 4,  # increase CPUs to add pressure
+        }
+    ],
+    indirect=True,
+)
 def test_nested_workflow_no_download(workflow_start_regular):
     """Test that we _only_ load from storage on recovery. For a nested workflow
     step, we should checkpoint the input/output, but continue to reuse the
@@ -156,8 +166,9 @@ def test_nested_workflow_no_download(workflow_start_regular):
             if "objects" in key:
                 print(key)
                 put_objects_count += 1
-        assert put_objects_count == 1, \
-            "We should detect the object exists before uploading"
+        assert (
+            put_objects_count == 1
+        ), "We should detect the object exists before uploading"
         assert ray.get(result) == ["hello"]
 
 
@@ -168,8 +179,7 @@ def test_recovery_simple(workflow_start_regular):
         # internally we get WorkerCrashedError
         simple.step("x").run(workflow_id=workflow_id)
 
-    assert workflow.get_status(
-        workflow_id) == workflow.WorkflowStatus.RESUMABLE
+    assert workflow.get_status(workflow_id) == workflow.WorkflowStatus.RESUMABLE
 
     utils.set_global_mark()
     output = workflow.resume(workflow_id)
@@ -227,7 +237,8 @@ def test_recovery_cluster_failure(reset_workflow, tmp_path):
     subprocess.check_call(["ray", "start", "--head"])
     time.sleep(1)
     proc = run_string_as_driver_nonblocking(
-        driver_script.format(tmp_path=str(tmp_path)))
+        driver_script.format(tmp_path=str(tmp_path))
+    )
     time.sleep(10)
     subprocess.check_call(["ray", "stop"])
     proc.kill()
@@ -307,4 +318,5 @@ def test_resume_different_storage(ray_start_regular, tmp_path, reset_workflow):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

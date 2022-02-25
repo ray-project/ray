@@ -3,24 +3,41 @@ import inspect
 import logging
 import os
 from pathlib import Path
-from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, \
-    Type
+from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, Type
 
+import ray
 from ray.actor import ActorHandle
-from ray.train.backends.backend import BackendConfig, BackendExecutor, \
-    InactiveWorkerGroupError, TrainBackendError, TrainingWorkerError
-from ray.train.backends.horovod import HorovodConfig
-from ray.train.backends.tensorflow import TensorflowConfig
-from ray.train.backends.torch import TorchConfig
+from ray.train.backend import (
+    BackendConfig,
+    BackendExecutor,
+    InactiveWorkerGroupError,
+    TrainBackendError,
+    TrainingWorkerError,
+)
 from ray.train.callbacks.callback import TrainingCallback
+from ray.train.session import TrainingResultType
 from ray.train.utils import RayDataset
-from ray.train.checkpoint import CheckpointStrategy
-from ray.train.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR, \
-    TUNE_CHECKPOINT_FILE_NAME
+from ray.train.checkpoint import (
+    CheckpointStrategy,
+    TuneCheckpointManager,
+    CheckpointManager,
+    load_checkpoint_from_path,
+)
+from ray.train.constants import (
+    TUNE_INSTALLED,
+    DEFAULT_RESULTS_DIR,
+    TUNE_CHECKPOINT_FILE_NAME,
+    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
+    TRAIN_ENABLE_WORKER_SPREAD_ENV,
+)
 
 # Ray Train should be usable even if Tune is not installed.
 from ray.train.utils import construct_path
 from ray.train.worker_group import WorkerGroup
+from ray.util import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -40,13 +57,41 @@ S = TypeVar("S")
 
 logger = logging.getLogger(__name__)
 
-BACKEND_NAME_TO_CONFIG_CLS = {
-    "horovod": HorovodConfig,
-    "tensorflow": TensorflowConfig,
-    "torch": TorchConfig
+BACKEND_NAME_TO_CONFIG_CLS_NAME = {
+    "horovod": "HorovodConfig",
+    "tensorflow": "TensorflowConfig",
+    "torch": "TorchConfig",
+}
+
+# The environment variables that need to be propagated from the driver to the
+# `BackendExecutor` actor via runtime env.
+BACKEND_ENV_VARS = {
+    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
+    TRAIN_ENABLE_WORKER_SPREAD_ENV,
 }
 
 
+# Import backend configurations dynamically since not all subdependencies
+# may be installed.
+def get_backend_config_cls(backend_name) -> type:
+    if backend_name not in BACKEND_NAME_TO_CONFIG_CLS_NAME:
+        raise ValueError(
+            f"Invalid backend: {backend_name}. "
+            f"Supported string values are: "
+            f"{BACKEND_NAME_TO_CONFIG_CLS_NAME.keys()}"
+        )
+    import importlib
+
+    config_cls = getattr(
+        importlib.import_module(f"ray.train" f".{backend_name}"),
+        BACKEND_NAME_TO_CONFIG_CLS_NAME[backend_name],
+    )
+    return config_cls
+
+
+@PublicAPI(stability="beta")
 class Trainer:
     """A class for enabling seamless distributed deep learning.
 
@@ -83,16 +128,28 @@ class Trainer:
     """
 
     def __init__(
-            self,
-            backend: Union[str, BackendConfig],
-            num_workers: int,
-            use_gpu: bool = False,
-            resources_per_worker: Optional[Dict[str, float]] = None,
-            logdir: Optional[str] = None,
-            max_retries: int = 3,
+        self,
+        backend: Union[str, BackendConfig],
+        num_workers: int,
+        use_gpu: bool = False,
+        resources_per_worker: Optional[Dict[str, float]] = None,
+        logdir: Optional[str] = None,
+        max_retries: int = 3,
     ):
+        if num_workers <= 0:
+            raise ValueError("`num_workers` must be a positive integer.")
 
-        self._backend = backend
+        if not ray.is_initialized():
+            ray.init()
+
+        if "GPU" in ray.available_resources() and not use_gpu:
+            logger.info(
+                "GPUs are detected in your Ray cluster, but GPU "
+                "training is not enabled for Ray Train. To enable "
+                "GPU training, make sure to set `use_gpu` to True "
+                "when instantiating your Trainer."
+            )
+
         self._num_workers = num_workers
         self._use_gpu = use_gpu
         self._resources_per_worker = resources_per_worker
@@ -103,7 +160,7 @@ class Trainer:
         self.logdir = self.create_logdir(logdir)
 
         # Setup executor.
-        backend_config = self._get_backend_config(backend)
+        self._backend_config = self._get_backend_config(backend)
 
         num_cpus = 1
         num_gpus = int(use_gpu)
@@ -116,21 +173,42 @@ class Trainer:
                 raise ValueError(
                     "`use_gpu` is False but `GPU` was found in "
                     "`resources_per_worker`. Either set `use_gpu` to True or "
-                    "remove `GPU` from `resources_per_worker.")
+                    "remove `GPU` from `resources_per_worker."
+                )
             if use_gpu and num_gpus == 0:
                 raise ValueError(
                     "`use_gpu` is True but `GPU` is set to 0 in "
                     "`resources_per_worker`. Either set `use_gpu` to False or "
                     "request a positive number of `GPU` in "
-                    "`resources_per_worker.")
+                    "`resources_per_worker."
+                )
 
-        self._executor = BackendExecutor(
-            backend_config=backend_config,
+        runtime_env = {
+            "env_vars": {
+                var_name: os.environ[var_name]
+                for var_name in BACKEND_ENV_VARS
+                if var_name in os.environ
+            }
+        }
+
+        remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
+
+        self._backend_executor_actor = remote_executor.options(
+            runtime_env=runtime_env
+        ).remote(
+            backend_config=self._backend_config,
             num_workers=num_workers,
             num_cpus_per_worker=num_cpus,
             num_gpus_per_worker=num_gpus,
             additional_resources_per_worker=resources_per_worker,
-            max_retries=max_retries)
+            max_retries=max_retries,
+        )
+
+        if self._is_tune_enabled():
+            self.checkpoint_manager = TuneCheckpointManager()
+        else:
+            self.checkpoint_manager = CheckpointManager()
+        self.checkpoint_manager.on_init()
 
     def create_logdir(self, log_dir: Optional[Union[str, Path]]) -> Path:
         """Create logdir for the Trainer."""
@@ -150,8 +228,7 @@ class Trainer:
         self.latest_run_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Run results will be logged in: {self.latest_run_dir}")
 
-    def _get_backend_config(
-            self, backend: Union[str, BackendConfig]) -> BackendConfig:
+    def _get_backend_config(self, backend: Union[str, BackendConfig]) -> BackendConfig:
         """Gets the ``BackendConfig`` to use for training.
 
         Args:
@@ -168,14 +245,13 @@ class Trainer:
         if isinstance(backend, BackendConfig):
             return backend
         elif isinstance(backend, str):
-            try:
-                return BACKEND_NAME_TO_CONFIG_CLS[backend]()
-            except KeyError:
-                raise ValueError(f"Invalid backend: {backend}. "
-                                 f"Supported string values are: "
-                                 f"{BACKEND_NAME_TO_CONFIG_CLS.keys()}")
+            return get_backend_config_cls(backend)()
         else:
             raise TypeError(f"Invalid type for backend: {type(backend)}.")
+
+    def _is_tune_enabled(self):
+        """Whether or not this Trainer is part of a Tune session."""
+        return TUNE_INSTALLED and tune.is_session_enabled()
 
     def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the training execution service.
@@ -184,16 +260,17 @@ class Trainer:
             initialization_hook (Optional[Callable]): The function to call on
                 each worker when it is instantiated.
         """
-        self._executor.start(initialization_hook)
+        ray.get(self._backend_executor_actor.start.remote(initialization_hook))
 
-    def run(self,
-            train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-            config: Optional[Dict[str, Any]] = None,
-            callbacks: Optional[List[TrainingCallback]] = None,
-            dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
-            checkpoint: Optional[Union[Dict, str, Path]] = None,
-            checkpoint_strategy: Optional[CheckpointStrategy] = None
-            ) -> List[T]:
+    def run(
+        self,
+        train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
+        config: Optional[Dict[str, Any]] = None,
+        callbacks: Optional[List[TrainingCallback]] = None,
+        dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
+        checkpoint: Optional[Union[Dict, str, Path]] = None,
+        checkpoint_strategy: Optional[CheckpointStrategy] = None,
+    ) -> List[T]:
         """Runs a training function in a distributed manner.
 
         Args:
@@ -237,22 +314,26 @@ class Trainer:
         finished_with_errors = False
 
         for callback in callbacks:
-            callback.start_training(logdir=self.latest_run_dir)
+            callback.start_training(
+                logdir=str(self.latest_run_dir), config=config or {}
+            )
 
         train_func = self._get_train_func(train_func, config)
 
         try:
             iterator = TrainingIterator(
-                backend_executor=self._executor,
+                backend_executor_actor=self._backend_executor_actor,
+                backend_config=self._backend_config,
                 train_func=train_func,
                 dataset=dataset,
+                checkpoint_manager=self.checkpoint_manager,
                 checkpoint=checkpoint,
                 checkpoint_strategy=checkpoint_strategy,
                 run_dir=self.latest_run_dir,
             )
             for intermediate_result in iterator:
                 for callback in callbacks:
-                    callback.handle_result(intermediate_result)
+                    callback.process_results(intermediate_result)
 
             assert iterator.is_finished()
             return iterator.get_final_results()
@@ -261,12 +342,12 @@ class Trainer:
                 callback.finish_training(error=finished_with_errors)
 
     def run_iterator(
-            self,
-            train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-            config: Optional[Dict[str, Any]] = None,
-            dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
-            checkpoint: Optional[Union[Dict, str, Path]] = None,
-            checkpoint_strategy: Optional[CheckpointStrategy] = None
+        self,
+        train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
+        config: Optional[Dict[str, Any]] = None,
+        dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
+        checkpoint: Optional[Union[Dict, str, Path]] = None,
+        checkpoint_strategy: Optional[CheckpointStrategy] = None,
     ) -> "TrainingIterator":
         """Same as ``run`` except returns an iterator over the results.
 
@@ -317,17 +398,21 @@ class Trainer:
         train_func = self._get_train_func(train_func, config)
 
         return TrainingIterator(
-            backend_executor=self._executor,
+            backend_executor_actor=self._backend_executor_actor,
+            backend_config=self._backend_config,
             train_func=train_func,
             run_dir=self.latest_run_dir,
             dataset=dataset,
+            checkpoint_manager=self.checkpoint_manager,
             checkpoint=checkpoint,
-            checkpoint_strategy=checkpoint_strategy)
+            checkpoint_strategy=checkpoint_strategy,
+        )
 
     def _get_train_func(
-            self,
-            train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-            config: Optional[Dict[str, Any]]) -> Callable[[], T]:
+        self,
+        train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
+        config: Optional[Dict[str, Any]],
+    ) -> Callable[[], T]:
         """Validates and constructs the training function to execute.
 
         Args:
@@ -372,7 +457,7 @@ class Trainer:
         ``train.checkpoint()`` has not been called from ``train_func``within
         the most recent call to ``run``.
         """
-        return self._executor.latest_checkpoint_dir
+        return self.checkpoint_manager.latest_checkpoint_dir
 
     @property
     def best_checkpoint_path(self) -> Optional[Path]:
@@ -382,10 +467,10 @@ class Trainer:
         Default behavior is to return the most recent checkpoint.
 
         Returns ``None`` if ``run()`` has not been called or if
-        ``train.checkpoint()`` has not been called from ``train_func`` within
-        the most recent call to ``run``.
+        ``train.save_checkpoint()`` has not been called from ``train_func``
+        within the most recent call to ``run``.
         """
-        return self._executor.best_checkpoint_path
+        return self.checkpoint_manager.best_checkpoint_path
 
     @property
     def latest_checkpoint(self) -> Optional[Dict]:
@@ -396,16 +481,47 @@ class Trainer:
         Returns ``None`` if ``run()`` has not been called or if
         ``train.checkpoint()`` has not been called from ``train_func``.
         """
-        return self._executor.latest_checkpoint
+        return self.checkpoint_manager.latest_checkpoint
+
+    @property
+    def best_checkpoint(self) -> Optional[Dict]:
+        """Best saved checkpoint from the latest run.
+
+        "Best" is defined by the input ``CheckpointStrategy``.
+        Default behavior is to return the most recent checkpoint.
+
+        Returns ``None`` if ``run()`` has not been called or if
+        ``train.save_checkpoint()`` has not been called from ``train_func``
+        within the most recent call to ``run``.
+        """
+        best_checkpoint_path = self.best_checkpoint_path
+        if best_checkpoint_path is None:
+            return None
+        else:
+            return load_checkpoint_from_path(best_checkpoint_path)
+
+    @staticmethod
+    def load_checkpoint_from_path(checkpoint_file_path: Union[str, Path]) -> Dict:
+        """Convenience method to load a checkpoint from path.
+
+        An error will be raised if the provided path does not exist.
+
+        Args:
+            checkpoint_file_path (Union[str, Path]): The path to the checkpoint
+                to load. If the checkpoint saved in this path has not been
+                created by Ray Train, there is no guarantee that it can be
+                loaded in successfully.
+        """
+        return load_checkpoint_from_path(checkpoint_file_path)
 
     def shutdown(self):
         """Shuts down the training execution service."""
-        self._executor.shutdown()
+        ray.get(self._backend_executor_actor.shutdown.remote())
 
     def to_tune_trainable(
-            self,
-            train_func: Callable[[Dict[str, Any]], T],
-            dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
+        self,
+        train_func: Callable[[Dict[str, Any]], T],
+        dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
     ) -> Type[Trainable]:
         """Creates a Tune ``Trainable`` from the input training function.
 
@@ -427,20 +543,28 @@ class Trainer:
             A Trainable that can directly be passed into ``tune.run()``.
         """
         if not TUNE_INSTALLED:
-            raise ValueError("Tune is not installed. Please install ray["
-                             "tune] to use the Tune integration.")
+            raise ValueError(
+                "Tune is not installed. Please install ray["
+                "tune] to use the Tune integration."
+            )
 
-        if self._executor.is_started:
-            raise RuntimeError("The Trainer must not be active to use "
-                               "`to_tune_trainable`. Either shutdown the "
-                               "Trainer or don't start it in the first place.")
+        if ray.get(self._backend_executor_actor.is_started.remote()):
+            raise RuntimeError(
+                "The Trainer must not be active to use "
+                "`to_tune_trainable`. Either shutdown the "
+                "Trainer or don't start it in the first place."
+            )
 
-        return _create_tune_trainable(train_func, dataset, self._backend,
-                                      self._num_workers, self._use_gpu,
-                                      self._resources_per_worker)
+        return _create_tune_trainable(
+            train_func,
+            dataset,
+            self._backend_config,
+            self._num_workers,
+            self._use_gpu,
+            self._resources_per_worker,
+        )
 
-    def to_worker_group(self, train_cls: Type, *args,
-                        **kwargs) -> "TrainWorkerGroup":
+    def to_worker_group(self, train_cls: Type, *args, **kwargs) -> "TrainWorkerGroup":
         """Returns Ray actors with the provided class and the backend started.
 
         This is useful if you want to provide your own class for training
@@ -471,15 +595,22 @@ class Trainer:
             args, kwargs: Arguments to pass into the ``__init__`` of the
                 provided ``train_cls``.
         """
-        if self._executor.is_started:
-            raise RuntimeError("The Trainer must not be active to use "
-                               "`to_worker_group`. Either shutdown the "
-                               "Trainer or don't start it in the first place.")
-        self._executor.start(
-            train_cls=train_cls, train_cls_args=args, train_cls_kwargs=kwargs)
-        return TrainWorkerGroup(self._executor.worker_group)
+        if ray.get(self._backend_executor_actor.is_started.remote()):
+            raise RuntimeError(
+                "The Trainer must not be active to use "
+                "`to_worker_group`. Either shutdown the "
+                "Trainer or don't start it in the first place."
+            )
+        ray.get(
+            self._backend_executor_actor.start.remote(
+                train_cls=train_cls, train_cls_args=args, train_cls_kwargs=kwargs
+            )
+        )
+        worker_group = ray.get(self._backend_executor_actor.get_worker_group.remote())
+        return TrainWorkerGroup(worker_group)
 
 
+@DeveloperAPI
 class TrainWorkerGroup:
     """A container for a group of Ray actors.
 
@@ -525,27 +656,35 @@ class TrainWorkerGroup:
         self._worker_group.shutdown(patience_s=patience_s)
 
 
+@DeveloperAPI
 class TrainingIterator:
     """An iterator over Train results. Returned by ``trainer.run_iterator``."""
 
     def __init__(
-            self, backend_executor: BackendExecutor,
-            train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-            run_dir: Path,
-            dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]],
-            checkpoint: Optional[Dict],
-            checkpoint_strategy: Optional[CheckpointStrategy]):
-        self._executor = backend_executor
+        self,
+        backend_executor_actor: ActorHandle,
+        backend_config: BackendConfig,
+        train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
+        run_dir: Path,
+        dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]],
+        checkpoint_manager: CheckpointManager,
+        checkpoint: Optional[Union[Dict, str, Path]],
+        checkpoint_strategy: Optional[CheckpointStrategy],
+    ):
+        self._backend_executor_actor = backend_executor_actor
+        self._backend = backend_config.backend_cls()
         self._train_func = train_func
         self._dataset = dataset
         self._run_dir = run_dir
+        self._checkpoint_manager = checkpoint_manager
         self._checkpoint_strategy = checkpoint_strategy
         self._start_training(
             train_func=train_func,
             run_dir=run_dir,
             dataset=dataset,
             checkpoint=checkpoint,
-            checkpoint_strategy=checkpoint_strategy)
+            checkpoint_strategy=checkpoint_strategy,
+        )
 
         self._final_results = None
         self._finished_training = False
@@ -553,21 +692,26 @@ class TrainingIterator:
     def __iter__(self):
         return self
 
-    def _start_training(self,
-                        train_func,
-                        run_dir,
-                        dataset,
-                        checkpoint,
-                        checkpoint_strategy,
-                        latest_checkpoint_id=None):
+    def _start_training(
+        self,
+        train_func,
+        run_dir,
+        dataset,
+        checkpoint,
+        checkpoint_strategy,
+        latest_checkpoint_id=None,
+    ):
+        self._checkpoint_manager.on_start_training(
+            checkpoint_strategy=checkpoint_strategy,
+            run_dir=run_dir,
+            latest_checkpoint_id=latest_checkpoint_id,
+        )
+        checkpoint_dict = self._checkpoint_manager._load_checkpoint(checkpoint)
         self._run_with_error_handling(
-            lambda: self._executor.start_training(
-                train_func=train_func,
-                run_dir=run_dir,
-                dataset=dataset,
-                checkpoint=checkpoint,
-                checkpoint_strategy=checkpoint_strategy,
-                latest_checkpoint_id=latest_checkpoint_id
+            lambda: ray.get(
+                self._backend_executor_actor.start_training.remote(
+                    train_func=train_func, dataset=dataset, checkpoint=checkpoint_dict
+                )
             )
         )
 
@@ -580,37 +724,104 @@ class TrainingIterator:
                 self._train_func,
                 self._run_dir,
                 self._dataset,
-                self._executor.latest_checkpoint,
+                self._checkpoint_manager.latest_checkpoint,
                 self._checkpoint_strategy,
-                latest_checkpoint_id=self._executor.latest_checkpoint_id)
+                latest_checkpoint_id=self._checkpoint_manager.latest_checkpoint_id,
+            )
             return self._run_with_error_handling(func)
         except InactiveWorkerGroupError:
             raise RuntimeError(
                 "This Trainer is not active. It is either shutdown "
                 "already or never started in the first place. "
-                "Either create a new Trainer or start this one.") \
-                from None
+                "Either create a new Trainer or start this one."
+            ) from None
         except TrainBackendError:
-            raise RuntimeError("Training failed. You should not be seeing "
-                               "this error and this is a bug. Please create "
-                               "a new issue at "
-                               "https://github.com/ray-project/ray.") from None
+            raise RuntimeError(
+                "Training failed. You should not be seeing "
+                "this error and this is a bug. Please create "
+                "a new issue at "
+                "https://github.com/ray-project/ray."
+            ) from None
 
     def __next__(self):
         if self.is_finished():
             raise StopIteration
-        next_results = self._run_with_error_handling(
-            self._executor.fetch_next_result)
+        next_results = self._run_with_error_handling(self._fetch_next_result)
         if next_results is None:
             try:
-                self._final_results = \
-                    self._run_with_error_handling(
-                        self._executor.finish_training)
+                self._final_results = self._run_with_error_handling(
+                    self._finish_training
+                )
             finally:
                 self._finished_training = True
             raise StopIteration
         else:
+
             return next_results
+
+    def _fetch_next_result(self) -> Optional[List[Dict]]:
+        """Fetch next results produced by ``train.report()`` from each worker.
+
+        Assumes ``start_training`` has already been called.
+
+        Returns:
+            A list of dictionaries of values passed to ``train.report()`` from
+                each worker. Each item corresponds to an intermediate result
+                a single worker. If there are no more items to fetch,
+                returns None.
+        """
+
+        while True:
+            results = ray.get(self._backend_executor_actor.get_next_results.remote())
+            if results is None:
+                return None
+            first_result = results[0]
+            result_type = first_result.type
+            if result_type is TrainingResultType.REPORT:
+                result_data = [self._backend.decode_data(r.data) for r in results]
+                return result_data
+            elif result_type is TrainingResultType.CHECKPOINT:
+                self._checkpoint_manager._process_checkpoint(
+                    results, decode_checkpoint_fn=self._backend.decode_data
+                )
+                # Iterate until next REPORT call or training has finished.
+            else:
+                raise TrainBackendError(
+                    f"Unexpected result type: "
+                    f"{result_type}. "
+                    f"Expected one of "
+                    f"{[type in TrainingResultType]}"
+                )
+
+    def _finish_checkpointing(self):
+        while True:
+            results = ray.get(self._backend_executor_actor.get_next_results.remote())
+            if results is None:
+                break
+            result_type = results[0].type
+            # Process checkpoints and ignore other result types.
+            if result_type is TrainingResultType.CHECKPOINT:
+                self._checkpoint_manager._process_checkpoint(
+                    results, decode_checkpoint_fn=self._backend.decode_data
+                )
+
+    def _finish_training(self):
+        """Finish training and return final results. Propagate any exceptions.
+
+        Blocks until training is finished on all workers.
+
+        Assumes `start_training` has already been called.
+
+        Returns:
+            A list of return values from calling ``train_func`` on each worker.
+                Each item corresponds to the return value from a single worker.
+        """
+
+        ray.get(self._backend_executor_actor.pause_reporting.remote())
+        # Finish up processing checkpoints. Reporting has been disabled.
+        # Results will not be processed.
+        self._finish_checkpointing()
+        return ray.get(self._backend_executor_actor.finish_training.remote())
 
     def is_finished(self) -> bool:
         return self._finished_training
@@ -628,24 +839,27 @@ class TrainingIterator:
             assert self._final_results is None
             if force:
                 try:
-                    self._final_results = \
-                        self._run_with_error_handling(
-                            self._executor.finish_training)
+                    self._final_results = self._run_with_error_handling(
+                        self._finish_training
+                    )
                 finally:
                     self._finished_training = True
             else:
-                logger.info("Please finish iterating through the "
-                            "intermediate results before getting the"
-                            "final returns. If you would like "
-                            "training to finish immediately and get "
-                            "the final returns, then set "
-                            "`force=True`.")
+                logger.info(
+                    "Please finish iterating through the "
+                    "intermediate results before getting the"
+                    "final returns. If you would like "
+                    "training to finish immediately and get "
+                    "the final returns, then set "
+                    "`force=True`."
+                )
 
         return self._final_results
 
 
-def _create_tune_trainable(train_func, dataset, backend, num_workers, use_gpu,
-                           resources_per_worker):
+def _create_tune_trainable(
+    train_func, dataset, backend_config, num_workers, use_gpu, resources_per_worker
+):
     """Creates a Tune Trainable class for Train training.
 
     This function populates class attributes and methods.
@@ -654,21 +868,22 @@ def _create_tune_trainable(train_func, dataset, backend, num_workers, use_gpu,
     # TODO(matt): Move dataset to Ray object store, like tune.with_parameters.
     def tune_function(config, checkpoint_dir=None):
         trainer = Trainer(
-            backend=backend,
+            backend=backend_config,
             num_workers=num_workers,
             use_gpu=use_gpu,
-            resources_per_worker=resources_per_worker)
+            resources_per_worker=resources_per_worker,
+        )
 
         trainer.start()
 
         if checkpoint_dir is not None:
-            checkpoint_path = os.path.join(checkpoint_dir,
-                                           TUNE_CHECKPOINT_FILE_NAME)
+            checkpoint_path = os.path.join(checkpoint_dir, TUNE_CHECKPOINT_FILE_NAME)
         else:
             checkpoint_path = None
 
         iterator = trainer.run_iterator(
-            train_func, config, dataset=dataset, checkpoint=checkpoint_path)
+            train_func, config, dataset=dataset, checkpoint=checkpoint_path
+        )
 
         for results in iterator:
             first_worker_results = results[0]
@@ -683,17 +898,17 @@ def _create_tune_trainable(train_func, dataset, backend, num_workers, use_gpu,
         """Add default resources to the Trainable."""
 
         @classmethod
-        def default_resource_request(cls,
-                                     config: Dict) -> PlacementGroupFactory:
-            head_bundle = [{"CPU": 1}]  # driver
+        def default_resource_request(cls, config: Dict) -> PlacementGroupFactory:
+            trainer_bundle = [{"CPU": 1}]
             worker_resources = {"CPU": 1, "GPU": int(use_gpu)}
-            worker_resources_extra = {} if resources_per_worker is None else\
-                resources_per_worker
-            worker_bundles = [{
-                **worker_resources,
-                **worker_resources_extra
-            } for _ in range(num_workers)]
-            bundles = head_bundle + worker_bundles
+            worker_resources_extra = (
+                {} if resources_per_worker is None else resources_per_worker
+            )
+            worker_bundles = [
+                {**worker_resources, **worker_resources_extra}
+                for _ in range(num_workers)
+            ]
+            bundles = trainer_bundle + worker_bundles
             return PlacementGroupFactory(bundles, strategy="PACK")
 
     return TrainTrainable

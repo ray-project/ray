@@ -126,4 +126,13 @@ std::string GetOriginalResourceName(const std::string &resource) {
   return resource.substr(0, idx);
 }
 
+std::string GetDebugStringForBundles(
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundles) {
+  std::ostringstream debug_info;
+  for (const auto &bundle : bundles) {
+    debug_info << "{" << bundle->DebugString() << "},";
+  }
+  return debug_info.str();
+};
+
 }  // namespace ray

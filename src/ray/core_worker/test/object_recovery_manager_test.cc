@@ -40,16 +40,16 @@ class MockTaskResubmitter : public TaskResubmissionInterface {
     task_specs[task_id] = task_deps;
   }
 
-  Status ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) {
+  bool ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) {
     if (task_specs.find(task_id) == task_specs.end()) {
-      return Status::Invalid("");
+      return false;
     }
 
     for (const auto &dep : task_specs[task_id]) {
       task_deps->push_back(dep);
     }
     num_tasks_resubmitted++;
-    return Status::OK();
+    return true;
   }
 
   std::unordered_map<TaskID, std::vector<ObjectID>> task_specs;
@@ -116,6 +116,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
         task_resubmitter_(std::make_shared<MockTaskResubmitter>()),
         ref_counter_(std::make_shared<ReferenceCounter>(
             rpc::Address(), publisher_.get(), subscriber_.get(),
+            [](const NodeID &node_id) { return true; },
             /*lineage_pinning_enabled=*/lineage_enabled)),
         manager_(
             rpc::Address(),
@@ -139,7 +140,10 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
               auto data =
                   RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
               RAY_CHECK(memory_store_->Put(data, object_id));
-            }) {}
+            }) {
+    ref_counter_->SetReleaseLineageCallback(
+        [](const ObjectID &, std::vector<ObjectID> *args) { return 0; });
+  }
 
   NodeID local_raylet_id_;
   std::unordered_map<ObjectID, rpc::ErrorType> failed_reconstructions_;
@@ -167,7 +171,8 @@ class ObjectRecoveryManagerTest : public ObjectRecoveryManagerTestBase {
 TEST_F(ObjectRecoveryLineageDisabledTest, TestNoReconstruction) {
   // Lineage recording disabled.
   ObjectID object_id = ObjectID::FromRandom();
-  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
+  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true,
+                               /*add_local_ref=*/true);
   ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_TRUE(object_directory_->Flush() == 1);
@@ -189,7 +194,8 @@ TEST_F(ObjectRecoveryLineageDisabledTest, TestNoReconstruction) {
 
 TEST_F(ObjectRecoveryLineageDisabledTest, TestPinNewCopy) {
   ObjectID object_id = ObjectID::FromRandom();
-  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
+  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true,
+                               /*add_local_ref=*/true);
   std::vector<rpc::Address> addresses({rpc::Address()});
   object_directory_->SetLocations(object_id, addresses);
 
@@ -202,7 +208,8 @@ TEST_F(ObjectRecoveryLineageDisabledTest, TestPinNewCopy) {
 
 TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
   ObjectID object_id = ObjectID::FromRandom();
-  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
+  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true,
+                               /*add_local_ref=*/true);
   std::vector<rpc::Address> addresses({rpc::Address()});
   object_directory_->SetLocations(object_id, addresses);
 
@@ -215,7 +222,8 @@ TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
 
 TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
   ObjectID object_id = ObjectID::FromRandom();
-  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
+  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true,
+                               /*add_local_ref=*/true);
   task_resubmitter_->AddTask(object_id.TaskId(), {});
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
@@ -227,7 +235,8 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
 
 TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
   ObjectID object_id = ObjectID::FromRandom();
-  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
+  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true,
+                               /*add_local_ref=*/true);
   ref_counter_->AddLocalReference(object_id, "");
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
@@ -249,7 +258,8 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
   ASSERT_EQ(object_directory_->Flush(), 0);
 
   // The object is removed and can be recovered again.
-  auto objects = ref_counter_->ResetObjectsOnRemovedNode(remote_node_id);
+  ref_counter_->ResetObjectsOnRemovedNode(remote_node_id);
+  auto objects = ref_counter_->FlushObjectsToRecover();
   ASSERT_EQ(objects.size(), 1);
   ASSERT_EQ(objects[0], object_id);
   memory_store_->Delete(objects);
@@ -262,7 +272,8 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionChain) {
   std::vector<ObjectID> dependencies;
   for (int i = 0; i < 3; i++) {
     ObjectID object_id = ObjectID::FromRandom();
-    ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
+    ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true,
+                                 /*add_local_ref=*/true);
     task_resubmitter_->AddTask(object_id.TaskId(), dependencies);
     dependencies = {object_id};
     object_ids.push_back(object_id);
@@ -279,22 +290,25 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionChain) {
 
 TEST_F(ObjectRecoveryManagerTest, TestReconstructionFails) {
   ObjectID object_id = ObjectID::FromRandom();
-  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
+  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true,
+                               /*add_local_ref=*/true);
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_TRUE(object_directory_->Flush() == 1);
 
   ASSERT_TRUE(failed_reconstructions_[object_id] ==
-              rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE);
+              rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED);
   ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 0);
 }
 
 TEST_F(ObjectRecoveryManagerTest, TestDependencyReconstructionFails) {
   ObjectID dep_id = ObjectID::FromRandom();
-  ref_counter_->AddOwnedObject(dep_id, {}, rpc::Address(), "", 0, true);
+  ref_counter_->AddOwnedObject(dep_id, {}, rpc::Address(), "", 0, true,
+                               /*add_local_ref=*/true);
 
   ObjectID object_id = ObjectID::FromRandom();
-  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
+  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true,
+                               /*add_local_ref=*/true);
   task_resubmitter_->AddTask(object_id.TaskId(), {dep_id});
   RAY_LOG(INFO) << object_id;
 
@@ -302,9 +316,23 @@ TEST_F(ObjectRecoveryManagerTest, TestDependencyReconstructionFails) {
   ASSERT_EQ(object_directory_->Flush(), 1);
   // Trigger callback for dep ID.
   ASSERT_EQ(object_directory_->Flush(), 1);
-  ASSERT_EQ(failed_reconstructions_[dep_id], rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE);
+  ASSERT_EQ(failed_reconstructions_[dep_id],
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED);
   ASSERT_EQ(failed_reconstructions_.count(object_id), 0);
   ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 1);
+}
+
+TEST_F(ObjectRecoveryManagerTest, TestLineageEvicted) {
+  ObjectID object_id = ObjectID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true,
+                               /*add_local_ref=*/true);
+  ref_counter_->AddLocalReference(object_id, "");
+  ref_counter_->EvictLineage(1);
+
+  ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_EQ(object_directory_->Flush(), 1);
+  ASSERT_EQ(failed_reconstructions_[object_id],
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED);
 }
 
 }  // namespace core

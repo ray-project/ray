@@ -70,9 +70,6 @@ class MockWorker : public WorkerInterface {
   StartupToken GetStartupToken() const { return 0; }
   void SetProcess(Process proc) { RAY_CHECK(false) << "Method unused"; }
 
-  Process GetShimProcess() const { return Process::CreateNewDummy(); }
-  void SetShimProcess(Process proc) { RAY_CHECK(false) << "Method unused"; }
-
   Language GetLanguage() const {
     RAY_CHECK(false) << "Method unused";
     return Language::PYTHON;
@@ -152,6 +149,11 @@ class MockWorker : public WorkerInterface {
   rpc::CoreWorkerClientInterface *rpc_client() {
     RAY_CHECK(false) << "Method unused";
     return nullptr;
+  }
+
+  bool IsAvailableForScheduling() const {
+    RAY_CHECK(false) << "Method unused";
+    return true;
   }
 
  protected:

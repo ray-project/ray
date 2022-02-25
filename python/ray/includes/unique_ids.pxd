@@ -60,6 +60,8 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CActorID Of(CJobID job_id, CTaskID parent_task_id,
                     int64_t parent_task_counter)
 
+        CJobID JobId()
+
     cdef cppclass CNodeID "ray::NodeID"(CUniqueID):
 
         @staticmethod
@@ -109,7 +111,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CTaskID ForDriverTask(const CJobID &job_id)
 
         @staticmethod
-        CTaskID ForFakeTask()
+        CTaskID FromRandom(const CJobID &job_id)
 
         @staticmethod
         CTaskID ForActorCreationTask(CActorID actor_id)

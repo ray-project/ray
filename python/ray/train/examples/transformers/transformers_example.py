@@ -48,8 +48,8 @@ logger = logging.getLogger(__name__)
 
 require_version(
     "datasets>=1.8.0",
-    "To fix: pip install -r examples/pytorch/text-classification/requirements"
-    ".txt")
+    "To fix: pip install -r examples/pytorch/text-classification/requirements" ".txt",
+)
 
 task_to_keys = {
     "cola": ("sentence", None),
@@ -66,8 +66,8 @@ task_to_keys = {
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Finetune a transformers model on a text classification "
-        "task")
+        description="Finetune a transformers model on a text classification " "task"
+    )
     parser.add_argument(
         "--task_name",
         type=str,
@@ -79,12 +79,14 @@ def parse_args():
         "--train_file",
         type=str,
         default=None,
-        help="A csv or a json file containing the training data.")
+        help="A csv or a json file containing the training data.",
+    )
     parser.add_argument(
         "--validation_file",
         type=str,
         default=None,
-        help="A csv or a json file containing the validation data.")
+        help="A csv or a json file containing the validation data.",
+    )
     parser.add_argument(
         "--max_length",
         type=int,
@@ -92,7 +94,8 @@ def parse_args():
         help=(
             "The maximum total input sequence length after tokenization. "
             "Sequences longer than this will be truncated, sequences shorter "
-            "will be padded if `--pad_to_max_lengh` is passed."),
+            "will be padded if `--pad_to_max_lengh` is passed."
+        ),
     )
     parser.add_argument(
         "--pad_to_max_length",
@@ -129,16 +132,17 @@ def parse_args():
         "--learning_rate",
         type=float,
         default=5e-5,
-        help="Initial learning rate (after the potential warmup period) to "
-        "use.",
+        help="Initial learning rate (after the potential warmup period) to " "use.",
     )
     parser.add_argument(
-        "--weight_decay", type=float, default=0.0, help="Weight decay to use.")
+        "--weight_decay", type=float, default=0.0, help="Weight decay to use."
+    )
     parser.add_argument(
         "--num_train_epochs",
         type=int,
         default=3,
-        help="Total number of training epochs to perform.")
+        help="Total number of training epochs to perform.",
+    )
     parser.add_argument(
         "--max_train_steps",
         type=int,
@@ -159,57 +163,62 @@ def parse_args():
         default="linear",
         help="The scheduler type to use.",
         choices=[
-            "linear", "cosine", "cosine_with_restarts", "polynomial",
-            "constant", "constant_with_warmup"
+            "linear",
+            "cosine",
+            "cosine_with_restarts",
+            "polynomial",
+            "constant",
+            "constant_with_warmup",
         ],
     )
     parser.add_argument(
         "--num_warmup_steps",
         type=int,
         default=0,
-        help="Number of steps for the warmup in the lr scheduler.")
+        help="Number of steps for the warmup in the lr scheduler.",
+    )
     parser.add_argument(
-        "--output_dir",
-        type=str,
-        default=None,
-        help="Where to store the final model.")
+        "--output_dir", type=str, default=None, help="Where to store the final model."
+    )
     parser.add_argument(
-        "--seed",
-        type=int,
-        default=None,
-        help="A seed for reproducible training.")
+        "--seed", type=int, default=None, help="A seed for reproducible training."
+    )
 
     # Ray arguments.
     parser.add_argument(
-        "--start_local",
-        action="store_true",
-        help="Starts Ray on local machine.")
+        "--start_local", action="store_true", help="Starts Ray on local machine."
+    )
     parser.add_argument(
-        "--address", type=str, default=None, help="Ray address to connect to.")
+        "--address", type=str, default=None, help="Ray address to connect to."
+    )
     parser.add_argument(
-        "--num_workers", type=int, default=1, help="Number of workers to use.")
+        "--num_workers", type=int, default=1, help="Number of workers to use."
+    )
     parser.add_argument(
-        "--use_gpu",
-        action="store_true",
-        help="If training should be done on GPUs.")
+        "--use_gpu", action="store_true", help="If training should be done on GPUs."
+    )
 
     args = parser.parse_args()
 
     # Sanity checks
-    if args.task_name is None and args.train_file is None and \
-            args.validation_file is None:
-        raise ValueError(
-            "Need either a task name or a training/validation file.")
+    if (
+        args.task_name is None
+        and args.train_file is None
+        and args.validation_file is None
+    ):
+        raise ValueError("Need either a task name or a training/validation file.")
     else:
         if args.train_file is not None:
             extension = args.train_file.split(".")[-1]
             assert extension in [
-                "csv", "json"
+                "csv",
+                "json",
             ], "`train_file` should be a csv or a json file."
         if args.validation_file is not None:
             extension = args.validation_file.split(".")[-1]
             assert extension in [
-                "csv", "json"
+                "csv",
+                "json",
             ], "`validation_file` should be a csv or a json file."
 
     if args.output_dir is not None:
@@ -234,8 +243,9 @@ def train_func(config: Dict[str, Any]):
     # Setup logging, we only want one process per machine to log things on
     # the screen. accelerator.is_local_main_process is only True for one
     # process per machine.
-    logger.setLevel(logging.INFO
-                    if accelerator.is_local_main_process else logging.ERROR)
+    logger.setLevel(
+        logging.INFO if accelerator.is_local_main_process else logging.ERROR
+    )
     if accelerator.is_local_main_process:
         datasets.utils.logging.set_verbosity_warning()
         transformers.utils.logging.set_verbosity_info()
@@ -272,8 +282,9 @@ def train_func(config: Dict[str, Any]):
             data_files["train"] = args.train_file
         if args.validation_file is not None:
             data_files["validation"] = args.validation_file
-        extension = (args.train_file if args.train_file is not None else
-                     args.valid_file).split(".")[-1]
+        extension = (
+            args.train_file if args.train_file is not None else args.valid_file
+        ).split(".")[-1]
         raw_datasets = load_dataset(extension, data_files=data_files)
     # See more about loading any type of standard or custom dataset at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
@@ -290,7 +301,8 @@ def train_func(config: Dict[str, Any]):
         # Trying to have good defaults here, don't hesitate to tweak to your
         # needs.
         is_regression = raw_datasets["train"].features["label"].dtype in [
-            "float32", "float64"
+            "float32",
+            "float64",
         ]
         if is_regression:
             num_labels = 1
@@ -306,11 +318,11 @@ def train_func(config: Dict[str, Any]):
     # In distributed training, the .from_pretrained methods guarantee that
     # only one local process can concurrently download model & vocab.
     config = AutoConfig.from_pretrained(
-        args.model_name_or_path,
-        num_labels=num_labels,
-        finetuning_task=args.task_name)
+        args.model_name_or_path, num_labels=num_labels, finetuning_task=args.task_name
+    )
     tokenizer = AutoTokenizer.from_pretrained(
-        args.model_name_or_path, use_fast=not args.use_slow_tokenizer)
+        args.model_name_or_path, use_fast=not args.use_slow_tokenizer
+    )
     model = AutoModelForSequenceClassification.from_pretrained(
         args.model_name_or_path,
         from_tf=bool(".ckpt" in args.model_name_or_path),
@@ -324,11 +336,12 @@ def train_func(config: Dict[str, Any]):
         # Again, we try to have some nice defaults but don't hesitate to
         # tweak to your use case.
         non_label_column_names = [
-            name for name in raw_datasets["train"].column_names
-            if name != "label"
+            name for name in raw_datasets["train"].column_names if name != "label"
         ]
-        if "sentence1" in non_label_column_names and \
-                "sentence2" in non_label_column_names:
+        if (
+            "sentence1" in non_label_column_names
+            and "sentence2" in non_label_column_names
+        ):
             sentence1_key, sentence2_key = "sentence1", "sentence2"
         else:
             if len(non_label_column_names) >= 2:
@@ -339,22 +352,22 @@ def train_func(config: Dict[str, Any]):
     # Some models have set the order of the labels to use,
     # so let's make sure we do use it.
     label_to_id = None
-    if (model.config.label2id !=
-            PretrainedConfig(num_labels=num_labels).label2id
-            and args.task_name is not None and not is_regression):
+    if (
+        model.config.label2id != PretrainedConfig(num_labels=num_labels).label2id
+        and args.task_name is not None
+        and not is_regression
+    ):
         # Some have all caps in their config, some don't.
-        label_name_to_id = {
-            k.lower(): v
-            for k, v in model.config.label2id.items()
-        }
+        label_name_to_id = {k.lower(): v for k, v in model.config.label2id.items()}
         if list(sorted(label_name_to_id.keys())) == list(  # noqa:C413
-                sorted(label_list)):  # noqa:C413
+            sorted(label_list)
+        ):  # noqa:C413
             logger.info(
                 f"The configuration of the model provided the following label "
-                f"correspondence: {label_name_to_id}. Using it!")
+                f"correspondence: {label_name_to_id}. Using it!"
+            )
             label_to_id = {
-                i: label_name_to_id[label_list[i]]
-                for i in range(num_labels)
+                i: label_name_to_id[label_list[i]] for i in range(num_labels)
             }
         else:
             logger.warning(
@@ -369,28 +382,27 @@ def train_func(config: Dict[str, Any]):
 
     if label_to_id is not None:
         model.config.label2id = label_to_id
-        model.config.id2label = {
-            id: label
-            for label, id in config.label2id.items()
-        }
+        model.config.id2label = {id: label for label, id in config.label2id.items()}
 
     padding = "max_length" if args.pad_to_max_length else False
 
     def preprocess_function(examples):
         # Tokenize the texts
-        texts = ((examples[sentence1_key], ) if sentence2_key is None else
-                 (examples[sentence1_key], examples[sentence2_key]))
+        texts = (
+            (examples[sentence1_key],)
+            if sentence2_key is None
+            else (examples[sentence1_key], examples[sentence2_key])
+        )
         result = tokenizer(
-            *texts,
-            padding=padding,
-            max_length=args.max_length,
-            truncation=True)
+            *texts, padding=padding, max_length=args.max_length, truncation=True
+        )
 
         if "label" in examples:
             if label_to_id is not None:
                 # Map labels to IDs (not necessary for GLUE tasks)
-                result["labels"] = \
-                    [label_to_id[l] for l in examples["label"]]  # noqa:E741
+                result["labels"] = [
+                    label_to_id[l] for l in examples["label"]  # noqa:E741
+                ]
             else:
                 # In all cases, rename the column to labels because the model
                 # will expect that.
@@ -405,13 +417,13 @@ def train_func(config: Dict[str, Any]):
     )
 
     train_dataset = processed_datasets["train"]
-    eval_dataset = processed_datasets["validation_matched" if args.task_name ==
-                                      "mnli" else "validation"]
+    eval_dataset = processed_datasets[
+        "validation_matched" if args.task_name == "mnli" else "validation"
+    ]
 
     # Log a few random samples from the training set:
     for index in random.sample(range(len(train_dataset)), 3):
-        logger.info(
-            f"Sample {index} of the training set: {train_dataset[index]}.")
+        logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
 
     # DataLoaders creation:
     if args.pad_to_max_length:
@@ -425,18 +437,20 @@ def train_func(config: Dict[str, Any]):
         # tensors to multiple of 8s, which will enable the use of Tensor
         # Cores on NVIDIA hardware with compute capability >= 7.5 (Volta).
         data_collator = DataCollatorWithPadding(
-            tokenizer,
-            pad_to_multiple_of=(8 if accelerator.use_fp16 else None))
+            tokenizer, pad_to_multiple_of=(8 if accelerator.use_fp16 else None)
+        )
 
     train_dataloader = DataLoader(
         train_dataset,
         shuffle=True,
         collate_fn=data_collator,
-        batch_size=args.per_device_train_batch_size)
+        batch_size=args.per_device_train_batch_size,
+    )
     eval_dataloader = DataLoader(
         eval_dataset,
         collate_fn=data_collator,
-        batch_size=args.per_device_eval_batch_size)
+        batch_size=args.per_device_eval_batch_size,
+    )
 
     # Optimizer
     # Split weights in two groups, one with weight decay and the other not.
@@ -444,14 +458,16 @@ def train_func(config: Dict[str, Any]):
     optimizer_grouped_parameters = [
         {
             "params": [
-                p for n, p in model.named_parameters()
+                p
+                for n, p in model.named_parameters()
                 if not any(nd in n for nd in no_decay)
             ],
             "weight_decay": args.weight_decay,
         },
         {
             "params": [
-                p for n, p in model.named_parameters()
+                p
+                for n, p in model.named_parameters()
                 if any(nd in n for nd in no_decay)
             ],
             "weight_decay": 0.0,
@@ -461,20 +477,22 @@ def train_func(config: Dict[str, Any]):
 
     # Prepare everything with our `accelerator`.
     model, optimizer, train_dataloader, eval_dataloader = accelerator.prepare(
-        model, optimizer, train_dataloader, eval_dataloader)
+        model, optimizer, train_dataloader, eval_dataloader
+    )
 
     # Note -> the training dataloader needs to be prepared before we grab
     # his length below (cause its length will be shorter in multiprocess)
 
     # Scheduler and math around the number of training steps.
     num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / args.gradient_accumulation_steps)
+        len(train_dataloader) / args.gradient_accumulation_steps
+    )
     if args.max_train_steps is None:
-        args.max_train_steps = args.num_train_epochs * \
-                               num_update_steps_per_epoch
+        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     else:
         args.num_train_epochs = math.ceil(
-            args.max_train_steps / num_update_steps_per_epoch)
+            args.max_train_steps / num_update_steps_per_epoch
+        )
 
     lr_scheduler = get_scheduler(
         name=args.lr_scheduler_type,
@@ -490,26 +508,29 @@ def train_func(config: Dict[str, Any]):
         metric = load_metric("accuracy")
 
     # Train!
-    total_batch_size = \
-        args.per_device_train_batch_size * \
-        accelerator.num_processes * \
-        args.gradient_accumulation_steps
+    total_batch_size = (
+        args.per_device_train_batch_size
+        * accelerator.num_processes
+        * args.gradient_accumulation_steps
+    )
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
-    logger.info(f"  Instantaneous batch size per device ="
-                f" {args.per_device_train_batch_size}")
+    logger.info(
+        f"  Instantaneous batch size per device ="
+        f" {args.per_device_train_batch_size}"
+    )
     logger.info(
         f"  Total train batch size (w. parallel, distributed & accumulation) "
-        f"= {total_batch_size}")
-    logger.info(
-        f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
+        f"= {total_batch_size}"
+    )
+    logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(
-        range(args.max_train_steps),
-        disable=not accelerator.is_local_main_process)
+        range(args.max_train_steps), disable=not accelerator.is_local_main_process
+    )
     completed_steps = 0
 
     for epoch in range(args.num_train_epochs):
@@ -519,8 +540,10 @@ def train_func(config: Dict[str, Any]):
             loss = outputs.loss
             loss = loss / args.gradient_accumulation_steps
             accelerator.backward(loss)
-            if step % args.gradient_accumulation_steps == 0 or step == len(
-                    train_dataloader) - 1:
+            if (
+                step % args.gradient_accumulation_steps == 0
+                or step == len(train_dataloader) - 1
+            ):
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -533,8 +556,11 @@ def train_func(config: Dict[str, Any]):
         model.eval()
         for step, batch in enumerate(eval_dataloader):
             outputs = model(**batch)
-            predictions = outputs.logits.argmax(
-                dim=-1) if not is_regression else outputs.logits.squeeze()
+            predictions = (
+                outputs.logits.argmax(dim=-1)
+                if not is_regression
+                else outputs.logits.squeeze()
+            )
             metric.add_batch(
                 predictions=accelerator.gather(predictions),
                 references=accelerator.gather(batch["labels"]),
@@ -546,8 +572,7 @@ def train_func(config: Dict[str, Any]):
     if args.output_dir is not None:
         accelerator.wait_for_everyone()
         unwrapped_model = accelerator.unwrap_model(model)
-        unwrapped_model.save_pretrained(
-            args.output_dir, save_function=accelerator.save)
+        unwrapped_model.save_pretrained(args.output_dir, save_function=accelerator.save)
 
     if args.task_name == "mnli":
         # Final evaluation on mismatched validation set
@@ -555,7 +580,8 @@ def train_func(config: Dict[str, Any]):
         eval_dataloader = DataLoader(
             eval_dataset,
             collate_fn=data_collator,
-            batch_size=args.per_device_eval_batch_size)
+            batch_size=args.per_device_eval_batch_size,
+        )
         eval_dataloader = accelerator.prepare(eval_dataloader)
 
         model.eval()
@@ -575,16 +601,14 @@ def main():
     args = parse_args()
     config = {"args": args}
 
-    if args.start_local or args.address or \
-            args.num_workers > 1 or args.use_gpu:
+    if args.start_local or args.address or args.num_workers > 1 or args.use_gpu:
         if args.start_local:
             # Start a local Ray runtime.
             ray.init(num_cpus=args.num_workers)
         else:
             # Connect to a Ray cluster for distributed training.
             ray.init(address=args.address)
-        trainer = Trainer(
-            "torch", num_workers=args.num_workers, use_gpu=args.use_gpu)
+        trainer = Trainer("torch", num_workers=args.num_workers, use_gpu=args.use_gpu)
         trainer.start()
         trainer.run(train_func, config)
     else:

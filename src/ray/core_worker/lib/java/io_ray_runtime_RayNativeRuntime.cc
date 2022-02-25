@@ -20,6 +20,7 @@
 
 #include "jni_utils.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_config.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/core_worker.h"
 
@@ -39,7 +40,12 @@ inline gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env, jobject gcs_client_
   std::string password = JavaStringToNativeString(
       env,
       (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_password));
-  return gcs::GcsClientOptions(ip, port, password);
+
+  if (RayConfig::instance().bootstrap_with_gcs()) {
+    return gcs::GcsClientOptions(ip + ":" + std::to_string(port));
+  } else {
+    return gcs::GcsClientOptions(ip, port, password);
+  }
 }
 
 jobject ToJavaArgs(JNIEnv *env, jbooleanArray java_check_results,
@@ -185,7 +191,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
 
             RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
                 result_id, data_size, metadata, contained_object_ids,
-                task_output_inlined_bytes, result_ptr));
+                &task_output_inlined_bytes, result_ptr));
 
             // A nullptr is returned if the object already exists.
             auto result = *result_ptr;
@@ -288,12 +294,14 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEn
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, jclass,
                                                                   jstring actor_name,
-                                                                  jboolean global) {
+                                                                  jstring ray_namespace) {
   const char *native_actor_name = env->GetStringUTFChars(actor_name, JNI_FALSE);
-  auto full_name = GetFullName(global, native_actor_name);
-
+  const char *native_ray_namespace =
+      ray_namespace == nullptr
+          ? CoreWorkerProcess::GetCoreWorker().GetJobConfig().ray_namespace().c_str()
+          : env->GetStringUTFChars(ray_namespace, JNI_FALSE);
   const auto pair = CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(
-      full_name, /*ray_namespace=*/"");
+      native_actor_name, /*ray_namespace=*/native_ray_namespace);
   const auto status = pair.second;
   if (status.IsNotFound()) {
     return IdToJavaByteArray<ActorID>(env, ActorID::Nil());
@@ -339,6 +347,12 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetResourceIds(JNIEnv *env, jclass) {
       CoreWorkerProcess::GetCoreWorker().GetResourceIDs();
   return NativeMapToJavaMap<std::string, std::vector<std::pair<int64_t, double>>>(
       env, resource_mapping, std::move(key_converter), std::move(value_converter));
+}
+
+JNIEXPORT jstring JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeGetNamespace(JNIEnv *env, jclass) {
+  return env->NewStringUTF(
+      CoreWorkerProcess::GetCoreWorker().GetJobConfig().ray_namespace().c_str());
 }
 
 #ifdef __cplusplus

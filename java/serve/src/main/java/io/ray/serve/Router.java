@@ -13,17 +13,18 @@ import io.ray.serve.poll.LongPollNamespace;
 import java.util.HashMap;
 import java.util.Map;
 
-/** Router process incoming queries: choose backend, and assign replica. */
+/** Router process incoming queries: assign a replica. */
 public class Router {
 
   private ReplicaSet replicaSet;
 
   private Count numRouterRequests;
 
+  @SuppressWarnings("unused")
   private LongPollClient longPollClient;
 
-  public Router(BaseActorHandle controllerHandle, String backendTag) {
-    this.replicaSet = new ReplicaSet(backendTag);
+  public Router(BaseActorHandle controllerHandle, String deploymentName) {
+    this.replicaSet = new ReplicaSet(deploymentName);
 
     RayServeMetrics.execute(
         () ->
@@ -32,18 +33,14 @@ public class Router {
                     .name(RayServeMetrics.SERVE_NUM_ROUTER_REQUESTS.getName())
                     .description(RayServeMetrics.SERVE_NUM_ROUTER_REQUESTS.getDescription())
                     .unit("")
-                    .tags(ImmutableMap.of(RayServeMetrics.TAG_DEPLOYMENT, backendTag))
+                    .tags(ImmutableMap.of(RayServeMetrics.TAG_DEPLOYMENT, deploymentName))
                     .register());
 
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
     keyListeners.put(
-        new KeyType(LongPollNamespace.BACKEND_CONFIGS, backendTag),
-        backendConfig -> replicaSet.setMaxConcurrentQueries(backendConfig)); // cross language
-    keyListeners.put(
-        new KeyType(LongPollNamespace.REPLICA_HANDLES, backendTag),
+        new KeyType(LongPollNamespace.REPLICA_HANDLES, deploymentName),
         workerReplicas -> replicaSet.updateWorkerReplicas(workerReplicas)); // cross language
     this.longPollClient = new LongPollClient(controllerHandle, keyListeners);
-    this.longPollClient.start();
   }
 
   /**

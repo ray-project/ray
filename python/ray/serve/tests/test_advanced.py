@@ -31,7 +31,8 @@ def test_serve_graceful_shutdown(serve_instance):
         name="wait",
         max_concurrent_queries=10,
         _graceful_shutdown_timeout_s=1000,
-        _graceful_shutdown_wait_loop_s=0.5)
+        _graceful_shutdown_wait_loop_s=0.5,
+    )
     class Wait:
         async def __call__(self, signal_actor):
             await signal_actor.wait.remote()
@@ -48,7 +49,7 @@ def test_serve_graceful_shutdown(serve_instance):
     def do_blocking_delete():
         Wait.delete()
 
-    # Now delete the backend. This should trigger the shutdown sequence.
+    # Now delete the deployment. This should trigger the shutdown sequence.
     delete_ref = do_blocking_delete.remote()
 
     # The queries should be enqueued but not executed becuase they are blocked
@@ -66,7 +67,7 @@ def test_serve_graceful_shutdown(serve_instance):
 
 def test_parallel_start(serve_instance):
     # Test the ability to start multiple replicas in parallel.
-    # In the past, when Serve scale up a backend, it does so one by one and
+    # In the past, when Serve scale up a deployment, it does so one by one and
     # wait for each replica to initialize. This test avoid this by preventing
     # the first replica to finish initialization unless the second replica is
     # also started.
@@ -100,4 +101,5 @@ def test_parallel_start(serve_instance):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

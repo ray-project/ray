@@ -49,11 +49,6 @@ class GcsInitData {
     return node_table_data_;
   }
 
-  /// Get object location metadata.
-  const std::unordered_map<ObjectID, rpc::ObjectLocationInfo> &Objects() const {
-    return object_table_data_;
-  }
-
   /// Get resource metadata.
   const std::unordered_map<NodeID, rpc::ResourceMap> &ClusterResources() const {
     return resource_table_data_;
@@ -81,11 +76,6 @@ class GcsInitData {
   /// \param on_done The callback when node metadata is loaded successfully.
   void AsyncLoadNodeTableData(const EmptyCallback &on_done);
 
-  /// Load object locations metadata from the store into memory asynchronously.
-  ///
-  /// \param on_done The callback when object location metadata is loaded successfully.
-  void AsyncLoadObjectTableData(const EmptyCallback &on_done);
-
   /// Load resource metadata from the store into memory asynchronously.
   ///
   /// \param on_done The callback when resource metadata is loaded successfully.
@@ -110,9 +100,6 @@ class GcsInitData {
 
   /// Node metadata.
   std::unordered_map<NodeID, rpc::GcsNodeInfo> node_table_data_;
-
-  /// Object location metadata.
-  std::unordered_map<ObjectID, rpc::ObjectLocationInfo> object_table_data_;
 
   /// Resource metadata.
   std::unordered_map<NodeID, rpc::ResourceMap> resource_table_data_;

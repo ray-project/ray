@@ -1,17 +1,24 @@
 import numpy as np
 import pprint
-from typing import Mapping
+import random
+from typing import Any, Mapping, Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 
 _printer = pprint.PrettyPrinter(indent=2, width=60)
 
 
-def summarize(obj):
+def summarize(obj: Any) -> Any:
     """Return a pretty-formatted string for an object.
 
     This has special handling for pretty-formatting of commonly used data types
     in RLlib, such as SampleBatch, numpy arrays, etc.
+
+    Args:
+        obj: The object to format.
+
+    Returns:
+        The summarized object.
     """
 
     return _printer.pformat(_summarize(obj))
@@ -31,17 +38,23 @@ def _summarize(obj):
         return tuple(_summarize(x) for x in obj)
     elif isinstance(obj, np.ndarray):
         if obj.size == 0:
-            return _StringValue("np.ndarray({}, dtype={})".format(
-                obj.shape, obj.dtype))
-        elif obj.dtype == np.object or obj.dtype.type is np.str_:
-            return _StringValue("np.ndarray({}, dtype={}, head={})".format(
-                obj.shape, obj.dtype, _summarize(obj[0])))
+            return _StringValue("np.ndarray({}, dtype={})".format(obj.shape, obj.dtype))
+        elif obj.dtype == object or obj.dtype.type is np.str_:
+            return _StringValue(
+                "np.ndarray({}, dtype={}, head={})".format(
+                    obj.shape, obj.dtype, _summarize(obj[0])
+                )
+            )
         else:
             return _StringValue(
                 "np.ndarray({}, dtype={}, min={}, max={}, mean={})".format(
-                    obj.shape, obj.dtype, round(float(np.min(obj)), 3),
-                    round(float(np.max(obj)), 3), round(
-                        float(np.mean(obj)), 3)))
+                    obj.shape,
+                    obj.dtype,
+                    round(float(np.min(obj)), 3),
+                    round(float(np.max(obj)), 3),
+                    round(float(np.mean(obj)), 3),
+                )
+            )
     elif isinstance(obj, MultiAgentBatch):
         return {
             "type": "MultiAgentBatch",
@@ -51,8 +64,7 @@ def _summarize(obj):
     elif isinstance(obj, SampleBatch):
         return {
             "type": "SampleBatch",
-            "data": {k: _summarize(v)
-                     for k, v in obj.items()},
+            "data": {k: _summarize(v) for k, v in obj.items()},
         }
     else:
         return obj

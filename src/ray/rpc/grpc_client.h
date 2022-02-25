@@ -29,16 +29,17 @@ namespace rpc {
 
 // This macro wraps the logic to call a specific RPC method of a service,
 // to make it easier to implement a new RPC client.
-#define INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client) \
+#define INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client, \
+                        method_timeout_ms)                              \
   (rpc_client->CallMethod<METHOD##Request, METHOD##Reply>(              \
       &SERVICE::Stub::PrepareAsync##METHOD, request, callback,          \
-      #SERVICE ".grpc_client." #METHOD))
+      #SERVICE ".grpc_client." #METHOD, method_timeout_ms))
 
 // Define a void RPC client method.
-#define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)   \
-  void METHOD(const METHOD##Request &request,                        \
-              const ClientCallback<METHOD##Reply> &callback) SPECS { \
-    INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client); \
+#define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, method_timeout_ms, SPECS)   \
+  void METHOD(const METHOD##Request &request,                                           \
+              const ClientCallback<METHOD##Reply> &callback) SPECS {                    \
+    INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client, method_timeout_ms); \
   }
 
 template <class GrpcService>
@@ -84,15 +85,19 @@ class GrpcClient {
   /// `FooService::Stub::PrepareAsyncBar` function.
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
+  /// \param[in] call_name The name of the gRPC method call.
+  /// \param[in] method_timeout_ms The timeout of the RPC method in ms.
+  /// -1 means it will use the default timeout configured for the handler.
   ///
   /// \return Status.
   template <class Request, class Reply>
   void CallMethod(
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request, const ClientCallback<Reply> &callback,
-      std::string call_name = "UNKNOWN_RPC") {
+      std::string call_name = "UNKNOWN_RPC", int64_t method_timeout_ms = -1) {
     auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply>(
-        *stub_, prepare_async_function, request, callback, std::move(call_name));
+        *stub_, prepare_async_function, request, callback, std::move(call_name),
+        method_timeout_ms);
     RAY_CHECK(call != nullptr);
   }
 

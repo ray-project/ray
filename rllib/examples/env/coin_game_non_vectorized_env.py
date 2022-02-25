@@ -24,6 +24,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
     """
     Coin Game environment.
     """
+
     NAME = "CoinGame"
     NUM_AGENTS = 2
     NUM_ACTIONS = 4
@@ -44,12 +45,10 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
 
         self._load_config(config)
         self.player_red_id, self.player_blue_id = self.players_ids
-        self.n_features = self.grid_size**2 * (2 * self.NUM_AGENTS)
+        self.n_features = self.grid_size ** 2 * (2 * self.NUM_AGENTS)
         self.OBSERVATION_SPACE = gym.spaces.Box(
-            low=0,
-            high=1,
-            shape=(self.grid_size, self.grid_size, 4),
-            dtype="uint8")
+            low=0, high=1, shape=(self.grid_size, self.grid_size, 4), dtype="uint8"
+        )
 
         self.step_count_in_current_episode = None
         if self.output_additional_info:
@@ -62,19 +61,18 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
             assert len(config["players_ids"]) == self.NUM_AGENTS
 
     def _load_config(self, config):
-        self.players_ids = \
-            config.get("players_ids", ["player_red", "player_blue"])
+        self.players_ids = config.get("players_ids", ["player_red", "player_blue"])
         self.max_steps = config.get("max_steps", 20)
         self.grid_size = config.get("grid_size", 3)
-        self.output_additional_info = config.get("output_additional_info",
-                                                 True)
+        self.output_additional_info = config.get("output_additional_info", True)
         self.asymmetric = config.get("asymmetric", False)
-        self.both_players_can_pick_the_same_coin = \
-            config.get("both_players_can_pick_the_same_coin", True)
+        self.both_players_can_pick_the_same_coin = config.get(
+            "both_players_can_pick_the_same_coin", True
+        )
 
     @override(gym.Env)
     def seed(self, seed=None):
-        """Seed the PRNG of this space. """
+        """Seed the PRNG of this space."""
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
@@ -94,11 +92,9 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
     def _randomize_color_and_player_positions(self):
         # Reset coin color and the players and coin positions
         self.red_coin = self.np_random.randint(low=0, high=2)
-        self.red_pos = \
-            self.np_random.randint(low=0, high=self.grid_size, size=(2,))
-        self.blue_pos = \
-            self.np_random.randint(low=0, high=self.grid_size, size=(2,))
-        self.coin_pos = np.zeros(shape=(2, ), dtype=np.int8)
+        self.red_pos = self.np_random.randint(low=0, high=self.grid_size, size=(2,))
+        self.blue_pos = self.np_random.randint(low=0, high=self.grid_size, size=(2,))
+        self.coin_pos = np.zeros(shape=(2,), dtype=np.int8)
 
         self._players_do_not_overlap_at_start()
 
@@ -155,49 +151,57 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
 
     def _move_players(self, actions):
         self.red_pos = (self.red_pos + self.MOVES[actions[0]]) % self.grid_size
-        self.blue_pos = (
-            self.blue_pos + self.MOVES[actions[1]]) % self.grid_size
+        self.blue_pos = (self.blue_pos + self.MOVES[actions[1]]) % self.grid_size
 
     def _compute_reward(self):
 
         reward_red = 0.0
         reward_blue = 0.0
         generate_new_coin = False
-        red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue = \
-            False, False, False, False
+        red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue = (
+            False,
+            False,
+            False,
+            False,
+        )
 
         red_first_if_both = None
         if not self.both_players_can_pick_the_same_coin:
-            if self._same_pos(self.red_pos, self.coin_pos) and \
-                    self._same_pos(self.blue_pos, self.coin_pos):
+            if self._same_pos(self.red_pos, self.coin_pos) and self._same_pos(
+                self.blue_pos, self.coin_pos
+            ):
                 red_first_if_both = bool(self.np_random.randint(low=0, high=2))
 
         if self.red_coin:
-            if self._same_pos(self.red_pos, self.coin_pos) and \
-                    (red_first_if_both is None or red_first_if_both):
+            if self._same_pos(self.red_pos, self.coin_pos) and (
+                red_first_if_both is None or red_first_if_both
+            ):
                 generate_new_coin = True
                 reward_red += 1
                 if self.asymmetric:
                     reward_red += 3
                 red_pick_any = True
                 red_pick_red = True
-            if self._same_pos(self.blue_pos, self.coin_pos) and \
-                    (red_first_if_both is None or not red_first_if_both):
+            if self._same_pos(self.blue_pos, self.coin_pos) and (
+                red_first_if_both is None or not red_first_if_both
+            ):
                 generate_new_coin = True
                 reward_red += -2
                 reward_blue += 1
                 blue_pick_any = True
         else:
-            if self._same_pos(self.red_pos, self.coin_pos) and \
-                    (red_first_if_both is None or red_first_if_both):
+            if self._same_pos(self.red_pos, self.coin_pos) and (
+                red_first_if_both is None or red_first_if_both
+            ):
                 generate_new_coin = True
                 reward_red += 1
                 reward_blue += -2
                 if self.asymmetric:
                     reward_red += 3
                 red_pick_any = True
-            if self._same_pos(self.blue_pos, self.coin_pos) and \
-                    (red_first_if_both is None or not red_first_if_both):
+            if self._same_pos(self.blue_pos, self.coin_pos) and (
+                red_first_if_both is None or not red_first_if_both
+            ):
                 generate_new_coin = True
                 reward_blue += 1
                 blue_pick_blue = True
@@ -210,7 +214,8 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
                 red_pick_any=red_pick_any,
                 red_pick_red=red_pick_red,
                 blue_pick_any=blue_pick_any,
-                blue_pick_blue=blue_pick_blue)
+                blue_pick_blue=blue_pick_blue,
+            )
 
         return reward_list, generate_new_coin
 
@@ -250,11 +255,12 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
             self.player_blue_id: rewards[1],
         }
 
-        epi_is_done = (self.step_count_in_current_episode >= self.max_steps)
+        epi_is_done = self.step_count_in_current_episode >= self.max_steps
         if self.step_count_in_current_episode > self.max_steps:
             logger.warning(
                 "step_count_in_current_episode > self.max_steps: "
-                f"{self.step_count_in_current_episode} > {self.max_steps}")
+                f"{self.step_count_in_current_episode} > {self.max_steps}"
+            )
 
         done = {
             self.player_red_id: epi_is_done,
@@ -288,15 +294,13 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
             red_pick = sum(self.red_pick)
             player_red_info["pick_speed"] = red_pick / len(self.red_pick)
             if red_pick > 0:
-                player_red_info["pick_own_color"] = \
-                    sum(self.red_pick_own) / red_pick
+                player_red_info["pick_own_color"] = sum(self.red_pick_own) / red_pick
 
         if len(self.blue_pick) > 0:
             blue_pick = sum(self.blue_pick)
             player_blue_info["pick_speed"] = blue_pick / len(self.blue_pick)
             if blue_pick > 0:
-                player_blue_info["pick_own_color"] = \
-                    sum(self.blue_pick_own) / blue_pick
+                player_blue_info["pick_own_color"] = sum(self.blue_pick_own) / blue_pick
 
         return player_red_info, player_blue_info
 
@@ -308,8 +312,9 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
         self.blue_pick_own.clear()
 
     @override(InfoAccumulationInterface)
-    def _accumulate_info(self, red_pick_any, red_pick_red, blue_pick_any,
-                         blue_pick_blue):
+    def _accumulate_info(
+        self, red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue
+    ):
 
         self.red_pick.append(red_pick_any)
         self.red_pick_own.append(red_pick_red)

@@ -9,6 +9,9 @@ Example use case
 You have a large list of items that you need to process recursively (i.e., sorting).
 
 We call ``ray.get`` after both ray function invocations take place. This allows you to maximize parallelism in the workload.
+Notice in the execution times below that with smaller and finer tasks, the non-distributed version is faster; however, as the task execution
+time increases, that is the task with larger list takes longer, the distributed version is faster. Takeaway here is that fine trained tasks are an
+anti Ray pattern.
 
 .. code-block:: python
 
@@ -27,7 +30,7 @@ Code example
 .. code-block:: python
     
     import ray
-    ray.init()
+
     def partition(collection):        
         # Use the last element as the first pivot
         pivot = collection.pop()
@@ -38,6 +41,16 @@ Code example
             else:
                 lesser.append(element)
         return lesser, pivot, greater
+
+    def quick_sort(collection):
+
+        if len(collection) <= 200000:  # magic number
+            return sorted(collection)
+        else:
+            lesser, pivot, greater = partition(collection)
+            lesser = quick_sort(lesser)
+            greater = quick_sort(greater)
+        return lesser + [pivot] + greater
     
     @ray.remote
     def quick_sort_distributed(collection):
@@ -58,10 +71,41 @@ Code example
     if __name__ == "__main__":
         from numpy import random
         import time
-        unsorted = random.randint(1000000, size=(4000000)).tolist()
-        s = time.time()
-        quick_sort(unsorted)
-        print("Sequential execution: " + str(time.time() - s))
-        s = time.time()
-        ray.get(quick_sort_distributed.remote(unsorted))
-        print("Distributed execution: " + str(time.time() - s))
+
+        ray.init()
+        for size in [200000, 4000000, 8000000, 10000000, 20000000]:
+            print(f'Array size: {size}')
+            unsorted = random.randint(1000000, size=(size)).tolist()
+            s = time.time()
+            quick_sort(unsorted)
+            print(f"Sequential execution: {(time.time() - s):.3f}")
+            s = time.time()
+            # put the large object in the global store and pass only the reference
+            unsorted_obj = ray.put(unsorted)
+            ray.get(quick_sort_distributed.remote(unsorted_obj))
+            print(f"Distributed execution: {(time.time() - s):.3f}")
+            print("--" * 10)
+
+.. code-block:: text
+
+    Array size: 200000
+    Sequential execution: 0.040
+    Distributed execution: 0.152
+    --------------------
+    Array size: 4000000
+    Sequential execution: 6.161
+    Distributed execution: 5.779
+    --------------------
+    Array size: 8000000
+    Sequential execution: 15.459
+    Distributed execution: 11.282
+    --------------------
+    Array size: 10000000
+    Sequential execution: 20.671
+    Distributed execution: 13.132
+    --------------------
+    Array size: 20000000
+    Sequential execution: 47.352
+    Distributed execution: 36.213
+    --------------------
+

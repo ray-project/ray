@@ -25,8 +25,6 @@ namespace ray {
 
 namespace raylet {
 
-using rpc::TaskLeaseData;
-
 /// Used for unit-testing the ClusterTaskManager, which requests dependencies
 /// for queued tasks.
 class TaskDependencyManagerInterface {

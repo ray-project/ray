@@ -1,14 +1,17 @@
+.. _serve-deploy-tutorial:
+
 ===================
 Deploying Ray Serve
 ===================
+This section should help you:
 
-In the :doc:`core-apis`, you saw some of the basics of how to write Serve applications.
-This section will dive deeper into how Ray Serve runs on a Ray cluster and how you're able
-to deploy and update your Serve application over time.
+- understand how Ray Serve runs on a Ray cluster beyond the basics mentioned in :doc:`core-apis`
+- deploy and update your Serve application over time
+- monitor your Serve application using the Ray Dashboard and logging
 
 .. contents:: Deploying Ray Serve
 
-.. _serve-deploy-tutorial:
+.. _ray-serve-instance-lifetime:
 
 Lifetime of a Ray Serve Instance
 ================================
@@ -76,6 +79,7 @@ In general, **Option 2 is recommended for most users** because it allows you to 
     return "hello"
 
   my_func.deploy()
+
 
 Deploying on Kubernetes
 =======================
@@ -194,12 +198,12 @@ Now we can try querying the service by sending an HTTP request to the service fr
     # Get a shell inside of the head node.
     $ ray attach ray/python/ray/autoscaler/kubernetes/example-full.yaml
 
-    # Query the Ray Serve endpoint. This can be run from anywhere in the
+    # Query the Ray Serve deployment. This can be run from anywhere in the
     # Kubernetes cluster.
     $ curl -X GET http://$RAY_HEAD_SERVICE_HOST:8000/hello
     hello world
 
-In order to expose the Ray Serve endpoint externally, we would need to deploy the Service we created here behind an `Ingress`_ or a `NodePort`_.
+In order to expose the Ray Serve deployment externally, we would need to deploy the Service we created here behind an `Ingress`_ or a `NodePort`_.
 Please refer to the Kubernetes documentation for more information.
 
 .. _`Kubernetes default config`: https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/example-full.yaml
@@ -207,6 +211,37 @@ Please refer to the Kubernetes documentation for more information.
 .. _`Ingress`: https://kubernetes.io/docs/concepts/services-networking/ingress/
 .. _`NodePort`: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
 
+
+
+Health Checking
+===============
+By default, each actor making up a Serve deployment is health checked and restarted on failure.
+
+
+.. note::
+
+   User-defined health checks are experimental and may be subject to change before the interface is stabilized. If you have any feedback or run into any issues or unexpected behaviors, please file an issue on GitHub.
+
+You can customize this behavior to perform an application-level health check or to adjust the frequency/timeout.
+To define a custom healthcheck, define a ``check_health`` method on your deployment class.
+This method should take no arguments and return no result, raising an exception if the replica should be considered unhealthy.
+You can also customize how frequently the health check is run and the timeout when a replica will be deemed unhealthy if it hasn't responded in the deployment options.
+
+  .. code-block:: python
+
+    @serve.deployment(_health_check_period_s=10, _health_check_timeout_s=30)
+    class MyDeployment:
+        def __init__(self, db_addr: str):
+            self._my_db_connection = connect_to_db(db_addr)
+
+        def __call__(self, request):
+            return self._do_something_cool()
+
+        # Will be called by Serve to check the health of the replica.
+        def check_health(self):
+            if not self._my_db_connection.is_connected():
+                # The specific type of exception is not important.
+                raise RuntimeError("uh-oh, DB connection is broken.")
 
 Failure Recovery
 ================
@@ -221,8 +256,8 @@ Ray cluster and re-deploys all Serve deployments into that cluster.
   the long term roadmap and being actively worked on.
 
 Ray Serve added an experimental feature to help recovering the state.
-This features enables Serve to write all your deployment configuration and code into a storage location. 
-Upon Ray cluster failure and restarts, you can simply call Serve to reconstruct the state. 
+This features enables Serve to write all your deployment configuration and code into a storage location.
+Upon Ray cluster failure and restarts, you can simply call Serve to reconstruct the state.
 
 Here is how to use it:
 
@@ -237,7 +272,7 @@ You can use both the start argument and the CLI to specify it:
 
     serve.start(_checkpoint_path=...)
 
-or 
+or
 
 .. code-block:: shell
 
@@ -248,9 +283,10 @@ The checkpoint path argument accepts the following format:
 
 - ``file://local_file_path``
 - ``s3://bucket/path``
+- ``gs://bucket/path``
 - ``custom://importable.custom_python.Class/path``
 
-While we have native support for on disk and AWS S3 storage, there is no reason we cannot support more. 
+While we have native support for on disk, AWS S3, and Google Cloud Storage (GCS), there is no reason we cannot support more.
 
 In Kubernetes environment, we recommend using `Persistent Volumes`_ to create a disk and mount it into the Ray head node.
 For example, you can provision Azure Disk, AWS Elastic Block Store, or GCP Persistent Disk using the K8s `Persistent Volumes`_ API.
@@ -301,7 +337,7 @@ To automatically include the current deployment and replica in your logs, simply
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_logger.py
 
-Querying a Serve endpoint with the above deployment will produce a log line like the following:
+Querying the above deployment will produce a log line like the following:
 
 .. code-block:: bash
 
@@ -428,12 +464,16 @@ The following metrics are exposed by Ray Serve:
      - The current number of queries being processed.
    * - ``serve_num_http_requests``
      - The number of HTTP requests processed.
+   * - ``serve_num_http_error_requests``
+     - The number of non-200 HTTP responses.
    * - ``serve_num_router_requests``
      - The number of requests processed by the router.
    * - ``serve_handle_request_counter``
      - The number of requests processed by this ServeHandle.
    * - ``serve_deployment_queued_queries``
      - The number of queries for this deployment waiting to be assigned to a replica.
+   * - ``serve_num_deployment_http_error_requests``
+     - The number of non-200 HTTP responses returned by each deployment.
 
 To see this in action, run ``ray start --head --metrics-export-port=8080`` in your terminal, and then run the following script:
 
@@ -450,7 +490,7 @@ For example, after running the script for some time and refreshing ``localhost:8
 
 which indicates that the average processing latency is just over one second, as expected.
 
-You can even define a :ref:`custom metric <ray-metrics>` to use in your deployment, and tag it with the current deployment or replica.
+You can even define a :ref:`custom metric <application-level-metrics>` to use in your deployment, and tag it with the current deployment or replica.
 Here's an example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_custom_metric.py

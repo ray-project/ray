@@ -4,10 +4,13 @@ import unittest
 import ray
 import ray.rllib.agents.dqn.apex as apex
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
-    LEARNER_STATS_KEY
-from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    check_train_results, framework_iterator
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.rllib.utils.test_utils import (
+    check,
+    check_compute_single_action,
+    check_train_results,
+    framework_iterator,
+)
 
 
 class TestApexDQN(unittest.TestCase):
@@ -24,7 +27,7 @@ class TestApexDQN(unittest.TestCase):
         config["learning_starts"] = 1000
         config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 100
-        config["min_iter_time_s"] = 1
+        config["min_time_s_per_reporting"] = 1
         config["optimizer"]["num_replay_buffer_shards"] = 1
         for _ in framework_iterator(config):
             trainer = apex.ApexTrainer(config=config, env="CartPole-v0")
@@ -41,16 +44,17 @@ class TestApexDQN(unittest.TestCase):
         config["learning_starts"] = 1000
         config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 100
-        config["min_iter_time_s"] = 1
+        config["min_time_s_per_reporting"] = 1
         config["optimizer"]["num_replay_buffer_shards"] = 1
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, with_eager_tracing=True):
             plain_config = config.copy()
             trainer = apex.ApexTrainer(config=plain_config, env="CartPole-v0")
 
             # Test per-worker epsilon distribution.
             infos = trainer.workers.foreach_policy(
-                lambda p, _: p.get_exploration_state())
+                lambda p, _: p.get_exploration_state()
+            )
             expected = [0.4, 0.016190862, 0.00065536]
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
@@ -64,7 +68,8 @@ class TestApexDQN(unittest.TestCase):
             # Test again per-worker epsilon distribution
             # (should not have changed).
             infos = trainer.workers.foreach_policy(
-                lambda p, _: p.get_exploration_state())
+                lambda p, _: p.get_exploration_state()
+            )
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
             trainer.stop()
@@ -81,7 +86,7 @@ class TestApexDQN(unittest.TestCase):
         config["timesteps_per_iteration"] = 10
         # 0 metrics reporting delay, this makes sure timestep,
         # which lr depends on, is updated after each worker rollout.
-        config["min_iter_time_s"] = 0
+        config["min_time_s_per_reporting"] = 0
         config["optimizer"]["num_replay_buffer_shards"] = 1
         # This makes sure learning schedule is checked every 10 timesteps.
         config["optimizer"]["max_weight_sync_delay"] = 10
@@ -89,9 +94,7 @@ class TestApexDQN(unittest.TestCase):
         config["lr"] = 0.2
         lr_schedule = [
             [0, 0.2],
-            [50, 0.1],
-            [100, 0.01],
-            [150, 0.001],
+            [100, 0.001],
         ]
         config["lr_schedule"] = lr_schedule
 
@@ -103,32 +106,25 @@ class TestApexDQN(unittest.TestCase):
             """
             for _ in range(n):
                 results = trainer.train()
-            return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
-                LEARNER_STATS_KEY]["cur_lr"]
+            return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
+                "cur_lr"
+            ]
 
-        # Check eager execution frameworks here, since it's easier to control
-        # exact timesteps with these frameworks.
         for _ in framework_iterator(config):
             trainer = apex.ApexTrainer(config=config, env="CartPole-v0")
 
-            lr = _step_n_times(trainer, 5)  # 50 timesteps
-            # PiecewiseSchedule does interpolation. So roughly 0.1 here.
-            self.assertLessEqual(lr, 0.15)
-            self.assertGreaterEqual(lr, 0.04)
+            lr = _step_n_times(trainer, 1)  # 10 timesteps
+            # Close to 0.2
+            self.assertGreaterEqual(lr, 0.1)
 
-            lr = _step_n_times(trainer, 5)  # 100 timesteps
-            # PiecewiseSchedule does interpolation. So roughly 0.01 here.
-            self.assertLessEqual(lr, 0.02)
-            self.assertGreaterEqual(lr, 0.004)
-
-            lr = _step_n_times(trainer, 5)  # 150 timesteps
-            # PiecewiseSchedule does interpolation. So roughly 0.001 here.
-            self.assertLessEqual(lr, 0.002)
-            self.assertGreaterEqual(lr, 0.0004)
+            lr = _step_n_times(trainer, 20)  # 200 timesteps
+            # LR Annealed to 0.001
+            self.assertLessEqual(lr, 0.0011)
 
             trainer.stop()
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))
