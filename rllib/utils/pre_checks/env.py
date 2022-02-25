@@ -351,8 +351,12 @@ def _check_reward(reward, base_env=False, agent_ids=None):
                     )
                     raise ValueError(error)
     elif not (
-        np.isreal(reward) and not isinstance(reward, bool) and
-        (np.isscalar(reward) or (isinstance(reward, np.ndarray) and reward.shape == ()))
+        np.isreal(reward)
+        and not isinstance(reward, bool)
+        and (
+            np.isscalar(reward)
+            or (isinstance(reward, np.ndarray) and reward.shape == ())
+        )
     ):
         error = (
             "Your step function must return a reward that is integer or float. "

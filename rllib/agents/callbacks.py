@@ -294,21 +294,25 @@ class DefaultCallbacks:
             )
 
 
-def display_top(snapshot, key_type='lineno', limit=10):
-    snapshot = snapshot.filter_traces((
-        tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
-        tracemalloc.Filter(False, "<unknown>"),
-    ))
+def display_top(snapshot, key_type="lineno", limit=10):
+    snapshot = snapshot.filter_traces(
+        (
+            tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
+            tracemalloc.Filter(False, "<unknown>"),
+        )
+    )
     top_stats = snapshot.statistics(key_type)
 
     print("Top %s lines" % limit)
     for index, stat in enumerate(top_stats[:limit], 1):
         frame = stat.traceback[0]
-        print("#%s: %s:%s: %.1f KiB"
-              % (index, frame.filename, frame.lineno, stat.size / 1024))
+        print(
+            "#%s: %s:%s: %.1f KiB"
+            % (index, frame.filename, frame.lineno, stat.size / 1024)
+        )
         line = linecache.getline(frame.filename, frame.lineno).strip()
         if line:
-            print('    %s' % line)
+            print("    %s" % line)
 
     other = top_stats[limit:]
     if other:
@@ -357,8 +361,8 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
 
             trace = str(stat.traceback)
 
-            #episode.custom_metrics[f"tracemalloc/{trace}/size"] = size
-            #episode.custom_metrics[f"tracemalloc/{trace}/count"] = count
+            # episode.custom_metrics[f"tracemalloc/{trace}/size"] = size
+            # episode.custom_metrics[f"tracemalloc/{trace}/count"] = count
 
     def on_episode_end(
         self,
@@ -384,10 +388,10 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
 
         process = psutil.Process(os.getpid())
         worker_rss = process.memory_info().rss
-        #worker_data = process.memory_info().data
+        # worker_data = process.memory_info().data
         worker_vms = process.memory_info().vms
         episode.custom_metrics["tracemalloc/worker/rss"] = worker_rss
-        #episode.custom_metrics["tracemalloc/worker/data"] = worker_data
+        # episode.custom_metrics["tracemalloc/worker/data"] = worker_data
         episode.custom_metrics["tracemalloc/worker/vms"] = worker_vms
 
 

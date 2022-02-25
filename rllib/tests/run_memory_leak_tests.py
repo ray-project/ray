@@ -17,15 +17,14 @@
 # )
 
 import argparse
-import numpy as np
 import os
 from pathlib import Path
 import sys
 import yaml
 
 import ray
-from ray.rllib.agents.callbacks import MemoryTrackingCallbacks
-from ray.tune import run_experiments
+from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.utils.debug.memory import check_memory_leaks
 from ray.rllib import _register_all
 
 parser = argparse.ArgumentParser()
@@ -33,20 +32,19 @@ parser.add_argument(
     "--framework",
     choices=["jax", "tf2", "tf", "tfe", "torch"],
     default="tf",
-    help="The deep learning framework to use.")
+    help="The deep learning framework to use.",
+)
 parser.add_argument(
     "--yaml-dir",
+    required=True,
     type=str,
-    help="The directory in which to find all yamls to test.")
+    help="The directory in which to find all yamls to test.",
+)
 parser.add_argument(
     "--local-mode",
     action="store_true",
-    help="Run ray in local mode for easier debugging.")
-parser.add_argument(
-    "--check-iters",
-    type=int,
-    default=10,
-    help="The number of past iters to search through for memory leaks.")
+    help="Run ray in local mode for easier debugging.",
+)
 
 
 if __name__ == "__main__":
@@ -68,7 +66,8 @@ if __name__ == "__main__":
     else:
         yaml_files = rllib_dir.rglob(args.yaml_dir + "/*.yaml")
         yaml_files = sorted(
-            map(lambda path: str(path.absolute()), yaml_files), reverse=True)
+            map(lambda path: str(path.absolute()), yaml_files), reverse=True
+        )
 
     print("Will run the following memory-leak tests:")
     for yaml_file in yaml_files:
@@ -76,56 +75,46 @@ if __name__ == "__main__":
 
     # Loop through all collected files.
     for yaml_file in yaml_files:
-        experiments = yaml.load(open(yaml_file).read())
-        assert len(experiments) == 1,\
-            "Error, can only run a single experiment per yaml file!"
+        experiments = yaml.safe_load(open(yaml_file).read())
+        assert (
+            len(experiments) == 1
+        ), "Error, can only run a single experiment per yaml file!"
 
-        # Add framework option and memory callback to exp configs.
-        for exp in experiments.values():
-            exp["config"]["framework"] = args.framework
-            exp["config"]["callbacks"] = MemoryTrackingCallbacks
+        experiment = list(experiments.values())[0]
+
+        # Add framework option to exp configs.
+        experiment["config"]["framework"] = args.framework
+        # Create env on local_worker for memory leak testing just the env.
+        experiment["config"]["create_env_on_driver"] = True
+        # Always run with eager-tracing when framework=tf2 if not in local-mode.
+        if args.framework in ["tf2", "tfe"] and not args.local_mode:
+            experiment["config"]["eager_tracing"] = True
+        # experiment["config"]["callbacks"] = MemoryTrackingCallbacks
+
+        # Move "env" specifier into config.
+        experiment["config"]["env"] = experiment["env"]
+        experiment.pop("env", None)
 
         # Print out the actual config.
         print("== Test config ==")
-        print(yaml.dump(experiments))
+        print(yaml.dump(experiment))
 
-        # Try running each test 3 times and make sure it reaches the given
-        # reward.
+        # Construct the trainer instance based on the given config.
         leaking = True
         try:
             ray.init(num_cpus=5, local_mode=args.local_mode)
-            available_memory = ray.cluster_resources()["memory"]
-            trials = run_experiments(experiments, resume=False, verbose=2)
+            trainer = get_trainer_class(experiment["run"])(experiment["config"])
+            results = check_memory_leaks(
+                trainer, to_check={"rollout_worker", "policy"}
+            )
+            if results is None:
+                leaking = False
         finally:
             ray.shutdown()
             _register_all()
 
-        # How many Mb are we expected to have used during the run?
-        mb_usage_threshold = 500
-        std_mem_percent_threshold = 0.5
-
-        for trial in trials:
-            # Simple check: Compare 3rd entry with last one.
-            mem_series = trial.metric_n_steps["perf/ram_util_percent"]["10"]
-            mem_series = list(mem_series)[-args.check_iters:]
-            std_dev_mem = np.std(mem_series)
-            total_used = (
-                mem_series[-1] - mem_series[0]) / 100 * available_memory / 1e6
-            print(f"trial {trial}")
-            print(f" -> mem consumption % stddev "
-                  f"over last 10 iters={std_dev_mem} "
-                  f"(must be smaller {std_mem_percent_threshold})")
-            print(f" -> total mem used "
-                  f"over last 10 iters={total_used} "
-                  f"(must be smaller {mb_usage_threshold})")
-            if std_dev_mem < std_mem_percent_threshold and \
-                    total_used < mb_usage_threshold:
-                leaking = False
-                break
-
         if not leaking:
             print("Memory leak test PASSED")
-            break
         else:
             print("Memory leak test FAILED. Exiting with Error.")
             sys.exit(1)

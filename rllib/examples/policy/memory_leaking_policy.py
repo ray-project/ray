@@ -8,6 +8,7 @@ class MemoryLeakingPolicy(RandomPolicy):
     Useful for proving that our memory-leak tests can catch the
     slightest leaks.
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._leak = []

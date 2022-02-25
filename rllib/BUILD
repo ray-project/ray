@@ -604,6 +604,14 @@ py_test(
 )
 
 py_test(
+    name = "test_memory_leaks_generic",
+    main = "test_memory_leaks",
+    tags = ["team:ml", "trainers_dir"],
+    size = "large",
+    srcs = ["agents/tests/test_memory_leaks.py"]
+)
+
+py_test(
     name = "test_trainer",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
@@ -882,6 +890,16 @@ py_test(
 )
 
 py_test(
+    name = "test_memory_leak_appo",
+    tags = ["team:ml", "memory_leak_tests"],
+    main = "tests/run_memory_leak_tests.py",
+    size = "large",
+    srcs = ["tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/ppo/memory-leak-test-appo.yaml"],
+    args = ["--yaml-dir=tuned_examples/ppo"]
+)
+
+py_test(
     name = "test_memory_leak_ddpg",
     tags = ["team:ml", "memory_leak_tests"],
     main = "tests/run_memory_leak_tests.py",
@@ -889,6 +907,16 @@ py_test(
     srcs = ["tests/run_memory_leak_tests.py"],
     data = ["tuned_examples/ddpg/memory-leak-test-ddpg.yaml"],
     args = ["--yaml-dir=tuned_examples/ddpg"]
+)
+
+py_test(
+    name = "test_memory_leak_dqn",
+    tags = ["team:ml", "memory_leak_tests"],
+    main = "tests/run_memory_leak_tests.py",
+    size = "large",
+    srcs = ["tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/dqn/memory-leak-test-dqn.yaml"],
+    args = ["--yaml-dir=tuned_examples/dqn"]
 )
 
 py_test(

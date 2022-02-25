@@ -25,7 +25,9 @@ class TestMemoryLeaks(unittest.TestCase):
             nonlocal a
             a.append(42)  # expect 8 bytes (int64) per detection
 
-        stats = _test_some_code_for_memory_leaks("dumb_code", None, dumb_code, 200, max_num_trials=3)
+        stats = _test_some_code_for_memory_leaks(
+            "dumb_code", None, dumb_code, 200, max_num_trials=3
+        )
         self.assertTrue(len(stats) == 1)
 
     def test_ppo_memory_leaks(self):
@@ -49,7 +51,9 @@ class TestMemoryLeaks(unittest.TestCase):
         # Otherwise, `check_memory_leaks` will complain.
         config["create_env_on_driver"] = True
 
-        for _ in framework_iterator(config, frameworks="torch"):#, with_eager_tracing=True):#TODO
+        for _ in framework_iterator(
+            config, frameworks="torch"
+        ):  # , with_eager_tracing=True):#TODO
             _config = config.copy()
             _config["env"] = RandomLargeObsSpaceEnv
             trainer = ppo.appo.APPOTrainer(config=_config)
@@ -78,4 +82,5 @@ class TestMemoryLeaks(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

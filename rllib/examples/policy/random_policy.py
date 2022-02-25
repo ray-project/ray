@@ -70,11 +70,11 @@ class RandomPolicy(Policy):
         pass
 
     @override(Policy)
-    def _get_dummy_batch_from_view_requirements(
-            self, batch_size: int = 1):
-        return SampleBatch({
-            SampleBatch.OBS: tree.map_structure(
-                lambda s: s[None],
-                self.observation_space.sample()
-            ),
-        })
+    def _get_dummy_batch_from_view_requirements(self, batch_size: int = 1):
+        return SampleBatch(
+            {
+                SampleBatch.OBS: tree.map_structure(
+                    lambda s: s[None], self.observation_space.sample()
+                ),
+            }
+        )

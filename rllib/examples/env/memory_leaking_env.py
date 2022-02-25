@@ -13,6 +13,7 @@ class MemoryLeakingEnv(RandomEnv):
     Useful for proving that our memory-leak tests can catch the
     slightest leaks.
     """
+
     def __init__(self, config=None):
         super().__init__(config)
         self._leak = {}

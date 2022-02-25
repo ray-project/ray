@@ -5,30 +5,38 @@ import re
 import scipy
 import tracemalloc
 import tree  # pip install dm_tree
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Set
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 
 
 # A suspicious memory-allocating stack-trace that we should re-test
 # to make sure it's not a false positive.
-Suspect = namedtuple("Suspect", [
-    # The stack trace of the allocation, going back n frames, depending
-    # on the tracemalloc.start(n) call.
-    "traceback",
-    # The amount of memory taken by this particular stack trace
-    # over the course of the experiment.
-    "memory_increase",
-    # The slope of the scipy linear regression (x=iteration; y=memory size).
-    "slope",
-    # The rvalue of the scipy linear regression.
-    "rvalue",
-    # The memory size history (list of all memory sizes over all iterations).
-    "hist",
-])
+Suspect = namedtuple(
+    "Suspect",
+    [
+        # The stack trace of the allocation, going back n frames, depending
+        # on the tracemalloc.start(n) call.
+        "traceback",
+        # The amount of memory taken by this particular stack trace
+        # over the course of the experiment.
+        "memory_increase",
+        # The slope of the scipy linear regression (x=iteration; y=memory size).
+        "slope",
+        # The rvalue of the scipy linear regression.
+        "rvalue",
+        # The memory size history (list of all memory sizes over all iterations).
+        "hist",
+    ],
+)
 
 
-def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> List[Suspect]:
+def check_memory_leaks(
+    trainer,
+    to_check: Optional[Set[str]] = None,
+    repeats: int = 200,
+    max_num_trials: int = 3,
+) -> List[Suspect]:
     """Diagnoses the given trainer for possible memory leaks.
 
     Isolates single components inside the trainer's local worker, e.g. the env,
@@ -37,11 +45,18 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> List[Suspect
     un-GC'd items to memory.
 
     Args:
-        trainer:
-        to_test:
+        trainer: The Trainer instance to test.
+        to_check: Set of strings to indentify components to test. Allowed strings
+            are: "env", "policy", "model", "rollout_worker". By default, check all
+            of these.
+        repeats: Number of times the test code block should get executed (per trial).
+            If a trial fails, a new trial may get started with a larger number of
+            repeats: actual_repeats = `repeats` * (trial + 1) (1st trial == 0).
+        max_num_trials: The maximum number of trials to run each check for.
 
     Raises:
-        MemoryError: If a memory leak in one of the components is found.
+        The list of Suspect instances that were found. Returns an empty list if no
+        suspicious leaks were found.
     """
     local_worker = trainer.workers.local_worker()
 
@@ -50,9 +65,10 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> List[Suspect
 
     # Test a single sub-env (first in the VectorEnv)?
     if "env" in to_check:
-        assert local_worker.async_env is not None, \
-            "ERROR: Cannot test 'env' since given trainer does not have one " \
+        assert local_worker.async_env is not None, (
+            "ERROR: Cannot test 'env' since given trainer does not have one "
             "in its local worker. Try setting `create_env_on_driver=True`."
+        )
 
         # Isolate the first sub-env in the vectorized setup and test it.
         env = local_worker.async_env.get_sub_environments()[0]
@@ -74,7 +90,7 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> List[Suspect
             init=lambda: env.reset(),
             code=code,
             # How many times to repeat the function call?
-            repeats=200,
+            repeats=repeats or 200,
             max_num_trials=max_num_trials,
         )
         if test:
@@ -86,15 +102,17 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> List[Suspect
 
         # Get a fixed obs (B=10).
         obs = tree.map_structure(
-            lambda s: np.stack([s] * 10, axis=0),
-            policy.observation_space.sample())
+            lambda s: np.stack([s] * 10, axis=0), policy.observation_space.sample()
+        )
 
         print("Looking for leaks in Policy")
 
         def code():
-            policy.compute_actions_from_input_dict({
-                "obs": obs,
-            })
+            policy.compute_actions_from_input_dict(
+                {
+                    "obs": obs,
+                }
+            )
 
         # Call `compute_actions_from_input_dict()` n times.
         test = _test_some_code_for_memory_leaks(
@@ -102,7 +120,7 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> List[Suspect
             init=None,
             code=code,
             # How many times to repeat the function call?
-            repeats=400,
+            repeats=repeats or 400,
             # How many times to re-try if we find a suspicious memory
             # allocation?
             max_num_trials=max_num_trials,
@@ -111,15 +129,14 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> List[Suspect
             return test
 
         # Call `learn_on_batch()` n times.
-        dummy_batch = policy._get_dummy_batch_from_view_requirements(
-            batch_size=16)
+        dummy_batch = policy._get_dummy_batch_from_view_requirements(batch_size=16)
 
         test = _test_some_code_for_memory_leaks(
             desc=f"Calling `learn_on_batch()`.",
             init=None,
             code=lambda: policy.learn_on_batch(dummy_batch),
             # How many times to repeat the function call?
-            repeats=100,
+            repeats=repeats or 100,
             max_num_trials=max_num_trials,
         )
         if test:
@@ -130,9 +147,7 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> List[Suspect
         policy = local_worker.policy_map[DEFAULT_POLICY_ID]
 
         # Get a fixed obs.
-        obs = tree.map_structure(
-            lambda s: s[None],
-            policy.observation_space.sample())
+        obs = tree.map_structure(lambda s: s[None], policy.observation_space.sample())
 
         print("Looking for leaks in Model")
 
@@ -142,7 +157,7 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> List[Suspect
             init=None,
             code=lambda: policy.model({SampleBatch.OBS: obs}),
             # How many times to repeat the function call?
-            repeats=400,
+            repeats=repeats or 400,
             # How many times to re-try if we find a suspicious memory
             # allocation?
             max_num_trials=max_num_trials,
@@ -160,7 +175,7 @@ def check_memory_leaks(trainer, to_check=None, max_num_trials=3) -> List[Suspect
             init=None,
             code=lambda: local_worker.sample(),
             # How many times to repeat the function call?
-            repeats=400,
+            repeats=repeats or 400,
             # How many times to re-try if we find a suspicious memory
             # allocation?
             max_num_trials=max_num_trials,
@@ -176,8 +191,8 @@ def _test_some_code_for_memory_leaks(
     repeats: int,
     max_num_trials: int = 1,
 ) -> List[Suspect]:
-    """Runs given code (and init code) n times and checks for memory leaks. 
-    
+    """Runs given code (and init code) n times and checks for memory leaks.
+
     Args:
         desc: A descriptor of the test.
         init: Optional code to be executed initially.
@@ -192,6 +207,7 @@ def _test_some_code_for_memory_leaks(
         A list of Suspect objects, describing possible memory leaks. If list
         is empty, no leaks have been found.
     """
+
     def _i_print(i):
         if (i + 1) % 10 == 0:
             print(".", end="" if (i + 1) % 100 else f" {i + 1}\n", flush=True)
@@ -236,15 +252,19 @@ def _test_some_code_for_memory_leaks(
             suspicious.add(suspect.traceback)
             suspicious_stats.append(suspect)
 
-        tracemalloc.clear_traces()
+        tracemalloc.stop()
 
         # Some suspicious memory allocations found.
         if len(suspicious) > 0:
             print(f"{len(suspicious)} suspects found. Top-ten:")
-            for i, s in enumerate(sorted(suspicious_stats, key=lambda s: s.memory_increase, reverse=True)):
+            for i, s in enumerate(
+                sorted(suspicious_stats, key=lambda s: s.memory_increase, reverse=True)
+            ):
                 if i > 10:
                     break
-                print(f"{i}) line={s.traceback[-1]} mem-increase={s.memory_increase}B slope={s.slope}B/detection rval={s.rvalue}")
+                print(
+                    f"{i}) line={s.traceback[-1]} mem-increase={s.memory_increase}B slope={s.slope}B/detection rval={s.rvalue}"
+                )
         # Nothing suspicious found -> Exit trial loop and return.
         else:
             print("No remaining suspects found -> returning")
@@ -287,16 +307,19 @@ def _find_memory_leaks_in_table(table):
             # Ignore this very module here (we are collecting lots of data
             # so an increase is expected).
             top_stack = str(traceback[-1])
-            if any(s in top_stack for s in [
-                "tracemalloc", "pycharm", "thirdparty_files/psutil",
-                re.sub("\\.", "/", __name__) + ".py"
-            ]):
+            if any(
+                s in top_stack
+                for s in [
+                    "tracemalloc",
+                    "pycharm",
+                    "thirdparty_files/psutil",
+                    re.sub("\\.", "/", __name__) + ".py",
+                ]
+            ):
                 continue
 
             # Do a linear regression to get the slope and R-value.
-            line = scipy.stats.linregress(
-                x=np.arange(len(hist)),
-                y=np.array(hist))
+            line = scipy.stats.linregress(x=np.arange(len(hist)), y=np.array(hist))
 
             # - If weak positive slope and some confidence and
             #   increase > n bytes -> error.
@@ -304,25 +327,29 @@ def _find_memory_leaks_in_table(table):
             # deltas = np.array([0.0 if i == 0 else h - hist[i - 1] for i, h in
             #          enumerate(hist)])
             if memory_increase > 1000 and (
-                line.slope > 10.0 or
-                (line.slope > 6.0 and line.rvalue > 0.8) or
-                (line.slope > 4.0 and line.rvalue > 0.6)
+                line.slope > 10.0
+                or (line.slope > 6.0 and line.rvalue > 0.8)
+                or (line.slope > 4.0 and line.rvalue > 0.6)
             ):
-                suspects.append(Suspect(
-                    traceback=traceback,
-                    memory_increase=memory_increase,
-                    slope=line.slope,
-                    rvalue=line.rvalue,
-                    hist=hist,
-                ))
+                suspects.append(
+                    Suspect(
+                        traceback=traceback,
+                        memory_increase=memory_increase,
+                        slope=line.slope,
+                        rvalue=line.rvalue,
+                        hist=hist,
+                    )
+                )
 
     return suspects
 
 
 def _pprint_suspect(suspect):
-    print("Most suspicious memory allocation in traceback "
-          "(only printing out this one, but all (less suspicious)"
-          " suspects will be investigated as well):")
+    print(
+        "Most suspicious memory allocation in traceback "
+        "(only printing out this one, but all (less suspicious)"
+        " suspects will be investigated as well):"
+    )
     print("\n".join(suspect.traceback.format()))
     print(f"Increase total={suspect.memory_increase}B")
     print(f"Slope={suspect.slope} B/detection")
