@@ -59,6 +59,9 @@ _UUID_RE = re.compile(
     "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}"
 )
 
+# The polling interval for serve client to wait to deployment state
+_CLIENT_POLLING_INTERVAL_S: float = 1
+
 
 def _get_controller_namespace(detached):
     controller_namespace = ray.get_runtime_context().namespace
@@ -214,7 +217,7 @@ class Client:
                 logger.debug(
                     f"Waiting for shutdown, {len(statuses)} deployments still alive."
                 )
-            time.sleep(1)
+            time.sleep(_CLIENT_POLLING_INTERVAL_S)
         else:
             live_names = list(statuses.keys())
             raise TimeoutError(
@@ -252,7 +255,7 @@ class Client:
             logger.debug(
                 f"Waiting for {name} to be healthy, current status: {status.status}."
             )
-            time.sleep(1)
+            time.sleep(_CLIENT_POLLING_INTERVAL_S)
         else:
             raise TimeoutError(
                 f"Deployment {name} did not become HEALTHY after {timeout_s}s."
@@ -273,7 +276,7 @@ class Client:
                 logger.debug(
                     f"Waiting for {name} to be deleted, current status: {curr_status}."
                 )
-            time.sleep(1)
+            time.sleep(_CLIENT_POLLING_INTERVAL_S)
         else:
             raise TimeoutError(f"Deployment {name} wasn't deleted after {timeout_s}s.")
 
