@@ -102,6 +102,7 @@ AUTO_RESULT_KEYS = (
     "iterations_since_restore",
     "timesteps_since_restore",
     "config",
+    "warmup_time",
 )
 
 # __duplicate__ is a magic keyword used internally to

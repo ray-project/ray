@@ -120,7 +120,9 @@ class HyperBandScheduler(FIFOScheduler):
         self._time_attr = time_attr
         self._stop_last_trials = stop_last_trials
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str]) -> bool:
+    def set_search_properties(
+        self, metric: Optional[str], mode: Optional[str], **spec
+    ) -> bool:
         if self._metric and metric:
             return False
         if self._mode and mode:

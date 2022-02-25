@@ -2855,6 +2855,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   if (request.include_memory_info()) {
     reference_counter_->AddObjectRefStats(plasma_store_provider_->UsedObjectsList(),
                                           stats);
+    task_manager_->AddTaskStatusInfo(stats);
   }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -3093,8 +3094,6 @@ void CoreWorker::SetActorTitle(const std::string &title) {
 }
 
 const rpc::JobConfig &CoreWorker::GetJobConfig() const { return *job_config_; }
-
-std::shared_ptr<gcs::GcsClient> CoreWorker::GetGcsClient() const { return gcs_client_; }
 
 bool CoreWorker::IsExiting() const { return exiting_; }
 

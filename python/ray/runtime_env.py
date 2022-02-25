@@ -1,10 +1,8 @@
 import ray
 
-from ray.util.annotations import PublicAPI
 from ray._private.client_mode_hook import client_mode_hook
 
 
-@PublicAPI(stability="beta")
 @client_mode_hook(auto_init=False)
 def get_current_runtime_env():
     """Get the runtime env of the current job/worker.

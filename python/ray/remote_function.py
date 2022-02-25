@@ -5,7 +5,6 @@ import uuid
 
 from ray import cloudpickle as pickle
 from ray.util.scheduling_strategies import (
-    DEFAULT_SCHEDULING_STRATEGY,
     PlacementGroupSchedulingStrategy,
     SchedulingStrategyT,
 )
@@ -416,7 +415,7 @@ class RemoteFunction:
                     placement_group_capture_child_tasks,
                 )
             else:
-                scheduling_strategy = DEFAULT_SCHEDULING_STRATEGY
+                scheduling_strategy = "DEFAULT"
 
         if not runtime_env or runtime_env == "{}":
             runtime_env = self._runtime_env
