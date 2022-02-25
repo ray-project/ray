@@ -111,7 +111,7 @@ Trials contain a lot of information.
 For instance, you can get the hyperparameter configuration used (``trial.config``), the trial ID (``trial.trial_id``),
 the trial's resource specification (``resources_per_trial`` or ``trial.placement_group_factory``) and many other values.
 
-``tune.run`` will execute until all trials stop or error.
+By default ``tune.run`` will execute until all trials stop or error.
 Here's an example output of a trial run:
 
 .. TODO: how to make sure this doesn't get outdated?
