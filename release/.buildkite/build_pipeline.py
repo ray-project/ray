@@ -259,7 +259,7 @@ NIGHTLY_TESTS = {
     ],
     "~/ray/release/train_tests/train_tests.yaml": [
         "train_horovod_multi_node_test",
-    ]
+    ],
 }
 
 WEEKLY_TESTS = {

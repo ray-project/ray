@@ -5,7 +5,7 @@ import time
 import ray
 from ray.train import Trainer
 from ray.train.examples.horovod.horovod_example import (
-    train_func as horovod_torch_train_func
+    train_func as horovod_torch_train_func,
 )
 
 if __name__ == "__main__":
