@@ -115,6 +115,7 @@ py_test_module_list(
     "test_worker_capping.py",
     "test_object_spilling_2.py",
     "test_object_spilling_3.py",
+    "test_object_spilling_no_asan.py",
     "test_object_manager.py",
     "test_multi_tenancy.py",
     "test_scheduling.py",
