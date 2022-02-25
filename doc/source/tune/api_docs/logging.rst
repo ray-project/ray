@@ -49,7 +49,7 @@ CSVLogger
 MLFlowLogger
 ------------
 
-Tune also provides a default logger for `MLflow <https://mlflow.org>`_.
+Tune also provides a logger for `MLflow <https://mlflow.org>`_.
 You can install MLflow via ``pip install mlflow``.
 You can see the :doc:`tutorial here </tune/examples/tune-mlflow>`.
 
