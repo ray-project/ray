@@ -25,7 +25,6 @@ def log_failed_request(response: requests.models.Response):
         f"{response.status_code} with the following message:"
         f"\n\n{response.text}"
     )
-    print(error_message)
     cli_logger.newline()
     cli_logger.error(error_message)
     cli_logger.newline()
