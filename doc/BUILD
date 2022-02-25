@@ -1,3 +1,6 @@
+load("//bazel:python.bzl", "py_test_run_all_subdirectory")
+load("//bazel:python.bzl", "py_test_run_all_notebooks")
+
 # --------------------------------------------------------------------
 # Tests from the doc directory.
 # Please keep these sorted alphabetically, but start with the
@@ -132,87 +135,25 @@ py_test(
 )
 
 # --------------------------------------------------------------------
-# Tests from the doc/source/tune/examples directory.
+# Test all doc/source/tune/examples notebooks.
 # --------------------------------------------------------------------
 
-py_test(
-    name = "tune_sklearn",
+py_test_run_all_notebooks(
     size = "medium",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    args = ["--path", "doc/source/tune/examples/tune-sklearn.ipynb"],
+    include = ["doc/source/tune/examples/**.ipynb"],
+    exclude = [],
     data = ["//doc/source/tune/examples:tune_examples"],
     tags = ["exclusive", "team:ml"],
 )
 
-py_test(
-    name = "tune_serve_integration_mnist",
+# --------------------------------------------------------------------
+# Test all doc/source/tune/doc_code code included in rst/md files.
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
     size = "medium",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    args = ["--path", "doc/source/tune/examples/tune-serve-integration-mnist.ipynb", "--smoke-test", "--from_scratch", "--day 0"],
-    data = ["//doc/source/tune/examples:tune_examples"],
-    tags = ["exclusive", "team:ml"],
-)
-
-
-py_test(
-    name = "tune_comet",
-    size = "medium",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    args = ["--path", "doc/source/tune/examples/tune-comet.ipynb"],
-    data = ["//doc/source/tune/examples:tune_examples"],
-    tags = ["exclusive", "team:ml"],
-)
-
-
-py_test(
-    name = "doc_code_faq",
-    size = "small",
-    main = "source/tune/doc_code/faq.py",
-    srcs = ["source/tune/doc_code/faq.py"],
-    tags = ["exclusive", "team:ml"]
-)
-
-py_test(
-    name = "doc_code_key_concepts",
-    size = "small",
-    main = "source/tune/doc_code/key_concepts.py",
-    srcs = ["source/tune/doc_code/key_concepts.py"],
-    tags = ["exclusive", "team:ml"]
-)
-
-py_test(
-    name = "doc_code_keras_quickstart",
-    size = "small",
-    main = "source/tune/doc_code/keras_hyperopt.py",
-    srcs = ["source/tune/doc_code/keras_hyperopt.py"],
-    tags = ["exclusive", "team:ml"]
-)
-
-py_test(
-    name = "doc_code_pytorch_quickstart",
-    size = "small",
-    main = "source/tune/doc_code/pytorch_optuna.py",
-    srcs = ["source/tune/doc_code/pytorch_optuna.py"],
-    tags = ["exclusive", "team:ml"]
-)
-
-py_test(
-    name = "doc_code_keras_hyperopt",
-    size = "small",
-    main = "source/tune/doc_code/keras_hyperopt.py",
-    srcs = ["source/tune/doc_code/keras_hyperopt.py"],
-    tags = ["exclusive", "team:ml"]
-)
-
-py_test(
-    name = "hyperopt_example",
-    size = "small",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    args = ["--path", "doc/source/tune/examples/hyperopt_example.ipynb"],
-    data = ["//doc/source/tune/examples:tune_examples"],
+    include = ["source/tune/doc_code/**.py"],
+    exclude = [],
+    extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )
