@@ -137,7 +137,7 @@ def test_deploy(ray_start_stop):
     }
 
     request_url = "http://localhost:8000/"
-    success_message_fragment = b"Sent deployment request successfully!"
+    success_message_fragment = b"Sent deploy request successfully!"
     for config_file_name, expected_deployments in configs.items():
         deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
         assert success_message_fragment in deploy_response
@@ -163,7 +163,7 @@ def test_info(ray_start_stop):
     subprocess.check_output(["serve", "start"])
 
     config_file_name = "test_config_files/two_deployments.yaml"
-    success_message_fragment = b"Sent deployment request successfully!"
+    success_message_fragment = b"Sent deploy request successfully!"
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
 
