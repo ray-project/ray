@@ -92,7 +92,7 @@ class ClusterResourceManager {
   ///
   /// \param node_id: Node ID.
   /// \param node_resources: Up to date total and available resources of the node.
-  void AddOrUpdateNode(const std::string& node_id, const NodeResources &node_resources);
+  void AddOrUpdateNode(const std::string &node_id, const NodeResources &node_resources);
 
   void AddOrUpdateNode(
       const std::string &node_id,

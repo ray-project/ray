@@ -109,7 +109,7 @@ class ClusterResourceScheduler {
   }
 
  private:
-  bool NodeAlive(int64_t node_id) const;
+  bool NodeAlive(const std::string &node_id) const;
 
   /// Decrease the available resources of a node when a resource request is
   /// scheduled on the given node.
@@ -119,7 +119,7 @@ class ClusterResourceScheduler {
   ///
   /// \return true, if resource_request can be indeed scheduled on the node,
   /// and false otherwise.
-  bool SubtractRemoteNodeAvailableResources(int64_t node_id,
+  bool SubtractRemoteNodeAvailableResources(const std::string &node_id,
                                             const ResourceRequest &resource_request);
 
   /// Check whether a resource request can be scheduled given a node.
@@ -133,7 +133,7 @@ class ClusterResourceScheduler {
   ///     a map find call which could be expensive.)
   ///
   ///  \return: Whether the request can be scheduled.
-  bool IsSchedulable(const ResourceRequest &resource_request, int64_t node_id,
+  bool IsSchedulable(const ResourceRequest &resource_request, const std::string &node_id,
                      const NodeResources &resources) const;
 
   ///  Find a node in the cluster on which we can schedule a given resource request.
@@ -151,10 +151,10 @@ class ClusterResourceScheduler {
   ///
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the resource request.
-  int64_t GetBestSchedulableNode(const ResourceRequest &resource_request,
-                                 const rpc::SchedulingStrategy &scheduling_strategy,
-                                 bool actor_creation, bool force_spillback,
-                                 int64_t *violations, bool *is_infeasible);
+  std::string GetBestSchedulableNode(const ResourceRequest &resource_request,
+                                     const rpc::SchedulingStrategy &scheduling_strategy,
+                                     bool actor_creation, bool force_spillback,
+                                     int64_t *violations, bool *is_infeasible);
 
   /// Similar to
   ///    int64_t GetBestSchedulableNode(...)
