@@ -109,7 +109,6 @@ It is available from the `HpBandSter library <https://github.com/automl/HpBandSt
 
 Importantly, BOHB is intended to be paired with a specific scheduler class: :ref:`HyperBandForBOHB <tune-scheduler-bohb>`.
 
-This algorithm requires using the `ConfigSpace search space specification <https://automl.github.io/HpBandSter/build/html/quickstart.html#searchspace>`_.
 In order to use this search algorithm, you will need to install ``HpBandSter`` and ``ConfigSpace``:
 
 .. code-block:: bash
