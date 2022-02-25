@@ -58,9 +58,9 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
-        serve_application_json = await req.json()
+        serve_application_text = await req.text()
         serve_application_schema = ServeApplicationSchema.parse_raw(
-            json.dumps(serve_application_json)
+            serve_application_text, content_type="application/json"
         )
         deployments = schema_to_serve_application(serve_application_schema)
 
