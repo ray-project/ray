@@ -11,7 +11,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import yaml
 
 import ray
-from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_jax, try_import_tf, \
+    try_import_torch
 from ray.rllib.utils.typing import PartialTrainerConfigDict
 from ray.tune import CLIReporter, run_experiments
 
@@ -62,7 +63,8 @@ def framework_iterator(
         string and the tf1.Session (if fw="tf", otherwise None).
     """
     config = config or {}
-    frameworks = [frameworks] if isinstance(frameworks, str) else list(frameworks)
+    frameworks = [frameworks] if isinstance(frameworks, str) else list(
+        frameworks)
 
     # Both tf2 and tfe present -> remove "tfe" or "tf2" depending on version.
     if "tf2" in frameworks and "tfe" in frameworks:
@@ -71,11 +73,13 @@ def framework_iterator(
     for fw in frameworks:
         # Skip non-installed frameworks.
         if fw == "torch" and not torch:
-            logger.warning("framework_iterator skipping torch (not installed)!")
+            logger.warning(
+                "framework_iterator skipping torch (not installed)!")
             continue
         if fw != "torch" and not tf:
             logger.warning(
-                "framework_iterator skipping {} (tf not " "installed)!".format(fw)
+                "framework_iterator skipping {} (tf not " "installed)!".format(
+                    fw)
             )
             continue
         elif fw == "tfe" and not eager_mode:
@@ -85,7 +89,8 @@ def framework_iterator(
             )
             continue
         elif fw == "tf2" and tfv != 2:
-            logger.warning("framework_iterator skipping tf2.x (tf version is < 2.0)!")
+            logger.warning(
+                "framework_iterator skipping tf2.x (tf version is < 2.0)!")
             continue
         elif fw == "jax" and not jax:
             logger.warning("framework_iterator skipping JAX (not installed)!")
@@ -120,7 +125,8 @@ def framework_iterator(
                 yield fw if session is False else (fw, sess)
                 if time_iterations is not None:
                     time_total = time.time() - time_started
-                    time_iterations[fw + ("+tracing" if tracing else "")] = time_total
+                    time_iterations[
+                        fw + ("+tracing" if tracing else "")] = time_total
                     print(f".. took {time_total}sec")
                 config["eager_tracing"] = False
         # Yield current framework + tf-session (if necessary).
@@ -130,7 +136,8 @@ def framework_iterator(
             yield fw if session is False else (fw, sess)
             if time_iterations is not None:
                 time_total = time.time() - time_started
-                time_iterations[fw + ("+tracing" if tracing else "")] = time_total
+                time_iterations[
+                    fw + ("+tracing" if tracing else "")] = time_total
                 print(f".. took {time_total}sec")
 
         # Exit any context we may have entered.
@@ -162,11 +169,14 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
     """
     # A dict type.
     if isinstance(x, dict):
-        assert isinstance(y, dict), "ERROR: If x is dict, y needs to be a dict as well!"
+        assert isinstance(y,
+                          dict), "ERROR: If x is dict, y needs to be a dict as well!"
         y_keys = set(x.keys())
         for key, value in x.items():
-            assert key in y, "ERROR: y does not have x's key='{}'! y={}".format(key, y)
-            check(value, y[key], decimals=decimals, atol=atol, rtol=rtol, false=false)
+            assert key in y, "ERROR: y does not have x's key='{}'! y={}".format(
+                key, y)
+            check(value, y[key], decimals=decimals, atol=atol, rtol=rtol,
+                  false=false)
             y_keys.remove(key)
         assert not y_keys, "ERROR: y contains keys ({}) that are not in x! y={}".format(
             list(y_keys), y
@@ -182,25 +192,31 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
             len(y), len(x)
         )
         for i, value in enumerate(x):
-            check(value, y[i], decimals=decimals, atol=atol, rtol=rtol, false=false)
+            check(value, y[i], decimals=decimals, atol=atol, rtol=rtol,
+                  false=false)
     # Boolean comparison.
     elif isinstance(x, (np.bool_, bool)):
         if false is True:
-            assert bool(x) is not bool(y), "ERROR: x ({}) is y ({})!".format(x, y)
+            assert bool(x) is not bool(y), "ERROR: x ({}) is y ({})!".format(x,
+                                                                             y)
         else:
-            assert bool(x) is bool(y), "ERROR: x ({}) is not y ({})!".format(x, y)
+            assert bool(x) is bool(y), "ERROR: x ({}) is not y ({})!".format(x,
+                                                                             y)
     # Nones or primitives.
     elif x is None or y is None or isinstance(x, (str, int)):
         if false is True:
             assert x != y, "ERROR: x ({}) is the same as y ({})!".format(x, y)
         else:
-            assert x == y, "ERROR: x ({}) is not the same as y ({})!".format(x, y)
+            assert x == y, "ERROR: x ({}) is not the same as y ({})!".format(x,
+                                                                             y)
     # String/byte comparisons.
-    elif hasattr(x, "dtype") and (x.dtype == object or str(x.dtype).startswith("<U")):
+    elif hasattr(x, "dtype") and (
+        x.dtype == object or str(x.dtype).startswith("<U")):
         try:
             np.testing.assert_array_equal(x, y)
             if false is True:
-                assert False, "ERROR: x ({}) is the same as y ({})!".format(x, y)
+                assert False, "ERROR: x ({}) is the same as y ({})!".format(x,
+                                                                            y)
         except AssertionError as e:
             if false is False:
                 raise e
@@ -226,7 +242,8 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                     with tf1.Session() as sess:
                         x = sess.run(x)
                         return check(
-                            x, y, decimals=decimals, atol=atol, rtol=rtol, false=false
+                            x, y, decimals=decimals, atol=atol, rtol=rtol,
+                            false=false
                         )
         if torch is not None:
             if isinstance(x, torch.Tensor):
@@ -248,7 +265,8 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
             else:
                 # If false is set -> raise error (not expected to be equal).
                 if false is True:
-                    assert False, "ERROR: x ({}) is the same as y ({})!".format(x, y)
+                    assert False, "ERROR: x ({}) is the same as y ({})!".format(
+                        x, y)
 
         # Using atol/rtol.
         else:
@@ -264,7 +282,8 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                     raise e
             else:
                 if false is True:
-                    assert False, "ERROR: x ({}) is the same as y ({})!".format(x, y)
+                    assert False, "ERROR: x ({}) is the same as y ({})!".format(
+                        x, y)
 
 
 def check_compute_single_action(
@@ -290,7 +309,8 @@ def check_compute_single_action(
     try:
         # Multi-agent: Pick any learnable policy (or DEFAULT_POLICY if it's the only
         # one).
-        pid = next(iter(trainer.workers.local_worker().get_policies_to_train()))
+        pid = next(
+            iter(trainer.workers.local_worker().get_policies_to_train()))
         pol = trainer.get_policy(pid)
     except AttributeError:
         pol = trainer.policy
@@ -300,7 +320,8 @@ def check_compute_single_action(
     action_space = pol.action_space
 
     def _test(
-        what, method_to_test, obs_space, full_fetch, explore, timestep, unsquash, clip
+        what, method_to_test, obs_space, full_fetch, explore, timestep,
+        unsquash, clip
     ):
         call_kwargs = {}
         if what is trainer:
@@ -431,12 +452,15 @@ def check_compute_single_action(
         else:
             obs_space = pol.observation_space
 
-        for method_to_test in ["single"] + (["input_dict"] if what is pol else []):
+        for method_to_test in ["single"] + (
+        ["input_dict"] if what is pol else []):
             for explore in [True, False]:
-                for full_fetch in [False, True] if what is trainer else [False]:
+                for full_fetch in [False, True] if what is trainer else [
+                    False]:
                     timestep = random.randint(0, 100000)
                     for unsquash in [True, False, None]:
-                        for clip in [False] if unsquash else [True, False, None]:
+                        for clip in [False] if unsquash else [True, False,
+                                                              None]:
                             _test(
                                 what,
                                 method_to_test,
@@ -490,7 +514,8 @@ def check_train_results(train_results):
     """
     # Import these here to avoid circular dependencies.
     from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-    from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+    from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
+        LEARNER_STATS_KEY
     from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 
     # Assert that some keys are where we would expect them.
@@ -569,7 +594,8 @@ def check_train_results(train_results):
         for key, value in learner_stats.items():
             # Min- and max-stats should be single values.
             if key.startswith("min_") or key.startswith("max_"):
-                assert np.isscalar(value), f"'key' value not a scalar ({value})!"
+                assert np.isscalar(
+                    value), f"'key' value not a scalar ({value})!"
 
     return train_results
 
@@ -609,7 +635,8 @@ def run_learning_tests_from_yaml(
         # If we have evaluation workers, use their rewards.
         # This is useful for offline learning tests, where
         # we evaluate against an actual environment.
-        return experiment["config"].get("evaluation_interval", None) is not None
+        return experiment["config"].get("evaluation_interval",
+                                        None) is not None
 
     # Loop through all collected files and gather experiments.
     # Augment all by `torch` framework.
@@ -630,7 +657,8 @@ def run_learning_tests_from_yaml(
             e.pop("frameworks", None)
 
             e["stop"] = e["stop"] if "stop" in e else {}
-            e["pass_criteria"] = e["pass_criteria"] if "pass_criteria" in e else {}
+            e["pass_criteria"] = e[
+                "pass_criteria"] if "pass_criteria" in e else {}
 
             # For smoke-tests, we just run for n min.
             if smoke_test:
@@ -661,9 +689,12 @@ def run_learning_tests_from_yaml(
                     ec["config"]["eager_tracing"] = True
 
                 checks[k_] = {
-                    "min_reward": ec["pass_criteria"].get("episode_reward_mean", 0.0),
-                    "min_throughput": ec["pass_criteria"].get("timesteps_total", 0.0)
-                    / (ec["stop"].get("time_total_s", 1.0) or 1.0),
+                    "min_reward": ec["pass_criteria"].get(
+                        "episode_reward_mean", 0.0),
+                    "min_throughput": ec["pass_criteria"].get(
+                        "timesteps_total", 0.0)
+                                      / (ec["stop"].get("time_total_s",
+                                                        1.0) or 1.0),
                     "time_total_s": ec["stop"].get("time_total_s"),
                     "failures": 0,
                     "passed": False,
@@ -761,10 +792,12 @@ def run_learning_tests_from_yaml(
                 desired_reward = checks[experiment]["min_reward"]
 
                 timesteps_total = np.mean(
-                    [t.last_result["timesteps_total"] for t in trials_for_experiment]
+                    [t.last_result["timesteps_total"] for t in
+                     trials_for_experiment]
                 )
                 total_time_s = np.mean(
-                    [t.last_result["time_total_s"] for t in trials_for_experiment]
+                    [t.last_result["time_total_s"] for t in
+                     trials_for_experiment]
                 )
 
                 # TODO(jungong) : track trainer and env throughput separately.
@@ -788,7 +821,8 @@ def run_learning_tests_from_yaml(
                 )
 
                 # We failed to reach desired reward or the desired throughput.
-                if (desired_reward and episode_reward_mean < desired_reward) or (
+                if (
+                    desired_reward and episode_reward_mean < desired_reward) or (
                     desired_throughput and throughput < desired_throughput
                 ):
                     print(
@@ -815,8 +849,72 @@ def run_learning_tests_from_yaml(
         "stats": stats,
         "passed": [k for k, exp in checks.items() if exp["passed"]],
         "failures": {
-            k: exp["failures"] for k, exp in checks.items() if exp["failures"] > 0
+            k: exp["failures"] for k, exp in checks.items() if
+            exp["failures"] > 0
         },
     }
 
     return result
+
+
+def check_same_batch(batch1, batch2) -> None:
+    """Check if both batches are (almost) identical.
+
+    For MultiAgentBatches, the step count and individual policy's
+    SampleBatches  are checked for identity. For SampleBatches, identity is
+    checked as the almost numerical key-value-pair identity between batches
+    with ray.rllib.utils.test_utils.check().
+
+    Args:
+        batch1: Batch to compare against batch2
+        batch2: Batch to compare against batch1
+    """
+    # Avoids circular import
+    from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+
+    assert type(batch1) == type(batch2), "Input batches are of different " \
+                                         "types {} and {}".format(str(type(
+        batch1)), str(type(batch2)))
+
+    def check_sample_batches(_batch1, _batch2, _policy_id=None):
+        # unroll IDs only have to fit if both batches have them
+        unroll_id_1 = _batch1.pop("unroll_id", None)
+        unroll_id_2 = _batch2.pop("unroll_id", None)
+        if unroll_id_1 is not None and unroll_id_2 is not None:
+            assert unroll_id_1 == unroll_id_2
+
+        batch1_keys = set()
+        for k, v in _batch1.items():
+            check(v, _batch2[k])
+            batch1_keys.add(k)
+
+        # Case where one batch has info and the other has not
+        batch2_keys = set(_batch2.keys())
+        _difference = batch1_keys.symmetric_difference(batch2_keys)
+        if _policy_id:
+            assert not _difference, "SampleBatches for policy with ID {} " \
+                                    "don't share information on the " \
+                                    "following information: \n{}" \
+                                    "".format(_policy_id, _difference)
+        else:
+            assert not _difference, "SampleBatches don't share information " \
+                                    "on the following information: \n{}" \
+                                    "".format(_difference)
+
+    if type(batch1) == SampleBatch:
+        check_sample_batches(batch1, batch2)
+    elif type(batch1) == MultiAgentBatch:
+        assert batch1.count == batch2.count
+        batch1_ids = set()
+        for policy_id, policy_batch in batch1.policy_batches.items():
+            check_sample_batches(policy_batch, batch2.policy_batches[
+                policy_id], policy_id)
+            batch1_ids.add(policy_id)
+
+        # Case where one ma batch has info on a policy the other has not
+        batch2_ids = set(batch2.policy_batches.keys())
+        difference = batch1_ids.symmetric_difference(batch2_ids)
+        assert not difference, "MultiAgentBatches don't share the following" \
+                               "information: \n{}.".format(difference)
+    else:
+        raise ValueError("Unsupported batch type " + str(type(batch1)))
