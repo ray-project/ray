@@ -1991,7 +1991,7 @@ def build_rust_worker_command(rust_worker_options, bootstrap_address,
 
     Args:
         cpp_worker_options (list): The command options for Rust worker.
-        redis_address (str): Redis address of GCS.
+        bootstrap_address (str): Redis address of GCS.
         plasma_store_name (str): The name of the plasma store socket to connect
            to.
         raylet_name (str): The name of the raylet socket to create.

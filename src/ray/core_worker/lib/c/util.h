@@ -9,3 +9,6 @@ void StopRayNode();
 
 std::unique_ptr<ray::gcs::GlobalStateAccessor> CreateGlobalStateAccessor(
     const std::string &redis_address, const std::string &redis_password);
+
+std::unique_ptr<ray::gcs::GlobalStateAccessor> CreateGlobalStateAccessor(
+    const std::string &bootstrap_address);

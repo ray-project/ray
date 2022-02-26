@@ -220,32 +220,33 @@ ray::Status ExecutionCallback(
 
 RAY_EXPORT void c_worker_Initialize() {
   ray::core::CoreWorkerOptions options = stored_worker_options;
-  auto redis_ip = stored_config.redis_ip;
+  auto bootstrap_ip = stored_config.bootstrap_ip;
   if (options.worker_type == ray::core::WorkerType::DRIVER
     // This is not the desired behaviour. We want the ray node to be started when...
-    && stored_config.redis_ip.empty()
+    && stored_config.bootstrap_ip.empty()
   ) {
-    redis_ip = "127.0.0.1";
-    StartRayNode(stored_config.redis_port,
+    bootstrap_ip = "127.0.0.1";
+    StartRayNode(stored_config.bootstrap_port,
                  stored_config.redis_password,
                  stored_config.head_args);
   }
-  if (redis_ip == "127.0.0.1") {
-    redis_ip = GetNodeIpAddress();
+  if (bootstrap_ip == "127.0.0.1") {
+    bootstrap_ip = GetNodeIpAddress();
   }
 
-  std::string redis_address = redis_ip + ":" + std::to_string(stored_config.redis_port);
+  std::string bootstrap_address = bootstrap_ip + ":" + std::to_string(stored_config.bootstrap_port);
   std::string node_ip = options.node_ip_address;
   if (node_ip.empty()) {
-    if (!stored_config.redis_ip.empty()) {
-      node_ip = GetNodeIpAddress(redis_address);
+    if (!stored_config.bootstrap_ip.empty()) {
+      node_ip = GetNodeIpAddress(bootstrap_address);
     } else {
       node_ip = GetNodeIpAddress();
     }
   }
+  auto global_state_accessor = ::RayConfig::instance().bootstrap_with_gcs()
+    ? CreateGlobalStateAccessor(bootstrap_address)
+    : CreateGlobalStateAccessor(bootstrap_address, stored_config.redis_password);
 
-  auto global_state_accessor =
-      CreateGlobalStateAccessor(redis_address, stored_config.redis_password);
   if (options.worker_type == ray::core::WorkerType::DRIVER) {
     std::string node_to_connect;
     auto status =
@@ -288,8 +289,9 @@ RAY_EXPORT void c_worker_Initialize() {
   RAY_CHECK(job_config.SerializeToString(&serialized_job_config));
 
   options.serialized_job_config = serialized_job_config;
-  options.gcs_options =
-      ray::gcs::GcsClientOptions(redis_ip, stored_config.redis_port, stored_config.redis_password);
+  options.gcs_options = ::RayConfig::instance().bootstrap_with_gcs()
+      ? ray::gcs::GcsClientOptions(bootstrap_address)
+      : ray::gcs::GcsClientOptions(bootstrap_ip, stored_config.bootstrap_port, stored_config.redis_password);
   options.install_failure_signal_handler = true;
   options.node_ip_address = node_ip;
   options.raylet_ip_address = node_ip;

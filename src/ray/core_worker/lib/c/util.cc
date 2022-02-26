@@ -29,10 +29,10 @@ std::string GetNodeIpAddress(const std::string &address) {
   }
 }
 
-void StartRayNode(const int redis_port, const std::string redis_password,
+void StartRayNode(const int bootstrap_port, const std::string redis_password,
                                  const std::vector<std::string> &head_args) {
   std::vector<std::string> cmdargs({"ray", "start", "--head", "--port",
-                                    std::to_string(redis_port), "--redis-password",
+                                    std::to_string(bootstrap_port), "--redis-password",
                                     redis_password, "--node-ip-address",
                                     GetNodeIpAddress(), "--include-dashboard", "true"});
   if (!head_args.empty()) {
@@ -54,12 +54,22 @@ void StopRayNode() {
 }
 
 std::unique_ptr<ray::gcs::GlobalStateAccessor> CreateGlobalStateAccessor(
-    const std::string &redis_address, const std::string &redis_password) {
+    const std::string &bootstrap_address, const std::string &redis_password) {
   std::vector<std::string> address;
-  boost::split(address, redis_address, boost::is_any_of(":"));
+  boost::split(address, bootstrap_address, boost::is_any_of(":"));
   RAY_CHECK(address.size() == 2);
   ray::gcs::GcsClientOptions client_options(address[0], std::stoi(address[1]),
                                             redis_password);
+
+  auto global_state_accessor =
+      std::make_unique<ray::gcs::GlobalStateAccessor>(client_options);
+  RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
+  return global_state_accessor;
+}
+
+std::unique_ptr<ray::gcs::GlobalStateAccessor> CreateGlobalStateAccessor(
+    const std::string &bootstrap_address) {
+  ray::gcs::GcsClientOptions client_options(bootstrap_address);
 
   auto global_state_accessor =
       std::make_unique<ray::gcs::GlobalStateAccessor>(client_options);

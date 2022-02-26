@@ -68,8 +68,8 @@ void InitOptions(Config* config,
       auto adr = FLAGS_address.CurrentValue();
       RAY_CHECK(pos != std::string::npos);
 
-      config->redis_ip = adr.substr(0, pos);
-      config->redis_port = std::stoi(adr.substr(pos + 1, adr.length()));
+      config->bootstrap_ip = adr.substr(0, pos);
+      config->bootstrap_port = std::stoi(adr.substr(pos + 1, adr.length()));
     }
     // Don't rewrite `redis_password` when it is not set in the command line.
     if (FLAGS_gcs_password.CurrentValue() !=
