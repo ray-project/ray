@@ -15,7 +15,6 @@ from ray.train.backend import (
     TrainingWorkerError,
 )
 from ray.train.callbacks.callback import TrainingCallback
-from ray.train.callbacks.results_preprocessors import ResultsPreprocessor
 from ray.train.session import TrainingResultType
 from ray.train.utils import RayDataset
 from ray.train.checkpoint import (
